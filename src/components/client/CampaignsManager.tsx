@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,19 @@ const CampaignsManager = () => {
       responses: 12,
       created: "05/01/2024",
       scheduled: null
+    },
+    {
+      id: "4",
+      name: "Campanha Futura",
+      status: "scheduled" as const,
+      type: "promotional",
+      contacts: 200,
+      sent: 0,
+      delivered: 0,
+      read: 0,
+      responses: 0,
+      created: "18/01/2024",
+      scheduled: "25/01/2024 10:00"
     }
   ];
 
@@ -213,7 +227,7 @@ const CampaignsManager = () => {
                           <div className="flex items-center justify-center mb-1">
                             <BarChart3 className="w-4 h-4 text-gray-500 mr-1" />
                             <span className="text-sm font-medium">
-                              {((campaign.responses / campaign.sent) * 100).toFixed(1)}%
+                              {campaign.sent > 0 ? ((campaign.responses / campaign.sent) * 100).toFixed(1) : '0.0'}%
                             </span>
                           </div>
                           <p className="text-xs text-gray-500">Taxa Resp.</p>
@@ -224,12 +238,12 @@ const CampaignsManager = () => {
                       <div className="mb-4">
                         <div className="flex justify-between text-sm mb-1">
                           <span>Progresso</span>
-                          <span>{Math.round((campaign.sent / campaign.contacts) * 100)}%</span>
+                          <span>{campaign.contacts > 0 ? Math.round((campaign.sent / campaign.contacts) * 100) : 0}%</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div 
                             className="bg-green-500 h-2 rounded-full transition-all"
-                            style={{ width: `${(campaign.sent / campaign.contacts) * 100}%` }}
+                            style={{ width: `${campaign.contacts > 0 ? (campaign.sent / campaign.contacts) * 100 : 0}%` }}
                           />
                         </div>
                       </div>
@@ -245,6 +259,11 @@ const CampaignsManager = () => {
                           <Button size="sm" className="bg-green-600 hover:bg-green-700">
                             <Play className="w-4 h-4 mr-1" />
                             Retomar
+                          </Button>
+                        ) : campaign.status === 'scheduled' ? (
+                          <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                            <Play className="w-4 h-4 mr-1" />
+                            Iniciar Agora
                           </Button>
                         ) : null}
                         <Button size="sm" variant="outline">
