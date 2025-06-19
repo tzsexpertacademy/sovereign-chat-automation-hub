@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,7 @@ const SystemLogs = () => {
     {
       id: "1",
       timestamp: "2024-01-19 14:32:15",
-      level: "info",
+      level: "info" as const,
       component: "WhatsApp Instance",
       clientId: "client_001",
       clientName: "Empresa ABC",
@@ -25,7 +24,7 @@ const SystemLogs = () => {
     {
       id: "2",
       timestamp: "2024-01-19 14:31:45",
-      level: "warning",
+      level: "warning" as const,
       component: "Message Queue",
       clientId: "client_002",
       clientName: "Loja XYZ",
@@ -35,7 +34,7 @@ const SystemLogs = () => {
     {
       id: "3",
       timestamp: "2024-01-19 14:30:22",
-      level: "error",
+      level: "error" as const,
       component: "WhatsApp Instance",
       clientId: "client_003",
       clientName: "Consultoria DEF",
@@ -45,7 +44,7 @@ const SystemLogs = () => {
     {
       id: "4",
       timestamp: "2024-01-19 14:29:33",
-      level: "success",
+      level: "success" as const,
       component: "Database",
       clientId: "system",
       clientName: "Sistema",
@@ -55,7 +54,7 @@ const SystemLogs = () => {
     {
       id: "5",
       timestamp: "2024-01-19 14:28:17",
-      level: "info",
+      level: "info" as const,
       component: "Campaign Engine",
       clientId: "client_001",
       clientName: "Empresa ABC",
@@ -65,7 +64,7 @@ const SystemLogs = () => {
     {
       id: "6",
       timestamp: "2024-01-19 14:27:05",
-      level: "warning",
+      level: "warning" as const,
       component: "API Rate Limiter",
       clientId: "client_004",
       clientName: "E-commerce GHI",
@@ -75,7 +74,7 @@ const SystemLogs = () => {
     {
       id: "7",
       timestamp: "2024-01-19 14:25:44",
-      level: "info",
+      level: "info" as const,
       component: "User Authentication",
       clientId: "client_002",
       clientName: "Loja XYZ",
@@ -85,7 +84,7 @@ const SystemLogs = () => {
     {
       id: "8",
       timestamp: "2024-01-19 14:24:12",
-      level: "error",
+      level: "error" as const,
       component: "Message Processor",
       clientId: "client_003",
       clientName: "Consultoria DEF",
@@ -104,14 +103,19 @@ const SystemLogs = () => {
     }
   };
 
-  const getLevelBadge = (level: string) => {
-    const variants = {
-      error: "destructive",
-      warning: "secondary", 
-      success: "default",
-      info: "outline"
-    };
-    return variants[level as keyof typeof variants] || "outline";
+  const getLevelBadge = (level: string): "default" | "secondary" | "destructive" | "outline" => {
+    switch (level) {
+      case 'error':
+        return "destructive";
+      case 'warning':
+        return "secondary";
+      case 'success':
+        return "default";
+      case 'info':
+        return "outline";
+      default:
+        return "outline";
+    }
   };
 
   const filteredLogs = logs.filter(log => {

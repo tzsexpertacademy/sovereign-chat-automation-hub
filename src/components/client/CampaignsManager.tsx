@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,7 @@ const CampaignsManager = () => {
     {
       id: "1",
       name: "Promoção Janeiro 2024",
-      status: "active",
+      status: "active" as const,
       type: "promotional",
       contacts: 450,
       sent: 285,
@@ -26,7 +25,7 @@ const CampaignsManager = () => {
     {
       id: "2",
       name: "Follow-up Vendas",
-      status: "paused", 
+      status: "paused" as const, 
       type: "follow-up",
       contacts: 120,
       sent: 120,
@@ -39,7 +38,7 @@ const CampaignsManager = () => {
     {
       id: "3",
       name: "Boas-vindas Novos Clientes",
-      status: "completed",
+      status: "completed" as const,
       type: "welcome",
       contacts: 85,
       sent: 85,
@@ -51,14 +50,19 @@ const CampaignsManager = () => {
     }
   ];
 
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      active: "default",
-      paused: "secondary", 
-      completed: "outline",
-      scheduled: "secondary"
-    };
-    return variants[status as keyof typeof variants] || "secondary";
+  const getStatusBadge = (status: string): "default" | "secondary" | "outline" => {
+    switch (status) {
+      case 'active':
+        return "default";
+      case 'paused':
+        return "secondary";
+      case 'completed':
+        return "outline";
+      case 'scheduled':
+        return "secondary";
+      default:
+        return "secondary";
+    }
   };
 
   const getStatusText = (status: string) => {

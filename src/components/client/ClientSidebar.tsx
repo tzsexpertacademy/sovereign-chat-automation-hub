@@ -14,10 +14,11 @@ import {
 } from "@/components/ui/sidebar";
 
 const ClientSidebar = () => {
-  const { collapsed } = useSidebar();
+  const { state } = useSidebar();
   const location = useLocation();
   const { clientId } = useParams();
   const currentPath = location.pathname;
+  const collapsed = state === "collapsed";
 
   const menuItems = [
     { title: "Conectar WhatsApp", url: `/client/${clientId}/connect`, icon: QrCode },
@@ -32,7 +33,7 @@ const ClientSidebar = () => {
     isActive ? "bg-green-100 text-green-700 font-medium" : "hover:bg-gray-100";
 
   return (
-    <Sidebar className={collapsed ? "w-14" : "w-64"} collapsible>
+    <Sidebar className={collapsed ? "w-14" : "w-64"} collapsible="icon">
       <SidebarContent className="bg-white border-r">
         {/* Logo/Header */}
         <div className="p-4 border-b">

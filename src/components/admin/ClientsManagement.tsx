@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,9 +20,9 @@ const ClientsManagement = () => {
       id: "1",
       name: "Empresa ABC Ltda",
       email: "contato@empresaabc.com",
-      status: "active",
+      status: "active" as const,
       plan: "Pro",
-      whatsappStatus: "connected",
+      whatsappStatus: "connected" as const,
       messages: "1,247",
       lastActivity: "2 min",
       created: "15/01/2024"
@@ -32,9 +31,9 @@ const ClientsManagement = () => {
       id: "2", 
       name: "Loja XYZ",
       email: "admin@lojaxyz.com",
-      status: "active",
+      status: "active" as const,
       plan: "Business",
-      whatsappStatus: "connected",
+      whatsappStatus: "connected" as const,
       messages: "856",
       lastActivity: "5 min",
       created: "10/01/2024"
@@ -43,9 +42,9 @@ const ClientsManagement = () => {
       id: "3",
       name: "Consultoria DEF",
       email: "contato@consultoriadef.com",
-      status: "inactive",
+      status: "inactive" as const,
       plan: "Starter",
-      whatsappStatus: "disconnected",
+      whatsappStatus: "disconnected" as const,
       messages: "432",
       lastActivity: "2h",
       created: "05/01/2024"
@@ -54,25 +53,29 @@ const ClientsManagement = () => {
       id: "4",
       name: "E-commerce GHI",
       email: "suporte@ecommerceghi.com",
-      status: "active",
+      status: "active" as const,
       plan: "Enterprise",
-      whatsappStatus: "connected",
+      whatsappStatus: "connected" as const,
       messages: "2,134",
       lastActivity: "1 min",
       created: "01/01/2024"
     }
   ];
 
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      active: "default",
-      inactive: "secondary",
-      suspended: "destructive"
-    };
-    return variants[status as keyof typeof variants] || "secondary";
+  const getStatusBadge = (status: string): "default" | "secondary" | "destructive" => {
+    switch (status) {
+      case 'active':
+        return "default";
+      case 'inactive':
+        return "secondary";
+      case 'suspended':
+        return "destructive";
+      default:
+        return "secondary";
+    }
   };
 
-  const getWhatsAppStatusBadge = (status: string) => {
+  const getWhatsAppStatusBadge = (status: string): "default" | "secondary" => {
     return status === "connected" ? "default" : "secondary";
   };
 
