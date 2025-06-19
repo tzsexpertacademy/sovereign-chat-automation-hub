@@ -1,8 +1,20 @@
 
 import { io, Socket } from 'socket.io-client';
 
-const API_BASE_URL = 'http://localhost:4000/api';
-const SOCKET_URL = 'http://localhost:4000';
+// Configuração para produção - detecta automaticamente o ambiente
+const getBaseURL = () => {
+  if (typeof window !== 'undefined') {
+    // No browser, usar o host atual
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:4000`;
+  }
+  // Fallback para desenvolvimento
+  return 'http://localhost:4000';
+};
+
+const API_BASE_URL = `${getBaseURL()}/api`;
+const SOCKET_URL = getBaseURL();
 
 export interface WhatsAppClient {
   clientId: string;
@@ -40,20 +52,39 @@ export interface MessageData {
 
 class WhatsAppMultiClientService {
   private socket: Socket | null = null;
+  private isProduction: boolean = false;
 
-  // Conectar ao WebSocket
+  constructor() {
+    // Detectar ambiente de produção
+    this.isProduction = typeof window !== 'undefined' && 
+                       !window.location.hostname.includes('localhost');
+  }
+
+  // Conectar ao WebSocket com configuração para produção
   connectSocket(): Socket {
     if (!this.socket) {
+      console.log(`🔌 Conectando ao WebSocket: ${SOCKET_URL}`);
+      
       this.socket = io(SOCKET_URL, {
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        timeout: 20000,
+        forceNew: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
       });
 
       this.socket.on('connect', () => {
-        console.log('✅ Conectado ao servidor WhatsApp');
+        console.log('✅ Conectado ao servidor WhatsApp Multi-Cliente');
+        console.log(`📍 Ambiente: ${this.isProduction ? 'Produção' : 'Desenvolvimento'}`);
       });
 
-      this.socket.on('disconnect', () => {
-        console.log('❌ Desconectado do servidor WhatsApp');
+      this.socket.on('disconnect', (reason) => {
+        console.log('❌ Desconectado do servidor WhatsApp:', reason);
+      });
+
+      this.socket.on('connect_error', (error) => {
+        console.error('❌ Erro de conexão WebSocket:', error);
       });
 
       this.socket.on('error', (error) => {
@@ -252,11 +283,27 @@ class WhatsAppMultiClientService {
 
   async checkServerHealth(): Promise<any> {
     try {
-      const response = await fetch(`http://localhost:4000/health`);
-      return await response.json();
+      const healthURL = `${getBaseURL()}/health`;
+      console.log(`🔍 Verificando saúde do servidor: ${healthURL}`);
+      
+      const response = await fetch(healthURL);
+      const data = await response.json();
+      
+      console.log('✅ Servidor saudável:', data);
+      return data;
     } catch (error) {
-      console.error('Erro ao verificar saúde do servidor:', error);
+      console.error('❌ Erro ao verificar saúde do servidor:', error);
       throw error;
+    }
+  }
+
+  // Método para testar conectividade
+  async testConnection(): Promise<boolean> {
+    try {
+      await this.checkServerHealth();
+      return true;
+    } catch (error) {
+      return false;
     }
   }
 }

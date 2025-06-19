@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
+import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 
 const RealInstancesManager = () => {
   const [clients, setClients] = useState<WhatsAppClient[]>([]);
@@ -208,14 +209,17 @@ const RealInstancesManager = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Instâncias WhatsApp Reais</h1>
-          <p className="text-gray-600">Gerencie conexões WhatsApp multi-cliente</p>
+          <h1 className="text-3xl font-bold text-gray-900">WhatsApp Multi-Cliente Real</h1>
+          <p className="text-gray-600">Gerencie conexões WhatsApp reais para múltiplos clientes</p>
         </div>
         <Button onClick={loadClients} variant="outline" disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
           Atualizar
         </Button>
       </div>
+
+      {/* System Status */}
+      <WhatsAppSystemStatus />
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
