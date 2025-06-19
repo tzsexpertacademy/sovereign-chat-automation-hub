@@ -1,0 +1,33 @@
+
+{
+  "name": "whatsapp-multi-client-backend",
+  "version": "1.0.0",
+  "description": "Backend para sistema WhatsApp Multi-Cliente",
+  "main": "whatsapp-multi-client-server.js",
+  "scripts": {
+    "start": "node whatsapp-multi-client-server.js",
+    "dev": "nodemon whatsapp-multi-client-server.js",
+    "stop": "pkill -f whatsapp-multi-client-server.js",
+    "restart": "npm run stop && npm run start"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4",
+    "cors": "^2.8.5",
+    "whatsapp-web.js": "^1.23.0",
+    "qrcode": "^1.5.3",
+    "swagger-ui-express": "^5.0.0",
+    "swagger-jsdoc": "^6.2.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "keywords": [
+    "whatsapp",
+    "multi-client",
+    "saas",
+    "nodejs"
+  ],
+  "author": "TZS Expert Academy",
+  "license": "MIT"
+}
