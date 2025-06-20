@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Plus, 
   Play, 
@@ -16,24 +17,43 @@ import {
   RefreshCw,
   Eye,
   MessageSquare,
-  AlertCircle
+  AlertCircle,
+  User,
+  Link
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
 import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import ConnectionTest from "./ConnectionTest";
 
+interface ClientData {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  instanceId?: string;
+  instanceStatus?: string;
+  createdAt: string;
+  lastActivity: string;
+}
+
 const RealInstancesManager = () => {
   const [clients, setClients] = useState<WhatsAppClient[]>([]);
+  const [availableClients, setAvailableClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [newClientId, setNewClientId] = useState("");
+  const [selectedClientForInstance, setSelectedClientForInstance] = useState("");
   const [selectedClient, setSelectedClient] = useState<WhatsAppClient | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
+    loadAvailableClients();
     initializeService();
     loadClients();
 
@@ -41,6 +61,40 @@ const RealInstancesManager = () => {
       whatsappService.disconnectSocket();
     };
   }, []);
+
+  const loadAvailableClients = () => {
+    try {
+      const savedClients = localStorage.getItem('whatsapp_clients');
+      if (savedClients) {
+        const clientsData = JSON.parse(savedClients);
+        setAvailableClients(clientsData);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar clientes:', error);
+    }
+  };
+
+  const updateClientInstance = (clientId: string, instanceId: string, status: string) => {
+    try {
+      const savedClients = localStorage.getItem('whatsapp_clients');
+      if (savedClients) {
+        const clientsData = JSON.parse(savedClients);
+        const updatedClients = clientsData.map((client: ClientData) => 
+          client.id === clientId 
+            ? { ...client, instanceId, instanceStatus: status, lastActivity: new Date().toISOString() }
+            : client
+        );
+        localStorage.setItem('whatsapp_clients', JSON.stringify(updatedClients));
+        setAvailableClients(updatedClients);
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar cliente:', error);
+    }
+  };
+
+  const getClientByInstanceId = (instanceId: string) => {
+    return availableClients.find(client => client.instanceId === instanceId);
+  };
 
   const initializeService = () => {
     try {
@@ -51,6 +105,15 @@ const RealInstancesManager = () => {
       whatsappService.onClientsUpdate((updatedClients) => {
         console.log("📥 Recebidos clientes atualizados:", updatedClients);
         setClients(updatedClients);
+        
+        // Update client statuses in localStorage
+        updatedClients.forEach(client => {
+          const linkedClient = getClientByInstanceId(client.clientId);
+          if (linkedClient) {
+            updateClientInstance(linkedClient.id, client.clientId, client.status);
+          }
+        });
+        
         setConnectionError(null);
       });
 
@@ -93,21 +156,44 @@ const RealInstancesManager = () => {
   };
 
   const handleCreateClient = async () => {
-    if (!newClientId.trim()) {
+    if (!selectedClientForInstance) {
       toast({
         title: "Erro",
-        description: "Digite um ID para o cliente",
+        description: "Selecione um cliente para criar a instância",
         variant: "destructive",
       });
       return;
     }
 
-    // Verificar se já existe um cliente com esse ID
-    const existingClient = clients.find(c => c.clientId === newClientId.trim());
+    const clientData = availableClients.find(c => c.id === selectedClientForInstance);
+    if (!clientData) {
+      toast({
+        title: "Erro",
+        description: "Cliente não encontrado",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if client already has an instance
+    if (clientData.instanceId) {
+      toast({
+        title: "Erro",
+        description: "Este cliente já possui uma instância",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Use client ID as instance ID
+    const instanceId = clientData.id;
+
+    // Verificar se já existe uma instância com esse ID
+    const existingClient = clients.find(c => c.clientId === instanceId);
     if (existingClient) {
       toast({
         title: "Erro",
-        description: `Cliente ${newClientId} já existe`,
+        description: `Instância ${instanceId} já existe`,
         variant: "destructive",
       });
       return;
@@ -115,15 +201,18 @@ const RealInstancesManager = () => {
 
     try {
       setLoading(true);
-      console.log(`🚀 Criando novo cliente: ${newClientId.trim()}`);
+      console.log(`🚀 Criando instância para cliente: ${clientData.name} (${instanceId})`);
       
-      const result = await whatsappService.connectClient(newClientId.trim());
+      const result = await whatsappService.connectClient(instanceId);
       console.log("✅ Resultado da criação:", result);
       
+      // Update client with instance info
+      updateClientInstance(clientData.id, instanceId, 'connecting');
+      
       // Ouvir status deste cliente específico
-      whatsappService.joinClientRoom(newClientId.trim());
-      whatsappService.onClientStatus(newClientId.trim(), (clientData) => {
-        console.log(`📱 Status atualizado para ${newClientId.trim()}:`, clientData);
+      whatsappService.joinClientRoom(instanceId);
+      whatsappService.onClientStatus(instanceId, (clientData) => {
+        console.log(`📱 Status atualizado para ${instanceId}:`, clientData);
         setClients(prev => {
           const index = prev.findIndex(c => c.clientId === clientData.clientId);
           if (index >= 0) {
@@ -134,24 +223,31 @@ const RealInstancesManager = () => {
             return [...prev, clientData];
           }
         });
+        
+        // Update client status in localStorage
+        const linkedClient = getClientByInstanceId(clientData.clientId);
+        if (linkedClient) {
+          updateClientInstance(linkedClient.id, clientData.clientId, clientData.status);
+        }
       });
 
-      setNewClientId("");
+      setSelectedClientForInstance("");
       toast({
         title: "Sucesso",
-        description: `Cliente ${newClientId} criado! Aguarde o QR Code aparecer...`,
+        description: `Instância criada para ${clientData.name}! Aguarde o QR Code aparecer...`,
       });
 
       // Recarregar a lista de clientes após 2 segundos
       setTimeout(() => {
         loadClients();
+        loadAvailableClients();
       }, 2000);
 
     } catch (error: any) {
-      console.error("❌ Erro ao criar cliente:", error);
+      console.error("❌ Erro ao criar instância:", error);
       toast({
-        title: "Erro ao Criar Cliente",
-        description: error.message || "Falha ao criar cliente. Verifique se o servidor está rodando.",
+        title: "Erro ao Criar Instância",
+        description: error.message || "Falha ao criar instância. Verifique se o servidor está rodando.",
         variant: "destructive",
       });
     } finally {
@@ -164,20 +260,40 @@ const RealInstancesManager = () => {
       setLoading(true);
       await whatsappService.disconnectClient(clientId);
       
+      // Update client status
+      const linkedClient = getClientByInstanceId(clientId);
+      if (linkedClient) {
+        updateClientInstance(linkedClient.id, clientId, 'disconnected');
+      }
+      
       toast({
         title: "Sucesso",
-        description: `Cliente ${clientId} desconectado`,
+        description: `Instância ${clientId} desconectada`,
       });
       
       await loadClients();
+      loadAvailableClients();
     } catch (error: any) {
       toast({
         title: "Erro",
-        description: error.message || "Falha ao desconectar cliente",
+        description: error.message || "Falha ao desconectar instância",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenChat = (clientId: string) => {
+    const linkedClient = getClientByInstanceId(clientId);
+    if (linkedClient) {
+      navigate(`/client/${linkedClient.id}/chat`);
+    } else {
+      toast({
+        title: "Cliente não encontrado",
+        description: "Esta instância não está associada a nenhum cliente",
+        variant: "destructive",
+      });
     }
   };
 
@@ -204,12 +320,12 @@ const RealInstancesManager = () => {
       
       toast({
         title: "Sucesso",
-        description: `Cliente ${clientId} reiniciado`,
+        description: `Instância ${clientId} reiniciada`,
       });
     } catch (error: any) {
       toast({
         title: "Erro",
-        description: error.message || "Falha ao reiniciar cliente",
+        description: error.message || "Falha ao reiniciar instância",
         variant: "destructive",
       });
     } finally {
@@ -253,6 +369,9 @@ const RealInstancesManager = () => {
       default: return <WifiOff className="w-4 h-4" />;
     }
   };
+
+  // Get clients without instances
+  const clientsWithoutInstances = availableClients.filter(client => !client.instanceId);
 
   // Loading inicial
   if (initialLoading) {
@@ -356,26 +475,40 @@ const RealInstancesManager = () => {
         </Card>
       </div>
 
-      {/* Add New Client */}
+      {/* Add New Instance for Client */}
       <Card>
         <CardHeader>
-          <CardTitle>🚀 Criar Nova Instância WhatsApp</CardTitle>
+          <CardTitle>🚀 Criar Instância WhatsApp para Cliente</CardTitle>
           <CardDescription>
-            Digite um ID único e clique em criar. Um QR Code aparecerá para você escanear com seu WhatsApp.
+            Selecione um cliente cadastrado para criar uma nova instância WhatsApp.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex space-x-4">
-            <Input
-              placeholder="ID do Cliente (ex: loja-principal, cliente001)"
-              value={newClientId}
-              onChange={(e) => setNewClientId(e.target.value)}
-              className="flex-1"
-              disabled={loading || !!connectionError}
-            />
+            <Select value={selectedClientForInstance} onValueChange={setSelectedClientForInstance}>
+              <SelectTrigger className="flex-1">
+                <SelectValue placeholder="Selecione um cliente..." />
+              </SelectTrigger>
+              <SelectContent>
+                {clientsWithoutInstances.length === 0 ? (
+                  <SelectItem value="" disabled>
+                    Todos os clientes já possuem instâncias
+                  </SelectItem>
+                ) : (
+                  clientsWithoutInstances.map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      <div className="flex items-center space-x-2">
+                        <User className="w-4 h-4" />
+                        <span>{client.name} ({client.email})</span>
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
             <Button 
               onClick={handleCreateClient}
-              disabled={loading || !newClientId.trim() || !!connectionError}
+              disabled={loading || !selectedClientForInstance || !!connectionError}
               className="bg-green-600 hover:bg-green-700"
             >
               {loading ? (
@@ -391,9 +524,14 @@ const RealInstancesManager = () => {
               )}
             </Button>
           </div>
-          {clients.length === 0 && !connectionError && (
+          {clientsWithoutInstances.length === 0 && availableClients.length > 0 && (
             <p className="text-sm text-gray-500 mt-2">
-              💡 Dica: Crie sua primeira instância WhatsApp digitando um nome único acima
+              💡 Todos os clientes já possuem instâncias. Crie novos clientes na seção "Clientes"
+            </p>
+          )}
+          {availableClients.length === 0 && (
+            <p className="text-sm text-gray-500 mt-2">
+              💡 Nenhum cliente cadastrado. Vá para a seção "Clientes" para criar o primeiro cliente
             </p>
           )}
         </CardContent>
@@ -402,133 +540,146 @@ const RealInstancesManager = () => {
       {/* Clients Grid */}
       {clients.length > 0 ? (
         <div className="grid lg:grid-cols-2 gap-6">
-          {clients.map((client) => (
-            <Card key={client.clientId} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-lg">{client.clientId}</CardTitle>
-                    <CardDescription className="flex items-center mt-1">
-                      <Smartphone className="w-4 h-4 mr-1" />
-                      {client.phoneNumber || 'Não conectado'}
-                    </CardDescription>
+          {clients.map((client) => {
+            const linkedClient = getClientByInstanceId(client.clientId);
+            return (
+              <Card key={client.clientId} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg flex items-center space-x-2">
+                        <span>{client.clientId}</span>
+                        {linkedClient && <Link className="w-4 h-4 text-green-500" />}
+                      </CardTitle>
+                      <CardDescription className="flex items-center mt-1">
+                        <Smartphone className="w-4 h-4 mr-1" />
+                        {client.phoneNumber || 'Não conectado'}
+                      </CardDescription>
+                      {linkedClient && (
+                        <CardDescription className="flex items-center mt-1 text-green-600">
+                          <User className="w-4 h-4 mr-1" />
+                          Cliente: {linkedClient.name}
+                        </CardDescription>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(client.status)}`} />
+                      <Badge variant={client.status === 'connected' ? 'default' : 'secondary'}>
+                        <div className="flex items-center space-x-1">
+                          {getStatusIcon(client.status)}
+                          <span>{getStatusText(client.status)}</span>
+                        </div>
+                      </Badge>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${getStatusColor(client.status)}`} />
-                    <Badge variant={client.status === 'connected' ? 'default' : 'secondary'}>
-                      <div className="flex items-center space-x-1">
-                        {getStatusIcon(client.status)}
-                        <span>{getStatusText(client.status)}</span>
-                      </div>
-                    </Badge>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  
+                  {/* Status Details */}
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-500">Status</p>
+                      <p className="font-medium">{getStatusText(client.status)}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">QR Code</p>
+                      <p className="font-medium">{client.hasQrCode ? 'Disponível' : 'N/A'}</p>
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                
-                {/* Status Details */}
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-500">Status</p>
-                    <p className="font-medium">{getStatusText(client.status)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">QR Code</p>
-                    <p className="font-medium">{client.hasQrCode ? 'Disponível' : 'N/A'}</p>
-                  </div>
-                </div>
 
-                {/* QR Code Display */}
-                {client.status === 'qr_ready' && client.hasQrCode && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded">
-                    <p className="text-sm text-blue-800 mb-2">
-                      📱 QR Code pronto! Escaneie com seu WhatsApp
-                    </p>
-                    <Button 
-                      onClick={() => handleViewQrCode(client.clientId)}
-                      size="sm"
-                      variant="outline"
-                      className="border-blue-300"
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      Ver QR Code
-                    </Button>
-                  </div>
-                )}
-
-                {/* Connected Info */}
-                {client.status === 'connected' && (
-                  <div className="p-4 bg-green-50 border border-green-200 rounded">
-                    <p className="text-sm text-green-800">
-                      ✅ WhatsApp conectado e funcionando
-                    </p>
-                  </div>
-                )}
-
-                {/* Error Info */}
-                {['error', 'auth_failed'].includes(client.status) && (
-                  <div className="p-4 bg-red-50 border border-red-200 rounded">
-                    <p className="text-sm text-red-800">
-                      ❌ Erro na conexão. Tente reiniciar a instância.
-                    </p>
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex space-x-2 pt-2">
-                  {client.status === 'connected' ? (
-                    <>
+                  {/* QR Code Display */}
+                  {client.status === 'qr_ready' && client.hasQrCode && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+                      <p className="text-sm text-blue-800 mb-2">
+                        📱 QR Code pronto! Escaneie com seu WhatsApp
+                      </p>
                       <Button 
-                        size="sm" 
+                        onClick={() => handleViewQrCode(client.clientId)}
+                        size="sm"
                         variant="outline"
-                        onClick={() => handleDisconnectClient(client.clientId)}
-                        disabled={loading}
+                        className="border-blue-300"
                       >
-                        <Pause className="w-4 h-4 mr-1" />
-                        Pausar
+                        <Eye className="w-4 h-4 mr-1" />
+                        Ver QR Code
                       </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => console.log(`Abrir chat ${client.clientId}`)}
-                      >
-                        <MessageSquare className="w-4 h-4 mr-1" />
-                        Chat
-                      </Button>
-                    </>
-                  ) : (
-                    <Button 
-                      size="sm"
-                      onClick={() => whatsappService.connectClient(client.clientId)}
-                      disabled={loading || client.status === 'connecting'}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <Play className="w-4 h-4 mr-1" />
-                      {client.status === 'connecting' ? 'Conectando...' : 'Conectar'}
-                    </Button>
+                    </div>
                   )}
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => handleRestartClient(client.clientId)}
-                    disabled={loading}
-                  >
-                    <RotateCcw className="w-4 h-4 mr-1" />
-                    Reiniciar
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => handleDisconnectClient(client.clientId)}
-                    disabled={loading}
-                  >
-                    <Trash2 className="w-4 h-4 mr-1" />
-                    Remover
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+
+                  {/* Connected Info */}
+                  {client.status === 'connected' && (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded">
+                      <p className="text-sm text-green-800">
+                        ✅ WhatsApp conectado e funcionando
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Error Info */}
+                  {['error', 'auth_failed'].includes(client.status) && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded">
+                      <p className="text-sm text-red-800">
+                        ❌ Erro na conexão. Tente reiniciar a instância.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex space-x-2 pt-2">
+                    {client.status === 'connected' ? (
+                      <>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleDisconnectClient(client.clientId)}
+                          disabled={loading}
+                        >
+                          <Pause className="w-4 h-4 mr-1" />
+                          Pausar
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleOpenChat(client.clientId)}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <MessageSquare className="w-4 h-4 mr-1" />
+                          Chat
+                        </Button>
+                      </>
+                    ) : (
+                      <Button 
+                        size="sm"
+                        onClick={() => whatsappService.connectClient(client.clientId)}
+                        disabled={loading || client.status === 'connecting'}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Play className="w-4 h-4 mr-1" />
+                        {client.status === 'connecting' ? 'Conectando...' : 'Conectar'}
+                      </Button>
+                    )}
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleRestartClient(client.clientId)}
+                      disabled={loading}
+                    >
+                      <RotateCcw className="w-4 h-4 mr-1" />
+                      Reiniciar
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleDisconnectClient(client.clientId)}
+                      disabled={loading}
+                    >
+                      <Trash2 className="w-4 h-4 mr-1" />
+                      Remover
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       ) : !connectionError ? (
         <Card>
@@ -537,7 +688,7 @@ const RealInstancesManager = () => {
               <Smartphone className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma instância criada</h3>
               <p className="text-gray-600 mb-4">
-                Crie sua primeira instância WhatsApp usando o formulário acima
+                Selecione um cliente cadastrado e crie sua primeira instância WhatsApp
               </p>
             </div>
           </CardContent>

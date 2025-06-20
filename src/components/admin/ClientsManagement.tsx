@@ -4,70 +4,78 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, MoreHorizontal, Edit, Trash2, Eye } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { 
+  Plus, 
+  Search, 
+  MoreVertical, 
+  Edit, 
+  Trash2, 
+  MessageSquare,
+  Settings,
+  Users,
+  Building2,
+  Phone,
+  Mail,
+  Calendar,
+  Activity,
+  RefreshCw
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
-interface Client {
+interface ClientData {
   id: string;
   name: string;
   email: string;
-  status: 'active' | 'inactive' | 'suspended';
-  plan: string;
-  whatsappInstances: number;
-  created: string;
+  phone: string;
+  company: string;
+  instanceId?: string;
+  instanceStatus?: 'connected' | 'disconnected' | 'qr_ready' | 'connecting';
+  createdAt: string;
+  lastActivity: string;
 }
 
 const ClientsManagement = () => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [newClient, setNewClient] = useState({
     name: "",
     email: "",
-    plan: "Starter"
+    phone: "",
+    company: ""
   });
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  // Carregar clientes reais
-  const loadClients = async () => {
-    setLoading(true);
-    try {
-      // Aqui você pode implementar a chamada real para sua API
-      // Por enquanto, mantemos uma lista vazia para começar
-      setClients([]);
-    } catch (error) {
-      console.error("Erro ao carregar clientes:", error);
-      toast({
-        title: "Erro",
-        description: "Falha ao carregar clientes",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Load clients from localStorage on component mount
   useEffect(() => {
     loadClients();
   }, []);
+
+  const loadClients = () => {
+    try {
+      const savedClients = localStorage.getItem('whatsapp_clients');
+      if (savedClients) {
+        const clientsData = JSON.parse(savedClients);
+        setClients(clientsData);
+        console.log('Clientes carregados:', clientsData);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar clientes:', error);
+    }
+  };
+
+  const saveClients = (clientsData: ClientData[]) => {
+    try {
+      localStorage.setItem('whatsapp_clients', JSON.stringify(clientsData));
+      console.log('Clientes salvos:', clientsData);
+    } catch (error) {
+      console.error('Erro ao salvar clientes:', error);
+    }
+  };
 
   const handleCreateClient = async () => {
     if (!newClient.name.trim() || !newClient.email.trim()) {
@@ -79,36 +87,48 @@ const ClientsManagement = () => {
       return;
     }
 
+    // Check if email already exists
+    const existingClient = clients.find(c => c.email === newClient.email);
+    if (existingClient) {
+      toast({
+        title: "Erro",
+        description: "Cliente com este email já existe",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setLoading(true);
       
-      // Criar novo cliente
-      const clientData: Client = {
-        id: Date.now().toString(),
+      const clientData: ClientData = {
+        id: `client_${Date.now()}`,
         name: newClient.name.trim(),
         email: newClient.email.trim(),
-        status: 'active',
-        plan: newClient.plan,
-        whatsappInstances: 0,
-        created: new Date().toLocaleDateString('pt-BR')
+        phone: newClient.phone.trim(),
+        company: newClient.company.trim(),
+        createdAt: new Date().toISOString(),
+        lastActivity: new Date().toISOString(),
       };
 
-      setClients(prev => [...prev, clientData]);
-      
-      // Resetar formulário
-      setNewClient({ name: "", email: "", plan: "Starter" });
-      setShowCreateModal(false);
+      const updatedClients = [...clients, clientData];
+      setClients(updatedClients);
+      saveClients(updatedClients);
 
       toast({
         title: "Sucesso",
         description: `Cliente ${clientData.name} criado com sucesso!`,
       });
 
-    } catch (error) {
+      // Reset form
+      setNewClient({ name: "", email: "", phone: "", company: "" });
+      setShowCreateForm(false);
+
+    } catch (error: any) {
       console.error("Erro ao criar cliente:", error);
       toast({
-        title: "Erro",
-        description: "Falha ao criar cliente",
+        title: "Erro ao Criar Cliente",
+        description: error.message || "Falha ao criar cliente",
         variant: "destructive",
       });
     } finally {
@@ -116,106 +136,79 @@ const ClientsManagement = () => {
     }
   };
 
-  const handleDeleteClient = async (clientId: string) => {
-    try {
-      setClients(prev => prev.filter(c => c.id !== clientId));
+  const handleDeleteClient = (clientId: string) => {
+    const updatedClients = clients.filter(c => c.id !== clientId);
+    setClients(updatedClients);
+    saveClients(updatedClients);
+    
+    toast({
+      title: "Cliente Removido",
+      description: "Cliente foi removido com sucesso",
+    });
+  };
+
+  const handleOpenChat = (client: ClientData) => {
+    if (client.instanceId) {
+      navigate(`/client/${client.id}/chat`);
+    } else {
       toast({
-        title: "Sucesso",
-        description: "Cliente removido com sucesso",
-      });
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Falha ao remover cliente",
+        title: "Instância não conectada",
+        description: "Este cliente precisa de uma instância WhatsApp conectada",
         variant: "destructive",
       });
     }
   };
 
-  const getStatusBadge = (status: string): "default" | "secondary" | "destructive" => {
-    switch (status) {
-      case 'active': return "default";
-      case 'inactive': return "secondary";
-      case 'suspended': return "destructive";
-      default: return "secondary";
-    }
+  const handleOpenDashboard = (client: ClientData) => {
+    navigate(`/client/${client.id}/connect`);
   };
 
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchTerm.toLowerCase())
+    client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    client.company.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const getStatusColor = (status?: string) => {
+    switch (status) {
+      case 'connected': return 'bg-green-500';
+      case 'qr_ready': return 'bg-blue-500';
+      case 'connecting': return 'bg-yellow-500';
+      case 'disconnected': return 'bg-gray-500';
+      default: return 'bg-gray-300';
+    }
+  };
+
+  const getStatusText = (status?: string) => {
+    switch (status) {
+      case 'connected': return 'Conectado';
+      case 'qr_ready': return 'QR Pronto';
+      case 'connecting': return 'Conectando';
+      case 'disconnected': return 'Desconectado';
+      default: return 'Sem Instância';
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Gerenciamento de Clientes</h1>
-          <p className="text-gray-600">Gerencie todos os clientes da plataforma</p>
+          <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
         </div>
-        
-        <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-          <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600">
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Cliente
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Criar Novo Cliente</DialogTitle>
-              <DialogDescription>
-                Adicione um novo cliente ao sistema. Ele poderá criar suas próprias instâncias WhatsApp.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome da Empresa</Label>
-                <Input
-                  id="name"
-                  placeholder="Ex: Empresa ABC Ltda"
-                  value={newClient.name}
-                  onChange={(e) => setNewClient(prev => ({ ...prev, name: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email de Contato</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="contato@empresa.com"
-                  value={newClient.email}
-                  onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="plan">Plano</Label>
-                <select
-                  id="plan"
-                  className="w-full p-2 border border-gray-300 rounded-md"
-                  value={newClient.plan}
-                  onChange={(e) => setNewClient(prev => ({ ...prev, plan: e.target.value }))}
-                >
-                  <option value="Starter">Starter</option>
-                  <option value="Pro">Pro</option>
-                  <option value="Business">Business</option>
-                  <option value="Enterprise">Enterprise</option>
-                </select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowCreateModal(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleCreateClient} disabled={loading}>
-                {loading ? "Criando..." : "Criar Cliente"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <div className="flex space-x-2">
+          <Button onClick={loadClients} variant="outline">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Atualizar
+          </Button>
+          <Button onClick={() => setShowCreateForm(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Cliente
+          </Button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
@@ -228,139 +221,242 @@ const ClientsManagement = () => {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Ativos</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Com Instância</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {clients.filter(c => c.status === 'active').length}
+              {clients.filter(c => c.instanceId && c.instanceStatus === 'connected').length}
             </div>
-            <p className="text-xs text-gray-500">Clientes ativos</p>
+            <p className="text-xs text-green-600">Conectados</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Instâncias</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Aguardando Setup</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {clients.reduce((total, client) => total + client.whatsappInstances, 0)}
+              {clients.filter(c => !c.instanceId).length}
             </div>
-            <p className="text-xs text-gray-500">Total de instâncias</p>
+            <p className="text-xs text-blue-600">Sem instância</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Planos</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Ativos Hoje</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">
-              {new Set(clients.map(c => c.plan)).size}
+              {clients.filter(c => {
+                const today = new Date().toDateString();
+                return new Date(c.lastActivity).toDateString() === today;
+              }).length}
             </div>
-            <p className="text-xs text-gray-500">Tipos diferentes</p>
+            <p className="text-xs text-purple-600">Atividade hoje</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Search and Filters */}
+      {/* Search */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>Lista de Clientes</CardTitle>
-              <CardDescription>Gerencie contas e acesso ao sistema</CardDescription>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Buscar clientes..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-80"
-              />
-            </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="Buscar clientes por nome, email ou empresa..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
           </div>
         </CardHeader>
-        <CardContent>
-          {filteredClients.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Plano</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Instâncias</TableHead>
-                  <TableHead>Data Criação</TableHead>
-                  <TableHead>Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredClients.map((client) => (
-                  <TableRow key={client.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium text-gray-900">{client.name}</div>
-                        <div className="text-sm text-gray-500">{client.email}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{client.plan}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusBadge(client.status)}>
-                        {client.status === 'active' ? 'Ativo' : 
-                         client.status === 'inactive' ? 'Inativo' : 'Suspenso'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">{client.whatsappInstances}</TableCell>
-                    <TableCell className="text-gray-500">{client.created}</TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Edit className="w-4 h-4 mr-2" />
-                            Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Eye className="w-4 h-4 mr-2" />
-                            Ver Detalhes
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            className="text-red-600"
-                            onClick={() => handleDeleteClient(client.id)}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="text-center py-8">
-              <div className="text-gray-500 mb-4">
-                {searchTerm ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado ainda"}
-              </div>
-              {!searchTerm && (
-                <Button
-                  onClick={() => setShowCreateModal(true)}
-                  variant="outline"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Criar Primeiro Cliente
-                </Button>
-              )}
-            </div>
-          )}
-        </CardContent>
       </Card>
+
+      {/* Create Client Form */}
+      {showCreateForm && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Criar Novo Cliente</CardTitle>
+            <CardDescription>Preencha os dados do cliente</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Nome *</label>
+                <Input
+                  placeholder="Nome completo"
+                  value={newClient.name}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Email *</label>
+                <Input
+                  type="email"
+                  placeholder="email@exemplo.com"
+                  value={newClient.email}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Telefone</label>
+                <Input
+                  placeholder="(11) 99999-9999"
+                  value={newClient.phone}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, phone: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Empresa</label>
+                <Input
+                  placeholder="Nome da empresa"
+                  value={newClient.company}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, company: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="flex space-x-2">
+              <Button onClick={handleCreateClient} disabled={loading}>
+                {loading ? "Criando..." : "Criar Cliente"}
+              </Button>
+              <Button variant="outline" onClick={() => setShowCreateForm(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Clients List */}
+      <div className="grid gap-4">
+        {filteredClients.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-8">
+                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  {clients.length === 0 ? "Nenhum cliente criado" : "Nenhum cliente encontrado"}
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {clients.length === 0 
+                    ? "Crie seu primeiro cliente usando o botão 'Novo Cliente'"
+                    : "Tente ajustar os termos de busca"
+                  }
+                </p>
+                {clients.length === 0 && (
+                  <Button onClick={() => setShowCreateForm(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Criar Primeiro Cliente
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          filteredClients.map((client) => (
+            <Card key={client.id} className="hover:shadow-lg transition-shadow">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <Avatar className="w-12 h-12">
+                      <AvatarFallback>{client.name.split(' ').map(n => n[0]).join('').toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h3 className="font-semibold text-lg">{client.name}</h3>
+                      <div className="flex items-center space-x-4 text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <Mail className="w-4 h-4 mr-1" />
+                          {client.email}
+                        </div>
+                        {client.phone && (
+                          <div className="flex items-center">
+                            <Phone className="w-4 h-4 mr-1" />
+                            {client.phone}
+                          </div>
+                        )}
+                        {client.company && (
+                          <div className="flex items-center">
+                            <Building2 className="w-4 h-4 mr-1" />
+                            {client.company}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-4">
+                    {/* Instance Status */}
+                    <div className="text-center">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <div className={`w-3 h-3 rounded-full ${getStatusColor(client.instanceStatus)}`} />
+                        <Badge variant={client.instanceStatus === 'connected' ? 'default' : 'secondary'}>
+                          {getStatusText(client.instanceStatus)}
+                        </Badge>
+                      </div>
+                      {client.instanceId && (
+                        <p className="text-xs text-gray-500">ID: {client.instanceId}</p>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex space-x-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenDashboard(client)}
+                      >
+                        <Settings className="w-4 h-4 mr-1" />
+                        Dashboard
+                      </Button>
+                      
+                      {client.instanceStatus === 'connected' ? (
+                        <Button
+                          size="sm"
+                          onClick={() => handleOpenChat(client)}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <MessageSquare className="w-4 h-4 mr-1" />
+                          Chat
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenDashboard(client)}
+                        >
+                          <Activity className="w-4 h-4 mr-1" />
+                          Conectar
+                        </Button>
+                      )}
+                      
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeleteClient(client.id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Remover
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Info */}
+                <div className="mt-4 pt-4 border-t flex justify-between items-center text-sm text-gray-500">
+                  <div className="flex items-center">
+                    <Calendar className="w-4 h-4 mr-1" />
+                    Criado em {new Date(client.createdAt).toLocaleDateString('pt-BR')}
+                  </div>
+                  <div className="flex items-center">
+                    <Activity className="w-4 h-4 mr-1" />
+                    Última atividade: {new Date(client.lastActivity).toLocaleDateString('pt-BR')}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
     </div>
   );
 };
