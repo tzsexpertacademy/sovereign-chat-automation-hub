@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,14 @@ const AI_MODELS = [
   { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo (Econômico)" }
 ];
 
+// Função helper para converter Json para string[]
+const jsonToStringArray = (json: any): string[] => {
+  if (Array.isArray(json)) {
+    return json.filter(item => typeof item === 'string') as string[];
+  }
+  return [];
+};
+
 const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormProps) => {
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -37,7 +44,7 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
       setName(assistant.name || "");
       setPrompt(assistant.prompt || "");
       setModel(assistant.model || "gpt-4o-mini");
-      setTriggers(Array.isArray(assistant.triggers) ? assistant.triggers : []);
+      setTriggers(jsonToStringArray(assistant.triggers));
     }
   }, [assistant]);
 
