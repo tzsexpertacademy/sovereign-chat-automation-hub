@@ -22,7 +22,21 @@ const WhatsAppSystemStatus = () => {
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
   const { toast } = useToast();
 
+  // Força o uso do IP de produção se estivermos no Lovable
+  const getProductionServerUrl = () => {
+    if (typeof window !== 'undefined' && window.location.hostname.includes('lovableproject.com')) {
+      return 'http://146.59.227.248:4000';
+    }
+    return SERVER_URL;
+  };
+
+  const productionServerUrl = getProductionServerUrl();
+
   useEffect(() => {
+    console.log(`🔍 Componente WhatsAppSystemStatus iniciado`);
+    console.log(`🌐 SERVER_URL configurado: ${SERVER_URL}`);
+    console.log(`🎯 URL de produção: ${productionServerUrl}`);
+    
     checkServerStatus();
     
     // Verificar status a cada 30 segundos
@@ -109,7 +123,7 @@ const WhatsAppSystemStatus = () => {
             <div>
               <p className="font-medium">Status do Servidor</p>
               <p className="text-sm text-gray-600">
-                {SERVER_URL} • {lastCheck ? `Última verificação: ${lastCheck.toLocaleTimeString()}` : 'Não verificado'}
+                {productionServerUrl} • {lastCheck ? `Última verificação: ${lastCheck.toLocaleTimeString()}` : 'Não verificado'}
               </p>
             </div>
           </div>
@@ -137,14 +151,14 @@ const WhatsAppSystemStatus = () => {
           <p className="text-sm font-medium text-gray-600">Links Úteis</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" asChild>
-              <a href={`${SERVER_URL}/health`} target="_blank" rel="noopener noreferrer">
+              <a href={`${productionServerUrl}/health`} target="_blank" rel="noopener noreferrer">
                 <Wifi className="w-4 h-4 mr-1" />
                 Health Check
                 <ExternalLink className="w-3 h-3 ml-1" />
               </a>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <a href={`${SERVER_URL}/api-docs`} target="_blank" rel="noopener noreferrer">
+              <a href={`${productionServerUrl}/api-docs`} target="_blank" rel="noopener noreferrer">
                 <Server className="w-4 h-4 mr-1" />
                 API Swagger
                 <ExternalLink className="w-3 h-3 ml-1" />
@@ -161,7 +175,7 @@ const WhatsAppSystemStatus = () => {
               <div>
                 <p className="font-medium text-red-900">Servidor Offline</p>
                 <p className="text-sm text-red-700">
-                  O servidor WhatsApp Multi-Cliente não está respondendo na porta 4000.
+                  O servidor WhatsApp Multi-Cliente não está respondendo em {productionServerUrl}.
                 </p>
                 <div className="mt-2 space-y-1">
                   <p className="text-xs text-red-600">Comandos úteis:</p>
@@ -185,9 +199,10 @@ const WhatsAppSystemStatus = () => {
                   WhatsApp Multi-Cliente funcionando corretamente
                 </p>
                 <div className="mt-2 text-xs text-green-600">
-                  <p>URL do Servidor: <code className="bg-green-100 px-1 rounded">{SERVER_URL}</code></p>
+                  <p>URL do Servidor: <code className="bg-green-100 px-1 rounded">{productionServerUrl}</code></p>
+                  <p className="mt-1">Hostname Frontend: <code className="bg-green-100 px-1 rounded">{window.location.hostname}</code></p>
                   {import.meta.env.VITE_SERVER_URL && (
-                    <p className="mt-1">Configurado via: <code className="bg-green-100 px-1 rounded">VITE_SERVER_URL</code></p>
+                    <p className="mt-1">Configurado via: <code className="bg-green-100 px-1 rounded">VITE_SERVER_URL = {import.meta.env.VITE_SERVER_URL}</code></p>
                   )}
                 </div>
               </div>
