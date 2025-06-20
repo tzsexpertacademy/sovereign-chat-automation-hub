@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -491,7 +492,7 @@ const RealInstancesManager = () => {
               </SelectTrigger>
               <SelectContent>
                 {clientsWithoutInstances.length === 0 ? (
-                  <SelectItem value="" disabled>
+                  <SelectItem value="no-clients-available" disabled>
                     Todos os clientes já possuem instâncias
                   </SelectItem>
                 ) : (
@@ -508,7 +509,7 @@ const RealInstancesManager = () => {
             </Select>
             <Button 
               onClick={handleCreateClient}
-              disabled={loading || !selectedClientForInstance || !!connectionError}
+              disabled={loading || !selectedClientForInstance || selectedClientForInstance === "no-clients-available" || !!connectionError}
               className="bg-green-600 hover:bg-green-700"
             >
               {loading ? (
