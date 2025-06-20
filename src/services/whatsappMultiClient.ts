@@ -1,20 +1,28 @@
-
 import { io, Socket } from 'socket.io-client';
 
-// Configuração para produção - detecta automaticamente o ambiente
+// Configuração inteligente para produção e desenvolvimento
 const getBaseURL = () => {
   if (typeof window !== 'undefined') {
-    // No browser, usar o host atual
-    const protocol = window.location.protocol;
     const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+    
+    // Se estamos em localhost ou ambiente de desenvolvimento
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('lovable.app')) {
+      return `${protocol}//${hostname}:4000`;
+    }
+    
+    // Produção - usar o mesmo hostname mas porta 4000
     return `${protocol}//${hostname}:4000`;
   }
+  
   // Fallback para desenvolvimento
   return 'http://localhost:4000';
 };
 
 const API_BASE_URL = `${getBaseURL()}/api`;
 const SOCKET_URL = getBaseURL();
+
+console.log(`🔗 Conectando ao servidor: ${SOCKET_URL}`);
 
 export interface WhatsAppClient {
   clientId: string;
@@ -52,47 +60,72 @@ export interface MessageData {
 
 class WhatsAppMultiClientService {
   private socket: Socket | null = null;
-  private isProduction: boolean = false;
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 10;
 
   constructor() {
-    // Detectar ambiente de produção
-    this.isProduction = typeof window !== 'undefined' && 
-                       !window.location.hostname.includes('localhost');
+    console.log('🚀 Inicializando WhatsApp Multi-Client Service');
   }
 
-  // Conectar ao WebSocket com configuração para produção
+  // Conectar ao WebSocket com retry automático
   connectSocket(): Socket {
     if (!this.socket) {
       console.log(`🔌 Conectando ao WebSocket: ${SOCKET_URL}`);
       
       this.socket = io(SOCKET_URL, {
         transports: ['websocket', 'polling'],
-        timeout: 20000,
+        timeout: 30000,
         forceNew: true,
         reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000
+        reconnectionAttempts: this.maxReconnectAttempts,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 10000
       });
 
       this.socket.on('connect', () => {
         console.log('✅ Conectado ao servidor WhatsApp Multi-Cliente');
-        console.log(`📍 Ambiente: ${this.isProduction ? 'Produção' : 'Desenvolvimento'}`);
+        console.log(`📍 URL: ${SOCKET_URL}`);
+        this.reconnectAttempts = 0;
       });
 
       this.socket.on('disconnect', (reason) => {
         console.log('❌ Desconectado do servidor WhatsApp:', reason);
+        if (reason === 'io server disconnect') {
+          // Reconectar automaticamente se o servidor desconectou
+          setTimeout(() => this.reconnect(), 5000);
+        }
       });
 
       this.socket.on('connect_error', (error) => {
         console.error('❌ Erro de conexão WebSocket:', error);
+        this.reconnectAttempts++;
+        
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          console.error('💥 Máximo de tentativas de reconexão atingido');
+        }
       });
 
       this.socket.on('error', (error) => {
         console.error('❌ Erro no WebSocket:', error);
       });
+
+      this.socket.on('reconnect', (attemptNumber) => {
+        console.log(`🔄 Reconectado após ${attemptNumber} tentativas`);
+      });
     }
 
     return this.socket;
+  }
+
+  // Método de reconexão manual
+  reconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    setTimeout(() => {
+      this.connectSocket();
+    }, 1000);
   }
 
   // Desconectar WebSocket
@@ -139,31 +172,61 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Calls
+  // API Calls com timeout e retry
   async getAllClients(): Promise<WhatsAppClient[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/clients`);
+      console.log(`📡 Buscando clientes: ${API_BASE_URL}/clients`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
+      const response = await fetch(`${API_BASE_URL}/clients`, {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
       
       if (!data.success) {
         throw new Error(data.error || 'Erro ao buscar clientes');
       }
       
+      console.log(`✅ ${data.clients.length} clientes encontrados`);
       return data.clients;
     } catch (error) {
-      console.error('Erro ao buscar clientes:', error);
+      console.error('❌ Erro ao buscar clientes:', error);
       throw error;
     }
   }
 
   async connectClient(clientId: string): Promise<any> {
     try {
+      console.log(`🔗 Conectando cliente: ${clientId}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      
       const response = await fetch(`${API_BASE_URL}/clients/${clientId}/connect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       
       const data = await response.json();
       
@@ -171,21 +234,34 @@ class WhatsAppMultiClientService {
         throw new Error(data.error || 'Erro ao conectar cliente');
       }
       
+      console.log(`✅ Cliente ${clientId} conectado com sucesso`);
       return data;
     } catch (error) {
-      console.error(`Erro ao conectar cliente ${clientId}:`, error);
+      console.error(`❌ Erro ao conectar cliente ${clientId}:`, error);
       throw error;
     }
   }
 
   async disconnectClient(clientId: string): Promise<any> {
     try {
+      console.log(`🔌 Desconectando cliente: ${clientId}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
       const response = await fetch(`${API_BASE_URL}/clients/${clientId}/disconnect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       
       const data = await response.json();
       
@@ -193,9 +269,10 @@ class WhatsAppMultiClientService {
         throw new Error(data.error || 'Erro ao desconectar cliente');
       }
       
+      console.log(`✅ Cliente ${clientId} desconectado com sucesso`);
       return data;
     } catch (error) {
-      console.error(`Erro ao desconectar cliente ${clientId}:`, error);
+      console.error(`❌ Erro ao desconectar cliente ${clientId}:`, error);
       throw error;
     }
   }
@@ -286,9 +363,23 @@ class WhatsAppMultiClientService {
       const healthURL = `${getBaseURL()}/health`;
       console.log(`🔍 Verificando saúde do servidor: ${healthURL}`);
       
-      const response = await fetch(healthURL);
-      const data = await response.json();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
+      const response = await fetch(healthURL, {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
       console.log('✅ Servidor saudável:', data);
       return data;
     } catch (error) {
@@ -297,14 +388,25 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Método para testar conectividade
+  // Método para testar conectividade com retry
   async testConnection(): Promise<boolean> {
-    try {
-      await this.checkServerHealth();
-      return true;
-    } catch (error) {
-      return false;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      try {
+        await this.checkServerHealth();
+        return true;
+      } catch (error) {
+        attempts++;
+        if (attempts < maxAttempts) {
+          console.log(`🔄 Tentativa ${attempts}/${maxAttempts} falhou, tentando novamente...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
     }
+    
+    return false;
   }
 }
 
