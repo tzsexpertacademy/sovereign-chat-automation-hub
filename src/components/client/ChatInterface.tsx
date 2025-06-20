@@ -104,7 +104,6 @@ const ChatInterface = () => {
       try {
         setLoading(true);
         setError(null);
-        setIsRetrying(false);
         
         // Conectar ao WebSocket
         const socket = whatsappService.connectSocket();
@@ -173,7 +172,6 @@ const ChatInterface = () => {
   const handleRetryLoadChats = async () => {
     setLoading(true);
     setError(null);
-    setRetryCount(0);
     await loadChatsWithRetry();
     setLoading(false);
   };
@@ -185,20 +183,6 @@ const ChatInterface = () => {
       console.log('Enviando mensagem:', { to: selectedChat, message: newMessage, file: selectedFile?.name });
       
       if (selectedFile) {
-        // Para arquivos de mídia
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-        formData.append('to', selectedChat);
-        formData.append('caption', newMessage || '');
-
-        // Determinar o tipo de mídia
-        let mediaType = 'document';
-        if (selectedFile.type.startsWith('image/')) {
-          mediaType = 'image';
-        } else if (selectedFile.type.startsWith('audio/')) {
-          mediaType = 'audio';
-        }
-
         await whatsappService.sendMessage(clientId, selectedChat, newMessage || `📎 ${selectedFile.name}`, undefined, selectedFile);
         setSelectedFile(null);
       } else {
@@ -372,7 +356,7 @@ const ChatInterface = () => {
           
           <div className="space-y-3">
             <div className="flex justify-center space-x-2">
-              <Button onClick={() => { setLoading(true); setError(null); loadChatsWithRetry(); setLoading(false); }} disabled={loading}>
+              <Button onClick={handleRetryLoadChats} disabled={loading}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Tentar Novamente
               </Button>
@@ -480,7 +464,7 @@ const ChatInterface = () => {
               <Button 
                 variant="ghost" 
                 size="sm"
-                onClick={() => { setLoading(true); loadChatsWithRetry(); setLoading(false); }}
+                onClick={handleRetryLoadChats}
                 disabled={loading}
                 title="Recarregar conversas"
               >

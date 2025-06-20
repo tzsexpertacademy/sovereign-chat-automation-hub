@@ -353,13 +353,18 @@ class WhatsAppMultiClientService {
         }
       }
       
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
+      
       const response = await fetch(`${API_BASE_URL}/clients/${clientId}/chats`, {
         headers: { 
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache'
         },
-        timeout: 30000 // 30 segundos timeout
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       console.log(`📡 Resposta do servidor: ${response.status} ${response.statusText}`);
       
@@ -383,7 +388,7 @@ class WhatsAppMultiClientService {
       console.error(`❌ Erro ao buscar chats (tentativa ${retryCount + 1}):`, error);
       
       // Se é erro de rede/timeout e ainda há tentativas
-      if (retryCount < 2 && (error.name === 'TypeError' || error.message.includes('timeout'))) {
+      if (retryCount < 2 && (error.name === 'TypeError' || error.name === 'AbortError' || error.message.includes('timeout'))) {
         console.log(`🔄 Tentando novamente em 3 segundos... (${retryCount + 1}/3)`);
         await new Promise(resolve => setTimeout(resolve, 3000));
         return this.getChats(clientId, retryCount + 1);
