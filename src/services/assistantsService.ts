@@ -16,6 +16,26 @@ export interface AssistantWithQueues extends Assistant {
   queues?: Tables<"queues">[];
 }
 
+export interface AdvancedSettings {
+  audio_processing_enabled: boolean;
+  voice_cloning_enabled: boolean;
+  eleven_labs_voice_id: string;
+  eleven_labs_api_key: string;
+  response_delay_seconds: number;
+  message_processing_delay_seconds: number;
+  message_batch_timeout_seconds: number;
+  typing_indicator_enabled: boolean;
+  recording_indicator_enabled: boolean;
+  humanization_level: 'basic' | 'advanced' | 'maximum';
+  custom_files: Array<{
+    id: string;
+    name: string;
+    type: 'image' | 'pdf' | 'video';
+    url: string;
+    description?: string;
+  }>;
+}
+
 export const assistantsService = {
   async getClientAssistants(clientId: string): Promise<AssistantWithQueues[]> {
     const { data, error } = await supabase
@@ -65,5 +85,34 @@ export const assistantsService = {
 
   async toggleAssistantStatus(id: string, isActive: boolean): Promise<Assistant> {
     return this.updateAssistant(id, { is_active: isActive });
+  },
+
+  async getAssistantAdvancedSettings(id: string): Promise<AdvancedSettings | null> {
+    const { data, error } = await supabase
+      .from("assistants")
+      .select("advanced_settings")
+      .eq("id", id)
+      .single();
+
+    if (error) throw error;
+    
+    if (!data?.advanced_settings) return null;
+    
+    try {
+      return typeof data.advanced_settings === 'string' 
+        ? JSON.parse(data.advanced_settings)
+        : data.advanced_settings;
+    } catch {
+      return null;
+    }
+  },
+
+  async updateAdvancedSettings(id: string, settings: AdvancedSettings): Promise<void> {
+    const { error } = await supabase
+      .from("assistants")
+      .update({ advanced_settings: JSON.stringify(settings) })
+      .eq("id", id);
+
+    if (error) throw error;
   }
 };

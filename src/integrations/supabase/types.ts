@@ -11,6 +11,7 @@ export type Database = {
     Tables: {
       assistants: {
         Row: {
+          advanced_settings: Json | null
           client_id: string
           created_at: string
           id: string
@@ -22,6 +23,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          advanced_settings?: Json | null
           client_id: string
           created_at?: string
           id?: string
@@ -33,6 +35,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          advanced_settings?: Json | null
           client_id?: string
           created_at?: string
           id?: string
@@ -278,10 +281,13 @@ export type Database = {
           id: string
           instance_id: string
           is_group: boolean | null
+          is_recording: boolean | null
+          is_typing: boolean | null
           last_message: string | null
           last_message_time: string | null
           name: string | null
           profile_pic_url: string | null
+          typing_started_at: string | null
           unread_count: number | null
           updated_at: string
         }
@@ -291,10 +297,13 @@ export type Database = {
           id?: string
           instance_id: string
           is_group?: boolean | null
+          is_recording?: boolean | null
+          is_typing?: boolean | null
           last_message?: string | null
           last_message_time?: string | null
           name?: string | null
           profile_pic_url?: string | null
+          typing_started_at?: string | null
           unread_count?: number | null
           updated_at?: string
         }
@@ -304,10 +313,13 @@ export type Database = {
           id?: string
           instance_id?: string
           is_group?: boolean | null
+          is_recording?: boolean | null
+          is_typing?: boolean | null
           last_message?: string | null
           last_message_time?: string | null
           name?: string | null
           profile_pic_url?: string | null
+          typing_started_at?: string | null
           unread_count?: number | null
           updated_at?: string
         }
@@ -365,8 +377,12 @@ export type Database = {
           from_me: boolean | null
           id: string
           instance_id: string
+          is_processed: boolean | null
+          is_read: boolean | null
           message_id: string
           message_type: string | null
+          processing_started_at: string | null
+          read_at: string | null
           sender: string | null
           timestamp: string | null
         }
@@ -377,8 +393,12 @@ export type Database = {
           from_me?: boolean | null
           id?: string
           instance_id: string
+          is_processed?: boolean | null
+          is_read?: boolean | null
           message_id: string
           message_type?: string | null
+          processing_started_at?: string | null
+          read_at?: string | null
           sender?: string | null
           timestamp?: string | null
         }
@@ -389,8 +409,12 @@ export type Database = {
           from_me?: boolean | null
           id?: string
           instance_id?: string
+          is_processed?: boolean | null
+          is_read?: boolean | null
           message_id?: string
           message_type?: string | null
+          processing_started_at?: string | null
+          read_at?: string | null
           sender?: string | null
           timestamp?: string | null
         }
