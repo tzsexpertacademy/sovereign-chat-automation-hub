@@ -19,9 +19,31 @@ const WhatsAppSystemStatus = () => {
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [serverInfo, setServerInfo] = useState<any>(null);
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
+  const [serverUrl, setServerUrl] = useState<string>('');
   const { toast } = useToast();
 
+  // Detectar URL do servidor baseado no ambiente
+  const getServerUrl = () => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const protocol = window.location.protocol;
+      
+      // Se estamos em localhost ou ambiente de desenvolvimento Lovable
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('lovable')) {
+        return `${protocol}//${hostname}:4000`;
+      }
+      
+      // Para produção - usar o mesmo hostname/IP do frontend mas porta 4000
+      return `${protocol}//${hostname}:4000`;
+    }
+    
+    // Fallback para desenvolvimento
+    return 'http://localhost:4000';
+  };
+
   useEffect(() => {
+    const url = getServerUrl();
+    setServerUrl(url);
     checkServerStatus();
     
     // Verificar status a cada 30 segundos
@@ -77,6 +99,21 @@ const WhatsAppSystemStatus = () => {
     }
   };
 
+  const getDisplayUrl = () => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      
+      // Se é localhost ou lovable, mostrar como está
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('lovable')) {
+        return serverUrl;
+      }
+      
+      // Para produção, mostrar o IP/hostname real
+      return serverUrl;
+    }
+    return serverUrl;
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -108,7 +145,7 @@ const WhatsAppSystemStatus = () => {
             <div>
               <p className="font-medium">Status do Servidor</p>
               <p className="text-sm text-gray-600">
-                Porta 4000 • {lastCheck ? `Última verificação: ${lastCheck.toLocaleTimeString()}` : 'Não verificado'}
+                {getDisplayUrl()} • {lastCheck ? `Última verificação: ${lastCheck.toLocaleTimeString()}` : 'Não verificado'}
               </p>
             </div>
           </div>
@@ -136,14 +173,14 @@ const WhatsAppSystemStatus = () => {
           <p className="text-sm font-medium text-gray-600">Links Úteis</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" asChild>
-              <a href="http://localhost:4000/health" target="_blank" rel="noopener noreferrer">
+              <a href={`${serverUrl}/health`} target="_blank" rel="noopener noreferrer">
                 <Wifi className="w-4 h-4 mr-1" />
                 Health Check
                 <ExternalLink className="w-3 h-3 ml-1" />
               </a>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <a href="http://localhost:4000/api-docs" target="_blank" rel="noopener noreferrer">
+              <a href={`${serverUrl}/api-docs`} target="_blank" rel="noopener noreferrer">
                 <Server className="w-4 h-4 mr-1" />
                 API Swagger
                 <ExternalLink className="w-3 h-3 ml-1" />
@@ -160,14 +197,31 @@ const WhatsAppSystemStatus = () => {
               <div>
                 <p className="font-medium text-red-900">Servidor Offline</p>
                 <p className="text-sm text-red-700">
-                  O servidor WhatsApp Multi-Cliente não está respondendo. 
-                  Verifique se ele está rodando na porta 4000.
+                  O servidor WhatsApp Multi-Cliente não está respondendo na porta 4000.
                 </p>
                 <div className="mt-2 space-y-1">
                   <p className="text-xs text-red-600">Comandos úteis:</p>
                   <code className="text-xs bg-red-100 px-2 py-1 rounded">
                     ./scripts/production-start-whatsapp.sh
                   </code>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Status Online com informações detalhadas */}
+        {serverStatus === 'online' && (
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-start space-x-2">
+              <CheckCircle className="w-5 h-5 text-green-500 mt-0.5" />
+              <div>
+                <p className="font-medium text-green-900">Servidor Online</p>
+                <p className="text-sm text-green-700">
+                  WhatsApp Multi-Cliente funcionando corretamente
+                </p>
+                <div className="mt-2 text-xs text-green-600">
+                  <p>URL do Servidor: <code className="bg-green-100 px-1 rounded">{getDisplayUrl()}</code></p>
                 </div>
               </div>
             </div>
