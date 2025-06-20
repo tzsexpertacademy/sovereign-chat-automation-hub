@@ -313,9 +313,13 @@ const ChatInterface = () => {
     return (
       <div className="flex items-center space-x-1 mt-1">
         {isRead ? (
-          <CheckCheck className="w-3 h-3 text-blue-500" title="Lida pelo assistente" />
+          <div className="flex items-center" title="Lida pelo assistente">
+            <CheckCheck className="w-3 h-3 text-blue-500" />
+          </div>
         ) : (
-          <Check className="w-3 h-3 text-gray-400" title="Enviada" />
+          <div className="flex items-center" title="Enviada">
+            <Check className="w-3 h-3 text-gray-400" />
+          </div>
         )}
       </div>
     );
