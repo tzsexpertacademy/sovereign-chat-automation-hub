@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, Image, Mic, Download, Play, Pause, RefreshCw, Wifi, Settings } from "lucide-react";
+import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, Image, Mic, Download, Play, Pause, RefreshCw, Wifi, Settings, Check, CheckCheck } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { whatsappService, type ChatData, type MessageData } from "@/services/whatsappMultiClient";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +27,7 @@ const ChatInterface = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [diagnosis, setDiagnosis] = useState<any>(null);
   const [showDiagnosis, setShowDiagnosis] = useState(false);
+  const [readMessages, setReadMessages] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
@@ -114,6 +115,14 @@ const ChatInterface = () => {
           console.log('Nova mensagem recebida:', message);
           setMessages(prev => [...prev, message]);
           
+          // Marcar mensagem como lida pelo assistente após um delay (simulando processamento)
+          if (!message.fromMe) {
+            setTimeout(() => {
+              setReadMessages(prev => new Set([...prev, message.id]));
+              console.log('🤖 Assistente visualizou mensagem:', message.id);
+            }, 2000); // 2 segundos de delay para simular processamento
+          }
+          
           // Atualizar preview do chat
           setChats(prev => prev.map(chat => 
             chat.id === message.from || chat.id === message.to
@@ -159,6 +168,11 @@ const ChatInterface = () => {
         const messagesData = await whatsappService.getChatMessages(clientId, selectedChat, messageLimit);
         console.log('Mensagens carregadas:', messagesData);
         setMessages(messagesData);
+        
+        // Marcar mensagens antigas do usuário como lidas pelo assistente
+        const userMessages = messagesData.filter(msg => !msg.fromMe);
+        const readMessageIds = new Set(userMessages.map(msg => msg.id));
+        setReadMessages(readMessageIds);
       } catch (err) {
         console.error('Erro ao carregar mensagens:', err);
       } finally {
@@ -289,6 +303,22 @@ const ChatInterface = () => {
       default:
         return <p className="text-sm">{message.body}</p>;
     }
+  };
+
+  const renderMessageStatus = (message: MessageData) => {
+    if (!message.fromMe) return null;
+    
+    const isRead = readMessages.has(message.id);
+    
+    return (
+      <div className="flex items-center space-x-1 mt-1">
+        {isRead ? (
+          <CheckCheck className="w-3 h-3 text-blue-500" title="Lida pelo assistente" />
+        ) : (
+          <Check className="w-3 h-3 text-gray-400" title="Enviada" />
+        )}
+      </div>
+    );
   };
 
   const currentChat = chats.find(chat => chat.id === selectedChat);
@@ -622,11 +652,14 @@ const ChatInterface = () => {
                                   </p>
                                 )}
                                 {renderMessageContent(message)}
-                                <p className={`text-xs mt-1 ${
-                                  message.fromMe ? 'text-green-100' : 'text-gray-500'
-                                }`}>
-                                  {formatTime(message.timestamp)}
-                                </p>
+                                <div className="flex items-center justify-between mt-1">
+                                  <p className={`text-xs ${
+                                    message.fromMe ? 'text-green-100' : 'text-gray-500'
+                                  }`}>
+                                    {formatTime(message.timestamp)}
+                                  </p>
+                                  {renderMessageStatus(message)}
+                                </div>
                               </div>
                             </div>
                           </div>
