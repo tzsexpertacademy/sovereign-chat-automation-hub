@@ -1,9 +1,10 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, MoreHorizontal, Play, Pause, Trash2, Edit } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Edit, Trash2, Eye } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   DropdownMenu,
@@ -11,72 +12,133 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+
+interface Client {
+  id: string;
+  name: string;
+  email: string;
+  status: 'active' | 'inactive' | 'suspended';
+  plan: string;
+  whatsappInstances: number;
+  created: string;
+}
 
 const ClientsManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newClient, setNewClient] = useState({
+    name: "",
+    email: "",
+    plan: "Starter"
+  });
+  const { toast } = useToast();
 
-  const clients = [
-    {
-      id: "1",
-      name: "Empresa ABC Ltda",
-      email: "contato@empresaabc.com",
-      status: "active" as const,
-      plan: "Pro",
-      whatsappStatus: "connected" as const,
-      messages: "1,247",
-      lastActivity: "2 min",
-      created: "15/01/2024"
-    },
-    {
-      id: "2", 
-      name: "Loja XYZ",
-      email: "admin@lojaxyz.com",
-      status: "active" as const,
-      plan: "Business",
-      whatsappStatus: "connected" as const,
-      messages: "856",
-      lastActivity: "5 min",
-      created: "10/01/2024"
-    },
-    {
-      id: "3",
-      name: "Consultoria DEF",
-      email: "contato@consultoriadef.com",
-      status: "inactive" as const,
-      plan: "Starter",
-      whatsappStatus: "disconnected" as const,
-      messages: "432",
-      lastActivity: "2h",
-      created: "05/01/2024"
-    },
-    {
-      id: "4",
-      name: "E-commerce GHI",
-      email: "suporte@ecommerceghi.com",
-      status: "active" as const,
-      plan: "Enterprise",
-      whatsappStatus: "connected" as const,
-      messages: "2,134",
-      lastActivity: "1 min",
-      created: "01/01/2024"
-    }
-  ];
-
-  const getStatusBadge = (status: string): "default" | "secondary" | "destructive" => {
-    switch (status) {
-      case 'active':
-        return "default";
-      case 'inactive':
-        return "secondary";
-      case 'suspended':
-        return "destructive";
-      default:
-        return "secondary";
+  // Carregar clientes reais
+  const loadClients = async () => {
+    setLoading(true);
+    try {
+      // Aqui você pode implementar a chamada real para sua API
+      // Por enquanto, mantemos uma lista vazia para começar
+      setClients([]);
+    } catch (error) {
+      console.error("Erro ao carregar clientes:", error);
+      toast({
+        title: "Erro",
+        description: "Falha ao carregar clientes",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getWhatsAppStatusBadge = (status: string): "default" | "secondary" => {
-    return status === "connected" ? "default" : "secondary";
+  useEffect(() => {
+    loadClients();
+  }, []);
+
+  const handleCreateClient = async () => {
+    if (!newClient.name.trim() || !newClient.email.trim()) {
+      toast({
+        title: "Erro",
+        description: "Nome e email são obrigatórios",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Criar novo cliente
+      const clientData: Client = {
+        id: Date.now().toString(),
+        name: newClient.name.trim(),
+        email: newClient.email.trim(),
+        status: 'active',
+        plan: newClient.plan,
+        whatsappInstances: 0,
+        created: new Date().toLocaleDateString('pt-BR')
+      };
+
+      setClients(prev => [...prev, clientData]);
+      
+      // Resetar formulário
+      setNewClient({ name: "", email: "", plan: "Starter" });
+      setShowCreateModal(false);
+
+      toast({
+        title: "Sucesso",
+        description: `Cliente ${clientData.name} criado com sucesso!`,
+      });
+
+    } catch (error) {
+      console.error("Erro ao criar cliente:", error);
+      toast({
+        title: "Erro",
+        description: "Falha ao criar cliente",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    try {
+      setClients(prev => prev.filter(c => c.id !== clientId));
+      toast({
+        title: "Sucesso",
+        description: "Cliente removido com sucesso",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Falha ao remover cliente",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getStatusBadge = (status: string): "default" | "secondary" | "destructive" => {
+    switch (status) {
+      case 'active': return "default";
+      case 'inactive': return "secondary";
+      case 'suspended': return "destructive";
+      default: return "secondary";
+    }
   };
 
   const filteredClients = clients.filter(client =>
@@ -91,10 +153,66 @@ const ClientsManagement = () => {
           <h1 className="text-3xl font-bold text-gray-900">Gerenciamento de Clientes</h1>
           <p className="text-gray-600">Gerencie todos os clientes da plataforma</p>
         </div>
-        <Button className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600">
-          <Plus className="w-4 h-4 mr-2" />
-          Novo Cliente
-        </Button>
+        
+        <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+          <DialogTrigger asChild>
+            <Button className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600">
+              <Plus className="w-4 h-4 mr-2" />
+              Novo Cliente
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Criar Novo Cliente</DialogTitle>
+              <DialogDescription>
+                Adicione um novo cliente ao sistema. Ele poderá criar suas próprias instâncias WhatsApp.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Nome da Empresa</Label>
+                <Input
+                  id="name"
+                  placeholder="Ex: Empresa ABC Ltda"
+                  value={newClient.name}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email de Contato</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="contato@empresa.com"
+                  value={newClient.email}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="plan">Plano</Label>
+                <select
+                  id="plan"
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                  value={newClient.plan}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, plan: e.target.value }))}
+                >
+                  <option value="Starter">Starter</option>
+                  <option value="Pro">Pro</option>
+                  <option value="Business">Business</option>
+                  <option value="Enterprise">Enterprise</option>
+                </select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCreateModal(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleCreateClient} disabled={loading}>
+                {loading ? "Criando..." : "Criar Cliente"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Stats Cards */}
@@ -104,8 +222,8 @@ const ClientsManagement = () => {
             <CardTitle className="text-sm font-medium text-gray-600">Total Clientes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">47</div>
-            <p className="text-xs text-green-600">+3 este mês</p>
+            <div className="text-2xl font-bold">{clients.length}</div>
+            <p className="text-xs text-gray-500">Clientes cadastrados</p>
           </CardContent>
         </Card>
         <Card>
@@ -113,26 +231,32 @@ const ClientsManagement = () => {
             <CardTitle className="text-sm font-medium text-gray-600">Ativos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">42</div>
-            <p className="text-xs text-gray-500">89% do total</p>
+            <div className="text-2xl font-bold text-green-600">
+              {clients.filter(c => c.status === 'active').length}
+            </div>
+            <p className="text-xs text-gray-500">Clientes ativos</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Conectados</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Instâncias</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">38</div>
-            <p className="text-xs text-gray-500">WhatsApp online</p>
+            <div className="text-2xl font-bold text-blue-600">
+              {clients.reduce((total, client) => total + client.whatsappInstances, 0)}
+            </div>
+            <p className="text-xs text-gray-500">Total de instâncias</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Receita Mensal</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Planos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">R$ 15.2K</div>
-            <p className="text-xs text-green-600">+18% vs mês anterior</p>
+            <div className="text-2xl font-bold text-purple-600">
+              {new Set(clients.map(c => c.plan)).size}
+            </div>
+            <p className="text-xs text-gray-500">Tipos diferentes</p>
           </CardContent>
         </Card>
       </div>
@@ -143,7 +267,7 @@ const ClientsManagement = () => {
           <div className="flex justify-between items-center">
             <div>
               <CardTitle>Lista de Clientes</CardTitle>
-              <CardDescription>Gerencie contas e instâncias WhatsApp</CardDescription>
+              <CardDescription>Gerencie contas e acesso ao sistema</CardDescription>
             </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -157,73 +281,84 @@ const ClientsManagement = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Plano</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>WhatsApp</TableHead>
-                <TableHead>Mensagens</TableHead>
-                <TableHead>Última Atividade</TableHead>
-                <TableHead>Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredClients.map((client) => (
-                <TableRow key={client.id}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium text-gray-900">{client.name}</div>
-                      <div className="text-sm text-gray-500">{client.email}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{client.plan}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusBadge(client.status)}>
-                      {client.status === 'active' ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={getWhatsAppStatusBadge(client.whatsappStatus)}>
-                      {client.whatsappStatus === 'connected' ? 'Conectado' : 'Desconectado'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">{client.messages}</TableCell>
-                  <TableCell className="text-gray-500">{client.lastActivity}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Play className="w-4 h-4 mr-2" />
-                          Iniciar Instância
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Pause className="w-4 h-4 mr-2" />
-                          Pausar Instância
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600">
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+          {filteredClients.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Plano</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Instâncias</TableHead>
+                  <TableHead>Data Criação</TableHead>
+                  <TableHead>Ações</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredClients.map((client) => (
+                  <TableRow key={client.id}>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium text-gray-900">{client.name}</div>
+                        <div className="text-sm text-gray-500">{client.email}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{client.plan}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadge(client.status)}>
+                        {client.status === 'active' ? 'Ativo' : 
+                         client.status === 'inactive' ? 'Inativo' : 'Suspenso'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{client.whatsappInstances}</TableCell>
+                    <TableCell className="text-gray-500">{client.created}</TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Eye className="w-4 h-4 mr-2" />
+                            Ver Detalhes
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            className="text-red-600"
+                            onClick={() => handleDeleteClient(client.id)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-gray-500 mb-4">
+                {searchTerm ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado ainda"}
+              </div>
+              {!searchTerm && (
+                <Button
+                  onClick={() => setShowCreateModal(true)}
+                  variant="outline"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Criar Primeiro Cliente
+                </Button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
