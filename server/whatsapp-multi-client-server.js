@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -246,21 +245,54 @@ class WhatsAppClientManager {
         throw new Error('Cliente não conectado');
       }
 
+      console.log(`[${this.clientId}] Buscando chats...`);
       const chats = await this.client.getChats();
-      return chats.map(chat => ({
-        id: chat.id._serialized,
-        name: chat.name,
-        isGroup: chat.isGroup,
-        isReadOnly: chat.isReadOnly,
-        unreadCount: chat.unreadCount,
-        timestamp: chat.timestamp,
-        lastMessage: chat.lastMessage ? {
-          body: chat.lastMessage.body,
-          type: chat.lastMessage.type,
-          timestamp: chat.lastMessage.timestamp,
-          fromMe: chat.lastMessage.fromMe
-        } : null
-      }));
+      console.log(`[${this.clientId}] ${chats.length} chats encontrados`);
+      
+      // Filtrar e processar chats com validação robusta
+      const validChats = chats
+        .filter(chat => {
+          // Verificar se o chat tem as propriedades necessárias
+          if (!chat || !chat.id || !chat.id._serialized) {
+            console.warn(`[${this.clientId}] Chat inválido encontrado:`, chat);
+            return false;
+          }
+          return true;
+        })
+        .map(chat => {
+          try {
+            // Construir objeto do chat com validações
+            const chatData = {
+              id: chat.id._serialized,
+              name: chat.name || 'Sem nome',
+              isGroup: Boolean(chat.isGroup),
+              isReadOnly: Boolean(chat.isReadOnly),
+              unreadCount: Number(chat.unreadCount) || 0,
+              timestamp: Number(chat.timestamp) || Date.now(),
+              lastMessage: null
+            };
+
+            // Processar última mensagem se existir
+            if (chat.lastMessage && chat.lastMessage.id && chat.lastMessage.id._serialized) {
+              chatData.lastMessage = {
+                body: chat.lastMessage.body || '',
+                type: chat.lastMessage.type || 'chat',
+                timestamp: Number(chat.lastMessage.timestamp) || Date.now(),
+                fromMe: Boolean(chat.lastMessage.fromMe)
+              };
+            }
+
+            return chatData;
+          } catch (chatError) {
+            console.error(`[${this.clientId}] Erro ao processar chat:`, chatError);
+            return null;
+          }
+        })
+        .filter(chat => chat !== null); // Remover chats que falharam no processamento
+
+      console.log(`[${this.clientId}] ${validChats.length} chats válidos processados`);
+      return validChats;
+      
     } catch (error) {
       console.error(`[${this.clientId}] Erro ao buscar chats:`, error);
       throw error;
@@ -273,19 +305,41 @@ class WhatsAppClientManager {
         throw new Error('Cliente não conectado');
       }
 
+      console.log(`[${this.clientId}] Buscando mensagens do chat ${chatId} (limite: ${limit})`);
       const chat = await this.client.getChatById(chatId);
       const messages = await chat.fetchMessages({ limit });
       
-      return messages.map(msg => ({
-        id: msg.id._serialized,
-        body: msg.body,
-        type: msg.type,
-        timestamp: msg.timestamp,
-        fromMe: msg.fromMe,
-        author: msg.author,
-        from: msg.from,
-        to: msg.to
-      }));
+      // Processar mensagens com validação
+      const validMessages = messages
+        .filter(msg => {
+          if (!msg || !msg.id || !msg.id._serialized) {
+            console.warn(`[${this.clientId}] Mensagem inválida encontrada:`, msg);
+            return false;
+          }
+          return true;
+        })
+        .map(msg => {
+          try {
+            return {
+              id: msg.id._serialized,
+              body: msg.body || '',
+              type: msg.type || 'chat',
+              timestamp: Number(msg.timestamp) || Date.now(),
+              fromMe: Boolean(msg.fromMe),
+              author: msg.author || null,
+              from: msg.from || '',
+              to: msg.to || ''
+            };
+          } catch (msgError) {
+            console.error(`[${this.clientId}] Erro ao processar mensagem:`, msgError);
+            return null;
+          }
+        })
+        .filter(msg => msg !== null);
+
+      console.log(`[${this.clientId}] ${validMessages.length} mensagens válidas processadas`);
+      return validMessages;
+      
     } catch (error) {
       console.error(`[${this.clientId}] Erro ao buscar mensagens:`, error);
       throw error;
