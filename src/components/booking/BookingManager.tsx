@@ -19,7 +19,7 @@ const BookingManager: React.FC<BookingManagerProps> = ({ clientId }) => {
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Sistema de Agendamento</h1>
+        <h1 className="text-3xl font-bold">YumerFlow - Sistema de Agendamento</h1>
         <p className="text-muted-foreground">
           Gerencie agendamentos, profissionais e serviços com integração ao Google Calendar
         </p>
@@ -66,7 +66,7 @@ const BookingManager: React.FC<BookingManagerProps> = ({ clientId }) => {
             <CardHeader>
               <CardTitle>Horários de Trabalho</CardTitle>
               <CardDescription>
-                Configure os horários de trabalho dos profissionais
+                Configure os horários de trabalho dos profissionais no YumerFlow
               </CardDescription>
             </CardHeader>
             <CardContent>

@@ -16,6 +16,9 @@ const ClientHeader = ({ clientId }: ClientHeaderProps) => {
       <div className="flex items-center space-x-4">
         <SidebarTrigger />
         <div className="flex items-center space-x-3">
+          <div className="text-lg font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+            YumerFlow
+          </div>
           <div className="flex items-center space-x-2">
             {isConnected ? (
               <Wifi className="w-5 h-5 text-green-500" />
@@ -40,7 +43,7 @@ const ClientHeader = ({ clientId }: ClientHeaderProps) => {
         <div className="flex items-center space-x-3">
           <div className="text-right">
             <p className="text-sm font-medium text-gray-900">Cliente {clientId}</p>
-            <p className="text-xs text-gray-500">Plano Pro</p>
+            <p className="text-xs text-gray-500">YumerFlow Pro</p>
           </div>
           <Button variant="ghost" size="sm" className="rounded-full p-2">
             <User className="w-5 h-5" />
