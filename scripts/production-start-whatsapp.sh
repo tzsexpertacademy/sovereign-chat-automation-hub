@@ -21,32 +21,7 @@ fi
 
 # Parar servidor anterior se estiver rodando
 echo "🛑 Parando servidores anteriores..."
-pkill -f "whatsapp-multi-client-server.js" || true
-
-# Verificar se PID file existe e parar processo
-if [ -f "logs/whatsapp-server.pid" ]; then
-    PID=$(cat logs/whatsapp-server.pid)
-    if ps -p $PID > /dev/null 2>&1; then
-        echo "⏹️ Parando processo PID: $PID"
-        kill -TERM $PID
-        sleep 5
-        
-        # Verificar se ainda está rodando
-        if ps -p $PID > /dev/null 2>&1; then
-            echo "⚠️ Processo resistente, forçando parada..."
-            kill -KILL $PID
-            sleep 2
-        fi
-    fi
-    rm -f logs/whatsapp-server.pid
-fi
-
-# Verificar se porta 4000 está livre
-if lsof -Pi :4000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo "⚠️ Porta 4000 em uso. Liberando..."
-    fuser -k 4000/tcp || true
-    sleep 3
-fi
+./scripts/production-stop-whatsapp.sh
 
 # Criar diretórios necessários
 echo "📁 Criando diretórios..."
@@ -87,10 +62,7 @@ export PUPPETEER_HEADLESS=true
 export PUPPETEER_NO_SANDBOX=true
 export NODE_OPTIONS="--max-old-space-size=2048"
 
-# Limpeza de memória do Chrome
-export PUPPETEER_ARGS="--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-accelerated-2d-canvas --no-first-run --no-zygote --single-process --disable-gpu --disable-web-security --disable-features=VizDisplayCompositor --memory-pressure-off --max_old_space_size=2048"
-
-# Iniciar servidor em background com PM2 ou nohup
+# Iniciar servidor em background
 echo "🚀 Iniciando servidor WhatsApp Multi-Cliente na porta 4000..."
 echo "📅 Data/Hora: $(date)"
 
@@ -98,7 +70,12 @@ echo "📅 Data/Hora: $(date)"
 if command -v pm2 &> /dev/null; then
     echo "🔧 Usando PM2 para gerenciar o processo..."
     pm2 delete whatsapp-multi-client 2>/dev/null || true
-    pm2 start whatsapp-multi-client-server.js --name "whatsapp-multi-client" --log ../logs/whatsapp-multi-client.log --error ../logs/whatsapp-error.log --out ../logs/whatsapp-out.log
+    pm2 start whatsapp-multi-client-server.js --name "whatsapp-multi-client" \
+        --log ../logs/whatsapp-multi-client.log \
+        --error ../logs/whatsapp-error.log \
+        --out ../logs/whatsapp-out.log \
+        --max-memory-restart 1G \
+        --restart-delay 5000
     pm2 save
     SERVER_PID=$(pm2 jlist | jq -r '.[] | select(.name=="whatsapp-multi-client") | .pid')
 else
@@ -114,7 +91,7 @@ echo $SERVER_PID > ../logs/whatsapp-server.pid
 cd ..
 
 echo "⏳ Aguardando servidor inicializar..."
-sleep 15
+sleep 10
 
 # Verificar se processo ainda está rodando
 if ! ps -p $SERVER_PID > /dev/null 2>&1; then
@@ -124,24 +101,25 @@ if ! ps -p $SERVER_PID > /dev/null 2>&1; then
 fi
 
 # Verificar se servidor está respondendo
-MAX_ATTEMPTS=20
+MAX_ATTEMPTS=15
 ATTEMPT=1
+SERVER_IP=$(hostname -I | awk '{print $1}')
 
 while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
     echo "🔍 Tentativa $ATTEMPT/$MAX_ATTEMPTS - Verificando servidor..."
     
-    if curl -s --max-time 10 http://localhost:4000/health > /dev/null; then
+    if curl -s --max-time 10 http://146.59.227.248:4000/health > /dev/null; then
         echo "✅ Servidor WhatsApp Multi-Cliente iniciado com sucesso!"
         echo ""
         echo "📊 Informações do servidor:"
         echo "  🆔 PID: $SERVER_PID"
         echo "  🌐 Porta: 4000"
-        echo "  📍 IP do servidor: $(hostname -I | awk '{print $1}')"
+        echo "  📍 IP de produção: 146.59.227.248"
         echo ""
         echo "🌐 URLs de acesso:"
-        echo "  • Health Check: http://$(hostname -I | awk '{print $1}'):4000/health"
-        echo "  • API Swagger: http://$(hostname -I | awk '{print $1}'):4000/api-docs"
-        echo "  • Frontend Admin: http://$(hostname -I | awk '{print $1}'):8080/admin/instances"
+        echo "  • Health Check: http://146.59.227.248:4000/health"
+        echo "  • API Swagger: http://146.59.227.248:4000/api-docs"
+        echo "  • Frontend Admin: http://146.59.227.248:8080/admin/instances"
         echo ""
         echo "📝 Logs em tempo real:"
         echo "  tail -f logs/whatsapp-multi-client.log"
@@ -155,7 +133,7 @@ while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
         # Mostrar status atual
         echo ""
         echo "📊 Status atual do servidor:"
-        curl -s http://localhost:4000/health | jq . 2>/dev/null || curl -s http://localhost:4000/health
+        curl -s http://146.59.227.248:4000/health | jq . 2>/dev/null || curl -s http://146.59.227.248:4000/health
         
         exit 0
     fi
@@ -175,7 +153,6 @@ echo ""
 echo "💡 Dicas de troubleshooting:"
 echo "1. Verifique se a porta 4000 não está sendo usada: lsof -i :4000"
 echo "2. Verifique os logs: cat logs/whatsapp-multi-client.log"
-echo "3. Verifique se o arquivo do servidor existe: ls -la server/whatsapp-multi-client-server.js"
-echo "4. Verifique memória disponível: free -h"
-echo "5. Verifique espaço em disco: df -h"
+echo "3. Verifique memória disponível: free -h"
+echo "4. Verifique espaço em disco: df -h"
 exit 1

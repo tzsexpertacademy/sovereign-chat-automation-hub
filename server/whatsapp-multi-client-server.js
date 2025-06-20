@@ -21,6 +21,7 @@ const io = socketIo(server, {
 
 // Configurações
 const PORT = process.env.WHATSAPP_PORT || 4000;
+const PRODUCTION_IP = '146.59.227.248';
 const CLIENTS_DIR = path.join(__dirname, 'whatsapp-sessions');
 
 // Middleware
@@ -32,7 +33,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const activeClients = new Map();
 const clientSockets = new Map();
 
-// Configuração do Swagger
+// Configuração do Swagger com IP fixo de produção
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
@@ -43,11 +44,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: `http://localhost:${PORT}`,
-        description: 'Servidor de desenvolvimento',
-      },
-      {
-        url: `http://146.59.227.248:${PORT}`,
+        url: `http://${PRODUCTION_IP}:${PORT}`,
         description: 'Servidor de produção',
       },
     ],
@@ -85,6 +82,10 @@ class WhatsAppClientManager {
     try {
       if (this.isDestroying) return false;
       
+      console.log(`[${this.clientId}] Inicializando cliente...`);
+      this.status = 'connecting';
+      this.emitStatusUpdate();
+      
       this.client = new Client({
         authStrategy: new LocalAuth({
           clientId: this.clientId,
@@ -102,7 +103,8 @@ class WhatsAppClientManager {
             '--single-process',
             '--disable-gpu',
             '--disable-web-security',
-            '--disable-features=VizDisplayCompositor'
+            '--disable-features=VizDisplayCompositor',
+            '--memory-pressure-off'
           ],
           timeout: 60000
         }
@@ -164,18 +166,6 @@ class WhatsAppClientManager {
       this.phoneNumber = null;
       this.qrCode = null;
       this.emitStatusUpdate();
-      
-      // Auto-reconnect com backoff
-      if (this.retryCount < this.maxRetries && reason !== 'LOGOUT') {
-        this.retryCount++;
-        const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
-        console.log(`[${this.clientId}] Tentando reconectar em ${delay}ms (tentativa ${this.retryCount}/${this.maxRetries})`);
-        setTimeout(() => {
-          if (!this.isDestroying) {
-            this.initialize();
-          }
-        }, delay);
-      }
     });
 
     this.client.on('message', async (message) => {
@@ -300,7 +290,7 @@ class WhatsAppClientManager {
   async disconnect() {
     try {
       this.isDestroying = true;
-      this.retryCount = this.maxRetries; // Evitar auto-reconnect
+      this.retryCount = this.maxRetries;
       
       if (this.client) {
         await this.client.destroy();
@@ -339,13 +329,50 @@ class WhatsAppClientManager {
  *       properties:
  *         clientId:
  *           type: string
+ *           description: ID único do cliente
  *         status:
  *           type: string
  *           enum: [connected, qr_ready, connecting, authenticated, disconnected, error, auth_failed]
+ *           description: Status da conexão
  *         phoneNumber:
  *           type: string
+ *           description: Número do telefone conectado
  *         hasQrCode:
  *           type: boolean
+ *           description: Se tem QR Code disponível
+ *     ApiResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         message:
+ *           type: string
+ *         error:
+ *           type: string
+ */
+
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Verifica saúde do servidor
+ *     tags: [System]
+ *     responses:
+ *       200:
+ *         description: Servidor funcionando
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                 timestamp:
+ *                   type: string
+ *                 activeClients:
+ *                   type: number
+ *                 uptime:
+ *                   type: number
  */
 
 /**
@@ -398,6 +425,10 @@ app.get('/api/clients', (req, res) => {
  *     responses:
  *       200:
  *         description: Cliente conectado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
  *       500:
  *         description: Erro ao conectar cliente
  */
@@ -455,6 +486,13 @@ app.post('/api/clients/:clientId/connect', async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Cliente desconectado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
  */
 app.post('/api/clients/:clientId/disconnect', async (req, res) => {
   const { clientId } = req.params;
@@ -496,6 +534,15 @@ app.post('/api/clients/:clientId/disconnect', async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Status do cliente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/ApiResponse'
+ *                 - $ref: '#/components/schemas/Client'
  */
 app.get('/api/clients/:clientId/status', (req, res) => {
   const { clientId } = req.params;
@@ -535,13 +582,22 @@ app.get('/api/clients/:clientId/status', (req, res) => {
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - to
+ *               - message
  *             properties:
  *               to:
  *                 type: string
+ *                 description: Número de destino
  *               message:
  *                 type: string
+ *                 description: Texto da mensagem
  *               mediaUrl:
  *                 type: string
+ *                 description: URL da mídia (opcional)
+ *     responses:
+ *       200:
+ *         description: Mensagem enviada
  */
 app.post('/api/clients/:clientId/send-message', async (req, res) => {
   const { clientId } = req.params;
@@ -579,6 +635,9 @@ app.post('/api/clients/:clientId/send-message', async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Lista de chats
  */
 app.get('/api/clients/:clientId/chats', async (req, res) => {
   const { clientId } = req.params;
@@ -625,6 +684,9 @@ app.get('/api/clients/:clientId/chats', async (req, res) => {
  *         schema:
  *           type: integer
  *           default: 50
+ *     responses:
+ *       200:
+ *         description: Lista de mensagens
  */
 app.get('/api/clients/:clientId/chats/:chatId/messages', async (req, res) => {
   const { clientId, chatId } = req.params;
@@ -678,7 +740,8 @@ app.get('/health', (req, res) => {
     activeClients: activeClients.size,
     uptime: process.uptime(),
     memory: process.memoryUsage(),
-    version: '1.0.0'
+    version: '1.0.0',
+    server: `${PRODUCTION_IP}:${PORT}`
   });
 });
 
@@ -697,22 +760,21 @@ async function startServer() {
   
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor WhatsApp Multi-Cliente rodando na porta ${PORT}`);
-    console.log(`📚 Swagger API: http://localhost:${PORT}/api-docs`);
-    console.log(`❤️ Health Check: http://localhost:${PORT}/health`);
-    console.log(`🌐 Acesso externo: http://146.59.227.248:${PORT}`);
+    console.log(`📚 Swagger API: http://${PRODUCTION_IP}:${PORT}/api-docs`);
+    console.log(`❤️ Health Check: http://${PRODUCTION_IP}:${PORT}/health`);
+    console.log(`🌐 WebSocket: ws://${PRODUCTION_IP}:${PORT}`);
+    console.log(`📍 IP de produção: ${PRODUCTION_IP}`);
   });
 }
 
-// Graceful shutdown melhorado
+// Graceful shutdown
 const gracefulShutdown = async (signal) => {
   console.log(`\n${signal} recebido. Encerrando servidor graciosamente...`);
   
-  // Parar de aceitar novas conexões
   server.close(() => {
     console.log('Servidor HTTP fechado');
   });
   
-  // Desconectar todos os clientes WhatsApp
   const disconnectPromises = [];
   for (const [clientId, manager] of activeClients) {
     console.log(`Desconectando cliente ${clientId}...`);
@@ -732,14 +794,12 @@ const gracefulShutdown = async (signal) => {
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-// Tratamento de erros não capturados
 process.on('uncaughtException', (error) => {
   console.error('Exceção não capturada:', error);
-  gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Promise rejeitada não tratada:', reason, 'Promise:', promise);
+  console.error('Promise rejeitada não tratada:', reason);
 });
 
 startServer().catch(console.error);
