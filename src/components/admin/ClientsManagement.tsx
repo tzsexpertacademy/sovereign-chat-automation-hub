@@ -17,7 +17,8 @@ import {
   Mail,
   Calendar,
   Activity,
-  RefreshCw
+  RefreshCw,
+  ExternalLink
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -142,8 +143,8 @@ const ClientsManagement = () => {
     }
   };
 
-  const handleOpenDashboard = (client: ClientData) => {
-    navigate(`/client/${client.id}/connect`);
+  const handleOpenClientPanel = (client: ClientData) => {
+    window.open(`/client/${client.id}`, '_blank');
   };
 
   const filteredClients = clients.filter(client =>
@@ -422,10 +423,11 @@ const ClientsManagement = () => {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleOpenDashboard(client)}
+                        onClick={() => handleOpenClientPanel(client)}
+                        className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
                       >
-                        <Settings className="w-4 h-4 mr-1" />
-                        Dashboard
+                        <ExternalLink className="w-4 h-4 mr-1" />
+                        Painel Cliente
                       </Button>
                       
                       <Button
