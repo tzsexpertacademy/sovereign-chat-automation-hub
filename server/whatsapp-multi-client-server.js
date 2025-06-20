@@ -247,48 +247,65 @@ class WhatsAppClientManager {
 
       console.log(`[${this.clientId}] Buscando chats...`);
       const chats = await this.client.getChats();
-      console.log(`[${this.clientId}] ${chats.length} chats encontrados`);
+      console.log(`[${this.clientId}] ${chats ? chats.length : 0} chats brutos encontrados`);
       
-      // Filtrar e processar chats com validação robusta
-      const validChats = chats
-        .filter(chat => {
-          // Verificar se o chat tem as propriedades necessárias
-          if (!chat || !chat.id || !chat.id._serialized) {
-            console.warn(`[${this.clientId}] Chat inválido encontrado:`, chat);
-            return false;
+      if (!chats || !Array.isArray(chats)) {
+        console.log(`[${this.clientId}] Nenhum chat válido encontrado`);
+        return [];
+      }
+      
+      // Filtrar e processar chats com validação mais robusta
+      const validChats = [];
+      
+      for (let i = 0; i < chats.length; i++) {
+        const chat = chats[i];
+        
+        try {
+          // Verificações mais rigorosas
+          if (!chat) {
+            console.warn(`[${this.clientId}] Chat ${i} é null/undefined`);
+            continue;
           }
-          return true;
-        })
-        .map(chat => {
-          try {
-            // Construir objeto do chat com validações
-            const chatData = {
-              id: chat.id._serialized,
-              name: chat.name || 'Sem nome',
-              isGroup: Boolean(chat.isGroup),
-              isReadOnly: Boolean(chat.isReadOnly),
-              unreadCount: Number(chat.unreadCount) || 0,
-              timestamp: Number(chat.timestamp) || Date.now(),
-              lastMessage: null
+          
+          if (!chat.id) {
+            console.warn(`[${this.clientId}] Chat ${i} não tem propriedade id`);
+            continue;
+          }
+          
+          if (!chat.id._serialized) {
+            console.warn(`[${this.clientId}] Chat ${i} não tem id._serialized`);
+            continue;
+          }
+          
+          // Construir objeto do chat com validações mais seguras
+          const chatData = {
+            id: chat.id._serialized,
+            name: this.safeName(chat),
+            isGroup: Boolean(chat.isGroup),
+            isReadOnly: Boolean(chat.isReadOnly),
+            unreadCount: this.safeNumber(chat.unreadCount),
+            timestamp: this.safeTimestamp(chat.timestamp),
+            lastMessage: null
+          };
+
+          // Processar última mensagem com mais cuidado
+          if (chat.lastMessage && this.isValidMessage(chat.lastMessage)) {
+            chatData.lastMessage = {
+              body: this.safeString(chat.lastMessage.body),
+              type: this.safeString(chat.lastMessage.type, 'chat'),
+              timestamp: this.safeTimestamp(chat.lastMessage.timestamp),
+              fromMe: Boolean(chat.lastMessage.fromMe)
             };
-
-            // Processar última mensagem se existir
-            if (chat.lastMessage && chat.lastMessage.id && chat.lastMessage.id._serialized) {
-              chatData.lastMessage = {
-                body: chat.lastMessage.body || '',
-                type: chat.lastMessage.type || 'chat',
-                timestamp: Number(chat.lastMessage.timestamp) || Date.now(),
-                fromMe: Boolean(chat.lastMessage.fromMe)
-              };
-            }
-
-            return chatData;
-          } catch (chatError) {
-            console.error(`[${this.clientId}] Erro ao processar chat:`, chatError);
-            return null;
           }
-        })
-        .filter(chat => chat !== null); // Remover chats que falharam no processamento
+
+          validChats.push(chatData);
+          
+        } catch (chatError) {
+          console.error(`[${this.clientId}] Erro ao processar chat ${i}:`, chatError.message);
+          // Continuar processando outros chats mesmo se um falhar
+          continue;
+        }
+      }
 
       console.log(`[${this.clientId}] ${validChats.length} chats válidos processados`);
       return validChats;
@@ -297,6 +314,41 @@ class WhatsAppClientManager {
       console.error(`[${this.clientId}] Erro ao buscar chats:`, error);
       throw error;
     }
+  }
+
+  // Métodos auxiliares para validação segura
+  safeName(chat) {
+    if (chat.name && typeof chat.name === 'string') {
+      return chat.name;
+    }
+    if (chat.id && chat.id._serialized) {
+      // Extrair número do ID se não houver nome
+      const phoneMatch = chat.id._serialized.match(/(\d+)/);
+      return phoneMatch ? phoneMatch[1] : 'Contato sem nome';
+    }
+    return 'Contato sem nome';
+  }
+
+  safeString(value, defaultValue = '') {
+    return (value && typeof value === 'string') ? value : defaultValue;
+  }
+
+  safeNumber(value, defaultValue = 0) {
+    const num = Number(value);
+    return isNaN(num) ? defaultValue : num;
+  }
+
+  safeTimestamp(value) {
+    if (!value) return Date.now();
+    const timestamp = Number(value);
+    return isNaN(timestamp) ? Date.now() : timestamp;
+  }
+
+  isValidMessage(message) {
+    return message && 
+           message.id && 
+           message.id._serialized && 
+           typeof message.id._serialized === 'string';
   }
 
   async getChatMessages(chatId, limit = 50) {
@@ -309,33 +361,41 @@ class WhatsAppClientManager {
       const chat = await this.client.getChatById(chatId);
       const messages = await chat.fetchMessages({ limit });
       
-      // Processar mensagens com validação
-      const validMessages = messages
-        .filter(msg => {
-          if (!msg || !msg.id || !msg.id._serialized) {
-            console.warn(`[${this.clientId}] Mensagem inválida encontrada:`, msg);
-            return false;
+      if (!messages || !Array.isArray(messages)) {
+        console.log(`[${this.clientId}] Nenhuma mensagem encontrada`);
+        return [];
+      }
+      
+      // Processar mensagens com validação mais robusta
+      const validMessages = [];
+      
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        
+        try {
+          if (!this.isValidMessage(msg)) {
+            console.warn(`[${this.clientId}] Mensagem ${i} inválida`);
+            continue;
           }
-          return true;
-        })
-        .map(msg => {
-          try {
-            return {
-              id: msg.id._serialized,
-              body: msg.body || '',
-              type: msg.type || 'chat',
-              timestamp: Number(msg.timestamp) || Date.now(),
-              fromMe: Boolean(msg.fromMe),
-              author: msg.author || null,
-              from: msg.from || '',
-              to: msg.to || ''
-            };
-          } catch (msgError) {
-            console.error(`[${this.clientId}] Erro ao processar mensagem:`, msgError);
-            return null;
-          }
-        })
-        .filter(msg => msg !== null);
+          
+          const messageData = {
+            id: msg.id._serialized,
+            body: this.safeString(msg.body),
+            type: this.safeString(msg.type, 'chat'),
+            timestamp: this.safeTimestamp(msg.timestamp),
+            fromMe: Boolean(msg.fromMe),
+            author: this.safeString(msg.author),
+            from: this.safeString(msg.from),
+            to: this.safeString(msg.to)
+          };
+          
+          validMessages.push(messageData);
+          
+        } catch (msgError) {
+          console.error(`[${this.clientId}] Erro ao processar mensagem ${i}:`, msgError.message);
+          continue;
+        }
+      }
 
       console.log(`[${this.clientId}] ${validMessages.length} mensagens válidas processadas`);
       return validMessages;
