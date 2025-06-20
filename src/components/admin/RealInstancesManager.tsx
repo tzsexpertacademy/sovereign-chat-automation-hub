@@ -1,9 +1,7 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Plus, 
@@ -27,25 +25,14 @@ import { useNavigate } from "react-router-dom";
 import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
 import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import ConnectionTest from "./ConnectionTest";
-
-interface ClientData {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  company: string;
-  instanceId?: string;
-  instanceStatus?: string;
-  createdAt: string;
-  lastActivity: string;
-}
+import { clientsService, ClientData } from "@/services/clientsService";
+import { whatsappInstancesService } from "@/services/whatsappInstancesService";
 
 const RealInstancesManager = () => {
   const [clients, setClients] = useState<WhatsAppClient[]>([]);
   const [availableClients, setAvailableClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [newClientId, setNewClientId] = useState("");
   const [selectedClientForInstance, setSelectedClientForInstance] = useState("");
   const [selectedClient, setSelectedClient] = useState<WhatsAppClient | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
@@ -63,38 +50,35 @@ const RealInstancesManager = () => {
     };
   }, []);
 
-  const loadAvailableClients = () => {
+  const loadAvailableClients = async () => {
     try {
-      const savedClients = localStorage.getItem('whatsapp_clients');
-      if (savedClients) {
-        const clientsData = JSON.parse(savedClients);
-        setAvailableClients(clientsData);
-      }
+      const clientsData = await clientsService.getAllClients();
+      setAvailableClients(clientsData);
+      console.log('Clientes carregados do Supabase:', clientsData);
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
     }
   };
 
-  const updateClientInstance = (clientId: string, instanceId: string, status: string) => {
+  const updateClientInstance = async (clientId: string, instanceId: string, status: string) => {
     try {
-      const savedClients = localStorage.getItem('whatsapp_clients');
-      if (savedClients) {
-        const clientsData = JSON.parse(savedClients);
-        const updatedClients = clientsData.map((client: ClientData) => 
+      await clientsService.updateClientInstance(clientId, instanceId, status);
+      
+      // Update local state
+      setAvailableClients(prev => 
+        prev.map(client => 
           client.id === clientId 
-            ? { ...client, instanceId, instanceStatus: status, lastActivity: new Date().toISOString() }
+            ? { ...client, instance_id: instanceId, instance_status: status, last_activity: new Date().toISOString() }
             : client
-        );
-        localStorage.setItem('whatsapp_clients', JSON.stringify(updatedClients));
-        setAvailableClients(updatedClients);
-      }
+        )
+      );
     } catch (error) {
       console.error('Erro ao atualizar cliente:', error);
     }
   };
 
   const getClientByInstanceId = (instanceId: string) => {
-    return availableClients.find(client => client.instanceId === instanceId);
+    return availableClients.find(client => client.instance_id === instanceId);
   };
 
   const initializeService = () => {
@@ -107,7 +91,7 @@ const RealInstancesManager = () => {
         console.log("📥 Recebidos clientes atualizados:", updatedClients);
         setClients(updatedClients);
         
-        // Update client statuses in localStorage
+        // Update client statuses in Supabase
         updatedClients.forEach(client => {
           const linkedClient = getClientByInstanceId(client.clientId);
           if (linkedClient) {
@@ -177,7 +161,7 @@ const RealInstancesManager = () => {
     }
 
     // Check if client already has an instance
-    if (clientData.instanceId) {
+    if (clientData.instance_id) {
       toast({
         title: "Erro",
         description: "Este cliente já possui uma instância",
@@ -207,12 +191,19 @@ const RealInstancesManager = () => {
       const result = await whatsappService.connectClient(instanceId);
       console.log("✅ Resultado da criação:", result);
       
+      // Create instance in Supabase
+      await whatsappInstancesService.createInstance({
+        client_id: clientData.id,
+        instance_id: instanceId,
+        status: 'connecting'
+      });
+      
       // Update client with instance info
-      updateClientInstance(clientData.id, instanceId, 'connecting');
+      await updateClientInstance(clientData.id, instanceId, 'connecting');
       
       // Ouvir status deste cliente específico
       whatsappService.joinClientRoom(instanceId);
-      whatsappService.onClientStatus(instanceId, (clientData) => {
+      whatsappService.onClientStatus(instanceId, async (clientData) => {
         console.log(`📱 Status atualizado para ${instanceId}:`, clientData);
         setClients(prev => {
           const index = prev.findIndex(c => c.clientId === clientData.clientId);
@@ -225,10 +216,21 @@ const RealInstancesManager = () => {
           }
         });
         
-        // Update client status in localStorage
+        // Update client status in Supabase
         const linkedClient = getClientByInstanceId(clientData.clientId);
         if (linkedClient) {
-          updateClientInstance(linkedClient.id, clientData.clientId, clientData.status);
+          await updateClientInstance(linkedClient.id, clientData.clientId, clientData.status);
+        }
+
+        // Update instance in Supabase
+        try {
+          await whatsappInstancesService.updateInstance(clientData.clientId, {
+            status: clientData.status,
+            phone_number: clientData.phoneNumber,
+            has_qr_code: clientData.hasQrCode
+          });
+        } catch (error) {
+          console.error('Erro ao atualizar instância no Supabase:', error);
         }
       });
 
@@ -264,7 +266,16 @@ const RealInstancesManager = () => {
       // Update client status
       const linkedClient = getClientByInstanceId(clientId);
       if (linkedClient) {
-        updateClientInstance(linkedClient.id, clientId, 'disconnected');
+        await updateClientInstance(linkedClient.id, clientId, 'disconnected');
+      }
+
+      // Update instance in Supabase
+      try {
+        await whatsappInstancesService.updateInstance(clientId, {
+          status: 'disconnected'
+        });
+      } catch (error) {
+        console.error('Erro ao atualizar instância no Supabase:', error);
       }
       
       toast({
@@ -273,7 +284,7 @@ const RealInstancesManager = () => {
       });
       
       await loadClients();
-      loadAvailableClients();
+      await loadAvailableClients();
     } catch (error: any) {
       toast({
         title: "Erro",
@@ -372,7 +383,7 @@ const RealInstancesManager = () => {
   };
 
   // Get clients without instances
-  const clientsWithoutInstances = availableClients.filter(client => !client.instanceId);
+  const clientsWithoutInstances = availableClients.filter(client => !client.instance_id);
 
   // Loading inicial
   if (initialLoading) {

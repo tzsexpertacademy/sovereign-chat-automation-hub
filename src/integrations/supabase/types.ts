@@ -9,7 +9,170 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      clients: {
+        Row: {
+          company: string | null
+          created_at: string
+          email: string
+          id: string
+          instance_id: string | null
+          instance_status: string | null
+          last_activity: string | null
+          name: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          instance_id?: string | null
+          instance_status?: string | null
+          last_activity?: string | null
+          name: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          instance_id?: string | null
+          instance_status?: string | null
+          last_activity?: string | null
+          name?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      whatsapp_chats: {
+        Row: {
+          chat_id: string
+          created_at: string
+          id: string
+          instance_id: string
+          is_group: boolean | null
+          last_message: string | null
+          last_message_time: string | null
+          name: string | null
+          profile_pic_url: string | null
+          unread_count: number | null
+          updated_at: string
+        }
+        Insert: {
+          chat_id: string
+          created_at?: string
+          id?: string
+          instance_id: string
+          is_group?: boolean | null
+          last_message?: string | null
+          last_message_time?: string | null
+          name?: string | null
+          profile_pic_url?: string | null
+          unread_count?: number | null
+          updated_at?: string
+        }
+        Update: {
+          chat_id?: string
+          created_at?: string
+          id?: string
+          instance_id?: string
+          is_group?: boolean | null
+          last_message?: string | null
+          last_message_time?: string | null
+          name?: string | null
+          profile_pic_url?: string | null
+          unread_count?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      whatsapp_instances: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          has_qr_code: boolean | null
+          id: string
+          instance_id: string
+          phone_number: string | null
+          qr_code: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          has_qr_code?: boolean | null
+          id?: string
+          instance_id: string
+          phone_number?: string | null
+          qr_code?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          has_qr_code?: boolean | null
+          id?: string
+          instance_id?: string
+          phone_number?: string | null
+          qr_code?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_instances_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          body: string | null
+          chat_id: string
+          created_at: string
+          from_me: boolean | null
+          id: string
+          instance_id: string
+          message_id: string
+          message_type: string | null
+          sender: string | null
+          timestamp: string | null
+        }
+        Insert: {
+          body?: string | null
+          chat_id: string
+          created_at?: string
+          from_me?: boolean | null
+          id?: string
+          instance_id: string
+          message_id: string
+          message_type?: string | null
+          sender?: string | null
+          timestamp?: string | null
+        }
+        Update: {
+          body?: string | null
+          chat_id?: string
+          created_at?: string
+          from_me?: boolean | null
+          id?: string
+          instance_id?: string
+          message_id?: string
+          message_type?: string | null
+          sender?: string | null
+          timestamp?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

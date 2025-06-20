@@ -8,7 +8,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
   Plus, 
   Search, 
-  MoreVertical, 
   Edit, 
   Trash2, 
   MessageSquare,
@@ -23,25 +22,14 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-
-interface ClientData {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  company: string;
-  instanceId?: string;
-  instanceStatus?: 'connected' | 'disconnected' | 'qr_ready' | 'connecting';
-  createdAt: string;
-  lastActivity: string;
-}
+import { clientsService, ClientData, CreateClientData } from "@/services/clientsService";
 
 const ClientsManagement = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newClient, setNewClient] = useState({
+  const [newClient, setNewClient] = useState<CreateClientData>({
     name: "",
     email: "",
     phone: "",
@@ -50,30 +38,26 @@ const ClientsManagement = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Load clients from localStorage on component mount
+  // Load clients from Supabase on component mount
   useEffect(() => {
     loadClients();
   }, []);
 
-  const loadClients = () => {
+  const loadClients = async () => {
     try {
-      const savedClients = localStorage.getItem('whatsapp_clients');
-      if (savedClients) {
-        const clientsData = JSON.parse(savedClients);
-        setClients(clientsData);
-        console.log('Clientes carregados:', clientsData);
-      }
+      setLoading(true);
+      const clientsData = await clientsService.getAllClients();
+      setClients(clientsData);
+      console.log('Clientes carregados do Supabase:', clientsData);
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
-    }
-  };
-
-  const saveClients = (clientsData: ClientData[]) => {
-    try {
-      localStorage.setItem('whatsapp_clients', JSON.stringify(clientsData));
-      console.log('Clientes salvos:', clientsData);
-    } catch (error) {
-      console.error('Erro ao salvar clientes:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao carregar clientes do banco de dados",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -87,48 +71,37 @@ const ClientsManagement = () => {
       return;
     }
 
-    // Check if email already exists
-    const existingClient = clients.find(c => c.email === newClient.email);
-    if (existingClient) {
-      toast({
-        title: "Erro",
-        description: "Cliente com este email já existe",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
       setLoading(true);
       
-      const clientData: ClientData = {
-        id: `client_${Date.now()}`,
+      const clientData = await clientsService.createClient({
         name: newClient.name.trim(),
         email: newClient.email.trim(),
-        phone: newClient.phone.trim(),
-        company: newClient.company.trim(),
-        createdAt: new Date().toISOString(),
-        lastActivity: new Date().toISOString(),
-      };
-
-      const updatedClients = [...clients, clientData];
-      setClients(updatedClients);
-      saveClients(updatedClients);
+        phone: newClient.phone?.trim(),
+        company: newClient.company?.trim(),
+      });
 
       toast({
         title: "Sucesso",
         description: `Cliente ${clientData.name} criado com sucesso!`,
       });
 
-      // Reset form
+      // Reset form and reload clients
       setNewClient({ name: "", email: "", phone: "", company: "" });
       setShowCreateForm(false);
+      await loadClients();
 
     } catch (error: any) {
       console.error("Erro ao criar cliente:", error);
+      
+      let errorMessage = "Falha ao criar cliente";
+      if (error.message?.includes('duplicate key value violates unique constraint')) {
+        errorMessage = "Cliente com este email já existe";
+      }
+      
       toast({
         title: "Erro ao Criar Cliente",
-        description: error.message || "Falha ao criar cliente",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -136,19 +109,28 @@ const ClientsManagement = () => {
     }
   };
 
-  const handleDeleteClient = (clientId: string) => {
-    const updatedClients = clients.filter(c => c.id !== clientId);
-    setClients(updatedClients);
-    saveClients(updatedClients);
-    
-    toast({
-      title: "Cliente Removido",
-      description: "Cliente foi removido com sucesso",
-    });
+  const handleDeleteClient = async (clientId: string) => {
+    try {
+      await clientsService.deleteClient(clientId);
+      
+      toast({
+        title: "Cliente Removido",
+        description: "Cliente foi removido com sucesso",
+      });
+      
+      await loadClients();
+    } catch (error) {
+      console.error("Erro ao deletar cliente:", error);
+      toast({
+        title: "Erro",
+        description: "Falha ao remover cliente",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleOpenChat = (client: ClientData) => {
-    if (client.instanceId) {
+    if (client.instance_id && client.instance_status === 'connected') {
       navigate(`/client/${client.id}/chat`);
     } else {
       toast({
@@ -166,7 +148,7 @@ const ClientsManagement = () => {
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.company.toLowerCase().includes(searchTerm.toLowerCase())
+    (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const getStatusColor = (status?: string) => {
@@ -197,8 +179,8 @@ const ClientsManagement = () => {
           <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
         </div>
         <div className="flex space-x-2">
-          <Button onClick={loadClients} variant="outline">
-            <RefreshCw className="w-4 h-4 mr-2" />
+          <Button onClick={loadClients} variant="outline" disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
           <Button onClick={() => setShowCreateForm(true)}>
@@ -225,7 +207,7 @@ const ClientsManagement = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {clients.filter(c => c.instanceId && c.instanceStatus === 'connected').length}
+              {clients.filter(c => c.instance_id && c.instance_status === 'connected').length}
             </div>
             <p className="text-xs text-green-600">Conectados</p>
           </CardContent>
@@ -236,7 +218,7 @@ const ClientsManagement = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {clients.filter(c => !c.instanceId).length}
+              {clients.filter(c => !c.instance_id).length}
             </div>
             <p className="text-xs text-blue-600">Sem instância</p>
           </CardContent>
@@ -249,7 +231,7 @@ const ClientsManagement = () => {
             <div className="text-2xl font-bold text-purple-600">
               {clients.filter(c => {
                 const today = new Date().toDateString();
-                return new Date(c.lastActivity).toDateString() === today;
+                return new Date(c.last_activity).toDateString() === today;
               }).length}
             </div>
             <p className="text-xs text-purple-600">Atividade hoje</p>
@@ -388,13 +370,13 @@ const ClientsManagement = () => {
                     {/* Instance Status */}
                     <div className="text-center">
                       <div className="flex items-center space-x-2 mb-1">
-                        <div className={`w-3 h-3 rounded-full ${getStatusColor(client.instanceStatus)}`} />
-                        <Badge variant={client.instanceStatus === 'connected' ? 'default' : 'secondary'}>
-                          {getStatusText(client.instanceStatus)}
+                        <div className={`w-3 h-3 rounded-full ${getStatusColor(client.instance_status)}`} />
+                        <Badge variant={client.instance_status === 'connected' ? 'default' : 'secondary'}>
+                          {getStatusText(client.instance_status)}
                         </Badge>
                       </div>
-                      {client.instanceId && (
-                        <p className="text-xs text-gray-500">ID: {client.instanceId}</p>
+                      {client.instance_id && (
+                        <p className="text-xs text-gray-500">ID: {client.instance_id}</p>
                       )}
                     </div>
 
@@ -409,7 +391,7 @@ const ClientsManagement = () => {
                         Dashboard
                       </Button>
                       
-                      {client.instanceStatus === 'connected' ? (
+                      {client.instance_status === 'connected' ? (
                         <Button
                           size="sm"
                           onClick={() => handleOpenChat(client)}
@@ -445,11 +427,11 @@ const ClientsManagement = () => {
                 <div className="mt-4 pt-4 border-t flex justify-between items-center text-sm text-gray-500">
                   <div className="flex items-center">
                     <Calendar className="w-4 h-4 mr-1" />
-                    Criado em {new Date(client.createdAt).toLocaleDateString('pt-BR')}
+                    Criado em {new Date(client.created_at).toLocaleDateString('pt-BR')}
                   </div>
                   <div className="flex items-center">
                     <Activity className="w-4 h-4 mr-1" />
-                    Última atividade: {new Date(client.lastActivity).toLocaleDateString('pt-BR')}
+                    Última atividade: {new Date(client.last_activity).toLocaleDateString('pt-BR')}
                   </div>
                 </div>
               </CardContent>
