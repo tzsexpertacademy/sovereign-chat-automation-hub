@@ -10,6 +10,16 @@ const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
+// Configurações
+const PORT = process.env.WHATSAPP_PORT || 4000;
+const PRODUCTION_IP = '146.59.227.248';
+const CLIENTS_DIR = path.join(__dirname, 'whatsapp-sessions');
+
+console.log(`🚀 Iniciando WhatsApp Multi-Cliente Server...`);
+console.log(`📍 Porta: ${PORT}`);
+console.log(`🌐 IP Produção: ${PRODUCTION_IP}`);
+
+// Configurar Express
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
@@ -18,11 +28,6 @@ const io = socketIo(server, {
     methods: ["GET", "POST", "PUT", "DELETE"]
   }
 });
-
-// Configurações
-const PORT = process.env.WHATSAPP_PORT || 4000;
-const PRODUCTION_IP = '146.59.227.248';
-const CLIENTS_DIR = path.join(__dirname, 'whatsapp-sessions');
 
 // Middleware
 app.use(cors());
@@ -33,7 +38,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const activeClients = new Map();
 const clientSockets = new Map();
 
-// Configuração do Swagger com IP fixo de produção
+// Configuração do Swagger
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
@@ -320,36 +325,7 @@ class WhatsAppClientManager {
   }
 }
 
-/**
- * @swagger
- * components:
- *   schemas:
- *     Client:
- *       type: object
- *       properties:
- *         clientId:
- *           type: string
- *           description: ID único do cliente
- *         status:
- *           type: string
- *           enum: [connected, qr_ready, connecting, authenticated, disconnected, error, auth_failed]
- *           description: Status da conexão
- *         phoneNumber:
- *           type: string
- *           description: Número do telefone conectado
- *         hasQrCode:
- *           type: boolean
- *           description: Se tem QR Code disponível
- *     ApiResponse:
- *       type: object
- *       properties:
- *         success:
- *           type: boolean
- *         message:
- *           type: string
- *         error:
- *           type: string
- */
+// Rotas da API
 
 /**
  * @swagger
@@ -360,20 +336,18 @@ class WhatsAppClientManager {
  *     responses:
  *       200:
  *         description: Servidor funcionando
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                 timestamp:
- *                   type: string
- *                 activeClients:
- *                   type: number
- *                 uptime:
- *                   type: number
  */
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    activeClients: activeClients.size,
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    version: '1.0.0',
+    server: `${PRODUCTION_IP}:${PORT}`
+  });
+});
 
 /**
  * @swagger
@@ -384,17 +358,6 @@ class WhatsAppClientManager {
  *     responses:
  *       200:
  *         description: Lista de clientes
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 clients:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Client'
  */
 app.get('/api/clients', (req, res) => {
   const clients = [];
@@ -425,12 +388,6 @@ app.get('/api/clients', (req, res) => {
  *     responses:
  *       200:
  *         description: Cliente conectado com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
- *       500:
- *         description: Erro ao conectar cliente
  */
 app.post('/api/clients/:clientId/connect', async (req, res) => {
   const { clientId } = req.params;
@@ -489,10 +446,6 @@ app.post('/api/clients/:clientId/connect', async (req, res) => {
  *     responses:
  *       200:
  *         description: Cliente desconectado
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
  */
 app.post('/api/clients/:clientId/disconnect', async (req, res) => {
   const { clientId } = req.params;
@@ -537,12 +490,6 @@ app.post('/api/clients/:clientId/disconnect', async (req, res) => {
  *     responses:
  *       200:
  *         description: Status do cliente
- *         content:
- *           application/json:
- *             schema:
- *               allOf:
- *                 - $ref: '#/components/schemas/ApiResponse'
- *                 - $ref: '#/components/schemas/Client'
  */
 app.get('/api/clients/:clientId/status', (req, res) => {
   const { clientId } = req.params;
@@ -732,19 +679,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    activeClients: activeClients.size,
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    version: '1.0.0',
-    server: `${PRODUCTION_IP}:${PORT}`
-  });
-});
-
 // Middleware de tratamento de erros
 app.use((err, req, res, next) => {
   console.error('Erro não tratado:', err);
@@ -756,15 +690,21 @@ app.use((err, req, res, next) => {
 
 // Inicializar servidor
 async function startServer() {
-  await ensureDirectoryExists();
-  
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor WhatsApp Multi-Cliente rodando na porta ${PORT}`);
-    console.log(`📚 Swagger API: http://${PRODUCTION_IP}:${PORT}/api-docs`);
-    console.log(`❤️ Health Check: http://${PRODUCTION_IP}:${PORT}/health`);
-    console.log(`🌐 WebSocket: ws://${PRODUCTION_IP}:${PORT}`);
-    console.log(`📍 IP de produção: ${PRODUCTION_IP}`);
-  });
+  try {
+    await ensureDirectoryExists();
+    
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Servidor WhatsApp Multi-Cliente rodando na porta ${PORT}`);
+      console.log(`📚 Swagger API: http://${PRODUCTION_IP}:${PORT}/api-docs`);
+      console.log(`❤️ Health Check: http://${PRODUCTION_IP}:${PORT}/health`);
+      console.log(`🌐 WebSocket: ws://${PRODUCTION_IP}:${PORT}`);
+      console.log(`📍 IP de produção: ${PRODUCTION_IP}`);
+      console.log(`✅ Servidor inicializado com sucesso!`);
+    });
+  } catch (error) {
+    console.error('❌ Erro ao inicializar servidor:', error);
+    process.exit(1);
+  }
 }
 
 // Graceful shutdown
@@ -802,6 +742,10 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Promise rejeitada não tratada:', reason);
 });
 
-startServer().catch(console.error);
+// Iniciar servidor
+startServer().catch((error) => {
+  console.error('❌ Falha fatal ao iniciar servidor:', error);
+  process.exit(1);
+});
 
 module.exports = app;

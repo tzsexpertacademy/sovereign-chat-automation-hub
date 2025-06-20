@@ -46,7 +46,6 @@ fi
 # Verificar se arquivo do servidor existe
 if [ ! -f "server/whatsapp-multi-client-server.js" ]; then
     echo "❌ Arquivo do servidor não encontrado: server/whatsapp-multi-client-server.js"
-    echo "ℹ️ Certifique-se de que o arquivo existe no diretório server/"
     exit 1
 fi
 
@@ -73,37 +72,33 @@ if command -v pm2 &> /dev/null; then
     pm2 start whatsapp-multi-client-server.js --name "whatsapp-multi-client" \
         --log ../logs/whatsapp-multi-client.log \
         --error ../logs/whatsapp-error.log \
-        --out ../logs/whatsapp-out.log \
         --max-memory-restart 1G \
-        --restart-delay 5000
+        --restart-delay 5000 \
+        --time
     pm2 save
-    SERVER_PID=$(pm2 jlist | jq -r '.[] | select(.name=="whatsapp-multi-client") | .pid')
+    sleep 5
+    SERVER_PID=$(pm2 jlist | jq -r '.[] | select(.name=="whatsapp-multi-client") | .pid' 2>/dev/null || echo "")
 else
     echo "🔧 Usando nohup para gerenciar o processo..."
     nohup node whatsapp-multi-client-server.js > ../logs/whatsapp-multi-client.log 2>&1 &
     SERVER_PID=$!
+    sleep 3
 fi
 
-# Salvar PID
-echo $SERVER_PID > ../logs/whatsapp-server.pid
+# Salvar PID se disponível
+if [ -n "$SERVER_PID" ]; then
+    echo $SERVER_PID > ../logs/whatsapp-server.pid
+fi
 
 # Voltar para diretório raiz
 cd ..
 
 echo "⏳ Aguardando servidor inicializar..."
-sleep 10
-
-# Verificar se processo ainda está rodando
-if ! ps -p $SERVER_PID > /dev/null 2>&1; then
-    echo "❌ Processo morreu após inicialização. Verificando logs..."
-    tail -50 logs/whatsapp-multi-client.log
-    exit 1
-fi
+sleep 8
 
 # Verificar se servidor está respondendo
-MAX_ATTEMPTS=15
+MAX_ATTEMPTS=12
 ATTEMPT=1
-SERVER_IP=$(hostname -I | awk '{print $1}')
 
 while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
     echo "🔍 Tentativa $ATTEMPT/$MAX_ATTEMPTS - Verificando servidor..."
@@ -112,7 +107,9 @@ while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
         echo "✅ Servidor WhatsApp Multi-Cliente iniciado com sucesso!"
         echo ""
         echo "📊 Informações do servidor:"
-        echo "  🆔 PID: $SERVER_PID"
+        if [ -n "$SERVER_PID" ]; then
+            echo "  🆔 PID: $SERVER_PID"
+        fi
         echo "  🌐 Porta: 4000"
         echo "  📍 IP de produção: 146.59.227.248"
         echo ""
@@ -145,10 +142,12 @@ done
 
 echo "❌ Falha ao iniciar servidor após $MAX_ATTEMPTS tentativas"
 echo "📝 Últimas linhas do log:"
-tail -50 logs/whatsapp-multi-client.log
+tail -50 logs/whatsapp-multi-client.log 2>/dev/null || echo "Log não encontrado"
 echo ""
 echo "🔍 Status do processo:"
-ps aux | grep $SERVER_PID | grep -v grep || echo "Processo não encontrado"
+if [ -n "$SERVER_PID" ]; then
+    ps aux | grep $SERVER_PID | grep -v grep || echo "Processo não encontrado"
+fi
 echo ""
 echo "💡 Dicas de troubleshooting:"
 echo "1. Verifique se a porta 4000 não está sendo usada: lsof -i :4000"
