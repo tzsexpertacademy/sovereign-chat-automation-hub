@@ -9,6 +9,85 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      assistants: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          is_active: boolean | null
+          model: string
+          name: string
+          prompt: string
+          triggers: Json | null
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          model?: string
+          name: string
+          prompt: string
+          triggers?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          model?: string
+          name?: string
+          prompt?: string
+          triggers?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assistants_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_ai_configs: {
+        Row: {
+          client_id: string
+          created_at: string
+          default_model: string
+          id: string
+          openai_api_key: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          default_model?: string
+          id?: string
+          openai_api_key: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          default_model?: string
+          id?: string
+          openai_api_key?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_ai_configs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           company: string | null
@@ -56,6 +135,141 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      conversation_queue_states: {
+        Row: {
+          chat_id: string
+          conversation_context: Json | null
+          created_at: string
+          current_queue_id: string | null
+          id: string
+          instance_id: string
+          last_activity: string
+          updated_at: string
+        }
+        Insert: {
+          chat_id: string
+          conversation_context?: Json | null
+          created_at?: string
+          current_queue_id?: string | null
+          id?: string
+          instance_id: string
+          last_activity?: string
+          updated_at?: string
+        }
+        Update: {
+          chat_id?: string
+          conversation_context?: Json | null
+          created_at?: string
+          current_queue_id?: string | null
+          id?: string
+          instance_id?: string
+          last_activity?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_queue_states_current_queue_id_fkey"
+            columns: ["current_queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_queue_states_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      instance_queue_connections: {
+        Row: {
+          created_at: string
+          id: string
+          instance_id: string
+          is_active: boolean | null
+          queue_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instance_id: string
+          is_active?: boolean | null
+          queue_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instance_id?: string
+          is_active?: boolean | null
+          queue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instance_queue_connections_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instance_queue_connections_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      queues: {
+        Row: {
+          assistant_id: string | null
+          client_id: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          assistant_id?: string | null
+          client_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          assistant_id?: string | null
+          client_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "queues_assistant_id_fkey"
+            columns: ["assistant_id"]
+            isOneToOne: false
+            referencedRelation: "assistants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "queues_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_chats: {
         Row: {
