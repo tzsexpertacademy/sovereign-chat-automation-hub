@@ -175,21 +175,128 @@ class WhatsAppClientManager {
     this.client.on('message', async (message) => {
       if (this.isDestroying) return;
       
-      const messageData = {
-        id: message.id._serialized,
-        from: message.from,
-        to: message.to,
-        body: message.body,
-        type: message.type,
-        timestamp: message.timestamp,
-        fromMe: message.fromMe,
-        author: message.author,
-        deviceType: message.deviceType
-      };
+      try {
+        const messageData = {
+          id: this.safeGetMessageId(message),
+          from: this.safeString(message.from),
+          to: this.safeString(message.to),
+          body: this.safeString(message.body),
+          type: this.safeString(message.type, 'chat'),
+          timestamp: this.safeTimestamp(message.timestamp),
+          fromMe: Boolean(message.fromMe),
+          author: this.safeString(message.author),
+          deviceType: this.safeString(message.deviceType)
+        };
 
-      console.log(`[${this.clientId}] Nova mensagem de ${message.from}`);
-      this.emitMessage(messageData);
+        console.log(`[${this.clientId}] Nova mensagem de ${messageData.from}`);
+        this.emitMessage(messageData);
+      } catch (error) {
+        console.error(`[${this.clientId}] Erro ao processar mensagem:`, error);
+      }
     });
+  }
+
+  // Métodos auxiliares para acesso seguro
+  safeGetMessageId(message) {
+    try {
+      if (message && message.id && message.id._serialized) {
+        return message.id._serialized;
+      }
+      return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    } catch (error) {
+      return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+  }
+
+  safeName(chat) {
+    try {
+      if (chat && typeof chat.name === 'string' && chat.name.trim()) {
+        return chat.name.trim();
+      }
+      
+      if (chat && chat.id && chat.id._serialized) {
+        // Extrair número do ID se não houver nome
+        const phoneMatch = chat.id._serialized.match(/(\d+)/);
+        if (phoneMatch && phoneMatch[1]) {
+          return phoneMatch[1];
+        }
+      }
+      
+      return 'Contato sem nome';
+    } catch (error) {
+      console.warn(`[${this.clientId}] Erro ao obter nome:`, error);
+      return 'Contato sem nome';
+    }
+  }
+
+  safeString(value, defaultValue = '') {
+    try {
+      if (value === null || value === undefined) {
+        return defaultValue;
+      }
+      if (typeof value === 'string') {
+        return value;
+      }
+      return String(value);
+    } catch (error) {
+      return defaultValue;
+    }
+  }
+
+  safeNumber(value, defaultValue = 0) {
+    try {
+      if (value === null || value === undefined) {
+        return defaultValue;
+      }
+      const num = Number(value);
+      return isNaN(num) ? defaultValue : num;
+    } catch (error) {
+      return defaultValue;
+    }
+  }
+
+  safeTimestamp(value) {
+    try {
+      if (!value) return Date.now();
+      const timestamp = Number(value);
+      return isNaN(timestamp) ? Date.now() : timestamp;
+    } catch (error) {
+      return Date.now();
+    }
+  }
+
+  safeGetChatId(chat) {
+    try {
+      if (chat && chat.id && chat.id._serialized && typeof chat.id._serialized === 'string') {
+        return chat.id._serialized;
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  isValidChat(chat) {
+    try {
+      return chat && 
+             chat.id && 
+             chat.id._serialized && 
+             typeof chat.id._serialized === 'string' &&
+             chat.id._serialized.length > 0;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  isValidMessage(message) {
+    try {
+      return message && 
+             message.id && 
+             message.id._serialized && 
+             typeof message.id._serialized === 'string';
+    } catch (error) {
+      return false;
+    }
   }
 
   emitStatusUpdate() {
@@ -227,8 +334,8 @@ class WhatsAppClientManager {
       console.log(`[${this.clientId}] Mensagem enviada para ${to}`);
       return {
         success: true,
-        messageId: sentMessage.id._serialized,
-        timestamp: sentMessage.timestamp
+        messageId: this.safeGetMessageId(sentMessage),
+        timestamp: this.safeTimestamp(sentMessage.timestamp)
       };
     } catch (error) {
       console.error(`[${this.clientId}] Erro ao enviar mensagem:`, error);
@@ -246,7 +353,15 @@ class WhatsAppClientManager {
       }
 
       console.log(`[${this.clientId}] Buscando chats...`);
-      const chats = await this.client.getChats();
+      
+      // Usar timeout mais longo para chats
+      const chats = await Promise.race([
+        this.client.getChats(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout ao buscar chats')), 45000)
+        )
+      ]);
+      
       console.log(`[${this.clientId}] ${chats ? chats.length : 0} chats brutos encontrados`);
       
       if (!chats || !Array.isArray(chats)) {
@@ -262,24 +377,20 @@ class WhatsAppClientManager {
         
         try {
           // Verificações mais rigorosas
-          if (!chat) {
-            console.warn(`[${this.clientId}] Chat ${i} é null/undefined`);
+          if (!this.isValidChat(chat)) {
+            console.warn(`[${this.clientId}] Chat ${i} inválido, pulando...`);
             continue;
           }
           
-          if (!chat.id) {
-            console.warn(`[${this.clientId}] Chat ${i} não tem propriedade id`);
-            continue;
-          }
-          
-          if (!chat.id._serialized) {
-            console.warn(`[${this.clientId}] Chat ${i} não tem id._serialized`);
+          const chatId = this.safeGetChatId(chat);
+          if (!chatId) {
+            console.warn(`[${this.clientId}] Chat ${i} sem ID válido, pulando...`);
             continue;
           }
           
           // Construir objeto do chat com validações mais seguras
           const chatData = {
-            id: chat.id._serialized,
+            id: chatId,
             name: this.safeName(chat),
             isGroup: Boolean(chat.isGroup),
             isReadOnly: Boolean(chat.isReadOnly),
@@ -290,12 +401,17 @@ class WhatsAppClientManager {
 
           // Processar última mensagem com mais cuidado
           if (chat.lastMessage && this.isValidMessage(chat.lastMessage)) {
-            chatData.lastMessage = {
-              body: this.safeString(chat.lastMessage.body),
-              type: this.safeString(chat.lastMessage.type, 'chat'),
-              timestamp: this.safeTimestamp(chat.lastMessage.timestamp),
-              fromMe: Boolean(chat.lastMessage.fromMe)
-            };
+            try {
+              chatData.lastMessage = {
+                body: this.safeString(chat.lastMessage.body),
+                type: this.safeString(chat.lastMessage.type, 'chat'),
+                timestamp: this.safeTimestamp(chat.lastMessage.timestamp),
+                fromMe: Boolean(chat.lastMessage.fromMe)
+              };
+            } catch (msgError) {
+              console.warn(`[${this.clientId}] Erro ao processar última mensagem do chat ${i}:`, msgError.message);
+              // Continuar sem a última mensagem
+            }
           }
 
           validChats.push(chatData);
@@ -316,41 +432,6 @@ class WhatsAppClientManager {
     }
   }
 
-  // Métodos auxiliares para validação segura
-  safeName(chat) {
-    if (chat.name && typeof chat.name === 'string') {
-      return chat.name;
-    }
-    if (chat.id && chat.id._serialized) {
-      // Extrair número do ID se não houver nome
-      const phoneMatch = chat.id._serialized.match(/(\d+)/);
-      return phoneMatch ? phoneMatch[1] : 'Contato sem nome';
-    }
-    return 'Contato sem nome';
-  }
-
-  safeString(value, defaultValue = '') {
-    return (value && typeof value === 'string') ? value : defaultValue;
-  }
-
-  safeNumber(value, defaultValue = 0) {
-    const num = Number(value);
-    return isNaN(num) ? defaultValue : num;
-  }
-
-  safeTimestamp(value) {
-    if (!value) return Date.now();
-    const timestamp = Number(value);
-    return isNaN(timestamp) ? Date.now() : timestamp;
-  }
-
-  isValidMessage(message) {
-    return message && 
-           message.id && 
-           message.id._serialized && 
-           typeof message.id._serialized === 'string';
-  }
-
   async getChatMessages(chatId, limit = 50) {
     try {
       if (!this.client || this.status !== 'connected' || this.isDestroying) {
@@ -358,8 +439,18 @@ class WhatsAppClientManager {
       }
 
       console.log(`[${this.clientId}] Buscando mensagens do chat ${chatId} (limite: ${limit})`);
+      
       const chat = await this.client.getChatById(chatId);
-      const messages = await chat.fetchMessages({ limit });
+      if (!chat) {
+        throw new Error('Chat não encontrado');
+      }
+      
+      const messages = await Promise.race([
+        chat.fetchMessages({ limit }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout ao buscar mensagens')), 30000)
+        )
+      ]);
       
       if (!messages || !Array.isArray(messages)) {
         console.log(`[${this.clientId}] Nenhuma mensagem encontrada`);
@@ -374,12 +465,12 @@ class WhatsAppClientManager {
         
         try {
           if (!this.isValidMessage(msg)) {
-            console.warn(`[${this.clientId}] Mensagem ${i} inválida`);
+            console.warn(`[${this.clientId}] Mensagem ${i} inválida, pulando...`);
             continue;
           }
           
           const messageData = {
-            id: msg.id._serialized,
+            id: this.safeGetMessageId(msg),
             body: this.safeString(msg.body),
             type: this.safeString(msg.type, 'chat'),
             timestamp: this.safeTimestamp(msg.timestamp),
