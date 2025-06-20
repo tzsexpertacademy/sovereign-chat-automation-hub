@@ -23,8 +23,9 @@ const ClientSidebar = () => {
   const menuItems = [
     { title: "Conectar WhatsApp", url: `/client/${clientId}/connect`, icon: QrCode },
     { title: "Chat", url: `/client/${clientId}/chat`, icon: MessageSquare },
+    { title: "Assistentes", url: `/client/${clientId}/assistants`, icon: Bot },
     { title: "Campanhas", url: `/client/${clientId}/campaigns`, icon: Megaphone },
-    { title: "Automação", url: `/client/${clientId}/automation`, icon: Bot },
+    { title: "Automação", url: `/client/${clientId}/automation`, icon: Settings },
     { title: "Analytics", url: `/client/${clientId}/analytics`, icon: BarChart3 },
   ];
 

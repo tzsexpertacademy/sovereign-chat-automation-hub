@@ -37,21 +37,26 @@ const AssistantsManager = () => {
   const loadData = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Carregando dados dos assistentes para cliente:', clientId);
+      
       const [configData, assistantsData, queuesData] = await Promise.all([
         aiConfigService.getClientConfig(clientId!),
         assistantsService.getClientAssistants(clientId!),
         queuesService.getClientQueues(clientId!)
       ]);
       
+      console.log('📊 Dados carregados:', { configData, assistantsData, queuesData });
+      
       setAiConfig(configData);
       setAssistants(assistantsData);
       setQueues(queuesData);
       
       if (!configData) {
+        console.log('⚠️ Nenhuma configuração de IA encontrada, mostrando formulário');
         setShowConfigForm(true);
       }
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+      console.error('❌ Erro ao carregar dados:', error);
       toast({
         title: "Erro",
         description: "Erro ao carregar dados dos assistentes",
