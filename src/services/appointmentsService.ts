@@ -54,7 +54,7 @@ export const appointmentsService = {
     customerId?: string;
     startDate?: string;
     endDate?: string;
-    status?: string;
+    status?: 'scheduled' | 'confirmed' | 'cancelled' | 'completed' | 'no_show';
   }): Promise<AppointmentWithDetails[]> {
     let query = supabase
       .from('appointments')
@@ -115,7 +115,7 @@ export const appointmentsService = {
     const { error } = await supabase
       .from('appointments')
       .update({ 
-        status: 'cancelled',
+        status: 'cancelled' as const,
         notes: reason ? `Cancelado: ${reason}` : 'Cancelado'
       })
       .eq('id', id);
