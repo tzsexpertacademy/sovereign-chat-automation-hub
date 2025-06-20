@@ -14,6 +14,8 @@ export interface WorkSchedule {
   updated_at: string;
 }
 
+type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
 export const workScheduleService = {
   async getProfessionalSchedules(professionalId: string): Promise<WorkSchedule[]> {
     const { data, error } = await supabase
@@ -60,8 +62,8 @@ export const workScheduleService = {
 
   async copyScheduleToOtherDays(
     professionalId: string, 
-    sourceDayOfWeek: string, 
-    targetDays: string[]
+    sourceDayOfWeek: DayOfWeek, 
+    targetDays: DayOfWeek[]
   ): Promise<void> {
     // Buscar o horário de origem
     const { data: sourceSchedule, error: fetchError } = await supabase

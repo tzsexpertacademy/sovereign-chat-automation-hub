@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, Save, Plus, Trash2 } from "lucide-react";
+import { Clock, Save, Copy } from "lucide-react";
 import { professionalsService, type Professional } from "@/services/professionalsService";
 import { workScheduleService, type WorkSchedule } from "@/services/workScheduleService";
 
@@ -15,7 +15,9 @@ interface WorkScheduleManagerProps {
   clientId: string;
 }
 
-const daysOfWeek = [
+type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
+const daysOfWeek: { key: DayOfWeek; label: string }[] = [
   { key: 'monday', label: 'Segunda-feira' },
   { key: 'tuesday', label: 'Terça-feira' },
   { key: 'wednesday', label: 'Quarta-feira' },
@@ -77,11 +79,11 @@ const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) =
     }
   };
 
-  const getScheduleForDay = (dayOfWeek: string): WorkSchedule | null => {
+  const getScheduleForDay = (dayOfWeek: DayOfWeek): WorkSchedule | null => {
     return schedules.find(s => s.day_of_week === dayOfWeek) || null;
   };
 
-  const handleScheduleChange = (dayOfWeek: string, field: string, value: any) => {
+  const handleScheduleChange = (dayOfWeek: DayOfWeek, field: string, value: any) => {
     setSchedules(prev => {
       const existing = prev.find(s => s.day_of_week === dayOfWeek);
       if (existing) {
@@ -93,7 +95,7 @@ const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) =
       } else {
         const newSchedule: Omit<WorkSchedule, 'id' | 'created_at' | 'updated_at'> = {
           professional_id: selectedProfessional,
-          day_of_week: dayOfWeek as any,
+          day_of_week: dayOfWeek,
           start_time: '08:00',
           end_time: '18:00',
           break_start_time: null,
@@ -104,6 +106,44 @@ const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) =
         return [...prev, newSchedule as WorkSchedule];
       }
     });
+  };
+
+  const copyScheduleToOtherDays = async (sourceDayOfWeek: DayOfWeek) => {
+    try {
+      const sourceSchedule = getScheduleForDay(sourceDayOfWeek);
+      if (!sourceSchedule) {
+        toast({
+          title: "Erro",
+          description: "Horário de origem não encontrado",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const targetDays = daysOfWeek
+        .filter(day => day.key !== sourceDayOfWeek)
+        .map(day => day.key);
+
+      await workScheduleService.copyScheduleToOtherDays(
+        selectedProfessional,
+        sourceDayOfWeek,
+        targetDays
+      );
+
+      toast({
+        title: "Sucesso",
+        description: "Horário copiado para todos os outros dias",
+      });
+
+      loadSchedules();
+    } catch (error) {
+      console.error('Erro ao copiar horário:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao copiar horário",
+        variant: "destructive"
+      });
+    }
   };
 
   const saveSchedules = async () => {
@@ -131,7 +171,7 @@ const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) =
         description: "Horários de trabalho salvos com sucesso",
       });
 
-      loadSchedules(); // Recarregar para obter IDs
+      loadSchedules();
     } catch (error) {
       console.error('Erro ao salvar horários:', error);
       toast({
@@ -160,7 +200,7 @@ const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) =
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5" />
-            Horários de Trabalho
+            Horários de Trabalho - YumerFlow
           </CardTitle>
           <CardDescription>
             Configure os horários de trabalho dos profissionais no YumerFlow
@@ -205,12 +245,24 @@ const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) =
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-4">
                           <h4 className="font-medium">{day.label}</h4>
-                          <Switch
-                            checked={isActive}
-                            onCheckedChange={(checked) => 
-                              handleScheduleChange(day.key, 'is_active', checked)
-                            }
-                          />
+                          <div className="flex items-center gap-2">
+                            {isActive && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => copyScheduleToOtherDays(day.key)}
+                                title="Copiar este horário para todos os outros dias"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <Switch
+                              checked={isActive}
+                              onCheckedChange={(checked) => 
+                                handleScheduleChange(day.key, 'is_active', checked)
+                              }
+                            />
+                          </div>
                         </div>
 
                         {isActive && (
