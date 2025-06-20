@@ -378,22 +378,18 @@ class WhatsAppMultiClientService {
     try {
       console.log(`📡 GET ${API_BASE_URL}/clients/${clientId}/chats (tentativa ${retryCount + 1})`);
       
-      // Antes de tentar buscar chats, fazer diagnóstico
+      // Verificar estado do cliente antes de buscar chats
       if (retryCount === 0) {
-        const diagnosis = await this.diagnoseClient(clientId);
-        console.log('📊 Diagnóstico do cliente:', diagnosis);
+        const status = await this.getClientStatus(clientId);
+        console.log('📊 Status do cliente:', status);
         
-        if (!diagnosis.serverConnected) {
-          throw new Error('Servidor WhatsApp não está respondendo. Verifique se o servidor está funcionando.');
-        }
-        
-        if (diagnosis.clientStatus?.status !== 'connected') {
-          throw new Error(`WhatsApp não está conectado (status: ${diagnosis.clientStatus?.status}). Conecte primeiro na aba "Conexão".`);
+        if (status.status !== 'connected') {
+          throw new Error(`WhatsApp não está conectado (status: ${status.status}). Conecte primeiro na aba "Conexão".`);
         }
       }
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // Aumentar timeout para 45 segundos
       
       const response = await fetch(`${API_BASE_URL}/clients/${clientId}/chats`, {
         headers: { 
@@ -410,26 +406,55 @@ class WhatsAppMultiClientService {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`❌ Erro do servidor: ${errorText}`);
-        throw new Error(`Erro ${response.status}: ${errorText || response.statusText}`);
+        
+        let errorObj;
+        try {
+          errorObj = JSON.parse(errorText);
+        } catch {
+          throw new Error(`Erro ${response.status}: ${response.statusText}`);
+        }
+        
+        // Se for erro de estado, aguardar um pouco e tentar novamente
+        if (errorObj.error && errorObj.error.includes('Estado atual:') && retryCount < 2) {
+          console.log('🔄 Cliente ainda não está pronto, aguardando...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          return this.getChats(clientId, retryCount + 1);
+        }
+        
+        throw new Error(errorObj.error || `Erro ${response.status}: ${errorText || response.statusText}`);
       }
       
       const data = await response.json();
       
       if (!data.success) {
         console.error('❌ API retornou erro:', data.error);
+        
+        // Se for erro de serialização, aguardar e tentar novamente
+        if (data.error && data.error.includes('_serialized') && retryCount < 3) {
+          console.log('🔄 Erro de serialização, aguardando e tentando novamente...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          return this.getChats(clientId, retryCount + 1);
+        }
+        
         throw new Error(data.error || 'Erro ao buscar chats');
       }
       
       console.log(`✅ ${data.chats.length} chats carregados com sucesso`);
-      return data.chats;
+      return data.chats || [];
       
     } catch (error: any) {
       console.error(`❌ Erro ao buscar chats (tentativa ${retryCount + 1}):`, error);
       
-      // Se é erro de rede/timeout e ainda há tentativas
-      if (retryCount < 2 && (error.name === 'TypeError' || error.name === 'AbortError' || error.message.includes('timeout'))) {
-        console.log(`🔄 Tentando novamente em 3 segundos... (${retryCount + 1}/3)`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      // Tentar novamente para erros de rede/timeout
+      if (retryCount < 3 && (
+        error.name === 'TypeError' || 
+        error.name === 'AbortError' || 
+        error.message.includes('timeout') ||
+        error.message.includes('Failed to fetch') ||
+        error.message.includes('_serialized')
+      )) {
+        console.log(`🔄 Tentando novamente em 5 segundos... (${retryCount + 1}/4)`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
         return this.getChats(clientId, retryCount + 1);
       }
       

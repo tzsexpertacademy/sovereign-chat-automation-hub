@@ -80,18 +80,13 @@ const ChatInterface = () => {
       
       setError(null);
       
-      // Executar diagnóstico na primeira tentativa
+      // Na primeira tentativa, verificar se o cliente está conectado
       if (attempt === 0) {
-        console.log('🔍 Executando diagnóstico...');
-        const diagnosisResult = await whatsappService.diagnoseClient(clientId);
-        setDiagnosis(diagnosisResult);
+        console.log('🔍 Verificando status da conexão...');
+        const isConnected = await checkConnectionStatus();
         
-        if (!diagnosisResult.serverConnected) {
-          throw new Error('❌ Servidor WhatsApp não está respondendo. Verifique se o servidor está funcionando.');
-        }
-        
-        if (diagnosisResult.clientStatus?.status !== 'connected') {
-          throw new Error(`❌ WhatsApp não está conectado (status: ${diagnosisResult.clientStatus?.status}). Vá para "Conexão" primeiro.`);
+        if (!isConnected) {
+          throw new Error('❌ WhatsApp não está conectado. Vá para "Conexão" primeiro.');
         }
       }
 
@@ -110,12 +105,12 @@ const ChatInterface = () => {
       
       const errorMessage = err.message || 'Erro desconhecido';
       
-      if (attempt < 2) {
-        setError(`Tentativa ${attempt + 1}/3 falhou: ${errorMessage}. Tentando novamente...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      if (attempt < 3) {
+        setError(`Tentativa ${attempt + 1}/4 falhou: ${errorMessage}. Tentando novamente...`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Aguardar 5 segundos
         return loadChatsWithRetry(attempt + 1);
       } else {
-        setError(`❌ Falha após 3 tentativas: ${errorMessage}`);
+        setError(`❌ Falha após 4 tentativas: ${errorMessage}`);
       }
     }
   };
@@ -167,19 +162,8 @@ const ChatInterface = () => {
           ));
         });
 
-        // Adicionar processador simples de exemplo
-        addProcessor('echo-bot', {
-          processMessage: async (message: MessageData) => {
-            // Simular processamento
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return `🤖 Mensagem recebida: "${message.body}"`;
-          },
-          shouldProcess: (message: MessageData) => {
-            // Processar apenas mensagens de texto que não são nossas
-            return !message.fromMe && message.type === 'chat' && message.body.length > 0;
-          },
-          priority: 'medium'
-        });
+        // Aguardar um pouco antes de carregar chats
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         // Carregar chats
         await loadChatsWithRetry();
@@ -197,7 +181,7 @@ const ChatInterface = () => {
     return () => {
       whatsappService.removeListener(`message_${clientId}`);
     };
-  }, [clientId, addProcessor, enqueueMessage]);
+  }, [clientId, enqueueMessage]);
 
   useEffect(() => {
     if (!selectedChat || !clientId) return;
