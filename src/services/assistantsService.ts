@@ -2,9 +2,15 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
-export type Assistant = Tables<"assistants">;
-export type AssistantInsert = TablesInsert<"assistants">;
-export type AssistantUpdate = TablesUpdate<"assistants">;
+export type Assistant = Tables<"assistants"> & {
+  advanced_settings?: string | any; // JSON string or parsed object
+};
+export type AssistantInsert = TablesInsert<"assistants"> & {
+  advanced_settings?: string;
+};
+export type AssistantUpdate = TablesUpdate<"assistants"> & {
+  advanced_settings?: string;
+};
 
 export interface AssistantWithQueues extends Assistant {
   queues?: Tables<"queues">[];
