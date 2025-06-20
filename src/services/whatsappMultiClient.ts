@@ -288,18 +288,39 @@ class WhatsAppMultiClientService {
 
   async sendMessage(clientId: string, to: string, message: string, mediaUrl?: string, file?: File): Promise<any> {
     try {
-      console.log('📤 Enviando mensagem:', { clientId, to, message: message.substring(0, 50), hasFile: !!file });
+      console.log('📤 Enviando mensagem:', { 
+        clientId, 
+        to, 
+        message: message.substring(0, 50), 
+        hasFile: !!file,
+        hasMediaUrl: !!mediaUrl,
+        fileType: file?.type,
+        fileSize: file?.size 
+      });
       
       if (file) {
-        // Envio de arquivo
+        // Envio de arquivo com validação melhorada
         const formData = new FormData();
         formData.append('to', to);
         formData.append('file', file);
-        if (message) {
+        
+        if (message && message.trim()) {
           formData.append('caption', message);
         }
 
-        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-media`, {
+        // Determinar endpoint baseado no tipo de arquivo
+        let endpoint = 'send-media';
+        if (file.type.startsWith('image/')) {
+          endpoint = 'send-image';
+        } else if (file.type.startsWith('video/')) {
+          endpoint = 'send-video';
+        } else if (file.type.startsWith('audio/')) {
+          endpoint = 'send-audio';
+        } else {
+          endpoint = 'send-document';
+        }
+
+        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/${endpoint}`, {
           method: 'POST',
           body: formData
         });
@@ -310,14 +331,32 @@ class WhatsAppMultiClientService {
           throw new Error(data.error || 'Erro ao enviar arquivo');
         }
         
-        console.log('✅ Arquivo enviado com sucesso');
+        console.log('✅ Arquivo enviado com sucesso:', data);
         return data;
+        
+      } else if (mediaUrl) {
+        // Envio com URL de mídia
+        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-media-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to, message, mediaUrl })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Erro ao enviar mídia');
+        }
+        
+        console.log('✅ Mídia enviada com sucesso');
+        return data;
+        
       } else {
         // Envio de mensagem de texto
         const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to, message, mediaUrl })
+          body: JSON.stringify({ to, message })
         });
         
         const data = await response.json();

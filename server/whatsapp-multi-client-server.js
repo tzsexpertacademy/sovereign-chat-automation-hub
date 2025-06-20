@@ -196,6 +196,87 @@ class WhatsAppClientManager {
     });
   }
 
+  // Validação ultra-robusta para objetos chat
+  isValidChatObject(chat) {
+    try {
+      // Verificações básicas de existência
+      if (!chat || typeof chat !== 'object') {
+        return false;
+      }
+
+      // Verificar se tem a propriedade id
+      if (!chat.id || typeof chat.id !== 'object') {
+        return false;
+      }
+
+      // Verificar se id tem _serialized válido
+      if (!chat.id._serialized || typeof chat.id._serialized !== 'string' || chat.id._serialized.length === 0) {
+        return false;
+      }
+
+      // Verificar se não é um chat de status (geralmente problemático)
+      if (chat.id._serialized.includes('status@broadcast')) {
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.warn(`[${this.clientId}] Erro na validação do chat:`, error.message);
+      return false;
+    }
+  }
+
+  // Método ultra-seguro para extrair dados do chat
+  extractSafeChatData(chat) {
+    try {
+      if (!this.isValidChatObject(chat)) {
+        return null;
+      }
+
+      const chatId = chat.id._serialized;
+      
+      // Extrair nome com fallbacks múltiplos
+      let chatName = 'Conversa sem nome';
+      if (chat.name && typeof chat.name === 'string' && chat.name.trim()) {
+        chatName = chat.name.trim();
+      } else if (chat.contact && chat.contact.name) {
+        chatName = chat.contact.name;
+      } else if (chat.contact && chat.contact.pushname) {
+        chatName = chat.contact.pushname;
+      } else {
+        // Extrair número do ID como último recurso
+        const phoneMatch = chatId.match(/(\d+)/);
+        if (phoneMatch && phoneMatch[1]) {
+          chatName = `+${phoneMatch[1]}`;
+        }
+      }
+
+      // Processar última mensagem com segurança
+      let lastMessage = null;
+      if (chat.lastMessage && typeof chat.lastMessage === 'object') {
+        lastMessage = {
+          body: this.safeString(chat.lastMessage.body),
+          type: this.safeString(chat.lastMessage.type, 'chat'),
+          timestamp: this.safeTimestamp(chat.lastMessage.timestamp),
+          fromMe: Boolean(chat.lastMessage.fromMe)
+        };
+      }
+
+      return {
+        id: chatId,
+        name: chatName,
+        isGroup: Boolean(chat.isGroup),
+        isReadOnly: Boolean(chat.isReadOnly),
+        unreadCount: this.safeNumber(chat.unreadCount),
+        timestamp: this.safeTimestamp(chat.timestamp),
+        lastMessage
+      };
+    } catch (error) {
+      console.warn(`[${this.clientId}] Erro ao extrair dados do chat:`, error.message);
+      return null;
+    }
+  }
+
   // Métodos auxiliares para acesso seguro
   safeGetMessageId(message) {
     try {
@@ -205,130 +286,6 @@ class WhatsAppClientManager {
       return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     } catch (error) {
       return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    }
-  }
-
-  // Método ultra-seguro para verificar se o objeto chat é válido
-  isValidChatObject(chat) {
-    try {
-      // Verificações básicas de existência
-      if (!chat || typeof chat !== 'object') {
-        return false;
-      }
-
-      // Verificar se tem a propriedade id
-      if (!chat.id) {
-        return false;
-      }
-
-      // Verificar se id tem _serialized de forma completamente segura
-      let hasValidId = false;
-      try {
-        if (chat.id && typeof chat.id === 'object' && 
-            chat.id._serialized && 
-            typeof chat.id._serialized === 'string' && 
-            chat.id._serialized.length > 0) {
-          hasValidId = true;
-        }
-      } catch (idError) {
-        console.warn(`[${this.clientId}] Erro ao verificar ID do chat:`, idError.message);
-        return false;
-      }
-
-      return hasValidId;
-    } catch (error) {
-      console.warn(`[${this.clientId}] Erro na validação do chat:`, error.message);
-      return false;
-    }
-  }
-
-  // Método ultra-seguro para extrair ID do chat
-  safeGetChatId(chat) {
-    try {
-      if (!this.isValidChatObject(chat)) {
-        return null;
-      }
-
-      const chatId = chat.id._serialized;
-      if (typeof chatId === 'string' && chatId.length > 0) {
-        return chatId;
-      }
-
-      return null;
-    } catch (error) {
-      console.warn(`[${this.clientId}] Erro ao extrair ID do chat:`, error.message);
-      return null;
-    }
-  }
-
-  // Método ultra-seguro para obter nome do chat
-  safeGetChatName(chat) {
-    try {
-      // Tentar obter o nome de várias formas
-      if (chat.name && typeof chat.name === 'string' && chat.name.trim()) {
-        return chat.name.trim();
-      }
-
-      // Se não tem nome, tentar extrair do ID
-      if (chat.id && chat.id._serialized) {
-        const phoneMatch = chat.id._serialized.match(/(\d+)/);
-        if (phoneMatch && phoneMatch[1]) {
-          return `+${phoneMatch[1]}`;
-        }
-      }
-
-      // Último recurso
-      return 'Conversa sem nome';
-    } catch (error) {
-      console.warn(`[${this.clientId}] Erro ao obter nome do chat:`, error.message);
-      return 'Conversa sem nome';
-    }
-  }
-
-  // Método ultra-seguro para processar última mensagem
-  safeGetLastMessage(chat) {
-    try {
-      if (!chat.lastMessage) {
-        return null;
-      }
-
-      const msg = chat.lastMessage;
-      
-      // Verificar se a mensagem tem propriedades básicas
-      if (!msg || typeof msg !== 'object') {
-        return null;
-      }
-
-      return {
-        body: this.safeString(msg.body),
-        type: this.safeString(msg.type, 'chat'),
-        timestamp: this.safeTimestamp(msg.timestamp),
-        fromMe: Boolean(msg.fromMe)
-      };
-    } catch (error) {
-      console.warn(`[${this.clientId}] Erro ao processar última mensagem:`, error.message);
-      return null;
-    }
-  }
-
-  safeName(chat) {
-    try {
-      if (chat && typeof chat.name === 'string' && chat.name.trim()) {
-        return chat.name.trim();
-      }
-      
-      if (chat && chat.id && chat.id._serialized) {
-        // Extrair número do ID se não houver nome
-        const phoneMatch = chat.id._serialized.match(/(\d+)/);
-        if (phoneMatch && phoneMatch[1]) {
-          return phoneMatch[1];
-        }
-      }
-      
-      return 'Contato sem nome';
-    } catch (error) {
-      console.warn(`[${this.clientId}] Erro ao obter nome:`, error);
-      return 'Contato sem nome';
     }
   }
 
@@ -421,15 +378,15 @@ class WhatsAppClientManager {
         throw new Error('Cliente não conectado');
       }
 
-      console.log(`[${this.clientId}] 🔍 Iniciando busca de chats com validação ultra-segura...`);
+      console.log(`[${this.clientId}] 🔍 Iniciando busca de chats com validação ultra-robusta...`);
       
-      // Usar timeout mais longo e tratamento de erro robusto
+      // Buscar chats com timeout mais longo
       let rawChats;
       try {
         rawChats = await Promise.race([
           this.client.getChats(),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout ao buscar chats')), 60000)
+            setTimeout(() => reject(new Error('Timeout ao buscar chats')), 90000) // 90 segundos
           )
         ]);
       } catch (fetchError) {
@@ -453,34 +410,16 @@ class WhatsAppClientManager {
         const rawChat = rawChats[i];
         
         try {
-          // Primeira validação: verificar se o chat é um objeto válido
-          if (!this.isValidChatObject(rawChat)) {
+          // Validação e extração segura de dados
+          const chatData = this.extractSafeChatData(rawChat);
+          
+          if (chatData) {
+            validChats.push(chatData);
+            processedCount++;
+          } else {
             console.warn(`[${this.clientId}] ⏭️ Chat ${i} inválido - pulando`);
             skippedCount++;
-            continue;
           }
-          
-          // Segunda validação: extrair ID de forma segura
-          const chatId = this.safeGetChatId(rawChat);
-          if (!chatId) {
-            console.warn(`[${this.clientId}] ⏭️ Chat ${i} sem ID válido - pulando`);
-            skippedCount++;
-            continue;
-          }
-          
-          // Terceira validação: construir objeto do chat de forma segura
-          const chatData = {
-            id: chatId,
-            name: this.safeGetChatName(rawChat),
-            isGroup: Boolean(rawChat.isGroup),
-            isReadOnly: Boolean(rawChat.isReadOnly),
-            unreadCount: this.safeNumber(rawChat.unreadCount),
-            timestamp: this.safeTimestamp(rawChat.timestamp),
-            lastMessage: this.safeGetLastMessage(rawChat)
-          };
-
-          validChats.push(chatData);
-          processedCount++;
           
         } catch (chatError) {
           console.error(`[${this.clientId}] ❌ Erro ao processar chat ${i}:`, chatError.message);
@@ -494,12 +433,32 @@ class WhatsAppClientManager {
       console.log(`[${this.clientId}] - Chats ignorados: ${skippedCount}`);
       console.log(`[${this.clientId}] - Total de chats válidos: ${validChats.length}`);
       
+      // Ordenar chats por timestamp (mais recentes primeiro)
+      validChats.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      
       return validChats;
       
     } catch (error) {
       console.error(`[${this.clientId}] ❌ Erro crítico ao buscar chats:`, error.message);
-      console.error(`[${this.clientId}] Stack trace:`, error.stack);
       throw error;
+    }
+  }
+
+  // Validação robusta para mensagens
+  isValidMessage(message) {
+    try {
+      if (!message || typeof message !== 'object') {
+        return false;
+      }
+      
+      // Verificar propriedades essenciais
+      if (!message.id || !message.from || !message.to) {
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      return false;
     }
   }
 
@@ -519,7 +478,7 @@ class WhatsAppClientManager {
       const messages = await Promise.race([
         chat.fetchMessages({ limit }),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout ao buscar mensagens')), 30000)
+          setTimeout(() => reject(new Error('Timeout ao buscar mensagens')), 45000)
         )
       ]);
       

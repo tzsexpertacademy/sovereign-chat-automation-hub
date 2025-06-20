@@ -6,10 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, Image, Mic, Download, Play, Pause, RefreshCw, Wifi, Settings, Check, CheckCheck } from "lucide-react";
+import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, Image, Mic, Download, Play, Pause, RefreshCw, Wifi, Settings, Check, CheckCheck, FileText, Video as VideoIcon } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { whatsappService, type ChatData, type MessageData } from "@/services/whatsappMultiClient";
 import { useToast } from "@/hooks/use-toast";
+import { useMessageMedia } from "@/hooks/useMessageMedia";
+import { useMessageQueue } from "@/hooks/useMessageQueue";
 
 const ChatInterface = () => {
   const { clientId } = useParams<{ clientId: string }>();
@@ -23,14 +25,34 @@ const ChatInterface = () => {
   const [error, setError] = useState<string | null>(null);
   const [messageLimit, setMessageLimit] = useState<number>(50);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
   const [diagnosis, setDiagnosis] = useState<any>(null);
   const [showDiagnosis, setShowDiagnosis] = useState(false);
   const [readMessages, setReadMessages] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+
+  // Hooks para mídia e fila
+  const {
+    isUploading,
+    selectedMedia,
+    setSelectedMedia,
+    audioRecording,
+    handleImageUpload,
+    handleVideoUpload,
+    handleDocumentUpload,
+    startRecording,
+    stopRecording,
+    sendAudioRecording,
+    clearSelectedMedia
+  } = useMessageMedia(clientId || '');
+
+  const {
+    messageQueue,
+    queueStats,
+    isProcessing,
+    addProcessor,
+    enqueueMessage
+  } = useMessageQueue(clientId || '');
 
   const MAX_RETRY_ATTEMPTS = 3;
   const RETRY_DELAY = 2000;
@@ -110,17 +132,22 @@ const ChatInterface = () => {
         const socket = whatsappService.connectSocket();
         whatsappService.joinClientRoom(clientId);
 
-        // Configurar listeners
+        // Configurar listeners para mensagens
         whatsappService.onClientMessage(clientId, (message: MessageData) => {
           console.log('Nova mensagem recebida:', message);
           setMessages(prev => [...prev, message]);
           
-          // Marcar mensagem como lida pelo assistente após um delay (simulando processamento)
+          // Adicionar à fila se não for nossa mensagem
+          if (!message.fromMe) {
+            enqueueMessage(message);
+          }
+          
+          // Marcar mensagem como lida pelo assistente após delay
           if (!message.fromMe) {
             setTimeout(() => {
               setReadMessages(prev => new Set([...prev, message.id]));
               console.log('🤖 Assistente visualizou mensagem:', message.id);
-            }, 2000); // 2 segundos de delay para simular processamento
+            }, 2000);
           }
           
           // Atualizar preview do chat
@@ -140,6 +167,20 @@ const ChatInterface = () => {
           ));
         });
 
+        // Adicionar processador simples de exemplo
+        addProcessor('echo-bot', {
+          processMessage: async (message: MessageData) => {
+            // Simular processamento
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return `🤖 Mensagem recebida: "${message.body}"`;
+          },
+          shouldProcess: (message: MessageData) => {
+            // Processar apenas mensagens de texto que não são nossas
+            return !message.fromMe && message.type === 'chat' && message.body.length > 0;
+          },
+          priority: 'medium'
+        });
+
         // Carregar chats
         await loadChatsWithRetry();
         
@@ -156,7 +197,7 @@ const ChatInterface = () => {
     return () => {
       whatsappService.removeListener(`message_${clientId}`);
     };
-  }, [clientId]);
+  }, [clientId, addProcessor, enqueueMessage]);
 
   useEffect(() => {
     if (!selectedChat || !clientId) return;
@@ -191,14 +232,21 @@ const ChatInterface = () => {
   };
 
   const handleSendMessage = async () => {
-    if ((!newMessage.trim() && !selectedFile) || !selectedChat || !clientId) return;
+    if ((!newMessage.trim() && !selectedMedia) || !selectedChat || !clientId) return;
 
     try {
-      console.log('Enviando mensagem:', { to: selectedChat, message: newMessage, file: selectedFile?.name });
+      console.log('Enviando mensagem:', { to: selectedChat, message: newMessage, media: selectedMedia?.name });
       
-      if (selectedFile) {
-        await whatsappService.sendMessage(clientId, selectedChat, newMessage || `📎 ${selectedFile.name}`, undefined, selectedFile);
-        setSelectedFile(null);
+      if (selectedMedia) {
+        // Determinar tipo de mídia e enviar
+        if (selectedMedia.type.startsWith('image/')) {
+          await handleImageUpload(selectedMedia, selectedChat, newMessage || undefined);
+        } else if (selectedMedia.type.startsWith('video/')) {
+          await handleVideoUpload(selectedMedia, selectedChat, newMessage || undefined);
+        } else {
+          await handleDocumentUpload(selectedMedia, selectedChat, newMessage || undefined);
+        }
+        clearSelectedMedia();
       } else {
         await whatsappService.sendMessage(clientId, selectedChat, newMessage);
       }
@@ -223,41 +271,23 @@ const ChatInterface = () => {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      setSelectedFile(file);
+      setSelectedMedia(file);
     }
   };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      setAudioChunks([]);
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          setAudioChunks(prev => [...prev, event.data]);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-        const audioFile = new File([audioBlob], 'audio.wav', { type: 'audio/wav' });
-        setSelectedFile(audioFile);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (err) {
-      console.error('Erro ao iniciar gravação:', err);
-    }
+  const handleStartRecording = async () => {
+    const recorder = await startRecording();
+    setMediaRecorder(recorder);
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
+  const handleStopRecording = () => {
+    stopRecording(mediaRecorder);
+    setMediaRecorder(null);
+  };
+
+  const handleSendAudio = async () => {
+    if (selectedChat) {
+      await sendAudioRecording(selectedChat);
     }
   };
 
@@ -266,9 +296,25 @@ const ChatInterface = () => {
       case 'image':
         return (
           <div className="space-y-2">
-            <div className="bg-gray-200 rounded-lg p-2 max-w-xs">
-              <Image className="w-4 h-4 inline mr-2" />
-              <span className="text-sm">Imagem</span>
+            <div className="bg-gray-200 rounded-lg p-3 max-w-xs flex items-center space-x-2">
+              <Image className="w-5 h-5 text-blue-600" />
+              <span className="text-sm font-medium">Imagem</span>
+              <Button size="sm" variant="ghost">
+                <Download className="w-3 h-3" />
+              </Button>
+            </div>
+            {message.body && <p className="text-sm">{message.body}</p>}
+          </div>
+        );
+      case 'video':
+        return (
+          <div className="space-y-2">
+            <div className="bg-gray-200 rounded-lg p-3 max-w-xs flex items-center space-x-2">
+              <VideoIcon className="w-5 h-5 text-purple-600" />
+              <span className="text-sm font-medium">Vídeo</span>
+              <Button size="sm" variant="ghost">
+                <Play className="w-3 h-3" />
+              </Button>
             </div>
             {message.body && <p className="text-sm">{message.body}</p>}
           </div>
@@ -277,9 +323,9 @@ const ChatInterface = () => {
       case 'ptt':
         return (
           <div className="space-y-2">
-            <div className="bg-gray-200 rounded-lg p-2 max-w-xs flex items-center space-x-2">
-              <Mic className="w-4 h-4" />
-              <span className="text-sm">Áudio</span>
+            <div className="bg-gray-200 rounded-lg p-3 max-w-xs flex items-center space-x-2">
+              <Mic className="w-5 h-5 text-green-600" />
+              <span className="text-sm font-medium">Áudio</span>
               <Button size="sm" variant="ghost">
                 <Play className="w-3 h-3" />
               </Button>
@@ -290,9 +336,9 @@ const ChatInterface = () => {
       case 'document':
         return (
           <div className="space-y-2">
-            <div className="bg-gray-200 rounded-lg p-2 max-w-xs flex items-center space-x-2">
-              <Paperclip className="w-4 h-4" />
-              <span className="text-sm">Documento</span>
+            <div className="bg-gray-200 rounded-lg p-3 max-w-xs flex items-center space-x-2">
+              <FileText className="w-5 h-5 text-red-600" />
+              <span className="text-sm font-medium">Documento</span>
               <Button size="sm" variant="ghost">
                 <Download className="w-3 h-3" />
               </Button>
@@ -301,7 +347,7 @@ const ChatInterface = () => {
           </div>
         );
       default:
-        return <p className="text-sm">{message.body}</p>;
+        return <p className="text-sm whitespace-pre-wrap">{message.body}</p>;
     }
   };
 
@@ -479,6 +525,12 @@ const ChatInterface = () => {
               Conversas ({chats.length})
             </CardTitle>
             <div className="flex items-center space-x-2">
+              {/* Queue Status */}
+              <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                Fila: {queueStats.pending}/{queueStats.total}
+                {isProcessing && <span className="ml-1 text-blue-500">🔄</span>}
+              </div>
+              
               <Select value={messageLimit.toString()} onValueChange={(value) => setMessageLimit(Number(value))}>
                 <SelectTrigger className="w-20">
                   <SelectValue />
@@ -490,11 +542,9 @@ const ChatInterface = () => {
                   <SelectItem value="100">100</SelectItem>
                   <SelectItem value="200">200</SelectItem>
                   <SelectItem value="500">500</SelectItem>
-                  <SelectItem value="1000">1K</SelectItem>
-                  <SelectItem value="2000">2K</SelectItem>
-                  <SelectItem value="5000">5K</SelectItem>
                 </SelectContent>
               </Select>
+              
               <Button 
                 variant="ghost" 
                 size="sm"
@@ -677,17 +727,43 @@ const ChatInterface = () => {
 
             {/* Message Input */}
             <div className="border-t p-4">
-              {selectedFile && (
-                <div className="mb-3 p-2 bg-gray-50 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    {selectedFile.type.startsWith('image/') && <Image className="w-4 h-4" />}
-                    {selectedFile.type.startsWith('audio/') && <Mic className="w-4 h-4" />}
-                    {!selectedFile.type.startsWith('image/') && !selectedFile.type.startsWith('audio/') && <Paperclip className="w-4 h-4" />}
-                    <span className="text-sm">{selectedFile.name}</span>
+              {/* Media Preview */}
+              {selectedMedia && (
+                <div className="mb-3 p-3 bg-gray-50 rounded-lg flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    {selectedMedia.type.startsWith('image/') && <Image className="w-5 h-5 text-blue-600" />}
+                    {selectedMedia.type.startsWith('video/') && <VideoIcon className="w-5 h-5 text-purple-600" />}
+                    {selectedMedia.type.startsWith('audio/') && <Mic className="w-5 h-5 text-green-600" />}
+                    {!selectedMedia.type.startsWith('image/') && !selectedMedia.type.startsWith('video/') && !selectedMedia.type.startsWith('audio/') && <FileText className="w-5 h-5 text-red-600" />}
+                    <div>
+                      <p className="text-sm font-medium">{selectedMedia.name}</p>
+                      <p className="text-xs text-gray-500">{(selectedMedia.size / 1024 / 1024).toFixed(2)} MB</p>
+                    </div>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedFile(null)}>
+                  <Button size="sm" variant="ghost" onClick={clearSelectedMedia}>
                     ✕
                   </Button>
+                </div>
+              )}
+
+              {/* Audio Recording Preview */}
+              {audioRecording.audioBlob && (
+                <div className="mb-3 p-3 bg-green-50 rounded-lg flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Mic className="w-5 h-5 text-green-600" />
+                    <div>
+                      <p className="text-sm font-medium">Gravação de áudio</p>
+                      <p className="text-xs text-gray-500">{audioRecording.duration}s</p>
+                    </div>
+                  </div>
+                  <div className="flex space-x-2">
+                    <Button size="sm" onClick={handleSendAudio} disabled={isUploading}>
+                      <Send className="w-3 h-3" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={clearSelectedMedia}>
+                      ✕
+                    </Button>
+                  </div>
                 </div>
               )}
               
@@ -696,14 +772,16 @@ const ChatInterface = () => {
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileSelect}
-                  accept="image/*,audio/*,.pdf,.doc,.docx"
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
                   className="hidden"
                 />
                 
+                {/* Media Buttons */}
                 <Button 
                   variant="ghost" 
                   size="sm"
                   onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
                 >
                   <Paperclip className="w-4 h-4" />
                 </Button>
@@ -711,10 +789,11 @@ const ChatInterface = () => {
                 <Button 
                   variant="ghost" 
                   size="sm"
-                  onClick={isRecording ? stopRecording : startRecording}
-                  className={isRecording ? 'text-red-500' : ''}
+                  onClick={audioRecording.isRecording ? handleStopRecording : handleStartRecording}
+                  className={audioRecording.isRecording ? 'text-red-500 bg-red-50' : ''}
+                  disabled={isUploading}
                 >
-                  <Mic className="w-4 h-4" />
+                  <Mic className={`w-4 h-4 ${audioRecording.isRecording ? 'animate-pulse' : ''}`} />
                 </Button>
                 
                 <Input
@@ -723,14 +802,19 @@ const ChatInterface = () => {
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                   className="flex-1"
+                  disabled={isUploading}
                 />
                 
                 <Button 
                   onClick={handleSendMessage}
-                  disabled={!newMessage.trim() && !selectedFile}
+                  disabled={(!newMessage.trim() && !selectedMedia && !audioRecording.audioBlob) || isUploading}
                   className="bg-green-500 hover:bg-green-600"
                 >
-                  <Send className="w-4 h-4" />
+                  {isUploading ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
                 </Button>
               </div>
             </div>
