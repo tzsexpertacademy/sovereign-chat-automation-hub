@@ -10,6 +10,7 @@ import AutomationCenter from "@/components/client/AutomationCenter";
 import AnalyticsDashboard from "@/components/client/AnalyticsDashboard";
 import WhatsAppConnection from "@/components/client/WhatsAppConnection";
 import AssistantsManager from "@/components/client/AssistantsManager";
+import BookingManager from "@/components/booking/BookingManager";
 
 const ClientDashboard = () => {
   const { clientId } = useParams();
@@ -26,6 +27,7 @@ const ClientDashboard = () => {
               <Route path="/connect" element={<WhatsAppConnection />} />
               <Route path="/chat" element={<ChatInterface />} />
               <Route path="/assistants" element={<AssistantsManager />} />
+              <Route path="/booking" element={<BookingManager clientId={clientId!} />} />
               <Route path="/campaigns" element={<CampaignsManager />} />
               <Route path="/automation" element={<AutomationCenter />} />
               <Route path="/analytics" element={<AnalyticsDashboard />} />

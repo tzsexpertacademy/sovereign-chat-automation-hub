@@ -9,6 +9,99 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      appointments: {
+        Row: {
+          appointment_date: string
+          client_id: string
+          created_at: string
+          created_by_assistant: boolean | null
+          customer_id: string
+          end_time: string
+          google_event_id: string | null
+          id: string
+          notes: string | null
+          price: number | null
+          professional_id: string
+          recurrence_end_date: string | null
+          recurrence_type: Database["public"]["Enums"]["recurrence_type"] | null
+          service_id: string
+          start_time: string
+          status: Database["public"]["Enums"]["appointment_status"] | null
+          updated_at: string
+        }
+        Insert: {
+          appointment_date: string
+          client_id: string
+          created_at?: string
+          created_by_assistant?: boolean | null
+          customer_id: string
+          end_time: string
+          google_event_id?: string | null
+          id?: string
+          notes?: string | null
+          price?: number | null
+          professional_id: string
+          recurrence_end_date?: string | null
+          recurrence_type?:
+            | Database["public"]["Enums"]["recurrence_type"]
+            | null
+          service_id: string
+          start_time: string
+          status?: Database["public"]["Enums"]["appointment_status"] | null
+          updated_at?: string
+        }
+        Update: {
+          appointment_date?: string
+          client_id?: string
+          created_at?: string
+          created_by_assistant?: boolean | null
+          customer_id?: string
+          end_time?: string
+          google_event_id?: string | null
+          id?: string
+          notes?: string | null
+          price?: number | null
+          professional_id?: string
+          recurrence_end_date?: string | null
+          recurrence_type?:
+            | Database["public"]["Enums"]["recurrence_type"]
+            | null
+          service_id?: string
+          start_time?: string
+          status?: Database["public"]["Enums"]["appointment_status"] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_professional_id_fkey"
+            columns: ["professional_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       assistants: {
         Row: {
           advanced_settings: Json | null
@@ -51,6 +144,68 @@ export type Database = {
             foreignKeyName: "assistants_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      booking_settings: {
+        Row: {
+          advance_booking_days: number | null
+          auto_confirm_appointments: boolean | null
+          booking_window_end: string | null
+          booking_window_start: string | null
+          client_id: string
+          created_at: string
+          google_calendar_credentials: Json | null
+          google_calendar_integration_enabled: boolean | null
+          id: string
+          reminder_hours_before: number | null
+          same_day_booking_enabled: boolean | null
+          send_confirmation_messages: boolean | null
+          send_reminder_messages: boolean | null
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          advance_booking_days?: number | null
+          auto_confirm_appointments?: boolean | null
+          booking_window_end?: string | null
+          booking_window_start?: string | null
+          client_id: string
+          created_at?: string
+          google_calendar_credentials?: Json | null
+          google_calendar_integration_enabled?: boolean | null
+          id?: string
+          reminder_hours_before?: number | null
+          same_day_booking_enabled?: boolean | null
+          send_confirmation_messages?: boolean | null
+          send_reminder_messages?: boolean | null
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          advance_booking_days?: number | null
+          auto_confirm_appointments?: boolean | null
+          booking_window_end?: string | null
+          booking_window_start?: string | null
+          client_id?: string
+          created_at?: string
+          google_calendar_credentials?: Json | null
+          google_calendar_integration_enabled?: boolean | null
+          id?: string
+          reminder_hours_before?: number | null
+          same_day_booking_enabled?: boolean | null
+          send_confirmation_messages?: boolean | null
+          send_reminder_messages?: boolean | null
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_settings_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
@@ -187,6 +342,53 @@ export type Database = {
           },
         ]
       }
+      customers: {
+        Row: {
+          birth_date: string | null
+          client_id: string
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string
+          updated_at: string
+          whatsapp_chat_id: string | null
+        }
+        Insert: {
+          birth_date?: string | null
+          client_id: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone: string
+          updated_at?: string
+          whatsapp_chat_id?: string | null
+        }
+        Update: {
+          birth_date?: string | null
+          client_id?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string
+          updated_at?: string
+          whatsapp_chat_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       instance_queue_connections: {
         Row: {
           created_at: string
@@ -222,6 +424,145 @@ export type Database = {
             columns: ["queue_id"]
             isOneToOne: false
             referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      professional_schedules: {
+        Row: {
+          break_end_time: string | null
+          break_start_time: string | null
+          created_at: string
+          day_of_week: Database["public"]["Enums"]["weekday"]
+          end_time: string
+          id: string
+          is_active: boolean | null
+          professional_id: string
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          break_end_time?: string | null
+          break_start_time?: string | null
+          created_at?: string
+          day_of_week: Database["public"]["Enums"]["weekday"]
+          end_time: string
+          id?: string
+          is_active?: boolean | null
+          professional_id: string
+          start_time: string
+          updated_at?: string
+        }
+        Update: {
+          break_end_time?: string | null
+          break_start_time?: string | null
+          created_at?: string
+          day_of_week?: Database["public"]["Enums"]["weekday"]
+          end_time?: string
+          id?: string
+          is_active?: boolean | null
+          professional_id?: string
+          start_time?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "professional_schedules_professional_id_fkey"
+            columns: ["professional_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      professional_services: {
+        Row: {
+          created_at: string
+          id: string
+          professional_id: string
+          service_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          professional_id: string
+          service_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          professional_id?: string
+          service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "professional_services_professional_id_fkey"
+            columns: ["professional_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "professional_services_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      professionals: {
+        Row: {
+          avatar_url: string | null
+          client_id: string
+          created_at: string
+          description: string | null
+          email: string | null
+          google_calendar_id: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          phone: string | null
+          specialty: string | null
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          client_id: string
+          created_at?: string
+          description?: string | null
+          email?: string | null
+          google_calendar_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          phone?: string | null
+          specialty?: string | null
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          client_id?: string
+          created_at?: string
+          description?: string | null
+          email?: string | null
+          google_calendar_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          phone?: string | null
+          specialty?: string | null
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "professionals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
@@ -267,6 +608,97 @@ export type Database = {
           },
           {
             foreignKeyName: "queues_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_blocks: {
+        Row: {
+          created_at: string
+          end_datetime: string
+          id: string
+          is_recurring: boolean | null
+          professional_id: string
+          reason: string
+          recurrence_pattern: Json | null
+          start_datetime: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_datetime: string
+          id?: string
+          is_recurring?: boolean | null
+          professional_id: string
+          reason: string
+          recurrence_pattern?: Json | null
+          start_datetime: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_datetime?: string
+          id?: string
+          is_recurring?: boolean | null
+          professional_id?: string
+          reason?: string
+          recurrence_pattern?: Json | null
+          start_datetime?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_blocks_professional_id_fkey"
+            columns: ["professional_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      services: {
+        Row: {
+          client_id: string
+          color: string | null
+          created_at: string
+          description: string | null
+          duration_minutes: number
+          id: string
+          is_active: boolean | null
+          name: string
+          price: number | null
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          duration_minutes?: number
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price?: number | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          duration_minutes?: number
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "services_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
@@ -431,7 +863,22 @@ export type Database = {
       }
     }
     Enums: {
+      appointment_status:
+        | "scheduled"
+        | "confirmed"
+        | "cancelled"
+        | "completed"
+        | "no_show"
       plan_type: "basic" | "standard" | "premium" | "enterprise"
+      recurrence_type: "none" | "daily" | "weekly" | "monthly" | "yearly"
+      weekday:
+        | "monday"
+        | "tuesday"
+        | "wednesday"
+        | "thursday"
+        | "friday"
+        | "saturday"
+        | "sunday"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -547,7 +994,24 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      appointment_status: [
+        "scheduled",
+        "confirmed",
+        "cancelled",
+        "completed",
+        "no_show",
+      ],
       plan_type: ["basic", "standard", "premium", "enterprise"],
+      recurrence_type: ["none", "daily", "weekly", "monthly", "yearly"],
+      weekday: [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+      ],
     },
   },
 } as const
