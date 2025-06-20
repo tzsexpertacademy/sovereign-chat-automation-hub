@@ -51,6 +51,9 @@ export const queuesService = {
   },
 
   async deleteQueue(id: string): Promise<void> {
+    // First disconnect all instances from this queue
+    await this.disconnectAllInstancesFromQueue(id);
+    
     const { error } = await supabase
       .from("queues")
       .delete()
@@ -60,6 +63,9 @@ export const queuesService = {
   },
 
   async connectInstanceToQueue(instanceId: string, queueId: string): Promise<void> {
+    // First, disconnect instance from all other queues to ensure only one connection
+    await this.disconnectInstanceFromAllQueues(instanceId);
+    
     const { error } = await supabase
       .from("instance_queue_connections")
       .upsert({ 
@@ -81,5 +87,70 @@ export const queuesService = {
       .eq("queue_id", queueId);
 
     if (error) throw error;
+  },
+
+  async disconnectInstanceFromAllQueues(instanceId: string): Promise<void> {
+    const { error } = await supabase
+      .from("instance_queue_connections")
+      .delete()
+      .eq("instance_id", instanceId);
+
+    if (error) throw error;
+  },
+
+  async disconnectAllInstancesFromQueue(queueId: string): Promise<void> {
+    const { error } = await supabase
+      .from("instance_queue_connections")
+      .delete()
+      .eq("queue_id", queueId);
+
+    if (error) throw error;
+  },
+
+  async getInstanceConnections(instanceId: string): Promise<QueueWithAssistant[]> {
+    const { data, error } = await supabase
+      .from("instance_queue_connections")
+      .select(`
+        queue_id,
+        queues!inner(
+          *,
+          assistants(*)
+        )
+      `)
+      .eq("instance_id", instanceId)
+      .eq("is_active", true);
+
+    if (error) throw error;
+    
+    return (data || []).map(item => ({
+      ...item.queues,
+      instance_queue_connections: []
+    })) as QueueWithAssistant[];
+  },
+
+  async getQueueConnections(queueId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from("instance_queue_connections")
+      .select("instance_id")
+      .eq("queue_id", queueId)
+      .eq("is_active", true);
+
+    if (error) throw error;
+    
+    return (data || []).map(item => item.instance_id);
+  },
+
+  async isInstanceConnectedToQueue(instanceId: string, queueId: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from("instance_queue_connections")
+      .select("id")
+      .eq("instance_id", instanceId)
+      .eq("queue_id", queueId)
+      .eq("is_active", true)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    
+    return !!data;
   }
 };
