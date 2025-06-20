@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, Image, Mic, Download, Play, Pause, RefreshCw, Wifi } from "lucide-react";
+import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, Image, Mic, Download, Play, Pause, RefreshCw, Wifi, Settings } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { whatsappService, type ChatData, type MessageData } from "@/services/whatsappMultiClient";
 import { useToast } from "@/hooks/use-toast";
@@ -25,8 +25,8 @@ const ChatInterface = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const [isRetrying, setIsRetrying] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<any>(null);
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
@@ -53,49 +53,47 @@ const ChatInterface = () => {
     if (!clientId) return;
 
     try {
-      console.log(`Tentativa ${attempt + 1} de carregar chats para cliente:`, clientId);
+      console.log(`🔄 Tentativa ${attempt + 1} de carregar chats para cliente: ${clientId}`);
       
-      // Verificar se o cliente está conectado antes de tentar carregar chats
-      const isConnected = await checkConnectionStatus();
-      if (!isConnected) {
-        throw new Error('WhatsApp não está conectado. Por favor, conecte primeiro na aba "Conexão".');
+      setError(null);
+      
+      // Executar diagnóstico na primeira tentativa
+      if (attempt === 0) {
+        console.log('🔍 Executando diagnóstico...');
+        const diagnosisResult = await whatsappService.diagnoseClient(clientId);
+        setDiagnosis(diagnosisResult);
+        
+        if (!diagnosisResult.serverConnected) {
+          throw new Error('❌ Servidor WhatsApp não está respondendo. Verifique se o servidor está funcionando.');
+        }
+        
+        if (diagnosisResult.clientStatus?.status !== 'connected') {
+          throw new Error(`❌ WhatsApp não está conectado (status: ${diagnosisResult.clientStatus?.status}). Vá para "Conexão" primeiro.`);
+        }
       }
 
       const chatsData = await whatsappService.getChats(clientId);
-      console.log('Chats carregados com sucesso:', chatsData);
+      console.log('✅ Chats carregados com sucesso:', chatsData);
       
       setChats(chatsData);
       setError(null);
-      setRetryCount(0);
       
       if (chatsData.length > 0 && !selectedChat) {
         setSelectedChat(chatsData[0].id);
       }
+      
     } catch (err: any) {
-      console.error(`Erro na tentativa ${attempt + 1}:`, err);
+      console.error(`❌ Erro na tentativa ${attempt + 1}:`, err);
       
       const errorMessage = err.message || 'Erro desconhecido';
       
-      // Se o erro é de serialização, isso indica problema no backend
-      if (errorMessage.includes('_serialized') || errorMessage.includes('Evaluation failed')) {
-        if (attempt < MAX_RETRY_ATTEMPTS - 1) {
-          setRetryCount(attempt + 1);
-          setIsRetrying(true);
-          setError(`Erro no servidor WhatsApp. Tentando novamente... (${attempt + 1}/${MAX_RETRY_ATTEMPTS})`);
-          
-          await delay(RETRY_DELAY * (attempt + 1)); // Backoff exponencial
-          return loadChatsWithRetry(attempt + 1);
-        } else {
-          setError('Erro persistente no servidor WhatsApp. O backend está com problemas na serialização dos dados de chat. Tente reconectar o WhatsApp ou contate o suporte.');
-        }
-      } else if (errorMessage.includes('não está conectado')) {
-        setError('WhatsApp não conectado. Vá para a aba "Conexão" para conectar seu WhatsApp primeiro.');
+      if (attempt < 2) {
+        setError(`Tentativa ${attempt + 1}/3 falhou: ${errorMessage}. Tentando novamente...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        return loadChatsWithRetry(attempt + 1);
       } else {
-        setError(`Erro ao carregar conversas: ${errorMessage}`);
+        setError(`❌ Falha após 3 tentativas: ${errorMessage}`);
       }
-      
-      setRetryCount(attempt);
-      setIsRetrying(false);
     }
   };
 
@@ -325,33 +323,65 @@ const ChatInterface = () => {
     return new Date(timestamp).toLocaleDateString('pt-BR');
   };
 
-  if (loading && !isRetrying) {
+  const handleDiagnose = async () => {
+    if (!clientId) return;
+    
+    try {
+      setLoading(true);
+      console.log('🔍 Executando diagnóstico manual...');
+      const diagnosisResult = await whatsappService.diagnoseClient(clientId);
+      setDiagnosis(diagnosisResult);
+      setShowDiagnosis(true);
+      
+      toast({
+        title: "Diagnóstico Completo",
+        description: "Verifique os resultados na área de diagnóstico",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro no Diagnóstico",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading && !error) {
     return (
       <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
           <p className="text-gray-600">Carregando conversas...</p>
-          <p className="text-sm text-gray-500 mt-2">Conectando ao WhatsApp...</p>
+          <p className="text-sm text-gray-500 mt-2">Verificando conexão WhatsApp...</p>
         </div>
       </div>
     );
   }
 
-  if (error && !isRetrying) {
+  if (error) {
     return (
       <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
-        <div className="text-center max-w-md">
+        <div className="text-center max-w-2xl">
           <div className="text-red-500 mb-4">
             <AlertCircle className="w-12 h-12 mx-auto mb-2" />
             <h3 className="font-semibold">Erro ao Carregar Conversas</h3>
           </div>
           <p className="text-gray-600 mb-4">{error}</p>
-          <div className="space-y-2">
-            <Button onClick={handleRetryLoadChats} disabled={loading}>
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Tentar Novamente
-            </Button>
-            {error.includes('não está conectado') && (
+          
+          <div className="space-y-3">
+            <div className="flex justify-center space-x-2">
+              <Button onClick={() => { setLoading(true); setError(null); loadChatsWithRetry(); setLoading(false); }} disabled={loading}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Tentar Novamente
+              </Button>
+              
+              <Button variant="outline" onClick={handleDiagnose}>
+                <Settings className="w-4 h-4 mr-2" />
+                Diagnosticar
+              </Button>
+              
               <Button 
                 variant="outline" 
                 onClick={() => window.location.href = `/client/${clientId}/connect`}
@@ -359,13 +389,63 @@ const ChatInterface = () => {
                 <Wifi className="w-4 h-4 mr-2" />
                 Ir para Conexão
               </Button>
+            </div>
+            
+            {/* Área de Diagnóstico */}
+            {showDiagnosis && diagnosis && (
+              <div className="mt-6 p-4 bg-gray-50 border rounded-lg text-left">
+                <h4 className="font-semibold mb-3 flex items-center">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Diagnóstico do Sistema
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Servidor WhatsApp:</span>
+                    <Badge variant={diagnosis.serverConnected ? "default" : "destructive"}>
+                      {diagnosis.serverConnected ? "✅ Conectado" : "❌ Desconectado"}
+                    </Badge>
+                  </div>
+                  {diagnosis.clientStatus && (
+                    <div className="flex justify-between">
+                      <span>Status Cliente:</span>
+                      <Badge variant={diagnosis.clientStatus.status === 'connected' ? "default" : "secondary"}>
+                        {diagnosis.clientStatus.status}
+                      </Badge>
+                    </div>
+                  )}
+                  {diagnosis.clientStatus?.phoneNumber && (
+                    <div className="flex justify-between">
+                      <span>Número:</span>
+                      <span className="font-mono">{diagnosis.clientStatus.phoneNumber}</span>
+                    </div>
+                  )}
+                  {diagnosis.serverHealth && (
+                    <div className="flex justify-between">
+                      <span>Clientes Ativos:</span>
+                      <span>{diagnosis.serverHealth.activeClients}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>Timestamp:</span>
+                    <span className="text-xs">{new Date(diagnosis.timestamp).toLocaleString()}</span>
+                  </div>
+                  {diagnosis.error && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                      <span className="text-red-700 text-xs">Erro: {diagnosis.error}</span>
+                    </div>
+                  )}
+                </div>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={() => setShowDiagnosis(false)}
+                  className="mt-3"
+                >
+                  Fechar Diagnóstico
+                </Button>
+              </div>
             )}
           </div>
-          {retryCount > 0 && (
-            <p className="text-sm text-gray-500 mt-2">
-              Tentativas realizadas: {retryCount}/{MAX_RETRY_ATTEMPTS}
-            </p>
-          )}
         </div>
       </div>
     );
@@ -378,13 +458,7 @@ const ChatInterface = () => {
         <CardHeader className="pb-3">
           <div className="flex justify-between items-center">
             <CardTitle className="text-lg">
-              Conversas ({filteredChats.length})
-              {isRetrying && (
-                <span className="ml-2 text-sm text-yellow-600">
-                  <RefreshCw className="w-3 h-3 inline animate-spin mr-1" />
-                  Tentando...
-                </span>
-              )}
+              Conversas ({chats.length})
             </CardTitle>
             <div className="flex items-center space-x-2">
               <Select value={messageLimit.toString()} onValueChange={(value) => setMessageLimit(Number(value))}>
@@ -398,17 +472,19 @@ const ChatInterface = () => {
                   <SelectItem value="100">100</SelectItem>
                   <SelectItem value="200">200</SelectItem>
                   <SelectItem value="500">500</SelectItem>
-                  <SelectItem value="1000">1000</SelectItem>
+                  <SelectItem value="1000">1K</SelectItem>
+                  <SelectItem value="2000">2K</SelectItem>
+                  <SelectItem value="5000">5K</SelectItem>
                 </SelectContent>
               </Select>
               <Button 
                 variant="ghost" 
                 size="sm"
-                onClick={handleRetryLoadChats}
-                disabled={loading || isRetrying}
+                onClick={() => { setLoading(true); loadChatsWithRetry(); setLoading(false); }}
+                disabled={loading}
                 title="Recarregar conversas"
               >
-                <RefreshCw className={`w-4 h-4 ${(loading || isRetrying) ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               </Button>
             </div>
           </div>
@@ -422,28 +498,23 @@ const ChatInterface = () => {
             />
           </div>
         </CardHeader>
+        
         <CardContent className="flex-1 p-0">
           <ScrollArea className="h-full">
-            {filteredChats.length === 0 ? (
+            {chats.length === 0 ? (
               <div className="p-4 text-center text-gray-500">
-                {chats.length === 0 ? (
-                  <>
-                    <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p>Nenhuma conversa encontrada</p>
-                    <p className="text-sm">Verifique se o WhatsApp está conectado</p>
-                    {isRetrying && (
-                      <p className="text-sm text-yellow-600 mt-2">
-                        <RefreshCw className="w-3 h-3 inline animate-spin mr-1" />
-                        Carregando conversas...
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Search className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p>Nenhuma conversa encontrada para "{searchTerm}"</p>
-                  </>
-                )}
+                <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                <p>Nenhuma conversa encontrada</p>
+                <p className="text-sm">Verifique se o WhatsApp está conectado</p>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={handleDiagnose}
+                  className="mt-2"
+                >
+                  <Settings className="w-3 h-3 mr-1" />
+                  Diagnosticar
+                </Button>
               </div>
             ) : (
               filteredChats.map((chat) => (

@@ -131,6 +131,58 @@ class WhatsAppMultiClientService {
     }
   }
 
+  // Testar conexão com o servidor
+  async testServerConnection(): Promise<boolean> {
+    try {
+      console.log('🔍 Testando conexão com servidor WhatsApp...');
+      const response = await fetch(`${API_BASE_URL}/clients`, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        console.error(`❌ Servidor resposta: ${response.status} - ${response.statusText}`);
+        return false;
+      }
+      
+      const data = await response.json();
+      console.log('✅ Servidor respondendo corretamente:', data);
+      return true;
+    } catch (error) {
+      console.error('❌ Erro ao testar servidor:', error);
+      return false;
+    }
+  }
+
+  // Diagnóstico completo do cliente
+  async diagnoseClient(clientId: string): Promise<any> {
+    try {
+      console.log(`🔍 Executando diagnóstico completo para ${clientId}...`);
+      
+      // 1. Testar conexão com servidor
+      const serverOk = await this.testServerConnection();
+      
+      // 2. Verificar status do cliente
+      const clientStatus = await this.getClientStatus(clientId);
+      
+      // 3. Verificar health do servidor
+      const serverHealth = await this.checkServerHealth();
+      
+      return {
+        serverConnected: serverOk,
+        clientStatus,
+        serverHealth,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('❌ Erro no diagnóstico:', error);
+      return {
+        serverConnected: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
   // API Calls
   async getAllClients(): Promise<WhatsAppClient[]> {
     try {
@@ -287,31 +339,56 @@ class WhatsAppMultiClientService {
     try {
       console.log(`📡 GET ${API_BASE_URL}/clients/${clientId}/chats (tentativa ${retryCount + 1})`);
       
+      // Antes de tentar buscar chats, fazer diagnóstico
+      if (retryCount === 0) {
+        const diagnosis = await this.diagnoseClient(clientId);
+        console.log('📊 Diagnóstico do cliente:', diagnosis);
+        
+        if (!diagnosis.serverConnected) {
+          throw new Error('Servidor WhatsApp não está respondendo. Verifique se o servidor está funcionando.');
+        }
+        
+        if (diagnosis.clientStatus?.status !== 'connected') {
+          throw new Error(`WhatsApp não está conectado (status: ${diagnosis.clientStatus?.status}). Conecte primeiro na aba "Conexão".`);
+        }
+      }
+      
       const response = await fetch(`${API_BASE_URL}/clients/${clientId}/chats`, {
         headers: { 
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache'
-        }
+        },
+        timeout: 30000 // 30 segundos timeout
       });
       
+      console.log(`📡 Resposta do servidor: ${response.status} ${response.statusText}`);
+      
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error(`❌ Erro do servidor: ${errorText}`);
+        throw new Error(`Erro ${response.status}: ${errorText || response.statusText}`);
       }
       
       const data = await response.json();
       
       if (!data.success) {
-        // Se é erro de serialização, incluir informação adicional
-        if (data.error && data.error.includes('_serialized')) {
-          throw new Error(`Erro de serialização no backend: ${data.error}`);
-        }
+        console.error('❌ API retornou erro:', data.error);
         throw new Error(data.error || 'Erro ao buscar chats');
       }
       
-      console.log(`✅ ${data.chats.length} chats encontrados`);
+      console.log(`✅ ${data.chats.length} chats carregados com sucesso`);
       return data.chats;
+      
     } catch (error: any) {
-      console.error('❌ Erro ao buscar chats:', error);
+      console.error(`❌ Erro ao buscar chats (tentativa ${retryCount + 1}):`, error);
+      
+      // Se é erro de rede/timeout e ainda há tentativas
+      if (retryCount < 2 && (error.name === 'TypeError' || error.message.includes('timeout'))) {
+        console.log(`🔄 Tentando novamente em 3 segundos... (${retryCount + 1}/3)`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        return this.getChats(clientId, retryCount + 1);
+      }
+      
       throw error;
     }
   }
