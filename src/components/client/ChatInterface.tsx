@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Search, Send, Paperclip, MoreVertical, Phone, Video } from "lucide-react";
+import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { whatsappService, type ChatData, type MessageData } from "@/services/whatsappMultiClient";
 
