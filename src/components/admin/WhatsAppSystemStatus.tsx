@@ -14,36 +14,15 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import whatsappService from "@/services/whatsappMultiClient";
+import { SERVER_URL } from "@/config/environment";
 
 const WhatsAppSystemStatus = () => {
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [serverInfo, setServerInfo] = useState<any>(null);
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
-  const [serverUrl, setServerUrl] = useState<string>('');
   const { toast } = useToast();
 
-  // Detectar URL do servidor baseado no ambiente
-  const getServerUrl = () => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      const protocol = window.location.protocol;
-      
-      // Se estamos em localhost ou ambiente de desenvolvimento Lovable
-      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('lovable')) {
-        return `${protocol}//${hostname}:4000`;
-      }
-      
-      // Para produção - usar o mesmo hostname/IP do frontend mas porta 4000
-      return `${protocol}//${hostname}:4000`;
-    }
-    
-    // Fallback para desenvolvimento
-    return 'http://localhost:4000';
-  };
-
   useEffect(() => {
-    const url = getServerUrl();
-    setServerUrl(url);
     checkServerStatus();
     
     // Verificar status a cada 30 segundos
@@ -99,21 +78,6 @@ const WhatsAppSystemStatus = () => {
     }
   };
 
-  const getDisplayUrl = () => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      
-      // Se é localhost ou lovable, mostrar como está
-      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('lovable')) {
-        return serverUrl;
-      }
-      
-      // Para produção, mostrar o IP/hostname real
-      return serverUrl;
-    }
-    return serverUrl;
-  };
-
   return (
     <Card>
       <CardHeader>
@@ -145,7 +109,7 @@ const WhatsAppSystemStatus = () => {
             <div>
               <p className="font-medium">Status do Servidor</p>
               <p className="text-sm text-gray-600">
-                {getDisplayUrl()} • {lastCheck ? `Última verificação: ${lastCheck.toLocaleTimeString()}` : 'Não verificado'}
+                {SERVER_URL} • {lastCheck ? `Última verificação: ${lastCheck.toLocaleTimeString()}` : 'Não verificado'}
               </p>
             </div>
           </div>
@@ -173,14 +137,14 @@ const WhatsAppSystemStatus = () => {
           <p className="text-sm font-medium text-gray-600">Links Úteis</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" asChild>
-              <a href={`${serverUrl}/health`} target="_blank" rel="noopener noreferrer">
+              <a href={`${SERVER_URL}/health`} target="_blank" rel="noopener noreferrer">
                 <Wifi className="w-4 h-4 mr-1" />
                 Health Check
                 <ExternalLink className="w-3 h-3 ml-1" />
               </a>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <a href={`${serverUrl}/api-docs`} target="_blank" rel="noopener noreferrer">
+              <a href={`${SERVER_URL}/api-docs`} target="_blank" rel="noopener noreferrer">
                 <Server className="w-4 h-4 mr-1" />
                 API Swagger
                 <ExternalLink className="w-3 h-3 ml-1" />
@@ -221,7 +185,10 @@ const WhatsAppSystemStatus = () => {
                   WhatsApp Multi-Cliente funcionando corretamente
                 </p>
                 <div className="mt-2 text-xs text-green-600">
-                  <p>URL do Servidor: <code className="bg-green-100 px-1 rounded">{getDisplayUrl()}</code></p>
+                  <p>URL do Servidor: <code className="bg-green-100 px-1 rounded">{SERVER_URL}</code></p>
+                  {import.meta.env.VITE_SERVER_URL && (
+                    <p className="mt-1">Configurado via: <code className="bg-green-100 px-1 rounded">VITE_SERVER_URL</code></p>
+                  )}
                 </div>
               </div>
             </div>

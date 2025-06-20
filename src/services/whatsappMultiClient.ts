@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { SERVER_URL, API_BASE_URL, SOCKET_URL } from '@/config/environment';
 
 // Configuração inteligente para produção e desenvolvimento
 const getBaseURL = () => {
@@ -18,9 +19,6 @@ const getBaseURL = () => {
   // Fallback para desenvolvimento
   return 'http://localhost:4000';
 };
-
-const API_BASE_URL = `${getBaseURL()}/api`;
-const SOCKET_URL = getBaseURL();
 
 console.log(`🔗 Conectando ao servidor: ${SOCKET_URL}`);
 console.log(`📡 API Base URL: ${API_BASE_URL}`);
@@ -67,7 +65,7 @@ class WhatsAppMultiClientService {
   constructor() {
     console.log('🚀 Inicializando WhatsApp Multi-Client Service');
     console.log(`🌐 Ambiente detectado: ${window.location.hostname}`);
-    console.log(`🔗 Servidor alvo: ${getBaseURL()}`);
+    console.log(`🔗 Servidor alvo: ${SERVER_URL}`);
   }
 
   // Conectar ao WebSocket com retry automático
@@ -363,7 +361,7 @@ class WhatsAppMultiClientService {
 
   async checkServerHealth(): Promise<any> {
     try {
-      const healthURL = `${getBaseURL()}/health`;
+      const healthURL = `${SERVER_URL}/health`;
       console.log(`🔍 Verificando saúde do servidor: ${healthURL}`);
       
       const controller = new AbortController();
