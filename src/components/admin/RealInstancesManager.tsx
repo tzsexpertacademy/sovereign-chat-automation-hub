@@ -21,6 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
 import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
+import ConnectionTest from "./ConnectionTest";
 
 const RealInstancesManager = () => {
   const [clients, setClients] = useState<WhatsAppClient[]>([]);
@@ -279,6 +280,9 @@ const RealInstancesManager = () => {
           Atualizar
         </Button>
       </div>
+
+      {/* Connection Test */}
+      <ConnectionTest />
 
       {/* System Status */}
       <WhatsAppSystemStatus />
