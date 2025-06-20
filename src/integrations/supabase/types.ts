@@ -13,37 +13,46 @@ export type Database = {
         Row: {
           company: string | null
           created_at: string
+          current_instances: number | null
           email: string
           id: string
           instance_id: string | null
           instance_status: string | null
           last_activity: string | null
+          max_instances: number | null
           name: string
           phone: string | null
+          plan: Database["public"]["Enums"]["plan_type"] | null
           updated_at: string
         }
         Insert: {
           company?: string | null
           created_at?: string
+          current_instances?: number | null
           email: string
           id?: string
           instance_id?: string | null
           instance_status?: string | null
           last_activity?: string | null
+          max_instances?: number | null
           name: string
           phone?: string | null
+          plan?: Database["public"]["Enums"]["plan_type"] | null
           updated_at?: string
         }
         Update: {
           company?: string | null
           created_at?: string
+          current_instances?: number | null
           email?: string
           id?: string
           instance_id?: string | null
           instance_status?: string | null
           last_activity?: string | null
+          max_instances?: number | null
           name?: string
           phone?: string | null
+          plan?: Database["public"]["Enums"]["plan_type"] | null
           updated_at?: string
         }
         Relationships: []
@@ -178,10 +187,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_max_instances_for_plan: {
+        Args: { plan_name: Database["public"]["Enums"]["plan_type"] }
+        Returns: number
+      }
     }
     Enums: {
-      [_ in never]: never
+      plan_type: "basic" | "standard" | "premium" | "enterprise"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -296,6 +308,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      plan_type: ["basic", "standard", "premium", "enterprise"],
+    },
   },
 } as const

@@ -37,6 +37,24 @@ export const whatsappInstancesService = {
     }
   },
 
+  // Get instances by client ID
+  async getInstancesByClientId(clientId: string): Promise<WhatsAppInstanceData[]> {
+    try {
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching client instances:', error);
+      throw error;
+    }
+  },
+
   // Create new instance
   async createInstance(instanceData: CreateInstanceData): Promise<WhatsAppInstanceData> {
     try {

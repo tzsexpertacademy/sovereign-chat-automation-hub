@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +32,8 @@ const ClientsManagement = () => {
     name: "",
     email: "",
     phone: "",
-    company: ""
+    company: "",
+    plan: "basic"
   });
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -79,6 +79,7 @@ const ClientsManagement = () => {
         email: newClient.email.trim(),
         phone: newClient.phone?.trim(),
         company: newClient.company?.trim(),
+        plan: newClient.plan || 'basic',
       });
 
       toast({
@@ -87,7 +88,7 @@ const ClientsManagement = () => {
       });
 
       // Reset form and reload clients
-      setNewClient({ name: "", email: "", phone: "", company: "" });
+      setNewClient({ name: "", email: "", phone: "", company: "", plan: "basic" });
       setShowCreateForm(false);
       await loadClients();
 
@@ -171,6 +172,16 @@ const ClientsManagement = () => {
     }
   };
 
+  const getPlanColor = (plan: string) => {
+    switch (plan) {
+      case 'basic': return 'bg-gray-100 text-gray-800';
+      case 'standard': return 'bg-blue-100 text-blue-800';
+      case 'premium': return 'bg-purple-100 text-purple-800';
+      case 'enterprise': return 'bg-gold-100 text-gold-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -191,7 +202,7 @@ const ClientsManagement = () => {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Total Clientes</CardTitle>
@@ -203,24 +214,35 @@ const ClientsManagement = () => {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Com Instância</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Instâncias Ativas</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {clients.filter(c => c.instance_id && c.instance_status === 'connected').length}
+              {clients.reduce((sum, c) => sum + (c.current_instances || 0), 0)}
             </div>
-            <p className="text-xs text-green-600">Conectados</p>
+            <p className="text-xs text-green-600">Conectadas</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Aguardando Setup</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Plano Básico</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {clients.filter(c => !c.instance_id).length}
+              {clients.filter(c => c.plan === 'basic').length}
             </div>
-            <p className="text-xs text-blue-600">Sem instância</p>
+            <p className="text-xs text-blue-600">Clientes</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Plano Premium</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-600">
+              {clients.filter(c => c.plan === 'premium' || c.plan === 'enterprise').length}
+            </div>
+            <p className="text-xs text-purple-600">Clientes</p>
           </CardContent>
         </Card>
         <Card>
@@ -228,13 +250,13 @@ const ClientsManagement = () => {
             <CardTitle className="text-sm font-medium text-gray-600">Ativos Hoje</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
+            <div className="text-2xl font-bold text-orange-600">
               {clients.filter(c => {
                 const today = new Date().toDateString();
                 return new Date(c.last_activity).toDateString() === today;
               }).length}
             </div>
-            <p className="text-xs text-purple-600">Atividade hoje</p>
+            <p className="text-xs text-orange-600">Atividade hoje</p>
           </CardContent>
         </Card>
       </div>
@@ -295,6 +317,19 @@ const ClientsManagement = () => {
                   value={newClient.company}
                   onChange={(e) => setNewClient(prev => ({ ...prev, company: e.target.value }))}
                 />
+              </div>
+              <div className="col-span-2">
+                <label className="text-sm font-medium">Plano</label>
+                <select
+                  value={newClient.plan}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, plan: e.target.value as any }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="basic">Básico (1 instância)</option>
+                  <option value="standard">Padrão (3 instâncias)</option>
+                  <option value="premium">Premium (10 instâncias)</option>
+                  <option value="enterprise">Enterprise (50 instâncias)</option>
+                </select>
               </div>
             </div>
             <div className="flex space-x-2">
@@ -367,17 +402,19 @@ const ClientsManagement = () => {
                   </div>
 
                   <div className="flex items-center space-x-4">
-                    {/* Instance Status */}
+                    {/* Plan and Instance Info */}
                     <div className="text-center">
                       <div className="flex items-center space-x-2 mb-1">
-                        <div className={`w-3 h-3 rounded-full ${getStatusColor(client.instance_status)}`} />
-                        <Badge variant={client.instance_status === 'connected' ? 'default' : 'secondary'}>
-                          {getStatusText(client.instance_status)}
+                        <Badge className={getPlanColor(client.plan)}>
+                          {client.plan.toUpperCase()}
+                        </Badge>
+                        <Badge variant="outline">
+                          {client.current_instances || 0}/{client.max_instances} instâncias
                         </Badge>
                       </div>
-                      {client.instance_id && (
-                        <p className="text-xs text-gray-500">ID: {client.instance_id}</p>
-                      )}
+                      <p className="text-xs text-gray-500">
+                        ID: {client.id.slice(0, 8)}...
+                      </p>
                     </div>
 
                     {/* Action Buttons */}
@@ -391,25 +428,15 @@ const ClientsManagement = () => {
                         Dashboard
                       </Button>
                       
-                      {client.instance_status === 'connected' ? (
-                        <Button
-                          size="sm"
-                          onClick={() => handleOpenChat(client)}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <MessageSquare className="w-4 h-4 mr-1" />
-                          Chat
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleOpenDashboard(client)}
-                        >
-                          <Activity className="w-4 h-4 mr-1" />
-                          Conectar
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        onClick={() => handleOpenChat(client)}
+                        className="bg-green-600 hover:bg-green-700"
+                        disabled={!client.current_instances || client.current_instances === 0}
+                      >
+                        <MessageSquare className="w-4 h-4 mr-1" />
+                        Chat
+                      </Button>
                       
                       <Button
                         size="sm"

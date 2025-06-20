@@ -7,6 +7,9 @@ export interface ClientData {
   email: string;
   phone?: string;
   company?: string;
+  plan: 'basic' | 'standard' | 'premium' | 'enterprise';
+  max_instances: number;
+  current_instances: number;
   instance_id?: string;
   instance_status?: string;
   created_at: string;
@@ -19,6 +22,7 @@ export interface CreateClientData {
   email: string;
   phone?: string;
   company?: string;
+  plan?: 'basic' | 'standard' | 'premium' | 'enterprise';
 }
 
 export const clientsService = {
@@ -44,7 +48,10 @@ export const clientsService = {
     try {
       const { data, error } = await supabase
         .from('clients')
-        .insert([clientData])
+        .insert([{
+          ...clientData,
+          plan: clientData.plan || 'basic'
+        }])
         .select()
         .single();
 
@@ -125,6 +132,42 @@ export const clientsService = {
     } catch (error) {
       console.error('Error fetching client by instance ID:', error);
       return null;
+    }
+  },
+
+  // Get all instances for a client
+  async getClientInstances(clientId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching client instances:', error);
+      throw error;
+    }
+  },
+
+  // Check if client can create more instances
+  async canCreateInstance(clientId: string): Promise<boolean> {
+    try {
+      const { data: client, error } = await supabase
+        .from('clients')
+        .select('current_instances, max_instances')
+        .eq('id', clientId)
+        .single();
+
+      if (error) throw error;
+      
+      return client.current_instances < client.max_instances;
+    } catch (error) {
+      console.error('Error checking instance limit:', error);
+      return false;
     }
   }
 };
