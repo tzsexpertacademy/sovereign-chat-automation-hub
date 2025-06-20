@@ -20,13 +20,14 @@ if [ ! -f "package.json" ]; then
 fi
 
 # Parar servidor anterior se estiver rodando
-echo "🛑 Parando servidor anterior..."
+echo "🛑 Parando servidores anteriores..."
+pkill -f "whatsapp-multi-client-server.js" || true
 if [ -f "logs/whatsapp-server.pid" ]; then
     PID=$(cat logs/whatsapp-server.pid)
     if ps -p $PID > /dev/null 2>&1; then
         echo "⏹️ Parando processo PID: $PID"
         kill $PID
-        sleep 5
+        sleep 3
         
         # Verificar se ainda está rodando
         if ps -p $PID > /dev/null 2>&1; then
@@ -41,18 +42,25 @@ fi
 # Verificar se porta 4000 está livre
 if lsof -Pi :4000 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo "⚠️ Porta 4000 em uso. Liberando..."
-    pkill -f "whatsapp-multi-client-server.js" || true
     fuser -k 4000/tcp || true
     sleep 3
 fi
 
 # Criar diretórios necessários
+echo "📁 Criando diretórios..."
 mkdir -p logs
 mkdir -p whatsapp-sessions
+mkdir -p server
+
+# Verificar se diretório server existe
+if [ ! -d "server" ]; then
+    echo "❌ Diretório server/ não encontrado"
+    exit 1
+fi
 
 # Instalar dependências se necessário
 if [ ! -d "server/node_modules" ]; then
-    echo "📦 Instalando dependências..."
+    echo "📦 Instalando dependências do servidor..."
     cd server
     npm install
     cd ..
@@ -61,6 +69,7 @@ fi
 # Verificar se arquivo do servidor existe
 if [ ! -f "server/whatsapp-multi-client-server.js" ]; then
     echo "❌ Arquivo do servidor não encontrado: server/whatsapp-multi-client-server.js"
+    echo "ℹ️ Certifique-se de que o arquivo existe no diretório server/"
     exit 1
 fi
 
@@ -75,8 +84,10 @@ export LOGS_PATH=../logs
 export PUPPETEER_HEADLESS=true
 export PUPPETEER_NO_SANDBOX=true
 
-# Iniciar servidor em background com logs detalhados
-echo "🚀 Iniciando servidor WhatsApp Multi-Cliente (porta 4000)..."
+# Iniciar servidor em background
+echo "🚀 Iniciando servidor WhatsApp Multi-Cliente na porta 4000..."
+echo "📅 Data/Hora: $(date)"
+
 nohup node whatsapp-multi-client-server.js > ../logs/whatsapp-multi-client.log 2>&1 &
 SERVER_PID=$!
 
@@ -87,17 +98,17 @@ echo $SERVER_PID > ../logs/whatsapp-server.pid
 cd ..
 
 echo "⏳ Aguardando servidor inicializar..."
-sleep 8
+sleep 10
 
 # Verificar se processo ainda está rodando
 if ! ps -p $SERVER_PID > /dev/null 2>&1; then
     echo "❌ Processo morreu após inicialização. Verificando logs..."
-    tail -20 logs/whatsapp-multi-client.log
+    tail -30 logs/whatsapp-multi-client.log
     exit 1
 fi
 
 # Verificar se servidor está respondendo
-MAX_ATTEMPTS=10
+MAX_ATTEMPTS=15
 ATTEMPT=1
 
 while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
@@ -109,11 +120,12 @@ while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
         echo "📊 Informações do servidor:"
         echo "  🆔 PID: $SERVER_PID"
         echo "  🌐 Porta: 4000"
+        echo "  📍 IP do servidor: $(hostname -I | awk '{print $1}')"
         echo ""
-        echo "🌐 URLs disponíveis:"
-        echo "  • Health Check: http://localhost:4000/health"
-        echo "  • API Swagger: http://localhost:4000/api-docs"
-        echo "  • Frontend Admin: http://localhost:5173/admin/instances"
+        echo "🌐 URLs de acesso:"
+        echo "  • Health Check: http://$(hostname -I | awk '{print $1}'):4000/health"
+        echo "  • API Swagger: http://$(hostname -I | awk '{print $1}'):4000/api-docs"
+        echo "  • Frontend Admin: http://$(hostname -I | awk '{print $1}'):5173/admin/instances"
         echo ""
         echo "📝 Logs em tempo real:"
         echo "  tail -f logs/whatsapp-multi-client.log"
@@ -139,8 +151,13 @@ done
 
 echo "❌ Falha ao iniciar servidor após $MAX_ATTEMPTS tentativas"
 echo "📝 Últimas linhas do log:"
-tail -30 logs/whatsapp-multi-client.log
+tail -50 logs/whatsapp-multi-client.log
 echo ""
 echo "🔍 Status do processo:"
 ps aux | grep $SERVER_PID | grep -v grep || echo "Processo não encontrado"
+echo ""
+echo "💡 Dicas de troubleshooting:"
+echo "1. Verifique se a porta 4000 não está sendo usada: lsof -i :4000"
+echo "2. Verifique os logs: cat logs/whatsapp-multi-client.log"
+echo "3. Verifique se o arquivo do servidor existe: ls -la server/whatsapp-multi-client-server.js"
 exit 1

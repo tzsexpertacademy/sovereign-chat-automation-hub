@@ -6,12 +6,12 @@ const getBaseURL = () => {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
     
-    // Se estamos em localhost ou ambiente de desenvolvimento
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('lovable.app')) {
+    // Se estamos em localhost ou ambiente de desenvolvimento Lovable
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('lovable')) {
       return `${protocol}//${hostname}:4000`;
     }
     
-    // Produção - usar o mesmo hostname mas porta 4000
+    // Para produção - usar o mesmo hostname/IP do frontend mas porta 4000
     return `${protocol}//${hostname}:4000`;
   }
   
@@ -23,6 +23,7 @@ const API_BASE_URL = `${getBaseURL()}/api`;
 const SOCKET_URL = getBaseURL();
 
 console.log(`🔗 Conectando ao servidor: ${SOCKET_URL}`);
+console.log(`📡 API Base URL: ${API_BASE_URL}`);
 
 export interface WhatsAppClient {
   clientId: string;
@@ -61,10 +62,12 @@ export interface MessageData {
 class WhatsAppMultiClientService {
   private socket: Socket | null = null;
   private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 10;
+  private maxReconnectAttempts: number = 5;
 
   constructor() {
     console.log('🚀 Inicializando WhatsApp Multi-Client Service');
+    console.log(`🌐 Ambiente detectado: ${window.location.hostname}`);
+    console.log(`🔗 Servidor alvo: ${getBaseURL()}`);
   }
 
   // Conectar ao WebSocket com retry automático
@@ -178,7 +181,7 @@ class WhatsAppMultiClientService {
       console.log(`📡 Buscando clientes: ${API_BASE_URL}/clients`);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       const response = await fetch(`${API_BASE_URL}/clients`, {
         signal: controller.signal,
@@ -364,7 +367,7 @@ class WhatsAppMultiClientService {
       console.log(`🔍 Verificando saúde do servidor: ${healthURL}`);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       
       const response = await fetch(healthURL, {
         signal: controller.signal,
