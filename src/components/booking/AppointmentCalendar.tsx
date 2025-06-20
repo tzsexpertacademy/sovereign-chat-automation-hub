@@ -1,22 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Eye, Edit, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { appointmentsService, type AppointmentWithDetails } from "@/services/appointmentsService";
-import 'react-big-calendar/lib/css/react-big-calendar.css';
-
-const localizer = dateFnsLocalizer({
-  format,
-  parse,
-  startOfWeek,
-  getDay,
-  locales: { 'pt-BR': ptBR },
-});
+import SimpleCalendar from './SimpleCalendar';
 
 interface AppointmentCalendarProps {
   clientId: string;
@@ -65,54 +55,16 @@ const AppointmentCalendar: React.FC<AppointmentCalendarProps> = ({
     }
   };
 
-  const events = appointments.map(appointment => ({
-    id: appointment.id,
-    title: `${appointment.service.name} - ${appointment.customer.name}`,
-    start: new Date(`${appointment.appointment_date}T${appointment.start_time}`),
-    end: new Date(`${appointment.appointment_date}T${appointment.end_time}`),
-    resource: appointment,
-  }));
-
-  const eventStyleGetter = (event: any) => {
-    const appointment = event.resource as AppointmentWithDetails;
-    let backgroundColor = appointment.service.color;
-    
-    switch (appointment.status) {
-      case 'confirmed':
-        backgroundColor = '#22c55e';
-        break;
-      case 'cancelled':
-        backgroundColor = '#ef4444';
-        break;
-      case 'completed':
-        backgroundColor = '#6b7280';
-        break;
-      case 'no_show':
-        backgroundColor = '#f59e0b';
-        break;
-    }
-
-    return {
-      style: {
-        backgroundColor,
-        borderRadius: '5px',
-        opacity: 0.8,
-        color: 'white',
-        border: '0px',
-        display: 'block'
-      }
-    };
-  };
-
-  const handleSelectEvent = (event: any) => {
-    if (onEditAppointment) {
-      onEditAppointment(event.resource);
-    }
-  };
-
-  const handleSelectSlot = (slotInfo: any) => {
+  const handleDateSelect = (date: Date) => {
+    setCurrentDate(date);
     if (onCreateAppointment) {
       onCreateAppointment();
+    }
+  };
+
+  const handleAppointmentClick = (appointment: AppointmentWithDetails) => {
+    if (onEditAppointment) {
+      onEditAppointment(appointment);
     }
   };
 
@@ -127,49 +79,27 @@ const AppointmentCalendar: React.FC<AppointmentCalendarProps> = ({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Agenda de Atendimentos</CardTitle>
-          {onCreateAppointment && (
-            <Button onClick={onCreateAppointment}>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Agendamento
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div style={{ height: '600px' }}>
-          <Calendar
-            localizer={localizer}
-            events={events}
-            startAccessor="start"
-            endAccessor="end"
-            onSelectEvent={handleSelectEvent}
-            onSelectSlot={handleSelectSlot}
-            selectable
-            eventPropGetter={eventStyleGetter}
-            messages={{
-              next: "Próximo",
-              previous: "Anterior",
-              today: "Hoje",
-              month: "Mês",
-              week: "Semana",
-              day: "Dia",
-              agenda: "Agenda",
-              date: "Data",
-              time: "Hora",
-              event: "Evento",
-              noEventsInRange: "Não há eventos neste período",
-              showMore: (total) => `+ ${total} mais`
-            }}
-            culture="pt-BR"
-            onNavigate={(date) => setCurrentDate(date)}
-          />
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Agenda de Atendimentos</CardTitle>
+            {onCreateAppointment && (
+              <Button onClick={onCreateAppointment}>
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Agendamento
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+      </Card>
+      
+      <SimpleCalendar
+        appointments={appointments}
+        onDateSelect={handleDateSelect}
+        onAppointmentClick={handleAppointmentClick}
+      />
+    </div>
   );
 };
 
