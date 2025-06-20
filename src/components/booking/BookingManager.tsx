@@ -7,6 +7,7 @@ import AppointmentCalendar from './AppointmentCalendar';
 import ProfessionalsManager from './ProfessionalsManager';
 import ServicesManager from './ServicesManager';
 import BookingSettings from './BookingSettings';
+import WorkScheduleManager from './WorkScheduleManager';
 
 interface BookingManagerProps {
   clientId: string;
@@ -62,19 +63,7 @@ const BookingManager: React.FC<BookingManagerProps> = ({ clientId }) => {
         </TabsContent>
 
         <TabsContent value="schedules" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Horários de Trabalho</CardTitle>
-              <CardDescription>
-                Configure os horários de trabalho dos profissionais no YumerFlow
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Em desenvolvimento - Configuração de horários por profissional
-              </p>
-            </CardContent>
-          </Card>
+          <WorkScheduleManager clientId={clientId} />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
