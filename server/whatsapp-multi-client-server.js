@@ -46,9 +46,13 @@ const swaggerOptions = {
         url: `http://localhost:${PORT}`,
         description: 'Servidor de desenvolvimento',
       },
+      {
+        url: `http://146.59.227.248:${PORT}`,
+        description: 'Servidor de produção',
+      },
     ],
   },
-  apis: ['./server/whatsapp-multi-client-server.js'],
+  apis: ['./whatsapp-multi-client-server.js'],
 };
 
 const specs = swaggerJsdoc(swaggerOptions);
@@ -72,10 +76,15 @@ class WhatsAppClientManager {
     this.status = 'disconnected';
     this.phoneNumber = null;
     this.sessionPath = path.join(CLIENTS_DIR, clientId);
+    this.retryCount = 0;
+    this.maxRetries = 3;
+    this.isDestroying = false;
   }
 
   async initialize() {
     try {
+      if (this.isDestroying) return false;
+      
       this.client = new Client({
         authStrategy: new LocalAuth({
           clientId: this.clientId,
@@ -91,8 +100,11 @@ class WhatsAppClientManager {
             '--no-first-run',
             '--no-zygote',
             '--single-process',
-            '--disable-gpu'
-          ]
+            '--disable-gpu',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor'
+          ],
+          timeout: 60000
         }
       });
 
@@ -112,6 +124,7 @@ class WhatsAppClientManager {
   setupEventListeners() {
     this.client.on('qr', async (qr) => {
       try {
+        if (this.isDestroying) return;
         this.qrCode = await qrcode.toDataURL(qr);
         this.status = 'qr_ready';
         console.log(`[${this.clientId}] QR Code gerado`);
@@ -122,14 +135,17 @@ class WhatsAppClientManager {
     });
 
     this.client.on('ready', async () => {
+      if (this.isDestroying) return;
       this.status = 'connected';
       const info = this.client.info;
       this.phoneNumber = info.wid.user;
+      this.retryCount = 0;
       console.log(`[${this.clientId}] Conectado: ${this.phoneNumber}`);
       this.emitStatusUpdate();
     });
 
     this.client.on('authenticated', () => {
+      if (this.isDestroying) return;
       console.log(`[${this.clientId}] Autenticado com sucesso`);
       this.status = 'authenticated';
       this.emitStatusUpdate();
@@ -142,14 +158,29 @@ class WhatsAppClientManager {
     });
 
     this.client.on('disconnected', (reason) => {
+      if (this.isDestroying) return;
       console.log(`[${this.clientId}] Desconectado:`, reason);
       this.status = 'disconnected';
       this.phoneNumber = null;
       this.qrCode = null;
       this.emitStatusUpdate();
+      
+      // Auto-reconnect com backoff
+      if (this.retryCount < this.maxRetries && reason !== 'LOGOUT') {
+        this.retryCount++;
+        const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
+        console.log(`[${this.clientId}] Tentando reconectar em ${delay}ms (tentativa ${this.retryCount}/${this.maxRetries})`);
+        setTimeout(() => {
+          if (!this.isDestroying) {
+            this.initialize();
+          }
+        }, delay);
+      }
     });
 
     this.client.on('message', async (message) => {
+      if (this.isDestroying) return;
+      
       const messageData = {
         id: message.id._serialized,
         from: message.from,
@@ -186,7 +217,7 @@ class WhatsAppClientManager {
 
   async sendMessage(to, message, mediaUrl = null) {
     try {
-      if (!this.client || this.status !== 'connected') {
+      if (!this.client || this.status !== 'connected' || this.isDestroying) {
         throw new Error('Cliente não conectado');
       }
 
@@ -216,7 +247,7 @@ class WhatsAppClientManager {
 
   async getChats() {
     try {
-      if (!this.client || this.status !== 'connected') {
+      if (!this.client || this.status !== 'connected' || this.isDestroying) {
         throw new Error('Cliente não conectado');
       }
 
@@ -243,7 +274,7 @@ class WhatsAppClientManager {
 
   async getChatMessages(chatId, limit = 50) {
     try {
-      if (!this.client || this.status !== 'connected') {
+      if (!this.client || this.status !== 'connected' || this.isDestroying) {
         throw new Error('Cliente não conectado');
       }
 
@@ -268,6 +299,9 @@ class WhatsAppClientManager {
 
   async disconnect() {
     try {
+      this.isDestroying = true;
+      this.retryCount = this.maxRetries; // Evitar auto-reconnect
+      
       if (this.client) {
         await this.client.destroy();
         this.client = null;
@@ -298,12 +332,42 @@ class WhatsAppClientManager {
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     Client:
+ *       type: object
+ *       properties:
+ *         clientId:
+ *           type: string
+ *         status:
+ *           type: string
+ *           enum: [connected, qr_ready, connecting, authenticated, disconnected, error, auth_failed]
+ *         phoneNumber:
+ *           type: string
+ *         hasQrCode:
+ *           type: boolean
+ */
+
+/**
+ * @swagger
  * /api/clients:
  *   get:
  *     summary: Lista todos os clientes
+ *     tags: [Clients]
  *     responses:
  *       200:
  *         description: Lista de clientes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 clients:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Client'
  */
 app.get('/api/clients', (req, res) => {
   const clients = [];
@@ -323,12 +387,19 @@ app.get('/api/clients', (req, res) => {
  * /api/clients/{clientId}/connect:
  *   post:
  *     summary: Conecta um cliente WhatsApp
+ *     tags: [Clients]
  *     parameters:
  *       - in: path
  *         name: clientId
  *         required: true
  *         schema:
  *           type: string
+ *         description: ID único do cliente
+ *     responses:
+ *       200:
+ *         description: Cliente conectado com sucesso
+ *       500:
+ *         description: Erro ao conectar cliente
  */
 app.post('/api/clients/:clientId/connect', async (req, res) => {
   const { clientId } = req.params;
@@ -377,6 +448,13 @@ app.post('/api/clients/:clientId/connect', async (req, res) => {
  * /api/clients/{clientId}/disconnect:
  *   post:
  *     summary: Desconecta um cliente WhatsApp
+ *     tags: [Clients]
+ *     parameters:
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
  */
 app.post('/api/clients/:clientId/disconnect', async (req, res) => {
   const { clientId } = req.params;
@@ -411,6 +489,13 @@ app.post('/api/clients/:clientId/disconnect', async (req, res) => {
  * /api/clients/{clientId}/status:
  *   get:
  *     summary: Obtém status de um cliente
+ *     tags: [Clients]
+ *     parameters:
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
  */
 app.get('/api/clients/:clientId/status', (req, res) => {
   const { clientId } = req.params;
@@ -437,6 +522,26 @@ app.get('/api/clients/:clientId/status', (req, res) => {
  * /api/clients/{clientId}/send-message:
  *   post:
  *     summary: Envia mensagem
+ *     tags: [Messages]
+ *     parameters:
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               to:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *               mediaUrl:
+ *                 type: string
  */
 app.post('/api/clients/:clientId/send-message', async (req, res) => {
   const { clientId } = req.params;
@@ -467,6 +572,13 @@ app.post('/api/clients/:clientId/send-message', async (req, res) => {
  * /api/clients/{clientId}/chats:
  *   get:
  *     summary: Lista chats de um cliente
+ *     tags: [Chats]
+ *     parameters:
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
  */
 app.get('/api/clients/:clientId/chats', async (req, res) => {
   const { clientId } = req.params;
@@ -496,6 +608,23 @@ app.get('/api/clients/:clientId/chats', async (req, res) => {
  * /api/clients/{clientId}/chats/{chatId}/messages:
  *   get:
  *     summary: Lista mensagens de um chat
+ *     tags: [Messages]
+ *     parameters:
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: chatId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
  */
 app.get('/api/clients/:clientId/chats/:chatId/messages', async (req, res) => {
   const { clientId, chatId } = req.params;
@@ -546,7 +675,19 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    activeClients: activeClients.size 
+    activeClients: activeClients.size,
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    version: '1.0.0'
+  });
+});
+
+// Middleware de tratamento de erros
+app.use((err, req, res, next) => {
+  console.error('Erro não tratado:', err);
+  res.status(500).json({
+    success: false,
+    error: 'Erro interno do servidor'
   });
 });
 
@@ -554,23 +695,51 @@ app.get('/health', (req, res) => {
 async function startServer() {
   await ensureDirectoryExists();
   
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor WhatsApp Multi-Cliente rodando na porta ${PORT}`);
     console.log(`📚 Swagger API: http://localhost:${PORT}/api-docs`);
     console.log(`❤️ Health Check: http://localhost:${PORT}/health`);
+    console.log(`🌐 Acesso externo: http://146.59.227.248:${PORT}`);
   });
 }
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\nEncerrando servidor...');
+// Graceful shutdown melhorado
+const gracefulShutdown = async (signal) => {
+  console.log(`\n${signal} recebido. Encerrando servidor graciosamente...`);
   
+  // Parar de aceitar novas conexões
+  server.close(() => {
+    console.log('Servidor HTTP fechado');
+  });
+  
+  // Desconectar todos os clientes WhatsApp
+  const disconnectPromises = [];
   for (const [clientId, manager] of activeClients) {
     console.log(`Desconectando cliente ${clientId}...`);
-    await manager.disconnect();
+    disconnectPromises.push(manager.disconnect());
+  }
+  
+  try {
+    await Promise.all(disconnectPromises);
+    console.log('Todos os clientes WhatsApp desconectados');
+  } catch (error) {
+    console.error('Erro ao desconectar clientes:', error);
   }
   
   process.exit(0);
+};
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Tratamento de erros não capturados
+process.on('uncaughtException', (error) => {
+  console.error('Exceção não capturada:', error);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Promise rejeitada não tratada:', reason, 'Promise:', promise);
 });
 
 startServer().catch(console.error);

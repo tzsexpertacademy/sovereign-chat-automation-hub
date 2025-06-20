@@ -22,17 +22,19 @@ fi
 # Parar servidor anterior se estiver rodando
 echo "🛑 Parando servidores anteriores..."
 pkill -f "whatsapp-multi-client-server.js" || true
+
+# Verificar se PID file existe e parar processo
 if [ -f "logs/whatsapp-server.pid" ]; then
     PID=$(cat logs/whatsapp-server.pid)
     if ps -p $PID > /dev/null 2>&1; then
         echo "⏹️ Parando processo PID: $PID"
-        kill $PID
-        sleep 3
+        kill -TERM $PID
+        sleep 5
         
         # Verificar se ainda está rodando
         if ps -p $PID > /dev/null 2>&1; then
             echo "⚠️ Processo resistente, forçando parada..."
-            kill -9 $PID
+            kill -KILL $PID
             sleep 2
         fi
     fi
@@ -62,7 +64,7 @@ fi
 if [ ! -d "server/node_modules" ]; then
     echo "📦 Instalando dependências do servidor..."
     cd server
-    npm install
+    npm install --production
     cd ..
 fi
 
@@ -83,13 +85,27 @@ export SESSIONS_PATH=../whatsapp-sessions
 export LOGS_PATH=../logs
 export PUPPETEER_HEADLESS=true
 export PUPPETEER_NO_SANDBOX=true
+export NODE_OPTIONS="--max-old-space-size=2048"
 
-# Iniciar servidor em background
+# Limpeza de memória do Chrome
+export PUPPETEER_ARGS="--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-accelerated-2d-canvas --no-first-run --no-zygote --single-process --disable-gpu --disable-web-security --disable-features=VizDisplayCompositor --memory-pressure-off --max_old_space_size=2048"
+
+# Iniciar servidor em background com PM2 ou nohup
 echo "🚀 Iniciando servidor WhatsApp Multi-Cliente na porta 4000..."
 echo "📅 Data/Hora: $(date)"
 
-nohup node whatsapp-multi-client-server.js > ../logs/whatsapp-multi-client.log 2>&1 &
-SERVER_PID=$!
+# Verificar se PM2 está disponível
+if command -v pm2 &> /dev/null; then
+    echo "🔧 Usando PM2 para gerenciar o processo..."
+    pm2 delete whatsapp-multi-client 2>/dev/null || true
+    pm2 start whatsapp-multi-client-server.js --name "whatsapp-multi-client" --log ../logs/whatsapp-multi-client.log --error ../logs/whatsapp-error.log --out ../logs/whatsapp-out.log
+    pm2 save
+    SERVER_PID=$(pm2 jlist | jq -r '.[] | select(.name=="whatsapp-multi-client") | .pid')
+else
+    echo "🔧 Usando nohup para gerenciar o processo..."
+    nohup node whatsapp-multi-client-server.js > ../logs/whatsapp-multi-client.log 2>&1 &
+    SERVER_PID=$!
+fi
 
 # Salvar PID
 echo $SERVER_PID > ../logs/whatsapp-server.pid
@@ -98,23 +114,23 @@ echo $SERVER_PID > ../logs/whatsapp-server.pid
 cd ..
 
 echo "⏳ Aguardando servidor inicializar..."
-sleep 10
+sleep 15
 
 # Verificar se processo ainda está rodando
 if ! ps -p $SERVER_PID > /dev/null 2>&1; then
     echo "❌ Processo morreu após inicialização. Verificando logs..."
-    tail -30 logs/whatsapp-multi-client.log
+    tail -50 logs/whatsapp-multi-client.log
     exit 1
 fi
 
 # Verificar se servidor está respondendo
-MAX_ATTEMPTS=15
+MAX_ATTEMPTS=20
 ATTEMPT=1
 
 while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
     echo "🔍 Tentativa $ATTEMPT/$MAX_ATTEMPTS - Verificando servidor..."
     
-    if curl -s --max-time 5 http://localhost:4000/health > /dev/null; then
+    if curl -s --max-time 10 http://localhost:4000/health > /dev/null; then
         echo "✅ Servidor WhatsApp Multi-Cliente iniciado com sucesso!"
         echo ""
         echo "📊 Informações do servidor:"
@@ -125,7 +141,7 @@ while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
         echo "🌐 URLs de acesso:"
         echo "  • Health Check: http://$(hostname -I | awk '{print $1}'):4000/health"
         echo "  • API Swagger: http://$(hostname -I | awk '{print $1}'):4000/api-docs"
-        echo "  • Frontend Admin: http://$(hostname -I | awk '{print $1}'):5173/admin/instances"
+        echo "  • Frontend Admin: http://$(hostname -I | awk '{print $1}'):8080/admin/instances"
         echo ""
         echo "📝 Logs em tempo real:"
         echo "  tail -f logs/whatsapp-multi-client.log"
@@ -145,7 +161,7 @@ while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
     fi
     
     echo "⏳ Servidor ainda não está respondendo, aguardando..."
-    sleep 3
+    sleep 5
     ATTEMPT=$((ATTEMPT + 1))
 done
 
@@ -160,4 +176,6 @@ echo "💡 Dicas de troubleshooting:"
 echo "1. Verifique se a porta 4000 não está sendo usada: lsof -i :4000"
 echo "2. Verifique os logs: cat logs/whatsapp-multi-client.log"
 echo "3. Verifique se o arquivo do servidor existe: ls -la server/whatsapp-multi-client-server.js"
+echo "4. Verifique memória disponível: free -h"
+echo "5. Verifique espaço em disco: df -h"
 exit 1
