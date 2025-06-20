@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,12 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, Image, Mic, Download, Play, Pause } from "lucide-react";
+import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, Image, Mic, Download, Play, Pause, RefreshCw, Wifi } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { whatsappService, type ChatData, type MessageData } from "@/services/whatsappMultiClient";
+import { useToast } from "@/hooks/use-toast";
 
 const ChatInterface = () => {
   const { clientId } = useParams<{ clientId: string }>();
+  const { toast } = useToast();
   const [selectedChat, setSelectedChat] = useState<string>("");
   const [newMessage, setNewMessage] = useState("");
   const [chats, setChats] = useState<ChatData[]>([]);
@@ -24,60 +25,127 @@ const ChatInterface = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
 
+  const MAX_RETRY_ATTEMPTS = 3;
+  const RETRY_DELAY = 2000;
+
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const checkConnectionStatus = async () => {
+    if (!clientId) return false;
+    
+    try {
+      const clientStatus = await whatsappService.getClientStatus(clientId);
+      console.log('Status da conexão:', clientStatus);
+      return clientStatus.status === 'connected';
+    } catch (error) {
+      console.error('Erro ao verificar status:', error);
+      return false;
+    }
+  };
+
+  const loadChatsWithRetry = async (attempt = 0): Promise<void> => {
+    if (!clientId) return;
+
+    try {
+      console.log(`Tentativa ${attempt + 1} de carregar chats para cliente:`, clientId);
+      
+      // Verificar se o cliente está conectado antes de tentar carregar chats
+      const isConnected = await checkConnectionStatus();
+      if (!isConnected) {
+        throw new Error('WhatsApp não está conectado. Por favor, conecte primeiro na aba "Conexão".');
+      }
+
+      const chatsData = await whatsappService.getChats(clientId);
+      console.log('Chats carregados com sucesso:', chatsData);
+      
+      setChats(chatsData);
+      setError(null);
+      setRetryCount(0);
+      
+      if (chatsData.length > 0 && !selectedChat) {
+        setSelectedChat(chatsData[0].id);
+      }
+    } catch (err: any) {
+      console.error(`Erro na tentativa ${attempt + 1}:`, err);
+      
+      const errorMessage = err.message || 'Erro desconhecido';
+      
+      // Se o erro é de serialização, isso indica problema no backend
+      if (errorMessage.includes('_serialized') || errorMessage.includes('Evaluation failed')) {
+        if (attempt < MAX_RETRY_ATTEMPTS - 1) {
+          setRetryCount(attempt + 1);
+          setIsRetrying(true);
+          setError(`Erro no servidor WhatsApp. Tentando novamente... (${attempt + 1}/${MAX_RETRY_ATTEMPTS})`);
+          
+          await delay(RETRY_DELAY * (attempt + 1)); // Backoff exponencial
+          return loadChatsWithRetry(attempt + 1);
+        } else {
+          setError('Erro persistente no servidor WhatsApp. O backend está com problemas na serialização dos dados de chat. Tente reconectar o WhatsApp ou contate o suporte.');
+        }
+      } else if (errorMessage.includes('não está conectado')) {
+        setError('WhatsApp não conectado. Vá para a aba "Conexão" para conectar seu WhatsApp primeiro.');
+      } else {
+        setError(`Erro ao carregar conversas: ${errorMessage}`);
+      }
+      
+      setRetryCount(attempt);
+      setIsRetrying(false);
+    }
+  };
+
   useEffect(() => {
     if (!clientId) return;
 
-    const loadChats = async () => {
+    const initializeChat = async () => {
       try {
         setLoading(true);
         setError(null);
-        console.log('Carregando chats para cliente:', clientId);
+        setIsRetrying(false);
         
-        const chatsData = await whatsappService.getChats(clientId);
-        console.log('Chats carregados:', chatsData);
+        // Conectar ao WebSocket
+        const socket = whatsappService.connectSocket();
+        whatsappService.joinClientRoom(clientId);
+
+        // Configurar listeners
+        whatsappService.onClientMessage(clientId, (message: MessageData) => {
+          console.log('Nova mensagem recebida:', message);
+          setMessages(prev => [...prev, message]);
+          
+          // Atualizar preview do chat
+          setChats(prev => prev.map(chat => 
+            chat.id === message.from || chat.id === message.to
+              ? { 
+                  ...chat, 
+                  lastMessage: {
+                    body: message.body,
+                    type: message.type,
+                    timestamp: message.timestamp,
+                    fromMe: message.fromMe
+                  },
+                  timestamp: message.timestamp
+                }
+              : chat
+          ));
+        });
+
+        // Carregar chats
+        await loadChatsWithRetry();
         
-        setChats(chatsData);
-        
-        if (chatsData.length > 0) {
-          setSelectedChat(chatsData[0].id);
-        }
-      } catch (err) {
-        console.error('Erro ao carregar chats:', err);
-        setError('Erro ao carregar conversas. Verifique se o WhatsApp está conectado e tente novamente.');
+      } catch (err: any) {
+        console.error('Erro ao inicializar chat:', err);
+        setError(err.message || 'Erro ao inicializar interface de chat');
       } finally {
         setLoading(false);
       }
     };
 
-    loadChats();
-
-    const socket = whatsappService.connectSocket();
-    whatsappService.joinClientRoom(clientId);
-
-    whatsappService.onClientMessage(clientId, (message: MessageData) => {
-      console.log('Nova mensagem recebida:', message);
-      setMessages(prev => [...prev, message]);
-      
-      // Atualiza o último preview do chat
-      setChats(prev => prev.map(chat => 
-        chat.id === message.from || chat.id === message.to
-          ? { 
-              ...chat, 
-              lastMessage: {
-                body: message.body,
-                type: message.type,
-                timestamp: message.timestamp,
-                fromMe: message.fromMe
-              },
-              timestamp: message.timestamp
-            }
-          : chat
-      ));
-    });
+    initializeChat();
 
     return () => {
       whatsappService.removeListener(`message_${clientId}`);
@@ -104,6 +172,14 @@ const ChatInterface = () => {
     loadMessages();
   }, [selectedChat, clientId, messageLimit]);
 
+  const handleRetryLoadChats = async () => {
+    setLoading(true);
+    setError(null);
+    setRetryCount(0);
+    await loadChatsWithRetry();
+    setLoading(false);
+  };
+
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && !selectedFile) || !selectedChat || !clientId) return;
 
@@ -111,17 +187,40 @@ const ChatInterface = () => {
       console.log('Enviando mensagem:', { to: selectedChat, message: newMessage, file: selectedFile?.name });
       
       if (selectedFile) {
-        // Para arquivos de mídia, você precisará implementar upload de arquivo
-        const mediaUrl = URL.createObjectURL(selectedFile);
-        await whatsappService.sendMessage(clientId, selectedChat, newMessage || "📎 Arquivo enviado", mediaUrl);
+        // Para arquivos de mídia
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('to', selectedChat);
+        formData.append('caption', newMessage || '');
+
+        // Determinar o tipo de mídia
+        let mediaType = 'document';
+        if (selectedFile.type.startsWith('image/')) {
+          mediaType = 'image';
+        } else if (selectedFile.type.startsWith('audio/')) {
+          mediaType = 'audio';
+        }
+
+        await whatsappService.sendMessage(clientId, selectedChat, newMessage || `📎 ${selectedFile.name}`, undefined, selectedFile);
         setSelectedFile(null);
       } else {
         await whatsappService.sendMessage(clientId, selectedChat, newMessage);
       }
       
       setNewMessage("");
-    } catch (err) {
+      
+      toast({
+        title: "Mensagem enviada",
+        description: "Sua mensagem foi enviada com sucesso",
+      });
+      
+    } catch (err: any) {
       console.error('Erro ao enviar mensagem:', err);
+      toast({
+        title: "Erro ao enviar",
+        description: err.message || "Falha ao enviar mensagem",
+        variant: "destructive",
+      });
     }
   };
 
@@ -226,18 +325,19 @@ const ChatInterface = () => {
     return new Date(timestamp).toLocaleDateString('pt-BR');
   };
 
-  if (loading) {
+  if (loading && !isRetrying) {
     return (
       <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
           <p className="text-gray-600">Carregando conversas...</p>
+          <p className="text-sm text-gray-500 mt-2">Conectando ao WhatsApp...</p>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !isRetrying) {
     return (
       <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
         <div className="text-center max-w-md">
@@ -246,9 +346,26 @@ const ChatInterface = () => {
             <h3 className="font-semibold">Erro ao Carregar Conversas</h3>
           </div>
           <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={() => window.location.reload()}>
-            Tentar Novamente
-          </Button>
+          <div className="space-y-2">
+            <Button onClick={handleRetryLoadChats} disabled={loading}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Tentar Novamente
+            </Button>
+            {error.includes('não está conectado') && (
+              <Button 
+                variant="outline" 
+                onClick={() => window.location.href = `/client/${clientId}/connect`}
+              >
+                <Wifi className="w-4 h-4 mr-2" />
+                Ir para Conexão
+              </Button>
+            )}
+          </div>
+          {retryCount > 0 && (
+            <p className="text-sm text-gray-500 mt-2">
+              Tentativas realizadas: {retryCount}/{MAX_RETRY_ATTEMPTS}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -260,19 +377,40 @@ const ChatInterface = () => {
       <Card className="col-span-4 flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex justify-between items-center">
-            <CardTitle className="text-lg">Conversas ({filteredChats.length})</CardTitle>
-            <Select value={messageLimit.toString()} onValueChange={(value) => setMessageLimit(Number(value))}>
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
-                <SelectItem value="200">200</SelectItem>
-                <SelectItem value="500">500</SelectItem>
-              </SelectContent>
-            </Select>
+            <CardTitle className="text-lg">
+              Conversas ({filteredChats.length})
+              {isRetrying && (
+                <span className="ml-2 text-sm text-yellow-600">
+                  <RefreshCw className="w-3 h-3 inline animate-spin mr-1" />
+                  Tentando...
+                </span>
+              )}
+            </CardTitle>
+            <div className="flex items-center space-x-2">
+              <Select value={messageLimit.toString()} onValueChange={(value) => setMessageLimit(Number(value))}>
+                <SelectTrigger className="w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="200">200</SelectItem>
+                  <SelectItem value="500">500</SelectItem>
+                  <SelectItem value="1000">1000</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={handleRetryLoadChats}
+                disabled={loading || isRetrying}
+                title="Recarregar conversas"
+              >
+                <RefreshCw className={`w-4 h-4 ${(loading || isRetrying) ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -288,15 +426,31 @@ const ChatInterface = () => {
           <ScrollArea className="h-full">
             {filteredChats.length === 0 ? (
               <div className="p-4 text-center text-gray-500">
-                <p>Nenhuma conversa encontrada</p>
-                <p className="text-sm">Verifique se o WhatsApp está conectado</p>
+                {chats.length === 0 ? (
+                  <>
+                    <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                    <p>Nenhuma conversa encontrada</p>
+                    <p className="text-sm">Verifique se o WhatsApp está conectado</p>
+                    {isRetrying && (
+                      <p className="text-sm text-yellow-600 mt-2">
+                        <RefreshCw className="w-3 h-3 inline animate-spin mr-1" />
+                        Carregando conversas...
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                    <p>Nenhuma conversa encontrada para "{searchTerm}"</p>
+                  </>
+                )}
               </div>
             ) : (
               filteredChats.map((chat) => (
                 <div
                   key={chat.id}
                   onClick={() => setSelectedChat(chat.id)}
-                  className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${
+                  className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
                     selectedChat === chat.id ? 'bg-green-50 border-r-2 border-r-green-500' : ''
                   }`}
                 >

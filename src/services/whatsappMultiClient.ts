@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL } from '@/config/environment';
 
@@ -235,38 +234,83 @@ class WhatsAppMultiClientService {
     }
   }
 
-  async sendMessage(clientId: string, to: string, message: string, mediaUrl?: string): Promise<any> {
+  async sendMessage(clientId: string, to: string, message: string, mediaUrl?: string, file?: File): Promise<any> {
     try {
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, message, mediaUrl })
-      });
+      console.log('📤 Enviando mensagem:', { clientId, to, message: message.substring(0, 50), hasFile: !!file });
       
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao enviar mensagem');
+      if (file) {
+        // Envio de arquivo
+        const formData = new FormData();
+        formData.append('to', to);
+        formData.append('file', file);
+        if (message) {
+          formData.append('caption', message);
+        }
+
+        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-media`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Erro ao enviar arquivo');
+        }
+        
+        console.log('✅ Arquivo enviado com sucesso');
+        return data;
+      } else {
+        // Envio de mensagem de texto
+        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to, message, mediaUrl })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Erro ao enviar mensagem');
+        }
+        
+        console.log('✅ Mensagem enviada com sucesso');
+        return data;
       }
-      
-      return data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro ao enviar mensagem:', error);
       throw error;
     }
   }
 
-  async getChats(clientId: string): Promise<ChatData[]> {
+  async getChats(clientId: string, retryCount = 0): Promise<ChatData[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/chats`);
+      console.log(`📡 GET ${API_BASE_URL}/clients/${clientId}/chats (tentativa ${retryCount + 1})`);
+      
+      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/chats`, {
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
       
       if (!data.success) {
+        // Se é erro de serialização, incluir informação adicional
+        if (data.error && data.error.includes('_serialized')) {
+          throw new Error(`Erro de serialização no backend: ${data.error}`);
+        }
         throw new Error(data.error || 'Erro ao buscar chats');
       }
       
+      console.log(`✅ ${data.chats.length} chats encontrados`);
       return data.chats;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro ao buscar chats:', error);
       throw error;
     }
