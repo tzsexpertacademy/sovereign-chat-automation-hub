@@ -389,6 +389,279 @@ export type Database = {
           },
         ]
       }
+      funnel_lead_history: {
+        Row: {
+          created_at: string
+          from_stage_id: string | null
+          id: string
+          lead_id: string
+          moved_by: string
+          reason: string | null
+          to_stage_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          from_stage_id?: string | null
+          id?: string
+          lead_id: string
+          moved_by?: string
+          reason?: string | null
+          to_stage_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          from_stage_id?: string | null
+          id?: string
+          lead_id?: string
+          moved_by?: string
+          reason?: string | null
+          to_stage_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_lead_history_from_stage_id_fkey"
+            columns: ["from_stage_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funnel_lead_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funnel_lead_history_to_stage_id_fkey"
+            columns: ["to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      funnel_lead_tags: {
+        Row: {
+          assigned_by: string
+          created_at: string
+          id: string
+          lead_id: string
+          tag_id: string
+        }
+        Insert: {
+          assigned_by?: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          tag_id: string
+        }
+        Update: {
+          assigned_by?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_lead_tags_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funnel_lead_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      funnel_leads: {
+        Row: {
+          chat_id: string
+          client_id: string
+          conversion_probability: number | null
+          created_at: string
+          current_queue_id: string | null
+          current_stage_id: string | null
+          custom_fields: Json | null
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          instance_id: string
+          is_active: boolean
+          last_interaction: string
+          lead_source: string
+          lead_value: number | null
+          notes: Json | null
+          priority: number
+          stage_entered_at: string
+          updated_at: string
+        }
+        Insert: {
+          chat_id: string
+          client_id: string
+          conversion_probability?: number | null
+          created_at?: string
+          current_queue_id?: string | null
+          current_stage_id?: string | null
+          custom_fields?: Json | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          instance_id: string
+          is_active?: boolean
+          last_interaction?: string
+          lead_source?: string
+          lead_value?: number | null
+          notes?: Json | null
+          priority?: number
+          stage_entered_at?: string
+          updated_at?: string
+        }
+        Update: {
+          chat_id?: string
+          client_id?: string
+          conversion_probability?: number | null
+          created_at?: string
+          current_queue_id?: string | null
+          current_stage_id?: string | null
+          custom_fields?: Json | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          instance_id?: string
+          is_active?: boolean
+          last_interaction?: string
+          lead_source?: string
+          lead_value?: number | null
+          notes?: Json | null
+          priority?: number
+          stage_entered_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_leads_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funnel_leads_current_queue_id_fkey"
+            columns: ["current_queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funnel_leads_current_stage_id_fkey"
+            columns: ["current_stage_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      funnel_stages: {
+        Row: {
+          auto_move_conditions: Json | null
+          client_id: string
+          color: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          position: number
+          updated_at: string
+        }
+        Insert: {
+          auto_move_conditions?: Json | null
+          client_id: string
+          color?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          position?: number
+          updated_at?: string
+        }
+        Update: {
+          auto_move_conditions?: Json | null
+          client_id?: string
+          color?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          position?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_stages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      funnel_tags: {
+        Row: {
+          client_id: string
+          color: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          position: number
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          color?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          position?: number
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          color?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          position?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_tags_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       instance_queue_connections: {
         Row: {
           created_at: string
