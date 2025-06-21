@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, MessageSquare, Download, Upload, Bot, User, Wifi, Tag } from "lucide-react";
+import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import TicketChatInterface from './TicketChatInterface';
@@ -24,7 +25,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const { toast } = useToast();
   const { chatId } = useParams();
 
-  // Hook para tempo real com assistente integrado
+  // Hook para tempo real
   const {
     tickets,
     isLoading: ticketsLoading,
@@ -66,10 +67,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
         description: `${result.success} conversas importadas com sucesso. ${result.errors > 0 ? `${result.errors} erros encontrados.` : ''}`
       });
 
-      // Recarregar tickets após importação
-      setTimeout(() => {
-        reloadTickets();
-      }, 2000);
+      setTimeout(reloadTickets, 2000);
 
     } catch (error: any) {
       console.error('Erro na importação:', error);
@@ -86,7 +84,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const getDisplayName = useCallback((ticket: ConversationTicket) => {
     if (ticket.customer?.name && 
         ticket.customer.name !== `Contato ${ticket.customer.phone}` &&
-        !ticket.customer.name.startsWith('Contato ')) {
+        !ticket.customer.name.startsWith('Contato ') &&
+        !ticket.customer.name.match(/^\(\d+\)/)) {
       return ticket.customer.name;
     }
     
@@ -94,6 +93,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       const nameFromTitle = ticket.title.replace('Conversa com ', '').trim();
       if (nameFromTitle && 
           !nameFromTitle.startsWith('Contato ') && 
+          !nameFromTitle.match(/^\(\d+\)/) &&
           nameFromTitle !== ticket.customer?.phone) {
         return nameFromTitle;
       }
@@ -111,11 +111,11 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     return 'Contato sem nome';
   }, []);
 
-  // Função para renderizar etiquetas do ticket
+  // Renderizar badges do ticket
   const renderTicketBadges = (ticket: ConversationTicket) => {
     const badges = [];
 
-    // Status da conexão - sempre mostra se tem instance_id
+    // Status da conexão
     if (ticket.instance_id) {
       badges.push(
         <Badge key="connection" variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
@@ -125,31 +125,23 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
-    // Verificar se há usuário humano atribuído
+    // Status do atendimento
     const isHumanAssigned = ticket.status === 'pending' || 
                            ticket.status === 'resolved' ||
-                           ticket.status === 'closed' ||
-                           (ticket.title && ticket.title.includes('Atendido por'));
+                           ticket.status === 'closed';
 
-    // Fila ativa - mostrar nome da fila e assistente se existir
+    // Mostrar fila ativa
     if (ticket.assigned_queue_id && !isHumanAssigned) {
-      if (ticket.assigned_queue_name) {
-        badges.push(
-          <Badge key="queue-assistant" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-            <Bot className="w-3 h-3 mr-1" />
-            {ticket.assigned_queue_name}
-          </Badge>
-        );
-      } else {
-        badges.push(
-          <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-            📋 Fila Ativa
-          </Badge>
-        );
-      }
+      const queueName = ticket.assigned_queue_name || 'Fila Ativa';
+      badges.push(
+        <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+          <Bot className="w-3 h-3 mr-1" />
+          {queueName}
+        </Badge>
+      );
     }
 
-    // Humano assumiu - mostra quando foi assumido
+    // Atendimento humano
     if (isHumanAssigned) {
       badges.push(
         <Badge key="human" variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
@@ -159,7 +151,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
-    // Tags - se houver
+    // Tags se houver
     if (ticket.tags && ticket.tags.length > 0) {
       badges.push(
         <Badge key="tags" variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-200">
@@ -174,7 +166,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
 
   return (
     <div className="flex h-[calc(100vh-120px)] bg-white">
-      {/* Lista de Chats - altura fixa com scroll próprio */}
+      {/* Lista de Chats */}
       <div className="w-1/3 border-r border-gray-200 flex flex-col h-full">
         <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
@@ -197,7 +189,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
             </div>
           </div>
           
-          {/* Botão de importação */}
           <Button
             size="sm"
             variant="secondary"
@@ -219,7 +210,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
           </Button>
         </div>
 
-        {/* Lista de conversas com scroll próprio e altura limitada */}
+        {/* Lista de conversas */}
         <div className="flex-1 overflow-y-auto min-h-0">
           {ticketsLoading ? (
             <div className="p-4 text-center text-gray-500">
@@ -262,7 +253,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                             {chat.last_message_preview && chat.last_message_preview.length > 35 && '...'}
                           </p>
                           
-                          {/* Etiquetas do ticket */}
                           <div className="flex flex-wrap gap-1 mt-1">
                             {renderTicketBadges(chat)}
                           </div>
@@ -288,7 +278,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
         </div>
       </div>
 
-      {/* Área de Chat - altura fixa e limitada */}
+      {/* Área de Chat */}
       <div className="flex-1 flex flex-col h-full min-w-0">
         {currentChatId ? (
           <>
@@ -319,7 +309,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                       )}
                     </div>
                     
-                    {/* Etiquetas do chat selecionado */}
                     {selectedChat && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {renderTicketBadges(selectedChat)}
@@ -328,7 +317,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                   </div>
                 </div>
                 
-                {/* Menu de ações do ticket */}
                 {selectedChat && (
                   <div className="flex-shrink-0 ml-4">
                     <TicketActionsMenu 
@@ -340,14 +328,13 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               </div>
             </div>
 
-            {/* Interface de Chat do Ticket - altura calculada automaticamente */}
+            {/* Interface de Chat */}
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <TicketChatInterface 
                 clientId={clientId} 
                 ticketId={currentChatId} 
               />
               
-              {/* Indicador de Digitação do Assistente */}
               {assistantTyping && (
                 <div className="px-4 py-2 bg-gray-50 border-t flex-shrink-0">
                   <TypingIndicator 
