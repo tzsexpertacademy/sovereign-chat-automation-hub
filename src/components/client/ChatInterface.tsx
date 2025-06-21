@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, MessageSquare } from "lucide-react";
@@ -20,7 +20,9 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const [selectedChat, setSelectedChat] = useState<ConversationTicket | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { chatId } = useParams();
 
+  // Hook para tempo real com assistente integrado
   const {
     tickets,
     isLoading: ticketsLoading,
@@ -29,18 +31,21 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     reloadTickets
   } = useTicketRealtime(clientId);
 
+  // Usar chatId da URL se disponível
+  const currentChatId = chatId || selectedChatId;
+
   useEffect(() => {
-    if (selectedChatId) {
-      const chat = tickets.find(ticket => ticket.id === selectedChatId);
+    if (currentChatId) {
+      const chat = tickets.find(ticket => ticket.id === currentChatId);
       setSelectedChat(chat || null);
     } else {
       setSelectedChat(null);
     }
-  }, [selectedChatId, tickets]);
+  }, [currentChatId, tickets]);
 
-  const handleSelectChat = (chatId: string) => {
-    onSelectChat(chatId);
-    navigate(`/client/${clientId}/chat/${chatId}`);
+  const handleSelectChat = (ticketId: string) => {
+    onSelectChat(ticketId);
+    navigate(`/client/${clientId}/chat/${ticketId}`);
   };
 
   // Função para extrair nome do customer ou usar fallback
@@ -82,8 +87,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
             <div className="flex items-center space-x-2">
               {assistantOnline && (
                 <div className="flex items-center space-x-1 text-green-600">
-                  <div className="w-2 h-2 bg-green-500 rounded-full" />
-                  <span className="text-xs">Online</span>
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-xs font-medium">Online</span>
                 </div>
               )}
               <Button
@@ -101,14 +106,25 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
         <div className="flex-1 overflow-y-auto">
           {ticketsLoading ? (
             <div className="p-4 text-center text-gray-500">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
               Carregando conversas...
+            </div>
+          ) : tickets.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">
+              <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+              <p className="text-sm">Nenhuma conversa encontrada</p>
+              <p className="text-xs text-gray-400 mt-1">
+                As conversas aparecerão aqui quando chegarem mensagens
+              </p>
             </div>
           ) : (
             <ul className="divide-y divide-gray-100">
               {tickets.map((chat) => (
                 <li
                   key={chat.id}
-                  className={`p-4 cursor-pointer hover:bg-gray-50 ${selectedChatId === chat.id ? 'bg-gray-100' : ''}`}
+                  className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                    currentChatId === chat.id ? 'bg-blue-50 border-r-2 border-blue-500' : ''
+                  }`}
                   onClick={() => handleSelectChat(chat.id)}
                 >
                   <div className="flex items-start justify-between">
@@ -116,25 +132,31 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                       <div className="flex items-center space-x-3">
                         <Avatar className="w-8 h-8">
                           <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(chat)}`} />
-                          <AvatarFallback>
+                          <AvatarFallback className="text-xs">
                             {getDisplayName(chat).substring(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="space-y-0.5">
-                          <p className="text-sm font-medium text-gray-900">{getDisplayName(chat)}</p>
+                        <div className="space-y-0.5 flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {getDisplayName(chat)}
+                          </p>
                           <p className="text-xs text-gray-500 truncate">
-                            {chat.last_message_preview?.substring(0, 50) || 'Nenhuma mensagem'}
+                            {chat.last_message_preview?.substring(0, 40) || 'Nenhuma mensagem'}
+                            {chat.last_message_preview && chat.last_message_preview.length > 40 && '...'}
                           </p>
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-1 flex-shrink-0">
+                    <div className="flex flex-col items-end space-y-1 flex-shrink-0 ml-2">
                       <span className="text-xs text-gray-500">
                         {new Date(chat.last_message_at).toLocaleTimeString('pt-BR', { 
                           hour: '2-digit', 
                           minute: '2-digit' 
                         })}
                       </span>
+                      {chat.status === 'open' && (
+                        <div className="w-2 h-2 bg-green-500 rounded-full" />
+                      )}
                     </div>
                   </div>
                 </li>
@@ -146,7 +168,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
 
       {/* Área de Chat */}
       <div className="flex-1 flex flex-col">
-        {selectedChatId ? (
+        {currentChatId ? (
           <>
             {/* Cabeçalho do Chat */}
             <div className="p-4 border-b border-gray-200 bg-white">
@@ -168,8 +190,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                         <>
                           <span>•</span>
                           <div className="flex items-center space-x-1 text-green-600">
-                            <div className="w-2 h-2 bg-green-500 rounded-full" />
-                            <span>Online</span>
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                            <span>Assistente Online</span>
                           </div>
                         </>
                       )}
@@ -183,16 +205,19 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
             <div className="flex-1 flex flex-col">
               <TicketChatInterface 
                 clientId={clientId} 
-                ticketId={selectedChatId} 
+                ticketId={currentChatId} 
               />
               
-              {/* Indicador de Digitação com Status Online */}
-              <TypingIndicator 
-                isTyping={assistantTyping}
-                isOnline={assistantOnline}
-                userName="Assistente IA"
-                showOnlineStatus={true}
-              />
+              {/* Indicador de Digitação do Assistente */}
+              {assistantTyping && (
+                <div className="px-4 py-2 bg-gray-50 border-t">
+                  <TypingIndicator 
+                    isTyping={true}
+                    isRecording={false}
+                    userName="🤖 Assistente IA"
+                  />
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -200,13 +225,13 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
             <div className="text-center">
               <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Selecione uma conversa</h3>
-              <p className="text-gray-600">
+              <p className="text-gray-600 mb-4">
                 Escolha uma conversa da lista para começar a responder mensagens
               </p>
               {assistantOnline && (
                 <div className="mt-4 flex items-center justify-center space-x-2 text-green-600">
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-sm font-medium">Sistema Online - Pronto para Atender</span>
+                  <span className="text-sm font-medium">🤖 Assistente Online - Pronto para Atender</span>
                 </div>
               )}
             </div>

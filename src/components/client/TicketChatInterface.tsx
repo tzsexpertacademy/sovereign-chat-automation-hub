@@ -1,27 +1,18 @@
 
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, MessageSquare, Clock, User, Tag, FileText, CheckCircle, XCircle, RefreshCw, Archive, Star, UserCheck, ArrowRight, Zap, Building2, Users } from "lucide-react";
+import { Send, Paperclip, RefreshCw, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
-import { customersService, type Customer } from "@/services/customersService";
 import { whatsappService } from "@/services/whatsappMultiClient";
-import { queuesService } from "@/services/queuesService";
-import { useTicketRealtime } from "@/hooks/useTicketRealtime";
 import { useTicketMessages } from "@/hooks/useTicketMessages";
 import { useMessageStatus } from "@/hooks/useMessageStatus";
 import { useTypingStatus } from "@/hooks/useTypingStatus";
-import AutomaticProcessorStatus from './AutomaticProcessorStatus';
-import TypingIndicator from './TypingIndicator';
 import MessageStatus from './MessageStatus';
 
 interface TicketChatInterfaceProps {
@@ -32,27 +23,14 @@ interface TicketChatInterfaceProps {
 const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) => {
   const { toast } = useToast();
   
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<ConversationTicket | null>(null);
   const [newMessage, setNewMessage] = useState("");
-  const [internalNote, setInternalNote] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<"tickets" | "contacts">("tickets");
-  const [showInternalNotes, setShowInternalNotes] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [queues, setQueues] = useState<any[]>([]);
-  const [transferQueueId, setTransferQueueId] = useState("");
-  const [transferReason, setTransferReason] = useState("");
-  const [showTransferDialog, setShowTransferDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Hooks para tempo real
-  const { tickets, isLoading, reloadTickets, isTyping: assistantTyping } = useTicketRealtime(clientId || '');
   const { messages: ticketMessages, isLoading: loadingMessages } = useTicketMessages(ticketId || null);
   const { getMessageStatus, updateMessageStatus, markMessageAsRead, markMessageAsFailed } = useMessageStatus();
-  const { isTyping, isRecording, startTyping, stopTyping, startRecording, stopRecording } = useTypingStatus();
+  const { isTyping, startTyping, stopTyping } = useTypingStatus();
 
   // Auto scroll para última mensagem
   const scrollToBottom = () => {
@@ -61,38 +39,21 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
   useEffect(() => {
     scrollToBottom();
-  }, [ticketMessages, assistantTyping]);
-
-  useEffect(() => {
-    if (clientId) {
-      loadCustomers();
-      loadQueues();
-    }
-  }, [clientId]);
+  }, [ticketMessages]);
 
   // Buscar ticket específico
   useEffect(() => {
     if (ticketId) {
-      const ticket = tickets.find(t => t.id === ticketId);
-      setSelectedTicket(ticket || null);
+      loadTicketDetails();
     }
-  }, [ticketId, tickets]);
+  }, [ticketId]);
 
-  const loadCustomers = async () => {
+  const loadTicketDetails = async () => {
     try {
-      const customersData = await customersService.getClientCustomers(clientId!);
-      setCustomers(customersData);
+      const ticket = await ticketsService.getTicketById(ticketId);
+      setSelectedTicket(ticket);
     } catch (error) {
-      console.error('Erro ao carregar clientes:', error);
-    }
-  };
-
-  const loadQueues = async () => {
-    try {
-      const queuesData = await queuesService.getClientQueues(clientId!);
-      setQueues(queuesData);
-    } catch (error) {
-      console.error('Erro ao carregar filas:', error);
+      console.error('Erro ao carregar detalhes do ticket:', error);
     }
   };
 
@@ -137,7 +98,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         console.log('📦 Mensagem marcada como entregue');
       }, 2000);
       
-      // Simular leitura após 5 segundos (quando assistente "vê" a mensagem)
+      // Simular leitura após 5 segundos
       setTimeout(() => {
         markMessageAsRead(tempMessageId);
         console.log('👁️ Mensagem marcada como lida (V azul)');
@@ -210,6 +171,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                 <div className="text-center text-gray-500 py-8">
                   <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                   <p className="text-sm">Nenhuma mensagem nesta conversa</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Inicie a conversa enviando uma mensagem
+                  </p>
                 </div>
               ) : (
                 ticketMessages.map((message) => (
@@ -248,17 +212,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                     </div>
                   </div>
                 ))
-              )}
-              
-              {/* Indicador de digitação do assistente */}
-              {assistantTyping && (
-                <div className="flex justify-start">
-                  <TypingIndicator 
-                    isTyping={true}
-                    isRecording={false}
-                    userName="Assistente"
-                  />
-                </div>
               )}
               
               <div ref={messagesEndRef} />
@@ -304,12 +257,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             
             {/* Indicador de digitação do usuário */}
             {isTyping && (
-              <div className="mt-2 flex justify-end">
-                <TypingIndicator 
-                  isTyping={true}
-                  isRecording={isRecording}
-                  userName="Você"
-                />
+              <div className="mt-2 text-xs text-gray-500">
+                Digitando...
               </div>
             )}
           </div>

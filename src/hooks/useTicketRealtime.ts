@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -7,23 +8,23 @@ import { assistantsService } from '@/services/assistantsService';
 import { aiConfigService } from '@/services/aiConfigService';
 import { useMessageBatch } from './useMessageBatch';
 import { useHumanizedTyping } from './useHumanizedTyping';
-import { useOnlineStatus } from './useOnlineStatus';
-import { useAutoReactions } from './useAutoReactions';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [assistantTyping, setAssistantTyping] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
+  
   const channelRef = useRef<any>(null);
+  const socketRef = useRef<any>(null);
   const isLoadingRef = useRef(false);
   const lastMessageIdRef = useRef<string>('');
-  const socketRef = useRef<any>(null);
   const processingQueueRef = useRef<Set<string>>(new Set());
   const processedMessagesRef = useRef<Set<string>>(new Set());
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initializationRef = useRef(false);
 
-  // Hook para delay humanizado - com useCallback para estabilizar
+  // Hook para delay humanizado
   const { isTyping, sendWithTypingDelay } = useHumanizedTyping({
     baseDelay: 2000,
     charDelay: 60,
@@ -36,7 +37,7 @@ export const useTicketRealtime = (clientId: string) => {
     setAssistantTyping(isTyping);
   }, [isTyping]);
 
-  // Carregar tickets com debounce rigoroso para evitar loops
+  // Carregar tickets com controle rigoroso de duplicação
   const loadTickets = useCallback(async (skipLoadingCheck = false) => {
     if (!skipLoadingCheck && (isLoadingRef.current || !clientId)) {
       console.log('⏭️ LoadTickets ignorado - já carregando ou sem clientId');
@@ -47,12 +48,6 @@ export const useTicketRealtime = (clientId: string) => {
       isLoadingRef.current = true;
       setIsLoading(true);
       console.log('🔄 Carregando tickets para cliente:', clientId);
-      
-      // Clear any existing timeout
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-        loadingTimeoutRef.current = null;
-      }
       
       const ticketsData = await ticketsService.getClientTickets(clientId);
       console.log('✅ Tickets carregados:', ticketsData.length);
@@ -66,17 +61,11 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Hooks para status online e reações automáticas
-  const { isOnline, markActivity } = useOnlineStatus(clientId, true);
-  const { processMessage: processAutoReaction, isProcessing: isProcessingReaction } = useAutoReactions(clientId, true);
-
-  // Função para extrair nome real do WhatsApp
+  // Extrair nome real do WhatsApp
   const extractWhatsAppName = useCallback((message: any) => {
     console.log('🔍 Extraindo nome da mensagem:', {
       notifyName: message.notifyName,
       pushName: message.pushName,
-      senderName: message.senderName,
-      author: message.author,
       from: message.from
     });
 
@@ -122,9 +111,6 @@ export const useTicketRealtime = (clientId: string) => {
     try {
       processingQueueRef.current.add(batchKey);
       console.log(`🤖 Iniciando processamento do lote com ${messages.length} mensagens:`, batchKey);
-      
-      // Marcar atividade para manter status online
-      markActivity();
       
       // Simular que assistente está "digitando"
       setAssistantTyping(true);
@@ -190,24 +176,9 @@ export const useTicketRealtime = (clientId: string) => {
           content: msg.content || ''
         }));
 
-      // Processar reações automáticas para cada mensagem
-      let emotionContext = '';
-      for (const message of messages) {
-        const emotion = await processAutoReaction(message);
-        if (emotion) {
-          emotionContext += `\n${emotion.contextModifier}`;
-        }
-      }
-
       // Combinar mensagens do lote em uma única mensagem
       const combinedMessage = messages.map(msg => msg.text).join('\n');
       console.log(`📨 Processando lote combinado: "${combinedMessage.substring(0, 100)}..."`);
-
-      // Modificar prompt baseado na emoção detectada
-      let systemPrompt = assistant.prompt || 'Você é um assistente útil.';
-      if (emotionContext) {
-        systemPrompt += `\n\nContexto emocional da conversa:${emotionContext}`;
-      }
 
       // Chamar a API da OpenAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -221,7 +192,7 @@ export const useTicketRealtime = (clientId: string) => {
           messages: [
             {
               role: 'system',
-              content: systemPrompt
+              content: assistant.prompt || 'Você é um assistente útil.'
             },
             ...recentMessages,
             {
@@ -245,14 +216,9 @@ export const useTicketRealtime = (clientId: string) => {
       if (assistantResponse && assistantResponse.trim()) {
         console.log('🤖 Resposta do assistente gerada para lote:', assistantResponse.substring(0, 100) + '...');
         
-        // Marcar atividade antes de enviar resposta
-        markActivity();
-        
         // Enviar resposta com delay humanizado
         await sendWithTypingDelay(assistantResponse, async () => {
           await whatsappService.sendMessage(clientId, messages[0].from, assistantResponse);
-          // Marcar atividade após enviar mensagem
-          markActivity();
         });
         
         // Registrar a resposta no ticket
@@ -272,7 +238,7 @@ export const useTicketRealtime = (clientId: string) => {
 
         console.log('✅ Resposta automática do lote enviada e registrada');
         
-        // Recarregar tickets com debounce mais rigoroso
+        // Recarregar tickets com debounce
         if (loadingTimeoutRef.current) {
           clearTimeout(loadingTimeoutRef.current);
         }
@@ -280,7 +246,7 @@ export const useTicketRealtime = (clientId: string) => {
           if (!isLoadingRef.current) {
             loadTickets(true);
           }
-        }, 3000);
+        }, 2000);
         
       } else {
         console.log('⚠️ Assistente não gerou resposta válida para o lote');
@@ -292,9 +258,9 @@ export const useTicketRealtime = (clientId: string) => {
       processingQueueRef.current.delete(batchKey);
       setAssistantTyping(false);
     }
-  }, [clientId, sendWithTypingDelay, loadTickets, markActivity, processAutoReaction]);
+  }, [clientId, sendWithTypingDelay, loadTickets]);
 
-  // Hook para processamento em lote (5 segundos de timeout) - com useCallback
+  // Hook para processamento em lote (5 segundos de timeout)
   const { addMessage: addToBatch } = useMessageBatch({
     batchTimeoutSeconds: 5,
     onProcessBatch: useCallback(async (messages) => {
@@ -302,7 +268,6 @@ export const useTicketRealtime = (clientId: string) => {
       
       // Usar ticket ID do primeiro lote de mensagens
       const firstMessage = messages[0];
-      const ticketId = `ticket_${firstMessage.from}`;
       
       // Buscar ou criar ticket
       try {
@@ -351,13 +316,17 @@ export const useTicketRealtime = (clientId: string) => {
     socket.on('connect', () => {
       console.log('✅ WebSocket conectado, entrando no room do cliente...');
       whatsappService.joinClientRoom(clientId);
-      // Marcar atividade ao conectar
-      markActivity();
+      setIsOnline(true);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('❌ WebSocket desconectado');
+      setIsOnline(false);
     });
 
     if (socket.connected) {
       whatsappService.joinClientRoom(clientId);
-      markActivity();
+      setIsOnline(true);
     }
 
     // Listener para novas mensagens do WhatsApp
@@ -370,16 +339,11 @@ export const useTicketRealtime = (clientId: string) => {
         timestamp: message.timestamp
       });
       
-      // Marcar atividade ao receber mensagem
-      markActivity();
-      
-      // Controle SUPER rigoroso de duplicação - múltiplas verificações
-      const messageKey = `${message.id}_${message.from}_${message.timestamp}_${message.body?.substring(0, 20)}`;
-      const shortMessageKey = `${message.id}_${message.from}`;
+      // Controle rigoroso de duplicação
+      const messageKey = `${message.id}_${message.from}_${message.timestamp}`;
       
       if (processedMessagesRef.current.has(message.id) || 
-          processedMessagesRef.current.has(messageKey) ||
-          processedMessagesRef.current.has(shortMessageKey)) {
+          processedMessagesRef.current.has(messageKey)) {
         console.log('⏭️ Mensagem já processada, ignorando:', message.id);
         return;
       }
@@ -387,7 +351,6 @@ export const useTicketRealtime = (clientId: string) => {
       // Adicionar aos controles de duplicação
       processedMessagesRef.current.add(message.id);
       processedMessagesRef.current.add(messageKey);
-      processedMessagesRef.current.add(shortMessageKey);
       
       // Verificação adicional por lastMessageId
       if (lastMessageIdRef.current === message.id) {
@@ -431,7 +394,7 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date(message.timestamp || Date.now()).toISOString()
         });
 
-        // Recarregar tickets com debounce MUITO rigoroso para evitar loop
+        // Recarregar tickets com debounce
         if (loadingTimeoutRef.current) {
           clearTimeout(loadingTimeoutRef.current);
         }
@@ -439,7 +402,7 @@ export const useTicketRealtime = (clientId: string) => {
           if (!isLoadingRef.current) {
             loadTickets(true);
           }
-        }, 2000);
+        }, 1500);
 
         // Adicionar mensagem ao lote para processamento humanizado
         if (!message.type || message.type === 'text' || message.type === 'chat') {
@@ -459,7 +422,7 @@ export const useTicketRealtime = (clientId: string) => {
     const messageEvent = `message_${clientId}`;
     socket.on(messageEvent, handleNewWhatsAppMessage);
 
-    // Listener para atualizações de tickets no Supabase com debounce MUITO rigoroso
+    // Listener para atualizações de tickets no Supabase com debounce
     const channel = supabase
       .channel(`ticket-updates-${clientId}`)
       .on(
@@ -473,7 +436,7 @@ export const useTicketRealtime = (clientId: string) => {
         async (payload) => {
           console.log('🔄 Ticket atualizado via Supabase:', payload.eventType);
           
-          // Debounce SUPER rigoroso para atualizações do Supabase
+          // Debounce para atualizações do Supabase
           if (loadingTimeoutRef.current) {
             clearTimeout(loadingTimeoutRef.current);
           }
@@ -481,7 +444,7 @@ export const useTicketRealtime = (clientId: string) => {
             if (!isLoadingRef.current) {
               loadTickets(true);
             }
-          }, 2000);
+          }, 1000);
         }
       )
       .subscribe();
@@ -499,14 +462,16 @@ export const useTicketRealtime = (clientId: string) => {
       
       if (socketRef.current) {
         socketRef.current.off(messageEvent, handleNewWhatsAppMessage);
+        socketRef.current.disconnect();
       }
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
       processingQueueRef.current.clear();
       processedMessagesRef.current.clear();
+      setIsOnline(false);
     };
-  }, [clientId, markActivity]); // Adicionar markActivity como dependência
+  }, [clientId, loadTickets, extractWhatsAppName, processBatchWithAssistant, addToBatch]);
 
   // Função pública para recarregar tickets manualmente
   const reloadTickets = useCallback(() => {
@@ -517,7 +482,7 @@ export const useTicketRealtime = (clientId: string) => {
   return {
     tickets,
     isLoading,
-    isTyping: assistantTyping || isProcessingReaction,
+    isTyping: assistantTyping,
     isOnline,
     reloadTickets
   };
