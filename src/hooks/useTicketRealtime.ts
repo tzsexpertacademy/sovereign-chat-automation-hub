@@ -13,6 +13,7 @@ export const useTicketRealtime = (clientId: string) => {
   const channelRef = useRef<any>(null);
   const isLoadingRef = useRef(false);
   const lastMessageIdRef = useRef<string>('');
+  const socketRef = useRef<any>(null);
 
   // Carregar tickets iniciais
   const loadTickets = async () => {
@@ -226,6 +227,14 @@ export const useTicketRealtime = (clientId: string) => {
         });
 
         console.log('✅ Resposta automática enviada e registrada');
+        
+        // Recarregar tickets para mostrar a nova mensagem
+        setTimeout(() => {
+          if (!isLoadingRef.current) {
+            loadTickets();
+          }
+        }, 1000);
+        
       } else {
         console.log('⚠️ Assistente não gerou resposta válida');
       }
@@ -261,18 +270,28 @@ export const useTicketRealtime = (clientId: string) => {
     // Conectar ao WebSocket do WhatsApp
     console.log('🔌 Conectando ao WebSocket...');
     const socket = whatsappService.connectSocket();
+    socketRef.current = socket;
     
-    // Entrar no room do cliente
-    whatsappService.joinClientRoom(clientId);
+    // Garantir que entramos no room do cliente
+    socket.on('connect', () => {
+      console.log('✅ WebSocket conectado, entrando no room do cliente...');
+      whatsappService.joinClientRoom(clientId);
+    });
+
+    // Se já estiver conectado, entrar no room imediatamente
+    if (socket.connected) {
+      whatsappService.joinClientRoom(clientId);
+    }
 
     // Listener para novas mensagens do WhatsApp via WebSocket
     const handleNewWhatsAppMessage = async (message: any) => {
-      console.log('📨 Nova mensagem WhatsApp recebida:', {
+      console.log('📨 Nova mensagem WhatsApp recebida via WebSocket:', {
         id: message.id,
         from: message.from,
         body: message.body?.substring(0, 50),
         fromMe: message.fromMe,
-        timestamp: message.timestamp
+        timestamp: message.timestamp,
+        type: message.type || 'text'
       });
       
       // Evitar processar a mesma mensagem duas vezes
@@ -324,27 +343,25 @@ export const useTicketRealtime = (clientId: string) => {
 
         console.log('📝 Mensagem adicionada ao ticket');
 
-        // IMPORTANTE: Processar com assistente automático após um pequeno delay
+        // Atualizar lista de tickets IMEDIATAMENTE
+        console.log('🔄 Recarregando tickets...');
+        await loadTickets();
+
+        // Processar com assistente automático após um pequeno delay
         console.log('⏰ Agendando processamento automático...');
         setTimeout(() => {
           processMessageWithAssistant(message, ticketId);
-        }, 2000); // 2 segundos de delay para garantir que tudo foi salvo
-
-        // Atualizar lista de tickets
-        console.log('🔄 Recarregando tickets...');
-        setTimeout(() => {
-          if (!isLoadingRef.current) {
-            loadTickets();
-          }
-        }, 1000);
+        }, 2000);
         
       } catch (error) {
         console.error('❌ Erro ao processar nova mensagem:', error);
       }
     };
 
-    // Conectar listener
-    whatsappService.onClientMessage(clientId, handleNewWhatsAppMessage);
+    // Conectar listener para mensagens específicas do cliente
+    const messageEvent = `message_${clientId}`;
+    socket.on(messageEvent, handleNewWhatsAppMessage);
+    console.log(`🎧 Listener configurado para evento: ${messageEvent}`);
 
     // Listener para atualizações de tickets no Supabase
     const channel = supabase
@@ -390,7 +407,9 @@ export const useTicketRealtime = (clientId: string) => {
 
     return () => {
       console.log('🔌 Limpando listeners...');
-      whatsappService.removeListener(`message_${clientId}`);
+      if (socketRef.current) {
+        socketRef.current.off(messageEvent, handleNewWhatsAppMessage);
+      }
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }

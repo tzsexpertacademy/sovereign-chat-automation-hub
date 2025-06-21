@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, MessageSquare, Clock, User, Bot, AlertCircle, RefreshCw, Settings, Filter } from "lucide-react";
+import { Search, MessageSquare, Clock, User, Bot, AlertCircle, RefreshCw, Settings, Filter, CheckCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useTicketRealtime } from "@/hooks/useTicketRealtime";
@@ -88,12 +88,24 @@ const TicketsInterface = () => {
     }
   };
 
+  // Auto-refresh a cada 5 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isLoading) {
+        reloadTickets();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isLoading, reloadTickets]);
+
   if (isLoading && tickets.length === 0) {
     return (
       <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Carregando tickets...</p>
+          <p className="text-sm text-gray-500 mt-2">Conectando ao sistema de tempo real...</p>
         </div>
       </div>
     );
@@ -109,9 +121,11 @@ const TicketsInterface = () => {
               <CardTitle className="text-lg flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
                 Tickets ({filteredTickets.length})
+                {isLoading && <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>}
               </CardTitle>
-              <CardDescription>
-                Sistema de atendimento em tempo real
+              <CardDescription className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                Sistema de atendimento em tempo real ativo
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -120,6 +134,7 @@ const TicketsInterface = () => {
                 size="sm"
                 onClick={reloadTickets}
                 disabled={isLoading}
+                title="Recarregar tickets manualmente"
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               </Button>
@@ -127,6 +142,7 @@ const TicketsInterface = () => {
                 variant="outline" 
                 size="sm"
                 onClick={handleImportConversations}
+                title="Importar conversas do WhatsApp"
               >
                 <Settings className="w-4 h-4 mr-1" />
                 Importar
@@ -168,7 +184,21 @@ const TicketsInterface = () => {
               <div className="p-4 text-center text-gray-500">
                 <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                 <p>Nenhum ticket encontrado</p>
-                <p className="text-sm">Importe conversas do WhatsApp</p>
+                <p className="text-sm">
+                  {tickets.length === 0 
+                    ? "Aguardando mensagens do WhatsApp ou importe conversas existentes"
+                    : "Nenhum ticket corresponde aos filtros aplicados"
+                  }
+                </p>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={handleImportConversations}
+                  className="mt-2"
+                >
+                  <Settings className="w-3 h-3 mr-1" />
+                  Importar Conversas
+                </Button>
               </div>
             ) : (
               filteredTickets.map((ticket) => (
@@ -248,6 +278,9 @@ const TicketsInterface = () => {
                   <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>Detalhes do ticket em desenvolvimento</p>
                   <p className="text-sm">Em breve: visualização de mensagens, histórico e ações</p>
+                  <p className="text-xs mt-2 text-green-600">
+                    ✅ Sistema de tempo real funcionando - mensagens chegam automaticamente
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -258,6 +291,15 @@ const TicketsInterface = () => {
               <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <h3 className="text-lg font-medium mb-2">Selecione um ticket</h3>
               <p>Escolha um ticket da lista para ver os detalhes</p>
+              <div className="mt-4 space-y-2 text-sm">
+                <div className="flex items-center justify-center gap-2 text-green-600">
+                  <CheckCircle className="h-4 w-4" />
+                  <span>Sistema de tempo real ativo</span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Mensagens do WhatsApp aparecem automaticamente
+                </p>
+              </div>
             </div>
           </div>
         )}
