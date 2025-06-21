@@ -8,27 +8,24 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, MessageSquare, Clock, User, Tag, FileText, CheckCircle, XCircle, RefreshCw, Archive, Star, UserCheck, ArrowRight, Zap, Building2 } from "lucide-react";
+import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, MessageSquare, Clock, User, Tag, FileText, CheckCircle, XCircle, RefreshCw, Archive, Star, UserCheck, ArrowRight, Zap, Building2, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { ticketsService, type ConversationTicket, type TicketMessage } from "@/services/ticketsService";
+import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import { customersService, type Customer } from "@/services/customersService";
 import { whatsappService } from "@/services/whatsappMultiClient";
 import { queuesService } from "@/services/queuesService";
-import { assistantsService } from "@/services/assistantsService";
+import { useTicketRealtime } from "@/hooks/useTicketRealtime";
+import { useTicketMessages } from "@/hooks/useTicketMessages";
 
 const TicketChatInterface = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const { toast } = useToast();
   
-  const [tickets, setTickets] = useState<ConversationTicket[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<ConversationTicket | null>(null);
-  const [ticketMessages, setTicketMessages] = useState<TicketMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [internalNote, setInternalNote] = useState("");
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
@@ -39,37 +36,41 @@ const TicketChatInterface = () => {
   const [transferQueueId, setTransferQueueId] = useState("");
   const [transferReason, setTransferReason] = useState("");
   const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Usar hooks customizados para tempo real
+  const { tickets, isLoading, reloadTickets } = useTicketRealtime(clientId || '');
+  const { messages: ticketMessages, isLoading: loadingMessages } = useTicketMessages(selectedTicket?.id || null);
+
+  // Auto scroll para última mensagem
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [ticketMessages]);
 
   useEffect(() => {
     if (clientId) {
-      loadData();
+      loadCustomers();
       loadQueues();
     }
   }, [clientId]);
 
-  const loadData = async () => {
+  // Selecionar primeiro ticket quando a lista carrega
+  useEffect(() => {
+    if (tickets.length > 0 && !selectedTicket) {
+      setSelectedTicket(tickets[0]);
+    }
+  }, [tickets, selectedTicket]);
+
+  const loadCustomers = async () => {
     try {
-      setLoading(true);
-      const [ticketsData, customersData] = await Promise.all([
-        ticketsService.getClientTickets(clientId!),
-        customersService.getClientCustomers(clientId!)
-      ]);
-      
-      setTickets(ticketsData);
+      const customersData = await customersService.getClientCustomers(clientId!);
       setCustomers(customersData);
-      
-      if (ticketsData.length > 0 && !selectedTicket) {
-        setSelectedTicket(ticketsData[0]);
-      }
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao carregar tickets e contatos",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
+      console.error('Erro ao carregar clientes:', error);
     }
   };
 
@@ -85,13 +86,14 @@ const TicketChatInterface = () => {
   const handleImportConversations = async () => {
     try {
       setIsImporting(true);
-      await ticketsService.importConversationsFromWhatsApp(clientId!);
-      await loadData();
+      const result = await ticketsService.importConversationsFromWhatsApp(clientId!);
       
       toast({
         title: "Importação concluída",
-        description: "Conversas do WhatsApp foram importadas com sucesso"
+        description: `${result.success} conversas importadas, ${result.errors} erros`
       });
+      
+      reloadTickets();
     } catch (error: any) {
       toast({
         title: "Erro na importação",
@@ -109,7 +111,6 @@ const TicketChatInterface = () => {
     try {
       await ticketsService.assumeTicketManually(selectedTicket.id);
       
-      // Atualizar ticket local
       const updatedTicket = { 
         ...selectedTicket, 
         assigned_queue_id: undefined, 
@@ -117,11 +118,7 @@ const TicketChatInterface = () => {
         status: 'pending' as const
       };
       setSelectedTicket(updatedTicket);
-      
-      // Atualizar lista
-      setTickets(prev => prev.map(t => 
-        t.id === selectedTicket.id ? updatedTicket : t
-      ));
+      reloadTickets();
 
       toast({
         title: "Ticket assumido",
@@ -142,7 +139,6 @@ const TicketChatInterface = () => {
     try {
       await ticketsService.transferTicket(selectedTicket.id, transferQueueId, transferReason);
       
-      // Atualizar ticket local
       const queueName = queues.find(q => q.id === transferQueueId)?.name || 'Fila';
       const updatedTicket = { 
         ...selectedTicket, 
@@ -151,11 +147,7 @@ const TicketChatInterface = () => {
         status: 'open' as const
       };
       setSelectedTicket(updatedTicket);
-      
-      // Atualizar lista
-      setTickets(prev => prev.map(t => 
-        t.id === selectedTicket.id ? updatedTicket : t
-      ));
+      reloadTickets();
 
       setShowTransferDialog(false);
       setTransferQueueId("");
@@ -174,23 +166,6 @@ const TicketChatInterface = () => {
     }
   };
 
-  useEffect(() => {
-    if (selectedTicket) {
-      loadTicketMessages();
-    }
-  }, [selectedTicket]);
-
-  const loadTicketMessages = async () => {
-    if (!selectedTicket) return;
-    
-    try {
-      const messages = await ticketsService.getTicketMessages(selectedTicket.id);
-      setTicketMessages(messages);
-    } catch (error) {
-      console.error('Erro ao carregar mensagens:', error);
-    }
-  };
-
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedTicket || !clientId) return;
 
@@ -202,6 +177,7 @@ const TicketChatInterface = () => {
         ticket_id: selectedTicket.id,
         message_id: `manual_${Date.now()}`,
         from_me: true,
+        sender_name: "Operador",
         content: newMessage,
         message_type: 'text',
         is_internal_note: false,
@@ -211,7 +187,6 @@ const TicketChatInterface = () => {
       });
 
       setNewMessage("");
-      loadTicketMessages();
       
       toast({
         title: "Mensagem enviada",
@@ -233,7 +208,6 @@ const TicketChatInterface = () => {
       await ticketsService.addInternalNote(selectedTicket.id, internalNote, "Operador");
       setInternalNote("");
       
-      // Recarregar ticket para mostrar nova nota
       const updatedTicket = await ticketsService.getTicketById(selectedTicket.id);
       if (updatedTicket) {
         setSelectedTicket(updatedTicket);
@@ -258,13 +232,8 @@ const TicketChatInterface = () => {
     try {
       await ticketsService.updateTicketStatus(selectedTicket.id, status);
       
-      // Atualizar ticket local
       setSelectedTicket({ ...selectedTicket, status: status as any });
-      
-      // Atualizar lista de tickets
-      setTickets(prev => prev.map(t => 
-        t.id === selectedTicket.id ? { ...t, status: status as any } : t
-      ));
+      reloadTickets();
 
       toast({
         title: "Status atualizado",
@@ -291,7 +260,7 @@ const TicketChatInterface = () => {
     const Icon = config.icon;
 
     return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
+      <Badge variant={config.variant} className="flex items-center gap-1 text-xs">
         <Icon className="w-3 h-3" />
         {config.label}
       </Badge>
@@ -327,9 +296,21 @@ const TicketChatInterface = () => {
     return new Date(timestamp).toLocaleDateString('pt-BR');
   };
 
-  if (loading) {
+  // Extrair nome do WhatsApp do customer name ou usar fallback
+  const getDisplayName = (ticket: ConversationTicket) => {
+    if (ticket.customer?.name && ticket.customer.name !== `Contato ${ticket.customer.phone}`) {
+      return ticket.customer.name;
+    }
+    // Tentar extrair nome do título
+    if (ticket.title.includes('Conversa com ') && ticket.title !== `Conversa com Contato ${ticket.customer?.phone}`) {
+      return ticket.title.replace('Conversa com ', '');
+    }
+    return ticket.customer?.name || 'Sem nome';
+  };
+
+  if (isLoading) {
     return (
-      <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
+      <div className="h-screen flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
           <p className="text-gray-600">Carregando tickets...</p>
@@ -339,77 +320,80 @@ const TicketChatInterface = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col">
-      {/* Header com Tabs */}
-      <div className="bg-white border-b p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold">Central de Conversas</h1>
-          <div className="flex space-x-2">
+    <div className="h-screen flex flex-col bg-gray-50">
+      {/* Header - Responsivo */}
+      <div className="bg-white border-b p-3 md:p-4 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h1 className="text-xl md:text-2xl font-bold">Central de Conversas</h1>
+          <div className="flex flex-wrap gap-2">
             <Button 
               onClick={handleImportConversations}
               disabled={isImporting}
               size="sm"
+              className="text-xs md:text-sm"
             >
               {isImporting ? (
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Building2 className="w-4 h-4 mr-2" />
               )}
-              {isImporting ? 'Importando...' : 'Importar Conversas'}
+              {isImporting ? 'Importando...' : 'Importar'}
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="text-xs md:text-sm">
               <Archive className="w-4 h-4 mr-2" />
               Arquivados
             </Button>
-            <Button size="sm" onClick={loadData}>
+            <Button size="sm" onClick={reloadTickets} className="text-xs md:text-sm">
               <RefreshCw className="w-4 h-4 mr-2" />
               Atualizar
             </Button>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex space-x-4">
+        {/* Tabs - Responsivo */}
+        <div className="flex space-x-2">
           <Button
             variant={activeTab === "tickets" ? "default" : "ghost"}
             onClick={() => setActiveTab("tickets")}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 text-xs md:text-sm"
+            size="sm"
           >
             <MessageSquare className="w-4 h-4" />
-            Tickets ({tickets.length})
+            <span className="hidden sm:inline">Tickets</span> ({tickets.length})
           </Button>
           <Button
             variant={activeTab === "contacts" ? "default" : "ghost"}
             onClick={() => setActiveTab("contacts")}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 text-xs md:text-sm"
+            size="sm"
           >
-            <User className="w-4 h-4" />
-            Contatos ({customers.length})
+            <Users className="w-4 h-4" />
+            <span className="hidden sm:inline">Contatos</span> ({customers.length})
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-12 gap-6 p-6">
-        {/* Lista de Tickets/Contatos */}
-        <Card className="col-span-4 flex flex-col">
-          <CardHeader className="pb-3">
+      <div className="flex-1 flex flex-col lg:flex-row gap-2 md:gap-6 p-2 md:p-6 min-h-0">
+        {/* Lista de Tickets/Contatos - Responsivo */}
+        <Card className="w-full lg:w-1/3 xl:w-1/4 flex flex-col min-h-0">
+          <CardHeader className="pb-3 px-3 md:px-6">
             <div className="space-y-3">
               {/* Busca */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <Input 
                   placeholder={activeTab === "tickets" ? "Buscar tickets..." : "Buscar contatos..."} 
-                  className="pl-10"
+                  className="pl-10 text-sm"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
 
-              {/* Filtros */}
+              {/* Filtros - Responsivo */}
               {activeTab === "tickets" && (
-                <div className="flex space-x-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger className="text-xs md:text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -422,7 +406,7 @@ const TicketChatInterface = () => {
                   </Select>
 
                   <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger className="text-xs md:text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -438,20 +422,20 @@ const TicketChatInterface = () => {
             </div>
           </CardHeader>
           
-          <CardContent className="flex-1 p-0">
+          <CardContent className="flex-1 p-0 min-h-0">
             <ScrollArea className="h-full">
               {activeTab === "tickets" ? (
                 // Lista de Tickets
                 filteredTickets.length === 0 ? (
                   <div className="p-4 text-center text-gray-500">
                     <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p>Nenhum ticket encontrado</p>
+                    <p className="text-sm">Nenhum ticket encontrado</p>
                     <Button 
                       onClick={handleImportConversations}
                       disabled={isImporting}
                       variant="outline"
                       size="sm"
-                      className="mt-2"
+                      className="mt-2 text-xs"
                     >
                       {isImporting ? 'Importando...' : 'Importar Conversas'}
                     </Button>
@@ -461,18 +445,22 @@ const TicketChatInterface = () => {
                     <div
                       key={ticket.id}
                       onClick={() => setSelectedTicket(ticket)}
-                      className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
+                      className={`p-3 md:p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
                         selectedTicket?.id === ticket.id ? 'bg-blue-50 border-r-2 border-r-blue-500' : ''
                       }`}
                     >
                       <div className="flex items-start space-x-3">
-                        <Avatar className="w-12 h-12">
-                          <AvatarFallback>{ticket.customer?.name.charAt(0) || 'U'}</AvatarFallback>
+                        <Avatar className="w-10 h-10 md:w-12 md:h-12 flex-shrink-0">
+                          <AvatarFallback className="text-xs md:text-sm">
+                            {getDisplayName(ticket).charAt(0).toUpperCase()}
+                          </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start mb-1">
-                            <h3 className="font-medium text-gray-900 truncate">{ticket.title}</h3>
-                            <div className="flex items-center space-x-1">
+                            <h3 className="font-medium text-gray-900 truncate text-sm md:text-base">
+                              {getDisplayName(ticket)}
+                            </h3>
+                            <div className="flex items-center space-x-1 flex-shrink-0">
                               <Star className={`w-3 h-3 ${getPriorityColor(ticket.priority)}`} />
                               <span className="text-xs text-gray-500">
                                 {formatTime(ticket.last_message_at)}
@@ -480,39 +468,36 @@ const TicketChatInterface = () => {
                             </div>
                           </div>
                           
-                          {/* Etiquetas de Conexão, Fila e Tags */}
+                          {/* Etiquetas - Responsivo */}
                           <div className="flex items-center space-x-1 mb-2 flex-wrap gap-1">
                             {getStatusBadge(ticket.status)}
                             
-                            {/* Badge da Instância/Conexão */}
                             <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
                               <Building2 className="w-3 h-3 mr-1" />
-                              Conexão
+                              <span className="hidden sm:inline">Conexão</span>
                             </Badge>
                             
-                            {/* Badge da Fila */}
                             {ticket.queue && (
                               <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
                                 <ArrowRight className="w-3 h-3 mr-1" />
-                                {ticket.queue.name}
+                                <span className="hidden sm:inline">{ticket.queue.name}</span>
                               </Badge>
                             )}
                             
-                            {/* Badge do Assistente */}
                             {ticket.assistant && (
                               <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700">
                                 <Zap className="w-3 h-3 mr-1" />
-                                {ticket.assistant.name}
+                                <span className="hidden sm:inline">{ticket.assistant.name}</span>
                               </Badge>
                             )}
                           </div>
                           
-                          <p className="text-sm text-gray-600 truncate">
+                          <p className="text-xs md:text-sm text-gray-600 truncate">
                             {ticket.last_message_preview || 'Sem mensagens'}
                           </p>
                           <div className="flex justify-between items-center mt-2">
                             <span className="text-xs text-gray-500">
-                              {ticket.customer?.name}
+                              {ticket.customer?.phone}
                             </span>
                             {ticket.internal_notes.length > 0 && (
                               <Badge variant="secondary" className="text-xs">
@@ -530,7 +515,7 @@ const TicketChatInterface = () => {
                 customers.length === 0 ? (
                   <div className="p-4 text-center text-gray-500">
                     <User className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p>Nenhum contato encontrado</p>
+                    <p className="text-sm">Nenhum contato encontrado</p>
                   </div>
                 ) : (
                   customers
@@ -542,17 +527,19 @@ const TicketChatInterface = () => {
                     .map((customer) => (
                       <div
                         key={customer.id}
-                        className="p-4 border-b hover:bg-gray-50 transition-colors"
+                        className="p-3 md:p-4 border-b hover:bg-gray-50 transition-colors"
                       >
                         <div className="flex items-center space-x-3">
-                          <Avatar className="w-12 h-12">
-                            <AvatarFallback>{customer.name.charAt(0)}</AvatarFallback>
+                          <Avatar className="w-10 h-10 md:w-12 md:h-12">
+                            <AvatarFallback className="text-xs md:text-sm">
+                              {customer.name.charAt(0)}
+                            </AvatarFallback>
                           </Avatar>
                           <div className="flex-1">
-                            <h3 className="font-medium text-gray-900">{customer.name}</h3>
-                            <p className="text-sm text-gray-600">{customer.phone}</p>
+                            <h3 className="font-medium text-gray-900 text-sm md:text-base">{customer.name}</h3>
+                            <p className="text-xs md:text-sm text-gray-600">{customer.phone}</p>
                             {customer.email && (
-                              <p className="text-sm text-gray-500">{customer.email}</p>
+                              <p className="text-xs md:text-sm text-gray-500">{customer.email}</p>
                             )}
                             <p className="text-xs text-gray-400">
                               Cliente desde {formatDate(customer.created_at)}
@@ -575,44 +562,52 @@ const TicketChatInterface = () => {
           </CardContent>
         </Card>
 
-        {/* Área de Conversa/Detalhes */}
-        <Card className="col-span-8 flex flex-col">
+        {/* Área de Conversa/Detalhes - Responsivo */}
+        <Card className="flex-1 flex flex-col min-h-0">
           {selectedTicket && activeTab === "tickets" ? (
             <>
-              {/* Header do Ticket */}
-              <CardHeader className="border-b">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback>{selectedTicket.customer?.name.charAt(0) || 'U'}</AvatarFallback>
+              {/* Header do Ticket - Responsivo */}
+              <CardHeader className="border-b px-3 md:px-6 py-3 md:py-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <Avatar className="w-8 h-8 md:w-10 md:h-10 flex-shrink-0">
+                      <AvatarFallback className="text-xs md:text-sm">
+                        {getDisplayName(selectedTicket).charAt(0).toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
-                    <div>
-                      <h3 className="font-medium text-gray-900">{selectedTicket.title}</h3>
-                      <p className="text-sm text-gray-500">{selectedTicket.customer?.name} • {selectedTicket.customer?.phone}</p>
+                    <div className="min-w-0">
+                      <h3 className="font-medium text-gray-900 text-sm md:text-base truncate">
+                        {getDisplayName(selectedTicket)}
+                      </h3>
+                      <p className="text-xs md:text-sm text-gray-500 truncate">
+                        {selectedTicket.customer?.phone}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  
+                  {/* Ações - Responsivo */}
+                  <div className="flex items-center gap-2 flex-wrap">
                     {getStatusBadge(selectedTicket.status)}
                     
-                    {/* Ações de Ticket */}
                     <Button 
                       variant="outline" 
                       size="sm"
                       onClick={handleAssumeTicket}
                       disabled={selectedTicket.status === 'pending'}
+                      className="text-xs"
                     >
-                      <UserCheck className="w-4 h-4 mr-2" />
-                      Assumir
+                      <UserCheck className="w-4 h-4 mr-1 md:mr-2" />
+                      <span className="hidden sm:inline">Assumir</span>
                     </Button>
                     
                     <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
                       <DialogTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <ArrowRight className="w-4 h-4 mr-2" />
-                          Transferir
+                        <Button variant="outline" size="sm" className="text-xs">
+                          <ArrowRight className="w-4 h-4 mr-1 md:mr-2" />
+                          <span className="hidden sm:inline">Transferir</span>
                         </Button>
                       </DialogTrigger>
-                      <DialogContent>
+                      <DialogContent className="w-[90vw] max-w-md">
                         <DialogHeader>
                           <DialogTitle>Transferir Ticket</DialogTitle>
                         </DialogHeader>
@@ -659,7 +654,7 @@ const TicketChatInterface = () => {
                     </Dialog>
                     
                     <Select value={selectedTicket.status} onValueChange={handleStatusChange}>
-                      <SelectTrigger className="w-32">
+                      <SelectTrigger className="w-24 md:w-32 text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -675,12 +670,13 @@ const TicketChatInterface = () => {
                   </div>
                 </div>
 
-                {/* Tabs de Conversa e Notas */}
-                <div className="flex space-x-4 mt-4">
+                {/* Tabs de Conversa e Notas - Responsivo */}
+                <div className="flex space-x-2 mt-4">
                   <Button
                     variant={!showInternalNotes ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setShowInternalNotes(false)}
+                    className="text-xs md:text-sm"
                   >
                     <MessageSquare className="w-4 h-4 mr-2" />
                     Conversa
@@ -689,24 +685,30 @@ const TicketChatInterface = () => {
                     variant={showInternalNotes ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setShowInternalNotes(true)}
+                    className="text-xs md:text-sm"
                   >
                     <FileText className="w-4 h-4 mr-2" />
-                    Notas Internas ({selectedTicket.internal_notes.length})
+                    Notas ({selectedTicket.internal_notes.length})
                   </Button>
                 </div>
               </CardHeader>
 
-              {/* Área de Mensagens/Notas */}
-              <CardContent className="flex-1 p-0">
+              {/* Área de Mensagens/Notas - Responsivo */}
+              <CardContent className="flex-1 p-0 min-h-0">
                 {!showInternalNotes ? (
                   // Conversa
                   <div className="flex flex-col h-full">
-                    <ScrollArea className="flex-1 p-4">
+                    <ScrollArea className="flex-1 p-3 md:p-4">
                       <div className="space-y-4">
-                        {ticketMessages.length === 0 ? (
+                        {loadingMessages ? (
+                          <div className="text-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                            <p className="text-sm text-gray-500">Carregando mensagens...</p>
+                          </div>
+                        ) : ticketMessages.length === 0 ? (
                           <div className="text-center text-gray-500 py-8">
                             <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                            <p>Nenhuma mensagem nesta conversa</p>
+                            <p className="text-sm">Nenhuma mensagem nesta conversa</p>
                           </div>
                         ) : (
                           ticketMessages.map((message) => (
@@ -714,12 +716,17 @@ const TicketChatInterface = () => {
                               key={message.id}
                               className={`flex ${message.from_me ? 'justify-end' : 'justify-start'}`}
                             >
-                              <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                              <div className={`max-w-xs md:max-w-md lg:max-w-lg px-3 md:px-4 py-2 rounded-lg ${
                                 message.from_me
                                   ? 'bg-blue-500 text-white'
                                   : 'bg-gray-100 text-gray-900'
                               }`}>
-                                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                                {!message.from_me && message.sender_name && (
+                                  <p className="text-xs font-medium mb-1 opacity-70">
+                                    {message.sender_name}
+                                  </p>
+                                )}
+                                <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                                 <div className="flex items-center justify-between mt-1">
                                   <p className={`text-xs ${
                                     message.from_me ? 'text-blue-100' : 'text-gray-500'
@@ -736,11 +743,12 @@ const TicketChatInterface = () => {
                             </div>
                           ))
                         )}
+                        <div ref={messagesEndRef} />
                       </div>
                     </ScrollArea>
 
-                    {/* Input de Mensagem */}
-                    <div className="border-t p-4">
+                    {/* Input de Mensagem - Responsivo */}
+                    <div className="border-t p-3 md:p-4">
                       <div className="flex space-x-2">
                         <Button variant="ghost" size="sm">
                           <Paperclip className="w-4 h-4" />
@@ -750,9 +758,9 @@ const TicketChatInterface = () => {
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                          className="flex-1"
+                          className="flex-1 text-sm"
                         />
-                        <Button onClick={handleSendMessage} disabled={!newMessage.trim()}>
+                        <Button onClick={handleSendMessage} disabled={!newMessage.trim()} size="sm">
                           <Send className="w-4 h-4" />
                         </Button>
                       </div>
@@ -761,16 +769,16 @@ const TicketChatInterface = () => {
                 ) : (
                   // Notas Internas
                   <div className="flex flex-col h-full">
-                    <ScrollArea className="flex-1 p-4">
+                    <ScrollArea className="flex-1 p-3 md:p-4">
                       <div className="space-y-4">
                         {selectedTicket.internal_notes.length === 0 ? (
                           <div className="text-center text-gray-500 py-8">
                             <FileText className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                            <p>Nenhuma nota interna</p>
+                            <p className="text-sm">Nenhuma nota interna</p>
                           </div>
                         ) : (
                           selectedTicket.internal_notes.map((note: any) => (
-                            <div key={note.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div key={note.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 md:p-4">
                               <div className="flex justify-between items-start mb-2">
                                 <span className="font-medium text-sm">{note.created_by}</span>
                                 <span className="text-xs text-gray-500">
@@ -784,17 +792,18 @@ const TicketChatInterface = () => {
                       </div>
                     </ScrollArea>
 
-                    {/* Input de Nota Interna */}
-                    <div className="border-t p-4">
+                    {/* Input de Nota Interna - Responsivo */}
+                    <div className="border-t p-3 md:p-4">
                       <div className="space-y-2">
                         <Textarea
                           placeholder="Adicionar nota interna..."
                           value={internalNote}
                           onChange={(e) => setInternalNote(e.target.value)}
                           rows={3}
+                          className="text-sm"
                         />
                         <div className="flex justify-end">
-                          <Button onClick={handleAddInternalNote} disabled={!internalNote.trim()}>
+                          <Button onClick={handleAddInternalNote} disabled={!internalNote.trim()} size="sm">
                             <FileText className="w-4 h-4 mr-2" />
                             Adicionar Nota
                           </Button>
@@ -806,13 +815,13 @@ const TicketChatInterface = () => {
               </CardContent>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center p-4">
               <div className="text-center text-gray-500">
                 <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                 <h3 className="text-lg font-medium mb-2">
                   {activeTab === "tickets" ? "Selecione um ticket" : "Área de Contatos"}
                 </h3>
-                <p>
+                <p className="text-sm">
                   {activeTab === "tickets" 
                     ? "Escolha um ticket da lista para visualizar a conversa" 
                     : "Gerencie seus contatos e informações de clientes"
