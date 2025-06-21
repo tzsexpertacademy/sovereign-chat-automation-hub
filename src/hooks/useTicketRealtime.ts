@@ -261,7 +261,7 @@ export const useTicketRealtime = (clientId: string) => {
       try {
         // Buscar o ticket correspondente
         const allTickets = await ticketsService.getClientTickets(clientId);
-        const ticket = allTickets.find(t => t.whatsapp_chat_id === chatId);
+        const ticket = allTickets.find(t => t.chat_id === chatId);
         
         if (ticket) {
           await processBatchWithAssistant(batchedMessages, ticket.id, chatId);

@@ -1,3 +1,4 @@
+
 import { io } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from "@/integrations/supabase/client";
@@ -69,6 +70,14 @@ export type WhatsAppInstanceData = Tables<"whatsapp_instances"> & {
   custom_name?: string;
 };
 
+export type WhatsAppClient = {
+  clientId: string;
+  status: string;
+  phoneNumber?: string;
+  hasQrCode: boolean;
+  qrCode?: string;
+};
+
 export class WhatsAppMultiClientService {
   private baseUrl: string;
   private socket: any;
@@ -135,10 +144,89 @@ export class WhatsAppMultiClientService {
     }
   }
 
+  onClientsUpdate(callback: (clients: WhatsAppClient[]) => void) {
+    if (this.socket) {
+      this.socket.on('clients_update', callback);
+    }
+  }
+
+  onClientStatus(clientId: string, callback: (client: WhatsAppClient) => void) {
+    if (this.socket) {
+      this.socket.on(`client_status_${clientId}`, callback);
+    }
+  }
+
   removeListener(event: string) {
     if (this.socket) {
       this.socket.off(event);
       console.log(`👂 Listener removido: ${event}`);
+    }
+  }
+
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/health`);
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async getAllClients(): Promise<WhatsAppClient[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/clients`);
+      if (!response.ok) {
+        throw new Error(`Erro ao obter clientes: ${response.status}`);
+      }
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao obter clientes:', error);
+      throw error;
+    }
+  }
+
+  async connectClient(clientId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/connect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ clientId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao conectar cliente: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao conectar cliente:', error);
+      throw error;
+    }
+  }
+
+  async disconnectClient(clientId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/disconnect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ clientId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao desconectar cliente: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao desconectar cliente:', error);
+      throw error;
     }
   }
 
@@ -605,6 +693,21 @@ export class WhatsAppMultiClientService {
       throw error;
     }
   }
+
+  async diagnoseClient(clientId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/diagnose/${clientId}`);
+      if (!response.ok) {
+        throw new Error(`Erro ao diagnosticar cliente: ${response.status}`);
+      }
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao diagnosticar cliente:', error);
+      throw error;
+    }
+  }
 }
 
 export const whatsappService = new WhatsAppMultiClientService();
+export default whatsappService;

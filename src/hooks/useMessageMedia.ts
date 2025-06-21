@@ -1,233 +1,191 @@
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { whatsappService } from '@/services/whatsappMultiClient';
-import { useToast } from './use-toast';
+import { useToast } from '@/hooks/use-toast';
 
-export interface MediaMessage {
-  type: 'image' | 'audio' | 'video' | 'document';
+interface MediaFile {
   file: File;
-  caption?: string;
-  to: string;
-}
-
-export interface AudioRecording {
-  isRecording: boolean;
-  audioBlob: Blob | null;
-  duration: number;
+  preview: string;
+  type: 'image' | 'video' | 'audio' | 'document';
 }
 
 export const useMessageMedia = (clientId: string) => {
-  const [isUploading, setIsUploading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
-  const [audioRecording, setAudioRecording] = useState<AudioRecording>({
-    isRecording: false,
-    audioBlob: null,
-    duration: 0
-  });
+  const [isUploading, setIsUploading] = useState(false);
+  const [audioRecording, setAudioRecording] = useState<Blob | null>(null);
   const { toast } = useToast();
 
-  // Enviar mídia
-  const sendMedia = useCallback(async (mediaMessage: MediaMessage) => {
-    if (!clientId) {
-      toast({
-        title: "Erro",
-        description: "Cliente não encontrado",
-        variant: "destructive"
-      });
-      return false;
-    }
-
+  const handleImageUpload = async (file: File, chatId: string, caption?: string) => {
     try {
       setIsUploading(true);
       
-      await whatsappService.sendMessage(
-        clientId,
-        mediaMessage.to,
-        mediaMessage.caption || '',
-        undefined,
-        mediaMessage.file
-      );
-
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Data = e.target?.result as string;
+        
+        await whatsappService.sendMedia(clientId, chatId, {
+          data: base64Data,
+          mimetype: file.type,
+          filename: file.name
+        }, { caption });
+      };
+      reader.readAsDataURL(file);
+      
       toast({
-        title: "Mídia enviada",
-        description: `${mediaMessage.type} enviado com sucesso`,
+        title: "Imagem enviada",
+        description: "Sua imagem foi enviada com sucesso",
       });
-
-      return true;
     } catch (error: any) {
-      console.error('Erro ao enviar mídia:', error);
       toast({
-        title: "Erro ao enviar mídia",
-        description: error.message || "Falha ao enviar arquivo",
-        variant: "destructive"
+        title: "Erro ao enviar imagem",
+        description: error.message,
+        variant: "destructive",
       });
-      return false;
     } finally {
       setIsUploading(false);
     }
-  }, [clientId, toast]);
+  };
 
-  // Processar imagem
-  const handleImageUpload = useCallback(async (file: File, to: string, caption?: string) => {
-    if (!file.type.startsWith('image/')) {
+  const handleVideoUpload = async (file: File, chatId: string, caption?: string) => {
+    try {
+      setIsUploading(true);
+      
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Data = e.target?.result as string;
+        
+        await whatsappService.sendMedia(clientId, chatId, {
+          data: base64Data,
+          mimetype: file.type,
+          filename: file.name
+        }, { caption });
+      };
+      reader.readAsDataURL(file);
+      
       toast({
-        title: "Erro",
-        description: "Arquivo deve ser uma imagem",
-        variant: "destructive"
+        title: "Vídeo enviado",
+        description: "Seu vídeo foi enviado com sucesso",
       });
-      return false;
-    }
-
-    return await sendMedia({
-      type: 'image',
-      file,
-      caption,
-      to
-    });
-  }, [sendMedia, toast]);
-
-  // Processar vídeo
-  const handleVideoUpload = useCallback(async (file: File, to: string, caption?: string) => {
-    if (!file.type.startsWith('video/')) {
+    } catch (error: any) {
       toast({
-        title: "Erro",
-        description: "Arquivo deve ser um vídeo",
-        variant: "destructive"
+        title: "Erro ao enviar vídeo",
+        description: error.message,
+        variant: "destructive",
       });
-      return false;
+    } finally {
+      setIsUploading(false);
     }
+  };
 
-    // Verificar tamanho do arquivo (máximo 64MB)
-    if (file.size > 64 * 1024 * 1024) {
+  const handleDocumentUpload = async (file: File, chatId: string, caption?: string) => {
+    try {
+      setIsUploading(true);
+      
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Data = e.target?.result as string;
+        
+        await whatsappService.sendFile(clientId, chatId, {
+          data: base64Data,
+          mimetype: file.type,
+          filename: file.name
+        }, { caption });
+      };
+      reader.readAsDataURL(file);
+      
       toast({
-        title: "Erro",
-        description: "Vídeo muito grande (máximo 64MB)",
-        variant: "destructive"
+        title: "Documento enviado",
+        description: "Seu documento foi enviado com sucesso",
       });
-      return false;
-    }
-
-    return await sendMedia({
-      type: 'video',
-      file,
-      caption,
-      to
-    });
-  }, [sendMedia, toast]);
-
-  // Processar documento
-  const handleDocumentUpload = useCallback(async (file: File, to: string, caption?: string) => {
-    // Verificar tamanho do arquivo (máximo 100MB)
-    if (file.size > 100 * 1024 * 1024) {
+    } catch (error: any) {
       toast({
-        title: "Erro",
-        description: "Documento muito grande (máximo 100MB)",
-        variant: "destructive"
+        title: "Erro ao enviar documento",
+        description: error.message,
+        variant: "destructive",
       });
-      return false;
+    } finally {
+      setIsUploading(false);
     }
+  };
 
-    return await sendMedia({
-      type: 'document',
-      file,
-      caption,
-      to
-    });
-  }, [sendMedia, toast]);
-
-  // Gravação de áudio
-  const startRecording = useCallback(async () => {
+  const startRecording = async (): Promise<MediaRecorder | null> => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
-      
-      const chunks: BlobPart[] = [];
-      let startTime = Date.now();
-      
+      const chunks: Blob[] = [];
+
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
+        chunks.push(event.data);
       };
 
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(chunks, { type: 'audio/wav' });
-        const duration = Math.floor((Date.now() - startTime) / 1000);
-        
-        setAudioRecording({
-          isRecording: false,
-          audioBlob,
-          duration
-        });
-        
-        stream.getTracks().forEach(track => track.stop());
+        setAudioRecording(audioBlob);
       };
 
       mediaRecorder.start();
-      setAudioRecording(prev => ({ ...prev, isRecording: true }));
-      
       return mediaRecorder;
-    } catch (error) {
-      console.error('Erro ao iniciar gravação:', error);
+    } catch (error: any) {
       toast({
-        title: "Erro",
-        description: "Não foi possível acessar o microfone",
-        variant: "destructive"
+        title: "Erro ao iniciar gravação",
+        description: error.message,
+        variant: "destructive",
       });
       return null;
     }
-  }, [toast]);
+  };
 
-  const stopRecording = useCallback((mediaRecorder: MediaRecorder | null) => {
-    if (mediaRecorder && audioRecording.isRecording) {
+  const stopRecording = (mediaRecorder: MediaRecorder | null) => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
       mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
     }
-  }, [audioRecording.isRecording]);
+  };
 
-  const sendAudioRecording = useCallback(async (to: string) => {
-    if (!audioRecording.audioBlob) {
+  const sendAudioRecording = async (chatId: string) => {
+    if (!audioRecording) return;
+
+    try {
+      setIsUploading(true);
+      
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Data = e.target?.result as string;
+        
+        await whatsappService.sendMedia(clientId, chatId, {
+          data: base64Data,
+          mimetype: 'audio/wav',
+          filename: 'audio.wav'
+        });
+      };
+      reader.readAsDataURL(audioRecording);
+      
+      setAudioRecording(null);
+      
       toast({
-        title: "Erro",
-        description: "Nenhuma gravação de áudio encontrada",
-        variant: "destructive"
+        title: "Áudio enviado",
+        description: "Seu áudio foi enviado com sucesso",
       });
-      return false;
-    }
-
-    const audioFile = new File([audioRecording.audioBlob], 'audio.wav', { type: 'audio/wav' });
-    
-    const success = await sendMedia({
-      type: 'audio',
-      file: audioFile,
-      to
-    });
-
-    if (success) {
-      setAudioRecording({
-        isRecording: false,
-        audioBlob: null,
-        duration: 0
+    } catch (error: any) {
+      toast({
+        title: "Erro ao enviar áudio",
+        description: error.message,
+        variant: "destructive",
       });
+    } finally {
+      setIsUploading(false);
     }
+  };
 
-    return success;
-  }, [audioRecording.audioBlob, sendMedia, toast]);
-
-  const clearSelectedMedia = useCallback(() => {
+  const clearSelectedMedia = () => {
     setSelectedMedia(null);
-    setAudioRecording({
-      isRecording: false,
-      audioBlob: null,
-      duration: 0
-    });
-  }, []);
+  };
 
   return {
-    isUploading,
     selectedMedia,
     setSelectedMedia,
+    isUploading,
     audioRecording,
-    sendMedia,
     handleImageUpload,
     handleVideoUpload,
     handleDocumentUpload,
