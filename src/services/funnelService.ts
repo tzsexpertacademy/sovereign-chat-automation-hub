@@ -100,11 +100,11 @@ export const funnelService = {
     try {
       const { data, error } = await supabase
         .from('funnel_stages')
-        .insert([{
+        .insert({
           client_id: clientId,
           ...stageData,
           color: stageData.color || '#10B981'
-        }])
+        })
         .select()
         .single();
 
@@ -169,11 +169,11 @@ export const funnelService = {
     try {
       const { data, error } = await supabase
         .from('funnel_tags')
-        .insert([{
+        .insert({
           client_id: clientId,
           ...tagData,
           color: tagData.color || '#3B82F6'
-        }])
+        })
         .select()
         .single();
 
@@ -256,12 +256,17 @@ export const funnelService = {
 
   async createLead(clientId: string, leadData: Partial<FunnelLead>): Promise<FunnelLead> {
     try {
+      // Remover propriedades que não existem na tabela
+      const { current_stage, tags, ...cleanLeadData } = leadData;
+      
       const { data, error } = await supabase
         .from('funnel_leads')
-        .insert([{
+        .insert({
           client_id: clientId,
-          ...leadData
-        }])
+          chat_id: cleanLeadData.chat_id || '',
+          instance_id: cleanLeadData.instance_id || '',
+          ...cleanLeadData
+        })
         .select()
         .single();
 
@@ -315,13 +320,13 @@ export const funnelService = {
       // Criar histórico
       const { error: historyError } = await supabase
         .from('funnel_lead_history')
-        .insert([{
+        .insert({
           lead_id: leadId,
           from_stage_id: currentLead?.current_stage_id,
           to_stage_id: newStageId,
           moved_by: 'user',
           reason: reason || 'Movido manualmente'
-        }]);
+        });
 
       if (historyError) throw historyError;
     } catch (error) {
@@ -334,11 +339,11 @@ export const funnelService = {
     try {
       const { error } = await supabase
         .from('funnel_lead_tags')
-        .insert([{
+        .insert({
           lead_id: leadId,
           tag_id: tagId,
           assigned_by: 'user'
-        }]);
+        });
 
       if (error && error.code !== '23505') { // Ignore duplicate key errors
         throw error;
