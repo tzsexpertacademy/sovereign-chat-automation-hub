@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -10,7 +9,6 @@ import { useMessageBatch } from './useMessageBatch';
 import { useHumanizedTyping } from './useHumanizedTyping';
 import { useOnlineStatus } from './useOnlineStatus';
 import { useAutoReactions } from './useAutoReactions';
-import { useQuotedMessages } from './useQuotedMessages';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -68,15 +66,9 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Hooks para status online, reações automáticas e mensagens citadas
+  // Hooks para status online e reações automáticas
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
   const { processMessage: processAutoReaction, isProcessing: isProcessingReaction } = useAutoReactions(clientId, true);
-  const { 
-    processQuotedMessage, 
-    generateContextualPrompt, 
-    hasQuotedMessage,
-    isProcessingQuoted 
-  } = useQuotedMessages(true);
 
   // Função para extrair nome real do WhatsApp
   const extractWhatsAppName = useCallback((message: any) => {
@@ -207,33 +199,14 @@ export const useTicketRealtime = (clientId: string) => {
         }
       }
 
-      // Processar mensagens citadas no lote
-      let quotedContext = '';
-      let basePrompt = assistant.prompt || 'Você é um assistente útil.';
-      
-      for (const message of messages) {
-        if (hasQuotedMessage(message)) {
-          const quotedMessage = processQuotedMessage(message);
-          if (quotedMessage) {
-            console.log('💬 Mensagem com citação detectada no lote:', quotedMessage.id);
-            basePrompt = generateContextualPrompt(quotedMessage, basePrompt);
-            quotedContext += `\nMensagem com contexto de citação processada.`;
-            break; // Usar apenas a primeira mensagem citada do lote
-          }
-        }
-      }
-
       // Combinar mensagens do lote em uma única mensagem
       const combinedMessage = messages.map(msg => msg.text).join('\n');
       console.log(`📨 Processando lote combinado: "${combinedMessage.substring(0, 100)}..."`);
 
-      // Modificar prompt baseado na emoção detectada e citações
-      let systemPrompt = basePrompt;
+      // Modificar prompt baseado na emoção detectada
+      let systemPrompt = assistant.prompt || 'Você é um assistente útil.';
       if (emotionContext) {
         systemPrompt += `\n\nContexto emocional da conversa:${emotionContext}`;
-      }
-      if (quotedContext) {
-        systemPrompt += `\n\nContexto adicional:${quotedContext}`;
       }
 
       // Chamar a API da OpenAI
@@ -319,7 +292,7 @@ export const useTicketRealtime = (clientId: string) => {
       processingQueueRef.current.delete(batchKey);
       setAssistantTyping(false);
     }
-  }, [clientId, sendWithTypingDelay, loadTickets, markActivity, processAutoReaction, hasQuotedMessage, processQuotedMessage, generateContextualPrompt]);
+  }, [clientId, sendWithTypingDelay, loadTickets, markActivity, processAutoReaction]);
 
   // Hook para processamento em lote (5 segundos de timeout) - com useCallback
   const { addMessage: addToBatch } = useMessageBatch({
@@ -544,7 +517,7 @@ export const useTicketRealtime = (clientId: string) => {
   return {
     tickets,
     isLoading,
-    isTyping: assistantTyping || isProcessingReaction || isProcessingQuoted,
+    isTyping: assistantTyping || isProcessingReaction,
     isOnline,
     reloadTickets
   };

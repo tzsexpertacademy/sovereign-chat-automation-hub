@@ -1,3 +1,4 @@
+
 const express = require('express');
 const { Server } = require('socket.io');
 const http = require('http');
@@ -71,72 +72,6 @@ const loadSession = (clientId) => {
     return null;
 };
 
-// Sistema de detecção de emoções
-const detectEmotion = (message) => {
-    const emotions = {
-        love: {
-            keywords: ['amor', 'amo', 'adoro', 'maravilhoso', 'incrível', 'perfeito', 'excelente', 'fantástico'],
-            emoji: '❤️'
-        },
-        approval: {
-            keywords: ['sim', 'correto', 'certo', 'concordo', 'aprovado', 'ok', 'beleza', 'show'],
-            emoji: '👍'
-        },
-        laugh: {
-            keywords: ['haha', 'kkkk', 'rsrs', 'engraçado', 'risos', 'hilário', 'kk'],
-            emoji: '😂'
-        },
-        surprise: {
-            keywords: ['nossa', 'uau', 'inacreditável', 'sério', 'caramba', 'impressionante'],
-            emoji: '😮'
-        },
-        sadness: {
-            keywords: ['triste', 'chateado', 'decepcionado', 'frustrado', 'mal', 'pena'],
-            emoji: '😢'
-        },
-        anger: {
-            keywords: ['raiva', 'irritado', 'bravo', 'furioso', 'odio', 'detesto', 'péssimo'],
-            emoji: '😠'
-        }
-    };
-
-    const messageText = message.toLowerCase();
-    
-    for (const [emotionType, config] of Object.entries(emotions)) {
-        for (const keyword of config.keywords) {
-            if (messageText.includes(keyword)) {
-                return {
-                    type: emotionType,
-                    emoji: config.emoji,
-                    detected: true
-                };
-            }
-        }
-    }
-    
-    return { detected: false };
-};
-
-// Sistema de detecção de mensagens citadas
-const extractQuotedMessage = (message) => {
-    try {
-        if (message.quotedMessage || message._data?.quotedMsg || message.quotedMsg) {
-            const quotedData = message.quotedMessage || message._data?.quotedMsg || message.quotedMsg;
-            
-            return {
-                id: quotedData.id || quotedData._serialized || 'unknown',
-                body: quotedData.body || quotedData.caption || '',
-                author: quotedData.author || quotedData.from || 'Desconhecido',
-                timestamp: quotedData.timestamp || Date.now()
-            };
-        }
-        return null;
-    } catch (error) {
-        console.error('Erro ao extrair mensagem citada:', error);
-        return null;
-    }
-};
-
 // Classe para gerenciar clientes WhatsApp
 class WhatsAppClientManager {
     constructor(clientId) {
@@ -149,9 +84,6 @@ class WhatsAppClientManager {
         this.lastActivity = Date.now();
         this.chatCache = new Map();
         this.chatCacheTimeout = 30000; // 30 segundos
-        this.presenceState = 'unavailable'; // available, unavailable, composing, recording
-        this.isOnline = false;
-        this.presenceUpdateInterval = null;
     }
 
     async initialize() {
@@ -219,7 +151,6 @@ class WhatsAppClientManager {
         this.client.on('ready', async () => {
             console.log(`✅ Cliente pronto: ${this.clientId}`);
             this.isReady = true;
-            this.isOnline = true;
             
             try {
                 // Obter informações do usuário
@@ -231,35 +162,12 @@ class WhatsAppClientManager {
                 console.log(`⚠️ Não foi possível obter número do telefone para ${this.clientId}`);
             }
             
-            // Iniciar atualizações automáticas de presença
-            this.startPresenceUpdates();
-            
             this.updateStatus('connected');
         });
 
-        this.client.on('message', async (msg) => {
+        this.client.on('message', (msg) => {
             console.log(`📨 Mensagem recebida em ${this.clientId}:`, msg.body?.substring(0, 50));
             this.lastActivity = Date.now();
-            
-            // Detectar emoção e reagir automaticamente
-            const emotion = detectEmotion(msg.body || '');
-            if (emotion.detected && !msg.fromMe) {
-                console.log(`😊 Emoção detectada: ${emotion.type} - ${emotion.emoji}`);
-                
-                // Delay natural de 1-3 segundos
-                const delay = Math.random() * 2000 + 1000;
-                setTimeout(async () => {
-                    try {
-                        await this.sendReaction(msg.id._serialized, emotion.emoji);
-                        console.log(`✅ Reação ${emotion.emoji} enviada automaticamente`);
-                    } catch (error) {
-                        console.error('❌ Erro ao enviar reação automática:', error);
-                    }
-                }, delay);
-            }
-            
-            // Extrair mensagem citada se existir
-            const quotedMessage = extractQuotedMessage(msg);
             
             const messageData = {
                 id: msg.id.id,
@@ -269,9 +177,7 @@ class WhatsAppClientManager {
                 fromMe: msg.fromMe,
                 author: msg.author,
                 from: msg.from,
-                to: msg.to,
-                quotedMessage: quotedMessage,
-                emotion: emotion.detected ? emotion : null
+                to: msg.to
             };
             
             io.emit(`message_${this.clientId}`, messageData);
@@ -280,8 +186,6 @@ class WhatsAppClientManager {
         this.client.on('disconnected', (reason) => {
             console.log(`❌ Cliente desconectado ${this.clientId}:`, reason);
             this.isReady = false;
-            this.isOnline = false;
-            this.stopPresenceUpdates();
             this.updateStatus('disconnected', reason);
         });
 
@@ -289,81 +193,6 @@ class WhatsAppClientManager {
         this.client.on('error', (error) => {
             console.error(`❌ Erro no cliente ${this.clientId}:`, error);
         });
-    }
-
-    // Sistema de presença automática
-    startPresenceUpdates() {
-        if (this.presenceUpdateInterval) {
-            clearInterval(this.presenceUpdateInterval);
-        }
-        
-        // Atualizar presença a cada 30 segundos
-        this.presenceUpdateInterval = setInterval(async () => {
-            if (this.isReady && this.isOnline) {
-                try {
-                    await this.updatePresence('available');
-                    console.log(`👤 Presença atualizada automaticamente para ${this.clientId}`);
-                } catch (error) {
-                    console.error(`❌ Erro ao atualizar presença automática:`, error);
-                }
-            }
-        }, 30000);
-    }
-
-    stopPresenceUpdates() {
-        if (this.presenceUpdateInterval) {
-            clearInterval(this.presenceUpdateInterval);
-            this.presenceUpdateInterval = null;
-        }
-    }
-
-    async updatePresence(presence) {
-        try {
-            if (!this.isReady || !this.client) {
-                throw new Error('Cliente não está pronto');
-            }
-            
-            this.presenceState = presence;
-            
-            // Simular atualização de presença (whatsapp-web.js não tem API direta para isso)
-            console.log(`👤 Presença definida como: ${presence} para ${this.clientId}`);
-            
-            // Emitir evento de presença atualizada
-            io.emit(`presence_${this.clientId}`, {
-                clientId: this.clientId,
-                presence: presence,
-                isOnline: this.isOnline,
-                timestamp: Date.now()
-            });
-            
-            return { success: true, presence };
-        } catch (error) {
-            console.error(`❌ Erro ao atualizar presença:`, error);
-            throw error;
-        }
-    }
-
-    async sendReaction(messageId, emoji) {
-        try {
-            if (!this.isReady || !this.client) {
-                throw new Error('Cliente não está pronto');
-            }
-            
-            // Encontrar a mensagem pelo ID
-            const message = await this.client.getMessageById(messageId);
-            if (!message) {
-                throw new Error('Mensagem não encontrada');
-            }
-            
-            // Enviar reação
-            await message.react(emoji);
-            
-            console.log(`✅ Reação ${emoji} enviada para mensagem ${messageId}`);
-            return { success: true, messageId, emoji };
-        } catch (error) {
-            console.error(`❌ Erro ao enviar reação:`, error);
-            throw error;
-        }
     }
 
     updateStatus(status, error = null) {
@@ -376,8 +205,6 @@ class WhatsAppClientManager {
             phoneNumber: this.phoneNumber,
             hasQrCode: !!this.qrCode,
             qrCode: this.qrCode,
-            isOnline: this.isOnline,
-            presenceState: this.presenceState,
             error: error
         };
         
@@ -512,8 +339,7 @@ class WhatsAppClientManager {
                 fromMe: message.fromMe,
                 author: message.author,
                 from: message.from,
-                to: message.to,
-                quotedMessage: extractQuotedMessage(message)
+                to: message.to
             }));
             
             console.log(`✅ ${processedMessages.length} mensagens obtidas para ${this.clientId}`);
@@ -532,18 +358,7 @@ class WhatsAppClientManager {
 
         try {
             console.log(`📤 Enviando mensagem para ${to} via ${this.clientId}`);
-            
-            // Atualizar presença para "digitando" antes de enviar
-            await this.updatePresence('composing');
-            
-            // Delay para simular digitação
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
             await this.client.sendMessage(to, message, options);
-            
-            // Voltar presença para "disponível" após enviar
-            await this.updatePresence('available');
-            
             console.log(`✅ Mensagem enviada com sucesso via ${this.clientId}`);
         } catch (error) {
             console.error(`❌ Erro ao enviar mensagem via ${this.clientId}:`, error);
@@ -558,22 +373,7 @@ class WhatsAppClientManager {
 
         try {
             console.log(`📤 Enviando mídia para ${to} via ${this.clientId}`);
-            
-            // Atualizar presença para "gravando" se for áudio
-            if (options.sendAudioAsVoice) {
-                await this.updatePresence('recording');
-            } else {
-                await this.updatePresence('composing');
-            }
-            
-            // Delay para simular preparação da mídia
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
             await this.client.sendMessage(to, media, options);
-            
-            // Voltar presença para "disponível" após enviar
-            await this.updatePresence('available');
-            
             console.log(`✅ Mídia enviada com sucesso via ${this.clientId}`);
         } catch (error) {
             console.error(`❌ Erro ao enviar mídia via ${this.clientId}:`, error);
@@ -583,14 +383,11 @@ class WhatsAppClientManager {
 
     async disconnect() {
         try {
-            this.stopPresenceUpdates();
-            
             if (this.client) {
                 await this.client.logout();
                 await this.client.destroy();
             }
             this.isReady = false;
-            this.isOnline = false;
             this.updateStatus('disconnected');
             console.log(`✅ Cliente ${this.clientId} desconectado`);
         } catch (error) {
@@ -626,9 +423,7 @@ app.post('/api/clients', async (req, res) => {
             clientId: c.clientId,
             status: c.status,
             phoneNumber: c.phoneNumber,
-            hasQrCode: !!c.qrCode,
-            isOnline: c.isOnline,
-            presenceState: c.presenceState
+            hasQrCode: !!c.qrCode
         })));
         
         res.status(201).json({ success: true, clientId: clientId });
@@ -677,59 +472,13 @@ app.post('/api/clients/:clientId/disconnect', async (req, res) => {
             clientId: c.clientId,
             status: c.status,
             phoneNumber: c.phoneNumber,
-            hasQrCode: !!c.qrCode,
-            isOnline: c.isOnline,
-            presenceState: c.presenceState
+            hasQrCode: !!c.qrCode
         })));
         
         res.json({ success: true, clientId: clientId, status: 'disconnected' });
         
     } catch (error) {
         console.error(`❌ Erro ao desconectar cliente ${clientId}:`, error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Nova rota para atualizar presença
-app.post('/api/clients/:clientId/presence', async (req, res) => {
-    const { clientId } = req.params;
-    const { presence } = req.body;
-    
-    try {
-        console.log(`👤 Atualizando presença para ${clientId}: ${presence}`);
-        
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        const result = await clientManager.updatePresence(presence);
-        res.json({ success: true, ...result });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao atualizar presença para ${clientId}:`, error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Nova rota para enviar reação
-app.post('/api/clients/:clientId/send-reaction', async (req, res) => {
-    const { clientId } = req.params;
-    const { chatId, messageId, emoji } = req.body;
-    
-    try {
-        console.log(`🎭 Enviando reação ${emoji} para mensagem ${messageId} em ${chatId}`);
-        
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        const result = await clientManager.sendReaction(messageId, emoji);
-        res.json({ success: true, ...result });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao enviar reação:`, error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -742,9 +491,7 @@ app.get('/api/clients', (req, res) => {
             clientId: c.clientId,
             status: c.status,
             phoneNumber: c.phoneNumber,
-            hasQrCode: !!c.qrCode,
-            isOnline: c.isOnline,
-            presenceState: c.presenceState
+            hasQrCode: !!c.qrCode
         }));
         
         console.log(`✅ ${clientList.length} clientes encontrados`);
@@ -772,9 +519,7 @@ app.get('/api/clients/:clientId/status', async (req, res) => {
             status: clientManager.status,
             phoneNumber: clientManager.phoneNumber,
             hasQrCode: !!clientManager.qrCode,
-            qrCode: clientManager.qrCode,
-            isOnline: clientManager.isOnline,
-            presenceState: clientManager.presenceState
+            qrCode: clientManager.qrCode
         };
         
         res.json({ success: true, ...statusData });
@@ -989,23 +734,16 @@ app.post('/api/clients/:clientId/send-document', upload.single('file'), async (r
 app.get('/health', (req, res) => {
     const activeClients = clients.size;
     const connectedClients = Array.from(clients.values()).filter(c => c.status === 'connected').length;
-    const onlineClients = Array.from(clients.values()).filter(c => c.isOnline).length;
     
     res.status(200).json({ 
         status: 'ok',
         timestamp: new Date().toISOString(),
         activeClients: activeClients,
         connectedClients: connectedClients,
-        onlineClients: onlineClients,
         uptime: process.uptime(),
         memory: process.memoryUsage(),
         version: '1.0.0',
-        server: `${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 4000}`,
-        features: {
-            autoOnlineStatus: true,
-            autoReactions: true,
-            quotedMessages: true
-        }
+        server: `${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 4000}`
     });
 });
 
@@ -1035,10 +773,6 @@ server.listen(port, '0.0.0.0', () => {
     console.log(`📊 Timestamp: ${new Date().toISOString()}`);
     console.log(`🔧 Node.js: ${process.version}`);
     console.log(`💾 Memória: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
-    console.log(`✨ Recursos habilitados:`);
-    console.log(`   📡 Status Online Automático`);
-    console.log(`   😊 Sistema de Reações Automáticas`);
-    console.log(`   💬 Resposta a Mensagens Citadas`);
 });
 
 // Graceful shutdown

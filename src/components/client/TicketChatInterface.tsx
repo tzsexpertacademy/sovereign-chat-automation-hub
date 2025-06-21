@@ -1,495 +1,911 @@
-
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from "react";
+import { useParams } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { 
-  Send, 
-  Paperclip, 
-  MoreVertical, 
-  Clock, 
-  Check, 
-  CheckCheck,
-  Mic,
-  MicOff,
-  Play,
-  Pause,
-  Download,
-  Eye,
-  EyeOff,
-  User,
-  Bot,
-  Phone,
-  Mail,
-  Calendar,
-  MessageSquare,
-  Archive,
-  AlertCircle,
-  ArrowDown,
-  Reply
-} from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, MessageSquare, Clock, User, Tag, FileText, CheckCircle, XCircle, RefreshCw, Archive, Star, UserCheck, ArrowRight, Zap, Building2, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { ticketsService, type TicketMessage } from '@/services/ticketsService';
-import { whatsappService } from '@/services/whatsappMultiClient';
-import { useTicketMessages } from '@/hooks/useTicketMessages';
-import { audioService } from '@/services/audioService';
+import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
+import { customersService, type Customer } from "@/services/customersService";
+import { whatsappService } from "@/services/whatsappMultiClient";
+import { queuesService } from "@/services/queuesService";
+import { useTicketRealtime } from "@/hooks/useTicketRealtime";
+import { useTicketMessages } from "@/hooks/useTicketMessages";
+import { useMessageStatus } from "@/hooks/useMessageStatus";
+import { useTypingStatus } from "@/hooks/useTypingStatus";
+import AutomaticProcessorStatus from './AutomaticProcessorStatus';
 import TypingIndicator from './TypingIndicator';
 import MessageStatus from './MessageStatus';
 
-interface TicketChatInterfaceProps {
-  clientId: string;
-  ticketId: string;
-}
-
-interface ChatMessageProps {
-  message: TicketMessage;
-  isLastMessage: boolean;
-}
-
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, isLastMessage }) => {
-  const [showFullText, setShowFullText] = useState(false);
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-  const [mediaType, setMediaType] = useState<'image' | 'video' | 'audio' | 'document' | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isMediaVisible, setIsMediaVisible] = useState(false);
-  const audioRef = useRef<HTMLAudioElement>(null);
+const TicketChatInterface = () => {
+  const { clientId } = useParams<{ clientId: string }>();
   const { toast } = useToast();
+  
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<ConversationTicket | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [internalNote, setInternalNote] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<"tickets" | "contacts">("tickets");
+  const [showInternalNotes, setShowInternalNotes] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [queues, setQueues] = useState<any[]>([]);
+  const [transferQueueId, setTransferQueueId] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const toggleTextVisibility = () => {
-    setShowFullText(!showFullText);
+  // Hooks para tempo real
+  const { tickets, isLoading, reloadTickets, isTyping: assistantTyping } = useTicketRealtime(clientId || '');
+  const { messages: ticketMessages, isLoading: loadingMessages } = useTicketMessages(selectedTicket?.id || null);
+  const { getMessageStatus, updateMessageStatus, markMessageAsRead, markMessageAsFailed } = useMessageStatus();
+  const { isTyping, isRecording, startTyping, stopTyping, startRecording, stopRecording } = useTypingStatus();
+
+  // Auto scroll para última mensagem
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
-
-  const toggleMediaVisibility = () => {
-    setIsMediaVisible(!isMediaVisible);
-  };
-
-  const handleDownload = async () => {
-    try {
-      if (!mediaUrl) {
-        toast({
-          title: "Erro ao baixar mídia",
-          description: "URL da mídia não disponível.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const link = document.createElement('a');
-      link.href = mediaUrl;
-      link.setAttribute('download', message.message_id);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      toast({
-        title: "Download iniciado",
-        description: "O download da mídia foi iniciado.",
-      });
-    } catch (error) {
-      console.error("Erro ao iniciar o download:", error);
-      toast({
-        title: "Erro ao baixar mídia",
-        description: "Ocorreu um erro ao iniciar o download.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handlePlayPause = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  useEffect(() => {
-    const loadMedia = async () => {
-      if (message.media_url) {
-        try {
-          // Simular carregamento de mídia
-          setMediaUrl(message.media_url);
-          setMediaType('image'); // Tipo padrão
-        } catch (error) {
-          console.error("Erro ao carregar mídia:", error);
-          toast({
-            title: "Erro ao carregar mídia",
-            description: "Não foi possível carregar a mídia.",
-            variant: "destructive",
-          });
-        }
-      }
-    };
-
-    loadMedia();
-  }, [message.media_url, toast]);
-
-  return (
-    <div className={`mb-2 flex ${message.from_me ? 'items-end justify-end' : 'items-start'}`}>
-      <div className="flex flex-col space-y-1 text-sm max-w-[75%]">
-        <div className={`flex flex-col ${message.from_me ? 'items-end' : 'items-start'}`}>
-          <div className={`px-3 py-2 rounded-lg ${message.from_me ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'}`}>
-            {/* Header da mensagem */}
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{message.sender_name}</span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="h-8 w-8 p-0">
-                    <span className="sr-only">Abrir menu</span>
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => {
-                    navigator.clipboard.writeText(message.content);
-                    toast({
-                      title: "Copiado para a área de transferência",
-                      description: "O texto da mensagem foi copiado.",
-                    });
-                  }}>
-                    Copiar texto
-                  </DropdownMenuItem>
-                  {mediaUrl && (
-                    <DropdownMenuItem onClick={handleDownload}>
-                      Baixar mídia
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem>
-                    Marcar como não lida
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-red-600">
-                    Reportar
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            {/* Conteúdo da mensagem */}
-            {message.message_type === 'text' && (
-              <p className="break-words">
-                {showFullText ? message.content : `${message.content.substring(0, 200)}${message.content.length > 200 ? '...' : ''}`}
-                {message.content.length > 200 && (
-                  <Button variant="link" onClick={toggleTextVisibility} className="p-0">
-                    {showFullText ? "Mostrar menos" : "Mostrar mais"}
-                  </Button>
-                )}
-              </p>
-            )}
-
-            {/* Tipos de mídia */}
-            {mediaUrl && mediaType === 'image' && (
-              <div>
-                <Button variant="link" onClick={toggleMediaVisibility} className="p-0">
-                  {isMediaVisible ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-                  {isMediaVisible ? "Ocultar Imagem" : "Mostrar Imagem"}
-                </Button>
-                {isMediaVisible && (
-                  <img src={mediaUrl} alt="Imagem" className="max-w-full h-auto rounded-md" />
-                )}
-              </div>
-            )}
-
-            {mediaUrl && mediaType === 'video' && (
-              <div>
-                <Button variant="link" onClick={toggleMediaVisibility} className="p-0">
-                  {isMediaVisible ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-                  {isMediaVisible ? "Ocultar Vídeo" : "Mostrar Vídeo"}
-                </Button>
-                {isMediaVisible && (
-                  <video src={mediaUrl} controls className="max-w-full h-auto rounded-md" />
-                )}
-              </div>
-            )}
-
-            {mediaUrl && mediaType === 'audio' && (
-              <div>
-                <audio ref={audioRef} src={mediaUrl} />
-                <Button variant="link" onClick={handlePlayPause} className="p-0">
-                  {isPlaying ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
-                  {isPlaying ? "Pausar Áudio" : "Reproduzir Áudio"}
-                </Button>
-              </div>
-            )}
-
-            {mediaUrl && mediaType === 'document' && (
-              <div>
-                <Button variant="link" onClick={handleDownload} className="p-0">
-                  <Download className="w-4 h-4 mr-2" />
-                  Baixar Documento
-                </Button>
-              </div>
-            )}
-
-            {/* Rodapé da mensagem */}
-            <div className="flex items-center justify-between text-xs mt-1">
-              <span className="text-gray-400">
-                {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
-              {message.from_me && isLastMessage && (
-                <MessageStatus status={message.processing_status as "sending" | "sent" | "delivered" | "read" | "failed"} />
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) => {
-  const [inputMessage, setInputMessage] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [isTyping, setIsTyping] = useState(false);
-  const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
-  const { messages, isLoading, reloadMessages } = useTicketMessages(clientId, ticketId);
-
-  const scrollToBottom = useCallback(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, scrollToBottom]);
+  }, [ticketMessages, assistantTyping]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputMessage(e.target.value);
+  useEffect(() => {
+    if (clientId) {
+      loadCustomers();
+      loadQueues();
+    }
+  }, [clientId]);
+
+  // Selecionar primeiro ticket quando a lista carrega
+  useEffect(() => {
+    if (tickets.length > 0 && !selectedTicket) {
+      setSelectedTicket(tickets[0]);
+    }
+  }, [tickets, selectedTicket]);
+
+  const loadCustomers = async () => {
+    try {
+      const customersData = await customersService.getClientCustomers(clientId!);
+      setCustomers(customersData);
+    } catch (error) {
+      console.error('Erro ao carregar clientes:', error);
+    }
   };
 
-  const sendMessage = async (messageText: string, file?: File) => {
+  const loadQueues = async () => {
     try {
-      setIsTyping(true);
-      // Implementar envio de mensagem
-      console.log('Enviando mensagem:', messageText, file);
-      await reloadMessages();
+      const queuesData = await queuesService.getClientQueues(clientId!);
+      setQueues(queuesData);
     } catch (error) {
-      console.error('Erro ao enviar mensagem:', error);
-      throw error;
+      console.error('Erro ao carregar filas:', error);
+    }
+  };
+
+  const handleImportConversations = async () => {
+    try {
+      setIsImporting(true);
+      const result = await ticketsService.importConversationsFromWhatsApp(clientId!);
+      
+      toast({
+        title: "Importação concluída",
+        description: `${result.success} conversas importadas, ${result.errors} erros`
+      });
+      
+      reloadTickets();
+    } catch (error: any) {
+      toast({
+        title: "Erro na importação",
+        description: error.message || "Falha ao importar conversas",
+        variant: "destructive"
+      });
     } finally {
-      setIsTyping(false);
+      setIsImporting(false);
+    }
+  };
+
+  const handleAssumeTicket = async () => {
+    if (!selectedTicket) return;
+
+    try {
+      await ticketsService.assumeTicketManually(selectedTicket.id);
+      
+      const updatedTicket = { 
+        ...selectedTicket, 
+        assigned_queue_id: undefined, 
+        assigned_assistant_id: undefined,
+        status: 'pending' as const
+      };
+      setSelectedTicket(updatedTicket);
+      reloadTickets();
+
+      toast({
+        title: "Ticket assumido",
+        description: "Você assumiu este ticket manualmente"
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Erro ao assumir ticket",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleTransferTicket = async () => {
+    if (!selectedTicket || !transferQueueId) return;
+
+    try {
+      await ticketsService.transferTicket(selectedTicket.id, transferQueueId, transferReason);
+      
+      const queueName = queues.find(q => q.id === transferQueueId)?.name || 'Fila';
+      const updatedTicket = { 
+        ...selectedTicket, 
+        assigned_queue_id: transferQueueId,
+        queue: { id: transferQueueId, name: queueName },
+        status: 'open' as const
+      };
+      setSelectedTicket(updatedTicket);
+      reloadTickets();
+
+      setShowTransferDialog(false);
+      setTransferQueueId("");
+      setTransferReason("");
+
+      toast({
+        title: "Ticket transferido",
+        description: `Ticket transferido para ${queueName}`
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Erro ao transferir ticket",
+        variant: "destructive"
+      });
     }
   };
 
   const handleSendMessage = async () => {
-    if (inputMessage.trim() !== '') {
-      setIsTyping(true);
-      try {
-        await sendMessage(inputMessage);
-        setInputMessage('');
-      } catch (error) {
-        toast({
-          title: "Erro ao enviar mensagem",
-          description: "Por favor, tente novamente.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsTyping(false);
-      }
-    }
-  };
+    if (!newMessage.trim() || !selectedTicket || !clientId) return;
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  const startRecording = async () => {
+    const tempMessageId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      setMediaRecorder(recorder);
-      setIsRecording(true);
-      setAudioChunks([]);
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          setAudioChunks((prev) => [...prev, event.data]);
-        }
-      };
-
-      recorder.onstop = () => {
-        setIsRecording(false);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      recorder.start();
-    } catch (error) {
-      console.error("Erro ao iniciar gravação:", error);
-      toast({
-        title: "Erro ao gravar áudio",
-        description: "Permissão negada ou nenhum microfone encontrado.",
-        variant: "destructive",
+      console.log('📤 Enviando mensagem:', newMessage);
+      
+      // Marcar como enviando
+      updateMessageStatus(tempMessageId, 'sending');
+      
+      // Parar indicador de digitação
+      stopTyping();
+      
+      await whatsappService.sendMessage(clientId, selectedTicket.chat_id, newMessage);
+      
+      // Marcar como enviada
+      updateMessageStatus(tempMessageId, 'sent');
+      
+      // Adicionar mensagem ao ticket
+      await ticketsService.addTicketMessage({
+        ticket_id: selectedTicket.id,
+        message_id: tempMessageId,
+        from_me: true,
+        sender_name: "Operador",
+        content: newMessage,
+        message_type: 'text',
+        is_internal_note: false,
+        is_ai_response: false,
+        processing_status: 'sent',
+        timestamp: new Date().toISOString()
       });
-      setIsRecording(false);
+
+      setNewMessage("");
+      
+      // Simular entrega após 2 segundos
+      setTimeout(() => {
+        updateMessageStatus(tempMessageId, 'delivered');
+        console.log('📦 Mensagem marcada como entregue');
+      }, 2000);
+      
+      // Simular leitura após 5 segundos (quando assistente "vê" a mensagem)
+      setTimeout(() => {
+        markMessageAsRead(tempMessageId);
+        console.log('👁️ Mensagem marcada como lida (V azul)');
+      }, 5000);
+      
+      toast({
+        title: "Mensagem enviada",
+        description: "Sua mensagem foi enviada com sucesso"
+      });
+    } catch (error: any) {
+      updateMessageStatus(tempMessageId, 'failed');
+      stopTyping();
+      console.error('❌ Erro ao enviar mensagem:', error);
+      toast({
+        title: "Erro ao enviar",
+        description: error.message || "Falha ao enviar mensagem",
+        variant: "destructive"
+      });
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      mediaRecorder.stop();
+  const handleAddInternalNote = async () => {
+    if (!internalNote.trim() || !selectedTicket) return;
+
+    try {
+      await ticketsService.addInternalNote(selectedTicket.id, internalNote, "Operador");
+      setInternalNote("");
+      
+      const updatedTicket = await ticketsService.getTicketById(selectedTicket.id);
+      if (updatedTicket) {
+        setSelectedTicket(updatedTicket);
+      }
+      
+      toast({
+        title: "Nota adicionada",
+        description: "Nota interna foi adicionada ao ticket"
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Erro ao adicionar nota interna",
+        variant: "destructive"
+      });
     }
   };
 
-  const sendAudioMessage = async () => {
-    if (audioChunks.length > 0) {
-      setIsTyping(true);
-      try {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const audioFile = new File([audioBlob], "audio_message.webm", { type: 'audio/webm' });
-        await sendMessage('', audioFile);
-        setAudioChunks([]);
-      } catch (error) {
-        console.error("Erro ao enviar áudio:", error);
-        toast({
-          title: "Erro ao enviar áudio",
-          description: "Por favor, tente novamente.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsTyping(false);
+  const handleStatusChange = async (status: string) => {
+    if (!selectedTicket) return;
+
+    try {
+      await ticketsService.updateTicketStatus(selectedTicket.id, status);
+      
+      setSelectedTicket({ ...selectedTicket, status: status as any });
+      reloadTickets();
+
+      toast({
+        title: "Status atualizado",
+        description: `Ticket marcado como ${status}`
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar status",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      open: { label: "Aberto", variant: "default" as const, icon: MessageSquare },
+      pending: { label: "Pendente", variant: "secondary" as const, icon: Clock },
+      resolved: { label: "Resolvido", variant: "default" as const, icon: CheckCircle },
+      closed: { label: "Fechado", variant: "outline" as const, icon: XCircle }
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.open;
+    const Icon = config.icon;
+
+    return (
+      <Badge variant={config.variant} className="flex items-center gap-1 text-xs">
+        <Icon className="w-3 h-3" />
+        {config.label}
+      </Badge>
+    );
+  };
+
+  const getPriorityColor = (priority: number) => {
+    if (priority >= 4) return "text-red-500";
+    if (priority >= 3) return "text-orange-500";
+    if (priority >= 2) return "text-yellow-500";
+    return "text-green-500";
+  };
+
+  const filteredTickets = tickets.filter(ticket => {
+    const matchesSearch = ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         ticket.customer?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         ticket.last_message_preview?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
+    const matchesPriority = priorityFilter === "all" || ticket.priority.toString() === priorityFilter;
+    
+    return matchesSearch && matchesStatus && matchesPriority;
+  });
+
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString('pt-BR', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  const formatDate = (timestamp: string) => {
+    return new Date(timestamp).toLocaleDateString('pt-BR');
+  };
+
+  // Melhorar extração de nome do WhatsApp
+  const getDisplayName = (ticket: ConversationTicket) => {
+    // Tentar extrair nome do customer primeiro
+    if (ticket.customer?.name && 
+        ticket.customer.name !== `Contato ${ticket.customer.phone}` &&
+        !ticket.customer.name.startsWith('Contato ')) {
+      return ticket.customer.name;
+    }
+    
+    // Tentar extrair do título se contém nome real
+    if (ticket.title && ticket.title.includes('Conversa com ')) {
+      const nameFromTitle = ticket.title.replace('Conversa com ', '').trim();
+      if (nameFromTitle && 
+          !nameFromTitle.startsWith('Contato ') && 
+          nameFromTitle !== ticket.customer?.phone) {
+        return nameFromTitle;
       }
     }
-  };
-
-  const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedAttachment(file);
-    }
-  };
-
-  const handleSendAttachment = async () => {
-    if (selectedAttachment) {
-      setIsTyping(true);
-      try {
-        await sendMessage('', selectedAttachment);
-        setSelectedAttachment(null);
-      } catch (error) {
-        console.error("Erro ao enviar anexo:", error);
-        toast({
-          title: "Erro ao enviar anexo",
-          description: "Por favor, tente novamente.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsTyping(false);
+    
+    // Tentar usar phone formatado
+    const phone = ticket.customer?.phone || ticket.chat_id;
+    if (phone) {
+      // Formatar telefone brasileiro
+      const cleanPhone = phone.replace(/\D/g, '');
+      if (cleanPhone.length >= 10) {
+        const formattedPhone = cleanPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+        return formattedPhone;
       }
     }
+    
+    return 'Contato sem nome';
   };
 
   return (
-    <div className="flex h-full">
-      {/* Área principal do chat */}
-      <div className="flex-1 flex flex-col">
-        {/* Cabeçalho */}
-        <div className="border-b p-4">
-          <div className="font-semibold">Chat</div>
+    <div className="h-screen flex flex-col bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b p-4 flex-shrink-0">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold">Central de Conversas</h1>
+          <div className="flex gap-2">
+            <Button 
+              onClick={handleImportConversations}
+              disabled={isImporting}
+              size="sm"
+            >
+              {isImporting ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Building2 className="w-4 h-4 mr-2" />
+              )}
+              {isImporting ? 'Importando...' : 'Importar'}
+            </Button>
+            <Button variant="outline" size="sm">
+              <Archive className="w-4 h-4 mr-2" />
+              Arquivados
+            </Button>
+            <Button size="sm" onClick={reloadTickets}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Atualizar
+            </Button>
+          </div>
         </div>
 
-        {/* Área de mensagens */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <ScrollArea className="h-full">
-            {isLoading ? (
-              <div className="text-center text-gray-500">Carregando mensagens...</div>
-            ) : (
-              messages.map((message, index) => (
-                <ChatMessage
-                  key={message.message_id}
-                  message={message}
-                  isLastMessage={index === messages.length - 1}
-                />
-              ))
+        {/* Status do Processamento Automático */}
+        <AutomaticProcessorStatus clientId={clientId!} />
+
+        {/* Tabs */}
+        <div className="flex space-x-2">
+          <Button
+            variant={activeTab === "tickets" ? "default" : "ghost"}
+            onClick={() => setActiveTab("tickets")}
+            className="flex items-center gap-2"
+            size="sm"
+          >
+            <MessageSquare className="w-4 h-4" />
+            Tickets ({tickets.length})
+          </Button>
+          <Button
+            variant={activeTab === "contacts" ? "default" : "ghost"}
+            onClick={() => setActiveTab("contacts")}
+            className="flex items-center gap-2"
+            size="sm"
+          >
+            <Users className="w-4 h-4" />
+            Contatos ({customers.length})
+          </Button>
+        </div>
+      </div>
+
+      {/* Main Content - Layout Horizontal */}
+      <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
+        {/* Lista de Tickets - Sidebar */}
+        <div className="w-80 flex flex-col bg-white rounded-lg border">
+          <div className="p-4 border-b">
+            {/* Busca */}
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input 
+                placeholder={activeTab === "tickets" ? "Buscar tickets..." : "Buscar contatos..."} 
+                className="pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Filtros */}
+            {activeTab === "tickets" && (
+              <div className="flex gap-2">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="open">Aberto</SelectItem>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                    <SelectItem value="resolved">Resolvido</SelectItem>
+                    <SelectItem value="closed">Fechado</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Prioridade</SelectItem>
+                    <SelectItem value="1">Baixa</SelectItem>
+                    <SelectItem value="2">Normal</SelectItem>
+                    <SelectItem value="3">Alta</SelectItem>
+                    <SelectItem value="4">Urgente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             )}
-            <div ref={chatBottomRef} />
+          </div>
+          
+          {/* Lista */}
+          <ScrollArea className="flex-1">
+            {activeTab === "tickets" ? (
+              // Lista de Tickets
+              filteredTickets.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">
+                  <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm">Nenhum ticket encontrado</p>
+                  <Button 
+                    onClick={handleImportConversations}
+                    disabled={isImporting}
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                  >
+                    {isImporting ? 'Importando...' : 'Importar Conversas'}
+                  </Button>
+                </div>
+              ) : (
+                filteredTickets.map((ticket) => (
+                  <div
+                    key={ticket.id}
+                    onClick={() => setSelectedTicket(ticket)}
+                    className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
+                      selectedTicket?.id === ticket.id ? 'bg-blue-50 border-r-2 border-r-blue-500' : ''
+                    }`}
+                  >
+                    <div className="flex items-start space-x-3">
+                      <Avatar className="w-12 h-12 flex-shrink-0">
+                        <AvatarFallback>
+                          {getDisplayName(ticket).charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start mb-1">
+                          <h3 className="font-medium text-gray-900 truncate">
+                            {getDisplayName(ticket)}
+                          </h3>
+                          <div className="flex items-center space-x-1 flex-shrink-0">
+                            <Star className={`w-3 h-3 ${getPriorityColor(ticket.priority)}`} />
+                            <span className="text-xs text-gray-500">
+                              {formatTime(ticket.last_message_at)}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Status e Tags */}
+                        <div className="flex items-center gap-1 mb-2 flex-wrap">
+                          {getStatusBadge(ticket.status)}
+                          
+                          {ticket.queue && (
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                              <ArrowRight className="w-3 h-3 mr-1" />
+                              {ticket.queue.name}
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <p className="text-sm text-gray-600 truncate">
+                          {ticket.last_message_preview || 'Sem mensagens'}
+                        </p>
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="text-xs text-gray-500">
+                            {ticket.customer?.phone}
+                          </span>
+                          {ticket.internal_notes.length > 0 && (
+                            <Badge variant="secondary" className="text-xs">
+                              {ticket.internal_notes.length} notas
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )
+            ) : (
+              // Lista de Contatos
+              customers.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">
+                  <User className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm">Nenhum contato encontrado</p>
+                </div>
+              ) : (
+                customers
+                  .filter(customer => 
+                    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    customer.phone.includes(searchTerm) ||
+                    customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
+                  )
+                  .map((customer) => (
+                    <div
+                      key={customer.id}
+                      className="p-4 border-b hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <Avatar className="w-12 h-12">
+                          <AvatarFallback>
+                            {customer.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">{customer.name}</h3>
+                          <p className="text-sm text-gray-600">{customer.phone}</p>
+                          {customer.email && (
+                            <p className="text-sm text-gray-500">{customer.email}</p>
+                          )}
+                          <p className="text-xs text-gray-400">
+                            Cliente desde {formatDate(customer.created_at)}
+                          </p>
+                        </div>
+                        <div className="flex space-x-1">
+                          <Button variant="ghost" size="sm">
+                            <Phone className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm">
+                            <MessageSquare className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+              )
+            )}
           </ScrollArea>
         </div>
 
-        {/* Indicadores de status */}
-        {(isRecording || isTyping) && (
-          <div className="px-4 py-2 border-t bg-gray-50">
-            {isRecording && (
-              <TypingIndicator 
-                isTyping={true}
-                userName="Você"
-              />
-            )}
-            {isTyping && (
-              <TypingIndicator 
-                isTyping={true}
-                userName="Você"
-              />
-            )}
-          </div>
-        )}
+        {/* Área de Conversa - Main Content */}
+        <div className="flex-1 flex flex-col bg-white rounded-lg border min-w-0">
+          {selectedTicket && activeTab === "tickets" ? (
+            <>
+              {/* Header do Ticket */}
+              <div className="border-b p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <Avatar className="w-10 h-10 flex-shrink-0">
+                      <AvatarFallback>
+                        {getDisplayName(selectedTicket).charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <h3 className="font-medium text-gray-900 truncate">
+                        {getDisplayName(selectedTicket)}
+                      </h3>
+                      <p className="text-sm text-gray-500 truncate">
+                        {selectedTicket.customer?.phone}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Ações */}
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(selectedTicket.status)}
+                    
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={handleAssumeTicket}
+                      disabled={selectedTicket.status === 'pending'}
+                    >
+                      <UserCheck className="w-4 h-4 mr-2" />
+                      Assumir
+                    </Button>
+                    
+                    <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <ArrowRight className="w-4 h-4 mr-2" />
+                          Transferir
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Transferir Ticket</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium">Fila de Destino</label>
+                            <Select value={transferQueueId} onValueChange={setTransferQueueId}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione uma fila" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {queues.map((queue) => (
+                                  <SelectItem key={queue.id} value={queue.id}>
+                                    {queue.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium">Motivo (opcional)</label>
+                            <Textarea
+                              placeholder="Motivo da transferência..."
+                              value={transferReason}
+                              onChange={(e) => setTransferReason(e.target.value)}
+                            />
+                          </div>
+                          <div className="flex justify-end space-x-2">
+                            <Button 
+                              variant="outline" 
+                              onClick={() => setShowTransferDialog(false)}
+                            >
+                              Cancelar
+                            </Button>
+                            <Button 
+                              onClick={handleTransferTicket}
+                              disabled={!transferQueueId}
+                            >
+                              Transferir
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    
+                    <Select value={selectedTicket.status} onValueChange={handleStatusChange}>
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="open">Aberto</SelectItem>
+                        <SelectItem value="pending">Pendente</SelectItem>
+                        <SelectItem value="resolved">Resolvido</SelectItem>
+                        <SelectItem value="closed">Fechado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant="ghost" size="sm">
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
 
-        {/* Área de entrada de mensagem */}
-        <div className="p-4 border-t bg-gray-50">
-          <div className="flex items-center space-x-2">
-            {/* Input de texto */}
-            <Input
-              type="text"
-              placeholder="Digite sua mensagem..."
-              value={inputMessage}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              disabled={isRecording}
-              className="flex-1"
-            />
+                {/* Tabs de Conversa e Notas */}
+                <div className="flex space-x-2">
+                  <Button
+                    variant={!showInternalNotes ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setShowInternalNotes(false)}
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Conversa
+                  </Button>
+                  <Button
+                    variant={showInternalNotes ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setShowInternalNotes(true)}
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Notas ({selectedTicket.internal_notes.length})
+                  </Button>
+                </div>
+              </div>
 
-            {/* Botão de anexo */}
-            <div className="relative">
-              <input
-                type="file"
-                id="attachment-input"
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                onChange={handleAttachmentChange}
-                disabled={isRecording}
-              />
-              <label htmlFor="attachment-input" className="cursor-pointer">
-                <Button variant="outline" size="icon" disabled={isRecording}>
-                  <Paperclip className="w-4 h-4" />
-                </Button>
-              </label>
+              {/* Área de Mensagens/Notas */}
+              <div className="flex-1 min-h-0 flex flex-col">
+                {!showInternalNotes ? (
+                  // Conversa
+                  <>
+                    <ScrollArea className="flex-1 p-4">
+                      <div className="space-y-4">
+                        {loadingMessages ? (
+                          <div className="text-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                            <p className="text-sm text-gray-500">Carregando mensagens...</p>
+                          </div>
+                        ) : ticketMessages.length === 0 ? (
+                          <div className="text-center text-gray-500 py-8">
+                            <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                            <p className="text-sm">Nenhuma mensagem nesta conversa</p>
+                          </div>
+                        ) : (
+                          ticketMessages.map((message) => (
+                            <div
+                              key={message.id}
+                              className={`flex ${message.from_me ? 'justify-end' : 'justify-start'}`}
+                            >
+                              <div className={`max-w-md px-4 py-2 rounded-lg ${
+                                message.from_me
+                                  ? 'bg-blue-500 text-white rounded-br-sm'
+                                  : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+                              }`}>
+                                {!message.from_me && message.sender_name && (
+                                  <p className="text-xs font-medium mb-1 opacity-70">
+                                    {message.sender_name}
+                                  </p>
+                                )}
+                                <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                                
+                                {/* Status da mensagem - só aparece para mensagens enviadas por mim */}
+                                {message.from_me && (
+                                  <MessageStatus 
+                                    status={getMessageStatus(message.message_id)}
+                                    timestamp={message.timestamp}
+                                    fromMe={message.from_me}
+                                  />
+                                )}
+                                
+                                {message.is_ai_response && (
+                                  <div className="mt-1">
+                                    <Badge variant="secondary" className="text-xs">
+                                      🤖 IA
+                                    </Badge>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                        
+                        {/* Indicador de digitação do assistente */}
+                        {assistantTyping && (
+                          <div className="flex justify-start">
+                            <TypingIndicator 
+                              isTyping={true}
+                              isRecording={false}
+                              senderName="Assistente"
+                            />
+                          </div>
+                        )}
+                        
+                        <div ref={messagesEndRef} />
+                      </div>
+                    </ScrollArea>
+
+                    {/* Input de Mensagem */}
+                    <div className="border-t p-4">
+                      <div className="flex space-x-2">
+                        <Button variant="ghost" size="sm">
+                          <Paperclip className="w-4 h-4" />
+                        </Button>
+                        <Input
+                          placeholder="Digite sua mensagem..."
+                          value={newMessage}
+                          onChange={(e) => {
+                            setNewMessage(e.target.value);
+                            if (e.target.value.trim() && !isTyping) {
+                              startTyping();
+                            } else if (!e.target.value.trim() && isTyping) {
+                              stopTyping();
+                            }
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSendMessage();
+                            }
+                          }}
+                          onBlur={() => {
+                            // Delay para não parar digitação imediatamente
+                            setTimeout(() => stopTyping(), 1000);
+                          }}
+                          className="flex-1"
+                        />
+                        <Button 
+                          onClick={handleSendMessage} 
+                          disabled={!newMessage.trim()} 
+                          size="sm"
+                        >
+                          <Send className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      
+                      {/* Indicador de digitação do usuário */}
+                      {isTyping && (
+                        <div className="mt-2 flex justify-end">
+                          <TypingIndicator 
+                            isTyping={true}
+                            isRecording={isRecording}
+                            senderName="Você"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  // Notas Internas
+                  <>
+                    <ScrollArea className="flex-1 p-4">
+                      <div className="space-y-4">
+                        {selectedTicket.internal_notes.length === 0 ? (
+                          <div className="text-center text-gray-500 py-8">
+                            <FileText className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                            <p className="text-sm">Nenhuma nota interna</p>
+                          </div>
+                        ) : (
+                          selectedTicket.internal_notes.map((note: any) => (
+                            <div key={note.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="font-medium text-sm">{note.created_by}</span>
+                                <span className="text-xs text-gray-500">
+                                  {formatTime(note.created_at)}
+                                </span>
+                              </div>
+                              <p className="text-sm">{note.content}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+
+                    {/* Input de Nota Interna */}
+                    <div className="border-t p-4">
+                      <div className="space-y-2">
+                        <Textarea
+                          placeholder="Adicionar nota interna..."
+                          value={internalNote}
+                          onChange={(e) => setInternalNote(e.target.value)}
+                          rows={3}
+                        />
+                        <div className="flex justify-end">
+                          <Button onClick={handleAddInternalNote} disabled={!internalNote.trim()} size="sm">
+                            <FileText className="w-4 h-4 mr-2" />
+                            Adicionar Nota
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center text-gray-500">
+                <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <h3 className="text-lg font-medium mb-2">
+                  {activeTab === "tickets" ? "Selecione um ticket" : "Área de Contatos"}
+                </h3>
+                <p className="text-sm">
+                  {activeTab === "tickets" 
+                    ? "Escolha um ticket da lista para visualizar a conversa" 
+                    : "Gerencie seus contatos e informações de clientes"
+                  }
+                </p>
+              </div>
             </div>
-
-            {/* Botão de enviar anexo */}
-            {selectedAttachment && (
-              <Button variant="secondary" size="sm" onClick={handleSendAttachment} disabled={isRecording}>
-                Enviar Anexo
-              </Button>
-            )}
-
-            {/* Botão de gravar áudio / enviar mensagem */}
-            {isRecording ? (
-              <Button variant="destructive" size="icon" onClick={stopRecording}>
-                <MicOff className="w-4 h-4" />
-              </Button>
-            ) : (
-              <Button variant="default" size="icon" onClick={inputMessage.trim() ? handleSendMessage : startRecording}>
-                {inputMessage.trim() ? <Send className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              </Button>
-            )}
-
-            {/* Botão de enviar áudio (se houver gravação) */}
-            {audioChunks.length > 0 && !isRecording && (
-              <Button variant="secondary" size="sm" onClick={sendAudioMessage}>
-                Enviar Áudio
-              </Button>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </div>
