@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 
 export interface ChatData {
@@ -40,7 +41,12 @@ class WhatsAppService {
   private socket: Socket | null = null;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    // Use environment configuration
+    if (typeof window !== 'undefined' && window.location.hostname.includes('lovableproject.com')) {
+      this.baseURL = 'https://146.59.227.248';
+    } else {
+      this.baseURL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+    }
   }
 
   connectSocket(): Socket {
@@ -78,6 +84,102 @@ class WhatsAppService {
     if (this.socket) {
       this.socket.emit('joinClientRoom', clientId);
       console.log(`🚪 Joined client room: ${clientId}`);
+    }
+  }
+
+  // Check server connection
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseURL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('❌ Connection test failed:', error);
+      return false;
+    }
+  }
+
+  // Check server health
+  async checkServerHealth(): Promise<any> {
+    const response = await fetch(`${this.baseURL}/health`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Server health check failed: ${response.status}`);
+    }
+    
+    return response.json();
+  }
+
+  // Get all clients
+  async getAllClients(): Promise<any[]> {
+    const response = await fetch(`${this.baseURL}/api/clients`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get clients: ${response.status}`);
+    }
+    
+    return response.json();
+  }
+
+  // Connect client
+  async connectClient(clientId: string): Promise<any> {
+    const response = await fetch(`${this.baseURL}/api/client/${clientId}/connect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to connect client: ${response.status}`);
+    }
+    
+    return response.json();
+  }
+
+  // Disconnect client
+  async disconnectClient(clientId: string): Promise<any> {
+    const response = await fetch(`${this.baseURL}/api/client/${clientId}/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to disconnect client: ${response.status}`);
+    }
+    
+    return response.json();
+  }
+
+  // Listen for clients updates
+  onClientsUpdate(callback: (clients: any[]) => void) {
+    if (this.socket) {
+      this.socket.on('clientsUpdate', callback);
+      console.log('👂 Listening for clients updates');
+    }
+  }
+
+  // Listen for client status updates
+  onClientStatus(clientId: string, callback: (clientData: any) => void) {
+    if (this.socket) {
+      this.socket.on(`clientStatus_${clientId}`, callback);
+      console.log(`👂 Listening for client status: ${clientId}`);
     }
   }
 
