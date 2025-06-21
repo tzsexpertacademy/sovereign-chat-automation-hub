@@ -23,23 +23,31 @@ export const useAutomaticMessageProcessor = (clientId: string) => {
     try {
       console.log('🔄 Inicializando processadores automáticos...');
       
-      // Buscar todas as conexões de fila do cliente
-      const connections = await queuesService.getClientQueueConnections(clientId);
-      console.log('📋 Conexões de fila encontradas:', connections);
+      // Buscar todas as filas com assistentes e conexões ativas
+      const queues = await queuesService.getClientQueues(clientId);
+      console.log('📋 Filas encontradas:', queues);
       
       const newProcessors: MessageProcessor[] = [];
       
-      for (const connection of connections) {
-        if (connection.assistants && connection.whatsapp_instances) {
-          const processor: MessageProcessor = {
-            clientId,
-            instanceId: connection.whatsapp_instances.instance_id,
-            isActive: true,
-            queueConnection: connection
-          };
-          
-          newProcessors.push(processor);
-          console.log(`🤖 Processador ativado para instância ${connection.whatsapp_instances.instance_id} com assistente ${connection.assistants.name}`);
+      for (const queue of queues) {
+        if (queue.assistants && queue.instance_queue_connections) {
+          for (const connection of queue.instance_queue_connections) {
+            if (connection.is_active && connection.whatsapp_instances) {
+              const processor: MessageProcessor = {
+                clientId,
+                instanceId: connection.whatsapp_instances.instance_id,
+                isActive: true,
+                queueConnection: {
+                  queue,
+                  assistant: queue.assistants,
+                  connection
+                }
+              };
+              
+              newProcessors.push(processor);
+              console.log(`🤖 Processador ativado para instância ${connection.whatsapp_instances.instance_id} com assistente ${queue.assistants.name}`);
+            }
+          }
         }
       }
       
@@ -50,24 +58,26 @@ export const useAutomaticMessageProcessor = (clientId: string) => {
           title: "Processador Automático Ativo",
           description: `${newProcessors.length} assistente(s) configurado(s)`
         });
+      } else {
+        console.log('⚠️ Nenhum processador configurado - verifique se há filas com assistentes e conexões ativas');
       }
       
     } catch (error) {
-      console.error('Erro ao inicializar processadores:', error);
+      console.error('❌ Erro ao inicializar processadores:', error);
       setProcessors([]);
     }
   }, [clientId, toast]);
 
   // Processar mensagem automaticamente
   const processMessage = useCallback(async (message: any, processor: MessageProcessor) => {
-    if (!processor.queueConnection?.assistants || message.fromMe) {
+    if (!processor.queueConnection?.assistant || message.fromMe) {
       return;
     }
 
     try {
       console.log(`🤖 Processando mensagem automaticamente: ${message.body?.substring(0, 50)}...`);
       
-      const assistant = processor.queueConnection.assistants;
+      const assistant = processor.queueConnection.assistant;
       
       // Gerar resposta do assistente
       const response = await generateAssistantResponse(message, assistant);
@@ -113,7 +123,7 @@ export const useAutomaticMessageProcessor = (clientId: string) => {
         });
       }
     } catch (error) {
-      console.error('Erro ao processar mensagem automaticamente:', error);
+      console.error('❌ Erro ao processar mensagem automaticamente:', error);
       toast({
         title: "Erro no Processamento",
         description: "Falha ao processar mensagem automaticamente",
@@ -206,8 +216,10 @@ export const useAutomaticMessageProcessor = (clientId: string) => {
       console.log('📨 Nova mensagem recebida para processamento:', message);
       
       if (!message.fromMe && message.from && message.body) {
-        // Encontrar processador para esta mensagem
-        const processor = processors.find(p => p.isActive);
+        // Encontrar processador para esta instância específica
+        const processor = processors.find(p => 
+          p.isActive && p.instanceId === message.instanceId
+        );
         
         if (processor) {
           console.log('🎯 Processador encontrado, iniciando processamento...');
@@ -219,7 +231,7 @@ export const useAutomaticMessageProcessor = (clientId: string) => {
             setIsProcessing(false);
           }
         } else {
-          console.log('❌ Nenhum processador ativo encontrado');
+          console.log('❌ Nenhum processador ativo encontrado para esta instância');
         }
       }
     };

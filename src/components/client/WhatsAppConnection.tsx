@@ -70,10 +70,12 @@ const WhatsAppConnection = () => {
     if (!clientId) return;
     
     try {
+      console.log('🔄 Carregando filas no WhatsAppConnection...');
       const queuesData = await queuesService.getClientQueues(clientId);
+      console.log('📊 Filas carregadas:', queuesData);
       setQueues(queuesData);
     } catch (error) {
-      console.error('Erro ao carregar filas:', error);
+      console.error('❌ Erro ao carregar filas:', error);
     }
   };
 
@@ -236,17 +238,22 @@ const WhatsAppConnection = () => {
     }
 
     try {
+      console.log('🔗 Conectando instância à fila:', { selectedInstanceForQueue, selectedQueue });
       await queuesService.connectInstanceToQueue(selectedInstanceForQueue, selectedQueue);
       
+      const isHuman = selectedQueue === "human";
       toast({
         title: "Sucesso",
-        description: "Instância conectada à fila com sucesso",
+        description: isHuman 
+          ? "Instância configurada para interação humana" 
+          : "Instância conectada à fila com sucesso",
       });
 
       setSelectedInstanceForQueue("");
       setSelectedQueue("");
       await loadQueues();
     } catch (error: any) {
+      console.error('❌ Erro ao conectar à fila:', error);
       toast({
         title: "Erro",
         description: error.message || "Falha ao conectar à fila",

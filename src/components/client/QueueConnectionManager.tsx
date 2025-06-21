@@ -45,7 +45,12 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
         whatsappInstancesService.getInstancesByClientId(clientId)
       ]);
       
-      console.log('📊 Dados carregados:', { queues: queuesData.length, instances: instancesData.length });
+      console.log('📊 Dados carregados:', { 
+        queues: queuesData.length, 
+        instances: instancesData.length,
+        queuesData,
+        instancesData 
+      });
       
       setQueues(queuesData);
       setInstances(instancesData.filter(i => i.status === 'connected'));
