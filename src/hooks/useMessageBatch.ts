@@ -5,6 +5,7 @@ interface BatchedMessage {
   id: string;
   text: string;
   timestamp: number;
+  from: string;
 }
 
 interface UseMessageBatchProps {
@@ -20,14 +21,15 @@ export const useMessageBatch = ({ batchTimeoutSeconds, onProcessBatch }: UseMess
     setPendingMessages(prev => {
       const updated = [...prev, message];
       
-      // Clear existing timeout
+      // Limpar timeout existente
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
       
-      // Set new timeout
+      // Definir novo timeout para processar o lote
       timeoutRef.current = setTimeout(() => {
         if (updated.length > 0) {
+          console.log(`🕒 Processando lote de ${updated.length} mensagens após ${batchTimeoutSeconds}s`);
           onProcessBatch(updated);
           setPendingMessages([]);
         }
@@ -44,9 +46,21 @@ export const useMessageBatch = ({ batchTimeoutSeconds, onProcessBatch }: UseMess
     setPendingMessages([]);
   }, []);
 
+  const processBatchNow = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    if (pendingMessages.length > 0) {
+      console.log(`⚡ Processando lote imediatamente com ${pendingMessages.length} mensagens`);
+      onProcessBatch(pendingMessages);
+      setPendingMessages([]);
+    }
+  }, [pendingMessages, onProcessBatch]);
+
   return {
     pendingMessages,
     addMessage,
-    clearBatch
+    clearBatch,
+    processBatchNow
   };
 };
