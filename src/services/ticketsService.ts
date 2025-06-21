@@ -281,24 +281,41 @@ export const ticketsService = {
   },
 
   // Importar conversas do WhatsApp e criar tickets
-  async importConversationsFromWhatsApp(clientId: string): Promise<void> {
+  async importConversationsFromWhatsApp(clientId: string): Promise<{ success: number; errors: number }> {
     try {
       console.log('🔄 Iniciando importação de conversas para cliente:', clientId);
       
       // Buscar conversas do serviço WhatsApp
       const { whatsappService } = await import('@/services/whatsappMultiClient');
-      const chats = await whatsappService.getChats(clientId);
       
+      // Verificar se o cliente está conectado
+      const clientStatus = await whatsappService.getClientStatus(clientId);
+      if (clientStatus.status !== 'connected') {
+        throw new Error('WhatsApp não está conectado');
+      }
+      
+      // Buscar todas as conversas
+      const chats = await whatsappService.getChats(clientId);
       console.log(`📱 ${chats.length} conversas encontradas para importação`);
+      
+      let successCount = 0;
+      let errorCount = 0;
       
       for (const chat of chats) {
         try {
-          // Extrair nome do contato (remover códigos de país e formatação)
-          const customerName = chat.name || chat.id.replace(/[\D]/g, '').replace(/^55/, '');
-          const customerPhone = chat.id.replace(/[\D]/g, '');
+          // Extrair informações do contato
+          const customerName = chat.name || this.extractNameFromChatId(chat.id);
+          const customerPhone = this.extractPhoneFromChatId(chat.id);
+          
+          // Validar dados essenciais
+          if (!customerPhone) {
+            console.warn(`⚠️ Chat ${chat.id} não possui telefone válido`);
+            errorCount++;
+            continue;
+          }
           
           // Obter última mensagem
-          const lastMessage = chat.lastMessage?.body || 'Conversa importada';
+          const lastMessage = chat.lastMessage?.body || 'Conversa importada do WhatsApp';
           const lastMessageAt = chat.lastMessage?.timestamp 
             ? new Date(chat.lastMessage.timestamp).toISOString()
             : new Date().toISOString();
@@ -314,39 +331,130 @@ export const ticketsService = {
             lastMessageAt
           );
           
-          console.log(`✅ Ticket criado/atualizado: ${ticketId} para ${customerName}`);
+          console.log(`✅ Ticket criado/atualizado: ${ticketId} para ${customerName} (${customerPhone})`);
           
-          // Buscar mensagens da conversa
-          const messages = await whatsappService.getChatMessages(chat.id, 50);
-          
-          // Importar mensagens
-          for (const message of messages) {
-            await this.addTicketMessage({
-              ticket_id: ticketId,
-              message_id: message.id,
-              from_me: message.fromMe,
-              sender_name: message.author || customerName,
-              content: message.body,
-              message_type: message.type,
-              is_internal_note: false,
-              is_ai_response: false,
-              processing_status: 'imported',
-              timestamp: new Date(message.timestamp).toISOString()
-            });
+          // Importar mensagens recentes (últimas 20)
+          try {
+            const messages = await whatsappService.getChatMessages(clientId, chat.id, 20);
+            
+            for (const message of messages) {
+              await this.addTicketMessage({
+                ticket_id: ticketId,
+                message_id: message.id,
+                from_me: message.fromMe,
+                sender_name: message.author || customerName,
+                content: message.body || '',
+                message_type: message.type || 'text',
+                is_internal_note: false,
+                is_ai_response: false,
+                processing_status: 'imported',
+                timestamp: new Date(message.timestamp).toISOString()
+              });
+            }
+            
+            console.log(`📨 ${messages.length} mensagens importadas para ticket ${ticketId}`);
+          } catch (messageError) {
+            console.warn(`⚠️ Erro ao importar mensagens do chat ${chat.id}:`, messageError);
           }
           
-          console.log(`📨 ${messages.length} mensagens importadas para ticket ${ticketId}`);
+          // Adicionar evento de importação
+          await this.addTicketEvent({
+            ticket_id: ticketId,
+            event_type: 'conversation_imported',
+            description: 'Conversa importada do WhatsApp',
+            metadata: { 
+              chat_id: chat.id,
+              import_timestamp: new Date().toISOString(),
+              messages_imported: true
+            }
+          });
+          
+          successCount++;
           
         } catch (chatError) {
           console.error(`❌ Erro ao processar chat ${chat.id}:`, chatError);
+          errorCount++;
           continue;
         }
       }
       
-      console.log('✅ Importação de conversas concluída');
+      console.log(`✅ Importação concluída: ${successCount} sucessos, ${errorCount} erros`);
+      
+      return { success: successCount, errors: errorCount };
       
     } catch (error) {
       console.error('❌ Erro na importação de conversas:', error);
+      throw error;
+    }
+  },
+
+  // Métodos auxiliares para extrair informações do chat
+  extractNameFromChatId(chatId: string): string {
+    // Remove códigos de país e formatação do WhatsApp
+    const phone = chatId.replace(/[\D]/g, '').replace(/^55/, '');
+    return `Contato ${phone}`;
+  },
+
+  extractPhoneFromChatId(chatId: string): string {
+    // Extrai apenas os números do chat ID
+    const phone = chatId.replace(/[\D]/g, '');
+    
+    // Remove código do país brasileiro se presente
+    if (phone.startsWith('55') && phone.length >= 12) {
+      return phone.substring(2);
+    }
+    
+    return phone;
+  },
+
+  // Função para importar conversas ativas (para ser chamada periodicamente)
+  async syncActiveConversations(clientId: string): Promise<void> {
+    try {
+      console.log('🔄 Sincronizando conversas ativas para cliente:', clientId);
+      
+      const { whatsappService } = await import('@/services/whatsappMultiClient');
+      
+      // Buscar apenas conversas com mensagens recentes (últimas 24h)
+      const chats = await whatsappService.getChats(clientId);
+      const recentChats = chats.filter(chat => {
+        if (!chat.lastMessage?.timestamp) return false;
+        const lastMessageTime = new Date(chat.lastMessage.timestamp);
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        return lastMessageTime > oneDayAgo;
+      });
+      
+      console.log(`📱 ${recentChats.length} conversas ativas encontradas`);
+      
+      for (const chat of recentChats) {
+        try {
+          const customerName = chat.name || this.extractNameFromChatId(chat.id);
+          const customerPhone = this.extractPhoneFromChatId(chat.id);
+          
+          if (!customerPhone) continue;
+          
+          const lastMessage = chat.lastMessage?.body || '';
+          const lastMessageAt = new Date(chat.lastMessage!.timestamp).toISOString();
+          
+          // Atualizar ticket existente ou criar novo
+          await this.createOrUpdateTicket(
+            clientId,
+            chat.id,
+            clientId,
+            customerName,
+            customerPhone,
+            lastMessage,
+            lastMessageAt
+          );
+          
+        } catch (error) {
+          console.error(`Erro ao sincronizar chat ${chat.id}:`, error);
+        }
+      }
+      
+      console.log('✅ Sincronização de conversas ativas concluída');
+      
+    } catch (error) {
+      console.error('❌ Erro na sincronização de conversas:', error);
       throw error;
     }
   }
