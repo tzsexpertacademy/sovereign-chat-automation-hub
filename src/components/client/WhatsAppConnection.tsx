@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +12,17 @@ import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient"
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { queuesService, QueueWithAssistant } from "@/services/queuesService";
+
+// Função para obter o limite máximo de instâncias por plano
+const getMaxInstancesForPlan = (plan: string): number => {
+  switch (plan) {
+    case 'basic': return 1;
+    case 'standard': return 3;
+    case 'premium': return 10;
+    case 'enterprise': return 50;
+    default: return 1;
+  }
+};
 
 const WhatsAppConnection = () => {
   const { clientId } = useParams();
@@ -105,10 +115,15 @@ const WhatsAppConnection = () => {
   const handleCreateNewInstance = async () => {
     if (!clientId || !client) return;
 
-    if (instances.length >= client.max_instances) {
+    const maxInstances = getMaxInstancesForPlan(client.plan);
+    const currentInstanceCount = instances.length;
+
+    console.log(`🔍 Verificando limites: Plano ${client.plan} - Atual: ${currentInstanceCount}/${maxInstances}`);
+
+    if (currentInstanceCount >= maxInstances) {
       toast({
         title: "Limite Atingido",
-        description: `Limite de ${client.max_instances} instâncias atingido para o plano ${client.plan}`,
+        description: `Limite de ${maxInstances} instâncias atingido para o plano ${client.plan.toUpperCase()}`,
         variant: "destructive",
       });
       return;
@@ -117,6 +132,8 @@ const WhatsAppConnection = () => {
     try {
       setLoading(true);
       const instanceId = `${clientId}_${Date.now()}`;
+      
+      console.log(`🚀 Criando nova instância: ${instanceId}`);
       
       await whatsappInstancesService.createInstance({
         client_id: clientId,
@@ -128,7 +145,7 @@ const WhatsAppConnection = () => {
       
       toast({
         title: "Nova Instância Criada",
-        description: "Nova conexão WhatsApp criada. Aguarde o QR Code aparecer...",
+        description: `Nova conexão WhatsApp criada (${currentInstanceCount + 1}/${maxInstances}). Aguarde o QR Code aparecer...`,
       });
 
       await loadClientData();
@@ -327,8 +344,14 @@ const WhatsAppConnection = () => {
               <div>
                 <h3 className="font-medium">Plano: {client.plan.toUpperCase()}</h3>
                 <p className="text-sm text-gray-600">
-                  {instances.length} / {client.max_instances} instâncias utilizadas
+                  {instances.length} / {getMaxInstancesForPlan(client.plan)} instâncias utilizadas
                 </p>
+                <div className="mt-2">
+                  <Progress 
+                    value={(instances.length / getMaxInstancesForPlan(client.plan)) * 100} 
+                    className="w-64" 
+                  />
+                </div>
               </div>
               <div className="flex space-x-4 text-center">
                 <div>
@@ -342,6 +365,12 @@ const WhatsAppConnection = () => {
                     {activeClients.filter(c => c.status === 'qr_ready').length}
                   </div>
                   <p className="text-xs text-gray-600">Aguardando QR</p>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-yellow-600">
+                    {activeClients.filter(c => c.status === 'connecting').length}
+                  </div>
+                  <p className="text-xs text-gray-600">Conectando</p>
                 </div>
               </div>
             </div>
@@ -380,7 +409,7 @@ const WhatsAppConnection = () => {
 
         <TabsContent value="connections" className="space-y-6">
           {/* Add New Instance */}
-          {client && instances.length < client.max_instances && (
+          {client && instances.length < getMaxInstancesForPlan(client.plan) && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
@@ -388,7 +417,11 @@ const WhatsAppConnection = () => {
                   <span>Adicionar Nova Conexão</span>
                 </CardTitle>
                 <CardDescription>
-                  Você pode criar até {client.max_instances} conexões WhatsApp com seu plano {client.plan}
+                  Você pode criar até {getMaxInstancesForPlan(client.plan)} conexões WhatsApp com seu plano {client.plan.toUpperCase()}
+                  <br />
+                  <span className="text-sm text-green-600">
+                    Disponível: {getMaxInstancesForPlan(client.plan) - instances.length} de {getMaxInstancesForPlan(client.plan)} conexões
+                  </span>
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -401,10 +434,28 @@ const WhatsAppConnection = () => {
                   ) : (
                     <>
                       <Plus className="w-4 h-4 mr-2" />
-                      Criar Nova Conexão
+                      Criar Nova Conexão ({instances.length + 1}/{getMaxInstancesForPlan(client.plan)})
                     </>
                   )}
                 </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Instance Limit Reached */}
+          {client && instances.length >= getMaxInstancesForPlan(client.plan) && (
+            <Card className="border-yellow-200 bg-yellow-50">
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-2">
+                  <AlertCircle className="w-5 h-5 text-yellow-500" />
+                  <div>
+                    <p className="font-medium text-yellow-900">Limite de Instâncias Atingido</p>
+                    <p className="text-sm text-yellow-700">
+                      Você está utilizando todas as {getMaxInstancesForPlan(client.plan)} conexões disponíveis no plano {client.plan.toUpperCase()}.
+                      {client.plan !== 'enterprise' && ' Entre em contato para fazer upgrade do seu plano.'}
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}

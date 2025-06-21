@@ -25,6 +25,17 @@ export interface CreateClientData {
   plan?: 'basic' | 'standard' | 'premium' | 'enterprise';
 }
 
+// Função para obter o limite correto de instâncias por plano
+export const getMaxInstancesForPlan = (plan: string): number => {
+  switch (plan) {
+    case 'basic': return 1;
+    case 'standard': return 3;
+    case 'premium': return 10;
+    case 'enterprise': return 50;
+    default: return 1;
+  }
+};
+
 export const clientsService = {
   // Get all clients
   async getAllClients(): Promise<ClientData[]> {
@@ -36,7 +47,13 @@ export const clientsService = {
 
       if (error) throw error;
       
-      return data || [];
+      // Garantir que o max_instances está correto baseado no plano
+      const clientsWithCorrectLimits = (data || []).map(client => ({
+        ...client,
+        max_instances: getMaxInstancesForPlan(client.plan)
+      }));
+      
+      return clientsWithCorrectLimits;
     } catch (error) {
       console.error('Error fetching clients:', error);
       throw error;
@@ -46,11 +63,15 @@ export const clientsService = {
   // Create new client
   async createClient(clientData: CreateClientData): Promise<ClientData> {
     try {
+      const plan = clientData.plan || 'basic';
+      const maxInstances = getMaxInstancesForPlan(plan);
+
       const { data, error } = await supabase
         .from('clients')
         .insert([{
           ...clientData,
-          plan: clientData.plan || 'basic'
+          plan,
+          max_instances: maxInstances
         }])
         .select()
         .single();
@@ -67,6 +88,11 @@ export const clientsService = {
   // Update client
   async updateClient(id: string, updates: Partial<ClientData>): Promise<ClientData> {
     try {
+      // Se o plano está sendo atualizado, calcular o novo max_instances
+      if (updates.plan) {
+        updates.max_instances = getMaxInstancesForPlan(updates.plan);
+      }
+
       const { data, error } = await supabase
         .from('clients')
         .update(updates)
@@ -158,13 +184,26 @@ export const clientsService = {
     try {
       const { data: client, error } = await supabase
         .from('clients')
-        .select('current_instances, max_instances')
+        .select('plan')
         .eq('id', clientId)
         .single();
 
       if (error) throw error;
+
+      // Contar instâncias atuais
+      const { data: instances, error: instancesError } = await supabase
+        .from('whatsapp_instances')
+        .select('id')
+        .eq('client_id', clientId);
+
+      if (instancesError) throw instancesError;
+
+      const currentInstances = instances?.length || 0;
+      const maxInstances = getMaxInstancesForPlan(client.plan);
       
-      return client.current_instances < client.max_instances;
+      console.log(`🔍 Verificação de limite: Cliente ${clientId}, Plano ${client.plan}, Atual: ${currentInstances}/${maxInstances}`);
+      
+      return currentInstances < maxInstances;
     } catch (error) {
       console.error('Error checking instance limit:', error);
       return false;
