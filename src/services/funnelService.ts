@@ -82,21 +82,13 @@ export const funnelService = {
   async getStages(clientId: string): Promise<FunnelStage[]> {
     try {
       const { data, error } = await supabase
-        .rpc('get_funnel_stages', { client_id_param: clientId });
-
-      if (error) {
-        // Fallback direto se RPC não existir
-        const { data: directData, error: directError } = await supabase
-          .from('funnel_stages' as any)
-          .select('*')
-          .eq('client_id', clientId)
-          .eq('is_active', true)
-          .order('position', { ascending: true });
-        
-        if (directError) throw directError;
-        return (directData || []) as FunnelStage[];
-      }
+        .from('funnel_stages')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('is_active', true)
+        .order('position', { ascending: true });
       
+      if (error) throw error;
       return (data || []) as FunnelStage[];
     } catch (error) {
       console.error('Error fetching funnel stages:', error);
@@ -107,7 +99,7 @@ export const funnelService = {
   async createStage(clientId: string, stageData: CreateFunnelStageData): Promise<FunnelStage> {
     try {
       const { data, error } = await supabase
-        .from('funnel_stages' as any)
+        .from('funnel_stages')
         .insert([{
           client_id: clientId,
           ...stageData,
@@ -127,7 +119,7 @@ export const funnelService = {
   async updateStage(stageId: string, updates: Partial<FunnelStage>): Promise<FunnelStage> {
     try {
       const { data, error } = await supabase
-        .from('funnel_stages' as any)
+        .from('funnel_stages')
         .update(updates)
         .eq('id', stageId)
         .select()
@@ -144,7 +136,7 @@ export const funnelService = {
   async deleteStage(stageId: string): Promise<void> {
     try {
       const { error } = await supabase
-        .from('funnel_stages' as any)
+        .from('funnel_stages')
         .update({ is_active: false })
         .eq('id', stageId);
 
@@ -159,7 +151,7 @@ export const funnelService = {
   async getTags(clientId: string): Promise<FunnelTag[]> {
     try {
       const { data, error } = await supabase
-        .from('funnel_tags' as any)
+        .from('funnel_tags')
         .select('*')
         .eq('client_id', clientId)
         .eq('is_active', true)
@@ -176,7 +168,7 @@ export const funnelService = {
   async createTag(clientId: string, tagData: CreateFunnelTagData): Promise<FunnelTag> {
     try {
       const { data, error } = await supabase
-        .from('funnel_tags' as any)
+        .from('funnel_tags')
         .insert([{
           client_id: clientId,
           ...tagData,
@@ -196,25 +188,47 @@ export const funnelService = {
   // Leads
   async getLeads(clientId: string): Promise<FunnelLead[]> {
     try {
-      const { data, error } = await supabase
-        .from('funnel_leads' as any)
-        .select(`
-          *,
-          current_stage:funnel_stages(*),
-          tags:funnel_lead_tags(
-            funnel_tags(*)
-          )
-        `)
+      // Buscar leads básicos
+      const { data: leadsData, error: leadsError } = await supabase
+        .from('funnel_leads')
+        .select('*')
         .eq('client_id', clientId)
         .eq('is_active', true)
         .order('last_interaction', { ascending: false });
 
-      if (error) throw error;
+      if (leadsError) throw leadsError;
       
-      return ((data || []) as any[]).map((lead: any) => ({
-        ...lead,
-        tags: lead.tags?.map((tagRel: any) => tagRel.funnel_tags).filter(Boolean) || []
-      })) as FunnelLead[];
+      if (!leadsData || leadsData.length === 0) {
+        return [];
+      }
+
+      // Buscar stages relacionados
+      const { data: stagesData } = await supabase
+        .from('funnel_stages')
+        .select('*')
+        .eq('client_id', clientId);
+
+      // Buscar tags para cada lead
+      const { data: leadTagsData } = await supabase
+        .from('funnel_lead_tags')
+        .select(`
+          lead_id,
+          funnel_tags (*)
+        `)
+        .in('lead_id', leadsData.map(lead => lead.id));
+
+      // Montar os leads com as relações
+      return leadsData.map((lead: any) => {
+        const currentStage = stagesData?.find(stage => stage.id === lead.current_stage_id);
+        const leadTags = leadTagsData?.filter(lt => lt.lead_id === lead.id)
+          .map(lt => lt.funnel_tags).filter(Boolean) || [];
+
+        return {
+          ...lead,
+          current_stage: currentStage,
+          tags: leadTags
+        } as FunnelLead;
+      });
     } catch (error) {
       console.error('Error fetching funnel leads:', error);
       return [];
@@ -224,14 +238,8 @@ export const funnelService = {
   async getLeadsByStage(clientId: string, stageId: string): Promise<FunnelLead[]> {
     try {
       const { data, error } = await supabase
-        .from('funnel_leads' as any)
-        .select(`
-          *,
-          current_stage:funnel_stages(*),
-          tags:funnel_lead_tags(
-            funnel_tags(*)
-          )
-        `)
+        .from('funnel_leads')
+        .select('*')
         .eq('client_id', clientId)
         .eq('current_stage_id', stageId)
         .eq('is_active', true)
@@ -239,11 +247,7 @@ export const funnelService = {
         .order('last_interaction', { ascending: false });
 
       if (error) throw error;
-      
-      return ((data || []) as any[]).map((lead: any) => ({
-        ...lead,
-        tags: lead.tags?.map((tagRel: any) => tagRel.funnel_tags).filter(Boolean) || []
-      })) as FunnelLead[];
+      return (data || []) as FunnelLead[];
     } catch (error) {
       console.error('Error fetching leads by stage:', error);
       return [];
@@ -253,7 +257,7 @@ export const funnelService = {
   async createLead(clientId: string, leadData: Partial<FunnelLead>): Promise<FunnelLead> {
     try {
       const { data, error } = await supabase
-        .from('funnel_leads' as any)
+        .from('funnel_leads')
         .insert([{
           client_id: clientId,
           ...leadData
@@ -272,7 +276,7 @@ export const funnelService = {
   async updateLead(leadId: string, updates: UpdateFunnelLeadData): Promise<FunnelLead> {
     try {
       const { data, error } = await supabase
-        .from('funnel_leads' as any)
+        .from('funnel_leads')
         .update(updates)
         .eq('id', leadId)
         .select()
@@ -290,7 +294,7 @@ export const funnelService = {
     try {
       // Buscar estado atual do lead
       const { data: currentLead, error: fetchError } = await supabase
-        .from('funnel_leads' as any)
+        .from('funnel_leads')
         .select('current_stage_id, current_queue_id')
         .eq('id', leadId)
         .single();
@@ -299,7 +303,7 @@ export const funnelService = {
 
       // Atualizar o lead
       const { error: updateError } = await supabase
-        .from('funnel_leads' as any)
+        .from('funnel_leads')
         .update({
           current_stage_id: newStageId,
           stage_entered_at: new Date().toISOString()
@@ -310,10 +314,10 @@ export const funnelService = {
 
       // Criar histórico
       const { error: historyError } = await supabase
-        .from('funnel_lead_history' as any)
+        .from('funnel_lead_history')
         .insert([{
           lead_id: leadId,
-          from_stage_id: currentLead.current_stage_id,
+          from_stage_id: currentLead?.current_stage_id,
           to_stage_id: newStageId,
           moved_by: 'user',
           reason: reason || 'Movido manualmente'
@@ -329,7 +333,7 @@ export const funnelService = {
   async assignTagToLead(leadId: string, tagId: string): Promise<void> {
     try {
       const { error } = await supabase
-        .from('funnel_lead_tags' as any)
+        .from('funnel_lead_tags')
         .insert([{
           lead_id: leadId,
           tag_id: tagId,
@@ -348,7 +352,7 @@ export const funnelService = {
   async removeTagFromLead(leadId: string, tagId: string): Promise<void> {
     try {
       const { error } = await supabase
-        .from('funnel_lead_tags' as any)
+        .from('funnel_lead_tags')
         .delete()
         .eq('lead_id', leadId)
         .eq('tag_id', tagId);
@@ -370,7 +374,7 @@ export const funnelService = {
 
       for (const update of updates) {
         await supabase
-          .from('funnel_stages' as any)
+          .from('funnel_stages')
           .update({ position: update.position })
           .eq('id', update.id)
           .eq('client_id', clientId);

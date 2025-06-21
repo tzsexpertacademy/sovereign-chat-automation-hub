@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -77,7 +76,7 @@ const FunnelTagManager: React.FC<FunnelTagManagerProps> = ({
 
     try {
       const { data, error } = await supabase
-        .from('funnel_tags' as any)
+        .from('funnel_tags')
         .update({
           name: editingTag.name,
           description: editingTag.description,
@@ -90,7 +89,7 @@ const FunnelTagManager: React.FC<FunnelTagManagerProps> = ({
       if (error) throw error;
 
       setTags(tags.map(tag => 
-        tag.id === (data as any).id ? (data as any) : tag
+        tag.id === data.id ? data as FunnelTag : tag
       ));
       setEditingTag(null);
 
@@ -111,7 +110,7 @@ const FunnelTagManager: React.FC<FunnelTagManagerProps> = ({
   const handleDeleteTag = async (tagId: string) => {
     try {
       const { error } = await supabase
-        .from('funnel_tags' as any)
+        .from('funnel_tags')
         .update({ is_active: false })
         .eq('id', tagId);
 
