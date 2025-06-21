@@ -77,7 +77,7 @@ const FunnelTagManager: React.FC<FunnelTagManagerProps> = ({
 
     try {
       const { data, error } = await supabase
-        .from('funnel_tags' as any)
+        .from('funnel_tags')
         .update({
           name: editingTag.name,
           description: editingTag.description,
@@ -90,7 +90,7 @@ const FunnelTagManager: React.FC<FunnelTagManagerProps> = ({
       if (error) throw error;
 
       setTags(tags.map(tag => 
-        tag.id === data.id ? data : tag
+        tag.id === (data as FunnelTag).id ? (data as FunnelTag) : tag
       ));
       setEditingTag(null);
 
@@ -111,7 +111,7 @@ const FunnelTagManager: React.FC<FunnelTagManagerProps> = ({
   const handleDeleteTag = async (tagId: string) => {
     try {
       const { error } = await supabase
-        .from('funnel_tags' as any)
+        .from('funnel_tags')
         .update({ is_active: false })
         .eq('id', tagId);
 
