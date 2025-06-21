@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Loader2, Mic } from 'lucide-react';
+import { Loader2, Mic, MessageCircle } from 'lucide-react';
 
 interface TypingIndicatorProps {
   isTyping: boolean;
@@ -16,25 +16,31 @@ const TypingIndicator: React.FC<TypingIndicatorProps> = ({
   if (!isTyping && !isRecording) return null;
 
   return (
-    <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg mb-2 animate-pulse">
+    <div className="flex items-center space-x-3 p-3 bg-gray-100 rounded-2xl mb-3 max-w-xs animate-pulse">
       <div className="flex items-center space-x-2">
         {isRecording ? (
-          <Mic className="w-4 h-4 text-red-500 animate-pulse" />
+          <div className="flex items-center space-x-2">
+            <Mic className="w-4 h-4 text-red-500 animate-pulse" />
+            <div className="flex space-x-1">
+              <div className="w-1 h-4 bg-red-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-1 h-4 bg-red-400 rounded-full animate-bounce" style={{ animationDelay: '100ms' }}></div>
+              <div className="w-1 h-4 bg-red-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }}></div>
+            </div>
+          </div>
         ) : (
-          <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+          <div className="flex items-center space-x-2">
+            <MessageCircle className="w-4 h-4 text-blue-500" />
+            <div className="flex space-x-1">
+              <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          </div>
         )}
-        <span className="text-sm text-gray-600">
-          {senderName} está {isRecording ? 'gravando áudio' : 'digitando'}...
-        </span>
       </div>
-      
-      {!isRecording && (
-        <div className="flex space-x-1">
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-        </div>
-      )}
+      <span className="text-xs text-gray-600 font-medium">
+        {senderName} está {isRecording ? 'gravando áudio' : 'digitando'}...
+      </span>
     </div>
   );
 };

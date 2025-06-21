@@ -46,7 +46,7 @@ const TicketChatInterface = () => {
   // Hooks para tempo real
   const { tickets, isLoading, reloadTickets, isTyping: assistantTyping } = useTicketRealtime(clientId || '');
   const { messages: ticketMessages, isLoading: loadingMessages } = useTicketMessages(selectedTicket?.id || null);
-  const { getMessageStatus, updateMessageStatus, markMessageAsRead } = useMessageStatus();
+  const { getMessageStatus, updateMessageStatus, markMessageAsRead, markMessageAsFailed } = useMessageStatus();
   const { isTyping, isRecording, startTyping, stopTyping, startRecording, stopRecording } = useTypingStatus();
 
   // Auto scroll para última mensagem
@@ -176,22 +176,21 @@ const TicketChatInterface = () => {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedTicket || !clientId) return;
 
-    const tempMessageId = `temp_${Date.now()}`;
+    const tempMessageId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
+      console.log('📤 Enviando mensagem:', newMessage);
+      
       // Marcar como enviando
       updateMessageStatus(tempMessageId, 'sending');
       
-      // Simular typing do usuário
-      startTyping();
+      // Parar indicador de digitação
+      stopTyping();
       
       await whatsappService.sendMessage(clientId, selectedTicket.chat_id, newMessage);
       
       // Marcar como enviada
       updateMessageStatus(tempMessageId, 'sent');
-      
-      // Parar typing
-      stopTyping();
       
       // Adicionar mensagem ao ticket
       await ticketsService.addTicketMessage({
@@ -209,15 +208,17 @@ const TicketChatInterface = () => {
 
       setNewMessage("");
       
-      // Simular entrega após delay
+      // Simular entrega após 2 segundos
       setTimeout(() => {
         updateMessageStatus(tempMessageId, 'delivered');
-      }, 1000);
+        console.log('📦 Mensagem marcada como entregue');
+      }, 2000);
       
-      // Simular leitura após delay (quando assistente "vê" a mensagem)
+      // Simular leitura após 5 segundos (quando assistente "vê" a mensagem)
       setTimeout(() => {
         markMessageAsRead(tempMessageId);
-      }, 3000);
+        console.log('👁️ Mensagem marcada como lida (V azul)');
+      }, 5000);
       
       toast({
         title: "Mensagem enviada",
@@ -226,6 +227,7 @@ const TicketChatInterface = () => {
     } catch (error: any) {
       updateMessageStatus(tempMessageId, 'failed');
       stopTyping();
+      console.error('❌ Erro ao enviar mensagem:', error);
       toast({
         title: "Erro ao enviar",
         description: error.message || "Falha ao enviar mensagem",
@@ -746,8 +748,8 @@ const TicketChatInterface = () => {
                             >
                               <div className={`max-w-md px-4 py-2 rounded-lg ${
                                 message.from_me
-                                  ? 'bg-blue-500 text-white'
-                                  : 'bg-gray-100 text-gray-900'
+                                  ? 'bg-blue-500 text-white rounded-br-sm'
+                                  : 'bg-gray-100 text-gray-900 rounded-bl-sm'
                               }`}>
                                 {!message.from_me && message.sender_name && (
                                   <p className="text-xs font-medium mb-1 opacity-70">
@@ -755,27 +757,38 @@ const TicketChatInterface = () => {
                                   </p>
                                 )}
                                 <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                                <MessageStatus 
-                                  status={getMessageStatus(message.message_id)}
-                                  timestamp={message.timestamp}
-                                  fromMe={message.from_me}
-                                />
+                                
+                                {/* Status da mensagem - só aparece para mensagens enviadas por mim */}
+                                {message.from_me && (
+                                  <MessageStatus 
+                                    status={getMessageStatus(message.message_id)}
+                                    timestamp={message.timestamp}
+                                    fromMe={message.from_me}
+                                  />
+                                )}
+                                
                                 {message.is_ai_response && (
-                                  <Badge variant="secondary" className="text-xs ml-2">
-                                    IA
-                                  </Badge>
+                                  <div className="mt-1">
+                                    <Badge variant="secondary" className="text-xs">
+                                      🤖 IA
+                                    </Badge>
+                                  </div>
                                 )}
                               </div>
                             </div>
                           ))
                         )}
                         
-                        {/* Indicador de digitação/gravação */}
-                        <TypingIndicator 
-                          isTyping={assistantTyping && !isRecording}
-                          isRecording={isRecording}
-                          senderName="Assistente"
-                        />
+                        {/* Indicador de digitação do assistente */}
+                        {assistantTyping && (
+                          <div className="flex justify-start">
+                            <TypingIndicator 
+                              isTyping={true}
+                              isRecording={false}
+                              senderName="Assistente"
+                            />
+                          </div>
+                        )}
                         
                         <div ref={messagesEndRef} />
                       </div>
@@ -801,17 +814,16 @@ const TicketChatInterface = () => {
                           onKeyPress={(e) => {
                             if (e.key === 'Enter') {
                               handleSendMessage();
-                              stopTyping();
                             }
                           }}
-                          onBlur={() => stopTyping()}
+                          onBlur={() => {
+                            // Delay para não parar digitação imediatamente
+                            setTimeout(() => stopTyping(), 1000);
+                          }}
                           className="flex-1"
                         />
                         <Button 
-                          onClick={() => {
-                            handleSendMessage();
-                            stopTyping();
-                          }} 
+                          onClick={handleSendMessage} 
                           disabled={!newMessage.trim()} 
                           size="sm"
                         >
@@ -821,10 +833,10 @@ const TicketChatInterface = () => {
                       
                       {/* Indicador de digitação do usuário */}
                       {isTyping && (
-                        <div className="mt-2">
+                        <div className="mt-2 flex justify-end">
                           <TypingIndicator 
                             isTyping={true}
-                            isRecording={false}
+                            isRecording={isRecording}
                             senderName="Você"
                           />
                         </div>
