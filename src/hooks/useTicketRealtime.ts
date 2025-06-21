@@ -22,14 +22,13 @@ export const useTicketRealtime = (clientId: string) => {
   const lastLoadTimeRef = useRef<number>(0);
   const initializationRef = useRef(false);
   const processingRef = useRef<Set<string>>(new Set());
-  const lastProcessedMessageRef = useRef<Map<string, string>>(new Map());
 
   // Hooks humanizados
   const { simulateHumanTyping, markAsRead } = useHumanizedTyping(clientId);
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
 
-  // Processar lote de mensagens com assistente - com prevenção melhorada de duplicação
+  // Processar lote de mensagens com assistente
   const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
     if (!mountedRef.current || messages.length === 0) return;
 
@@ -38,17 +37,7 @@ export const useTicketRealtime = (clientId: string) => {
     // Usar apenas a última mensagem para resposta do assistente
     const lastMessage = messages[messages.length - 1];
     
-    // Verificar se já processamos esta mensagem para este chat
-    const lastProcessedForChat = lastProcessedMessageRef.current.get(chatId);
-    if (lastProcessedForChat === lastMessage.id) {
-      console.log('🔄 Lote já processado para este chat, ignorando:', chatId);
-      return;
-    }
-    
     try {
-      // Marcar como processado
-      lastProcessedMessageRef.current.set(chatId, lastMessage.id);
-
       // Processar reações automáticas para todas as mensagens
       for (const message of messages) {
         if (!message.fromMe) {
@@ -127,13 +116,11 @@ export const useTicketRealtime = (clientId: string) => {
           if (mountedRef.current) {
             processWithAssistant(lastMessage, ticketId, messages);
           }
-        }, 5000); // Aumentar delay para 5 segundos
+        }, 3000);
       }
       
     } catch (error) {
       console.error('❌ Erro ao processar lote de mensagens:', error);
-      // Remover da lista de processados em caso de erro
-      lastProcessedMessageRef.current.delete(chatId);
     }
   }, [clientId, processReaction, markActivity]);
 
@@ -167,18 +154,17 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar mensagem com assistente - com contexto de 40 mensagens e prevenção de duplicação
+  // Processar mensagem com assistente - com contexto de 40 mensagens
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     if (!mountedRef.current || !ticketId) {
       processingRef.current.delete(ticketId);
       return;
     }
     
-    // Verificar duplicação por ID da mensagem E ticket
-    const messageKey = `${message.id}_${ticketId}_assistant`;
+    // Verificar duplicação por ID da mensagem
+    const messageKey = `${message.id}_${ticketId}`;
     if (processedMessagesRef.current.has(messageKey)) {
       processingRef.current.delete(ticketId);
-      console.log('🔄 Processamento duplicado detectado, ignorando:', messageKey);
       return;
     }
     
@@ -256,7 +242,7 @@ export const useTicketRealtime = (clientId: string) => {
       const messages = [
         {
           role: 'system',
-          content: `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto: Você está respondendo mensagens do WhatsApp. Responda de forma natural e humanizada. Use o contexto das mensagens anteriores para dar respostas mais relevantes e personalizadas.`
+          content: `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto: Você está respondendo mensagens do WhatsApp. Responda de forma natural e humanizada.`
         },
         ...contextMessages.slice(-20), // Últimas 20 mensagens para contexto
         {
@@ -264,12 +250,6 @@ export const useTicketRealtime = (clientId: string) => {
           content: currentMessage
         }
       ];
-
-      console.log('🧠 Enviando contexto para IA:', {
-        totalMessages: messages.length,
-        contextSize: contextMessages.length,
-        currentMessage: currentMessage.substring(0, 100)
-      });
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -302,10 +282,9 @@ export const useTicketRealtime = (clientId: string) => {
         await whatsappService.sendMessage(clientId, message.from, assistantResponse);
         
         // Registrar no ticket
-        const responseMessageId = `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
-          message_id: responseMessageId,
+          message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           from_me: true,
           sender_name: `🤖 ${assistant.name}`,
           content: assistantResponse,
@@ -322,8 +301,6 @@ export const useTicketRealtime = (clientId: string) => {
 
     } catch (error) {
       console.error('❌ Erro no processamento:', error);
-      // Remover da lista de processados em caso de erro para permitir retry
-      processedMessagesRef.current.delete(messageKey);
     } finally {
       if (mountedRef.current) {
         setAssistantTyping(false);
@@ -411,7 +388,6 @@ export const useTicketRealtime = (clientId: string) => {
       }
       processedMessagesRef.current.clear();
       processingRef.current.clear();
-      lastProcessedMessageRef.current.clear();
     };
   }, [clientId, loadTickets, addMessage]);
 
