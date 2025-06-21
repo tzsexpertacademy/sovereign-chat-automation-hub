@@ -85,6 +85,7 @@ class TicketsService {
       return (data || []).map(ticket => ({
         ...ticket,
         status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
+        tags: Array.isArray(ticket.tags) ? ticket.tags : [],
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
@@ -112,6 +113,7 @@ class TicketsService {
       return {
         ...data,
         status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
+        tags: Array.isArray(data.tags) ? data.tags : [],
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
       };
