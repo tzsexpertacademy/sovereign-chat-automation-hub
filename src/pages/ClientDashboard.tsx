@@ -1,9 +1,10 @@
+
 import { useState } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import ClientSidebar from "@/components/client/ClientSidebar";
 import ClientHeader from "@/components/client/ClientHeader";
-import TicketChatInterface from "@/components/client/TicketChatInterface";
+import ChatInterface from "@/components/client/ChatInterface";
 import CampaignsManager from "@/components/client/CampaignsManager";
 import AutomationCenter from "@/components/client/AutomationCenter";
 import AnalyticsDashboard from "@/components/client/AnalyticsDashboard";
@@ -16,10 +17,15 @@ import QueueConnectionManager from "@/components/client/QueueConnectionManager";
 
 const ClientDashboard = () => {
   const { clientId } = useParams();
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
 
   if (!clientId) {
     return <div>Cliente não encontrado</div>;
   }
+
+  const handleSelectChat = (chatId: string) => {
+    setSelectedChatId(chatId);
+  };
 
   return (
     <SidebarProvider>
@@ -31,7 +37,26 @@ const ClientDashboard = () => {
             <Routes>
               <Route path="/" element={<Navigate to="connect" replace />} />
               <Route path="connect" element={<WhatsAppConnection />} />
-              <Route path="chat" element={<TicketChatInterface />} />
+              <Route 
+                path="chat" 
+                element={
+                  <ChatInterface 
+                    clientId={clientId} 
+                    selectedChatId={selectedChatId}
+                    onSelectChat={handleSelectChat}
+                  />
+                } 
+              />
+              <Route 
+                path="chat/:chatId" 
+                element={
+                  <ChatInterface 
+                    clientId={clientId} 
+                    selectedChatId={selectedChatId}
+                    onSelectChat={handleSelectChat}
+                  />
+                } 
+              />
               <Route path="funnel" element={<FunnelKanban clientId={clientId} />} />
               <Route path="assistants" element={<AssistantsManager />} />
               <Route path="queues" element={<QueuesManager />} />
