@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -32,9 +33,16 @@ export const useTicketRealtime = (clientId: string) => {
     // Processar todas as mensagens em conjunto
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
-      await processWithAssistant(lastMessage, '', messages);
+      
+      // Buscar ticket para este chat
+      const ticket = tickets.find(t => t.chat_id === chatId);
+      if (ticket) {
+        await processWithAssistant(lastMessage, ticket.id, messages);
+      } else {
+        console.log('⚠️ Ticket não encontrado para chat:', chatId);
+      }
     }
-  }, []));
+  }, [tickets]));
 
   // Carregar tickets
   const loadTickets = useCallback(async () => {
@@ -65,6 +73,14 @@ export const useTicketRealtime = (clientId: string) => {
 
   // Processar mensagem com assistente seguindo o fluxo das filas
   const processWithAssistant = useCallback(async (message: any, ticketId: string, messagesBatch?: any[]) => {
+    console.log('🤖 Iniciando processamento com assistente para ticket:', ticketId);
+    
+    // Validar se ticketId é válido
+    if (!ticketId || ticketId === '') {
+      console.error('❌ Ticket ID inválido:', ticketId);
+      return;
+    }
+    
     const messageKey = `${message.id}_${message.from}_${message.timestamp}`;
     
     if (processedMessagesRef.current.has(message.id) || 
@@ -77,8 +93,6 @@ export const useTicketRealtime = (clientId: string) => {
     processedMessagesRef.current.add(messageKey);
     
     try {
-      console.log('🤖 Processando mensagem com assistente para ticket:', ticketId);
-      
       // 1. Processar reações automáticas
       if (messagesBatch) {
         for (const msg of messagesBatch) {
@@ -115,9 +129,25 @@ export const useTicketRealtime = (clientId: string) => {
       }
 
       const assistant = activeQueue.assistants;
-      console.log('🤖 Processando com assistente:', assistant.name, 'na fila:', activeQueue.name);
+      console.log(`🤖 Processando com assistente: ${assistant.name} na fila: ${activeQueue.name}`);
 
-      // 5. Buscar histórico de mensagens do ticket
+      // 5. Atualizar ticket com fila e assistente
+      try {
+        await supabase
+          .from('conversation_tickets')
+          .update({
+            assigned_queue_id: activeQueue.id,
+            assigned_assistant_id: assistant.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', ticketId);
+        
+        console.log('✅ Ticket atualizado com fila e assistente');
+      } catch (updateError) {
+        console.error('❌ Erro ao atualizar ticket:', updateError);
+      }
+
+      // 6. Buscar histórico de mensagens do ticket
       const ticketMessages = await ticketsService.getTicketMessages(ticketId);
       const recentMessages = ticketMessages
         .slice(-10)
@@ -126,7 +156,7 @@ export const useTicketRealtime = (clientId: string) => {
           content: msg.content || ''
         }));
 
-      // 6. Preparar mensagem contextual
+      // 7. Preparar mensagem contextual
       let messageContent = message.body || message.text || '';
       if (messagesBatch && messagesBatch.length > 1) {
         messageContent = messagesBatch
@@ -135,7 +165,7 @@ export const useTicketRealtime = (clientId: string) => {
           .join('\n');
       }
 
-      // 7. Preparar configurações avançadas
+      // 8. Preparar configurações avançadas
       let advancedSettings = {
         temperature: 0.7,
         max_tokens: 1000,
@@ -158,7 +188,7 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('Erro ao parse das configurações avançadas:', error);
       }
 
-      // 8. Simular digitação humana
+      // 9. Simular digitação humana
       setAssistantTyping(true);
       const isAudioResponse = assistant.advanced_settings && 
                              typeof assistant.advanced_settings === 'object' && 
@@ -167,7 +197,7 @@ export const useTicketRealtime = (clientId: string) => {
                              assistant.advanced_settings.voice_cloning_enabled === true;
       await humanizedTyping.simulateHumanTyping(message.from, messageContent, isAudioResponse);
 
-      // 9. Chamar a API da OpenAI
+      // 10. Chamar a API da OpenAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -203,15 +233,15 @@ export const useTicketRealtime = (clientId: string) => {
       if (assistantResponse && assistantResponse.trim()) {
         console.log('🤖 Resposta do assistente gerada:', assistantResponse.substring(0, 100) + '...');
         
-        // 10. Enviar resposta via WhatsApp
+        // 11. Enviar resposta via WhatsApp
         await whatsappService.sendMessage(clientId, message.from, assistantResponse);
         
-        // 11. Registrar a resposta no ticket
+        // 12. Registrar a resposta no ticket
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           from_me: true,
-          sender_name: `🤖 ${assistant.name}`,
+          sender_name: `🤖 ${assistant.name} (${activeQueue.name})`,
           content: assistantResponse,
           message_type: 'text',
           is_internal_note: false,
@@ -327,8 +357,19 @@ export const useTicketRealtime = (clientId: string) => {
           new Date().toISOString()
         );
 
-        // Adicionar mensagem ao agrupamento
+        console.log('📋 Ticket criado/atualizado:', ticketId);
+
+        // Adicionar mensagem ao agrupamento E processar imediatamente
         messageBatch.addMessage(message);
+        
+        // Processar imediatamente se não estiver no batch
+        setTimeout(async () => {
+          try {
+            await processWithAssistant(message, ticketId);
+          } catch (error) {
+            console.error('❌ Erro no processamento imediato:', error);
+          }
+        }, 1000);
         
       } catch (error) {
         console.error('❌ Erro ao processar nova mensagem:', error);
@@ -379,7 +420,7 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       setIsOnline(false);
     };
-  }, [clientId]); // Removido outras dependências que causavam loops
+  }, [clientId, loadTickets, extractWhatsAppName, messageBatch, processWithAssistant]);
 
   const reloadTickets = useCallback(() => {
     console.log('🔄 Recarregamento manual solicitado');

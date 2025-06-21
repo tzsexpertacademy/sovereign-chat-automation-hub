@@ -132,23 +132,25 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                            ticket.status === 'closed' ||
                            (ticket.title && ticket.title.includes('Atendido por'));
 
-    // Fila ativa - só mostra se não foi assumido por humano
+    // Fila ativa - mostrar nome da fila e assistente se existir
     if (ticket.assigned_queue_id && !isHumanAssigned) {
-      badges.push(
-        <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-          📋 Fila
-        </Badge>
-      );
-    }
-
-    // Assistente ativo - só mostra se não foi assumido por humano
-    if (ticket.assigned_assistant_id && !isHumanAssigned) {
-      badges.push(
-        <Badge key="assistant" variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
-          <Bot className="w-3 h-3 mr-1" />
-          IA
-        </Badge>
-      );
+      // Buscar dados da fila e assistente dos tickets carregados
+      const queueInfo = tickets.find(t => t.id === ticket.id);
+      
+      if (queueInfo) {
+        badges.push(
+          <Badge key="queue-assistant" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+            <Bot className="w-3 h-3 mr-1" />
+            Fila {queueInfo.assigned_queue_name || 'Ativa'}
+          </Badge>
+        );
+      } else {
+        badges.push(
+          <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+            📋 Fila Ativa
+          </Badge>
+        );
+      }
     }
 
     // Humano assumiu - mostra quando foi assumido

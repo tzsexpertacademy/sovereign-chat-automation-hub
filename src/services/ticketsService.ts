@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 export interface ConversationTicket {
@@ -66,30 +65,37 @@ export interface TicketEvent {
   created_at: string;
 }
 
-export const ticketsService = {
+export class TicketsService {
   async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
+    console.log('🔍 Buscando tickets para cliente:', clientId);
+    
     const { data, error } = await supabase
-      .from('conversation_tickets')
+      .from("conversation_tickets")
       .select(`
         *,
-        customer:customers(id, name, phone, email),
-        queue:queues(id, name),
-        assistant:assistants(id, name)
+        customers(*),
+        queues:assigned_queue_id(id, name),
+        assistants:assigned_assistant_id(id, name)
       `)
-      .eq('client_id', clientId)
-      .eq('is_archived', false)
-      .order('last_message_at', { ascending: false });
+      .eq("client_id", clientId)
+      .order("last_message_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Erro ao buscar tickets:', error);
+      throw error;
+    }
+
+    console.log('✅ Tickets encontrados:', data?.length || 0);
     
-    return (data || []).map(ticket => ({
+    // Mapear dados incluindo nome da fila
+    const mappedTickets = (data || []).map(ticket => ({
       ...ticket,
-      status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
-      tags: Array.isArray(ticket.tags) ? ticket.tags.filter((tag): tag is string => typeof tag === 'string') : [],
-      custom_fields: typeof ticket.custom_fields === 'object' && ticket.custom_fields !== null ? ticket.custom_fields : {},
-      internal_notes: Array.isArray(ticket.internal_notes) ? ticket.internal_notes : []
+      assigned_queue_name: ticket.queues?.name,
+      assigned_assistant_name: ticket.assistants?.name
     }));
-  },
+
+    return mappedTickets;
+  }
 
   async getTicketById(ticketId: string): Promise<ConversationTicket | null> {
     const { data, error } = await supabase
@@ -114,7 +120,7 @@ export const ticketsService = {
       custom_fields: typeof data.custom_fields === 'object' && data.custom_fields !== null ? data.custom_fields : {},
       internal_notes: Array.isArray(data.internal_notes) ? data.internal_notes : []
     };
-  },
+  }
 
   async createOrUpdateTicket(
     clientId: string,
@@ -137,7 +143,7 @@ export const ticketsService = {
 
     if (error) throw error;
     return data;
-  },
+  }
 
   async updateTicketStatus(ticketId: string, status: string): Promise<void> {
     const updates: any = { status, updated_at: new Date().toISOString() };
@@ -152,7 +158,7 @@ export const ticketsService = {
       .eq('id', ticketId);
 
     if (error) throw error;
-  },
+  }
 
   async updateTicketAssignment(ticketId: string, queueId?: string, assistantId?: string): Promise<void> {
     const { error } = await supabase
@@ -165,7 +171,7 @@ export const ticketsService = {
       .eq('id', ticketId);
 
     if (error) throw error;
-  },
+  }
 
   async assumeTicketManually(ticketId: string): Promise<void> {
     const { error } = await supabase
@@ -187,7 +193,7 @@ export const ticketsService = {
       description: 'Ticket assumido manualmente pelo operador',
       metadata: { action: 'manual_takeover' }
     });
-  },
+  }
 
   async transferTicket(ticketId: string, queueId: string, reason?: string): Promise<void> {
     const { error } = await supabase
@@ -209,7 +215,7 @@ export const ticketsService = {
       description: `Ticket transferido para outra fila${reason ? ': ' + reason : ''}`,
       metadata: { queue_id: queueId, reason }
     });
-  },
+  }
 
   async addInternalNote(ticketId: string, note: string, createdBy: string): Promise<void> {
     // Buscar notas existentes
@@ -236,7 +242,7 @@ export const ticketsService = {
       .eq('id', ticketId);
 
     if (error) throw error;
-  },
+  }
 
   async getTicketMessages(ticketId: string): Promise<TicketMessage[]> {
     const { data, error } = await supabase
@@ -247,7 +253,7 @@ export const ticketsService = {
 
     if (error) throw error;
     return data || [];
-  },
+  }
 
   async addTicketMessage(ticketMessage: Omit<TicketMessage, 'id' | 'created_at'>): Promise<void> {
     const { error } = await supabase
@@ -255,7 +261,7 @@ export const ticketsService = {
       .insert(ticketMessage);
 
     if (error) throw error;
-  },
+  }
 
   async addTicketEvent(ticketEvent: Omit<TicketEvent, 'id' | 'created_at'>): Promise<void> {
     const { error } = await supabase
@@ -263,7 +269,7 @@ export const ticketsService = {
       .insert(ticketEvent);
 
     if (error) throw error;
-  },
+  }
 
   async getTicketEvents(ticketId: string): Promise<TicketEvent[]> {
     const { data, error } = await supabase
@@ -278,7 +284,7 @@ export const ticketsService = {
       ...event,
       metadata: typeof event.metadata === 'object' && event.metadata !== null ? event.metadata : {}
     }));
-  },
+  }
 
   // Importar conversas do WhatsApp e criar tickets
   async importConversationsFromWhatsApp(clientId: string): Promise<{ success: number; errors: number }> {
@@ -386,14 +392,14 @@ export const ticketsService = {
       console.error('❌ Erro na importação de conversas:', error);
       throw error;
     }
-  },
+  }
 
   // Métodos auxiliares para extrair informações do chat
   extractNameFromChatId(chatId: string): string {
     // Remove códigos de país e formatação do WhatsApp
     const phone = chatId.replace(/[\D]/g, '').replace(/^55/, '');
     return `Contato ${phone}`;
-  },
+  }
 
   extractPhoneFromChatId(chatId: string): string {
     // Extrai apenas os números do chat ID
@@ -405,7 +411,7 @@ export const ticketsService = {
     }
     
     return phone;
-  },
+  }
 
   // Função para importar conversas ativas (para ser chamada periodicamente)
   async syncActiveConversations(clientId: string): Promise<void> {
@@ -458,4 +464,6 @@ export const ticketsService = {
       throw error;
     }
   }
-};
+}
+
+export const ticketsService = new TicketsService();
