@@ -107,18 +107,35 @@ const WhatsAppConnection = () => {
       setConnecting(true);
       console.log('🚀 Criando nova instância...');
       
-      const result = await whatsappService.connectClient(clientId);
+      // Verificar se o cliente pode criar mais instâncias
+      const clientsData = await clientsService.getAllClients();
+      const clientData = clientsData.find(c => c.id === clientId);
+      
+      if (!clientData) {
+        throw new Error('Cliente não encontrado');
+      }
+      
+      if (instances.length >= clientData.max_instances) {
+        throw new Error(`Limite de ${clientData.max_instances} instâncias atingido para seu plano ${clientData.plan.toUpperCase()}`);
+      }
+      
+      // Gerar um instanceId único
+      const newInstanceId = `${clientId}_${Date.now()}`;
+      
+      const result = await whatsappService.connectClient(newInstanceId);
       console.log('✅ Instância criada:', result);
       
       // Criar instância no Supabase
       await whatsappInstancesService.createInstance({
         client_id: clientId,
-        instance_id: clientId,
+        instance_id: newInstanceId,
         status: 'connecting'
       });
 
-      // Atualizar cliente
-      await clientsService.updateClientInstance(clientId, clientId, 'connecting');
+      // Atualizar cliente se for a primeira instância
+      if (instances.length === 0) {
+        await clientsService.updateClientInstance(clientId, newInstanceId, 'connecting');
+      }
       
       toast({
         title: "Sucesso",
@@ -207,7 +224,7 @@ const WhatsAppConnection = () => {
 
   const handleEditInstance = (instance: WhatsAppInstanceData) => {
     setEditingInstance(instance);
-    setEditName(instance.instance_id || "");
+    setEditName(instance.custom_name || `Conexão ${instance.instance_id.split('_').pop()}`);
     setShowEditDialog(true);
   };
 
@@ -217,9 +234,8 @@ const WhatsAppConnection = () => {
     try {
       setLoading(true);
       
-      // Atualizar no Supabase se necessário
       await whatsappInstancesService.updateInstance(editingInstance.instance_id, {
-        // Adicionar campos editáveis conforme necessário
+        custom_name: editName.trim()
       });
 
       toast({
@@ -253,8 +269,12 @@ const WhatsAppConnection = () => {
       // Remover do Supabase
       await whatsappInstancesService.deleteInstance(instanceId);
       
-      // Atualizar cliente
-      await clientsService.updateClientInstance(clientId!, "", "disconnected");
+      // Se era a instância principal do cliente, limpar
+      const clientsData = await clientsService.getAllClients();
+      const clientData = clientsData.find(c => c.id === clientId);
+      if (clientData?.instance_id === instanceId) {
+        await clientsService.updateClientInstance(clientId!, "", "disconnected");
+      }
       
       toast({
         title: "Sucesso",
@@ -323,10 +343,29 @@ const WhatsAppConnection = () => {
             Gerencie suas conexões WhatsApp e configure as filas de atendimento
           </p>
         </div>
-        <Button onClick={loadData} variant="outline" disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </Button>
+        <div className="flex space-x-2">
+          <Button onClick={loadData} variant="outline" disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          <Button 
+            onClick={handleCreateInstance}
+            disabled={connecting}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            {connecting ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Criando...
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4 mr-2" />
+                Nova Conexão
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Summary Stats */}
@@ -374,33 +413,19 @@ const WhatsAppConnection = () => {
         </Card>
       </div>
 
-      {/* Create New Instance */}
+      {/* Create New Instance Info Card */}
       {instances.length === 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Adicionar Nova Conexão</CardTitle>
+            <CardTitle>Primeira Conexão WhatsApp</CardTitle>
             <CardDescription>
-              Você pode criar até 3 conexões WhatsApp com seu plano STANDARD
+              Crie sua primeira conexão WhatsApp para começar a usar o sistema
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button 
-              onClick={handleCreateInstance}
-              disabled={connecting}
-              className="w-full"
-            >
-              {connecting ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Criando Conexão...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Criar Nova Conexão
-                </>
-              )}
-            </Button>
+            <p className="text-sm text-gray-600 mb-4">
+              Após criar a conexão, você poderá escanear o QR Code para conectar seu WhatsApp.
+            </p>
           </CardContent>
         </Card>
       )}
@@ -408,6 +433,7 @@ const WhatsAppConnection = () => {
       {/* Instances List */}
       {instances.map((instance) => {
         const connections = getInstanceConnections(instance.instance_id);
+        const displayName = instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
         
         return (
           <Card key={instance.id} className="hover:shadow-lg transition-shadow">
@@ -417,7 +443,7 @@ const WhatsAppConnection = () => {
                   <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
                   <div>
                     <CardTitle className="text-lg">
-                      Instância {instance.instance_id.split('_').pop()}
+                      {displayName}
                     </CardTitle>
                     <CardDescription className="flex items-center mt-1">
                       <Smartphone className="w-4 h-4 mr-1" />

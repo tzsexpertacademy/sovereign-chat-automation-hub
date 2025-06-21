@@ -2,9 +2,15 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
-export type WhatsAppInstanceData = Tables<"whatsapp_instances">;
-export type WhatsAppInstanceInsert = TablesInsert<"whatsapp_instances">;
-export type WhatsAppInstanceUpdate = TablesUpdate<"whatsapp_instances">;
+export type WhatsAppInstanceData = Tables<"whatsapp_instances"> & {
+  custom_name?: string;
+};
+export type WhatsAppInstanceInsert = TablesInsert<"whatsapp_instances"> & {
+  custom_name?: string;
+};
+export type WhatsAppInstanceUpdate = TablesUpdate<"whatsapp_instances"> & {
+  custom_name?: string;
+};
 
 export class WhatsAppInstancesService {
   async getInstancesByClientId(clientId: string): Promise<WhatsAppInstanceData[]> {
