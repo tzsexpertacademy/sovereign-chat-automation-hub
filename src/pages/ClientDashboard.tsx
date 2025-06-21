@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
@@ -12,7 +13,7 @@ import QueuesManager from '@/components/client/QueuesManager';
 import AutomationCenter from '@/components/client/AutomationCenter';
 import CampaignsManager from '@/components/client/CampaignsManager';
 import AnalyticsDashboard from '@/components/client/AnalyticsDashboard';
-import BookingManager from '@/components/client/BookingManager';
+import BookingManager from '@/components/booking/BookingManager';
 import { clientsService, ClientData } from '@/services/clientsService';
 
 const ClientDashboard = () => {
@@ -66,7 +67,7 @@ const ClientDashboard = () => {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <ClientSidebar />
+      <ClientSidebar clientId={clientId} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <ClientHeader />
         <main className="flex-1 overflow-y-auto p-6">
@@ -81,7 +82,7 @@ const ClientDashboard = () => {
               <Route path="automation" element={<AutomationCenter />} />
               <Route path="campaigns" element={<CampaignsManager />} />
               <Route path="analytics" element={<AnalyticsDashboard />} />
-              <Route path="booking" element={<BookingManager />} />
+              <Route path="booking" element={<BookingManager clientId={clientId} />} />
               <Route path="*" element={<Navigate to="overview" replace />} />
             </Routes>
           </div>

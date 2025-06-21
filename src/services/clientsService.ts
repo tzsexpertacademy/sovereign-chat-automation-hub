@@ -60,6 +60,30 @@ export const clientsService = {
     }
   },
 
+  // Get client by ID
+  async getClientById(id: string): Promise<ClientData | null> {
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      
+      if (!data) return null;
+      
+      // Garantir que o max_instances está correto baseado no plano
+      return {
+        ...data,
+        max_instances: getMaxInstancesForPlan(data.plan)
+      };
+    } catch (error) {
+      console.error('Error fetching client by ID:', error);
+      return null;
+    }
+  },
+
   // Create new client
   async createClient(clientData: CreateClientData): Promise<ClientData> {
     try {
