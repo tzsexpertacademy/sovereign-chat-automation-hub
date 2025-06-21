@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -180,6 +181,16 @@ const ClientsManagement = () => {
       case 'premium': return 'bg-purple-100 text-purple-800';
       case 'enterprise': return 'bg-gold-100 text-gold-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getMaxInstancesForPlan = (plan: string) => {
+    switch (plan) {
+      case 'basic': return 1;
+      case 'standard': return 3;
+      case 'premium': return 10;
+      case 'enterprise': return 50;
+      default: return 1;
     }
   };
 
@@ -410,7 +421,7 @@ const ClientsManagement = () => {
                           {client.plan.toUpperCase()}
                         </Badge>
                         <Badge variant="outline">
-                          {client.current_instances || 0}/{client.max_instances} instâncias
+                          {client.current_instances || 0}/{getMaxInstancesForPlan(client.plan)} instâncias
                         </Badge>
                       </div>
                       <p className="text-xs text-gray-500">

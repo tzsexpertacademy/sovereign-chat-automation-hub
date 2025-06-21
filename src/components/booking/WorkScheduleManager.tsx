@@ -1,58 +1,54 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Plus, 
+  Edit, 
+  Trash2, 
+  Clock, 
+  Copy,
+  Save,
+  X,
+  Calendar,
+  Users
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, Copy, Trash2, Plus, Save, AlertCircle, CheckCircle } from "lucide-react";
-import { workScheduleService, WorkSchedule } from "@/services/workScheduleService";
 import { professionalsService } from "@/services/professionalsService";
-
-interface Professional {
-  id: string;
-  name: string;
-  specialty?: string;
-}
+import { workScheduleService, WorkSchedule, CreateScheduleData } from "@/services/workScheduleService";
+import { bookingValidationService } from "@/services/bookingValidationService";
 
 interface WorkScheduleManagerProps {
   clientId: string;
 }
 
-const DAYS_OF_WEEK = [
-  { key: 'monday', label: 'Segunda-feira' },
-  { key: 'tuesday', label: 'Terça-feira' },
-  { key: 'wednesday', label: 'Quarta-feira' },
-  { key: 'thursday', label: 'Quinta-feira' },
-  { key: 'friday', label: 'Sexta-feira' },
-  { key: 'saturday', label: 'Sábado' },
-  { key: 'sunday', label: 'Domingo' }
-];
-
-const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) => {
-  const [professionals, setProfessionals] = useState<Professional[]>([]);
-  const [selectedProfessional, setSelectedProfessional] = useState<string>('');
+const WorkScheduleManager = ({ clientId }: WorkScheduleManagerProps) => {
+  const [professionals, setProfessionals] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<WorkSchedule[]>([]);
+  const [selectedProfessional, setSelectedProfessional] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<string | null>(null);
+  const [newSchedule, setNewSchedule] = useState<Partial<CreateScheduleData>>({
+    day_of_week: 'monday',
+    start_time: '09:00',
+    end_time: '18:00',
+    break_start_time: '12:00',
+    break_end_time: '13:00',
+    is_active: true
+  });
+
   const { toast } = useToast();
 
-  // Estado para formulário de horário individual
-  const [editingSchedule, setEditingSchedule] = useState<{
-    day: string;
-    startTime: string;
-    endTime: string;
-    breakStartTime: string;
-    breakEndTime: string;
-    isActive: boolean;
-  } | null>(null);
-
-  // Estado para cópia de horários
-  const [copySource, setCopySource] = useState<string>('');
-  const [copyTargets, setCopyTargets] = useState<string[]>([]);
+  const daysOfWeek = [
+    { value: 'monday', label: 'Segunda-feira' },
+    { value: 'tuesday', label: 'Terça-feira' },
+    { value: 'wednesday', label: 'Quarta-feira' },
+    { value: 'thursday', label: 'Quinta-feira' },
+    { value: 'friday', label: 'Sexta-feira' },
+    { value: 'saturday', label: 'Sábado' },
+    { value: 'sunday', label: 'Domingo' },
+  ];
 
   useEffect(() => {
     loadProfessionals();
@@ -66,28 +62,30 @@ const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) =
 
   const loadProfessionals = async () => {
     try {
-      const professionalsList = await professionalsService.getProfessionals(clientId);
-      setProfessionals(professionalsList);
-      if (professionalsList.length > 0) {
-        setSelectedProfessional(professionalsList[0].id);
-      }
+      setLoading(true);
+      const professionalsData = await professionalsService.getClientProfessionals(clientId);
+      setProfessionals(professionalsData);
     } catch (error) {
+      console.error('Erro ao carregar profissionais:', error);
       toast({
         title: "Erro",
         description: "Falha ao carregar profissionais",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
   const loadSchedules = async () => {
     if (!selectedProfessional) return;
-
+    
     try {
       setLoading(true);
-      const professionalSchedules = await workScheduleService.getProfessionalSchedules(selectedProfessional);
-      setSchedules(professionalSchedules);
+      const schedulesData = await workScheduleService.getProfessionalSchedules(selectedProfessional);
+      setSchedules(schedulesData);
     } catch (error) {
+      console.error('Erro ao carregar horários:', error);
       toast({
         title: "Erro",
         description: "Falha ao carregar horários",
@@ -98,117 +96,101 @@ const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) =
     }
   };
 
-  const getScheduleForDay = (dayOfWeek: string) => {
-    return schedules.find(s => s.day_of_week === dayOfWeek);
-  };
-
-  const handleEditSchedule = (dayOfWeek: string) => {
-    const existingSchedule = getScheduleForDay(dayOfWeek);
-    
-    setEditingSchedule({
-      day: dayOfWeek,
-      startTime: existingSchedule?.start_time || '08:00',
-      endTime: existingSchedule?.end_time || '18:00',
-      breakStartTime: existingSchedule?.break_start_time || '',
-      breakEndTime: existingSchedule?.break_end_time || '',
-      isActive: existingSchedule?.is_active ?? true
-    });
-  };
-
-  const handleSaveSchedule = async () => {
-    if (!editingSchedule || !selectedProfessional) return;
+  const createSchedule = async () => {
+    if (!selectedProfessional || !newSchedule.day_of_week) return;
 
     try {
-      setSaving(true);
-
-      const existingSchedule = getScheduleForDay(editingSchedule.day);
+      setLoading(true);
       
-      const scheduleData = {
-        professional_id: selectedProfessional,
-        day_of_week: editingSchedule.day as any,
-        start_time: editingSchedule.startTime,
-        end_time: editingSchedule.endTime,
-        break_start_time: editingSchedule.breakStartTime || null,
-        break_end_time: editingSchedule.breakEndTime || null,
-        is_active: editingSchedule.isActive
-      };
+      // Validar horários
+      const validation = await bookingValidationService.validateWorkSchedule({
+        professionalId: selectedProfessional,
+        serviceId: '', // Não aplicável para validação de horário de trabalho
+        customerId: '',
+        appointmentDate: new Date().toISOString().split('T')[0],
+        startTime: newSchedule.start_time || '09:00',
+        serviceDurationMinutes: 60
+      });
 
-      if (existingSchedule) {
-        await workScheduleService.updateSchedule(existingSchedule.id, scheduleData);
-      } else {
-        await workScheduleService.createSchedule(scheduleData);
+      if (!validation.isValid) {
+        toast({
+          title: "Horário Inválido",
+          description: validation.errors[0]?.message || "Erro na validação",
+          variant: "destructive",
+        });
+        return;
       }
 
-      toast({
-        title: "Sucesso",
-        description: "Horário salvo com sucesso!",
+      await workScheduleService.createSchedule({
+        professional_id: selectedProfessional,
+        day_of_week: newSchedule.day_of_week as any,
+        start_time: newSchedule.start_time || '09:00',
+        end_time: newSchedule.end_time || '18:00',
+        break_start_time: newSchedule.break_start_time,
+        break_end_time: newSchedule.break_end_time,
+        is_active: newSchedule.is_active ?? true
       });
 
+      toast({
+        title: "Horário Criado",
+        description: "Horário de trabalho criado com sucesso!",
+      });
+
+      setNewSchedule({
+        day_of_week: 'monday',
+        start_time: '09:00',
+        end_time: '18:00',
+        break_start_time: '12:00',
+        break_end_time: '13:00',
+        is_active: true
+      });
+      
+      await loadSchedules();
+    } catch (error) {
+      console.error('Erro ao criar horário:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao criar horário",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateSchedule = async (scheduleId: string, updates: Partial<WorkSchedule>) => {
+    try {
+      await workScheduleService.updateSchedule(scheduleId, updates);
+      
+      toast({
+        title: "Horário Atualizado",
+        description: "Horário de trabalho atualizado com sucesso!",
+      });
+      
       setEditingSchedule(null);
       await loadSchedules();
-
     } catch (error) {
+      console.error('Erro ao atualizar horário:', error);
       toast({
         title: "Erro",
-        description: "Falha ao salvar horário",
+        description: "Falha ao atualizar horário",
         variant: "destructive",
       });
-    } finally {
-      setSaving(false);
     }
   };
 
-  const handleCopySchedule = async () => {
-    if (!copySource || copyTargets.length === 0 || !selectedProfessional) {
-      toast({
-        title: "Erro",
-        description: "Selecione o dia de origem e pelo menos um dia de destino",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setSaving(true);
-      
-      await workScheduleService.copyScheduleToOtherDays(
-        selectedProfessional,
-        copySource as any,
-        copyTargets as any[]
-      );
-
-      toast({
-        title: "Sucesso",
-        description: `Horário copiado para ${copyTargets.length} dia(s)!`,
-      });
-
-      setCopySource('');
-      setCopyTargets([]);
-      await loadSchedules();
-
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Falha ao copiar horário",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteSchedule = async (scheduleId: string) => {
+  const deleteSchedule = async (scheduleId: string) => {
     try {
       await workScheduleService.deleteSchedule(scheduleId);
       
       toast({
-        title: "Sucesso",
-        description: "Horário removido com sucesso!",
+        title: "Horário Removido",
+        description: "Horário de trabalho removido com sucesso!",
       });
-
+      
       await loadSchedules();
-
     } catch (error) {
+      console.error('Erro ao remover horário:', error);
       toast({
         title: "Erro",
         description: "Falha ao remover horário",
@@ -217,258 +199,243 @@ const WorkScheduleManager: React.FC<WorkScheduleManagerProps> = ({ clientId }) =
     }
   };
 
-  const toggleCopyTarget = (day: string) => {
-    setCopyTargets(prev => 
-      prev.includes(day) 
-        ? prev.filter(d => d !== day)
-        : [...prev, day]
-    );
+  const copyScheduleToAllDays = async (schedule: WorkSchedule) => {
+    try {
+      setLoading(true);
+      
+      for (const day of daysOfWeek) {
+        if (day.value !== schedule.day_of_week) {
+          // Verificar se já existe horário para este dia
+          const existingSchedule = schedules.find(s => s.day_of_week === day.value);
+          
+          if (existingSchedule) {
+            // Atualizar existente
+            await workScheduleService.updateSchedule(existingSchedule.id, {
+              start_time: schedule.start_time,
+              end_time: schedule.end_time,
+              break_start_time: schedule.break_start_time,
+              break_end_time: schedule.break_end_time,
+              is_active: schedule.is_active
+            });
+          } else {
+            // Criar novo
+            await workScheduleService.createSchedule({
+              professional_id: selectedProfessional,
+              day_of_week: day.value as any,
+              start_time: schedule.start_time,
+              end_time: schedule.end_time,
+              break_start_time: schedule.break_start_time,
+              break_end_time: schedule.break_end_time,
+              is_active: schedule.is_active
+            });
+          }
+        }
+      }
+
+      toast({
+        title: "Horários Copiados",
+        description: "Horário copiado para todos os dias da semana!",
+      });
+      
+      await loadSchedules();
+    } catch (error) {
+      console.error('Erro ao copiar horários:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao copiar horários",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const getDayLabel = (day: string) => {
+    return daysOfWeek.find(d => d.value === day)?.label || day;
+  };
+
+  const selectedProfessionalData = professionals.find(p => p.id === selectedProfessional);
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold">Horários de Trabalho</h2>
+          <p className="text-gray-600">Configure os horários de trabalho dos profissionais</p>
+        </div>
+      </div>
+
+      {/* Professional Selection */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Gerenciamento de Horários de Trabalho
+          <CardTitle className="flex items-center">
+            <Users className="w-5 h-5 mr-2" />
+            Selecionar Profissional
           </CardTitle>
-          <CardDescription>
-            Configure os horários de trabalho dos profissionais para cada dia da semana
-          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label>Profissional</Label>
-            <Select value={selectedProfessional} onValueChange={setSelectedProfessional}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um profissional" />
-              </SelectTrigger>
-              <SelectContent>
-                {professionals.map((prof) => (
-                  <SelectItem key={prof.id} value={prof.id}>
-                    {prof.name} {prof.specialty && `- ${prof.specialty}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <CardContent>
+          <select
+            value={selectedProfessional}
+            onChange={(e) => setSelectedProfessional(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Selecione um profissional</option>
+            {professionals.map((professional) => (
+              <option key={professional.id} value={professional.id}>
+                {professional.name} - {professional.specialty}
+              </option>
+            ))}
+          </select>
         </CardContent>
       </Card>
 
       {selectedProfessional && (
-        <Tabs defaultValue="schedule">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="schedule">Horários por Dia</TabsTrigger>
-            <TabsTrigger value="copy">Copiar Horários</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="schedule" className="space-y-4">
-            {DAYS_OF_WEEK.map((day) => {
-              const schedule = getScheduleForDay(day.key);
-              return (
-                <Card key={day.key}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <h3 className="font-medium">{day.label}</h3>
-                        {schedule && (
-                          <div className="flex items-center gap-2">
-                            <Badge variant={schedule.is_active ? "default" : "secondary"}>
-                              {schedule.is_active ? "Ativo" : "Inativo"}
-                            </Badge>
-                            <span className="text-sm text-gray-600">
-                              {schedule.start_time} - {schedule.end_time}
-                            </span>
-                            {schedule.break_start_time && schedule.break_end_time && (
-                              <span className="text-sm text-gray-500">
-                                (Intervalo: {schedule.break_start_time} - {schedule.break_end_time})
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {!schedule && (
-                          <Badge variant="outline">Não configurado</Badge>
-                        )}
+        <>
+          {/* Current Schedules */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Calendar className="w-5 h-5 mr-2" />
+                Horários Configurados - {selectedProfessionalData?.name}
+              </CardTitle>
+              <CardDescription>
+                Gerencie os horários de trabalho por dia da semana
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {schedules.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <p>Nenhum horário configurado para este profissional</p>
+                </div>
+              ) : (
+                schedules.map((schedule) => (
+                  <div key={schedule.id} className="border rounded-lg p-4 space-y-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-semibold">{getDayLabel(schedule.day_of_week)}</h4>
+                        <p className="text-sm text-gray-600">
+                          {schedule.start_time} às {schedule.end_time}
+                          {schedule.break_start_time && schedule.break_end_time && (
+                            ` (Intervalo: ${schedule.break_start_time} às ${schedule.break_end_time})`
+                          )}
+                        </p>
+                        <Badge variant={schedule.is_active ? "default" : "secondary"}>
+                          {schedule.is_active ? "Ativo" : "Inativo"}
+                        </Badge>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex space-x-2">
                         <Button
-                          variant="outline"
                           size="sm"
-                          onClick={() => handleEditSchedule(day.key)}
+                          variant="outline"
+                          onClick={() => copyScheduleToAllDays(schedule)}
                         >
-                          {schedule ? "Editar" : "Configurar"}
+                          <Copy className="w-4 h-4 mr-1" />
+                          Copiar
                         </Button>
-                        {schedule && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteSchedule(schedule.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingSchedule(schedule.id)}
+                        >
+                          <Edit className="w-4 h-4 mr-1" />
+                          Editar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => deleteSchedule(schedule.id)}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Remover
+                        </Button>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </TabsContent>
-
-          <TabsContent value="copy" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Copiar Horário Entre Dias</CardTitle>
-                <CardDescription>
-                  Selecione um dia de origem e os dias de destino para copiar o horário
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>Dia de Origem</Label>
-                  <Select value={copySource} onValueChange={setCopySource}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o dia para copiar" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DAYS_OF_WEEK.map((day) => {
-                        const schedule = getScheduleForDay(day.key);
-                        return (
-                          <SelectItem key={day.key} value={day.key} disabled={!schedule}>
-                            {day.label} {schedule ? `(${schedule.start_time} - ${schedule.end_time})` : '(não configurado)'}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label>Dias de Destino</Label>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    {DAYS_OF_WEEK.map((day) => (
-                      <Button
-                        key={day.key}
-                        variant={copyTargets.includes(day.key) ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => toggleCopyTarget(day.key)}
-                        disabled={day.key === copySource}
-                      >
-                        {day.label}
-                      </Button>
-                    ))}
                   </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Add New Schedule */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Novo Horário</CardTitle>
+              <CardDescription>Adicione um novo horário de trabalho</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Dia da Semana</label>
+                  <select
+                    value={newSchedule.day_of_week || ''}
+                    onChange={(e) => setNewSchedule(prev => ({ ...prev, day_of_week: e.target.value as any }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {daysOfWeek.map((day) => (
+                      <option key={day.value} value={day.value}>
+                        {day.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium">Status</label>
+                  <select
+                    value={newSchedule.is_active ? 'true' : 'false'}
+                    onChange={(e) => setNewSchedule(prev => ({ ...prev, is_active: e.target.value === 'true' }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="true">Ativo</option>
+                    <option value="false">Inativo</option>
+                  </select>
                 </div>
 
-                <Button 
-                  onClick={handleCopySchedule}
-                  disabled={!copySource || copyTargets.length === 0 || saving}
-                  className="w-full"
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  {saving ? "Copiando..." : "Copiar Horário"}
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      )}
+                <div>
+                  <label className="text-sm font-medium">Horário de Início</label>
+                  <Input
+                    type="time"
+                    value={newSchedule.start_time}
+                    onChange={(e) => setNewSchedule(prev => ({ ...prev, start_time: e.target.value }))}
+                  />
+                </div>
 
-      {/* Modal de Edição */}
-      {editingSchedule && (
-        <Card className="fixed inset-0 z-50 m-4 max-w-md mx-auto my-auto h-fit bg-white shadow-xl">
-          <CardHeader>
-            <CardTitle>
-              Configurar Horário - {DAYS_OF_WEEK.find(d => d.key === editingSchedule.day)?.label}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Hora Início</Label>
-                <Input
-                  type="time"
-                  value={editingSchedule.startTime}
-                  onChange={(e) => setEditingSchedule(prev => 
-                    prev ? { ...prev, startTime: e.target.value } : null
-                  )}
-                />
-              </div>
-              <div>
-                <Label>Hora Fim</Label>
-                <Input
-                  type="time"
-                  value={editingSchedule.endTime}
-                  onChange={(e) => setEditingSchedule(prev => 
-                    prev ? { ...prev, endTime: e.target.value } : null
-                  )}
-                />
-              </div>
-            </div>
+                <div>
+                  <label className="text-sm font-medium">Horário de Fim</label>
+                  <Input
+                    type="time"
+                    value={newSchedule.end_time}
+                    onChange={(e) => setNewSchedule(prev => ({ ...prev, end_time: e.target.value }))}
+                  />
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Intervalo Início (opcional)</Label>
-                <Input
-                  type="time"
-                  value={editingSchedule.breakStartTime}
-                  onChange={(e) => setEditingSchedule(prev => 
-                    prev ? { ...prev, breakStartTime: e.target.value } : null
-                  )}
-                />
-              </div>
-              <div>
-                <Label>Intervalo Fim (opcional)</Label>
-                <Input
-                  type="time"
-                  value={editingSchedule.breakEndTime}
-                  onChange={(e) => setEditingSchedule(prev => 
-                    prev ? { ...prev, breakEndTime: e.target.value } : null
-                  )}
-                />
-              </div>
-            </div>
+                <div>
+                  <label className="text-sm font-medium">Início do Intervalo (Opcional)</label>
+                  <Input
+                    type="time"
+                    value={newSchedule.break_start_time || ''}
+                    onChange={(e) => setNewSchedule(prev => ({ ...prev, break_start_time: e.target.value || undefined }))}
+                  />
+                </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isActive"
-                checked={editingSchedule.isActive}
-                onChange={(e) => setEditingSchedule(prev => 
-                  prev ? { ...prev, isActive: e.target.checked } : null
-                )}
-              />
-              <Label htmlFor="isActive">Dia ativo</Label>
-            </div>
+                <div>
+                  <label className="text-sm font-medium">Fim do Intervalo (Opcional)</label>
+                  <Input
+                    type="time"
+                    value={newSchedule.break_end_time || ''}
+                    onChange={(e) => setNewSchedule(prev => ({ ...prev, break_end_time: e.target.value || undefined }))}
+                  />
+                </div>
+              </div>
 
-            <div className="flex gap-2">
-              <Button 
-                onClick={handleSaveSchedule}
-                disabled={saving}
-                className="flex-1"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                {saving ? "Salvando..." : "Salvar"}
+              <Button onClick={createSchedule} disabled={loading} className="w-full">
+                <Plus className="w-4 h-4 mr-2" />
+                {loading ? "Criando..." : "Criar Horário"}
               </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => setEditingSchedule(null)}
-                disabled={saving}
-              >
-                Cancelar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Overlay */}
-      {editingSchedule && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40"
-          onClick={() => setEditingSchedule(null)}
-        />
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );

@@ -74,7 +74,10 @@ export const bookingValidationService = {
     const errors: BookingValidationError[] = [];
     
     try {
-      const dayOfWeek = new Date(request.appointmentDate).toLocaleDateString('en-US', { weekday: 'lowercase' }) as any;
+      const appointmentDate = new Date(request.appointmentDate);
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const dayOfWeek = dayNames[appointmentDate.getDay()];
+      
       const schedules = await workScheduleService.getProfessionalSchedules(request.professionalId);
       const daySchedule = schedules.find(s => s.day_of_week === dayOfWeek && s.is_active);
 
