@@ -50,7 +50,7 @@ export class WhatsAppInstancesService {
   }
 
   async updateInstance(instanceId: string, updates: WhatsAppInstanceUpdate): Promise<WhatsAppInstanceData> {
-    console.log('🔄 Atualizando instância:', { instanceId, updates });
+    console.log('🔄 Atualizando instância por instance_id:', { instanceId, updates });
     
     const { data, error } = await supabase
       .from("whatsapp_instances")
@@ -65,6 +65,25 @@ export class WhatsAppInstancesService {
     }
 
     console.log('✅ Instância atualizada:', data);
+    return data;
+  }
+
+  async updateInstanceById(id: string, updates: WhatsAppInstanceUpdate): Promise<WhatsAppInstanceData> {
+    console.log('🔄 Atualizando instância por ID:', { id, updates });
+    
+    const { data, error } = await supabase
+      .from("whatsapp_instances")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Erro ao atualizar instância por ID:', error);
+      throw error;
+    }
+
+    console.log('✅ Instância atualizada por ID:', data);
     return data;
   }
 

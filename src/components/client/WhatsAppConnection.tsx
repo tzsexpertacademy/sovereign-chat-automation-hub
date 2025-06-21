@@ -70,12 +70,12 @@ const WhatsAppConnection = () => {
         }
       }
 
-      // Carregar instâncias
+      // Carregar instâncias com refresh dos dados
       const instancesData = await whatsappInstancesService.getInstancesByClientId(clientId!);
       console.log('📱 Instâncias carregadas:', instancesData);
       setInstances(instancesData);
 
-      // Carregar filas
+      // Carregar filas com conexões atualizadas
       const queuesData = await queuesService.getClientQueues(clientId!);
       console.log('📋 Filas carregadas:', queuesData);
       setQueues(queuesData);
@@ -264,7 +264,8 @@ const WhatsAppConnection = () => {
       setLoading(true);
       console.log('💾 Salvando nome da instância:', { instanceId: editingInstance.instance_id, newName: editName.trim() });
       
-      await whatsappInstancesService.updateInstance(editingInstance.instance_id, {
+      // Usar o ID da instância (UUID) para atualizar
+      await whatsappInstancesService.updateInstanceById(editingInstance.id, {
         custom_name: editName.trim()
       });
 
