@@ -1,5 +1,6 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { whatsappService } from '@/services/whatsappMultiClient';
 
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
@@ -7,7 +8,7 @@ interface MessageStatusState {
   [messageId: string]: MessageStatus;
 }
 
-export const useMessageStatus = () => {
+export const useMessageStatus = (clientId?: string, chatId?: string) => {
   const [messageStatuses, setMessageStatuses] = useState<MessageStatusState>({});
 
   const updateMessageStatus = useCallback((messageId: string, status: MessageStatus) => {
@@ -23,10 +24,20 @@ export const useMessageStatus = () => {
     return status;
   }, [messageStatuses]);
 
-  const markMessageAsRead = useCallback((messageId: string) => {
+  const markMessageAsRead = useCallback(async (messageId: string) => {
     console.log(`👁️ Marcando mensagem como lida: ${messageId}`);
     updateMessageStatus(messageId, 'read');
-  }, [updateMessageStatus]);
+    
+    // Send read receipt to WhatsApp
+    if (clientId && chatId) {
+      try {
+        await whatsappService.markMessageAsRead(clientId, chatId, messageId);
+        console.log(`✅ Read receipt sent to WhatsApp for message: ${messageId}`);
+      } catch (error) {
+        console.error('Failed to send read receipt to WhatsApp:', error);
+      }
+    }
+  }, [updateMessageStatus, clientId, chatId]);
 
   const markMessageAsDelivered = useCallback((messageId: string) => {
     console.log(`📦 Marcando mensagem como entregue: ${messageId}`);
@@ -37,6 +48,24 @@ export const useMessageStatus = () => {
     console.log(`❌ Marcando mensagem como falha: ${messageId}`);
     updateMessageStatus(messageId, 'failed');
   }, [updateMessageStatus]);
+
+  // Listen for read receipts from WhatsApp
+  useEffect(() => {
+    if (!clientId) return;
+
+    const handleReadReceipt = (data: { chatId: string, messageId: string, readBy: string, timestamp: string }) => {
+      console.log('📬 Read receipt received from WhatsApp:', data);
+      if (data.chatId === chatId) {
+        updateMessageStatus(data.messageId, 'read');
+      }
+    };
+
+    whatsappService.onReadReceiptEvent(clientId, handleReadReceipt);
+
+    return () => {
+      whatsappService.removeReadReceiptListener(clientId);
+    };
+  }, [clientId, chatId, updateMessageStatus]);
 
   return {
     messageStatuses,
