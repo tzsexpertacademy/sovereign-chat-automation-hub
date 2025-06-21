@@ -11,7 +11,8 @@ import {
   Smartphone,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queuesService, QueueWithAssistant } from "@/services/queuesService";
@@ -37,15 +38,19 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
   const loadData = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Carregando dados de conexão...');
+      
       const [queuesData, instancesData] = await Promise.all([
         queuesService.getClientQueues(clientId),
         whatsappInstancesService.getInstancesByClientId(clientId)
       ]);
       
+      console.log('📊 Dados carregados:', { queues: queuesData.length, instances: instancesData.length });
+      
       setQueues(queuesData);
       setInstances(instancesData.filter(i => i.status === 'connected'));
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+      console.error('❌ Erro ao carregar dados:', error);
       toast({
         title: "Erro",
         description: "Falha ao carregar dados de filas e instâncias",
@@ -60,7 +65,7 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
     if (!selectedInstance || !selectedQueue) {
       toast({
         title: "Erro",
-        description: "Selecione uma instância e uma fila",
+        description: "Selecione uma instância e uma configuração",
         variant: "destructive",
       });
       return;
@@ -68,26 +73,17 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
 
     try {
       setLoading(true);
+      console.log('🚀 Aplicando configuração:', { selectedInstance, selectedQueue });
       
-      if (selectedQueue === "human") {
-        // Disconnect from all queues for human interaction
-        const connectedQueues = getInstanceConnections(selectedInstance);
-        for (const queue of connectedQueues) {
-          await queuesService.disconnectInstanceFromQueue(selectedInstance, queue.id);
-        }
-        
-        toast({
-          title: "Sucesso",
-          description: "Instância configurada para interação humana",
-        });
-      } else {
-        await queuesService.connectInstanceToQueue(selectedInstance, selectedQueue);
-        
-        toast({
-          title: "Sucesso",
-          description: "Instância conectada à fila com sucesso",
-        });
-      }
+      await queuesService.connectInstanceToQueue(selectedInstance, selectedQueue);
+      
+      const isHuman = selectedQueue === "human";
+      toast({
+        title: "Sucesso",
+        description: isHuman 
+          ? "Instância configurada para interação humana" 
+          : "Instância conectada à fila com sucesso",
+      });
 
       setSelectedInstance("");
       setSelectedQueue("");
@@ -95,9 +91,10 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
       onConnectionChange?.();
       
     } catch (error: any) {
+      console.error('❌ Erro ao aplicar configuração:', error);
       toast({
         title: "Erro",
-        description: error.message || "Falha ao conectar à fila",
+        description: error.message || "Falha ao aplicar configuração",
         variant: "destructive",
       });
     } finally {
@@ -132,18 +129,28 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
   const getInstanceConnections = (instanceId: string) => {
     return queues.filter(queue => 
       queue.instance_queue_connections?.some(conn => 
-        conn.instance_id === instanceId && conn.is_active
+        conn.whatsapp_instances?.instance_id === instanceId && conn.is_active
       )
     );
   };
 
   const getQueueConnections = (queueId: string) => {
-    return instances.filter(instance => 
-      queues.find(q => q.id === queueId)?.instance_queue_connections?.some(conn => 
-        conn.instance_id === instance.instance_id && conn.is_active
-      )
-    );
+    const queue = queues.find(q => q.id === queueId);
+    return queue?.instance_queue_connections?.filter(conn => conn.is_active).map(conn => 
+      conn.whatsapp_instances?.instance_id
+    ).filter(Boolean) || [];
   };
+
+  if (loading && queues.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+          <p className="text-muted-foreground">Carregando configurações...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -217,8 +224,17 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
                 disabled={loading || !selectedInstance || !selectedQueue}
                 className="w-full"
               >
-                <Settings className="w-4 h-4 mr-2" />
-                {loading ? 'Configurando...' : 'Aplicar Configuração'}
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Configurando...
+                  </>
+                ) : (
+                  <>
+                    <Settings className="w-4 h-4 mr-2" />
+                    Aplicar Configuração
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -331,7 +347,7 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
                       </Badge>
                       {connections.length > 0 && (
                         <div className="text-xs text-gray-500">
-                          {connections.map(c => c.instance_id.split('_').pop()).join(', ')}
+                          {connections.map(c => c?.split('_').pop()).join(', ')}
                         </div>
                       )}
                     </div>
