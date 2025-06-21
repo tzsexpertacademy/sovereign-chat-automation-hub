@@ -148,7 +148,7 @@ const QueueForm = ({ clientId, queue, assistants, onSave, onCancel }: QueueFormP
                   <SelectValue placeholder="Selecione um assistente..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Sem assistente (manual)</SelectItem>
+                  <SelectItem value="none">Sem assistente (manual)</SelectItem>
                   {assistants
                     .filter(assistant => assistant.is_active)
                     .map((assistant) => (

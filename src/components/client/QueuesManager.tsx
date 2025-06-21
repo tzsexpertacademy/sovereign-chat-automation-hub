@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Settings, Users, Zap, Tag } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, Settings, Users, Zap, Tag, Workflow } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queuesService, type QueueWithAssistant } from "@/services/queuesService";
 import { assistantsService, type AssistantWithQueues } from "@/services/assistantsService";
@@ -11,6 +12,7 @@ import { funnelService, type FunnelTag } from "@/services/funnelService";
 import QueueForm from "./QueueForm";
 import QueuesList from "./QueuesList";
 import QueueConnectionManager from "./QueueConnectionManager";
+import QueueFlowManager from "./QueueFlowManager";
 import FunnelTagManager from "./FunnelTagManager";
 
 const QueuesManager = () => {
@@ -22,7 +24,6 @@ const QueuesManager = () => {
   const [tags, setTags] = useState<FunnelTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [showQueueForm, setShowQueueForm] = useState(false);
-  const [showConnectionManager, setShowConnectionManager] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
   const [editingQueue, setEditingQueue] = useState<QueueWithAssistant | null>(null);
 
@@ -156,53 +157,95 @@ const QueuesManager = () => {
         </Card>
       </div>
 
-      {/* Ações principais */}
-      <div className="flex flex-wrap gap-3">
-        <Button onClick={() => setShowQueueForm(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nova Fila
-        </Button>
-        <Button 
-          onClick={() => setShowConnectionManager(true)} 
-          variant="outline"
-        >
-          <Settings className="h-4 w-4 mr-2" />
-          Gerenciar Conexões
-        </Button>
-        <Button 
-          onClick={() => setShowTagManager(true)} 
-          variant="outline"
-        >
-          <Tag className="h-4 w-4 mr-2" />
-          Gerenciar Tags
-        </Button>
-      </div>
+      {/* Tabs principais */}
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview">
+            <Workflow className="h-4 w-4 mr-2" />
+            Visão Geral
+          </TabsTrigger>
+          <TabsTrigger value="queues">
+            <Users className="h-4 w-4 mr-2" />
+            Filas
+          </TabsTrigger>
+          <TabsTrigger value="connections">
+            <Settings className="h-4 w-4 mr-2" />
+            Conexões
+          </TabsTrigger>
+          <TabsTrigger value="tags">
+            <Tag className="h-4 w-4 mr-2" />
+            Tags
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Lista de filas */}
-      <QueuesList
-        queues={queues}
-        assistants={assistants}
-        onEdit={(queue) => {
-          setEditingQueue(queue);
-          setShowQueueForm(true);
-        }}
-        onDelete={async (id) => {
-          try {
-            await queuesService.deleteQueue(id);
-            loadData();
-            toast({
-              title: "Sucesso",
-              description: "Fila removida com sucesso"
-            });
-          } catch (error: any) {
-            toast({
-              title: "Erro",
-              description: error.message || "Erro ao remover fila",
-              variant: "destructive"
-            });
-          }
-        }}
-      />
+        <TabsContent value="overview" className="space-y-6">
+          <QueueFlowManager clientId={clientId!} />
+        </TabsContent>
+
+        <TabsContent value="queues" className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold">Gerenciar Filas</h2>
+            <Button onClick={() => setShowQueueForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nova Fila
+            </Button>
+          </div>
+          
+          <QueuesList
+            queues={queues}
+            assistants={assistants}
+            onEdit={(queue) => {
+              setEditingQueue(queue);
+              setShowQueueForm(true);
+            }}
+            onDelete={async (id) => {
+              try {
+                await queuesService.deleteQueue(id);
+                loadData();
+                toast({
+                  title: "Sucesso",
+                  description: "Fila removida com sucesso"
+                });
+              } catch (error: any) {
+                toast({
+                  title: "Erro",
+                  description: error.message || "Erro ao remover fila",
+                  variant: "destructive"
+                });
+              }
+            }}
+          />
+        </TabsContent>
+
+        <TabsContent value="connections" className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Gerenciar Conexões</h2>
+            <p className="text-muted-foreground mb-6">
+              Configure como as instâncias WhatsApp se conectam às filas
+            </p>
+          </div>
+          
+          <QueueConnectionManager
+            clientId={clientId!}
+            onConnectionChange={handleConnectionChange}
+          />
+        </TabsContent>
+
+        <TabsContent value="tags" className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold">Gerenciar Tags</h2>
+              <p className="text-muted-foreground">
+                Organize suas filas com tags personalizadas
+              </p>
+            </div>
+            <Button onClick={() => setShowTagManager(true)}>
+              <Tag className="h-4 w-4 mr-2" />
+              Gerenciar Tags
+            </Button>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Formulários e modais */}
       {showQueueForm && (
@@ -216,28 +259,6 @@ const QueuesManager = () => {
             setEditingQueue(null);
           }}
         />
-      )}
-
-      {showConnectionManager && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">Gerenciar Conexões de Filas</h2>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowConnectionManager(false)}
-                >
-                  Fechar
-                </Button>
-              </div>
-              <QueueConnectionManager
-                clientId={clientId!}
-                onConnectionChange={handleConnectionChange}
-              />
-            </div>
-          </div>
-        </div>
       )}
 
       {showTagManager && (
