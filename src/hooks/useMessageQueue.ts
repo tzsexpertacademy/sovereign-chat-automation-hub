@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { whatsappService, type MessageData } from '@/services/whatsappMultiClient';
 import { queuesService } from '@/services/queuesService';
@@ -263,7 +262,7 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
     whatsappService.onClientMessage(instanceId, handleNewMessage);
 
     return () => {
-      whatsappService.removeListener(`message_${instanceId}`, handleNewMessage);
+      whatsappService.removeListener(`message_${instanceId}`);
     };
   }, [clientId, instanceId, enqueueMessage]);
 

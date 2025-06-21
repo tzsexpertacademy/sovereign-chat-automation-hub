@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 
 export type ChatData = {
@@ -29,12 +30,95 @@ export type MessageData = {
   // Outros campos relevantes
 };
 
+export type WhatsAppClient = {
+  clientId: string;
+  status: string;
+  phoneNumber?: string;
+  hasQrCode: boolean;
+  qrCode?: string;
+};
+
 class WhatsAppMultiClientService {
   private baseURL: string;
   private socket: Socket | null = null;
 
   constructor() {
     this.baseURL = process.env.NEXT_PUBLIC_WHATSAPP_API_URL || 'http://localhost:3002';
+  }
+
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseURL}/health`, {
+        method: 'GET',
+        timeout: 5000
+      } as any);
+      return response.ok;
+    } catch (error) {
+      console.error('Erro ao testar conexão:', error);
+      return false;
+    }
+  }
+
+  async getAllClients(): Promise<WhatsAppClient[]> {
+    try {
+      const response = await fetch(`${this.baseURL}/clients`);
+      if (!response.ok) {
+        throw new Error(`Erro ao obter clientes: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error: any) {
+      console.error('Erro ao obter todos os clientes:', error);
+      throw error;
+    }
+  }
+
+  async connectClient(clientId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseURL}/client/${clientId}/connect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Erro ao conectar cliente: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error: any) {
+      console.error('Erro ao conectar cliente:', error);
+      throw error;
+    }
+  }
+
+  async disconnectClient(clientId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseURL}/client/${clientId}/disconnect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Erro ao desconectar cliente: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error: any) {
+      console.error('Erro ao desconectar cliente:', error);
+      throw error;
+    }
+  }
+
+  onClientsUpdate(callback: (clients: WhatsAppClient[]) => void): void {
+    if (this.socket) {
+      this.socket.on('clients_update', callback);
+    }
+  }
+
+  onClientStatus(clientId: string, callback: (clientData: WhatsAppClient) => void): void {
+    if (this.socket) {
+      const statusEvent = `client_status_${clientId}`;
+      this.socket.on(statusEvent, callback);
+    }
   }
 
   connectSocket(): Socket {
@@ -47,7 +131,7 @@ class WhatsAppMultiClientService {
     this.socket = io(this.baseURL, {
       transports: ['websocket'],
       autoConnect: true,
-      forceNew: true // Garante uma nova conexão
+      forceNew: true
     });
 
     this.socket.on('connect', () => {
@@ -198,7 +282,6 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Nova função para marcar mensagens como lidas
   async markAsRead(clientId: string, chatId: string): Promise<boolean> {
     try {
       console.log('👁️ Marcando mensagens como lidas:', { clientId, chatId });
@@ -222,7 +305,6 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Nova função para enviar status de presença (digitando, gravando, online)
   async sendPresence(clientId: string, chatId: string, presence: 'typing' | 'recording' | 'available'): Promise<boolean> {
     try {
       console.log('⌨️ Enviando presença:', { clientId, chatId, presence });

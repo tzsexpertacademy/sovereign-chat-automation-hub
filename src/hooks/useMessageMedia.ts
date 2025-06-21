@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { useToast } from './use-toast';
@@ -40,12 +39,11 @@ export const useMessageMedia = (clientId: string) => {
     try {
       setIsUploading(true);
       
-      await whatsappService.sendMessage(
+      await whatsappService.sendMedia(
         clientId,
         mediaMessage.to,
-        mediaMessage.caption || '',
-        undefined,
-        mediaMessage.file
+        mediaMessage.file,
+        mediaMessage.caption
       );
 
       toast({
