@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarInitials } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { funnelService, type FunnelStage, type FunnelLead, type FunnelTag } from "@/services/funnelService";
@@ -109,26 +109,6 @@ const FunnelKanban: React.FC<FunnelKanbanProps> = ({ clientId }) => {
 
       return matchesStage && matchesSearch && matchesTags;
     });
-  };
-
-  const getPriorityColor = (priority: number) => {
-    switch (priority) {
-      case 4: return 'bg-red-500';
-      case 3: return 'bg-orange-500';
-      case 2: return 'bg-yellow-500';
-      case 1: return 'bg-green-500';
-      default: return 'bg-gray-500';
-    }
-  };
-
-  const getPriorityLabel = (priority: number) => {
-    switch (priority) {
-      case 4: return 'Urgente';
-      case 3: return 'Alta';
-      case 2: return 'Média';
-      case 1: return 'Baixa';
-      default: return 'Normal';
-    }
   };
 
   if (loading) {

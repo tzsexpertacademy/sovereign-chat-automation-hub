@@ -15,10 +15,14 @@ import BookingManager from "@/components/booking/BookingManager";
 const ClientDashboard = () => {
   const { clientId } = useParams();
 
+  if (!clientId) {
+    return <div>Cliente não encontrado</div>;
+  }
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gray-50">
-        <ClientSidebar />
+        <ClientSidebar clientId={clientId} />
         <div className="flex-1 flex flex-col">
           <ClientHeader clientId={clientId} />
           <main className="flex-1 p-6">
@@ -27,7 +31,7 @@ const ClientDashboard = () => {
               <Route path="/connect" element={<WhatsAppConnection />} />
               <Route path="/chat" element={<ChatInterface />} />
               <Route path="/assistants" element={<AssistantsManager />} />
-              <Route path="/booking" element={<BookingManager clientId={clientId!} />} />
+              <Route path="/booking" element={<BookingManager clientId={clientId} />} />
               <Route path="/campaigns" element={<CampaignsManager />} />
               <Route path="/automation" element={<AutomationCenter />} />
               <Route path="/analytics" element={<AnalyticsDashboard />} />

@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { funnelService, type FunnelTag } from "@/services/funnelService";
 import { Plus, Edit, Trash2, Save, X, Tag } from 'lucide-react';
 
@@ -76,7 +77,7 @@ const FunnelTagManager: React.FC<FunnelTagManagerProps> = ({
 
     try {
       const { data, error } = await supabase
-        .from('funnel_tags')
+        .from('funnel_tags' as any)
         .update({
           name: editingTag.name,
           description: editingTag.description,
@@ -110,7 +111,7 @@ const FunnelTagManager: React.FC<FunnelTagManagerProps> = ({
   const handleDeleteTag = async (tagId: string) => {
     try {
       const { error } = await supabase
-        .from('funnel_tags')
+        .from('funnel_tags' as any)
         .update({ is_active: false })
         .eq('id', tagId);
 
