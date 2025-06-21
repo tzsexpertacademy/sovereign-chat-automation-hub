@@ -14,6 +14,7 @@ export const useTicketRealtime = (clientId: string) => {
   const isLoadingRef = useRef(false);
   const lastMessageIdRef = useRef<string>('');
   const socketRef = useRef<any>(null);
+  const processingQueueRef = useRef<Set<string>>(new Set());
 
   // Carregar tickets iniciais
   const loadTickets = async () => {
@@ -76,16 +77,31 @@ export const useTicketRealtime = (clientId: string) => {
     return `Contato ${phone || 'Desconhecido'}`;
   };
 
-  // Processar mensagem com assistente automático
+  // Processar mensagem com assistente automático (versão otimizada)
   const processMessageWithAssistant = async (message: any, ticketId: string) => {
+    const messageKey = `${message.id}_${ticketId}`;
+    
+    // Evitar processamento duplicado
+    if (processingQueueRef.current.has(messageKey)) {
+      console.log('⏭️ Mensagem já está sendo processada, ignorando:', messageKey);
+      return;
+    }
+
     try {
+      processingQueueRef.current.add(messageKey);
       console.log('🤖 Iniciando processamento automático da mensagem:', message.id);
       
-      // Buscar configurações do cliente
-      const [queues, aiConfig] = await Promise.all([
+      // Buscar configurações do cliente com timeout
+      const configPromise = Promise.all([
         queuesService.getClientQueues(clientId),
         aiConfigService.getClientConfig(clientId)
       ]);
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout ao buscar configurações')), 10000)
+      );
+
+      const [queues, aiConfig] = await Promise.race([configPromise, timeoutPromise]) as any;
 
       if (!aiConfig) {
         console.log('⚠️ Nenhuma configuração de IA encontrada para cliente:', clientId);
@@ -95,18 +111,18 @@ export const useTicketRealtime = (clientId: string) => {
       console.log('🔍 Configuração IA encontrada:', aiConfig.default_model);
 
       // Buscar fila ativa conectada à instância
-      const activeQueue = queues.find(queue => 
+      const activeQueue = queues.find((queue: any) => 
         queue.is_active && 
         queue.assistants && 
         queue.assistants.is_active &&
-        queue.instance_queue_connections?.some(conn => 
+        queue.instance_queue_connections?.some((conn: any) => 
           conn.instance_id && conn.is_active
         )
       );
 
       if (!activeQueue || !activeQueue.assistants) {
         console.log('⚠️ Nenhuma fila ativa com assistente encontrada');
-        console.log('Filas disponíveis:', queues.map(q => ({
+        console.log('Filas disponíveis:', queues.map((q: any) => ({
           name: q.name,
           active: q.is_active,
           hasAssistant: !!q.assistants,
@@ -121,7 +137,8 @@ export const useTicketRealtime = (clientId: string) => {
       // Preparar configurações avançadas
       let advancedSettings = {
         temperature: 0.7,
-        max_tokens: 1000
+        max_tokens: 1000,
+        response_delay_seconds: 0
       };
       
       try {
@@ -132,20 +149,27 @@ export const useTicketRealtime = (clientId: string) => {
           
           advancedSettings = {
             temperature: Number(parsedSettings.temperature) || 0.7,
-            max_tokens: Number(parsedSettings.max_tokens) || 1000
+            max_tokens: Number(parsedSettings.max_tokens) || 1000,
+            response_delay_seconds: Number(parsedSettings.response_delay_seconds) || 0
           };
         }
       } catch (error) {
         console.error('❌ Erro ao parse das configurações avançadas:', error);
       }
 
-      // Buscar histórico de mensagens do ticket para contexto (40 mensagens)
+      // Aguardar delay se configurado
+      if (advancedSettings.response_delay_seconds > 0) {
+        console.log(`⏳ Aguardando ${advancedSettings.response_delay_seconds}s antes de processar...`);
+        await new Promise(resolve => setTimeout(resolve, advancedSettings.response_delay_seconds * 1000));
+      }
+
+      // Buscar histórico de mensagens do ticket para contexto
       console.log('📚 Buscando histórico de mensagens para contexto...');
       const ticketMessages = await ticketsService.getTicketMessages(ticketId);
       console.log(`📨 ${ticketMessages.length} mensagens encontradas no histórico`);
       
       const recentMessages = ticketMessages
-        .slice(-40) // Últimas 40 mensagens para contexto expandido
+        .slice(-20) // Reduzindo para 20 mensagens para melhor performance
         .map(msg => ({
           role: msg.from_me ? 'assistant' : 'user',
           content: msg.content || ''
@@ -153,8 +177,8 @@ export const useTicketRealtime = (clientId: string) => {
 
       console.log(`🔄 Enviando para OpenAI com ${recentMessages.length} mensagens de contexto`);
 
-      // Chamar a API da OpenAI
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      // Chamar a API da OpenAI com timeout
+      const openaiPromise = fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${aiConfig.openai_api_key}`,
@@ -177,6 +201,12 @@ export const useTicketRealtime = (clientId: string) => {
           max_tokens: advancedSettings.max_tokens,
         }),
       });
+
+      const apiTimeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout na API da OpenAI')), 30000)
+      );
+
+      const response = await Promise.race([openaiPromise, apiTimeoutPromise]) as Response;
 
       console.log('📡 Resposta da OpenAI:', response.status);
 
@@ -214,7 +244,7 @@ export const useTicketRealtime = (clientId: string) => {
         // Registrar a resposta no ticket
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
-          message_id: `ai_${Date.now()}`,
+          message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           from_me: true,
           sender_name: assistant.name,
           content: assistantResponse,
@@ -237,6 +267,20 @@ export const useTicketRealtime = (clientId: string) => {
         
       } else {
         console.log('⚠️ Assistente não gerou resposta válida');
+        
+        // Registrar que não houve resposta
+        await ticketsService.addTicketMessage({
+          ticket_id: ticketId,
+          message_id: `no_response_${Date.now()}`,
+          from_me: true,
+          sender_name: 'Sistema',
+          content: 'Assistente não conseguiu gerar uma resposta para esta mensagem.',
+          message_type: 'text',
+          is_internal_note: true,
+          is_ai_response: false,
+          processing_status: 'no_response',
+          timestamp: new Date().toISOString()
+        });
       }
 
     } catch (error) {
@@ -248,13 +292,16 @@ export const useTicketRealtime = (clientId: string) => {
         message_id: `error_${Date.now()}`,
         from_me: true,
         sender_name: 'Sistema',
-        content: 'Erro no processamento automático. Um atendente será notificado.',
+        content: `Erro no processamento automático: ${error.message}. Um atendente será notificado.`,
         message_type: 'text',
         is_internal_note: true,
         is_ai_response: false,
         processing_status: 'failed',
         timestamp: new Date().toISOString()
       });
+    } finally {
+      // Remover da fila de processamento
+      processingQueueRef.current.delete(messageKey);
     }
   };
 
@@ -347,11 +394,16 @@ export const useTicketRealtime = (clientId: string) => {
         console.log('🔄 Recarregando tickets...');
         await loadTickets();
 
-        // Processar com assistente automático após um pequeno delay
-        console.log('⏰ Agendando processamento automático...');
-        setTimeout(() => {
-          processMessageWithAssistant(message, ticketId);
-        }, 2000);
+        // Processar com assistente automático imediatamente para mensagens de texto
+        if (!message.type || message.type === 'text' || message.type === 'chat') {
+          console.log('🚀 Processando mensagem de texto imediatamente...');
+          // Não aguardar o processamento para não bloquear a interface
+          processMessageWithAssistant(message, ticketId).catch(error => {
+            console.error('❌ Erro no processamento automático:', error);
+          });
+        } else {
+          console.log('⏭️ Tipo de mensagem não suportado para processamento automático:', message.type);
+        }
         
       } catch (error) {
         console.error('❌ Erro ao processar nova mensagem:', error);
@@ -413,6 +465,8 @@ export const useTicketRealtime = (clientId: string) => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
+      // Limpar fila de processamento
+      processingQueueRef.current.clear();
     };
   }, [clientId]);
 
