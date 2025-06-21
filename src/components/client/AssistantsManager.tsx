@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Settings, Bot, Zap } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, Settings, Bot, Zap, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { aiConfigService } from "@/services/aiConfigService";
 import { assistantsService, type AssistantWithQueues } from "@/services/assistantsService";
@@ -13,6 +14,7 @@ import AssistantForm from "./AssistantForm";
 import QueueForm from "./QueueForm";
 import AssistantsList from "./AssistantsList";
 import QueuesList from "./QueuesList";
+import AssistantChat from "./AssistantChat";
 
 const AssistantsManager = () => {
   const { clientId } = useParams();
@@ -184,57 +186,144 @@ const AssistantsManager = () => {
         </Card>
       </div>
 
-      {/* Ações */}
-      <div className="flex gap-3">
-        <Button onClick={() => setShowAssistantForm(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Assistente
-        </Button>
-        <Button onClick={() => setShowQueueForm(true)} variant="outline">
-          <Plus className="h-4 w-4 mr-2" />
-          Nova Fila
-        </Button>
-      </div>
+      {/* Tabs principais */}
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview">
+            <Bot className="h-4 w-4 mr-2" />
+            Visão Geral
+          </TabsTrigger>
+          <TabsTrigger value="assistants">
+            <Zap className="h-4 w-4 mr-2" />
+            Assistentes
+          </TabsTrigger>
+          <TabsTrigger value="queues">
+            <Settings className="h-4 w-4 mr-2" />
+            Filas
+          </TabsTrigger>
+          <TabsTrigger value="chat">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Chat com Assistente
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Listas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AssistantsList 
-          assistants={assistants}
-          onEdit={(assistant) => {
-            setEditingAssistant(assistant);
-            setShowAssistantForm(true);
-          }}
-          onDelete={async (id) => {
-            await assistantsService.deleteAssistant(id);
-            loadData();
-            toast({
-              title: "Sucesso",
-              description: "Assistente removido com sucesso"
-            });
-          }}
-          onToggleStatus={async (id, isActive) => {
-            await assistantsService.toggleAssistantStatus(id, isActive);
-            loadData();
-          }}
-        />
+        <TabsContent value="overview" className="space-y-6">
+          <div className="flex gap-3">
+            <Button onClick={() => setShowAssistantForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Assistente
+            </Button>
+            <Button onClick={() => setShowQueueForm(true)} variant="outline">
+              <Plus className="h-4 w-4 mr-2" />
+              Nova Fila
+            </Button>
+          </div>
 
-        <QueuesList
-          queues={queues}
-          assistants={assistants}
-          onEdit={(queue) => {
-            setEditingQueue(queue);
-            setShowQueueForm(true);
-          }}
-          onDelete={async (id) => {
-            await queuesService.deleteQueue(id);
-            loadData();
-            toast({
-              title: "Sucesso", 
-              description: "Fila removida com sucesso"
-            });
-          }}
-        />
-      </div>
+          {/* Listas lado a lado */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <AssistantsList 
+              assistants={assistants}
+              onEdit={(assistant) => {
+                setEditingAssistant(assistant);
+                setShowAssistantForm(true);
+              }}
+              onDelete={async (id) => {
+                await assistantsService.deleteAssistant(id);
+                loadData();
+                toast({
+                  title: "Sucesso",
+                  description: "Assistente removido com sucesso"
+                });
+              }}
+              onToggleStatus={async (id, isActive) => {
+                await assistantsService.toggleAssistantStatus(id, isActive);
+                loadData();
+              }}
+            />
+
+            <QueuesList
+              queues={queues}
+              assistants={assistants}
+              onEdit={(queue) => {
+                setEditingQueue(queue);
+                setShowQueueForm(true);
+              }}
+              onDelete={async (id) => {
+                await queuesService.deleteQueue(id);
+                loadData();
+                toast({
+                  title: "Sucesso", 
+                  description: "Fila removida com sucesso"
+                });
+              }}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="assistants" className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold">Gerenciar Assistentes</h2>
+            <Button onClick={() => setShowAssistantForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Assistente
+            </Button>
+          </div>
+          
+          <AssistantsList 
+            assistants={assistants}
+            onEdit={(assistant) => {
+              setEditingAssistant(assistant);
+              setShowAssistantForm(true);
+            }}
+            onDelete={async (id) => {
+              await assistantsService.deleteAssistant(id);
+              loadData();
+              toast({
+                title: "Sucesso",
+                description: "Assistente removido com sucesso"
+              });
+            }}
+            onToggleStatus={async (id, isActive) => {
+              await assistantsService.toggleAssistantStatus(id, isActive);
+              loadData();
+            }}
+          />
+        </TabsContent>
+
+        <TabsContent value="queues" className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold">Gerenciar Filas</h2>
+            <Button onClick={() => setShowQueueForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nova Fila
+            </Button>
+          </div>
+          
+          <QueuesList
+            queues={queues}
+            assistants={assistants}
+            onEdit={(queue) => {
+              setEditingQueue(queue);
+              setShowQueueForm(true);
+            }}
+            onDelete={async (id) => {
+              await queuesService.deleteQueue(id);
+              loadData();
+              toast({
+                title: "Sucesso", 
+                description: "Fila removida com sucesso"
+              });
+            }}
+          />
+        </TabsContent>
+
+        <TabsContent value="chat" className="space-y-6">
+          <AssistantChat 
+            clientId={clientId!}
+            assistants={assistants}
+          />
+        </TabsContent>
+      </Tabs>
 
       {/* Formulários */}
       {showConfigForm && (
