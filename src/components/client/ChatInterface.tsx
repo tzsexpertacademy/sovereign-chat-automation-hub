@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -29,7 +28,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     tickets,
     isLoading: ticketsLoading,
     isTyping: assistantTyping,
-    isOnline: assistantOnline,
+    isOnline: assistentOnline,
     reloadTickets
   } = useTicketRealtime(clientId);
 
@@ -115,7 +114,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const renderTicketBadges = (ticket: ConversationTicket) => {
     const badges = [];
 
-    // Status da conexão
+    // Status da conexão - sempre mostra se tem instance_id
     if (ticket.instance_id) {
       badges.push(
         <Badge key="connection" variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
@@ -125,8 +124,13 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
-    // Fila ativa (apenas se não foi assumido por humano)
-    if (ticket.assigned_queue_id && !ticket.assigned_to_user) {
+    // Verificar se há usuário humano atribuído (procurar por campos que indicam atribuição humana)
+    const isHumanAssigned = ticket.status === 'in_progress' || 
+                           (ticket.title && ticket.title.includes('Atendido por')) ||
+                           ticket.status === 'closed';
+
+    // Fila ativa - só mostra se não foi assumido por humano
+    if (ticket.assigned_queue_id && !isHumanAssigned) {
       badges.push(
         <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
           📋 Fila
@@ -134,8 +138,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
-    // Assistente ativo (apenas se não foi assumido por humano)
-    if (ticket.assigned_assistant_id && !ticket.assigned_to_user) {
+    // Assistente ativo - só mostra se não foi assumido por humano
+    if (ticket.assigned_assistant_id && !isHumanAssigned) {
       badges.push(
         <Badge key="assistant" variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
           <Bot className="w-3 h-3 mr-1" />
@@ -144,8 +148,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
-    // Humano assumiu
-    if (ticket.assigned_to_user) {
+    // Humano assumiu - mostra quando foi assumido
+    if (isHumanAssigned) {
       badges.push(
         <Badge key="human" variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
           <User className="w-3 h-3 mr-1" />
@@ -154,7 +158,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
-    // Tags (se houver)
+    // Tags - se houver
     if (ticket.tags && ticket.tags.length > 0) {
       badges.push(
         <Badge key="tags" variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-200">
@@ -168,14 +172,14 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   };
 
   return (
-    <div className="flex h-full bg-white">
-      {/* Lista de Chats - com altura fixa e scroll próprio */}
+    <div className="flex h-[calc(100vh-120px)] bg-white"> {/* Altura fixa baseada na viewport */}
+      {/* Lista de Chats - altura fixa com scroll próprio */}
       <div className="w-1/3 border-r border-gray-200 flex flex-col h-full">
         <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900">Conversas</h2>
             <div className="flex items-center space-x-2">
-              {assistantOnline && (
+              {assistentOnline && (
                 <div className="flex items-center space-x-1 text-green-600">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                   <span className="text-xs font-medium">Online</span>
@@ -214,8 +218,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
           </Button>
         </div>
 
-        {/* Lista de conversas com scroll próprio */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Lista de conversas com scroll próprio e altura limitada */}
+        <div className="flex-1 overflow-y-auto min-h-0">
           {ticketsLoading ? (
             <div className="p-4 text-center text-gray-500">
               <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
@@ -240,21 +244,21 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                   onClick={() => handleSelectChat(chat.id)}
                 >
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-3">
-                        <Avatar className="w-8 h-8">
+                        <Avatar className="w-8 h-8 flex-shrink-0">
                           <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(chat)}`} />
                           <AvatarFallback className="text-xs">
                             {getDisplayName(chat).substring(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="space-y-0.5 flex-1 min-w-0">
+                        <div className="space-y-1 flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">
                             {getDisplayName(chat)}
                           </p>
                           <p className="text-xs text-gray-500 truncate">
-                            {chat.last_message_preview?.substring(0, 40) || 'Nenhuma mensagem'}
-                            {chat.last_message_preview && chat.last_message_preview.length > 40 && '...'}
+                            {chat.last_message_preview?.substring(0, 35) || 'Nenhuma mensagem'}
+                            {chat.last_message_preview && chat.last_message_preview.length > 35 && '...'}
                           </p>
                           
                           {/* Etiquetas do ticket */}
@@ -283,32 +287,32 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
         </div>
       </div>
 
-      {/* Área de Chat - com altura fixa */}
-      <div className="flex-1 flex flex-col h-full">
+      {/* Área de Chat - altura fixa e limitada */}
+      <div className="flex-1 flex flex-col h-full min-w-0">
         {currentChatId ? (
           <>
             {/* Cabeçalho do Chat */}
             <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Avatar className="w-10 h-10">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <Avatar className="w-10 h-10 flex-shrink-0">
                     <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedChat ? getDisplayName(selectedChat) : ''}`} />
                     <AvatarFallback>
                       {selectedChat ? getDisplayName(selectedChat).substring(0, 2).toUpperCase() : 'UN'}
                     </AvatarFallback>
                   </Avatar>
-                  <div>
-                    <h3 className="font-medium text-gray-900">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-medium text-gray-900 truncate">
                       {selectedChat ? getDisplayName(selectedChat) : 'Chat'}
                     </h3>
                     <div className="flex items-center space-x-2 text-sm text-gray-500">
-                      <span>{selectedChat?.customer?.phone}</span>
-                      {assistantOnline && (
+                      <span className="truncate">{selectedChat?.customer?.phone}</span>
+                      {assistentOnline && (
                         <>
                           <span>•</span>
                           <div className="flex items-center space-x-1 text-green-600">
                             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                            <span>Assistente Online</span>
+                            <span className="whitespace-nowrap">Assistente Online</span>
                           </div>
                         </>
                       )}
@@ -325,8 +329,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               </div>
             </div>
 
-            {/* Interface de Chat do Ticket - com altura calculada */}
-            <div className="flex-1 flex flex-col min-h-0">
+            {/* Interface de Chat do Ticket - altura calculada automaticamente */}
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <TicketChatInterface 
                 clientId={clientId} 
                 ticketId={currentChatId} 
@@ -352,7 +356,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               <p className="text-gray-600 mb-4">
                 Escolha uma conversa da lista para começar a responder mensagens
               </p>
-              {assistantOnline && (
+              {assistentOnline && (
                 <div className="mt-4 flex items-center justify-center space-x-2 text-green-600">
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
                   <span className="text-sm font-medium">🤖 Assistente Online - Pronto para Atender</span>

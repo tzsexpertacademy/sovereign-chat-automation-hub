@@ -273,7 +273,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
       {selectedTicket ? (
         <>
           {/* Input de arquivo oculto */}
@@ -285,10 +285,10 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             accept="image/*,video/*,.pdf,.doc,.docx,.txt"
           />
 
-          {/* Área de Mensagens - com altura calculada e scroll próprio */}
-          <div className="flex-1 min-h-0">
-            <ScrollArea className="h-full p-4">
-              <div className="space-y-4">
+          {/* Área de Mensagens - com altura fixa calculada e scroll interno */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ScrollArea className="h-full">
+              <div className="p-4 space-y-4">
                 {loadingMessages ? (
                   <div className="text-center py-8">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
@@ -394,7 +394,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             </div>
           )}
 
-          {/* Input de Mensagem - sempre visível no final */}
+          {/* Input de Mensagem - sempre fixo no final */}
           <div className="border-t p-4 flex-shrink-0 bg-white">
             <div className="flex space-x-2">
               {/* Botão de anexo */}
