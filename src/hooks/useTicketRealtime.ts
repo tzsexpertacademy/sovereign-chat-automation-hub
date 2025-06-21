@@ -7,6 +7,8 @@ import { assistantsService } from '@/services/assistantsService';
 import { aiConfigService } from '@/services/aiConfigService';
 import { useMessageBatch } from './useMessageBatch';
 import { useHumanizedTyping } from './useHumanizedTyping';
+import { useOnlineStatus } from './useOnlineStatus';
+import { useAutoReactions } from './useAutoReactions';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -64,6 +66,10 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
+  // Hooks para status online e reações automáticas
+  const { isOnline, markActivity } = useOnlineStatus(clientId, true);
+  const { processMessage: processAutoReaction, isProcessing: isProcessingReaction } = useAutoReactions(clientId, true);
+
   // Função para extrair nome real do WhatsApp
   const extractWhatsAppName = useCallback((message: any) => {
     console.log('🔍 Extraindo nome da mensagem:', {
@@ -116,6 +122,9 @@ export const useTicketRealtime = (clientId: string) => {
     try {
       processingQueueRef.current.add(batchKey);
       console.log(`🤖 Iniciando processamento do lote com ${messages.length} mensagens:`, batchKey);
+      
+      // Marcar atividade para manter status online
+      markActivity();
       
       // Simular que assistente está "digitando"
       setAssistantTyping(true);
@@ -181,9 +190,24 @@ export const useTicketRealtime = (clientId: string) => {
           content: msg.content || ''
         }));
 
+      // Processar reações automáticas para cada mensagem
+      let emotionContext = '';
+      for (const message of messages) {
+        const emotion = await processAutoReaction(message);
+        if (emotion) {
+          emotionContext += `\n${emotion.contextModifier}`;
+        }
+      }
+
       // Combinar mensagens do lote em uma única mensagem
       const combinedMessage = messages.map(msg => msg.text).join('\n');
       console.log(`📨 Processando lote combinado: "${combinedMessage.substring(0, 100)}..."`);
+
+      // Modificar prompt baseado na emoção detectada
+      let systemPrompt = assistant.prompt || 'Você é um assistente útil.';
+      if (emotionContext) {
+        systemPrompt += `\n\nContexto emocional da conversa:${emotionContext}`;
+      }
 
       // Chamar a API da OpenAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -197,7 +221,7 @@ export const useTicketRealtime = (clientId: string) => {
           messages: [
             {
               role: 'system',
-              content: assistant.prompt || 'Você é um assistente útil.'
+              content: systemPrompt
             },
             ...recentMessages,
             {
@@ -221,9 +245,14 @@ export const useTicketRealtime = (clientId: string) => {
       if (assistantResponse && assistantResponse.trim()) {
         console.log('🤖 Resposta do assistente gerada para lote:', assistantResponse.substring(0, 100) + '...');
         
+        // Marcar atividade antes de enviar resposta
+        markActivity();
+        
         // Enviar resposta com delay humanizado
         await sendWithTypingDelay(assistantResponse, async () => {
           await whatsappService.sendMessage(clientId, messages[0].from, assistantResponse);
+          // Marcar atividade após enviar mensagem
+          markActivity();
         });
         
         // Registrar a resposta no ticket
@@ -251,7 +280,7 @@ export const useTicketRealtime = (clientId: string) => {
           if (!isLoadingRef.current) {
             loadTickets(true);
           }
-        }, 3000); // Aumentou para 3 segundos
+        }, 3000);
         
       } else {
         console.log('⚠️ Assistente não gerou resposta válida para o lote');
@@ -263,7 +292,7 @@ export const useTicketRealtime = (clientId: string) => {
       processingQueueRef.current.delete(batchKey);
       setAssistantTyping(false);
     }
-  }, [clientId, sendWithTypingDelay, loadTickets]);
+  }, [clientId, sendWithTypingDelay, loadTickets, markActivity, processAutoReaction]);
 
   // Hook para processamento em lote (5 segundos de timeout) - com useCallback
   const { addMessage: addToBatch } = useMessageBatch({
@@ -322,10 +351,13 @@ export const useTicketRealtime = (clientId: string) => {
     socket.on('connect', () => {
       console.log('✅ WebSocket conectado, entrando no room do cliente...');
       whatsappService.joinClientRoom(clientId);
+      // Marcar atividade ao conectar
+      markActivity();
     });
 
     if (socket.connected) {
       whatsappService.joinClientRoom(clientId);
+      markActivity();
     }
 
     // Listener para novas mensagens do WhatsApp
@@ -337,6 +369,9 @@ export const useTicketRealtime = (clientId: string) => {
         fromMe: message.fromMe,
         timestamp: message.timestamp
       });
+      
+      // Marcar atividade ao receber mensagem
+      markActivity();
       
       // Controle SUPER rigoroso de duplicação - múltiplas verificações
       const messageKey = `${message.id}_${message.from}_${message.timestamp}_${message.body?.substring(0, 20)}`;
@@ -471,7 +506,7 @@ export const useTicketRealtime = (clientId: string) => {
       processingQueueRef.current.clear();
       processedMessagesRef.current.clear();
     };
-  }, [clientId]); // Removeu as dependências que causavam o loop
+  }, [clientId, markActivity]); // Adicionar markActivity como dependência
 
   // Função pública para recarregar tickets manualmente
   const reloadTickets = useCallback(() => {
@@ -482,7 +517,8 @@ export const useTicketRealtime = (clientId: string) => {
   return {
     tickets,
     isLoading,
-    isTyping: assistantTyping,
+    isTyping: assistantTyping || isProcessingReaction,
+    isOnline,
     reloadTickets
   };
 };

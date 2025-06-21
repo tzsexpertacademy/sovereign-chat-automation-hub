@@ -131,6 +131,68 @@ class WhatsAppMultiClientService {
     }
   }
 
+  // Atualizar presença (status online)
+  async updatePresence(clientId: string, presence: 'available' | 'unavailable' | 'composing' | 'recording'): Promise<any> {
+    try {
+      console.log(`👤 Atualizando presença para ${clientId}: ${presence}`);
+      
+      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/presence`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ presence })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao atualizar presença');
+      }
+      
+      console.log(`✅ Presença atualizada: ${presence}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ Erro ao atualizar presença ${clientId}:`, error);
+      throw error;
+    }
+  }
+
+  // Enviar reação a uma mensagem
+  async sendReaction(clientId: string, chatId: string, messageId: string, emoji: string): Promise<any> {
+    try {
+      console.log(`🎭 Enviando reação ${emoji} para mensagem ${messageId} em ${chatId}`);
+      
+      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-reaction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          chatId, 
+          messageId, 
+          emoji 
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao enviar reação');
+      }
+      
+      console.log(`✅ Reação ${emoji} enviada com sucesso`);
+      return data;
+    } catch (error) {
+      console.error(`❌ Erro ao enviar reação:`, error);
+      throw error;
+    }
+  }
+
   // Testar conexão com o servidor
   async testServerConnection(): Promise<boolean> {
     try {
