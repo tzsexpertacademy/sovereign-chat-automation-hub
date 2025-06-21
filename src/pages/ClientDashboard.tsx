@@ -4,7 +4,7 @@ import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import ClientSidebar from "@/components/client/ClientSidebar";
 import ClientHeader from "@/components/client/ClientHeader";
-import ChatInterface from "@/components/client/ChatInterface";
+import TicketChatInterface from "@/components/client/TicketChatInterface";
 import CampaignsManager from "@/components/client/CampaignsManager";
 import AutomationCenter from "@/components/client/AutomationCenter";
 import AnalyticsDashboard from "@/components/client/AnalyticsDashboard";
@@ -31,7 +31,7 @@ const ClientDashboard = () => {
             <Routes>
               <Route path="/" element={<Navigate to="connect" replace />} />
               <Route path="connect" element={<WhatsAppConnection />} />
-              <Route path="chat" element={<ChatInterface />} />
+              <Route path="chat" element={<TicketChatInterface />} />
               <Route path="funnel" element={<FunnelKanban clientId={clientId} />} />
               <Route path="assistants" element={<AssistantsManager />} />
               <Route path="queues" element={<QueuesManager />} />

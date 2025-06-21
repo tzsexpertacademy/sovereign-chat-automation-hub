@@ -1,20 +1,29 @@
 
-import React from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-import { cn } from "@/lib/utils";
+import { Link, useLocation } from "react-router-dom";
+import { 
+  Sidebar, 
+  SidebarContent, 
+  SidebarHeader, 
+  SidebarMenu, 
+  SidebarMenuItem, 
+  SidebarMenuButton,
+  SidebarFooter
+} from "@/components/ui/sidebar";
 import { 
   MessageSquare, 
-  Bot, 
   BarChart3, 
-  Settings, 
-  Zap, 
+  Users, 
+  Bot, 
+  Wifi, 
   Calendar,
-  Phone,
-  Users,
-  GitBranch,
-  Layers,
-  Link
-} from 'lucide-react';
+  Workflow,
+  Settings,
+  TrendingUp,
+  Zap,
+  Building2,
+  Layers3,
+  UserCheck
+} from "lucide-react";
 
 interface ClientSidebarProps {
   clientId: string;
@@ -23,95 +32,120 @@ interface ClientSidebarProps {
 const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
   const location = useLocation();
   
-  const navigation = [
-    {
-      name: 'Conexão',
-      href: `/client/${clientId}/connect`,
-      icon: Link,
+  const menuItems = [
+    { 
+      title: "Conexão", 
+      icon: Wifi, 
+      path: `/client/${clientId}/connect`,
+      description: "Conectar WhatsApp"
     },
-    {
-      name: 'Chat',
-      href: `/client/${clientId}/chat`,
-      icon: MessageSquare,
+    { 
+      title: "Conversas", 
+      icon: MessageSquare, 
+      path: `/client/${clientId}/chat`,
+      description: "Tickets e Chat"
     },
-    {
-      name: 'Funil & Kanban',
-      href: `/client/${clientId}/funnel`,
-      icon: GitBranch,
+    { 
+      title: "Funil", 
+      icon: TrendingUp, 
+      path: `/client/${clientId}/funnel`,
+      description: "Kanban de Leads"
     },
-    {
-      name: 'Assistentes',
-      href: `/client/${clientId}/assistants`,
-      icon: Bot,
+    { 
+      title: "Assistentes", 
+      icon: Bot, 
+      path: `/client/${clientId}/assistants`,
+      description: "IA Assistentes"
     },
-    {
-      name: 'Filas',
-      href: `/client/${clientId}/queues`,
-      icon: Layers,
+    { 
+      title: "Filas", 
+      icon: Layers3, 
+      path: `/client/${clientId}/queues`,
+      description: "Gerenciar Filas"
     },
-    {
-      name: 'Instâncias',
-      href: `/client/${clientId}/instances`,
-      icon: Phone,
+    { 
+      title: "Instâncias", 
+      icon: Building2, 
+      path: `/client/${clientId}/instances`,
+      description: "Multi-WhatsApp"
     },
-    {
-      name: 'Agendamentos',
-      href: `/client/${clientId}/booking`,
-      icon: Calendar,
+    { 
+      title: "Agendamentos", 
+      icon: Calendar, 
+      path: `/client/${clientId}/booking`,
+      description: "Calendário"
     },
-    {
-      name: 'Automação',
-      href: `/client/${clientId}/automation`,
-      icon: Zap,
+    { 
+      title: "Automação", 
+      icon: Zap, 
+      path: `/client/${clientId}/automation`,
+      description: "Fluxos"
     },
-    {
-      name: 'Analytics',
-      href: `/client/${clientId}/analytics`,
-      icon: BarChart3,
+    { 
+      title: "Analytics", 
+      icon: BarChart3, 
+      path: `/client/${clientId}/analytics`,
+      description: "Relatórios"
     },
-    {
-      name: 'Configurações',
-      href: `/client/${clientId}/settings`,
-      icon: Settings,
-    },
+    { 
+      title: "Configurações", 
+      icon: Settings, 
+      path: `/client/${clientId}/settings`,
+      description: "Preferências"
+    }
   ];
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 h-full">
-      <div className="p-6">
-        <h2 className="text-lg font-semibold text-gray-900">Painel do Cliente</h2>
-        <p className="text-sm text-gray-500">ID: {clientId}</p>
-      </div>
-      <nav className="mt-6">
-        <div className="px-3">
-          {navigation.map((item) => {
-            const isActive = location.pathname === item.href;
+    <Sidebar className="border-r bg-white">
+      <SidebarHeader className="border-b p-6">
+        <div className="flex items-center space-x-2">
+          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+            <UserCheck className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">CRM Dashboard</h2>
+            <p className="text-xs text-gray-500">Cliente: {clientId.slice(0, 8)}</p>
+          </div>
+        </div>
+      </SidebarHeader>
+      
+      <SidebarContent className="p-4">
+        <SidebarMenu>
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
+            
             return (
-              <NavLink
-                key={item.name}
-                to={item.href}
-                className={cn(
-                  'group flex items-center px-3 py-2 text-sm font-medium rounded-md mb-1',
-                  isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                )}
-              >
-                <item.icon
-                  className={cn(
-                    'mr-3 h-5 w-5',
-                    isActive
-                      ? 'text-primary-foreground'
-                      : 'text-gray-400 group-hover:text-gray-500'
-                  )}
-                />
-                {item.name}
-              </NavLink>
+              <SidebarMenuItem key={item.path}>
+                <SidebarMenuButton
+                  asChild
+                  className={`w-full justify-start p-3 mb-1 ${
+                    isActive 
+                      ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700' 
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <Link to={item.path}>
+                    <Icon className={`mr-3 h-4 w-4 ${isActive ? 'text-blue-700' : 'text-gray-500'}`} />
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{item.title}</span>
+                      <span className="text-xs text-gray-500">{item.description}</span>
+                    </div>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             );
           })}
+        </SidebarMenu>
+      </SidebarContent>
+      
+      <SidebarFooter className="border-t p-4">
+        <div className="text-center">
+          <p className="text-xs text-gray-500">CRM v2.0</p>
+          <p className="text-xs text-gray-400">Powered by AI</p>
         </div>
-      </nav>
-    </div>
+      </SidebarFooter>
+    </Sidebar>
   );
 };
 

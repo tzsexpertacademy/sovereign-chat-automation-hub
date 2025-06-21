@@ -342,6 +342,100 @@ export type Database = {
           },
         ]
       }
+      conversation_tickets: {
+        Row: {
+          assigned_assistant_id: string | null
+          assigned_queue_id: string | null
+          chat_id: string
+          client_id: string
+          closed_at: string | null
+          created_at: string
+          custom_fields: Json | null
+          customer_id: string | null
+          customer_satisfaction_score: number | null
+          id: string
+          instance_id: string
+          internal_notes: Json | null
+          is_archived: boolean | null
+          last_message_at: string | null
+          last_message_preview: string | null
+          priority: number
+          resolution_time_minutes: number | null
+          status: string
+          tags: Json | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_assistant_id?: string | null
+          assigned_queue_id?: string | null
+          chat_id: string
+          client_id: string
+          closed_at?: string | null
+          created_at?: string
+          custom_fields?: Json | null
+          customer_id?: string | null
+          customer_satisfaction_score?: number | null
+          id?: string
+          instance_id: string
+          internal_notes?: Json | null
+          is_archived?: boolean | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          priority?: number
+          resolution_time_minutes?: number | null
+          status?: string
+          tags?: Json | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_assistant_id?: string | null
+          assigned_queue_id?: string | null
+          chat_id?: string
+          client_id?: string
+          closed_at?: string | null
+          created_at?: string
+          custom_fields?: Json | null
+          customer_id?: string | null
+          customer_satisfaction_score?: number | null
+          id?: string
+          instance_id?: string
+          internal_notes?: Json | null
+          is_archived?: boolean | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          priority?: number
+          resolution_time_minutes?: number | null
+          status?: string
+          tags?: Json | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_tickets_assigned_assistant_id_fkey"
+            columns: ["assigned_assistant_id"]
+            isOneToOne: false
+            referencedRelation: "assistants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_tickets_assigned_queue_id_fkey"
+            columns: ["assigned_queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_tickets_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           birth_date: string | null
@@ -979,6 +1073,103 @@ export type Database = {
           },
         ]
       }
+      ticket_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          ticket_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          ticket_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_events_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_messages: {
+        Row: {
+          ai_confidence_score: number | null
+          content: string
+          created_at: string
+          from_me: boolean | null
+          id: string
+          is_ai_response: boolean | null
+          is_internal_note: boolean | null
+          media_url: string | null
+          message_id: string
+          message_type: string | null
+          processing_status: string | null
+          sender_name: string | null
+          ticket_id: string
+          timestamp: string
+        }
+        Insert: {
+          ai_confidence_score?: number | null
+          content: string
+          created_at?: string
+          from_me?: boolean | null
+          id?: string
+          is_ai_response?: boolean | null
+          is_internal_note?: boolean | null
+          media_url?: string | null
+          message_id: string
+          message_type?: string | null
+          processing_status?: string | null
+          sender_name?: string | null
+          ticket_id: string
+          timestamp: string
+        }
+        Update: {
+          ai_confidence_score?: number | null
+          content?: string
+          created_at?: string
+          from_me?: boolean | null
+          id?: string
+          is_ai_response?: boolean | null
+          is_internal_note?: boolean | null
+          media_url?: string | null
+          message_id?: string
+          message_type?: string | null
+          processing_status?: string | null
+          sender_name?: string | null
+          ticket_id?: string
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_messages_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_chats: {
         Row: {
           chat_id: string
@@ -1133,6 +1324,18 @@ export type Database = {
       get_max_instances_for_plan: {
         Args: { plan_name: Database["public"]["Enums"]["plan_type"] }
         Returns: number
+      }
+      upsert_conversation_ticket: {
+        Args: {
+          p_client_id: string
+          p_chat_id: string
+          p_instance_id: string
+          p_customer_name: string
+          p_customer_phone: string
+          p_last_message: string
+          p_last_message_at: string
+        }
+        Returns: string
       }
     }
     Enums: {
