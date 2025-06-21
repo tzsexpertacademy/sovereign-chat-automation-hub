@@ -27,6 +27,8 @@ export interface AdvancedSettings {
   typing_indicator_enabled: boolean;
   recording_indicator_enabled: boolean;
   humanization_level: 'basic' | 'advanced' | 'maximum';
+  temperature: number; // Parâmetro de criatividade da IA (0.0 - 2.0)
+  max_tokens: number; // Limite máximo de tokens na resposta
   custom_files: Array<{
     id: string;
     name: string;
@@ -114,5 +116,28 @@ export const assistantsService = {
       .eq("id", id);
 
     if (error) throw error;
+  },
+
+  async validateOpenAIConnection(apiKey: string, model: string = 'gpt-4o-mini'): Promise<boolean> {
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: 'user', content: 'Test connection' }],
+          max_tokens: 5,
+          temperature: 0.1
+        }),
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Erro ao validar conexão OpenAI:', error);
+      return false;
+    }
   }
 };

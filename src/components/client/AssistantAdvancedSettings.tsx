@@ -22,6 +22,8 @@ interface AssistantAdvancedSettingsProps {
     typing_indicator_enabled: boolean;
     recording_indicator_enabled: boolean;
     humanization_level: 'basic' | 'advanced' | 'maximum';
+    temperature: number;
+    max_tokens: number;
     custom_files: Array<{
       id: string;
       name: string;

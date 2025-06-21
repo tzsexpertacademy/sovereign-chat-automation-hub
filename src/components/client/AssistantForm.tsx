@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { X, Plus, Settings, Zap } from "lucide-react";
+import { X, Plus, Settings, Zap, Brain } from "lucide-react";
 import { assistantsService, type Assistant } from "@/services/assistantsService";
 import AssistantAdvancedSettings from "./AssistantAdvancedSettings";
 
@@ -42,6 +42,10 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
   const [newTrigger, setNewTrigger] = useState("");
   const [loading, setLoading] = useState(false);
   
+  // Configurações de IA
+  const [temperature, setTemperature] = useState(0.7);
+  const [maxTokens, setMaxTokens] = useState(1000);
+  
   // Configurações avançadas
   const [advancedSettings, setAdvancedSettings] = useState({
     audio_processing_enabled: false,
@@ -54,6 +58,8 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
     typing_indicator_enabled: true,
     recording_indicator_enabled: true,
     humanization_level: 'advanced' as 'basic' | 'advanced' | 'maximum',
+    temperature: 0.7,
+    max_tokens: 1000,
     custom_files: [] as Array<{
       id: string;
       name: string;
@@ -76,7 +82,11 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
           const savedSettings = typeof assistant.advanced_settings === 'string' 
             ? JSON.parse(assistant.advanced_settings)
             : assistant.advanced_settings;
-          setAdvancedSettings({ ...advancedSettings, ...savedSettings });
+          
+          const updatedSettings = { ...advancedSettings, ...savedSettings };
+          setAdvancedSettings(updatedSettings);
+          setTemperature(updatedSettings.temperature || 0.7);
+          setMaxTokens(updatedSettings.max_tokens || 1000);
         } catch (error) {
           console.error('Erro ao carregar configurações avançadas:', error);
         }
@@ -106,13 +116,20 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
     try {
       setLoading(true);
       
+      // Atualizar configurações avançadas com temperatura e max_tokens
+      const updatedAdvancedSettings = {
+        ...advancedSettings,
+        temperature,
+        max_tokens: maxTokens
+      };
+      
       const assistantData = {
         client_id: clientId,
         name: name.trim(),
         prompt: prompt.trim(),
         model,
         triggers: triggers,
-        advanced_settings: JSON.stringify(advancedSettings),
+        advanced_settings: JSON.stringify(updatedAdvancedSettings),
         is_active: true
       };
 
@@ -144,14 +161,18 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="basic" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
-                Configurações Básicas
+                Básicas
+              </TabsTrigger>
+              <TabsTrigger value="ai" className="flex items-center gap-2">
+                <Brain className="h-4 w-4" />
+                IA & Criatividade
               </TabsTrigger>
               <TabsTrigger value="advanced" className="flex items-center gap-2">
                 <Zap className="h-4 w-4" />
-                Humanização Avançada
+                Humanização
               </TabsTrigger>
             </TabsList>
             
@@ -234,10 +255,94 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
               </div>
             </TabsContent>
 
+            <TabsContent value="ai" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Brain className="h-5 w-5" />
+                    Configurações de IA
+                  </CardTitle>
+                  <CardDescription>
+                    Ajuste o comportamento e criatividade das respostas da IA
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="temperature">
+                        Temperatura (Criatividade): {temperature}
+                      </Label>
+                      <Input
+                        id="temperature"
+                        type="range"
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        value={temperature}
+                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                        className="w-full"
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Conservador (0.0)</span>
+                        <span>Balanceado (1.0)</span>
+                        <span>Criativo (2.0)</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {temperature <= 0.3 ? "Respostas muito precisas e consistentes" :
+                         temperature <= 0.7 ? "Equilíbrio entre precisão e criatividade" :
+                         temperature <= 1.2 ? "Respostas mais criativas e variadas" :
+                         "Respostas muito criativas e imprevisíveis"}
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label htmlFor="maxTokens">
+                        Tamanho Máximo da Resposta: {maxTokens} tokens
+                      </Label>
+                      <Input
+                        id="maxTokens"
+                        type="range"
+                        min="100"
+                        max="4000"
+                        step="100"
+                        value={maxTokens}
+                        onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+                        className="w-full"
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Curto (100)</span>
+                        <span>Médio (1000)</span>
+                        <span>Longo (4000)</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {maxTokens <= 500 ? "Respostas curtas e diretas" :
+                         maxTokens <= 1500 ? "Respostas de tamanho médio" :
+                         "Respostas longas e detalhadas"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h4 className="font-medium text-blue-900 mb-2">💡 Dicas de Configuração</h4>
+                    <ul className="text-sm text-blue-800 space-y-1">
+                      <li>• <strong>Atendimento:</strong> Temperatura 0.3-0.5, Tokens 200-800</li>
+                      <li>• <strong>Vendas:</strong> Temperatura 0.5-0.8, Tokens 300-1000</li>
+                      <li>• <strong>Criativo:</strong> Temperatura 0.8-1.2, Tokens 500-2000</li>
+                      <li>• <strong>Suporte Técnico:</strong> Temperatura 0.2-0.4, Tokens 400-1500</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             <TabsContent value="advanced" className="space-y-6">
               <AssistantAdvancedSettings
                 settings={advancedSettings}
-                onChange={setAdvancedSettings}
+                onChange={(newSettings) => {
+                  setAdvancedSettings(newSettings);
+                  setTemperature(newSettings.temperature || 0.7);
+                  setMaxTokens(newSettings.max_tokens || 1000);
+                }}
               />
             </TabsContent>
           </Tabs>

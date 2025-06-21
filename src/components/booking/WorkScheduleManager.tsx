@@ -16,11 +16,21 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { professionalsService } from "@/services/professionalsService";
-import { workScheduleService, WorkSchedule, CreateScheduleData } from "@/services/workScheduleService";
+import { workScheduleService, WorkSchedule } from "@/services/workScheduleService";
 import { bookingValidationService } from "@/services/bookingValidationService";
 
 interface WorkScheduleManagerProps {
   clientId: string;
+}
+
+interface CreateScheduleData {
+  professional_id: string;
+  day_of_week: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+  start_time: string;
+  end_time: string;
+  break_start_time?: string;
+  break_end_time?: string;
+  is_active: boolean;
 }
 
 const WorkScheduleManager = ({ clientId }: WorkScheduleManagerProps) => {
@@ -102,25 +112,6 @@ const WorkScheduleManager = ({ clientId }: WorkScheduleManagerProps) => {
     try {
       setLoading(true);
       
-      // Validar horários
-      const validation = await bookingValidationService.validateWorkSchedule({
-        professionalId: selectedProfessional,
-        serviceId: '', // Não aplicável para validação de horário de trabalho
-        customerId: '',
-        appointmentDate: new Date().toISOString().split('T')[0],
-        startTime: newSchedule.start_time || '09:00',
-        serviceDurationMinutes: 60
-      });
-
-      if (!validation.isValid) {
-        toast({
-          title: "Horário Inválido",
-          description: validation.errors[0]?.message || "Erro na validação",
-          variant: "destructive",
-        });
-        return;
-      }
-
       await workScheduleService.createSchedule({
         professional_id: selectedProfessional,
         day_of_week: newSchedule.day_of_week as any,
@@ -205,11 +196,9 @@ const WorkScheduleManager = ({ clientId }: WorkScheduleManagerProps) => {
       
       for (const day of daysOfWeek) {
         if (day.value !== schedule.day_of_week) {
-          // Verificar se já existe horário para este dia
           const existingSchedule = schedules.find(s => s.day_of_week === day.value);
           
           if (existingSchedule) {
-            // Atualizar existente
             await workScheduleService.updateSchedule(existingSchedule.id, {
               start_time: schedule.start_time,
               end_time: schedule.end_time,
@@ -218,7 +207,6 @@ const WorkScheduleManager = ({ clientId }: WorkScheduleManagerProps) => {
               is_active: schedule.is_active
             });
           } else {
-            // Criar novo
             await workScheduleService.createSchedule({
               professional_id: selectedProfessional,
               day_of_week: day.value as any,
@@ -265,7 +253,6 @@ const WorkScheduleManager = ({ clientId }: WorkScheduleManagerProps) => {
         </div>
       </div>
 
-      {/* Professional Selection */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
@@ -291,7 +278,6 @@ const WorkScheduleManager = ({ clientId }: WorkScheduleManagerProps) => {
 
       {selectedProfessional && (
         <>
-          {/* Current Schedules */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -357,7 +343,6 @@ const WorkScheduleManager = ({ clientId }: WorkScheduleManagerProps) => {
             </CardContent>
           </Card>
 
-          {/* Add New Schedule */}
           <Card>
             <CardHeader>
               <CardTitle>Novo Horário</CardTitle>
