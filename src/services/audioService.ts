@@ -56,9 +56,9 @@ export const audioService = {
       const arrayBuffer = await audioBlob.arrayBuffer();
       const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
       
-      // Buscar configuração de IA do cliente
+      // Buscar configuração de IA do cliente - CORRIGIDO
       const { data: aiConfig } = await supabase
-        .from('ai_configs')
+        .from('client_ai_configs')
         .select('openai_api_key')
         .eq('client_id', clientId)
         .single();
@@ -83,9 +83,9 @@ export const audioService = {
       // Converter imagem para base64
       const base64Image = await this.fileToBase64(imageFile);
       
-      // Buscar configuração de IA do cliente
+      // Buscar configuração de IA do cliente - CORRIGIDO
       const { data: aiConfig } = await supabase
-        .from('ai_configs')
+        .from('client_ai_configs')
         .select('openai_api_key')
         .eq('client_id', clientId)
         .single();

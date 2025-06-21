@@ -4,7 +4,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { queuesService } from '@/services/queuesService';
-import { assistantsService } from '@/services/assistantsService';
 import { aiConfigService } from '@/services/aiConfigService';
 
 export const useTicketRealtime = (clientId: string) => {
@@ -47,7 +46,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar mensagem com assistente IA - CORRIGIDO
+  // Processar mensagem com assistente seguindo o fluxo das filas - CORRIGIDO
   const processWithAssistant = useCallback(async (message: any, ticketId: string) => {
     const messageKey = `${message.id}_${message.from}_${message.timestamp}`;
     
@@ -64,7 +63,7 @@ export const useTicketRealtime = (clientId: string) => {
       console.log('🤖 Processando mensagem com assistente para ticket:', ticketId);
       setAssistantTyping(true);
       
-      // Buscar configurações do cliente
+      // 1. Buscar configurações do cliente
       const [queues, aiConfig] = await Promise.all([
         queuesService.getClientQueues(clientId),
         aiConfigService.getClientConfig(clientId)
@@ -76,23 +75,39 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
 
-      // Buscar fila ativa com assistente
-      const activeQueue = queues.find((queue: any) => 
-        queue.is_active && 
-        queue.assistants && 
-        queue.assistants.is_active
-      );
+      // 2. Buscar fila ativa com assistente CONECTADA À INSTÂNCIA
+      const instanceId = message.instanceId || message.instance_id;
+      let activeQueue = null;
+      
+      if (instanceId) {
+        // Buscar filas conectadas a esta instância específica
+        const instanceConnections = await queuesService.getInstanceConnections(instanceId);
+        activeQueue = instanceConnections.find(queue => 
+          queue.is_active && 
+          queue.assistants && 
+          queue.assistants.is_active
+        );
+      }
+      
+      // Fallback: buscar qualquer fila ativa com assistente
+      if (!activeQueue) {
+        activeQueue = queues.find((queue: any) => 
+          queue.is_active && 
+          queue.assistants && 
+          queue.assistants.is_active
+        );
+      }
 
       if (!activeQueue || !activeQueue.assistants) {
-        console.log('⚠️ Nenhuma fila ativa com assistente encontrada');
+        console.log('⚠️ Nenhuma fila ativa com assistente encontrada para a instância:', instanceId);
         setAssistantTyping(false);
         return;
       }
 
       const assistant = activeQueue.assistants;
-      console.log('🤖 Processando com assistente:', assistant.name);
+      console.log('🤖 Processando com assistente:', assistant.name, 'na fila:', activeQueue.name);
 
-      // Buscar histórico de mensagens do ticket
+      // 3. Buscar histórico de mensagens do ticket
       const ticketMessages = await ticketsService.getTicketMessages(ticketId);
       const recentMessages = ticketMessages
         .slice(-10)
@@ -101,10 +116,32 @@ export const useTicketRealtime = (clientId: string) => {
           content: msg.content || ''
         }));
 
-      // Delay humanizado antes de responder
-      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
+      // 4. Delay humanizado antes de responder
+      const delaySeconds = assistant.advanced_settings?.response_delay_seconds || 3;
+      await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
 
-      // Chamar a API da OpenAI
+      // 5. Preparar configurações avançadas
+      let advancedSettings = {
+        temperature: 0.7,
+        max_tokens: 1000
+      };
+      
+      try {
+        if (assistant.advanced_settings) {
+          const parsedSettings = typeof assistant.advanced_settings === 'string' 
+            ? JSON.parse(assistant.advanced_settings)
+            : assistant.advanced_settings;
+          
+          advancedSettings = {
+            temperature: parsedSettings.temperature || 0.7,
+            max_tokens: parsedSettings.max_tokens || 1000
+          };
+        }
+      } catch (error) {
+        console.error('Erro ao parse das configurações avançadas:', error);
+      }
+
+      // 6. Chamar a API da OpenAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -124,8 +161,8 @@ export const useTicketRealtime = (clientId: string) => {
               content: message.body || message.text || ''
             }
           ],
-          temperature: 0.7,
-          max_tokens: 1000,
+          temperature: advancedSettings.temperature,
+          max_tokens: advancedSettings.max_tokens,
         }),
       });
 
@@ -140,10 +177,10 @@ export const useTicketRealtime = (clientId: string) => {
       if (assistantResponse && assistantResponse.trim()) {
         console.log('🤖 Resposta do assistente gerada:', assistantResponse.substring(0, 100) + '...');
         
-        // Enviar resposta
+        // 7. Enviar resposta via WhatsApp
         await whatsappService.sendMessage(clientId, message.from, assistantResponse);
         
-        // Registrar a resposta no ticket
+        // 8. Registrar a resposta no ticket
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -158,7 +195,7 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date().toISOString()
         });
 
-        console.log('✅ Resposta automática enviada e registrada');
+        console.log('✅ Resposta automática enviada e registrada via fila:', activeQueue.name);
         
       } else {
         console.log('⚠️ Assistente não gerou resposta válida');
@@ -231,14 +268,15 @@ export const useTicketRealtime = (clientId: string) => {
       setIsOnline(true);
     }
 
-    // Listener para novas mensagens do WhatsApp
+    // Listener para novas mensagens do WhatsApp com processamento via fila
     const handleNewWhatsAppMessage = async (message: any) => {
       console.log('📨 Nova mensagem WhatsApp recebida:', {
         id: message.id,
         from: message.from,
         body: message.body?.substring(0, 50),
         fromMe: message.fromMe,
-        timestamp: message.timestamp
+        timestamp: message.timestamp,
+        instanceId: message.instanceId
       });
       
       const messageKey = `${message.id}_${message.from}_${message.timestamp}`;
@@ -266,7 +304,7 @@ export const useTicketRealtime = (clientId: string) => {
         const ticketId = await ticketsService.createOrUpdateTicket(
           clientId,
           message.from || message.chatId,
-          clientId,
+          message.instanceId || clientId,
           customerName,
           customerPhone,
           message.body || '',
@@ -294,9 +332,15 @@ export const useTicketRealtime = (clientId: string) => {
           }
         }, 1000);
 
-        // Processar com assistente - CORRIGIDO
+        // Processar com assistente através das filas - SEGUINDO O FLUXO CORRETO
         if (!message.type || message.type === 'text' || message.type === 'chat') {
-          await processWithAssistant(message, ticketId);
+          // Adicionar informações da instância à mensagem
+          const messageWithInstance = {
+            ...message,
+            instanceId: message.instanceId || clientId
+          };
+          
+          await processWithAssistant(messageWithInstance, ticketId);
         }
         
       } catch (error) {
@@ -347,7 +391,7 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       setIsOnline(false);
     };
-  }, [clientId]);
+  }, [clientId, loadTickets, processWithAssistant, extractWhatsAppName]);
 
   const reloadTickets = useCallback(() => {
     console.log('🔄 Recarregamento manual solicitado');
