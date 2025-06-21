@@ -164,17 +164,29 @@ class WhatsAppService {
     }).then(res => res.json());
   }
 
-  onClientMessage(clientId: string, callback: (message: MessageData) => void) {
-    if (this.socket) {
-      this.socket.on(`message_${clientId}`, callback);
-      console.log(`👂 Listening for messages for client: ${clientId}`);
-    }
-  }
+  async sendReaction(clientId: string, chatId: string, messageId: string, emoji: string) {
+    try {
+      const response = await fetch(`${this.baseURL}/api/client/${clientId}/reaction`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chatId,
+          messageId,
+          emoji
+        }),
+      });
 
-  removeListener(event: string) {
-    if (this.socket) {
-      this.socket.off(event);
-      console.log(`👂 Removing listener: ${event}`);
+      if (!response.ok) {
+        throw new Error('Failed to send reaction');
+      }
+
+      console.log(`😀 Reação enviada: ${emoji} para mensagem ${messageId}`);
+      return await response.json();
+    } catch (error) {
+      console.error('Error sending reaction:', error);
+      throw error;
     }
   }
 
@@ -277,6 +289,20 @@ class WhatsAppService {
     }
   }
 
+  onClientMessage(clientId: string, callback: (message: MessageData) => void) {
+    if (this.socket) {
+      this.socket.on(`message_${clientId}`, callback);
+      console.log(`👂 Listening for messages for client: ${clientId}`);
+    }
+  }
+
+  removeListener(event: string) {
+    if (this.socket) {
+      this.socket.off(event);
+      console.log(`👂 Removing listener: ${event}`);
+    }
+  }
+
   onTypingEvent(clientId: string, callback: (data: { chatId: string, isTyping: boolean, contact: string }) => void) {
     if (this.socket) {
       this.socket.on(`typing_${clientId}`, callback);
@@ -300,6 +326,37 @@ class WhatsAppService {
   removeReadReceiptListener(clientId: string) {
     if (this.socket) {
       this.socket.off(`read_receipt_${clientId}`);
+    }
+  }
+
+  onQuotedMessage(clientId: string, callback: (data: { 
+    chatId: string, 
+    messageId: string, 
+    quotedMessage: any, 
+    newMessage: string 
+  }) => void) {
+    if (this.socket) {
+      this.socket.on(`quoted_message_${clientId}`, callback);
+      console.log(`👂 Listening for quoted messages for client: ${clientId}`);
+    }
+  }
+
+  removeQuotedMessageListener(clientId: string) {
+    if (this.socket) {
+      this.socket.off(`quoted_message_${clientId}`);
+    }
+  }
+
+  onPresenceUpdate(clientId: string, callback: (data: { chatId: string, isOnline: boolean }) => void) {
+    if (this.socket) {
+      this.socket.on(`presence_${clientId}`, callback);
+      console.log(`👂 Listening for presence updates for client: ${clientId}`);
+    }
+  }
+
+  removePresenceListener(clientId: string) {
+    if (this.socket) {
+      this.socket.off(`presence_${clientId}`);
     }
   }
 }
