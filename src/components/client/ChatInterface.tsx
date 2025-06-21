@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, MessageSquare } from "lucide-react";
+import { RefreshCw, MessageSquare, Download, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import TicketChatInterface from './TicketChatInterface';
@@ -18,6 +18,7 @@ interface ChatInterfaceProps {
 
 const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterfaceProps) => {
   const [selectedChat, setSelectedChat] = useState<ConversationTicket | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { chatId } = useParams();
@@ -31,7 +32,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     reloadTickets
   } = useTicketRealtime(clientId);
 
-  // Usar chatId da URL se disponível
   const currentChatId = chatId || selectedChatId;
 
   useEffect(() => {
@@ -48,7 +48,40 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     navigate(`/client/${clientId}/chat/${ticketId}`);
   }, [onSelectChat, navigate, clientId]);
 
-  // Função para extrair nome do customer ou usar fallback
+  // Importar conversas do WhatsApp
+  const handleImportConversations = async () => {
+    try {
+      setIsImporting(true);
+      
+      toast({
+        title: "Importando conversas",
+        description: "Aguarde enquanto importamos suas conversas do WhatsApp..."
+      });
+
+      const result = await ticketsService.importConversationsFromWhatsApp(clientId);
+      
+      toast({
+        title: "Importação concluída",
+        description: `${result.success} conversas importadas com sucesso. ${result.errors > 0 ? `${result.errors} erros encontrados.` : ''}`
+      });
+
+      // Recarregar tickets após importação
+      setTimeout(() => {
+        reloadTickets();
+      }, 2000);
+
+    } catch (error: any) {
+      console.error('Erro na importação:', error);
+      toast({
+        title: "Erro na importação",
+        description: error.message || "Falha ao importar conversas",
+        variant: "destructive"
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const getDisplayName = useCallback((ticket: ConversationTicket) => {
     if (ticket.customer?.name && 
         ticket.customer.name !== `Contato ${ticket.customer.phone}` &&
@@ -82,7 +115,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       {/* Lista de Chats */}
       <div className="w-1/3 border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200 bg-gray-50">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900">Conversas</h2>
             <div className="flex items-center space-x-2">
               {assistantOnline && (
@@ -101,6 +134,27 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               </Button>
             </div>
           </div>
+          
+          {/* Botão de importação */}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleImportConversations}
+            disabled={isImporting}
+            className="w-full"
+          >
+            {isImporting ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Importando...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 mr-2" />
+                Importar Conversas
+              </>
+            )}
+          </Button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -112,9 +166,9 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
           ) : tickets.length === 0 ? (
             <div className="p-4 text-center text-gray-500">
               <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-              <p className="text-sm">Nenhuma conversa encontrada</p>
-              <p className="text-xs text-gray-400 mt-1">
-                As conversas aparecerão aqui quando chegarem mensagens
+              <p className="text-sm mb-2">Nenhuma conversa encontrada</p>
+              <p className="text-xs text-gray-400 mb-3">
+                Importe suas conversas do WhatsApp ou aguarde novas mensagens
               </p>
             </div>
           ) : (

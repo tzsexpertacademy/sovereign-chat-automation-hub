@@ -6,13 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Paperclip, RefreshCw, MessageSquare } from "lucide-react";
+import { Send, Paperclip, RefreshCw, MessageSquare, Mic, MicOff, Image, Video } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import { whatsappService } from "@/services/whatsappMultiClient";
 import { useTicketMessages } from "@/hooks/useTicketMessages";
 import { useMessageStatus } from "@/hooks/useMessageStatus";
 import { useTypingStatus } from "@/hooks/useTypingStatus";
+import { useMessageMedia } from "@/hooks/useMessageMedia";
+import { audioService } from "@/services/audioService";
 import MessageStatus from './MessageStatus';
 
 interface TicketChatInterfaceProps {
@@ -25,15 +27,27 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   
   const [selectedTicket, setSelectedTicket] = useState<ConversationTicket | null>(null);
   const [newMessage, setNewMessage] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Hooks para tempo real
   const { messages: ticketMessages, isLoading: loadingMessages } = useTicketMessages(ticketId || null);
   const { getMessageStatus, updateMessageStatus, markMessageAsRead, markMessageAsFailed } = useMessageStatus();
   const { isTyping, startTyping, stopTyping } = useTypingStatus();
+  const { 
+    isUploading, 
+    handleImageUpload, 
+    handleVideoUpload, 
+    handleDocumentUpload,
+    startRecording,
+    stopRecording,
+    sendAudioRecording,
+    audioRecording
+  } = useMessageMedia(clientId);
 
-  // Mount ref para evitar atualizações desnecessárias
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -41,7 +55,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     };
   }, []);
 
-  // Auto scroll para última mensagem
   const scrollToBottom = useCallback(() => {
     if (mountedRef.current && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -52,7 +65,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     scrollToBottom();
   }, [ticketMessages, scrollToBottom]);
 
-  // Buscar ticket específico apenas quando necessário
   useEffect(() => {
     if (ticketId && mountedRef.current) {
       loadTicketDetails();
@@ -78,18 +90,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     try {
       console.log('📤 Enviando mensagem:', newMessage);
       
-      // Marcar como enviando
       updateMessageStatus(tempMessageId, 'sending');
-      
-      // Parar indicador de digitação
       stopTyping();
       
       await whatsappService.sendMessage(clientId, selectedTicket.chat_id, newMessage);
       
-      // Marcar como enviada
       updateMessageStatus(tempMessageId, 'sent');
       
-      // Adicionar mensagem ao ticket
       await ticketsService.addTicketMessage({
         ticket_id: selectedTicket.id,
         message_id: tempMessageId,
@@ -105,16 +112,12 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
       setNewMessage("");
       
-      // Simular entrega após 2 segundos
       setTimeout(() => {
         updateMessageStatus(tempMessageId, 'delivered');
-        console.log('📦 Mensagem marcada como entregue');
       }, 2000);
       
-      // Simular leitura após 5 segundos
       setTimeout(() => {
         markMessageAsRead(tempMessageId);
-        console.log('👁️ Mensagem marcada como lida (V azul)');
       }, 5000);
       
       toast({
@@ -130,6 +133,100 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         description: error.message || "Falha ao enviar mensagem",
         variant: "destructive"
       });
+    }
+  };
+
+  // Gravação de áudio
+  const handleStartRecording = async () => {
+    try {
+      const recorder = await startRecording();
+      if (recorder) {
+        setMediaRecorder(recorder);
+        setIsRecording(true);
+        toast({
+          title: "Gravando",
+          description: "Gravação de áudio iniciada"
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível iniciar a gravação",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      stopRecording(mediaRecorder);
+      setIsRecording(false);
+      setMediaRecorder(null);
+      toast({
+        title: "Gravação finalizada",
+        description: "Áudio gravado com sucesso"
+      });
+    }
+  };
+
+  const handleSendAudio = async () => {
+    if (!selectedTicket) return;
+
+    try {
+      const success = await sendAudioRecording(selectedTicket.chat_id);
+      if (success) {
+        toast({
+          title: "Áudio enviado",
+          description: "Mensagem de áudio enviada com sucesso"
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Falha ao enviar áudio",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Upload de arquivos
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedTicket) return;
+
+    try {
+      let success = false;
+      
+      if (file.type.startsWith('image/')) {
+        success = await handleImageUpload(file, selectedTicket.chat_id);
+      } else if (file.type.startsWith('video/')) {
+        success = await handleVideoUpload(file, selectedTicket.chat_id);
+      } else {
+        success = await handleDocumentUpload(file, selectedTicket.chat_id);
+      }
+
+      if (success) {
+        // Registrar no ticket
+        await ticketsService.addTicketMessage({
+          ticket_id: selectedTicket.id,
+          message_id: `media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          from_me: true,
+          sender_name: "Operador",
+          content: `[${file.type.startsWith('image/') ? 'Imagem' : file.type.startsWith('video/') ? 'Vídeo' : 'Documento'}] ${file.name}`,
+          message_type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'document',
+          is_internal_note: false,
+          is_ai_response: false,
+          processing_status: 'sent',
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao enviar arquivo:', error);
+    }
+
+    // Limpar input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -172,6 +269,15 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     <div className="flex-1 flex flex-col">
       {selectedTicket ? (
         <>
+          {/* Input de arquivo oculto */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileUpload}
+            style={{ display: 'none' }}
+            accept="image/*,video/*,.pdf,.doc,.docx,.txt"
+          />
+
           {/* Área de Mensagens */}
           <ScrollArea className="flex-1 p-4">
             <div className="space-y-4">
@@ -204,9 +310,35 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                           {message.sender_name}
                         </p>
                       )}
+                      
+                      {/* Renderizar conteúdo baseado no tipo */}
+                      {message.message_type === 'image' && (
+                        <div className="mb-2">
+                          <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center">
+                            <Image className="w-8 h-8 text-gray-400" />
+                          </div>
+                        </div>
+                      )}
+                      
+                      {message.message_type === 'video' && (
+                        <div className="mb-2">
+                          <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center">
+                            <Video className="w-8 h-8 text-gray-400" />
+                          </div>
+                        </div>
+                      )}
+                      
+                      {message.message_type === 'audio' && (
+                        <div className="mb-2">
+                          <div className="flex items-center space-x-2 p-2 bg-gray-200 rounded">
+                            <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
+                            <div className="text-xs text-gray-600">Mensagem de áudio</div>
+                          </div>
+                        </div>
+                      )}
+                      
                       <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                       
-                      {/* Status da mensagem - só aparece para mensagens enviadas por mim */}
                       {message.from_me && (
                         <MessageStatus 
                           status={getMessageStatus(message.message_id)}
@@ -231,12 +363,51 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             </div>
           </ScrollArea>
 
+          {/* Área de Gravação de Áudio */}
+          {audioRecording.audioBlob && (
+            <div className="p-4 bg-yellow-50 border-t">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm text-gray-600">
+                    Áudio gravado ({audioRecording.duration}s)
+                  </span>
+                </div>
+                <div className="flex space-x-2">
+                  <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+                    Cancelar
+                  </Button>
+                  <Button size="sm" onClick={handleSendAudio} disabled={isUploading}>
+                    {isUploading ? 'Enviando...' : 'Enviar Áudio'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Input de Mensagem */}
           <div className="border-t p-4">
             <div className="flex space-x-2">
-              <Button variant="ghost" size="sm">
+              {/* Botão de anexo */}
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
                 <Paperclip className="w-4 h-4" />
               </Button>
+
+              {/* Botão de gravação */}
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={isRecording ? handleStopRecording : handleStartRecording}
+                className={isRecording ? 'text-red-500' : ''}
+              >
+                {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </Button>
+
               <Input
                 placeholder="Digite sua mensagem..."
                 value={newMessage}
@@ -254,26 +425,43 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                   }
                 }}
                 onBlur={() => {
-                  // Delay para não parar digitação imediatamente
                   setTimeout(() => stopTyping(), 1000);
                 }}
                 className="flex-1"
+                disabled={isRecording}
               />
+              
               <Button 
                 onClick={handleSendMessage} 
-                disabled={!newMessage.trim()} 
+                disabled={!newMessage.trim() || isRecording} 
                 size="sm"
               >
                 <Send className="w-4 h-4" />
               </Button>
             </div>
             
-            {/* Indicador de digitação do usuário */}
-            {isTyping && (
-              <div className="mt-2 text-xs text-gray-500">
-                Digitando...
+            {/* Indicadores de estado */}
+            <div className="mt-2 flex items-center justify-between">
+              <div>
+                {isTyping && (
+                  <div className="text-xs text-gray-500">
+                    Digitando...
+                  </div>
+                )}
+                {isRecording && (
+                  <div className="text-xs text-red-500 flex items-center space-x-1">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <span>Gravando áudio...</span>
+                  </div>
+                )}
               </div>
-            )}
+              
+              {isUploading && (
+                <div className="text-xs text-blue-500">
+                  Enviando arquivo...
+                </div>
+              )}
+            </div>
           </div>
         </>
       ) : (
