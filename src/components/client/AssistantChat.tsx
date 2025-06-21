@@ -80,13 +80,22 @@ const AssistantChat = ({ clientId, assistants }: AssistantChatProps) => {
         message: inputMessage
       });
 
-      // Preparar configurações avançadas
-      let advancedSettings = {};
+      // Preparar configurações avançadas com valores padrão
+      let advancedSettings = {
+        temperature: 0.7,
+        max_tokens: 1000
+      };
+      
       try {
         if (assistant.advanced_settings) {
-          advancedSettings = typeof assistant.advanced_settings === 'string' 
+          const parsedSettings = typeof assistant.advanced_settings === 'string' 
             ? JSON.parse(assistant.advanced_settings)
             : assistant.advanced_settings;
+          
+          advancedSettings = {
+            temperature: parsedSettings.temperature || 0.7,
+            max_tokens: parsedSettings.max_tokens || 1000
+          };
         }
       } catch (error) {
         console.error('Erro ao parse das configurações avançadas:', error);
@@ -115,8 +124,8 @@ const AssistantChat = ({ clientId, assistants }: AssistantChatProps) => {
               content: inputMessage
             }
           ],
-          temperature: advancedSettings.temperature || 0.7,
-          max_tokens: advancedSettings.max_tokens || 1000,
+          temperature: advancedSettings.temperature,
+          max_tokens: advancedSettings.max_tokens,
         }),
       });
 
@@ -170,7 +179,7 @@ const AssistantChat = ({ clientId, assistants }: AssistantChatProps) => {
 
   if (!aiConfig) {
     return (
-      <Card>
+      <Card className="w-full">
         <CardHeader>
           <CardTitle>Chat com Assistente</CardTitle>
           <CardDescription>
@@ -188,7 +197,7 @@ const AssistantChat = ({ clientId, assistants }: AssistantChatProps) => {
 
   if (activeAssistants.length === 0) {
     return (
-      <Card>
+      <Card className="w-full">
         <CardHeader>
           <CardTitle>Chat com Assistente</CardTitle>
           <CardDescription>
@@ -205,142 +214,148 @@ const AssistantChat = ({ clientId, assistants }: AssistantChatProps) => {
   }
 
   return (
-    <Card className="h-[600px] flex flex-col">
-      <CardHeader className="flex-shrink-0">
-        <CardTitle>Chat com Assistente</CardTitle>
-        <CardDescription>
-          Teste a interação direta com seus assistentes
-        </CardDescription>
-        
-        <div className="flex gap-4 items-center">
-          <div className="flex-1">
-            <Select value={selectedAssistant} onValueChange={setSelectedAssistant}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um assistente" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeAssistants.map((assistant) => (
-                  <SelectItem key={assistant.id} value={assistant.id}>
-                    <div className="flex items-center gap-2">
-                      <Bot className="h-4 w-4" />
-                      {assistant.name} ({assistant.model})
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <div className="w-full max-w-4xl mx-auto">
+      <Card className="h-[calc(100vh-200px)] min-h-[600px] flex flex-col">
+        <CardHeader className="flex-shrink-0 space-y-4">
+          <div>
+            <CardTitle>Chat com Assistente</CardTitle>
+            <CardDescription>
+              Teste a interação direta com seus assistentes
+            </CardDescription>
           </div>
           
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={clearChat}
-            disabled={messages.length === 0}
-          >
-            Limpar Chat
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="flex-1 flex flex-col gap-4 p-4">
-        {/* Área de mensagens */}
-        <ScrollArea className="flex-1 border rounded-lg p-4">
-          <div className="space-y-4">
-            {messages.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Comece uma conversa com o assistente!</p>
-              </div>
-            )}
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+            <div className="flex-1 w-full">
+              <Select value={selectedAssistant} onValueChange={setSelectedAssistant}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione um assistente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeAssistants.map((assistant) => (
+                    <SelectItem key={assistant.id} value={assistant.id}>
+                      <div className="flex items-center gap-2">
+                        <Bot className="h-4 w-4" />
+                        <span className="truncate">{assistant.name} ({assistant.model})</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearChat}
+              disabled={messages.length === 0}
+              className="whitespace-nowrap"
+            >
+              Limpar Chat
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent className="flex-1 flex flex-col gap-4 p-4 min-h-0">
+          {/* Área de mensagens com scroll */}
+          <ScrollArea className="flex-1 border rounded-lg">
+            <div className="p-4 space-y-4 min-h-full">
+              {messages.length === 0 && (
+                <div className="text-center text-muted-foreground py-8">
+                  <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>Comece uma conversa com o assistente!</p>
+                </div>
+              )}
+              
+              {messages.map((message) => (
                 <div
-                  className={`flex gap-2 max-w-[80%] ${
-                    message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+                  key={message.id}
+                  className={`flex gap-3 ${
+                    message.role === 'user' ? 'justify-end' : 'justify-start'
                   }`}
                 >
-                  <div className="flex-shrink-0">
-                    {message.role === 'user' ? (
-                      <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                        <User className="h-4 w-4 text-primary-foreground" />
-                      </div>
-                    ) : (
-                      <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
-                        <Bot className="h-4 w-4 text-secondary-foreground" />
-                      </div>
-                    )}
-                  </div>
-                  
                   <div
-                    className={`rounded-lg p-3 ${
-                      message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-secondary-foreground'
+                    className={`flex gap-2 max-w-[85%] sm:max-w-[80%] ${
+                      message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                    <p className="text-xs opacity-70 mt-1">
-                      {message.timestamp.toLocaleTimeString()}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-            
-            {isLoading && (
-              <div className="flex gap-3 justify-start">
-                <div className="flex gap-2">
-                  <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
-                    <Bot className="h-4 w-4 text-secondary-foreground" />
-                  </div>
-                  <div className="bg-secondary rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">Assistente está digitando...</span>
+                    <div className="flex-shrink-0">
+                      {message.role === 'user' ? (
+                        <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                          <User className="h-4 w-4 text-primary-foreground" />
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-secondary-foreground" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div
+                      className={`rounded-lg p-3 ${
+                        message.role === 'user'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-secondary-foreground'
+                      }`}
+                    >
+                      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                      <p className="text-xs opacity-70 mt-1">
+                        {message.timestamp.toLocaleTimeString()}
+                      </p>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-            
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
+              ))}
+              
+              {isLoading && (
+                <div className="flex gap-3 justify-start">
+                  <div className="flex gap-2">
+                    <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
+                      <Bot className="h-4 w-4 text-secondary-foreground" />
+                    </div>
+                    <div className="bg-secondary rounded-lg p-3">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-sm">Assistente está digitando...</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
 
-        {/* Input de mensagem */}
-        <div className="flex gap-2">
-          <Input
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={
-              selectedAssistant 
-                ? "Digite sua mensagem..." 
-                : "Selecione um assistente primeiro"
-            }
-            disabled={!selectedAssistant || isLoading}
-            className="flex-1"
-          />
-          <Button
-            onClick={sendMessage}
-            disabled={!inputMessage.trim() || !selectedAssistant || isLoading}
-            size="icon"
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+          {/* Input de mensagem */}
+          <div className="flex gap-2 flex-shrink-0">
+            <Input
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={
+                selectedAssistant 
+                  ? "Digite sua mensagem..." 
+                  : "Selecione um assistente primeiro"
+              }
+              disabled={!selectedAssistant || isLoading}
+              className="flex-1"
+            />
+            <Button
+              onClick={sendMessage}
+              disabled={!inputMessage.trim() || !selectedAssistant || isLoading}
+              size="icon"
+              className="flex-shrink-0"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
