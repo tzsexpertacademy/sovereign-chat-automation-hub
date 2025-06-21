@@ -22,7 +22,7 @@ function App() {
         <div className="min-h-screen bg-background">
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/*" element={<AdminDashboard />} />
             <Route path="/client/:clientId" element={<ClientDashboard />} />
             <Route path="/client/:clientId/chat" element={<ClientDashboard />} />
             <Route path="/client/:clientId/funnel" element={<FunnelPage />} />

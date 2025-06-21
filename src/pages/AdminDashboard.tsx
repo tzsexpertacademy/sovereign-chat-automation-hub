@@ -18,11 +18,11 @@ const AdminDashboard = () => {
           <AdminHeader />
           <main className="flex-1 p-6">
             <Routes>
-              <Route path="/" element={<Navigate to="/admin/overview" replace />} />
-              <Route path="/overview" element={<AdminOverview />} />
-              <Route path="/clients" element={<ClientsManagement />} />
-              <Route path="/instances" element={<InstancesMonitor />} />
-              <Route path="/logs" element={<SystemLogs />} />
+              <Route path="/" element={<Navigate to="overview" replace />} />
+              <Route path="overview" element={<AdminOverview />} />
+              <Route path="clients" element={<ClientsManagement />} />
+              <Route path="instances" element={<InstancesMonitor />} />
+              <Route path="logs" element={<SystemLogs />} />
             </Routes>
           </main>
         </div>

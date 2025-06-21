@@ -15,10 +15,10 @@ import {
 } from "@/components/ui/sidebar";
 
 const adminItems = [
-  { title: "Overview", url: "/admin/overview", icon: BarChart3 },
-  { title: "Clientes", url: "/admin/clients", icon: Users },
-  { title: "Instâncias", url: "/admin/instances", icon: Activity },
-  { title: "Logs", url: "/admin/logs", icon: FileText },
+  { title: "Overview", url: "overview", icon: BarChart3 },
+  { title: "Clientes", url: "clients", icon: Users },
+  { title: "Instâncias", url: "instances", icon: Activity },
+  { title: "Logs", url: "logs", icon: FileText },
 ];
 
 const AdminSidebar = () => {
@@ -27,7 +27,7 @@ const AdminSidebar = () => {
   const currentPath = location.pathname;
   const collapsed = state === "collapsed";
 
-  const isActive = (path: string) => currentPath === path;
+  const isActive = (path: string) => currentPath.endsWith(path);
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive ? "bg-green-100 text-green-700 font-medium" : "hover:bg-gray-100";
 
@@ -56,7 +56,9 @@ const AdminSidebar = () => {
               {adminItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <NavLink to={item.url} className={getNavCls}>
+                    <NavLink to={item.url} className={({ isActive }) => 
+                      isActive ? "bg-green-100 text-green-700 font-medium" : "hover:bg-gray-100"
+                    }>
                       <item.icon className="mr-3 h-5 w-5" />
                       {!collapsed && <span>{item.title}</span>}
                     </NavLink>
