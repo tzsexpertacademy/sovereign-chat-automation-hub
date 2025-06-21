@@ -1,4 +1,3 @@
-
 import { io } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from "@/integrations/supabase/client";
@@ -169,6 +168,20 @@ export class WhatsAppMultiClientService {
       return response.ok;
     } catch (error) {
       return false;
+    }
+  }
+
+  async checkServerHealth(): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/health`);
+      if (!response.ok) {
+        throw new Error(`Erro ao verificar saúde do servidor: ${response.status}`);
+      }
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao verificar saúde do servidor:', error);
+      throw error;
     }
   }
 
@@ -592,20 +605,6 @@ export class WhatsAppMultiClientService {
       return data;
     } catch (error: any) {
       console.error('Erro ao obter contatos:', error);
-      throw error;
-    }
-  }
-
-  async diagnoseClient(clientId: string): Promise<any> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/diagnose/${clientId}`);
-      if (!response.ok) {
-        throw new Error(`Erro ao diagnosticar cliente: ${response.status}`);
-      }
-      const data = await response.json();
-      return data;
-    } catch (error: any) {
-      console.error('Erro ao diagnosticar cliente:', error);
       throw error;
     }
   }

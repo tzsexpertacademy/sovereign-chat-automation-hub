@@ -9,10 +9,20 @@ interface MediaFile {
   type: 'image' | 'video' | 'audio' | 'document';
 }
 
+interface AudioRecordingState {
+  audioBlob: Blob | null;
+  isRecording: boolean;
+  duration: number;
+}
+
 export const useMessageMedia = (clientId: string) => {
   const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [audioRecording, setAudioRecording] = useState<Blob | null>(null);
+  const [audioRecording, setAudioRecording] = useState<AudioRecordingState>({
+    audioBlob: null,
+    isRecording: false,
+    duration: 0
+  });
   const { toast } = useToast();
 
   const handleImageUpload = async (file: File, chatId: string, caption?: string) => {
@@ -113,6 +123,9 @@ export const useMessageMedia = (clientId: string) => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
+      const startTime = Date.now();
+
+      setAudioRecording(prev => ({ ...prev, isRecording: true, duration: 0 }));
 
       mediaRecorder.ondataavailable = (event) => {
         chunks.push(event.data);
@@ -120,12 +133,18 @@ export const useMessageMedia = (clientId: string) => {
 
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(chunks, { type: 'audio/wav' });
-        setAudioRecording(audioBlob);
+        const duration = Math.round((Date.now() - startTime) / 1000);
+        setAudioRecording({
+          audioBlob,
+          isRecording: false,
+          duration
+        });
       };
 
       mediaRecorder.start();
       return mediaRecorder;
     } catch (error: any) {
+      setAudioRecording(prev => ({ ...prev, isRecording: false }));
       toast({
         title: "Erro ao iniciar gravação",
         description: error.message,
@@ -140,10 +159,11 @@ export const useMessageMedia = (clientId: string) => {
       mediaRecorder.stop();
       mediaRecorder.stream.getTracks().forEach(track => track.stop());
     }
+    setAudioRecording(prev => ({ ...prev, isRecording: false }));
   };
 
   const sendAudioRecording = async (chatId: string) => {
-    if (!audioRecording) return;
+    if (!audioRecording.audioBlob) return;
 
     try {
       setIsUploading(true);
@@ -158,9 +178,13 @@ export const useMessageMedia = (clientId: string) => {
           filename: 'audio.wav'
         });
       };
-      reader.readAsDataURL(audioRecording);
+      reader.readAsDataURL(audioRecording.audioBlob);
       
-      setAudioRecording(null);
+      setAudioRecording({
+        audioBlob: null,
+        isRecording: false,
+        duration: 0
+      });
       
       toast({
         title: "Áudio enviado",
@@ -179,6 +203,11 @@ export const useMessageMedia = (clientId: string) => {
 
   const clearSelectedMedia = () => {
     setSelectedMedia(null);
+    setAudioRecording({
+      audioBlob: null,
+      isRecording: false,
+      duration: 0
+    });
   };
 
   return {
