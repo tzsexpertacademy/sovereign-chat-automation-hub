@@ -85,8 +85,8 @@ export const ticketsService = {
     return (data || []).map(ticket => ({
       ...ticket,
       status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
-      tags: Array.isArray(ticket.tags) ? ticket.tags : [],
-      custom_fields: typeof ticket.custom_fields === 'object' ? ticket.custom_fields : {},
+      tags: Array.isArray(ticket.tags) ? ticket.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+      custom_fields: typeof ticket.custom_fields === 'object' && ticket.custom_fields !== null ? ticket.custom_fields : {},
       internal_notes: Array.isArray(ticket.internal_notes) ? ticket.internal_notes : []
     }));
   },
@@ -110,8 +110,8 @@ export const ticketsService = {
     return {
       ...data,
       status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
-      tags: Array.isArray(data.tags) ? data.tags : [],
-      custom_fields: typeof data.custom_fields === 'object' ? data.custom_fields : {},
+      tags: Array.isArray(data.tags) ? data.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+      custom_fields: typeof data.custom_fields === 'object' && data.custom_fields !== null ? data.custom_fields : {},
       internal_notes: Array.isArray(data.internal_notes) ? data.internal_notes : []
     };
   },
@@ -276,7 +276,7 @@ export const ticketsService = {
     
     return (data || []).map(event => ({
       ...event,
-      metadata: typeof event.metadata === 'object' ? event.metadata : {}
+      metadata: typeof event.metadata === 'object' && event.metadata !== null ? event.metadata : {}
     }));
   },
 
