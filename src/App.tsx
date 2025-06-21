@@ -11,7 +11,6 @@ import Index from "@/pages/Index";
 import AdminDashboard from "@/pages/AdminDashboard";
 import ClientDashboard from "@/pages/ClientDashboard";
 import NotFound from "@/pages/NotFound";
-import FunnelPage from "@/pages/FunnelPage";
 
 const queryClient = new QueryClient();
 

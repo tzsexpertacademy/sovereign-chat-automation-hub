@@ -9,6 +9,7 @@ export type QueueUpdate = TablesUpdate<"queues">;
 export interface QueueWithAssistant extends Queue {
   assistants?: Tables<"assistants"> | null;
   instance_queue_connections?: Tables<"instance_queue_connections">[];
+  tags?: Tables<"funnel_tags">[];
 }
 
 export const queuesService = {
@@ -152,5 +153,52 @@ export const queuesService = {
     if (error && error.code !== 'PGRST116') throw error;
     
     return !!data;
+  },
+
+  // Métodos para estatísticas e análise
+  async getQueueStats(clientId: string) {
+    const queues = await this.getClientQueues(clientId);
+    
+    return {
+      total: queues.length,
+      active: queues.filter(q => q.is_active).length,
+      withAssistants: queues.filter(q => q.assistant_id).length,
+      withConnections: queues.filter(q => 
+        q.instance_queue_connections && q.instance_queue_connections.length > 0
+      ).length
+    };
+  },
+
+  // Métodos para busca e filtros
+  async searchQueues(clientId: string, searchTerm: string): Promise<QueueWithAssistant[]> {
+    const { data, error } = await supabase
+      .from("queues")
+      .select(`
+        *,
+        assistants(*),
+        instance_queue_connections(*)
+      `)
+      .eq("client_id", clientId)
+      .or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getQueuesByAssistant(assistantId: string): Promise<QueueWithAssistant[]> {
+    const { data, error } = await supabase
+      .from("queues")
+      .select(`
+        *,
+        assistants(*),
+        instance_queue_connections(*)
+      `)
+      .eq("assistant_id", assistantId)
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+    return data || [];
   }
 };

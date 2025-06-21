@@ -12,6 +12,7 @@ import WhatsAppConnection from "@/components/client/WhatsAppConnection";
 import AssistantsManager from "@/components/client/AssistantsManager";
 import BookingManager from "@/components/booking/BookingManager";
 import FunnelKanban from "@/components/client/FunnelKanban";
+import QueuesManager from "@/components/client/QueuesManager";
 
 const ClientDashboard = () => {
   const { clientId } = useParams();
@@ -33,7 +34,7 @@ const ClientDashboard = () => {
               <Route path="chat" element={<ChatInterface />} />
               <Route path="funnel" element={<FunnelKanban clientId={clientId} />} />
               <Route path="assistants" element={<AssistantsManager />} />
-              <Route path="queues" element={<div>Filas em desenvolvimento</div>} />
+              <Route path="queues" element={<QueuesManager />} />
               <Route path="instances" element={<div>Instâncias em desenvolvimento</div>} />
               <Route path="booking" element={<BookingManager clientId={clientId} />} />
               <Route path="automation" element={<AutomationCenter />} />
