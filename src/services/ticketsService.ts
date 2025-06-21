@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 
 export interface ConversationTicket {
@@ -11,6 +12,8 @@ export interface ConversationTicket {
   priority: number;
   assigned_queue_id?: string;
   assigned_assistant_id?: string;
+  assigned_queue_name?: string;
+  assigned_assistant_name?: string;
   last_message_preview?: string;
   last_message_at: string;
   customer_satisfaction_score?: number;
@@ -87,11 +90,15 @@ export class TicketsService {
 
     console.log('✅ Tickets encontrados:', data?.length || 0);
     
-    // Mapear dados incluindo nome da fila
-    const mappedTickets = (data || []).map(ticket => ({
+    // Mapear dados com correção de tipos
+    const mappedTickets: ConversationTicket[] = (data || []).map(ticket => ({
       ...ticket,
-      assigned_queue_name: ticket.queues?.name,
-      assigned_assistant_name: ticket.assistants?.name
+      status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
+      assigned_queue_name: ticket.queues?.name || undefined,
+      assigned_assistant_name: ticket.assistants?.name || undefined,
+      tags: Array.isArray(ticket.tags) ? ticket.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+      custom_fields: typeof ticket.custom_fields === 'object' && ticket.custom_fields !== null ? ticket.custom_fields : {},
+      internal_notes: Array.isArray(ticket.internal_notes) ? ticket.internal_notes : []
     }));
 
     return mappedTickets;

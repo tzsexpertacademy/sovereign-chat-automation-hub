@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -134,14 +133,11 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
 
     // Fila ativa - mostrar nome da fila e assistente se existir
     if (ticket.assigned_queue_id && !isHumanAssigned) {
-      // Buscar dados da fila e assistente dos tickets carregados
-      const queueInfo = tickets.find(t => t.id === ticket.id);
-      
-      if (queueInfo) {
+      if (ticket.assigned_queue_name) {
         badges.push(
           <Badge key="queue-assistant" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
             <Bot className="w-3 h-3 mr-1" />
-            Fila {queueInfo.assigned_queue_name || 'Ativa'}
+            {ticket.assigned_queue_name}
           </Badge>
         );
       } else {
