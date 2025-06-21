@@ -19,7 +19,6 @@ import { useTicketRealtime } from "@/hooks/useTicketRealtime";
 import { useTicketMessages } from "@/hooks/useTicketMessages";
 import { useMessageStatus } from "@/hooks/useMessageStatus";
 import { useTypingStatus } from "@/hooks/useTypingStatus";
-import { useWhatsAppTypingEvents } from "@/hooks/useWhatsAppTypingEvents";
 import AutomaticProcessorStatus from './AutomaticProcessorStatus';
 import TypingIndicator from './TypingIndicator';
 import MessageStatus from './MessageStatus';
@@ -44,12 +43,11 @@ const TicketChatInterface = () => {
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Hooks para tempo real - Enhanced with WhatsApp integration
+  // Hooks para tempo real
   const { tickets, isLoading, reloadTickets, isTyping: assistantTyping } = useTicketRealtime(clientId || '');
   const { messages: ticketMessages, isLoading: loadingMessages } = useTicketMessages(selectedTicket?.id || null);
-  const { getMessageStatus, updateMessageStatus, markMessageAsRead, markMessageAsFailed } = useMessageStatus(clientId, selectedTicket?.chat_id);
-  const { isTyping, isRecording, startTyping, stopTyping, startRecording, stopRecording } = useTypingStatus(clientId, selectedTicket?.chat_id);
-  const { isContactTyping, getTypingContact } = useWhatsAppTypingEvents(clientId || '');
+  const { getMessageStatus, updateMessageStatus, markMessageAsRead, markMessageAsFailed } = useMessageStatus();
+  const { isTyping, isRecording, startTyping, stopTyping, startRecording, stopRecording } = useTypingStatus();
 
   // Auto scroll para última mensagem
   const scrollToBottom = () => {
@@ -186,11 +184,10 @@ const TicketChatInterface = () => {
       // Marcar como enviando
       updateMessageStatus(tempMessageId, 'sending');
       
-      // Parar indicador de digitação (também para o WhatsApp)
-      await stopTyping();
+      // Parar indicador de digitação
+      stopTyping();
       
-      // Send message to WhatsApp
-      const result = await whatsappService.sendMessage(clientId, selectedTicket.chat_id, newMessage);
+      await whatsappService.sendMessage(clientId, selectedTicket.chat_id, newMessage);
       
       // Marcar como enviada
       updateMessageStatus(tempMessageId, 'sent');
@@ -198,7 +195,7 @@ const TicketChatInterface = () => {
       // Adicionar mensagem ao ticket
       await ticketsService.addTicketMessage({
         ticket_id: selectedTicket.id,
-        message_id: result.messageId || tempMessageId,
+        message_id: tempMessageId,
         from_me: true,
         sender_name: "Operador",
         content: newMessage,
@@ -213,13 +210,13 @@ const TicketChatInterface = () => {
       
       // Simular entrega após 2 segundos
       setTimeout(() => {
-        updateMessageStatus(result.messageId || tempMessageId, 'delivered');
+        updateMessageStatus(tempMessageId, 'delivered');
         console.log('📦 Mensagem marcada como entregue');
       }, 2000);
       
-      // Marcar como lida automaticamente após 5 segundos (quando assistente "vê" a mensagem)
+      // Simular leitura após 5 segundos (quando assistente "vê" a mensagem)
       setTimeout(() => {
-        markMessageAsRead(result.messageId || tempMessageId);
+        markMessageAsRead(tempMessageId);
         console.log('👁️ Mensagem marcada como lida (V azul)');
       }, 5000);
       
@@ -229,7 +226,7 @@ const TicketChatInterface = () => {
       });
     } catch (error: any) {
       updateMessageStatus(tempMessageId, 'failed');
-      await stopTyping();
+      stopTyping();
       console.error('❌ Erro ao enviar mensagem:', error);
       toast({
         title: "Erro ao enviar",
@@ -365,26 +362,6 @@ const TicketChatInterface = () => {
     }
     
     return 'Contato sem nome';
-  };
-
-  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setNewMessage(value);
-    
-    if (value.trim() && !isTyping) {
-      await startTyping();
-    } else if (!value.trim() && isTyping) {
-      await stopTyping();
-    }
-  };
-
-  const handleInputBlur = async () => {
-    // Delay para não parar digitação imediatamente
-    setTimeout(async () => {
-      if (isTyping) {
-        await stopTyping();
-      }
-    }, 1000);
   };
 
   return (
@@ -813,22 +790,11 @@ const TicketChatInterface = () => {
                           </div>
                         )}
                         
-                        {/* Indicador de digitação do contato (do WhatsApp) */}
-                        {selectedTicket && isContactTyping(selectedTicket.chat_id) && (
-                          <div className="flex justify-start">
-                            <TypingIndicator 
-                              isTyping={true}
-                              isRecording={false}
-                              senderName={getTypingContact(selectedTicket.chat_id) || "Contato"}
-                            />
-                          </div>
-                        )}
-                        
                         <div ref={messagesEndRef} />
                       </div>
                     </ScrollArea>
 
-                    {/* Input de Mensagem - Enhanced */}
+                    {/* Input de Mensagem */}
                     <div className="border-t p-4">
                       <div className="flex space-x-2">
                         <Button variant="ghost" size="sm">
@@ -837,13 +803,23 @@ const TicketChatInterface = () => {
                         <Input
                           placeholder="Digite sua mensagem..."
                           value={newMessage}
-                          onChange={handleInputChange}
-                          onKeyPress={async (e) => {
-                            if (e.key === 'Enter') {
-                              await handleSendMessage();
+                          onChange={(e) => {
+                            setNewMessage(e.target.value);
+                            if (e.target.value.trim() && !isTyping) {
+                              startTyping();
+                            } else if (!e.target.value.trim() && isTyping) {
+                              stopTyping();
                             }
                           }}
-                          onBlur={handleInputBlur}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSendMessage();
+                            }
+                          }}
+                          onBlur={() => {
+                            // Delay para não parar digitação imediatamente
+                            setTimeout(() => stopTyping(), 1000);
+                          }}
                           className="flex-1"
                         />
                         <Button 
