@@ -7,6 +7,8 @@ import { assistantsService } from '@/services/assistantsService';
 import { aiConfigService } from '@/services/aiConfigService';
 import { useMessageBatch } from './useMessageBatch';
 import { useHumanizedResponse } from './useHumanizedResponse';
+import { useConversationStatus } from './useConversationStatus';
+import { useMessageReactions } from './useMessageReactions';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -21,45 +23,13 @@ export const useTicketRealtime = (clientId: string) => {
   // Hook para humanização de respostas
   const { sendHumanizedResponse, maintainOnlineStatus } = useHumanizedResponse({ clientId });
 
-  // Função para processar lote de mensagens
-  const processBatchedMessages = async (messages: any[], chatId: string) => {
-    if (messages.length === 0) return;
-    
-    console.log(`🎯 Processando lote de ${messages.length} mensagens para ${chatId}`);
-    
-    try {
-      // Buscar o ticket correspondente
-      const ticket = tickets.find(t => t.chat_id === chatId);
-      if (!ticket) {
-        console.error('❌ Ticket não encontrado para chat:', chatId);
-        return;
-      }
+  // Hook para status de conversação
+  const { shouldPauseAssistant, markClientResponding, markClientStoppedResponding } = useConversationStatus(clientId);
 
-      // Combinar todas as mensagens do lote em contexto
-      const combinedText = messages.map(msg => msg.text).join(' ');
-      console.log(`📝 Texto combinado: ${combinedText.substring(0, 100)}...`);
+  // Hook para reações automáticas
+  const { processMessageForReaction, generateReactionPrompt } = useMessageReactions(clientId);
 
-      // Processar com o assistente usando o contexto completo
-      await processMessageWithAssistant({
-        id: messages[messages.length - 1].id,
-        body: combinedText,
-        from: chatId,
-        timestamp: Date.now(),
-        type: 'text'
-      }, ticket.id);
-
-    } catch (error) {
-      console.error('❌ Erro ao processar lote de mensagens:', error);
-    }
-  };
-
-  // Hook de agrupamento de mensagens (5 segundos)
-  const { addMessage: addToBatch } = useMessageBatch({
-    batchTimeoutSeconds: 5,
-    onProcessBatch: processBatchedMessages
-  });
-
-  // Carregar tickets iniciais
+  // Função para carregar tickets iniciais
   const loadTickets = async () => {
     if (isLoadingRef.current || !clientId) return;
     
@@ -120,13 +90,67 @@ export const useTicketRealtime = (clientId: string) => {
     return `Contato ${phone || 'Desconhecido'}`;
   };
 
-  // Processar mensagem com assistente automático (versão atualizada com humanização)
+  // Função para processar lote de mensagens (atualizada com verificação de pausa)
+  const processBatchedMessages = async (messages: any[], chatId: string) => {
+    if (messages.length === 0) return;
+    
+    // Verificar se assistente deve pausar para este chat
+    if (shouldPauseAssistant(chatId)) {
+      console.log('⏸️ Assistente pausado - cliente está respondendo:', chatId);
+      return;
+    }
+    
+    console.log(`🎯 Processando lote de ${messages.length} mensagens para ${chatId}`);
+    
+    try {
+      // Buscar o ticket correspondente
+      const ticket = tickets.find(t => t.chat_id === chatId);
+      if (!ticket) {
+        console.error('❌ Ticket não encontrado para chat:', chatId);
+        return;
+      }
+
+      // Combinar todas as mensagens do lote em contexto
+      const combinedText = messages.map(msg => msg.text).join(' ');
+      console.log(`📝 Texto combinado: ${combinedText.substring(0, 100)}...`);
+
+      // Processar reação se apropriada
+      const lastMessage = messages[messages.length - 1];
+      await processMessageForReaction(chatId, lastMessage.id, combinedText);
+
+      // Processar com o assistente usando o contexto completo
+      await processMessageWithAssistant({
+        id: messages[messages.length - 1].id,
+        body: combinedText,
+        from: chatId,
+        timestamp: Date.now(),
+        type: 'text'
+      }, ticket.id);
+
+    } catch (error) {
+      console.error('❌ Erro ao processar lote de mensagens:', error);
+    }
+  };
+
+  // Hook de agrupamento de mensagens (5 segundos)
+  const { addMessage: addToBatch } = useMessageBatch({
+    batchTimeoutSeconds: 5,
+    onProcessBatch: processBatchedMessages
+  });
+
+  // Processar mensagem com assistente automático (atualizada com sistema de reações)
   const processMessageWithAssistant = async (message: any, ticketId: string) => {
     const messageKey = `${message.id}_${ticketId}`;
     
     // Evitar processamento duplicado
     if (processingQueueRef.current.has(messageKey)) {
       console.log('⏭️ Mensagem já está sendo processada, ignorando:', messageKey);
+      return;
+    }
+
+    // Verificar se assistente deve pausar
+    if (shouldPauseAssistant(message.from)) {
+      console.log('⏸️ Assistente pausado - cliente está respondendo:', message.from);
       return;
     }
 
@@ -206,6 +230,9 @@ export const useTicketRealtime = (clientId: string) => {
           content: msg.content || ''
         }));
 
+      // Gerar prompt adicional baseado em reações
+      const reactionPrompt = generateReactionPrompt(message.body || '');
+
       console.log(`🔄 Enviando para OpenAI com ${recentMessages.length} mensagens de contexto`);
 
       // Chamar a API da OpenAI com timeout
@@ -220,7 +247,7 @@ export const useTicketRealtime = (clientId: string) => {
           messages: [
             {
               role: 'system',
-              content: assistant.prompt || 'Você é um assistente útil.'
+              content: (assistant.prompt || 'Você é um assistente útil.') + reactionPrompt
             },
             ...recentMessages,
             {
@@ -323,6 +350,16 @@ export const useTicketRealtime = (clientId: string) => {
     if (socket.connected) {
       whatsappService.joinClientRoom(clientId);
     }
+
+    // Listener para detectar quando cliente está digitando/respondendo
+    whatsappService.onClientTyping(clientId, (data) => {
+      console.log('⌨️ Cliente digitando detectado:', data);
+      if (data.isTyping) {
+        markClientResponding(data.chatId);
+      } else {
+        markClientStoppedResponding(data.chatId);
+      }
+    });
 
     // Listener para novas mensagens do WhatsApp via WebSocket
     const handleNewWhatsAppMessage = async (message: any) => {
@@ -471,7 +508,7 @@ export const useTicketRealtime = (clientId: string) => {
       // Limpar fila de processamento
       processingQueueRef.current.clear();
     };
-  }, [clientId, addToBatch, sendHumanizedResponse, maintainOnlineStatus]);
+  }, [clientId, addToBatch, sendHumanizedResponse, maintainOnlineStatus, shouldPauseAssistant]);
 
   return {
     tickets,

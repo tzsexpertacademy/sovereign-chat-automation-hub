@@ -1,19 +1,10 @@
-
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { 
-  Wifi, 
-  WifiOff, 
-  RefreshCw, 
-  Server, 
-  AlertCircle,
-  CheckCircle,
-  ExternalLink
-} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { AlertCircle, CheckCircle, RefreshCw, Settings, Wifi, WifiOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import whatsappService from "@/services/whatsappMultiClient";
+import { whatsappService } from '@/services/whatsappMultiClient'; // Corrigindo importação
 import { SERVER_URL } from "@/config/environment";
 
 const WhatsAppSystemStatus = () => {

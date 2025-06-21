@@ -326,6 +326,38 @@ class WhatsAppMultiClientService {
       return false;
     }
   }
+
+  // Nova função para detectar quando cliente está respondendo
+  onClientTyping(clientId: string, callback: (data: { chatId: string, isTyping: boolean }) => void): void {
+    if (this.socket) {
+      const typingEvent = `client_typing_${clientId}`;
+      console.log(`🎧 Listener configurado para: ${typingEvent}`);
+      this.socket.on(typingEvent, callback);
+    }
+  }
+
+  // Nova função para notificar que cliente marcou conversa para responder
+  async notifyClientResponding(clientId: string, chatId: string): Promise<boolean> {
+    try {
+      console.log('📱 Notificando que cliente vai responder:', { clientId, chatId });
+      
+      const response = await fetch(`${this.baseURL}/client/${clientId}/client-responding`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, responding: true })
+      });
+
+      if (!response.ok) {
+        console.warn(`Erro ao notificar cliente respondendo: ${response.status}`);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('❌ Erro ao notificar cliente respondendo:', error);
+      return false;
+    }
+  }
 }
 
 const whatsappService = new WhatsAppMultiClientService();
