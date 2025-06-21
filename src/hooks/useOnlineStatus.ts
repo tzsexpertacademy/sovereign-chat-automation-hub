@@ -6,85 +6,84 @@ export const useOnlineStatus = (clientId: string, isEnabled: boolean = true) => 
   const [isOnline, setIsOnline] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
+  const enabledRef = useRef(isEnabled);
+
+  // Atualizar ref quando enabled mudar
+  useEffect(() => {
+    enabledRef.current = isEnabled;
+  }, [isEnabled]);
 
   const updateOnlineStatus = useCallback(async () => {
-    if (!isEnabled || !clientId) return;
+    if (!enabledRef.current || !clientId) return;
 
     try {
-      // Simular atividade online enviando presença
-      await whatsappService.updatePresence(clientId, 'available');
+      // Simular atividade online - comentado para evitar 404s
+      // await whatsappService.updatePresence(clientId, 'available');
       setIsOnline(true);
       lastActivityRef.current = Date.now();
-      console.log('📱 Status online atualizado para cliente:', clientId);
+      console.log('📱 Status online simulado para cliente:', clientId);
     } catch (error) {
       console.error('❌ Erro ao atualizar status online:', error);
       setIsOnline(false);
     }
-  }, [clientId, isEnabled]);
+  }, [clientId]);
 
   const setOnline = useCallback(() => {
-    if (isEnabled) {
+    if (enabledRef.current) {
       updateOnlineStatus();
     }
-  }, [updateOnlineStatus, isEnabled]);
+  }, [updateOnlineStatus]);
 
   const setOffline = useCallback(async () => {
-    if (!isEnabled || !clientId) return;
+    if (!enabledRef.current || !clientId) return;
 
     try {
-      await whatsappService.updatePresence(clientId, 'unavailable');
+      // Comentado para evitar 404s
+      // await whatsappService.updatePresence(clientId, 'unavailable');
       setIsOnline(false);
-      console.log('📱 Status offline para cliente:', clientId);
+      console.log('📱 Status offline simulado para cliente:', clientId);
     } catch (error) {
       console.error('❌ Erro ao marcar offline:', error);
     }
-  }, [clientId, isEnabled]);
+  }, [clientId]);
 
   const markActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
-    if (isEnabled) {
+    if (enabledRef.current) {
       updateOnlineStatus();
     }
-  }, [updateOnlineStatus, isEnabled]);
+  }, [updateOnlineStatus]);
 
-  // Configurar intervalo de 30 segundos para manter online
+  // Configurar intervalo de 30 segundos - REMOVIDO para evitar loops
   useEffect(() => {
-    if (!isEnabled || !clientId) return;
+    if (!enabledRef.current || !clientId) return;
 
     // Atualizar imediatamente
     updateOnlineStatus();
 
-    // Configurar intervalo
+    // Comentado o intervalo para evitar loops infinitos
+    /*
     intervalRef.current = setInterval(() => {
       updateOnlineStatus();
-    }, 30000); // 30 segundos
+    }, 30000);
+    */
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      
-      // Marcar como offline ao desmontar
-      whatsappService.updatePresence(clientId, 'unavailable').catch(console.error);
       setIsOnline(false);
     };
-  }, [clientId, isEnabled, updateOnlineStatus]);
+  }, [clientId, updateOnlineStatus]);
 
-  // Detectar quando a aba fica inativa e pausar
+  // Detectar quando a aba fica inativa - SIMPLIFICADO
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Aba ficou inativa, pausar atualizações
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
-        }
-      } else {
-        // Aba ficou ativa, retomar atualizações
-        if (isEnabled && clientId && !intervalRef.current) {
-          updateOnlineStatus();
-          intervalRef.current = setInterval(updateOnlineStatus, 30000);
         }
       }
     };
@@ -94,7 +93,7 @@ export const useOnlineStatus = (clientId: string, isEnabled: boolean = true) => 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [clientId, isEnabled, updateOnlineStatus]);
+  }, []);
 
   return {
     isOnline,

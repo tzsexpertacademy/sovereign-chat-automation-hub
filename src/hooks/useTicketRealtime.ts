@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -7,7 +8,6 @@ import { aiConfigService } from '@/services/aiConfigService';
 import { useAutoReactions } from './useAutoReactions';
 import { useHumanizedTyping } from './useHumanizedTyping';
 import { useMessageBatch } from './useMessageBatch';
-import { useOnlineStatus } from './useOnlineStatus';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -25,7 +25,6 @@ export const useTicketRealtime = (clientId: string) => {
   // Hooks para funcionalidades humanizadas
   const autoReactions = useAutoReactions(clientId);
   const humanizedTyping = useHumanizedTyping(clientId);
-  const onlineStatus = useOnlineStatus(clientId);
 
   // Hook para agrupamento de mensagens
   const messageBatch = useMessageBatch(useCallback(async (chatId: string, messages: any[]) => {
@@ -65,7 +64,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar mensagem com assistente seguindo o fluxo das filas - MELHORADO
+  // Processar mensagem com assistente seguindo o fluxo das filas
   const processWithAssistant = useCallback(async (message: any, ticketId: string, messagesBatch?: any[]) => {
     const messageKey = `${message.id}_${message.from}_${message.timestamp}`;
     
@@ -104,29 +103,15 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
 
-      // 4. Buscar fila ativa com assistente CONECTADA À INSTÂNCIA
-      const instanceId = message.instanceId || message.instance_id;
-      let activeQueue = null;
-      
-      if (instanceId) {
-        const instanceConnections = await queuesService.getInstanceConnections(instanceId);
-        activeQueue = instanceConnections.find(queue => 
-          queue.is_active && 
-          queue.assistants && 
-          queue.assistants.is_active
-        );
-      }
-      
-      if (!activeQueue) {
-        activeQueue = queues.find((queue: any) => 
-          queue.is_active && 
-          queue.assistants && 
-          queue.assistants.is_active
-        );
-      }
+      // 4. Buscar fila ativa com assistente
+      const activeQueue = queues.find((queue: any) => 
+        queue.is_active && 
+        queue.assistants && 
+        queue.assistants.is_active
+      );
 
       if (!activeQueue || !activeQueue.assistants) {
-        console.log('⚠️ Nenhuma fila ativa com assistente encontrada para a instância:', instanceId);
+        console.log('⚠️ Nenhuma fila ativa com assistente encontrada');
         return;
       }
 
@@ -142,14 +127,13 @@ export const useTicketRealtime = (clientId: string) => {
           content: msg.content || ''
         }));
 
-      // 6. Preparar mensagem contextual com lote se houver
+      // 6. Preparar mensagem contextual
       let messageContent = message.body || message.text || '';
       if (messagesBatch && messagesBatch.length > 1) {
         messageContent = messagesBatch
           .map(msg => msg.body || msg.text || '')
           .filter(text => text.trim())
           .join('\n');
-        console.log(`📦 Processando lote de ${messagesBatch.length} mensagens em conjunto`);
       }
 
       // 7. Preparar configurações avançadas
@@ -175,7 +159,7 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('Erro ao parse das configurações avançadas:', error);
       }
 
-      // 8. Simular digitação/gravação humana ANTES de processar
+      // 8. Simular digitação humana
       setAssistantTyping(true);
       const isAudioResponse = assistant.advanced_settings?.voice_cloning_enabled;
       await humanizedTyping.simulateHumanTyping(message.from, messageContent, isAudioResponse);
@@ -234,10 +218,7 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date().toISOString()
         });
 
-        console.log('✅ Resposta automática enviada e registrada via fila:', activeQueue.name);
-        
-      } else {
-        console.log('⚠️ Assistente não gerou resposta válida');
+        console.log('✅ Resposta automática enviada e registrada');
       }
 
     } catch (error) {
@@ -276,16 +257,13 @@ export const useTicketRealtime = (clientId: string) => {
     return `Contato ${phone || 'Desconhecido'}`;
   }, []);
 
-  // Configurar listeners - CONTROLADO PARA EVITAR LOOPS
+  // Configurar listeners - EVITANDO LOOPS
   useEffect(() => {
     if (!clientId || initializationRef.current) return;
 
     console.log('🔌 Configurando listeners de tempo real para cliente:', clientId);
     initializationRef.current = true;
     mountedRef.current = true;
-
-    // Inicializar status online
-    onlineStatus.setOnline();
 
     // Carregar tickets inicial
     loadTickets();
@@ -310,15 +288,14 @@ export const useTicketRealtime = (clientId: string) => {
       setIsOnline(true);
     }
 
-    // Listener para novas mensagens do WhatsApp com agrupamento
+    // Listener para novas mensagens do WhatsApp
     const handleNewWhatsAppMessage = async (message: any) => {
       console.log('📨 Nova mensagem WhatsApp recebida:', {
         id: message.id,
         from: message.from,
         body: message.body?.substring(0, 50),
         fromMe: message.fromMe,
-        timestamp: message.timestamp,
-        instanceId: message.instanceId
+        timestamp: message.timestamp
       });
       
       const messageKey = `${message.id}_${message.from}_${message.timestamp}`;
@@ -372,11 +349,12 @@ export const useTicketRealtime = (clientId: string) => {
         async (payload) => {
           console.log('🔄 Ticket atualizado via Supabase:', payload.eventType);
           
+          // Debounce para evitar muitas chamadas
           setTimeout(() => {
             if (!isLoadingRef.current && mountedRef.current) {
               loadTickets();
             }
-          }, 500);
+          }, 1000);
         }
       )
       .subscribe();
@@ -388,8 +366,6 @@ export const useTicketRealtime = (clientId: string) => {
       initializationRef.current = false;
       mountedRef.current = false;
       
-      onlineStatus.setOffline();
-      
       if (socketRef.current) {
         socketRef.current.off(messageEvent, handleNewWhatsAppMessage);
         socketRef.current.disconnect();
@@ -400,7 +376,7 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       setIsOnline(false);
     };
-  }, [clientId, loadTickets, messageBatch, onlineStatus]);
+  }, [clientId]); // Removido outras dependências que causavam loops
 
   const reloadTickets = useCallback(() => {
     console.log('🔄 Recarregamento manual solicitado');
@@ -413,7 +389,7 @@ export const useTicketRealtime = (clientId: string) => {
     tickets,
     isLoading,
     isTyping: assistantTyping,
-    isOnline: isOnline || onlineStatus.isOnline,
+    isOnline,
     reloadTickets
   };
 };
