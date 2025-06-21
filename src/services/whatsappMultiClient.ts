@@ -1,4 +1,3 @@
-
 import { io } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from "@/integrations/supabase/client";
@@ -83,7 +82,7 @@ export class WhatsAppMultiClientService {
   private socket: any;
 
   constructor() {
-    this.baseUrl = import.meta.env.VITE_WHATSAPP_API_URL || 'https://146.59.227.248';
+    this.baseUrl = import.meta.env.VITE_WHATSAPP_API_URL || 'http://146.59.227.248:4000';
     this.socket = null;
   }
 
@@ -165,7 +164,7 @@ export class WhatsAppMultiClientService {
 
   async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/health`);
+      const response = await fetch(`${this.baseUrl}/health`);
       return response.ok;
     } catch (error) {
       return false;
@@ -174,7 +173,7 @@ export class WhatsAppMultiClientService {
 
   async checkServerHealth(): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/health`);
+      const response = await fetch(`${this.baseUrl}/health`);
       if (!response.ok) {
         throw new Error(`Erro ao verificar saúde do servidor: ${response.status}`);
       }
@@ -188,7 +187,7 @@ export class WhatsAppMultiClientService {
 
   async getAllClients(): Promise<WhatsAppClient[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/clients`);
+      const response = await fetch(`${this.baseUrl}/clients`);
       if (!response.ok) {
         throw new Error(`Erro ao obter clientes: ${response.status}`);
       }
@@ -202,7 +201,7 @@ export class WhatsAppMultiClientService {
 
   async connectClient(clientId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/connect`, {
+      const response = await fetch(`${this.baseUrl}/connect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -224,7 +223,7 @@ export class WhatsAppMultiClientService {
 
   async disconnectClient(clientId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/disconnect`, {
+      const response = await fetch(`${this.baseUrl}/disconnect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -246,7 +245,7 @@ export class WhatsAppMultiClientService {
 
   async getClientStatus(clientId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/status/${clientId}`);
+      const response = await fetch(`${this.baseUrl}/status/${clientId}`);
       if (!response.ok) {
         throw new Error(`Erro ao obter status do cliente: ${response.status}`);
       }
@@ -260,7 +259,7 @@ export class WhatsAppMultiClientService {
 
   async getChats(clientId: string): Promise<ChatData[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chats/${clientId}`);
+      const response = await fetch(`${this.baseUrl}/chats/${clientId}`);
       if (!response.ok) {
         throw new Error(`Erro ao obter chats: ${response.status}`);
       }
@@ -274,7 +273,7 @@ export class WhatsAppMultiClientService {
 
   async getChatMessages(clientId: string, chatId: string, limit: number = 50): Promise<MessageData[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/messages/${clientId}/${chatId}?limit=${limit}`);
+      const response = await fetch(`${this.baseUrl}/messages/${clientId}/${chatId}?limit=${limit}`);
       if (!response.ok) {
         throw new Error(`Erro ao obter mensagens: ${response.status}`);
       }
@@ -288,7 +287,7 @@ export class WhatsAppMultiClientService {
 
   async sendMessage(clientId: string, chatId: string, message: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/sendText`, {
+      const response = await fetch(`${this.baseUrl}/sendText`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -314,7 +313,7 @@ export class WhatsAppMultiClientService {
 
   async sendMedia(clientId: string, chatId: string, media: any, options: any = {}): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/sendMedia`, {
+      const response = await fetch(`${this.baseUrl}/sendMedia`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -341,7 +340,7 @@ export class WhatsAppMultiClientService {
 
   async sendFile(clientId: string, chatId: string, file: any, options: any = {}): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/sendFile`, {
+      const response = await fetch(`${this.baseUrl}/sendFile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -368,7 +367,7 @@ export class WhatsAppMultiClientService {
 
   async uploadMedia(clientId: string, media: any): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/uploadMedia`, {
+      const response = await fetch(`${this.baseUrl}/uploadMedia`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -393,7 +392,7 @@ export class WhatsAppMultiClientService {
 
   async downloadMedia(clientId: string, mediaKey: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/downloadMedia`, {
+      const response = await fetch(`${this.baseUrl}/downloadMedia`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -418,7 +417,7 @@ export class WhatsAppMultiClientService {
 
   async sendContact(clientId: string, chatId: string, contact: any): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/sendContact`, {
+      const response = await fetch(`${this.baseUrl}/sendContact`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -444,7 +443,7 @@ export class WhatsAppMultiClientService {
 
   async sendLocation(clientId: string, chatId: string, latitude: number, longitude: number): Promise<any> {
      try {
-      const response = await fetch(`${this.baseUrl}/api/sendLocation`, {
+      const response = await fetch(`${this.baseUrl}/sendLocation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -471,7 +470,7 @@ export class WhatsAppMultiClientService {
 
   async sendLinkPreview(clientId: string, chatId: string, url: string, text: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/sendLinkPreview`, {
+      const response = await fetch(`${this.baseUrl}/sendLinkPreview`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -498,7 +497,7 @@ export class WhatsAppMultiClientService {
 
   async getInstanceQrCode(instanceId: string): Promise<string> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/qrcode/${instanceId}`);
+      const response = await fetch(`${this.baseUrl}/qrcode/${instanceId}`);
       if (!response.ok) {
         throw new Error(`Erro ao obter QRCode: ${response.status}`);
       }
@@ -512,7 +511,7 @@ export class WhatsAppMultiClientService {
 
   async startInstance(instanceId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/start`, {
+      const response = await fetch(`${this.baseUrl}/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -536,7 +535,7 @@ export class WhatsAppMultiClientService {
 
   async stopInstance(instanceId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/stop`, {
+      const response = await fetch(`${this.baseUrl}/stop`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -560,7 +559,7 @@ export class WhatsAppMultiClientService {
 
   async deleteInstance(instanceId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/delete`, {
+      const response = await fetch(`${this.baseUrl}/delete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -584,7 +583,7 @@ export class WhatsAppMultiClientService {
 
   async getInstanceInfo(instanceId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/instanceInfo/${instanceId}`);
+      const response = await fetch(`${this.baseUrl}/instanceInfo/${instanceId}`);
       if (!response.ok) {
         throw new Error(`Erro ao obter informações da instância: ${response.status}`);
       }
@@ -598,7 +597,7 @@ export class WhatsAppMultiClientService {
 
   async getAllContacts(instanceId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/contacts/${instanceId}`);
+      const response = await fetch(`${this.baseUrl}/contacts/${instanceId}`);
       if (!response.ok) {
         throw new Error(`Erro ao obter contatos: ${response.status}`);
       }
@@ -615,7 +614,7 @@ export class WhatsAppMultiClientService {
     try {
       console.log(`⌨️ ${isTyping ? 'Iniciando' : 'Parando'} indicador de digitação para ${chatId}`);
       
-      const response = await fetch(`${this.baseUrl}/api/sendPresence`, {
+      const response = await fetch(`${this.baseUrl}/sendPresence`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -643,7 +642,7 @@ export class WhatsAppMultiClientService {
     try {
       console.log(`🎤 ${isRecording ? 'Iniciando' : 'Parando'} indicador de gravação para ${chatId}`);
       
-      const response = await fetch(`${this.baseUrl}/api/sendPresence`, {
+      const response = await fetch(`${this.baseUrl}/sendPresence`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -671,7 +670,7 @@ export class WhatsAppMultiClientService {
     try {
       console.log(`👀 Marcando mensagem ${messageId} como lida em ${chatId}`);
       
-      const response = await fetch(`${this.baseUrl}/api/readMessage`, {
+      const response = await fetch(`${this.baseUrl}/readMessage`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -696,7 +695,7 @@ export class WhatsAppMultiClientService {
 
   async diagnoseClient(clientId: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/diagnose/${clientId}`);
+      const response = await fetch(`${this.baseUrl}/diagnose/${clientId}`);
       if (!response.ok) {
         throw new Error(`Erro ao diagnosticar cliente: ${response.status}`);
       }
