@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -94,23 +95,24 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                     <div className="flex-1">
                       <div className="flex items-center space-x-3">
                         <Avatar className="w-8 h-8">
-                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${chat.customer_name}`} />
+                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${chat.customer?.name || 'User'}`} />
                           <AvatarFallback>
-                            {chat.customer_name?.substring(0, 2).toUpperCase() || 'UN'}
+                            {chat.customer?.name?.substring(0, 2).toUpperCase() || 'UN'}
                           </AvatarFallback>
                         </Avatar>
                         <div className="space-y-0.5">
-                          <p className="text-sm font-medium text-gray-900">{chat.customer_name}</p>
+                          <p className="text-sm font-medium text-gray-900">{chat.customer?.name || 'Usuário Desconhecido'}</p>
                           <p className="text-xs text-gray-500 truncate">
-                            {chat.last_message?.substring(0, 50) || 'Nenhuma mensagem'}
+                            {chat.last_message_preview?.substring(0, 50) || 'Nenhuma mensagem'}
                           </p>
                         </div>
                       </div>
                     </div>
-                    {chat.unread_messages > 0 && (
+                    {/* Simulando unread messages baseado no status */}
+                    {chat.status === 'open' && (
                       <div className="ml-2">
                         <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700">
-                          {chat.unread_messages}
+                          1
                         </span>
                       </div>
                     )}
@@ -131,17 +133,17 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <Avatar className="w-10 h-10">
-                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedChat?.customer_name}`} />
+                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedChat?.customer?.name || 'User'}`} />
                     <AvatarFallback>
-                      {selectedChat?.customer_name?.substring(0, 2).toUpperCase() || 'UN'}
+                      {selectedChat?.customer?.name?.substring(0, 2).toUpperCase() || 'UN'}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <h3 className="font-medium text-gray-900">
-                      {selectedChat?.customer_name || 'Chat'}
+                      {selectedChat?.customer?.name || 'Chat'}
                     </h3>
                     <div className="flex items-center space-x-2 text-sm text-gray-500">
-                      <span>{selectedChat?.customer_phone}</span>
+                      <span>{selectedChat?.customer?.phone}</span>
                       {assistantOnline && (
                         <>
                           <span>•</span>
@@ -154,9 +156,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                     </div>
                   </div>
                 </div>
-                {/* <Button size="sm" variant="outline">
-                  Ver Detalhes
-                </Button> */}
               </div>
             </div>
 
