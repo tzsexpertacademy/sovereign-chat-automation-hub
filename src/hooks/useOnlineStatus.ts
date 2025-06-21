@@ -22,6 +22,24 @@ export const useOnlineStatus = (clientId: string, isEnabled: boolean = true) => 
     }
   }, [clientId, isEnabled]);
 
+  const setOnline = useCallback(() => {
+    if (isEnabled) {
+      updateOnlineStatus();
+    }
+  }, [updateOnlineStatus, isEnabled]);
+
+  const setOffline = useCallback(async () => {
+    if (!isEnabled || !clientId) return;
+
+    try {
+      await whatsappService.updatePresence(clientId, 'unavailable');
+      setIsOnline(false);
+      console.log('📱 Status offline para cliente:', clientId);
+    } catch (error) {
+      console.error('❌ Erro ao marcar offline:', error);
+    }
+  }, [clientId, isEnabled]);
+
   const markActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
     if (isEnabled) {
@@ -80,6 +98,8 @@ export const useOnlineStatus = (clientId: string, isEnabled: boolean = true) => 
 
   return {
     isOnline,
-    markActivity
+    markActivity,
+    setOnline,
+    setOffline
   };
 };

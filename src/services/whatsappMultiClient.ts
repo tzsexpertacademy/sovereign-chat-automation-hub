@@ -160,6 +160,96 @@ class WhatsAppMultiClientService {
     }
   }
 
+  // Indicador de digitação
+  async setTyping(clientId: string, chatId: string, isTyping: boolean): Promise<any> {
+    try {
+      console.log(`⌨️ ${isTyping ? 'Iniciando' : 'Parando'} indicador de digitação para ${chatId}`);
+      
+      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/set-typing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, isTyping })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao definir status de digitação');
+      }
+      
+      console.log(`✅ Status de digitação atualizado: ${isTyping}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ Erro ao definir digitação:`, error);
+      // Não fazer throw para não quebrar o fluxo
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Indicador de gravação
+  async setRecording(clientId: string, chatId: string, isRecording: boolean): Promise<any> {
+    try {
+      console.log(`🎤 ${isRecording ? 'Iniciando' : 'Parando'} indicador de gravação para ${chatId}`);
+      
+      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/set-recording`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, isRecording })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao definir status de gravação');
+      }
+      
+      console.log(`✅ Status de gravação atualizado: ${isRecording}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ Erro ao definir gravação:`, error);
+      // Não fazer throw para não quebrar o fluxo
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Marcar mensagem como lida
+  async markAsRead(clientId: string, chatId: string, messageId: string): Promise<any> {
+    try {
+      console.log(`✓ Marcando mensagem como lida: ${messageId}`);
+      
+      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/mark-as-read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, messageId })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao marcar como lida');
+      }
+      
+      console.log(`✅ Mensagem marcada como lida`);
+      return data;
+    } catch (error) {
+      console.error(`❌ Erro ao marcar como lida:`, error);
+      // Não fazer throw para não quebrar o fluxo
+      return { success: false, error: error.message };
+    }
+  }
+
   // Enviar reação a uma mensagem
   async sendReaction(clientId: string, chatId: string, messageId: string, emoji: string): Promise<any> {
     try {
