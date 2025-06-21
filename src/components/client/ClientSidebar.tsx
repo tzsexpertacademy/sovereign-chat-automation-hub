@@ -12,7 +12,8 @@ import {
   Phone,
   Users,
   GitBranch,
-  Layers
+  Layers,
+  Link
 } from 'lucide-react';
 
 interface ClientSidebarProps {
@@ -23,6 +24,11 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
   const location = useLocation();
   
   const navigation = [
+    {
+      name: 'Conexão',
+      href: `/client/${clientId}/connect`,
+      icon: Link,
+    },
     {
       name: 'Chat',
       href: `/client/${clientId}/chat`,
@@ -74,6 +80,7 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
     <div className="w-64 bg-white border-r border-gray-200 h-full">
       <div className="p-6">
         <h2 className="text-lg font-semibold text-gray-900">Painel do Cliente</h2>
+        <p className="text-sm text-gray-500">ID: {clientId}</p>
       </div>
       <nav className="mt-6">
         <div className="px-3">

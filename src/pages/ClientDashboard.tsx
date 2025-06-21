@@ -11,6 +11,7 @@ import AnalyticsDashboard from "@/components/client/AnalyticsDashboard";
 import WhatsAppConnection from "@/components/client/WhatsAppConnection";
 import AssistantsManager from "@/components/client/AssistantsManager";
 import BookingManager from "@/components/booking/BookingManager";
+import FunnelKanban from "@/components/client/FunnelKanban";
 
 const ClientDashboard = () => {
   const { clientId } = useParams();
@@ -27,14 +28,17 @@ const ClientDashboard = () => {
           <ClientHeader clientId={clientId} />
           <main className="flex-1 p-6">
             <Routes>
-              <Route path="/" element={<Navigate to={`/client/${clientId}/connect`} replace />} />
-              <Route path="/connect" element={<WhatsAppConnection />} />
-              <Route path="/chat" element={<ChatInterface />} />
-              <Route path="/assistants" element={<AssistantsManager />} />
-              <Route path="/booking" element={<BookingManager clientId={clientId} />} />
-              <Route path="/campaigns" element={<CampaignsManager />} />
-              <Route path="/automation" element={<AutomationCenter />} />
-              <Route path="/analytics" element={<AnalyticsDashboard />} />
+              <Route path="/" element={<Navigate to="connect" replace />} />
+              <Route path="connect" element={<WhatsAppConnection />} />
+              <Route path="chat" element={<ChatInterface />} />
+              <Route path="funnel" element={<FunnelKanban clientId={clientId} />} />
+              <Route path="assistants" element={<AssistantsManager />} />
+              <Route path="queues" element={<div>Filas em desenvolvimento</div>} />
+              <Route path="instances" element={<div>Instâncias em desenvolvimento</div>} />
+              <Route path="booking" element={<BookingManager clientId={clientId} />} />
+              <Route path="automation" element={<AutomationCenter />} />
+              <Route path="analytics" element={<AnalyticsDashboard />} />
+              <Route path="settings" element={<div>Configurações em desenvolvimento</div>} />
             </Routes>
           </main>
         </div>

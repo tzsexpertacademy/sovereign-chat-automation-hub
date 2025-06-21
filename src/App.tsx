@@ -23,16 +23,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/admin/*" element={<AdminDashboard />} />
-            <Route path="/client/:clientId" element={<ClientDashboard />} />
-            <Route path="/client/:clientId/chat" element={<ClientDashboard />} />
-            <Route path="/client/:clientId/funnel" element={<FunnelPage />} />
-            <Route path="/client/:clientId/assistants" element={<ClientDashboard />} />
-            <Route path="/client/:clientId/queues" element={<ClientDashboard />} />
-            <Route path="/client/:clientId/instances" element={<ClientDashboard />} />
-            <Route path="/client/:clientId/booking" element={<ClientDashboard />} />
-            <Route path="/client/:clientId/automation" element={<ClientDashboard />} />
-            <Route path="/client/:clientId/analytics" element={<ClientDashboard />} />
-            <Route path="/client/:clientId/settings" element={<ClientDashboard />} />
+            <Route path="/client/:clientId/*" element={<ClientDashboard />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Toaster />
