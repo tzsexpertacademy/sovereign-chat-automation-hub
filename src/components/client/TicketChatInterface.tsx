@@ -55,15 +55,22 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     };
   }, []);
 
+  // Scroll automático para o final - MELHORADO
   const scrollToBottom = useCallback(() => {
     if (mountedRef.current && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ 
+          behavior: "smooth",
+          block: "end"
+        });
+      }, 100);
     }
   }, []);
 
+  // Scroll para o final sempre que mensagens mudarem ou quando selecionar chat
   useEffect(() => {
     scrollToBottom();
-  }, [ticketMessages, scrollToBottom]);
+  }, [ticketMessages, ticketId, scrollToBottom]);
 
   useEffect(() => {
     if (ticketId && mountedRef.current) {
@@ -266,7 +273,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   };
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col h-full">
       {selectedTicket ? (
         <>
           {/* Input de arquivo oculto */}
@@ -278,94 +285,96 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             accept="image/*,video/*,.pdf,.doc,.docx,.txt"
           />
 
-          {/* Área de Mensagens */}
-          <ScrollArea className="flex-1 p-4">
-            <div className="space-y-4">
-              {loadingMessages ? (
-                <div className="text-center py-8">
-                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Carregando mensagens...</p>
-                </div>
-              ) : ticketMessages.length === 0 ? (
-                <div className="text-center text-gray-500 py-8">
-                  <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                  <p className="text-sm">Nenhuma mensagem nesta conversa</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Inicie a conversa enviando uma mensagem
-                  </p>
-                </div>
-              ) : (
-                ticketMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.from_me ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div className={`max-w-md px-4 py-2 rounded-lg ${
-                      message.from_me
-                        ? 'bg-blue-500 text-white rounded-br-sm'
-                        : 'bg-gray-100 text-gray-900 rounded-bl-sm'
-                    }`}>
-                      {!message.from_me && message.sender_name && (
-                        <p className="text-xs font-medium mb-1 opacity-70">
-                          {message.sender_name}
-                        </p>
-                      )}
-                      
-                      {/* Renderizar conteúdo baseado no tipo */}
-                      {message.message_type === 'image' && (
-                        <div className="mb-2">
-                          <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center">
-                            <Image className="w-8 h-8 text-gray-400" />
-                          </div>
-                        </div>
-                      )}
-                      
-                      {message.message_type === 'video' && (
-                        <div className="mb-2">
-                          <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center">
-                            <Video className="w-8 h-8 text-gray-400" />
-                          </div>
-                        </div>
-                      )}
-                      
-                      {message.message_type === 'audio' && (
-                        <div className="mb-2">
-                          <div className="flex items-center space-x-2 p-2 bg-gray-200 rounded">
-                            <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
-                            <div className="text-xs text-gray-600">Mensagem de áudio</div>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                      
-                      {message.from_me && (
-                        <MessageStatus 
-                          status={getMessageStatus(message.message_id)}
-                          timestamp={message.timestamp}
-                          fromMe={message.from_me}
-                        />
-                      )}
-                      
-                      {message.is_ai_response && (
-                        <div className="mt-1">
-                          <Badge variant="secondary" className="text-xs">
-                            🤖 IA
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
+          {/* Área de Mensagens - com altura calculada e scroll próprio */}
+          <div className="flex-1 min-h-0">
+            <ScrollArea className="h-full p-4">
+              <div className="space-y-4">
+                {loadingMessages ? (
+                  <div className="text-center py-8">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">Carregando mensagens...</p>
                   </div>
-                ))
-              )}
-              
-              <div ref={messagesEndRef} />
-            </div>
-          </ScrollArea>
+                ) : ticketMessages.length === 0 ? (
+                  <div className="text-center text-gray-500 py-8">
+                    <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm">Nenhuma mensagem nesta conversa</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Inicie a conversa enviando uma mensagem
+                    </p>
+                  </div>
+                ) : (
+                  ticketMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex ${message.from_me ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div className={`max-w-md px-4 py-2 rounded-lg ${
+                        message.from_me
+                          ? 'bg-blue-500 text-white rounded-br-sm'
+                          : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+                      }`}>
+                        {!message.from_me && message.sender_name && (
+                          <p className="text-xs font-medium mb-1 opacity-70">
+                            {message.sender_name}
+                          </p>
+                        )}
+                        
+                        {/* Renderizar conteúdo baseado no tipo */}
+                        {message.message_type === 'image' && (
+                          <div className="mb-2">
+                            <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center">
+                              <Image className="w-8 h-8 text-gray-400" />
+                            </div>
+                          </div>
+                        )}
+                        
+                        {message.message_type === 'video' && (
+                          <div className="mb-2">
+                            <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center">
+                              <Video className="w-8 h-8 text-gray-400" />
+                            </div>
+                          </div>
+                        )}
+                        
+                        {message.message_type === 'audio' && (
+                          <div className="mb-2">
+                            <div className="flex items-center space-x-2 p-2 bg-gray-200 rounded">
+                              <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
+                              <div className="text-xs text-gray-600">Mensagem de áudio</div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                        
+                        {message.from_me && (
+                          <MessageStatus 
+                            status={getMessageStatus(message.message_id)}
+                            timestamp={message.timestamp}
+                            fromMe={message.from_me}
+                          />
+                        )}
+                        
+                        {message.is_ai_response && (
+                          <div className="mt-1">
+                            <Badge variant="secondary" className="text-xs">
+                              🤖 IA
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+                
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+          </div>
 
           {/* Área de Gravação de Áudio */}
           {audioRecording.audioBlob && (
-            <div className="p-4 bg-yellow-50 border-t">
+            <div className="p-4 bg-yellow-50 border-t flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
@@ -385,8 +394,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             </div>
           )}
 
-          {/* Input de Mensagem */}
-          <div className="border-t p-4">
+          {/* Input de Mensagem - sempre visível no final */}
+          <div className="border-t p-4 flex-shrink-0 bg-white">
             <div className="flex space-x-2">
               {/* Botão de anexo */}
               <Button 
