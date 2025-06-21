@@ -22,19 +22,11 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { whatsappService } from "@/services/whatsappMultiClient";
+import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
 import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import ConnectionTest from "./ConnectionTest";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService } from "@/services/whatsappInstancesService";
-
-interface WhatsAppClient {
-  clientId: string;
-  status: string;
-  phoneNumber?: string;
-  hasQrCode?: boolean;
-  qrCode?: string;
-}
 
 const RealInstancesManager = () => {
   const [clients, setClients] = useState<WhatsAppClient[]>([]);

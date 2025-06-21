@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 
 export interface ChatData {
@@ -41,12 +40,7 @@ class WhatsAppService {
   private socket: Socket | null = null;
 
   constructor() {
-    // Use environment configuration
-    if (typeof window !== 'undefined' && window.location.hostname.includes('lovableproject.com')) {
-      this.baseURL = 'https://146.59.227.248';
-    } else {
-      this.baseURL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
-    }
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
   }
 
   connectSocket(): Socket {
@@ -84,102 +78,6 @@ class WhatsAppService {
     if (this.socket) {
       this.socket.emit('joinClientRoom', clientId);
       console.log(`🚪 Joined client room: ${clientId}`);
-    }
-  }
-
-  // Check server connection
-  async testConnection(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseURL}/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      return response.ok;
-    } catch (error) {
-      console.error('❌ Connection test failed:', error);
-      return false;
-    }
-  }
-
-  // Check server health
-  async checkServerHealth(): Promise<any> {
-    const response = await fetch(`${this.baseURL}/health`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Server health check failed: ${response.status}`);
-    }
-    
-    return response.json();
-  }
-
-  // Get all clients
-  async getAllClients(): Promise<any[]> {
-    const response = await fetch(`${this.baseURL}/api/clients`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to get clients: ${response.status}`);
-    }
-    
-    return response.json();
-  }
-
-  // Connect client
-  async connectClient(clientId: string): Promise<any> {
-    const response = await fetch(`${this.baseURL}/api/client/${clientId}/connect`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to connect client: ${response.status}`);
-    }
-    
-    return response.json();
-  }
-
-  // Disconnect client
-  async disconnectClient(clientId: string): Promise<any> {
-    const response = await fetch(`${this.baseURL}/api/client/${clientId}/disconnect`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to disconnect client: ${response.status}`);
-    }
-    
-    return response.json();
-  }
-
-  // Listen for clients updates
-  onClientsUpdate(callback: (clients: any[]) => void) {
-    if (this.socket) {
-      this.socket.on('clientsUpdate', callback);
-      console.log('👂 Listening for clients updates');
-    }
-  }
-
-  // Listen for client status updates
-  onClientStatus(clientId: string, callback: (clientData: any) => void) {
-    if (this.socket) {
-      this.socket.on(`clientStatus_${clientId}`, callback);
-      console.log(`👂 Listening for client status: ${clientId}`);
     }
   }
 
@@ -266,29 +164,17 @@ class WhatsAppService {
     }).then(res => res.json());
   }
 
-  async sendReaction(clientId: string, chatId: string, messageId: string, emoji: string) {
-    try {
-      const response = await fetch(`${this.baseURL}/api/client/${clientId}/reaction`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          chatId,
-          messageId,
-          emoji
-        }),
-      });
+  onClientMessage(clientId: string, callback: (message: MessageData) => void) {
+    if (this.socket) {
+      this.socket.on(`message_${clientId}`, callback);
+      console.log(`👂 Listening for messages for client: ${clientId}`);
+    }
+  }
 
-      if (!response.ok) {
-        throw new Error('Failed to send reaction');
-      }
-
-      console.log(`😀 Reação enviada: ${emoji} para mensagem ${messageId}`);
-      return await response.json();
-    } catch (error) {
-      console.error('Error sending reaction:', error);
-      throw error;
+  removeListener(event: string) {
+    if (this.socket) {
+      this.socket.off(event);
+      console.log(`👂 Removing listener: ${event}`);
     }
   }
 
@@ -391,20 +277,6 @@ class WhatsAppService {
     }
   }
 
-  onClientMessage(clientId: string, callback: (message: MessageData) => void) {
-    if (this.socket) {
-      this.socket.on(`message_${clientId}`, callback);
-      console.log(`👂 Listening for messages for client: ${clientId}`);
-    }
-  }
-
-  removeListener(event: string) {
-    if (this.socket) {
-      this.socket.off(event);
-      console.log(`👂 Removing listener: ${event}`);
-    }
-  }
-
   onTypingEvent(clientId: string, callback: (data: { chatId: string, isTyping: boolean, contact: string }) => void) {
     if (this.socket) {
       this.socket.on(`typing_${clientId}`, callback);
@@ -428,37 +300,6 @@ class WhatsAppService {
   removeReadReceiptListener(clientId: string) {
     if (this.socket) {
       this.socket.off(`read_receipt_${clientId}`);
-    }
-  }
-
-  onQuotedMessage(clientId: string, callback: (data: { 
-    chatId: string, 
-    messageId: string, 
-    quotedMessage: any, 
-    newMessage: string 
-  }) => void) {
-    if (this.socket) {
-      this.socket.on(`quoted_message_${clientId}`, callback);
-      console.log(`👂 Listening for quoted messages for client: ${clientId}`);
-    }
-  }
-
-  removeQuotedMessageListener(clientId: string) {
-    if (this.socket) {
-      this.socket.off(`quoted_message_${clientId}`);
-    }
-  }
-
-  onPresenceUpdate(clientId: string, callback: (data: { chatId: string, isOnline: boolean }) => void) {
-    if (this.socket) {
-      this.socket.on(`presence_${clientId}`, callback);
-      console.log(`👂 Listening for presence updates for client: ${clientId}`);
-    }
-  }
-
-  removePresenceListener(clientId: string) {
-    if (this.socket) {
-      this.socket.off(`presence_${clientId}`);
     }
   }
 }
