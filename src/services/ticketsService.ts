@@ -84,6 +84,7 @@ class TicketsService {
 
       return (data || []).map(ticket => ({
         ...ticket,
+        status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
@@ -110,6 +111,7 @@ class TicketsService {
 
       return {
         ...data,
+        status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
       };
@@ -273,6 +275,93 @@ class TicketsService {
       if (error) throw error;
     } catch (error) {
       console.error('Erro ao remover tag do ticket:', error);
+      throw error;
+    }
+  }
+
+  async deleteTicket(ticketId: string): Promise<void> {
+    try {
+      // Primeiro excluir todas as mensagens do ticket
+      const { error: messagesError } = await supabase
+        .from('ticket_messages')
+        .delete()
+        .eq('ticket_id', ticketId);
+
+      if (messagesError) throw messagesError;
+
+      // Depois excluir o ticket
+      const { error: ticketError } = await supabase
+        .from('conversation_tickets')
+        .delete()
+        .eq('id', ticketId);
+
+      if (ticketError) throw ticketError;
+
+      console.log('✅ Ticket excluído com sucesso:', ticketId);
+    } catch (error) {
+      console.error('Erro ao excluir ticket:', error);
+      throw error;
+    }
+  }
+
+  async assumeTicketManually(ticketId: string, operatorName: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({
+          status: 'pending',
+          assigned_assistant_id: null,
+          assigned_queue_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      // Adicionar evento de assumir ticket
+      await supabase
+        .from('ticket_events')
+        .insert({
+          ticket_id: ticketId,
+          event_type: 'manual_takeover',
+          description: `Ticket assumido manualmente por ${operatorName}`,
+          created_by: operatorName
+        });
+
+      console.log('✅ Ticket assumido manualmente:', ticketId);
+    } catch (error) {
+      console.error('Erro ao assumir ticket:', error);
+      throw error;
+    }
+  }
+
+  async transferTicket(ticketId: string, targetQueueId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({
+          assigned_queue_id: targetQueueId,
+          assigned_assistant_id: null,
+          status: 'open',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      // Adicionar evento de transferência
+      await supabase
+        .from('ticket_events')
+        .insert({
+          ticket_id: ticketId,
+          event_type: 'queue_transfer',
+          description: `Ticket transferido para nova fila`,
+          metadata: { target_queue_id: targetQueueId }
+        });
+
+      console.log('✅ Ticket transferido:', ticketId);
+    } catch (error) {
+      console.error('Erro ao transferir ticket:', error);
       throw error;
     }
   }
