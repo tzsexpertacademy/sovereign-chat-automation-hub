@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 
 export type ChatData = {
@@ -42,7 +43,7 @@ class WhatsAppMultiClientService {
   private socket: Socket | null = null;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_WHATSAPP_API_URL || 'http://localhost:3002';
+    this.baseURL = import.meta.env.VITE_WHATSAPP_API_URL || 'http://localhost:3002';
   }
 
   async testConnection(): Promise<boolean> {
