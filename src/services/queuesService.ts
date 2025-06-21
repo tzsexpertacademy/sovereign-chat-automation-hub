@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
@@ -299,39 +300,6 @@ export class QueuesService {
       .order("name", { ascending: true });
 
     if (error) throw error;
-    return data || [];
-  }
-
-  async getClientQueueConnections(clientId: string) {
-    const { data, error } = await supabase
-      .from('queue_connections')
-      .select(`
-        *,
-        queues (
-          id,
-          name,
-          description
-        ),
-        assistants (
-          id,
-          name,
-          prompt,
-          personality
-        ),
-        whatsapp_instances (
-          id,
-          instance_id,
-          status,
-          phone_number
-        )
-      `)
-      .eq('client_id', clientId);
-
-    if (error) {
-      console.error('Erro ao buscar conexões de fila:', error);
-      throw error;
-    }
-
     return data || [];
   }
 }
