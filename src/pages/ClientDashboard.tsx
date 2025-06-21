@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -13,6 +12,7 @@ import AssistantsManager from "@/components/client/AssistantsManager";
 import BookingManager from "@/components/booking/BookingManager";
 import FunnelKanban from "@/components/client/FunnelKanban";
 import QueuesManager from "@/components/client/QueuesManager";
+import QueueConnectionManager from "@/components/client/QueueConnectionManager";
 
 const ClientDashboard = () => {
   const { clientId } = useParams();
@@ -35,7 +35,7 @@ const ClientDashboard = () => {
               <Route path="funnel" element={<FunnelKanban clientId={clientId} />} />
               <Route path="assistants" element={<AssistantsManager />} />
               <Route path="queues" element={<QueuesManager />} />
-              <Route path="instances" element={<div>Instâncias em desenvolvimento</div>} />
+              <Route path="instances" element={<QueueConnectionManager clientId={clientId} />} />
               <Route path="booking" element={<BookingManager clientId={clientId} />} />
               <Route path="automation" element={<AutomationCenter />} />
               <Route path="analytics" element={<AnalyticsDashboard />} />

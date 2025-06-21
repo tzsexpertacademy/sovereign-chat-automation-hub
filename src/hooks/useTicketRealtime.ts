@@ -8,6 +8,7 @@ export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const channelRef = useRef<any>(null);
+  const socketRef = useRef<any>(null);
 
   // Carregar tickets iniciais
   const loadTickets = async () => {
@@ -24,7 +25,6 @@ export const useTicketRealtime = (clientId: string) => {
 
   // Função para extrair nome real do WhatsApp
   const extractWhatsAppName = (message: any) => {
-    // Prioridade: notifyName > pushName > senderName > author
     const possibleNames = [
       message.notifyName,
       message.pushName, 
@@ -37,13 +37,12 @@ export const useTicketRealtime = (clientId: string) => {
       if (name && 
           typeof name === 'string' && 
           name.trim() !== '' && 
-          !name.includes('@') && // Evitar IDs
+          !name.includes('@') && 
           name.length > 1) {
         return name.trim();
       }
     }
 
-    // Se não encontrar nome, usar número formatado
     const phone = message.from?.replace(/\D/g, '') || '';
     if (phone.length >= 10) {
       return phone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
@@ -58,22 +57,21 @@ export const useTicketRealtime = (clientId: string) => {
 
     loadTickets();
 
-    // Listener para novas mensagens do WhatsApp
+    // Listener para novas mensagens do WhatsApp via WebSocket
     const handleNewWhatsAppMessage = async (message: any) => {
-      console.log('📨 Nova mensagem WhatsApp recebida:', message);
+      console.log('📨 Nova mensagem WhatsApp recebida em tempo real:', message);
       
       try {
-        // Extrair nome real do WhatsApp
         const customerName = extractWhatsAppName(message) || `Contato ${message.from?.replace(/\D/g, '') || ''}`;
         const customerPhone = message.from?.replace(/\D/g, '') || '';
         
         console.log('🔍 Nome extraído:', customerName);
         
-        // Encontrar ou criar ticket para esta conversa
+        // Criar/atualizar ticket imediatamente
         const ticketId = await ticketsService.createOrUpdateTicket(
           clientId,
           message.from || message.chatId,
-          clientId, // instance_id
+          clientId,
           customerName,
           customerPhone,
           message.body || '',
@@ -94,7 +92,7 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date(message.timestamp || Date.now()).toISOString()
         });
 
-        // Recarregar tickets para mostrar atualização
+        // Recarregar tickets instantaneamente para mostrar a nova mensagem
         await loadTickets();
         
       } catch (error) {
@@ -102,14 +100,13 @@ export const useTicketRealtime = (clientId: string) => {
       }
     };
 
-    // Conectar ao WebSocket do WhatsApp para mensagens em tempo real
-    const socket = whatsappService.connectSocket();
-    whatsappService.joinClientRoom(clientId);
+    // Conectar ao WebSocket do WhatsApp
+    console.log('🔌 Conectando ao WebSocket para tempo real...');
     whatsappService.onClientMessage(clientId, handleNewWhatsAppMessage);
 
     // Listener para atualizações de tickets no Supabase
     const channel = supabase
-      .channel('ticket-updates')
+      .channel(`ticket-updates-${clientId}`)
       .on(
         'postgres_changes',
         {
@@ -119,7 +116,7 @@ export const useTicketRealtime = (clientId: string) => {
           filter: `client_id=eq.${clientId}`
         },
         async (payload) => {
-          console.log('🔄 Ticket atualizado:', payload);
+          console.log('🔄 Ticket atualizado via Supabase:', payload);
           await loadTickets();
         }
       )
@@ -131,7 +128,7 @@ export const useTicketRealtime = (clientId: string) => {
           table: 'ticket_messages'
         },
         async (payload) => {
-          console.log('💬 Nova mensagem de ticket:', payload);
+          console.log('💬 Nova mensagem de ticket via Supabase:', payload);
           await loadTickets();
         }
       )
@@ -139,11 +136,17 @@ export const useTicketRealtime = (clientId: string) => {
 
     channelRef.current = channel;
 
+    // Atualizar tickets a cada 5 segundos para garantir sincronização
+    const intervalId = setInterval(() => {
+      loadTickets();
+    }, 5000);
+
     return () => {
       whatsappService.removeListener(`message_${clientId}`);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
+      clearInterval(intervalId);
     };
   }, [clientId]);
 

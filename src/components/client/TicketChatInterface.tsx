@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +17,7 @@ import { whatsappService } from "@/services/whatsappMultiClient";
 import { queuesService } from "@/services/queuesService";
 import { useTicketRealtime } from "@/hooks/useTicketRealtime";
 import { useTicketMessages } from "@/hooks/useTicketMessages";
+import AutomaticProcessorStatus from './AutomaticProcessorStatus';
 
 const TicketChatInterface = () => {
   const { clientId } = useParams<{ clientId: string }>();
@@ -370,6 +370,9 @@ const TicketChatInterface = () => {
             </Button>
           </div>
         </div>
+
+        {/* Status do Processamento Automático */}
+        <AutomaticProcessorStatus clientId={clientId!} />
 
         {/* Tabs */}
         <div className="flex space-x-2">
