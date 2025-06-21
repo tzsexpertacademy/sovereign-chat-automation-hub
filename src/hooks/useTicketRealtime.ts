@@ -17,13 +17,14 @@ export const useTicketRealtime = (clientId: string) => {
   const lastMessageIdRef = useRef<string>('');
   const socketRef = useRef<any>(null);
   const processingQueueRef = useRef<Set<string>>(new Set());
+  const processedMessagesRef = useRef<Set<string>>(new Set()); // Controle de duplicação
 
   // Hook para delay humanizado
   const { isTyping, sendWithTypingDelay } = useHumanizedTyping({
-    baseDelay: 2000,    // 2 segundos base
-    charDelay: 60,      // 60ms por caractere
-    maxDelay: 10000,    // Máximo 10 segundos
-    minDelay: 3000      // Mínimo 3 segundos
+    baseDelay: 2000,
+    charDelay: 60,
+    maxDelay: 10000,
+    minDelay: 3000
   });
 
   // Carregar tickets iniciais
@@ -313,9 +314,16 @@ export const useTicketRealtime = (clientId: string) => {
         timestamp: message.timestamp
       });
       
-      // Evitar processar a mesma mensagem duas vezes
+      // Evitar processar a mesma mensagem duas vezes usando Set
+      if (processedMessagesRef.current.has(message.id)) {
+        console.log('⏭️ Mensagem já processada, ignorando:', message.id);
+        return;
+      }
+      processedMessagesRef.current.add(message.id);
+      
+      // Evitar processar mensagem também pelo lastMessageId (dupla proteção)
       if (lastMessageIdRef.current === message.id) {
-        console.log('⏭️ Mensagem já processada, ignorando');
+        console.log('⏭️ Mensagem duplicada pelo lastMessageId, ignorando');
         return;
       }
       lastMessageIdRef.current = message.id;
@@ -409,13 +417,14 @@ export const useTicketRealtime = (clientId: string) => {
         supabase.removeChannel(channelRef.current);
       }
       processingQueueRef.current.clear();
+      processedMessagesRef.current.clear(); // Limpar controle de duplicação
     };
   }, [clientId, addToBatch, sendWithTypingDelay]);
 
   return {
     tickets,
     isLoading,
-    isTyping, // Exposar status de digitação
+    isTyping,
     reloadTickets: loadTickets
   };
 };
