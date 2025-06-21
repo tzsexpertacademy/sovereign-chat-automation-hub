@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -17,7 +18,8 @@ export const useTicketRealtime = (clientId: string) => {
   const lastMessageIdRef = useRef<string>('');
   const socketRef = useRef<any>(null);
   const processingQueueRef = useRef<Set<string>>(new Set());
-  const processedMessagesRef = useRef<Set<string>>(new Set()); // Controle de duplicação
+  const processedMessagesRef = useRef<Set<string>>(new Set());
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Hook para delay humanizado
   const { isTyping, sendWithTypingDelay } = useHumanizedTyping({
@@ -27,14 +29,19 @@ export const useTicketRealtime = (clientId: string) => {
     minDelay: 3000
   });
 
-  // Carregar tickets iniciais
-  const loadTickets = async () => {
-    if (isLoadingRef.current || !clientId) return;
+  // Carregar tickets com debounce para evitar loops
+  const loadTickets = async (skipLoadingCheck = false) => {
+    if (!skipLoadingCheck && (isLoadingRef.current || !clientId)) return;
     
     try {
       isLoadingRef.current = true;
       setIsLoading(true);
       console.log('🔄 Carregando tickets para cliente:', clientId);
+      
+      // Clear any existing timeout
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
       
       const ticketsData = await ticketsService.getClientTickets(clientId);
       console.log('✅ Tickets carregados:', ticketsData.length);
@@ -224,12 +231,15 @@ export const useTicketRealtime = (clientId: string) => {
 
         console.log('✅ Resposta automática do lote enviada e registrada');
         
-        // Recarregar tickets
-        setTimeout(() => {
+        // Recarregar tickets com debounce
+        if (loadingTimeoutRef.current) {
+          clearTimeout(loadingTimeoutRef.current);
+        }
+        loadingTimeoutRef.current = setTimeout(() => {
           if (!isLoadingRef.current) {
-            loadTickets();
+            loadTickets(true);
           }
-        }, 1000);
+        }, 2000);
         
       } else {
         console.log('⚠️ Assistente não gerou resposta válida para o lote');
@@ -288,7 +298,7 @@ export const useTicketRealtime = (clientId: string) => {
 
     console.log('🔌 Configurando listeners de tempo real para cliente:', clientId);
 
-    // Carregar tickets iniciais
+    // Carregar tickets iniciais apenas uma vez
     loadTickets();
 
     // Conectar ao WebSocket do WhatsApp
@@ -314,14 +324,20 @@ export const useTicketRealtime = (clientId: string) => {
         timestamp: message.timestamp
       });
       
-      // Evitar processar a mesma mensagem duas vezes usando Set
-      if (processedMessagesRef.current.has(message.id)) {
+      // Controle rigoroso de duplicação - múltiplas verificações
+      const messageKey = `${message.id}_${message.from}_${message.timestamp}`;
+      
+      if (processedMessagesRef.current.has(message.id) || 
+          processedMessagesRef.current.has(messageKey)) {
         console.log('⏭️ Mensagem já processada, ignorando:', message.id);
         return;
       }
-      processedMessagesRef.current.add(message.id);
       
-      // Evitar processar mensagem também pelo lastMessageId (dupla proteção)
+      // Adicionar aos controles de duplicação
+      processedMessagesRef.current.add(message.id);
+      processedMessagesRef.current.add(messageKey);
+      
+      // Verificação adicional por lastMessageId
       if (lastMessageIdRef.current === message.id) {
         console.log('⏭️ Mensagem duplicada pelo lastMessageId, ignorando');
         return;
@@ -363,8 +379,15 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date(message.timestamp || Date.now()).toISOString()
         });
 
-        // Atualizar lista de tickets
-        await loadTickets();
+        // Recarregar tickets com debounce para evitar loop
+        if (loadingTimeoutRef.current) {
+          clearTimeout(loadingTimeoutRef.current);
+        }
+        loadingTimeoutRef.current = setTimeout(() => {
+          if (!isLoadingRef.current) {
+            loadTickets(true);
+          }
+        }, 1500);
 
         // Adicionar mensagem ao lote para processamento humanizado
         if (!message.type || message.type === 'text' || message.type === 'chat') {
@@ -384,7 +407,7 @@ export const useTicketRealtime = (clientId: string) => {
     const messageEvent = `message_${clientId}`;
     socket.on(messageEvent, handleNewWhatsAppMessage);
 
-    // Listener para atualizações de tickets no Supabase
+    // Listener para atualizações de tickets no Supabase com debounce
     const channel = supabase
       .channel(`ticket-updates-${clientId}`)
       .on(
@@ -397,11 +420,16 @@ export const useTicketRealtime = (clientId: string) => {
         },
         async (payload) => {
           console.log('🔄 Ticket atualizado via Supabase:', payload.eventType);
-          setTimeout(() => {
+          
+          // Debounce para atualizações do Supabase
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
+          }
+          loadingTimeoutRef.current = setTimeout(() => {
             if (!isLoadingRef.current) {
-              loadTickets();
+              loadTickets(true);
             }
-          }, 500);
+          }, 1000);
         }
       )
       .subscribe();
@@ -410,6 +438,12 @@ export const useTicketRealtime = (clientId: string) => {
 
     return () => {
       console.log('🔌 Limpando listeners...');
+      
+      // Limpar timeouts
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+      
       if (socketRef.current) {
         socketRef.current.off(messageEvent, handleNewWhatsAppMessage);
       }
@@ -417,7 +451,7 @@ export const useTicketRealtime = (clientId: string) => {
         supabase.removeChannel(channelRef.current);
       }
       processingQueueRef.current.clear();
-      processedMessagesRef.current.clear(); // Limpar controle de duplicação
+      processedMessagesRef.current.clear();
     };
   }, [clientId, addToBatch, sendWithTypingDelay]);
 
@@ -425,6 +459,7 @@ export const useTicketRealtime = (clientId: string) => {
     tickets,
     isLoading,
     isTyping,
-    reloadTickets: loadTickets
+    reloadTickets: () => loadTickets(true)
   };
 };
+
