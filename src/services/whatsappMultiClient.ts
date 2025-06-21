@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 
 export type ChatData = {
@@ -56,6 +55,19 @@ class WhatsAppMultiClientService {
     } catch (error) {
       console.error('Erro ao testar conexão:', error);
       return false;
+    }
+  }
+
+  async checkServerHealth(): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseURL}/health`);
+      if (!response.ok) {
+        throw new Error(`Erro no health check: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error: any) {
+      console.error('Erro no health check:', error);
+      throw error;
     }
   }
 

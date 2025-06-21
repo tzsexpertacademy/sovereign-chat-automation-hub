@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   QrCode, 
   Smartphone, 
@@ -18,10 +21,15 @@ import {
   Wifi,
   WifiOff,
   Copy,
-  Download
+  Download,
+  Plus,
+  Edit,
+  Users,
+  MessageSquare,
+  Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { whatsappService, type WhatsAppClient } from '@/services/whatsappMultiClient'; // Corrigindo importação
+import { whatsappService, type WhatsAppClient } from '@/services/whatsappMultiClient';
 import { clientsService, ClientData } from "@/services/clientsService";
 import { queuesService, QueueWithAssistant } from "@/services/queuesService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
