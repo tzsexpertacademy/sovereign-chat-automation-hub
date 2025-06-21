@@ -1,515 +1,610 @@
-import { io, Socket } from 'socket.io-client';
-import { SERVER_URL, API_BASE_URL, SOCKET_URL } from '@/config/environment';
+import { io } from 'socket.io-client';
+import { v4 as uuidv4 } from 'uuid';
+import { supabase } from "@/integrations/supabase/client";
+import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
-console.log(`🔗 WhatsApp Service - Conectando ao servidor: ${SERVER_URL}`);
-
-export interface WhatsAppClient {
-  clientId: string;
-  status: 'disconnected' | 'connecting' | 'qr_ready' | 'authenticated' | 'connected' | 'error' | 'auth_failed';
-  phoneNumber?: string;
-  hasQrCode: boolean;
-  qrCode?: string;
-}
-
-export interface ChatData {
+export type ChatData = {
   id: string;
   name: string;
   isGroup: boolean;
-  isReadOnly: boolean;
   unreadCount: number;
-  timestamp: number;
   lastMessage?: {
     body: string;
     type: string;
     timestamp: number;
     fromMe: boolean;
   };
-}
+  timestamp: number;
+  description?: string;
+  profilePictureUrl?: string;
+};
 
-export interface MessageData {
+export type MessageData = {
   id: string;
   body: string;
-  type: string;
-  timestamp: number;
-  fromMe: boolean;
-  author?: string;
   from: string;
   to: string;
-}
+  fromMe: boolean;
+  timestamp: number;
+  type: string;
+  author?: string;
+  deviceType?: string;
+  self?: string;
+  ack?: number;
+  isForwarded?: boolean;
+  is ঐতিহাসিক?: boolean;
+  isMedia?: boolean;
+  isMMS?: boolean;
+  is রোaming?: boolean;
+  mediaKey?: string;
+  mediaData?: any;
+  filename?: string;
+  size?: number;
+  mimeType?: string;
+  height?: number;
+  width?: number;
+  thumbnail?: string;
+  latitude?: number;
+  longitude?: number;
+  vcardList?: string[];
+  is কypনt?: boolean;
+  broadcast?: boolean;
+  mentionedJidList?: string[];
+  orderId?: string;
+  token?: string;
+  totalAmount1000?: number;
+  totalCurrencyCode?: string;
+  itemCount?: number;
+  firstEntrypointConversionApp?: string;
+  ephemeralDuration?: number;
+  ephemeralOffToSelfExpiration?: number;
+  bizClientType?: number;
+  status?: number;
+  pushName?: string;
+  chatId?: string;
+  instanceId?: string;
+};
 
-class WhatsAppMultiClientService {
-  private socket: Socket | null = null;
-  private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
+export type WhatsAppInstanceData = Tables<"whatsapp_instances"> & {
+  custom_name?: string;
+};
+
+export class WhatsAppMultiClientService {
+  private baseUrl: string;
+  private socket: any;
 
   constructor() {
-    console.log('🚀 Inicializando WhatsApp Multi-Client Service');
-    console.log(`🎯 Servidor fixo: ${SERVER_URL}`);
+    this.baseUrl = process.env.NEXT_PUBLIC_WHATSAPP_API_URL || 'http://localhost:3002';
+    this.socket = null;
   }
 
-  // Conectar ao WebSocket
-  connectSocket(): Socket {
-    if (!this.socket) {
-      console.log(`🔌 Conectando ao WebSocket: ${SOCKET_URL}`);
-      
-      this.socket = io(SOCKET_URL, {
-        transports: ['websocket', 'polling'],
-        timeout: 20000,
-        forceNew: true,
-        reconnection: true,
-        reconnectionAttempts: this.maxReconnectAttempts,
-        reconnectionDelay: 2000
+  connectSocket() {
+    if (!this.socket || !this.socket.connected) {
+      this.socket = io(this.baseUrl, {
+        transports: ['websocket'],
+        autoConnect: false
       });
+      this.socket.connect();
 
       this.socket.on('connect', () => {
-        console.log(`✅ WebSocket conectado: ${SOCKET_URL}`);
-        this.reconnectAttempts = 0;
+        console.log('✅ WebSocket conectado');
       });
 
-      this.socket.on('disconnect', (reason) => {
-        console.log('❌ WebSocket desconectado:', reason);
+      this.socket.on('disconnect', () => {
+        console.log('❌ WebSocket desconectado');
       });
 
-      this.socket.on('connect_error', (error) => {
-        console.error('❌ Erro WebSocket:', error);
-        this.reconnectAttempts++;
+      this.socket.on('connect_error', (error: any) => {
+        console.error('❌ Falha na conexão WebSocket:', error);
       });
     }
-
     return this.socket;
   }
 
-  // Reconectar
-  reconnect() {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-    }
-    setTimeout(() => {
-      this.connectSocket();
-    }, 1000);
-  }
-
-  // Desconectar
   disconnectSocket() {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
+      console.log('🔌 WebSocket desconectado manualmente');
     }
   }
 
-  // Entrar no room de um cliente
   joinClientRoom(clientId: string) {
-    if (this.socket) {
-      this.socket.emit('join_client', clientId);
-      console.log(`📱 Room do cliente: ${clientId}`);
-    }
-  }
-
-  // Listeners
-  onClientStatus(clientId: string, callback: (data: WhatsAppClient) => void) {
-    if (this.socket) {
-      this.socket.on(`client_status_${clientId}`, callback);
+    if (this.socket && this.socket.connected) {
+      this.socket.emit('join', clientId);
+      console.log(`🚪 Entrando na sala do cliente: ${clientId}`);
+    } else {
+      console.warn('⚠️ WebSocket não conectado, reconectando...');
+      this.connectSocket();
+      setTimeout(() => {
+        if (this.socket && this.socket.connected) {
+          this.socket.emit('join', clientId);
+          console.log(`🚪 Entrando na sala do cliente: ${clientId}`);
+        } else {
+          console.error('❌ Não foi possível conectar ao WebSocket após reconectar.');
+        }
+      }, 1000);
     }
   }
 
   onClientMessage(clientId: string, callback: (message: MessageData) => void) {
     if (this.socket) {
       this.socket.on(`message_${clientId}`, callback);
+    } else {
+      console.error('❌ WebSocket não conectado. Impossível registrar listener de mensagens.');
     }
   }
 
-  onClientsUpdate(callback: (clients: WhatsAppClient[]) => void) {
+  removeListener(event: string) {
     if (this.socket) {
-      this.socket.on('clients_update', callback);
+      this.socket.off(event);
+      console.log(`👂 Listener removido: ${event}`);
     }
   }
 
-  removeListener(event: string, callback?: (...args: any[]) => void) {
-    if (this.socket) {
-      this.socket.off(event, callback);
-    }
-  }
-
-  // Testar conexão com o servidor
-  async testServerConnection(): Promise<boolean> {
+  async getClientStatus(clientId: string): Promise<any> {
     try {
-      console.log('🔍 Testando conexão com servidor WhatsApp...');
-      const response = await fetch(`${API_BASE_URL}/clients`, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
+      const response = await fetch(`${this.baseUrl}/api/status/${clientId}`);
       if (!response.ok) {
-        console.error(`❌ Servidor resposta: ${response.status} - ${response.statusText}`);
-        return false;
+        throw new Error(`Erro ao obter status do cliente: ${response.status}`);
       }
-      
       const data = await response.json();
-      console.log('✅ Servidor respondendo corretamente:', data);
-      return true;
-    } catch (error) {
-      console.error('❌ Erro ao testar servidor:', error);
-      return false;
-    }
-  }
-
-  // Diagnóstico completo do cliente
-  async diagnoseClient(clientId: string): Promise<any> {
-    try {
-      console.log(`🔍 Executando diagnóstico completo para ${clientId}...`);
-      
-      // 1. Testar conexão com servidor
-      const serverOk = await this.testServerConnection();
-      
-      // 2. Verificar status do cliente
-      const clientStatus = await this.getClientStatus(clientId);
-      
-      // 3. Verificar health do servidor
-      const serverHealth = await this.checkServerHealth();
-      
-      return {
-        serverConnected: serverOk,
-        clientStatus,
-        serverHealth,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error('❌ Erro no diagnóstico:', error);
-      return {
-        serverConnected: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      };
-    }
-  }
-
-  // API Calls
-  async getAllClients(): Promise<WhatsAppClient[]> {
-    try {
-      console.log(`📡 GET ${API_BASE_URL}/clients`);
-      
-      const response = await fetch(`${API_BASE_URL}/clients`, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar clientes');
-      }
-      
-      console.log(`✅ ${data.clients.length} clientes encontrados`);
-      return data.clients;
-    } catch (error) {
-      console.error('❌ Erro ao buscar clientes:', error);
-      throw error;
-    }
-  }
-
-  async connectClient(clientId: string): Promise<any> {
-    try {
-      console.log(`🔗 Conectando cliente: ${clientId}`);
-      
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/connect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao conectar cliente');
-      }
-      
-      console.log(`✅ Cliente ${clientId} conectado`);
       return data;
-    } catch (error) {
-      console.error(`❌ Erro ao conectar ${clientId}:`, error);
+    } catch (error: any) {
+      console.error('Erro ao obter status do cliente:', error);
       throw error;
     }
   }
 
-  async disconnectClient(clientId: string): Promise<any> {
+  async getChats(clientId: string): Promise<ChatData[]> {
     try {
-      console.log(`🔌 Desconectando cliente: ${clientId}`);
-      
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/disconnect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
+      const response = await fetch(`${this.baseUrl}/api/chats/${clientId}`);
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`Erro ao obter chats: ${response.status}`);
       }
-      
       const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao desconectar cliente');
-      }
-      
-      console.log(`✅ Cliente ${clientId} desconectado`);
       return data;
-    } catch (error) {
-      console.error(`❌ Erro ao desconectar ${clientId}:`, error);
-      throw error;
-    }
-  }
-
-  async getClientStatus(clientId: string): Promise<WhatsAppClient> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/status`);
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar status');
-      }
-      
-      return {
-        clientId: data.clientId,
-        status: data.status,
-        phoneNumber: data.phoneNumber,
-        hasQrCode: !!data.qrCode,
-        qrCode: data.qrCode
-      };
-    } catch (error) {
-      console.error(`❌ Erro status ${clientId}:`, error);
-      throw error;
-    }
-  }
-
-  async sendMessage(clientId: string, to: string, message: string, mediaUrl?: string, file?: File): Promise<any> {
-    try {
-      console.log('📤 Enviando mensagem:', { 
-        clientId, 
-        to, 
-        message: message.substring(0, 50), 
-        hasFile: !!file,
-        hasMediaUrl: !!mediaUrl,
-        fileType: file?.type,
-        fileSize: file?.size 
-      });
-      
-      if (file) {
-        // Envio de arquivo com validação melhorada
-        const formData = new FormData();
-        formData.append('to', to);
-        formData.append('file', file);
-        
-        if (message && message.trim()) {
-          formData.append('caption', message);
-        }
-
-        // Determinar endpoint baseado no tipo de arquivo
-        let endpoint = 'send-media';
-        if (file.type.startsWith('image/')) {
-          endpoint = 'send-image';
-        } else if (file.type.startsWith('video/')) {
-          endpoint = 'send-video';
-        } else if (file.type.startsWith('audio/')) {
-          endpoint = 'send-audio';
-        } else {
-          endpoint = 'send-document';
-        }
-
-        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/${endpoint}`, {
-          method: 'POST',
-          body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao enviar arquivo');
-        }
-        
-        console.log('✅ Arquivo enviado com sucesso:', data);
-        return data;
-        
-      } else if (mediaUrl) {
-        // Envio com URL de mídia
-        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-media-url`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to, message, mediaUrl })
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao enviar mídia');
-        }
-        
-        console.log('✅ Mídia enviada com sucesso');
-        return data;
-        
-      } else {
-        // Envio de mensagem de texto
-        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-message`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to, message })
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao enviar mensagem');
-        }
-        
-        console.log('✅ Mensagem enviada com sucesso');
-        return data;
-      }
     } catch (error: any) {
-      console.error('❌ Erro ao enviar mensagem:', error);
-      throw error;
-    }
-  }
-
-  async getChats(clientId: string, retryCount = 0): Promise<ChatData[]> {
-    try {
-      console.log(`📡 GET ${API_BASE_URL}/clients/${clientId}/chats (tentativa ${retryCount + 1})`);
-      
-      // Verificar estado do cliente antes de buscar chats
-      if (retryCount === 0) {
-        const status = await this.getClientStatus(clientId);
-        console.log('📊 Status do cliente:', status);
-        
-        if (status.status !== 'connected') {
-          throw new Error(`WhatsApp não está conectado (status: ${status.status}). Conecte primeiro na aba "Conexão".`);
-        }
-      }
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000); // Aumentar timeout para 45 segundos
-      
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/chats`, {
-        headers: { 
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache'
-        },
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      console.log(`📡 Resposta do servidor: ${response.status} ${response.statusText}`);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Erro do servidor: ${errorText}`);
-        
-        let errorObj;
-        try {
-          errorObj = JSON.parse(errorText);
-        } catch {
-          throw new Error(`Erro ${response.status}: ${response.statusText}`);
-        }
-        
-        // Se for erro de estado, aguardar um pouco e tentar novamente
-        if (errorObj.error && errorObj.error.includes('Estado atual:') && retryCount < 2) {
-          console.log('🔄 Cliente ainda não está pronto, aguardando...');
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          return this.getChats(clientId, retryCount + 1);
-        }
-        
-        throw new Error(errorObj.error || `Erro ${response.status}: ${errorText || response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        console.error('❌ API retornou erro:', data.error);
-        
-        // Se for erro de serialização, aguardar e tentar novamente
-        if (data.error && data.error.includes('_serialized') && retryCount < 3) {
-          console.log('🔄 Erro de serialização, aguardando e tentando novamente...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          return this.getChats(clientId, retryCount + 1);
-        }
-        
-        throw new Error(data.error || 'Erro ao buscar chats');
-      }
-      
-      console.log(`✅ ${data.chats.length} chats carregados com sucesso`);
-      return data.chats || [];
-      
-    } catch (error: any) {
-      console.error(`❌ Erro ao buscar chats (tentativa ${retryCount + 1}):`, error);
-      
-      // Tentar novamente para erros de rede/timeout
-      if (retryCount < 3 && (
-        error.name === 'TypeError' || 
-        error.name === 'AbortError' || 
-        error.message.includes('timeout') ||
-        error.message.includes('Failed to fetch') ||
-        error.message.includes('_serialized')
-      )) {
-        console.log(`🔄 Tentando novamente em 5 segundos... (${retryCount + 1}/4)`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        return this.getChats(clientId, retryCount + 1);
-      }
-      
+      console.error('Erro ao obter chats:', error);
       throw error;
     }
   }
 
   async getChatMessages(clientId: string, chatId: string, limit: number = 50): Promise<MessageData[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/chats/${chatId}/messages?limit=${limit}`);
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar mensagens');
-      }
-      
-      return data.messages;
-    } catch (error) {
-      console.error('❌ Erro ao buscar mensagens:', error);
-      throw error;
-    }
-  }
-
-  async checkServerHealth(): Promise<any> {
-    try {
-      const healthURL = `${SERVER_URL}/health`;
-      console.log(`🔍 Health check: ${healthURL}`);
-      
-      const response = await fetch(healthURL, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
+      const response = await fetch(`${this.baseUrl}/api/messages/${clientId}/${chatId}?limit=${limit}`);
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`Erro ao obter mensagens: ${response.status}`);
       }
-      
       const data = await response.json();
-      console.log('✅ Servidor saudável:', data);
       return data;
-    } catch (error) {
-      console.error('❌ Health check falhou:', error);
+    } catch (error: any) {
+      console.error('Erro ao obter mensagens:', error);
       throw error;
     }
   }
 
-  async testConnection(): Promise<boolean> {
+  async sendMessage(clientId: string, chatId: string, message: string): Promise<any> {
     try {
-      await this.checkServerHealth();
-      return true;
+      const response = await fetch(`${this.baseUrl}/api/sendText`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          chatId: chatId,
+          message: message,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar mensagem: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao enviar mensagem:', error);
+      throw error;
+    }
+  }
+
+  async sendMedia(clientId: string, chatId: string, media: any, options: any = {}): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/sendMedia`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          chatId: chatId,
+          media: media,
+          options: options
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar mídia: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao enviar mídia:', error);
+      throw error;
+    }
+  }
+
+  async sendFile(clientId: string, chatId: string, file: any, options: any = {}): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/sendFile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          chatId: chatId,
+          file: file,
+          options: options
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar arquivo: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao enviar arquivo:', error);
+      throw error;
+    }
+  }
+
+  async uploadMedia(clientId: string, media: any): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/uploadMedia`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          media: media
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar mídia: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao enviar mídia:', error);
+      throw error;
+    }
+  }
+
+  async downloadMedia(clientId: string, mediaKey: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/downloadMedia`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          mediaKey: mediaKey
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar mídia: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao enviar mídia:', error);
+      throw error;
+    }
+  }
+
+  async sendContact(clientId: string, chatId: string, contact: any): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/sendContact`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          chatId: chatId,
+          contact: contact
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar contato: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao enviar contato:', error);
+      throw error;
+    }
+  }
+
+  async sendLocation(clientId: string, chatId: string, latitude: number, longitude: number): Promise<any> {
+     try {
+      const response = await fetch(`${this.baseUrl}/api/sendLocation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          chatId: chatId,
+          latitude: latitude,
+          longitude: longitude
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar localização: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao enviar localização:', error);
+      throw error;
+    }
+  }
+
+  async sendLinkPreview(clientId: string, chatId: string, url: string, text: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/sendLinkPreview`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          chatId: chatId,
+          url: url,
+          text: text
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar link preview: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao enviar link preview:', error);
+      throw error;
+    }
+  }
+
+  async getInstanceQrCode(instanceId: string): Promise<string> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/qrcode/${instanceId}`);
+      if (!response.ok) {
+        throw new Error(`Erro ao obter QRCode: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.qrcode;
+    } catch (error: any) {
+      console.error('Erro ao obter QRCode:', error);
+      throw error;
+    }
+  }
+
+  async startInstance(instanceId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: instanceId
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao iniciar instância: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao iniciar instância:', error);
+      throw error;
+    }
+  }
+
+  async stopInstance(instanceId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/stop`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: instanceId
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao parar instância: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao parar instância:', error);
+      throw error;
+    }
+  }
+
+  async deleteInstance(instanceId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/delete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: instanceId
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao apagar instância: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao apagar instância:', error);
+      throw error;
+    }
+  }
+
+  async getInstanceInfo(instanceId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/instanceInfo/${instanceId}`);
+      if (!response.ok) {
+        throw new Error(`Erro ao obter informações da instância: ${response.status}`);
+      }
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao obter informações da instância:', error);
+      throw error;
+    }
+  }
+
+  async getAllContacts(instanceId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/contacts/${instanceId}`);
+      if (!response.ok) {
+        throw new Error(`Erro ao obter contatos: ${response.status}`);
+      }
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao obter contatos:', error);
+      throw error;
+    }
+  }
+
+  async diagnoseClient(clientId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/diagnose/${clientId}`);
+      if (!response.ok) {
+        throw new Error(`Erro ao diagnosticar cliente: ${response.status}`);
+      }
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Erro ao diagnosticar cliente:', error);
+      throw error;
+    }
+  }
+
+  // Enviar indicador de digitação
+  async sendTypingIndicator(clientId: string, chatId: string, isTyping: boolean): Promise<void> {
+    try {
+      console.log(`⌨️ ${isTyping ? 'Iniciando' : 'Parando'} indicador de digitação para ${chatId}`);
+      
+      const response = await fetch(`${this.baseUrl}/api/sendPresence`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          chatId: chatId,
+          presence: isTyping ? 'composing' : 'paused'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar indicador de digitação: ${response.status}`);
+      }
+
+      console.log(`✅ Indicador de digitação ${isTyping ? 'iniciado' : 'parado'} com sucesso`);
     } catch (error) {
-      return false;
+      console.error('❌ Erro ao enviar indicador de digitação:', error);
+      throw error;
+    }
+  }
+
+  // Enviar indicador de gravação de áudio
+  async sendRecordingIndicator(clientId: string, chatId: string, isRecording: boolean): Promise<void> {
+    try {
+      console.log(`🎤 ${isRecording ? 'Iniciando' : 'Parando'} indicador de gravação para ${chatId}`);
+      
+      const response = await fetch(`${this.baseUrl}/api/sendPresence`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          chatId: chatId,
+          presence: isRecording ? 'recording' : 'paused'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao enviar indicador de gravação: ${response.status}`);
+      }
+
+      console.log(`✅ Indicador de gravação ${isRecording ? 'iniciado' : 'parado'} com sucesso`);
+    } catch (error) {
+      console.error('❌ Erro ao enviar indicador de gravação:', error);
+      throw error;
+    }
+  }
+
+  // Marcar mensagem como lida
+  async markAsRead(clientId: string, chatId: string, messageId: string): Promise<void> {
+    try {
+      console.log(`👀 Marcando mensagem ${messageId} como lida em ${chatId}`);
+      
+      const response = await fetch(`${this.baseUrl}/api/readMessage`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId: clientId,
+          chatId: chatId,
+          messageId: messageId
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ao marcar mensagem como lida: ${response.status}`);
+      }
+
+      console.log(`✅ Mensagem ${messageId} marcada como lida com sucesso`);
+    } catch (error) {
+      console.error('❌ Erro ao marcar mensagem como lida:', error);
+      throw error;
     }
   }
 }
 
-// Singleton
 export const whatsappService = new WhatsAppMultiClientService();
-export default whatsappService;

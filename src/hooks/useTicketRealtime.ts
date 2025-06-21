@@ -6,6 +6,8 @@ import { whatsappService } from '@/services/whatsappMultiClient';
 import { queuesService } from '@/services/queuesService';
 import { assistantsService } from '@/services/assistantsService';
 import { aiConfigService } from '@/services/aiConfigService';
+import { useMessageBatch } from './useMessageBatch';
+import { useHumanizedResponse } from './useHumanizedResponse';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -14,6 +16,9 @@ export const useTicketRealtime = (clientId: string) => {
   const isLoadingRef = useRef(false);
   const lastMessageIdRef = useRef<string>('');
   const socketRef = useRef<any>(null);
+
+  // Hook para humanização das respostas
+  const { sendHumanizedResponse } = useHumanizedResponse({ clientId });
 
   // Carregar tickets iniciais
   const loadTickets = async () => {
@@ -76,10 +81,10 @@ export const useTicketRealtime = (clientId: string) => {
     return `Contato ${phone || 'Desconhecido'}`;
   };
 
-  // Processar mensagem com assistente automático
-  const processMessageWithAssistant = async (message: any, ticketId: string) => {
+  // Processar batch de mensagens com assistente automático
+  const processBatchWithAssistant = async (messages: any[], ticketId: string, chatId: string) => {
     try {
-      console.log('🤖 Iniciando processamento automático da mensagem:', message.id);
+      console.log('🤖 Iniciando processamento do batch:', messages.length, 'mensagens');
       
       // Buscar configurações do cliente
       const [queues, aiConfig] = await Promise.all([
@@ -106,12 +111,6 @@ export const useTicketRealtime = (clientId: string) => {
 
       if (!activeQueue || !activeQueue.assistants) {
         console.log('⚠️ Nenhuma fila ativa com assistente encontrada');
-        console.log('Filas disponíveis:', queues.map(q => ({
-          name: q.name,
-          active: q.is_active,
-          hasAssistant: !!q.assistants,
-          assistantActive: q.assistants?.is_active
-        })));
         return;
       }
 
@@ -151,7 +150,14 @@ export const useTicketRealtime = (clientId: string) => {
           content: msg.content || ''
         }));
 
-      console.log(`🔄 Enviando para OpenAI com ${recentMessages.length} mensagens de contexto`);
+      // Adicionar mensagens do batch atual ao contexto
+      const batchMessages = messages.map(msg => ({
+        role: 'user' as const,
+        content: msg.content || ''
+      }));
+
+      const allMessages = [...recentMessages, ...batchMessages];
+      console.log(`🔄 Enviando para OpenAI com ${allMessages.length} mensagens de contexto`);
 
       // Chamar a API da OpenAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -167,11 +173,7 @@ export const useTicketRealtime = (clientId: string) => {
               role: 'system',
               content: assistant.prompt || 'Você é um assistente útil.'
             },
-            ...recentMessages,
-            {
-              role: 'user',
-              content: message.body || ''
-            }
+            ...allMessages
           ],
           temperature: advancedSettings.temperature,
           max_tokens: advancedSettings.max_tokens,
@@ -194,22 +196,8 @@ export const useTicketRealtime = (clientId: string) => {
         // Verificar se deve enviar áudio
         const shouldSendAudio = assistantResponse.toLowerCase().includes('audio:');
         
-        if (shouldSendAudio) {
-          console.log('🎤 Comando de áudio detectado');
-          const audioText = assistantResponse.replace(/audio:\s*/gi, '').trim();
-          
-          // Enviar como áudio se configurado
-          try {
-            await whatsappService.sendMessage(clientId, message.from, `audio:${audioText}`);
-            console.log('🎵 Áudio enviado com sucesso');
-          } catch (audioError) {
-            console.error('❌ Erro ao enviar áudio, enviando texto:', audioError);
-            await whatsappService.sendMessage(clientId, message.from, audioText);
-          }
-        } else {
-          // Enviar resposta via WhatsApp
-          await whatsappService.sendMessage(clientId, message.from, assistantResponse);
-        }
+        // Enviar resposta humanizada com delay e indicadores
+        await sendHumanizedResponse(chatId, assistantResponse, shouldSendAudio);
         
         // Registrar a resposta no ticket
         await ticketsService.addTicketMessage({
@@ -226,7 +214,7 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date().toISOString()
         });
 
-        console.log('✅ Resposta automática enviada e registrada');
+        console.log('✅ Resposta automática enviada e registrada com humanização');
         
         // Recarregar tickets para mostrar a nova mensagem
         setTimeout(() => {
@@ -240,7 +228,7 @@ export const useTicketRealtime = (clientId: string) => {
       }
 
     } catch (error) {
-      console.error('❌ Erro ao processar mensagem com assistente:', error);
+      console.error('❌ Erro ao processar batch com assistente:', error);
       
       // Registrar erro no ticket
       await ticketsService.addTicketMessage({
@@ -257,6 +245,34 @@ export const useTicketRealtime = (clientId: string) => {
       });
     }
   };
+
+  // Hook para batching de mensagens (5 segundos de timeout)
+  const { addMessage: addToBatch } = useMessageBatch({
+    batchTimeoutSeconds: 5,
+    onProcessBatch: async (batchedMessages) => {
+      console.log('📦 Processando batch de mensagens:', batchedMessages.length);
+      
+      if (batchedMessages.length === 0) return;
+      
+      // Pegar a última mensagem para extrair informações do ticket
+      const lastMessage = batchedMessages[batchedMessages.length - 1];
+      const chatId = lastMessage.from;
+      
+      try {
+        // Buscar o ticket correspondente
+        const allTickets = await ticketsService.getClientTickets(clientId);
+        const ticket = allTickets.find(t => t.whatsapp_chat_id === chatId);
+        
+        if (ticket) {
+          await processBatchWithAssistant(batchedMessages, ticket.id, chatId);
+        } else {
+          console.log('⚠️ Ticket não encontrado para o chat:', chatId);
+        }
+      } catch (error) {
+        console.error('❌ Erro ao processar batch:', error);
+      }
+    }
+  });
 
   // Configurar listeners para atualizações em tempo real
   useEffect(() => {
@@ -347,11 +363,15 @@ export const useTicketRealtime = (clientId: string) => {
         console.log('🔄 Recarregando tickets...');
         await loadTickets();
 
-        // Processar com assistente automático após um pequeno delay
-        console.log('⏰ Agendando processamento automático...');
-        setTimeout(() => {
-          processMessageWithAssistant(message, ticketId);
-        }, 2000);
+        // Adicionar mensagem ao batch para processamento inteligente
+        console.log('📦 Adicionando mensagem ao batch para processamento...');
+        addToBatch({
+          id: message.id,
+          content: message.body || '',
+          timestamp: new Date(message.timestamp || Date.now()).toISOString(),
+          from: message.from || message.chatId,
+          type: message.type || 'text'
+        });
         
       } catch (error) {
         console.error('❌ Erro ao processar nova mensagem:', error);
@@ -414,7 +434,7 @@ export const useTicketRealtime = (clientId: string) => {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [clientId]);
+  }, [clientId, addToBatch, sendHumanizedResponse]);
 
   return {
     tickets,
