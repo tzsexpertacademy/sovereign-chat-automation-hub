@@ -1,81 +1,110 @@
 
-import { Home, MessageSquare, Bot, Calendar, Megaphone, Settings, Zap, BarChart3, Phone } from "lucide-react";
-import { useParams, useLocation } from "react-router-dom";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar";
+import React from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { cn } from "@/lib/utils";
+import { 
+  MessageSquare, 
+  Bot, 
+  BarChart3, 
+  Settings, 
+  Zap, 
+  Calendar,
+  Phone,
+  Users,
+  GitBranch,
+  Layers
+} from 'lucide-react';
 
-const ClientSidebar = () => {
-  const { clientId } = useParams();
+interface ClientSidebarProps {
+  clientId: string;
+}
+
+const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
   const location = useLocation();
-
-  const menuItems = [
+  
+  const navigation = [
     {
-      title: "Conexão WhatsApp",
-      url: `/client/${clientId}/connect`,
-      icon: Phone,
-    },
-    {
-      title: "Chat Interface",
-      url: `/client/${clientId}/chat`,
+      name: 'Chat',
+      href: `/client/${clientId}/chat`,
       icon: MessageSquare,
     },
     {
-      title: "Assistentes IA",
-      url: `/client/${clientId}/assistants`,
+      name: 'Funil & Kanban',
+      href: `/client/${clientId}/funnel`,
+      icon: GitBranch,
+    },
+    {
+      name: 'Assistentes',
+      href: `/client/${clientId}/assistants`,
       icon: Bot,
     },
     {
-      title: "Sistema de Agendamento",
-      url: `/client/${clientId}/booking`,
+      name: 'Filas',
+      href: `/client/${clientId}/queues`,
+      icon: Layers,
+    },
+    {
+      name: 'Instâncias',
+      href: `/client/${clientId}/instances`,
+      icon: Phone,
+    },
+    {
+      name: 'Agendamentos',
+      href: `/client/${clientId}/booking`,
       icon: Calendar,
     },
     {
-      title: "Campanhas",
-      url: `/client/${clientId}/campaigns`,
-      icon: Megaphone,
-    },
-    {
-      title: "Automação",
-      url: `/client/${clientId}/automation`,
+      name: 'Automação',
+      href: `/client/${clientId}/automation`,
       icon: Zap,
     },
     {
-      title: "Analytics",
-      url: `/client/${clientId}/analytics`,
+      name: 'Analytics',
+      href: `/client/${clientId}/analytics`,
       icon: BarChart3,
+    },
+    {
+      name: 'Configurações',
+      href: `/client/${clientId}/settings`,
+      icon: Settings,
     },
   ];
 
   return (
-    <Sidebar>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Dashboard</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location.pathname === item.url}>
-                    <a href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-    </Sidebar>
+    <div className="w-64 bg-white border-r border-gray-200 h-full">
+      <div className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900">Painel do Cliente</h2>
+      </div>
+      <nav className="mt-6">
+        <div className="px-3">
+          {navigation.map((item) => {
+            const isActive = location.pathname === item.href;
+            return (
+              <NavLink
+                key={item.name}
+                to={item.href}
+                className={cn(
+                  'group flex items-center px-3 py-2 text-sm font-medium rounded-md mb-1',
+                  isActive
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                )}
+              >
+                <item.icon
+                  className={cn(
+                    'mr-3 h-5 w-5',
+                    isActive
+                      ? 'text-primary-foreground'
+                      : 'text-gray-400 group-hover:text-gray-500'
+                  )}
+                />
+                {item.name}
+              </NavLink>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
   );
 };
 
