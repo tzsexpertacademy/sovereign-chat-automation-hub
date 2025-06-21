@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Paperclip, RefreshCw, MessageSquare, Mic, MicOff, Image, Video } from "lucide-react";
+import { Send, Paperclip, RefreshCw, MessageSquare, Mic, MicOff, Image, Video, Play, Pause } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import { whatsappService } from "@/services/whatsappMultiClient";
@@ -29,6 +28,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const [newMessage, setNewMessage] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -237,6 +237,35 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
   };
 
+  // Reproduzir áudio
+  const handlePlayAudio = async (messageId: string, audioUrl?: string) => {
+    if (playingAudio === messageId) {
+      setPlayingAudio(null);
+      return;
+    }
+
+    if (audioUrl) {
+      try {
+        const audio = new Audio(audioUrl);
+        setPlayingAudio(messageId);
+        
+        audio.addEventListener('ended', () => {
+          setPlayingAudio(null);
+        });
+        
+        await audio.play();
+      } catch (error) {
+        console.error('Erro ao reproduzir áudio:', error);
+        setPlayingAudio(null);
+        toast({
+          title: "Erro",
+          description: "Não foi possível reproduzir o áudio",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+
   const formatTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString('pt-BR', { 
       hour: '2-digit', 
@@ -338,9 +367,16 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                         
                         {message.message_type === 'audio' && (
                           <div className="mb-2">
-                            <div className="flex items-center space-x-2 p-2 bg-gray-200 rounded">
-                              <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
-                              <div className="text-xs text-gray-600">Mensagem de áudio</div>
+                            <div className="flex items-center space-x-2 p-2 bg-gray-200 rounded cursor-pointer"
+                                 onClick={() => handlePlayAudio(message.id, message.media_url)}>
+                              {playingAudio === message.id ? (
+                                <Pause className="w-4 h-4 text-blue-500" />
+                              ) : (
+                                <Play className="w-4 h-4 text-blue-500" />
+                              )}
+                              <div className="text-xs text-gray-600">
+                                {playingAudio === message.id ? 'Reproduzindo...' : 'Mensagem de áudio'}
+                              </div>
                             </div>
                           </div>
                         )}
