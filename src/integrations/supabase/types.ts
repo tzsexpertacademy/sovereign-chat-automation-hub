@@ -1225,6 +1225,7 @@ export type Database = {
         Row: {
           client_id: string | null
           created_at: string
+          custom_name: string | null
           has_qr_code: boolean | null
           id: string
           instance_id: string
@@ -1236,6 +1237,7 @@ export type Database = {
         Insert: {
           client_id?: string | null
           created_at?: string
+          custom_name?: string | null
           has_qr_code?: boolean | null
           id?: string
           instance_id: string
@@ -1247,6 +1249,7 @@ export type Database = {
         Update: {
           client_id?: string | null
           created_at?: string
+          custom_name?: string | null
           has_qr_code?: boolean | null
           id?: string
           instance_id?: string

@@ -25,7 +25,7 @@ import {
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
-import { clientsService } from "@/services/clientsService";
+import { clientsService, ClientData } from "@/services/clientsService";
 import { queuesService, QueueWithAssistant } from "@/services/queuesService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 
@@ -34,6 +34,7 @@ const WhatsAppConnection = () => {
   const { toast } = useToast();
   
   const [client, setClient] = useState<WhatsAppClient | null>(null);
+  const [clientData, setClientData] = useState<ClientData | null>(null);
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
   const [queues, setQueues] = useState<QueueWithAssistant[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,11 +58,16 @@ const WhatsAppConnection = () => {
       
       // Carregar dados do cliente
       const clientsData = await clientsService.getAllClients();
-      const clientData = clientsData.find(c => c.id === clientId);
+      const clientInfo = clientsData.find(c => c.id === clientId);
+      setClientData(clientInfo || null);
       
-      if (clientData?.instance_id) {
-        const clientStatus = await whatsappService.getClientStatus(clientData.instance_id);
-        setClient(clientStatus);
+      if (clientInfo?.instance_id) {
+        try {
+          const clientStatus = await whatsappService.getClientStatus(clientInfo.instance_id);
+          setClient(clientStatus);
+        } catch (error) {
+          console.log('Cliente não encontrado no servidor WhatsApp');
+        }
       }
 
       // Carregar instâncias
@@ -100,24 +106,27 @@ const WhatsAppConnection = () => {
     });
   };
 
+  const canCreateNewInstance = () => {
+    if (!clientData) return false;
+    return instances.length < clientData.max_instances;
+  };
+
   const handleCreateInstance = async () => {
-    if (!clientId) return;
+    if (!clientId || !clientData) return;
+
+    // Verificar limite de instâncias
+    if (!canCreateNewInstance()) {
+      toast({
+        title: "Limite Atingido",
+        description: `Seu plano ${clientData.plan.toUpperCase()} permite apenas ${clientData.max_instances} instância(s). Atualize seu plano para criar mais conexões.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       setConnecting(true);
       console.log('🚀 Criando nova instância...');
-      
-      // Verificar se o cliente pode criar mais instâncias
-      const clientsData = await clientsService.getAllClients();
-      const clientData = clientsData.find(c => c.id === clientId);
-      
-      if (!clientData) {
-        throw new Error('Cliente não encontrado');
-      }
-      
-      if (instances.length >= clientData.max_instances) {
-        throw new Error(`Limite de ${clientData.max_instances} instâncias atingido para seu plano ${clientData.plan.toUpperCase()}`);
-      }
       
       // Gerar um instanceId único
       const newInstanceId = `${clientId}_${Date.now()}`;
@@ -173,7 +182,13 @@ const WhatsAppConnection = () => {
       setLoading(true);
       console.log('🔗 Conectando instância à fila:', { instanceId, queueId: selectedQueueId });
       
-      await queuesService.connectInstanceToQueue(instanceId, selectedQueueId);
+      // Buscar a instância pelo instance_id no banco
+      const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
+      if (!instance) {
+        throw new Error('Instância não encontrada');
+      }
+
+      await queuesService.connectInstanceToQueue(instance.id, selectedQueueId);
       
       const isHuman = selectedQueueId === "human";
       const queueName = isHuman ? "Interação Humana" : queues.find(q => q.id === selectedQueueId)?.name;
@@ -201,7 +216,14 @@ const WhatsAppConnection = () => {
   const handleDisconnectFromQueue = async (instanceId: string, queueId: string) => {
     try {
       setLoading(true);
-      await queuesService.disconnectInstanceFromQueue(instanceId, queueId);
+      
+      // Buscar a instância pelo instance_id no banco
+      const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
+      if (!instance) {
+        throw new Error('Instância não encontrada');
+      }
+
+      await queuesService.disconnectInstanceFromQueue(instance.id, queueId);
       
       toast({
         title: "Sucesso",
@@ -229,10 +251,18 @@ const WhatsAppConnection = () => {
   };
 
   const handleSaveEdit = async () => {
-    if (!editingInstance || !editName.trim()) return;
+    if (!editingInstance || !editName.trim()) {
+      toast({
+        title: "Erro",
+        description: "Nome é obrigatório",
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       setLoading(true);
+      console.log('💾 Salvando nome da instância:', { instanceId: editingInstance.instance_id, newName: editName.trim() });
       
       await whatsappInstancesService.updateInstance(editingInstance.instance_id, {
         custom_name: editName.trim()
@@ -270,8 +300,6 @@ const WhatsAppConnection = () => {
       await whatsappInstancesService.deleteInstance(instanceId);
       
       // Se era a instância principal do cliente, limpar
-      const clientsData = await clientsService.getAllClients();
-      const clientData = clientsData.find(c => c.id === clientId);
       if (clientData?.instance_id === instanceId) {
         await clientsService.updateClientInstance(clientId!, "", "disconnected");
       }
@@ -296,9 +324,13 @@ const WhatsAppConnection = () => {
   };
 
   const getInstanceConnections = (instanceId: string) => {
+    // Buscar conexões usando o ID da instância no banco
+    const instance = instances.find(i => i.instance_id === instanceId);
+    if (!instance) return [];
+
     return queues.filter(queue => 
       queue.instance_queue_connections?.some(conn => 
-        conn.whatsapp_instances?.instance_id === instanceId && conn.is_active
+        conn.instance_id === instance.id && conn.is_active
       )
     );
   };
@@ -342,6 +374,11 @@ const WhatsAppConnection = () => {
           <p className="text-muted-foreground">
             Gerencie suas conexões WhatsApp e configure as filas de atendimento
           </p>
+          {clientData && (
+            <p className="text-sm text-gray-500 mt-1">
+              Plano {clientData.plan.toUpperCase()}: {instances.length} / {clientData.max_instances} conexões
+            </p>
+          )}
         </div>
         <div className="flex space-x-2">
           <Button onClick={loadData} variant="outline" disabled={loading}>
@@ -350,7 +387,7 @@ const WhatsAppConnection = () => {
           </Button>
           <Button 
             onClick={handleCreateInstance}
-            disabled={connecting}
+            disabled={connecting || !canCreateNewInstance()}
             className="bg-blue-600 hover:bg-blue-700"
           >
             {connecting ? (
@@ -367,6 +404,24 @@ const WhatsAppConnection = () => {
           </Button>
         </div>
       </div>
+
+      {/* Plan Limit Warning */}
+      {!canCreateNewInstance() && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="w-5 h-5 text-orange-500" />
+              <div>
+                <p className="font-medium text-orange-900">Limite de Conexões Atingido</p>
+                <p className="text-sm text-orange-700">
+                  Seu plano {clientData?.plan.toUpperCase()} permite apenas {clientData?.max_instances} conexão(ões). 
+                  Entre em contato para atualizar seu plano.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
