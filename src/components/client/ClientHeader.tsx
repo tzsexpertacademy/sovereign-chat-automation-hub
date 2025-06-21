@@ -1,15 +1,106 @@
 
+import { useState, useEffect } from "react";
 import { Bell, User, Smartphone, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { whatsappInstancesService } from "@/services/whatsappInstancesService";
+import { whatsappService } from "@/services/whatsappMultiClient";
 
 interface ClientHeaderProps {
   clientId?: string;
 }
 
 const ClientHeader = ({ clientId }: ClientHeaderProps) => {
-  const isConnected = true; // Simulado
+  const [isConnected, setIsConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [connectedInstanceName, setConnectedInstanceName] = useState<string>("");
+
+  useEffect(() => {
+    if (!clientId) return;
+
+    const checkConnectionStatus = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Buscar instâncias do cliente
+        const instances = await whatsappInstancesService.getInstancesByClientId(clientId);
+        
+        if (instances.length === 0) {
+          setIsConnected(false);
+          setConnectedInstanceName("");
+          return;
+        }
+
+        // Verificar status de cada instância
+        let hasConnectedInstance = false;
+        let connectedName = "";
+
+        for (const instance of instances) {
+          try {
+            const status = await whatsappService.getClientStatus(instance.instance_id);
+            
+            if (status.status === 'connected' || status.status === 'open') {
+              hasConnectedInstance = true;
+              connectedName = instance.custom_name || instance.instance_id;
+              break;
+            }
+          } catch (error) {
+            console.error('Erro ao verificar status da instância:', instance.instance_id, error);
+          }
+        }
+
+        setIsConnected(hasConnectedInstance);
+        setConnectedInstanceName(connectedName);
+        
+      } catch (error) {
+        console.error('Erro ao verificar status das conexões:', error);
+        setIsConnected(false);
+        setConnectedInstanceName("");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Verificar status inicial
+    checkConnectionStatus();
+
+    // Verificar status a cada 30 segundos
+    const interval = setInterval(checkConnectionStatus, 30000);
+
+    return () => clearInterval(interval);
+  }, [clientId]);
+
+  const getConnectionStatus = () => {
+    if (isLoading) {
+      return {
+        icon: <Wifi className="w-5 h-5 text-gray-400 animate-pulse" />,
+        badge: <Badge variant="secondary">Verificando...</Badge>
+      };
+    }
+
+    if (isConnected) {
+      return {
+        icon: <Wifi className="w-5 h-5 text-green-500" />,
+        badge: (
+          <Badge variant="default" className="bg-green-500 hover:bg-green-600">
+            WhatsApp Conectado
+          </Badge>
+        )
+      };
+    }
+
+    return {
+      icon: <WifiOff className="w-5 h-5 text-red-500" />,
+      badge: (
+        <Badge variant="destructive">
+          Desconectado
+        </Badge>
+      )
+    };
+  };
+
+  const connectionStatus = getConnectionStatus();
 
   return (
     <header className="h-16 border-b bg-white flex items-center justify-between px-6">
@@ -20,14 +111,13 @@ const ClientHeader = ({ clientId }: ClientHeaderProps) => {
             YumerFlow
           </div>
           <div className="flex items-center space-x-2">
-            {isConnected ? (
-              <Wifi className="w-5 h-5 text-green-500" />
-            ) : (
-              <WifiOff className="w-5 h-5 text-red-500" />
+            {connectionStatus.icon}
+            {connectionStatus.badge}
+            {isConnected && connectedInstanceName && (
+              <span className="text-xs text-gray-500">
+                ({connectedInstanceName})
+              </span>
             )}
-            <Badge variant={isConnected ? "default" : "secondary"}>
-              {isConnected ? "WhatsApp Conectado" : "Desconectado"}
-            </Badge>
           </div>
         </div>
       </div>
