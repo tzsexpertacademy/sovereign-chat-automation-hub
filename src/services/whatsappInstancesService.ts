@@ -87,6 +87,15 @@ export class WhatsAppInstancesService {
     return data;
   }
 
+  async updateCustomName(instanceId: string, customName: string): Promise<WhatsAppInstanceData> {
+    console.log('📝 Atualizando nome personalizado:', { instanceId, customName });
+    
+    return this.updateInstance(instanceId, { 
+      custom_name: customName,
+      updated_at: new Date().toISOString()
+    });
+  }
+
   async deleteInstance(instanceId: string): Promise<void> {
     console.log('🗑️ Removendo instância:', instanceId);
     
@@ -121,6 +130,7 @@ export class WhatsAppInstancesService {
   async updateInstanceStatus(instanceId: string, status: string, additionalData?: Partial<WhatsAppInstanceUpdate>): Promise<void> {
     const updates: WhatsAppInstanceUpdate = {
       status,
+      updated_at: new Date().toISOString(),
       ...additionalData
     };
 

@@ -12,6 +12,7 @@ export const useTicketRealtime = (clientId: string) => {
   const [isLoading, setIsLoading] = useState(false);
   const channelRef = useRef<any>(null);
   const isLoadingRef = useRef(false);
+  const lastMessageIdRef = useRef<string>('');
 
   // Carregar tickets iniciais
   const loadTickets = async () => {
@@ -20,14 +21,14 @@ export const useTicketRealtime = (clientId: string) => {
     try {
       isLoadingRef.current = true;
       setIsLoading(true);
-      console.log('🔄 Carregando tickets...');
+      console.log('🔄 Carregando tickets para cliente:', clientId);
       
       const ticketsData = await ticketsService.getClientTickets(clientId);
-      console.log('✅ Tickets carregados:', ticketsData);
+      console.log('✅ Tickets carregados:', ticketsData.length);
       
       setTickets(ticketsData);
     } catch (error) {
-      console.error('Erro ao carregar tickets:', error);
+      console.error('❌ Erro ao carregar tickets:', error);
     } finally {
       setIsLoading(false);
       isLoadingRef.current = false;
@@ -36,6 +37,14 @@ export const useTicketRealtime = (clientId: string) => {
 
   // Função para extrair nome real do WhatsApp
   const extractWhatsAppName = (message: any) => {
+    console.log('🔍 Extraindo nome da mensagem:', {
+      notifyName: message.notifyName,
+      pushName: message.pushName,
+      senderName: message.senderName,
+      author: message.author,
+      from: message.from
+    });
+
     const possibleNames = [
       message.notifyName,
       message.pushName, 
@@ -50,16 +59,20 @@ export const useTicketRealtime = (clientId: string) => {
           name.trim() !== '' && 
           !name.includes('@') && 
           name.length > 1) {
+        console.log('✅ Nome extraído:', name.trim());
         return name.trim();
       }
     }
 
     const phone = message.from?.replace(/\D/g, '') || '';
     if (phone.length >= 10) {
-      return phone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+      const formattedPhone = phone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+      console.log('📞 Usando telefone formatado:', formattedPhone);
+      return formattedPhone;
     }
 
-    return null;
+    console.log('⚠️ Nenhum nome válido encontrado, usando padrão');
+    return `Contato ${phone || 'Desconhecido'}`;
   };
 
   // Processar mensagem com assistente automático
@@ -74,9 +87,11 @@ export const useTicketRealtime = (clientId: string) => {
       ]);
 
       if (!aiConfig) {
-        console.log('⚠️ Nenhuma configuração de IA encontrada');
+        console.log('⚠️ Nenhuma configuração de IA encontrada para cliente:', clientId);
         return;
       }
+
+      console.log('🔍 Configuração IA encontrada:', aiConfig.default_model);
 
       // Buscar fila ativa conectada à instância
       const activeQueue = queues.find(queue => 
@@ -90,11 +105,17 @@ export const useTicketRealtime = (clientId: string) => {
 
       if (!activeQueue || !activeQueue.assistants) {
         console.log('⚠️ Nenhuma fila ativa com assistente encontrada');
+        console.log('Filas disponíveis:', queues.map(q => ({
+          name: q.name,
+          active: q.is_active,
+          hasAssistant: !!q.assistants,
+          assistantActive: q.assistants?.is_active
+        })));
         return;
       }
 
       const assistant = activeQueue.assistants;
-      console.log('🤖 Processando com assistente:', assistant.name);
+      console.log('🤖 Processando com assistente:', assistant.name, 'Modelo:', assistant.model);
 
       // Preparar configurações avançadas
       let advancedSettings = {
@@ -109,22 +130,27 @@ export const useTicketRealtime = (clientId: string) => {
             : assistant.advanced_settings;
           
           advancedSettings = {
-            temperature: parsedSettings.temperature || 0.7,
-            max_tokens: parsedSettings.max_tokens || 1000
+            temperature: Number(parsedSettings.temperature) || 0.7,
+            max_tokens: Number(parsedSettings.max_tokens) || 1000
           };
         }
       } catch (error) {
-        console.error('Erro ao parse das configurações avançadas:', error);
+        console.error('❌ Erro ao parse das configurações avançadas:', error);
       }
 
-      // Buscar histórico de mensagens do ticket para contexto
+      // Buscar histórico de mensagens do ticket para contexto (40 mensagens)
+      console.log('📚 Buscando histórico de mensagens para contexto...');
       const ticketMessages = await ticketsService.getTicketMessages(ticketId);
+      console.log(`📨 ${ticketMessages.length} mensagens encontradas no histórico`);
+      
       const recentMessages = ticketMessages
-        .slice(-10) // Últimas 10 mensagens para contexto
+        .slice(-40) // Últimas 40 mensagens para contexto expandido
         .map(msg => ({
           role: msg.from_me ? 'assistant' : 'user',
           content: msg.content || ''
         }));
+
+      console.log(`🔄 Enviando para OpenAI com ${recentMessages.length} mensagens de contexto`);
 
       // Chamar a API da OpenAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -151,6 +177,8 @@ export const useTicketRealtime = (clientId: string) => {
         }),
       });
 
+      console.log('📡 Resposta da OpenAI:', response.status);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(`Erro da API OpenAI: ${response.status} - ${errorData.error?.message || 'Erro desconhecido'}`);
@@ -160,10 +188,27 @@ export const useTicketRealtime = (clientId: string) => {
       const assistantResponse = data.choices?.[0]?.message?.content;
 
       if (assistantResponse && assistantResponse.trim()) {
-        console.log('🤖 Resposta do assistente gerada:', assistantResponse.substring(0, 100));
+        console.log('🤖 Resposta do assistente gerada:', assistantResponse.substring(0, 100) + '...');
         
-        // Enviar resposta via WhatsApp
-        await whatsappService.sendMessage(clientId, message.from, assistantResponse);
+        // Verificar se deve enviar áudio
+        const shouldSendAudio = assistantResponse.toLowerCase().includes('audio:');
+        
+        if (shouldSendAudio) {
+          console.log('🎤 Comando de áudio detectado');
+          const audioText = assistantResponse.replace(/audio:\s*/gi, '').trim();
+          
+          // Enviar como áudio se configurado
+          try {
+            await whatsappService.sendMessage(clientId, message.from, `audio:${audioText}`);
+            console.log('🎵 Áudio enviado com sucesso');
+          } catch (audioError) {
+            console.error('❌ Erro ao enviar áudio, enviando texto:', audioError);
+            await whatsappService.sendMessage(clientId, message.from, audioText);
+          }
+        } else {
+          // Enviar resposta via WhatsApp
+          await whatsappService.sendMessage(clientId, message.from, assistantResponse);
+        }
         
         // Registrar a resposta no ticket
         await ticketsService.addTicketMessage({
@@ -172,7 +217,7 @@ export const useTicketRealtime = (clientId: string) => {
           from_me: true,
           sender_name: assistant.name,
           content: assistantResponse,
-          message_type: 'text',
+          message_type: shouldSendAudio ? 'audio' : 'text',
           is_internal_note: false,
           is_ai_response: true,
           ai_confidence_score: data.choices?.[0]?.finish_reason === 'stop' ? 0.9 : 0.7,
@@ -208,14 +253,34 @@ export const useTicketRealtime = (clientId: string) => {
   useEffect(() => {
     if (!clientId) return;
 
-    console.log('🔌 Configurando listeners de tempo real para:', clientId);
+    console.log('🔌 Configurando listeners de tempo real para cliente:', clientId);
 
     // Carregar tickets iniciais apenas uma vez
     loadTickets();
 
+    // Conectar ao WebSocket do WhatsApp
+    console.log('🔌 Conectando ao WebSocket...');
+    const socket = whatsappService.connectSocket();
+    
+    // Entrar no room do cliente
+    whatsappService.joinClientRoom(clientId);
+
     // Listener para novas mensagens do WhatsApp via WebSocket
     const handleNewWhatsAppMessage = async (message: any) => {
-      console.log('📨 Nova mensagem WhatsApp recebida:', message);
+      console.log('📨 Nova mensagem WhatsApp recebida:', {
+        id: message.id,
+        from: message.from,
+        body: message.body?.substring(0, 50),
+        fromMe: message.fromMe,
+        timestamp: message.timestamp
+      });
+      
+      // Evitar processar a mesma mensagem duas vezes
+      if (lastMessageIdRef.current === message.id) {
+        console.log('⏭️ Mensagem já processada, ignorando');
+        return;
+      }
+      lastMessageIdRef.current = message.id;
       
       // Ignorar mensagens próprias
       if (message.fromMe) {
@@ -224,12 +289,13 @@ export const useTicketRealtime = (clientId: string) => {
       }
       
       try {
-        const customerName = extractWhatsAppName(message) || `Contato ${message.from?.replace(/\D/g, '') || ''}`;
+        const customerName = extractWhatsAppName(message);
         const customerPhone = message.from?.replace(/\D/g, '') || '';
         
-        console.log('🔍 Nome extraído:', customerName);
+        console.log('👤 Dados do cliente:', { customerName, customerPhone });
         
         // Criar/atualizar ticket imediatamente
+        console.log('🎯 Criando/atualizando ticket...');
         const ticketId = await ticketsService.createOrUpdateTicket(
           clientId,
           message.from || message.chatId,
@@ -239,6 +305,8 @@ export const useTicketRealtime = (clientId: string) => {
           message.body || '',
           new Date().toISOString()
         );
+
+        console.log('✅ Ticket criado/atualizado:', ticketId);
 
         // Adicionar mensagem ao ticket
         await ticketsService.addTicketMessage({
@@ -254,28 +322,28 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date(message.timestamp || Date.now()).toISOString()
         });
 
-        console.log('🎯 Acionando processamento automático...');
-        
-        // IMPORTANTE: Processar com assistente automático
+        console.log('📝 Mensagem adicionada ao ticket');
+
+        // IMPORTANTE: Processar com assistente automático após um pequeno delay
+        console.log('⏰ Agendando processamento automático...');
         setTimeout(() => {
           processMessageWithAssistant(message, ticketId);
-        }, 1000); // Pequeno delay para garantir que a mensagem foi salva
+        }, 2000); // 2 segundos de delay para garantir que tudo foi salvo
 
-        // Atualizar tickets sem recarregar tudo
-        console.log('📋 Atualizando lista de tickets...');
+        // Atualizar lista de tickets
+        console.log('🔄 Recarregando tickets...');
         setTimeout(() => {
           if (!isLoadingRef.current) {
             loadTickets();
           }
-        }, 500);
+        }, 1000);
         
       } catch (error) {
-        console.error('Erro ao processar nova mensagem:', error);
+        console.error('❌ Erro ao processar nova mensagem:', error);
       }
     };
 
-    // Conectar ao WebSocket do WhatsApp
-    console.log('🔌 Conectando ao WebSocket para tempo real...');
+    // Conectar listener
     whatsappService.onClientMessage(clientId, handleNewWhatsAppMessage);
 
     // Listener para atualizações de tickets no Supabase
@@ -290,13 +358,13 @@ export const useTicketRealtime = (clientId: string) => {
           filter: `client_id=eq.${clientId}`
         },
         async (payload) => {
-          console.log('🔄 Ticket atualizado via Supabase:', payload);
-          // Pequeno delay para evitar múltiplas chamadas
+          console.log('🔄 Ticket atualizado via Supabase:', payload.eventType);
+          // Recarregar tickets após mudanças
           setTimeout(() => {
             if (!isLoadingRef.current) {
               loadTickets();
             }
-          }, 1000);
+          }, 500);
         }
       )
       .on(
@@ -307,13 +375,13 @@ export const useTicketRealtime = (clientId: string) => {
           table: 'ticket_messages'
         },
         async (payload) => {
-          console.log('💬 Nova mensagem de ticket via Supabase:', payload);
+          console.log('💬 Nova mensagem de ticket via Supabase');
           // Atualizar tickets para mostrar nova mensagem
           setTimeout(() => {
             if (!isLoadingRef.current) {
               loadTickets();
             }
-          }, 1000);
+          }, 500);
         }
       )
       .subscribe();
@@ -321,7 +389,7 @@ export const useTicketRealtime = (clientId: string) => {
     channelRef.current = channel;
 
     return () => {
-      console.log('🔌 Desconectando listeners...');
+      console.log('🔌 Limpando listeners...');
       whatsappService.removeListener(`message_${clientId}`);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
