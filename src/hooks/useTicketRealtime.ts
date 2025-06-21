@@ -1,10 +1,13 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { queuesService } from '@/services/queuesService';
 import { aiConfigService } from '@/services/aiConfigService';
+import { useAutoReactions } from './useAutoReactions';
+import { useHumanizedTyping } from './useHumanizedTyping';
+import { useMessageBatch } from './useMessageBatch';
+import { useOnlineStatus } from './useOnlineStatus';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -18,6 +21,22 @@ export const useTicketRealtime = (clientId: string) => {
   const processedMessagesRef = useRef<Set<string>>(new Set());
   const initializationRef = useRef(false);
   const mountedRef = useRef(false);
+
+  // Hooks para funcionalidades humanizadas
+  const autoReactions = useAutoReactions(clientId);
+  const humanizedTyping = useHumanizedTyping(clientId);
+  const onlineStatus = useOnlineStatus(clientId);
+
+  // Hook para agrupamento de mensagens
+  const messageBatch = useMessageBatch(useCallback(async (chatId: string, messages: any[]) => {
+    console.log(`📦 Processando lote de ${messages.length} mensagens para ${chatId}`);
+    
+    // Processar todas as mensagens em conjunto
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      await processWithAssistant(lastMessage, '', messages);
+    }
+  }, []));
 
   // Carregar tickets
   const loadTickets = useCallback(async () => {
@@ -46,8 +65,8 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar mensagem com assistente seguindo o fluxo das filas - CORRIGIDO
-  const processWithAssistant = useCallback(async (message: any, ticketId: string) => {
+  // Processar mensagem com assistente seguindo o fluxo das filas - MELHORADO
+  const processWithAssistant = useCallback(async (message: any, ticketId: string, messagesBatch?: any[]) => {
     const messageKey = `${message.id}_${message.from}_${message.timestamp}`;
     
     if (processedMessagesRef.current.has(message.id) || 
@@ -61,9 +80,20 @@ export const useTicketRealtime = (clientId: string) => {
     
     try {
       console.log('🤖 Processando mensagem com assistente para ticket:', ticketId);
-      setAssistantTyping(true);
       
-      // 1. Buscar configurações do cliente
+      // 1. Processar reações automáticas
+      if (messagesBatch) {
+        for (const msg of messagesBatch) {
+          await autoReactions.processMessage(msg);
+        }
+      } else {
+        await autoReactions.processMessage(message);
+      }
+      
+      // 2. Marcar mensagem como lida
+      await humanizedTyping.markAsRead(message.from, message.id);
+      
+      // 3. Buscar configurações do cliente
       const [queues, aiConfig] = await Promise.all([
         queuesService.getClientQueues(clientId),
         aiConfigService.getClientConfig(clientId)
@@ -71,16 +101,14 @@ export const useTicketRealtime = (clientId: string) => {
 
       if (!aiConfig || !aiConfig.openai_api_key) {
         console.log('⚠️ Nenhuma configuração de IA encontrada para cliente:', clientId);
-        setAssistantTyping(false);
         return;
       }
 
-      // 2. Buscar fila ativa com assistente CONECTADA À INSTÂNCIA
+      // 4. Buscar fila ativa com assistente CONECTADA À INSTÂNCIA
       const instanceId = message.instanceId || message.instance_id;
       let activeQueue = null;
       
       if (instanceId) {
-        // Buscar filas conectadas a esta instância específica
         const instanceConnections = await queuesService.getInstanceConnections(instanceId);
         activeQueue = instanceConnections.find(queue => 
           queue.is_active && 
@@ -89,7 +117,6 @@ export const useTicketRealtime = (clientId: string) => {
         );
       }
       
-      // Fallback: buscar qualquer fila ativa com assistente
       if (!activeQueue) {
         activeQueue = queues.find((queue: any) => 
           queue.is_active && 
@@ -100,14 +127,13 @@ export const useTicketRealtime = (clientId: string) => {
 
       if (!activeQueue || !activeQueue.assistants) {
         console.log('⚠️ Nenhuma fila ativa com assistente encontrada para a instância:', instanceId);
-        setAssistantTyping(false);
         return;
       }
 
       const assistant = activeQueue.assistants;
       console.log('🤖 Processando com assistente:', assistant.name, 'na fila:', activeQueue.name);
 
-      // 3. Buscar histórico de mensagens do ticket
+      // 5. Buscar histórico de mensagens do ticket
       const ticketMessages = await ticketsService.getTicketMessages(ticketId);
       const recentMessages = ticketMessages
         .slice(-10)
@@ -116,14 +142,21 @@ export const useTicketRealtime = (clientId: string) => {
           content: msg.content || ''
         }));
 
-      // 4. Delay humanizado antes de responder
-      const delaySeconds = assistant.advanced_settings?.response_delay_seconds || 3;
-      await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+      // 6. Preparar mensagem contextual com lote se houver
+      let messageContent = message.body || message.text || '';
+      if (messagesBatch && messagesBatch.length > 1) {
+        messageContent = messagesBatch
+          .map(msg => msg.body || msg.text || '')
+          .filter(text => text.trim())
+          .join('\n');
+        console.log(`📦 Processando lote de ${messagesBatch.length} mensagens em conjunto`);
+      }
 
-      // 5. Preparar configurações avançadas
+      // 7. Preparar configurações avançadas
       let advancedSettings = {
         temperature: 0.7,
-        max_tokens: 1000
+        max_tokens: 1000,
+        response_delay_seconds: 3
       };
       
       try {
@@ -134,14 +167,20 @@ export const useTicketRealtime = (clientId: string) => {
           
           advancedSettings = {
             temperature: parsedSettings.temperature || 0.7,
-            max_tokens: parsedSettings.max_tokens || 1000
+            max_tokens: parsedSettings.max_tokens || 1000,
+            response_delay_seconds: parsedSettings.response_delay_seconds || 3
           };
         }
       } catch (error) {
         console.error('Erro ao parse das configurações avançadas:', error);
       }
 
-      // 6. Chamar a API da OpenAI
+      // 8. Simular digitação/gravação humana ANTES de processar
+      setAssistantTyping(true);
+      const isAudioResponse = assistant.advanced_settings?.voice_cloning_enabled;
+      await humanizedTyping.simulateHumanTyping(message.from, messageContent, isAudioResponse);
+
+      // 9. Chamar a API da OpenAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -158,7 +197,7 @@ export const useTicketRealtime = (clientId: string) => {
             ...recentMessages,
             {
               role: 'user',
-              content: message.body || message.text || ''
+              content: messageContent
             }
           ],
           temperature: advancedSettings.temperature,
@@ -177,10 +216,10 @@ export const useTicketRealtime = (clientId: string) => {
       if (assistantResponse && assistantResponse.trim()) {
         console.log('🤖 Resposta do assistente gerada:', assistantResponse.substring(0, 100) + '...');
         
-        // 7. Enviar resposta via WhatsApp
+        // 10. Enviar resposta via WhatsApp
         await whatsappService.sendMessage(clientId, message.from, assistantResponse);
         
-        // 8. Registrar a resposta no ticket
+        // 11. Registrar a resposta no ticket
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -206,7 +245,7 @@ export const useTicketRealtime = (clientId: string) => {
     } finally {
       setAssistantTyping(false);
     }
-  }, [clientId]);
+  }, [clientId, autoReactions, humanizedTyping]);
 
   // Extrair nome real do WhatsApp
   const extractWhatsAppName = useCallback((message: any) => {
@@ -245,6 +284,9 @@ export const useTicketRealtime = (clientId: string) => {
     initializationRef.current = true;
     mountedRef.current = true;
 
+    // Inicializar status online
+    onlineStatus.setOnline();
+
     // Carregar tickets inicial
     loadTickets();
 
@@ -268,7 +310,7 @@ export const useTicketRealtime = (clientId: string) => {
       setIsOnline(true);
     }
 
-    // Listener para novas mensagens do WhatsApp com processamento via fila
+    // Listener para novas mensagens do WhatsApp com agrupamento
     const handleNewWhatsAppMessage = async (message: any) => {
       console.log('📨 Nova mensagem WhatsApp recebida:', {
         id: message.id,
@@ -287,9 +329,6 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
       
-      processedMessagesRef.current.add(message.id);
-      processedMessagesRef.current.add(messageKey);
-      
       // Ignorar mensagens próprias
       if (message.fromMe) {
         console.log('⏭️ Ignorando mensagem própria');
@@ -297,51 +336,19 @@ export const useTicketRealtime = (clientId: string) => {
       }
       
       try {
-        const customerName = extractWhatsAppName(message);
-        const customerPhone = message.from?.replace(/\D/g, '') || '';
-        
         // Criar/atualizar ticket
         const ticketId = await ticketsService.createOrUpdateTicket(
           clientId,
           message.from || message.chatId,
           message.instanceId || clientId,
-          customerName,
-          customerPhone,
+          extractWhatsAppName(message),
+          message.from?.replace(/\D/g, '') || '',
           message.body || '',
           new Date().toISOString()
         );
 
-        // Adicionar mensagem ao ticket
-        await ticketsService.addTicketMessage({
-          ticket_id: ticketId,
-          message_id: message.id,
-          from_me: message.fromMe || false,
-          sender_name: customerName,
-          content: message.body || '',
-          message_type: message.type || 'text',
-          is_internal_note: false,
-          is_ai_response: false,
-          processing_status: 'received',
-          timestamp: new Date(message.timestamp || Date.now()).toISOString()
-        });
-
-        // Recarregar tickets
-        setTimeout(() => {
-          if (!isLoadingRef.current && mountedRef.current) {
-            loadTickets();
-          }
-        }, 1000);
-
-        // Processar com assistente através das filas - SEGUINDO O FLUXO CORRETO
-        if (!message.type || message.type === 'text' || message.type === 'chat') {
-          // Adicionar informações da instância à mensagem
-          const messageWithInstance = {
-            ...message,
-            instanceId: message.instanceId || clientId
-          };
-          
-          await processWithAssistant(messageWithInstance, ticketId);
-        }
+        // Adicionar mensagem ao agrupamento
+        messageBatch.addMessage(message);
         
       } catch (error) {
         console.error('❌ Erro ao processar nova mensagem:', error);
@@ -381,6 +388,8 @@ export const useTicketRealtime = (clientId: string) => {
       initializationRef.current = false;
       mountedRef.current = false;
       
+      onlineStatus.setOffline();
+      
       if (socketRef.current) {
         socketRef.current.off(messageEvent, handleNewWhatsAppMessage);
         socketRef.current.disconnect();
@@ -391,7 +400,7 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       setIsOnline(false);
     };
-  }, [clientId, loadTickets, processWithAssistant, extractWhatsAppName]);
+  }, [clientId, loadTickets, messageBatch, onlineStatus]);
 
   const reloadTickets = useCallback(() => {
     console.log('🔄 Recarregamento manual solicitado');
@@ -404,7 +413,7 @@ export const useTicketRealtime = (clientId: string) => {
     tickets,
     isLoading,
     isTyping: assistantTyping,
-    isOnline,
+    isOnline: isOnline || onlineStatus.isOnline,
     reloadTickets
   };
 };

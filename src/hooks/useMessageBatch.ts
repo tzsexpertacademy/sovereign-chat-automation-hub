@@ -1,66 +1,141 @@
 
 import { useState, useCallback, useRef } from 'react';
 
-interface BatchedMessage {
-  id: string;
-  text: string;
-  timestamp: number;
-  from: string;
+interface BatchConfig {
+  timeout: number; // tempo em ms para aguardar mais mensagens
+  maxBatchSize: number;
+  enabled: boolean;
 }
 
-interface UseMessageBatchProps {
-  batchTimeoutSeconds: number;
-  onProcessBatch: (messages: BatchedMessage[]) => void;
+interface MessageBatch {
+  chatId: string;
+  messages: any[];
+  timeoutId: NodeJS.Timeout | null;
+  lastMessageTime: number;
 }
 
-export const useMessageBatch = ({ batchTimeoutSeconds, onProcessBatch }: UseMessageBatchProps) => {
-  const [pendingMessages, setPendingMessages] = useState<BatchedMessage[]>([]);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+const defaultConfig: BatchConfig = {
+  timeout: 5000, // 5 segundos
+  maxBatchSize: 10,
+  enabled: true
+};
 
-  const addMessage = useCallback((message: BatchedMessage) => {
-    setPendingMessages(prev => {
-      const updated = [...prev, message];
+export const useMessageBatch = (onBatchComplete: (chatId: string, messages: any[]) => void) => {
+  const [config, setConfig] = useState<BatchConfig>(defaultConfig);
+  const [batches, setBatches] = useState<Map<string, MessageBatch>>(new Map());
+  const batchesRef = useRef<Map<string, MessageBatch>>(new Map());
+
+  // Manter referência atualizada
+  batchesRef.current = batches;
+
+  const processBatch = useCallback((chatId: string) => {
+    const batch = batchesRef.current.get(chatId);
+    if (!batch || batch.messages.length === 0) return;
+
+    console.log(`📦 Processando lote de ${batch.messages.length} mensagens para ${chatId}`);
+    
+    // Chamar callback com as mensagens agrupadas
+    onBatchComplete(chatId, [...batch.messages]);
+    
+    // Limpar lote
+    setBatches(prev => {
+      const newBatches = new Map(prev);
+      newBatches.delete(chatId);
+      return newBatches;
+    });
+  }, [onBatchComplete]);
+
+  const addMessage = useCallback((message: any) => {
+    if (!config.enabled) {
+      // Se agrupamento está desabilitado, processar imediatamente
+      onBatchComplete(message.from || message.chatId, [message]);
+      return;
+    }
+
+    const chatId = message.from || message.chatId;
+    const now = Date.now();
+    
+    setBatches(prev => {
+      const newBatches = new Map(prev);
+      const existingBatch = newBatches.get(chatId);
       
-      // Limpar timeout existente
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+      if (existingBatch) {
+        // Limpar timeout anterior
+        if (existingBatch.timeoutId) {
+          clearTimeout(existingBatch.timeoutId);
+        }
+        
+        // Adicionar mensagem ao lote existente
+        const updatedMessages = [...existingBatch.messages, message];
+        
+        // Verificar se atingiu tamanho máximo
+        if (updatedMessages.length >= config.maxBatchSize) {
+          // Processar imediatamente
+          setTimeout(() => processBatch(chatId), 0);
+          return newBatches;
+        }
+        
+        // Configurar novo timeout
+        const timeoutId = setTimeout(() => processBatch(chatId), config.timeout);
+        
+        newBatches.set(chatId, {
+          ...existingBatch,
+          messages: updatedMessages,
+          timeoutId,
+          lastMessageTime: now
+        });
+      } else {
+        // Criar novo lote
+        const timeoutId = setTimeout(() => processBatch(chatId), config.timeout);
+        
+        newBatches.set(chatId, {
+          chatId,
+          messages: [message],
+          timeoutId,
+          lastMessageTime: now
+        });
       }
       
-      // Definir novo timeout para processar o lote
-      timeoutRef.current = setTimeout(() => {
-        if (updated.length > 0) {
-          console.log(`🕒 Processando lote de ${updated.length} mensagens após ${batchTimeoutSeconds}s`);
-          onProcessBatch(updated);
-          setPendingMessages([]);
-        }
-      }, batchTimeoutSeconds * 1000);
-      
-      return updated;
+      return newBatches;
     });
-  }, [batchTimeoutSeconds, onProcessBatch]);
+    
+    console.log(`📨 Mensagem adicionada ao lote ${chatId}. Aguardando ${config.timeout}ms para mais mensagens...`);
+  }, [config, processBatch, onBatchComplete]);
 
-  const clearBatch = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    setPendingMessages([]);
+  const forceProcessBatch = useCallback((chatId: string) => {
+    processBatch(chatId);
+  }, [processBatch]);
+
+  const clearBatch = useCallback((chatId: string) => {
+    setBatches(prev => {
+      const newBatches = new Map(prev);
+      const batch = newBatches.get(chatId);
+      
+      if (batch?.timeoutId) {
+        clearTimeout(batch.timeoutId);
+      }
+      
+      newBatches.delete(chatId);
+      return newBatches;
+    });
   }, []);
 
-  const processBatchNow = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    if (pendingMessages.length > 0) {
-      console.log(`⚡ Processando lote imediatamente com ${pendingMessages.length} mensagens`);
-      onProcessBatch(pendingMessages);
-      setPendingMessages([]);
-    }
-  }, [pendingMessages, onProcessBatch]);
+  const getBatchInfo = useCallback((chatId: string) => {
+    const batch = batches.get(chatId);
+    return {
+      exists: !!batch,
+      messageCount: batch?.messages.length || 0,
+      timeRemaining: batch ? config.timeout - (Date.now() - batch.lastMessageTime) : 0
+    };
+  }, [batches, config.timeout]);
 
   return {
-    pendingMessages,
+    config,
+    setConfig,
     addMessage,
+    forceProcessBatch,
     clearBatch,
-    processBatchNow
+    getBatchInfo,
+    activeBatches: batches.size
   };
 };

@@ -124,10 +124,11 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
-    // Verificar se há usuário humano atribuído (procurar por campos que indicam atribuição humana)
-    const isHumanAssigned = ticket.status === 'in_progress' || 
-                           (ticket.title && ticket.title.includes('Atendido por')) ||
-                           ticket.status === 'closed';
+    // Verificar se há usuário humano atribuído - CORRIGIDO: removendo comparação inválida
+    const isHumanAssigned = ticket.status === 'pending' || 
+                           ticket.status === 'resolved' ||
+                           ticket.status === 'closed' ||
+                           (ticket.title && ticket.title.includes('Atendido por'));
 
     // Fila ativa - só mostra se não foi assumido por humano
     if (ticket.assigned_queue_id && !isHumanAssigned) {
