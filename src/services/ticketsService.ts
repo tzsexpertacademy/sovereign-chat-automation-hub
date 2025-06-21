@@ -81,7 +81,14 @@ export const ticketsService = {
       .order('last_message_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    
+    return (data || []).map(ticket => ({
+      ...ticket,
+      status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
+      tags: Array.isArray(ticket.tags) ? ticket.tags : [],
+      custom_fields: typeof ticket.custom_fields === 'object' ? ticket.custom_fields : {},
+      internal_notes: Array.isArray(ticket.internal_notes) ? ticket.internal_notes : []
+    }));
   },
 
   async getTicketById(ticketId: string): Promise<ConversationTicket | null> {
@@ -97,7 +104,16 @@ export const ticketsService = {
       .single();
 
     if (error) throw error;
-    return data;
+    
+    if (!data) return null;
+    
+    return {
+      ...data,
+      status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      custom_fields: typeof data.custom_fields === 'object' ? data.custom_fields : {},
+      internal_notes: Array.isArray(data.internal_notes) ? data.internal_notes : []
+    };
   },
 
   async createOrUpdateTicket(
@@ -151,6 +167,50 @@ export const ticketsService = {
     if (error) throw error;
   },
 
+  async assumeTicketManually(ticketId: string): Promise<void> {
+    const { error } = await supabase
+      .from('conversation_tickets')
+      .update({
+        assigned_queue_id: null,
+        assigned_assistant_id: null,
+        status: 'pending',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', ticketId);
+
+    if (error) throw error;
+
+    // Adicionar evento
+    await this.addTicketEvent({
+      ticket_id: ticketId,
+      event_type: 'manual_takeover',
+      description: 'Ticket assumido manualmente pelo operador',
+      metadata: { action: 'manual_takeover' }
+    });
+  },
+
+  async transferTicket(ticketId: string, queueId: string, reason?: string): Promise<void> {
+    const { error } = await supabase
+      .from('conversation_tickets')
+      .update({
+        assigned_queue_id: queueId,
+        assigned_assistant_id: null,
+        status: 'open',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', ticketId);
+
+    if (error) throw error;
+
+    // Adicionar evento
+    await this.addTicketEvent({
+      ticket_id: ticketId,
+      event_type: 'queue_transfer',
+      description: `Ticket transferido para outra fila${reason ? ': ' + reason : ''}`,
+      metadata: { queue_id: queueId, reason }
+    });
+  },
+
   async addInternalNote(ticketId: string, note: string, createdBy: string): Promise<void> {
     // Buscar notas existentes
     const { data: ticket } = await supabase
@@ -159,7 +219,7 @@ export const ticketsService = {
       .eq('id', ticketId)
       .single();
 
-    const existingNotes = ticket?.internal_notes || [];
+    const existingNotes = Array.isArray(ticket?.internal_notes) ? ticket.internal_notes : [];
     const newNote = {
       id: crypto.randomUUID(),
       content: note,
@@ -213,6 +273,81 @@ export const ticketsService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    
+    return (data || []).map(event => ({
+      ...event,
+      metadata: typeof event.metadata === 'object' ? event.metadata : {}
+    }));
+  },
+
+  // Importar conversas do WhatsApp e criar tickets
+  async importConversationsFromWhatsApp(clientId: string): Promise<void> {
+    try {
+      console.log('🔄 Iniciando importação de conversas para cliente:', clientId);
+      
+      // Buscar conversas do serviço WhatsApp
+      const { whatsappService } = await import('@/services/whatsappMultiClient');
+      const chats = await whatsappService.getChats(clientId);
+      
+      console.log(`📱 ${chats.length} conversas encontradas para importação`);
+      
+      for (const chat of chats) {
+        try {
+          // Extrair nome do contato (remover códigos de país e formatação)
+          const customerName = chat.name || chat.id.replace(/[\D]/g, '').replace(/^55/, '');
+          const customerPhone = chat.id.replace(/[\D]/g, '');
+          
+          // Obter última mensagem
+          const lastMessage = chat.lastMessage?.body || 'Conversa importada';
+          const lastMessageAt = chat.lastMessage?.timestamp 
+            ? new Date(chat.lastMessage.timestamp).toISOString()
+            : new Date().toISOString();
+          
+          // Criar ou atualizar ticket
+          const ticketId = await this.createOrUpdateTicket(
+            clientId,
+            chat.id,
+            clientId, // usando clientId como instanceId temporariamente
+            customerName,
+            customerPhone,
+            lastMessage,
+            lastMessageAt
+          );
+          
+          console.log(`✅ Ticket criado/atualizado: ${ticketId} para ${customerName}`);
+          
+          // Buscar mensagens da conversa
+          const messages = await whatsappService.getChatMessages(chat.id, 50);
+          
+          // Importar mensagens
+          for (const message of messages) {
+            await this.addTicketMessage({
+              ticket_id: ticketId,
+              message_id: message.id,
+              from_me: message.fromMe,
+              sender_name: message.author || customerName,
+              content: message.body,
+              message_type: message.type,
+              is_internal_note: false,
+              is_ai_response: false,
+              processing_status: 'imported',
+              timestamp: new Date(message.timestamp).toISOString()
+            });
+          }
+          
+          console.log(`📨 ${messages.length} mensagens importadas para ticket ${ticketId}`);
+          
+        } catch (chatError) {
+          console.error(`❌ Erro ao processar chat ${chat.id}:`, chatError);
+          continue;
+        }
+      }
+      
+      console.log('✅ Importação de conversas concluída');
+      
+    } catch (error) {
+      console.error('❌ Erro na importação de conversas:', error);
+      throw error;
+    }
   }
 };

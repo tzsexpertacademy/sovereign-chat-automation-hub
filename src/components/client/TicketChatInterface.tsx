@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, MessageSquare, Clock, User, Tag, FileText, CheckCircle, XCircle, RefreshCw, Archive, Star } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Search, Send, Paperclip, MoreVertical, Phone, Video, AlertCircle, MessageSquare, Clock, User, Tag, FileText, CheckCircle, XCircle, RefreshCw, Archive, Star, UserCheck, ArrowRight, Zap, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket, type TicketMessage } from "@/services/ticketsService";
 import { customersService, type Customer } from "@/services/customersService";
@@ -34,10 +34,16 @@ const TicketChatInterface = () => {
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"tickets" | "contacts">("tickets");
   const [showInternalNotes, setShowInternalNotes] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [queues, setQueues] = useState<any[]>([]);
+  const [transferQueueId, setTransferQueueId] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
 
   useEffect(() => {
     if (clientId) {
       loadData();
+      loadQueues();
     }
   }, [clientId]);
 
@@ -64,6 +70,107 @@ const TicketChatInterface = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadQueues = async () => {
+    try {
+      const queuesData = await queuesService.getClientQueues(clientId!);
+      setQueues(queuesData);
+    } catch (error) {
+      console.error('Erro ao carregar filas:', error);
+    }
+  };
+
+  const handleImportConversations = async () => {
+    try {
+      setIsImporting(true);
+      await ticketsService.importConversationsFromWhatsApp(clientId!);
+      await loadData();
+      
+      toast({
+        title: "Importação concluída",
+        description: "Conversas do WhatsApp foram importadas com sucesso"
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro na importação",
+        description: error.message || "Falha ao importar conversas",
+        variant: "destructive"
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleAssumeTicket = async () => {
+    if (!selectedTicket) return;
+
+    try {
+      await ticketsService.assumeTicketManually(selectedTicket.id);
+      
+      // Atualizar ticket local
+      const updatedTicket = { 
+        ...selectedTicket, 
+        assigned_queue_id: undefined, 
+        assigned_assistant_id: undefined,
+        status: 'pending' as const
+      };
+      setSelectedTicket(updatedTicket);
+      
+      // Atualizar lista
+      setTickets(prev => prev.map(t => 
+        t.id === selectedTicket.id ? updatedTicket : t
+      ));
+
+      toast({
+        title: "Ticket assumido",
+        description: "Você assumiu este ticket manualmente"
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Erro ao assumir ticket",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleTransferTicket = async () => {
+    if (!selectedTicket || !transferQueueId) return;
+
+    try {
+      await ticketsService.transferTicket(selectedTicket.id, transferQueueId, transferReason);
+      
+      // Atualizar ticket local
+      const queueName = queues.find(q => q.id === transferQueueId)?.name || 'Fila';
+      const updatedTicket = { 
+        ...selectedTicket, 
+        assigned_queue_id: transferQueueId,
+        queue: { id: transferQueueId, name: queueName },
+        status: 'open' as const
+      };
+      setSelectedTicket(updatedTicket);
+      
+      // Atualizar lista
+      setTickets(prev => prev.map(t => 
+        t.id === selectedTicket.id ? updatedTicket : t
+      ));
+
+      setShowTransferDialog(false);
+      setTransferQueueId("");
+      setTransferReason("");
+
+      toast({
+        title: "Ticket transferido",
+        description: `Ticket transferido para ${queueName}`
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Erro ao transferir ticket",
+        variant: "destructive"
+      });
     }
   };
 
@@ -238,11 +345,23 @@ const TicketChatInterface = () => {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Central de Conversas</h1>
           <div className="flex space-x-2">
+            <Button 
+              onClick={handleImportConversations}
+              disabled={isImporting}
+              size="sm"
+            >
+              {isImporting ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Building2 className="w-4 h-4 mr-2" />
+              )}
+              {isImporting ? 'Importando...' : 'Importar Conversas'}
+            </Button>
             <Button variant="outline" size="sm">
               <Archive className="w-4 h-4 mr-2" />
               Arquivados
             </Button>
-            <Button size="sm">
+            <Button size="sm" onClick={loadData}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Atualizar
             </Button>
@@ -327,6 +446,15 @@ const TicketChatInterface = () => {
                   <div className="p-4 text-center text-gray-500">
                     <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                     <p>Nenhum ticket encontrado</p>
+                    <Button 
+                      onClick={handleImportConversations}
+                      disabled={isImporting}
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                    >
+                      {isImporting ? 'Importando...' : 'Importar Conversas'}
+                    </Button>
                   </div>
                 ) : (
                   filteredTickets.map((ticket) => (
@@ -351,14 +479,34 @@ const TicketChatInterface = () => {
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center space-x-2 mb-2">
+                          
+                          {/* Etiquetas de Conexão, Fila e Tags */}
+                          <div className="flex items-center space-x-1 mb-2 flex-wrap gap-1">
                             {getStatusBadge(ticket.status)}
+                            
+                            {/* Badge da Instância/Conexão */}
+                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                              <Building2 className="w-3 h-3 mr-1" />
+                              Conexão
+                            </Badge>
+                            
+                            {/* Badge da Fila */}
                             {ticket.queue && (
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                                <ArrowRight className="w-3 h-3 mr-1" />
                                 {ticket.queue.name}
                               </Badge>
                             )}
+                            
+                            {/* Badge do Assistente */}
+                            {ticket.assistant && (
+                              <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700">
+                                <Zap className="w-3 h-3 mr-1" />
+                                {ticket.assistant.name}
+                              </Badge>
+                            )}
                           </div>
+                          
                           <p className="text-sm text-gray-600 truncate">
                             {ticket.last_message_preview || 'Sem mensagens'}
                           </p>
@@ -445,6 +593,71 @@ const TicketChatInterface = () => {
                   </div>
                   <div className="flex items-center space-x-2">
                     {getStatusBadge(selectedTicket.status)}
+                    
+                    {/* Ações de Ticket */}
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={handleAssumeTicket}
+                      disabled={selectedTicket.status === 'pending'}
+                    >
+                      <UserCheck className="w-4 h-4 mr-2" />
+                      Assumir
+                    </Button>
+                    
+                    <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <ArrowRight className="w-4 h-4 mr-2" />
+                          Transferir
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Transferir Ticket</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium">Fila de Destino</label>
+                            <Select value={transferQueueId} onValueChange={setTransferQueueId}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione uma fila" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {queues.map((queue) => (
+                                  <SelectItem key={queue.id} value={queue.id}>
+                                    {queue.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium">Motivo (opcional)</label>
+                            <Textarea
+                              placeholder="Motivo da transferência..."
+                              value={transferReason}
+                              onChange={(e) => setTransferReason(e.target.value)}
+                            />
+                          </div>
+                          <div className="flex justify-end space-x-2">
+                            <Button 
+                              variant="outline" 
+                              onClick={() => setShowTransferDialog(false)}
+                            >
+                              Cancelar
+                            </Button>
+                            <Button 
+                              onClick={handleTransferTicket}
+                              disabled={!transferQueueId}
+                            >
+                              Transferir
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    
                     <Select value={selectedTicket.status} onValueChange={handleStatusChange}>
                       <SelectTrigger className="w-32">
                         <SelectValue />
