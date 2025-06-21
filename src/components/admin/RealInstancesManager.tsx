@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
+import { whatsappService, WhatsAppClient } from "@/services/whatsappMultiClient";
 import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import ConnectionTest from "./ConnectionTest";
 import { clientsService, ClientData } from "@/services/clientsService";

@@ -13,7 +13,7 @@ import {
   ExternalLink
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import whatsappService from "@/services/whatsappMultiClient";
+import { whatsappService } from "@/services/whatsappMultiClient";
 import { SERVER_URL } from "@/config/environment";
 
 const WhatsAppSystemStatus = () => {

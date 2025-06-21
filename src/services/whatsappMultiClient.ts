@@ -1,4 +1,6 @@
+
 import { io, Socket } from 'socket.io-client';
+import { SERVER_URL } from '@/config/environment';
 
 export interface ChatData {
   id: string;
@@ -30,6 +32,14 @@ export interface MessageData {
   message_id?: string;
 }
 
+export interface WhatsAppClient {
+  clientId: string;
+  status: string;
+  phoneNumber?: string;
+  hasQrCode: boolean;
+  qrCode?: string;
+}
+
 interface QueueStats {
   pending: number;
   total: number;
@@ -40,7 +50,30 @@ class WhatsAppService {
   private socket: Socket | null = null;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    this.baseURL = SERVER_URL;
+  }
+
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseURL}/health`);
+      return response.ok;
+    } catch (error) {
+      console.error('Erro ao testar conexão:', error);
+      return false;
+    }
+  }
+
+  async checkServerHealth(): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseURL}/health`);
+      if (!response.ok) {
+        throw new Error('Servidor não está respondendo');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao verificar saúde do servidor:', error);
+      throw error;
+    }
   }
 
   connectSocket(): Socket {
@@ -81,20 +114,112 @@ class WhatsAppService {
     }
   }
 
-  sendMessage(clientId: string, chatId: string, message: string): Promise<any> {
-    return fetch(`${this.baseURL}/api/client/${clientId}/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        chatId,
-        message,
-      }),
-    }).then(res => res.json());
+  async getAllClients(): Promise<WhatsAppClient[]> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/clients`);
+      if (!response.ok) {
+        throw new Error('Falha ao buscar clientes');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao buscar clientes:', error);
+      throw error;
+    }
   }
 
-  sendMedia(clientId: string, chatId: string, media: File, caption?: string): Promise<any> {
+  async connectClient(clientId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/client/${clientId}/connect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error('Falha ao conectar cliente');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao conectar cliente:', error);
+      throw error;
+    }
+  }
+
+  async disconnectClient(clientId: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/client/${clientId}/disconnect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error('Falha ao desconectar cliente');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao desconectar cliente:', error);
+      throw error;
+    }
+  }
+
+  onClientsUpdate(callback: (clients: WhatsAppClient[]) => void) {
+    if (this.socket) {
+      this.socket.on('clientsUpdate', callback);
+      console.log('👂 Listening for clients updates');
+    }
+  }
+
+  onClientStatus(clientId: string, callback: (clientData: WhatsAppClient) => void) {
+    if (this.socket) {
+      this.socket.on(`clientStatus_${clientId}`, callback);
+      console.log(`👂 Listening for status updates for client: ${clientId}`);
+    }
+  }
+
+  async sendMessage(clientId: string, chatId: string, message: string, messageId?: string, mediaFile?: File): Promise<any> {
+    try {
+      if (mediaFile) {
+        const formData = new FormData();
+        formData.append('chatId', chatId);
+        formData.append('media', mediaFile);
+        if (message) {
+          formData.append('caption', message);
+        }
+
+        const response = await fetch(`${this.baseURL}/api/client/${clientId}/sendMedia`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Falha ao enviar mídia');
+        }
+        return await response.json();
+      } else {
+        const response = await fetch(`${this.baseURL}/api/client/${clientId}/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            chatId,
+            message,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Falha ao enviar mensagem');
+        }
+        return await response.json();
+      }
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+      throw error;
+    }
+  }
+
+  async sendMedia(clientId: string, chatId: string, media: File, caption?: string): Promise<any> {
     const formData = new FormData();
     formData.append('chatId', chatId);
     formData.append('media', media);
@@ -108,7 +233,7 @@ class WhatsAppService {
     }).then(res => res.json());
   }
 
-  sendAudio(clientId: string, chatId: string, audio: Blob): Promise<any> {
+  async sendAudio(clientId: string, chatId: string, audio: Blob): Promise<any> {
     const formData = new FormData();
     formData.append('chatId', chatId);
     formData.append('audio', audio);
@@ -119,7 +244,7 @@ class WhatsAppService {
     }).then(res => res.json());
   }
 
-  getChats(clientId: string): Promise<ChatData[]> {
+  async getChats(clientId: string): Promise<ChatData[]> {
     return fetch(`${this.baseURL}/api/client/${clientId}/chats`, {
       method: 'GET',
       headers: {
@@ -128,7 +253,7 @@ class WhatsAppService {
     }).then(res => res.json());
   }
 
-  getChatMessages(clientId: string, chatId: string, limit: number = 50): Promise<MessageData[]> {
+  async getChatMessages(clientId: string, chatId: string, limit: number = 50): Promise<MessageData[]> {
     return fetch(`${this.baseURL}/api/client/${clientId}/messages?chatId=${chatId}&limit=${limit}`, {
       method: 'GET',
       headers: {
@@ -137,7 +262,7 @@ class WhatsAppService {
     }).then(res => res.json());
   }
 
-  getClientStatus(clientId: string): Promise<any> {
+  async getClientStatus(clientId: string): Promise<any> {
     return fetch(`${this.baseURL}/api/client/${clientId}/status`, {
       method: 'GET',
       headers: {
@@ -146,7 +271,7 @@ class WhatsAppService {
     }).then(res => res.json());
   }
 
-  getQueueStats(clientId: string): Promise<QueueStats> {
+  async getQueueStats(clientId: string): Promise<QueueStats> {
     return fetch(`${this.baseURL}/api/client/${clientId}/queueStats`, {
       method: 'GET',
       headers: {
@@ -155,7 +280,7 @@ class WhatsAppService {
     }).then(res => res.json());
   }
 
-  diagnoseClient(clientId: string): Promise<any> {
+  async diagnoseClient(clientId: string): Promise<any> {
     return fetch(`${this.baseURL}/api/client/${clientId}/diagnose`, {
       method: 'GET',
       headers: {
@@ -305,3 +430,4 @@ class WhatsAppService {
 }
 
 export const whatsappService = new WhatsAppService();
+export default whatsappService;

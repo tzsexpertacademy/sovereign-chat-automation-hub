@@ -1,305 +1,213 @@
 
-import { useState, useEffect, useCallback } from 'react';
-import { whatsappService, type MessageData } from '@/services/whatsappMultiClient';
-import { queuesService } from '@/services/queuesService';
-import { assistantsService } from '@/services/assistantsService';
-import { useToast } from './use-toast';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { MessageData } from '@/services/whatsappMultiClient';
+import { whatsappService } from '@/services/whatsappMultiClient';
 
-export interface QueuedMessage extends MessageData {
-  queueId?: string;
-  assistantId?: string;
-  priority: 'high' | 'medium' | 'low';
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'human';
-  processedAt?: string;
-  response?: string;
-  isHumanHandled?: boolean;
+interface QueuedMessage extends MessageData {
+  attempts: number;
+  maxAttempts: number;
+  nextRetry?: number;
 }
 
-export interface MessageProcessor {
-  processMessage: (message: MessageData) => Promise<string>;
-  shouldProcess: (message: MessageData) => boolean;
-  priority: 'high' | 'medium' | 'low';
+interface MessageProcessor {
+  id: string;
+  name: string;
+  isActive: boolean;
+  processMessage: (message: MessageData, sendResponse: (to: string, message: string) => Promise<void>) => Promise<boolean>;
 }
 
-export const useMessageQueue = (clientId: string, instanceId?: string) => {
+interface QueueStats {
+  pending: number;
+  total: number;
+}
+
+export const useMessageQueue = (clientId: string) => {
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
+  const [processors, setProcessors] = useState<MessageProcessor[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processors, setProcessors] = useState<Map<string, MessageProcessor>>(new Map());
-  const [instanceQueueConnection, setInstanceQueueConnection] = useState<any>(null);
-  const { toast } = useToast();
+  const [queueStats, setQueueStats] = useState<QueueStats>({ pending: 0, total: 0 });
+  
+  const processingRef = useRef(false);
+  const queueIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load instance queue connection
+  // Estatísticas da fila
   useEffect(() => {
-    if (instanceId) {
-      loadInstanceConnection();
-    }
-  }, [instanceId]);
-
-  const loadInstanceConnection = async () => {
-    if (!instanceId) return;
+    const pending = messageQueue.filter(msg => 
+      !msg.nextRetry || msg.nextRetry <= Date.now()
+    ).length;
     
-    try {
-      const connections = await queuesService.getInstanceConnections(instanceId);
-      setInstanceQueueConnection(connections[0] || null);
-    } catch (error) {
-      console.error('Erro ao carregar conexão da instância:', error);
-    }
-  };
-
-  // Adicionar processador de mensagens
-  const addProcessor = useCallback((id: string, processor: MessageProcessor) => {
-    setProcessors(prev => new Map(prev.set(id, processor)));
-  }, []);
-
-  // Remover processador
-  const removeProcessor = useCallback((id: string) => {
-    setProcessors(prev => {
-      const newMap = new Map(prev);
-      newMap.delete(id);
-      return newMap;
+    setQueueStats({
+      pending,
+      total: messageQueue.length
     });
-  }, []);
+  }, [messageQueue]);
 
   // Adicionar mensagem à fila
-  const enqueueMessage = useCallback((message: MessageData, queueId?: string, assistantId?: string) => {
-    // Determinar se deve ser processada automaticamente ou manualmente
-    const isHumanHandled = !instanceQueueConnection;
-    
+  const enqueueMessage = useCallback((message: MessageData) => {
     const queuedMessage: QueuedMessage = {
       ...message,
-      queueId: queueId || instanceQueueConnection?.id,
-      assistantId: assistantId || instanceQueueConnection?.assistants?.id,
-      priority: message.fromMe ? 'low' : 'medium',
-      status: isHumanHandled ? 'human' : 'pending',
-      isHumanHandled
+      attempts: 0,
+      maxAttempts: 3
     };
 
-    setMessageQueue(prev => {
-      const newQueue = [...prev, queuedMessage];
-      // Ordenar por prioridade e timestamp
-      return newQueue.sort((a, b) => {
-        const priorityOrder = { high: 3, medium: 2, low: 1 };
-        if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-          return priorityOrder[b.priority] - priorityOrder[a.priority];
-        }
-        return a.timestamp - b.timestamp;
-      });
-    });
+    setMessageQueue(prev => [...prev, queuedMessage]);
+    console.log('📥 Mensagem adicionada à fila:', message.id);
+  }, []);
 
-    // Log da mensagem recebida
-    console.log(`📥 Nova mensagem ${isHumanHandled ? 'para interação humana' : 'para processamento automático'}:`, {
-      from: message.from,
-      type: message.type,
-      preview: message.body?.substring(0, 50),
-      queueId: queuedMessage.queueId,
-      assistantId: queuedMessage.assistantId
-    });
-  }, [instanceQueueConnection]);
-
-  // Processar fila de mensagens automaticamente
+  // Processar fila
   const processQueue = useCallback(async () => {
-    if (isProcessing || messageQueue.length === 0) return;
+    if (processingRef.current || messageQueue.length === 0) {
+      return;
+    }
 
+    processingRef.current = true;
     setIsProcessing(true);
 
     try {
-      const pendingMessages = messageQueue.filter(msg => msg.status === 'pending');
-      
-      for (const message of pendingMessages) {
-        // Marcar como processando
-        setMessageQueue(prev =>
-          prev.map(msg =>
-            msg.id === message.id ? { ...msg, status: 'processing' } : msg
-          )
-        );
+      const now = Date.now();
+      const readyMessages = messageQueue.filter(msg => 
+        !msg.nextRetry || msg.nextRetry <= now
+      );
+
+      if (readyMessages.length === 0) {
+        return;
+      }
+
+      const message = readyMessages[0];
+      console.log('🔄 Processando mensagem:', message.id);
+
+      // Tentar processar com cada processador ativo
+      let processed = false;
+      for (const processor of processors) {
+        if (!processor.isActive) continue;
 
         try {
-          // Se tem assistente configurado, processar com IA
-          if (message.assistantId && instanceQueueConnection?.assistants) {
-            const response = await processWithAssistant(message, instanceQueueConnection.assistants);
-            
-            if (response && response.trim()) {
-              await whatsappService.sendMessage(clientId, message.from, response);
-            }
+          const sendResponse = async (to: string, responseMessage: string) => {
+            await whatsappService.sendMessage(clientId, to, responseMessage);
+          };
 
-            // Marcar como completado
-            setMessageQueue(prev =>
-              prev.map(msg =>
-                msg.id === message.id 
-                  ? { 
-                      ...msg, 
-                      status: 'completed',
-                      processedAt: new Date().toISOString(),
-                      response 
-                    } 
-                  : msg
-              )
-            );
-
-            console.log(`✅ Mensagem processada pelo assistente: ${message.id}`);
-          } else {
-            // Sem assistente, tentar processadores manuais
-            const availableProcessors = Array.from(processors.values());
-            const processor = availableProcessors.find(p => p.shouldProcess(message));
-
-            if (processor) {
-              const response = await processor.processMessage(message);
-              
-              if (response && response.trim()) {
-                await whatsappService.sendMessage(clientId, message.from, response);
-              }
-
-              setMessageQueue(prev =>
-                prev.map(msg =>
-                  msg.id === message.id 
-                    ? { 
-                        ...msg, 
-                        status: 'completed',
-                        processedAt: new Date().toISOString(),
-                        response 
-                      } 
-                    : msg
-                )
-              );
-
-              console.log(`✅ Mensagem processada por processador: ${message.id}`);
-            } else {
-              // Marcar para interação humana
-              setMessageQueue(prev =>
-                prev.map(msg =>
-                  msg.id === message.id ? { ...msg, status: 'human' } : msg
-                )
-              );
-            }
+          const result = await processor.processMessage(message, sendResponse);
+          if (result) {
+            processed = true;
+            console.log(`✅ Mensagem processada por ${processor.name}`);
+            break;
           }
         } catch (error) {
-          console.error(`❌ Erro ao processar mensagem ${message.id}:`, error);
-          
-          // Marcar como falha
-          setMessageQueue(prev =>
-            prev.map(msg =>
-              msg.id === message.id ? { ...msg, status: 'failed' } : msg
-            )
-          );
+          console.error(`❌ Erro no processador ${processor.name}:`, error);
+        }
+      }
+
+      // Atualizar fila
+      setMessageQueue(prev => {
+        const updated = [...prev];
+        const index = updated.findIndex(m => m.id === message.id);
+        
+        if (index === -1) return updated;
+
+        if (processed) {
+          // Remover mensagem processada
+          updated.splice(index, 1);
+        } else {
+          // Incrementar tentativas e reagendar
+          const attempts = updated[index].attempts + 1;
+          if (attempts >= updated[index].maxAttempts) {
+            // Remover após máximo de tentativas
+            updated.splice(index, 1);
+            console.log('❌ Mensagem removida após máximo de tentativas:', message.id);
+          } else {
+            // Reagendar para nova tentativa
+            updated[index] = {
+              ...updated[index],
+              attempts,
+              nextRetry: now + (attempts * 5000) // Delay exponencial
+            };
+            console.log(`🔄 Mensagem reagendada (tentativa ${attempts}):`, message.id);
+          }
         }
 
-        // Pequeno delay entre processamentos
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+        return updated;
+      });
+
     } catch (error) {
-      console.error('Erro no processamento da fila:', error);
+      console.error('❌ Erro ao processar fila:', error);
     } finally {
+      processingRef.current = false;
       setIsProcessing(false);
     }
-  }, [isProcessing, messageQueue, processors, clientId, instanceQueueConnection]);
+  }, [messageQueue, processors, clientId]);
 
-  // Processar mensagem com assistente IA
-  const processWithAssistant = async (message: MessageData, assistant: any): Promise<string> => {
-    try {
-      // Aqui você pode integrar com seu serviço de IA
-      // Por ora, vou simular uma resposta automática
-      
-      if (message.body?.toLowerCase().includes('olá') || message.body?.toLowerCase().includes('oi')) {
-        return `Olá! Sou o assistente ${assistant.name}. Como posso ajudá-lo hoje?`;
-      }
-      
-      if (message.body?.toLowerCase().includes('horário')) {
-        return 'Nosso horário de atendimento é de segunda a sexta, das 8h às 18h.';
-      }
-      
-      if (message.body?.toLowerCase().includes('obrigad')) {
-        return 'De nada! Fico feliz em ajudar. Se precisar de mais alguma coisa, é só falar!';
-      }
-      
-      // Resposta padrão do assistente
-      return assistant.default_response || 'Obrigado pela sua mensagem. Em breve retornaremos o contato.';
-      
-    } catch (error) {
-      console.error('Erro ao processar com assistente:', error);
-      return 'Desculpe, houve um erro ao processar sua mensagem. Um atendente entrará em contato em breve.';
-    }
-  };
-
-  // Marcar mensagem como tratada humanamente
-  const markAsHumanHandled = useCallback((messageId: string) => {
-    setMessageQueue(prev =>
-      prev.map(msg =>
-        msg.id === messageId 
-          ? { 
-              ...msg, 
-              status: 'completed',
-              processedAt: new Date().toISOString(),
-              isHumanHandled: true
-            } 
-          : msg
-      )
-    );
-  }, []);
-
-  // Limpar mensagens antigas da fila
-  const cleanQueue = useCallback(() => {
-    const now = Date.now();
-    const maxAge = 24 * 60 * 60 * 1000; // 24 horas
-
-    setMessageQueue(prev =>
-      prev.filter(msg => {
-        const messageAge = now - msg.timestamp;
-        return messageAge < maxAge && !['completed', 'failed'].includes(msg.status);
-      })
-    );
-  }, []);
-
-  // Configurar listener para novas mensagens
+  // Iniciar processamento automático
   useEffect(() => {
-    if (!clientId || !instanceId) return;
+    if (queueIntervalRef.current) {
+      clearInterval(queueIntervalRef.current);
+    }
 
-    const handleNewMessage = (message: MessageData) => {
-      // Não processar mensagens próprias por padrão
-      if (!message.fromMe) {
-        enqueueMessage(message);
-      }
-    };
-
-    whatsappService.onClientMessage(instanceId, handleNewMessage);
+    queueIntervalRef.current = setInterval(processQueue, 2000);
 
     return () => {
-      whatsappService.removeListener(`message_${instanceId}`, handleNewMessage);
+      if (queueIntervalRef.current) {
+        clearInterval(queueIntervalRef.current);
+      }
     };
-  }, [clientId, instanceId, enqueueMessage]);
+  }, [processQueue]);
 
-  // Processar fila automaticamente
-  useEffect(() => {
-    const interval = setInterval(() => {
-      processQueue();
-      cleanQueue();
-    }, 2000); // Processar a cada 2 segundos
+  // Adicionar processador
+  const addProcessor = useCallback((processor: MessageProcessor) => {
+    setProcessors(prev => {
+      const exists = prev.find(p => p.id === processor.id);
+      if (exists) {
+        return prev.map(p => p.id === processor.id ? processor : p);
+      }
+      return [...prev, processor];
+    });
+    console.log('🤖 Processador adicionado:', processor.name);
+  }, []);
 
-    return () => clearInterval(interval);
-  }, [processQueue, cleanQueue]);
+  // Remover processador
+  const removeProcessor = useCallback((processorId: string) => {
+    setProcessors(prev => prev.filter(p => p.id !== processorId));
+    console.log('🗑️ Processador removido:', processorId);
+  }, []);
 
-  // Estatísticas da fila
-  const queueStats = {
-    total: messageQueue.length,
-    pending: messageQueue.filter(msg => msg.status === 'pending').length,
-    processing: messageQueue.filter(msg => msg.status === 'processing').length,
-    completed: messageQueue.filter(msg => msg.status === 'completed').length,
-    failed: messageQueue.filter(msg => msg.status === 'failed').length,
-    human: messageQueue.filter(msg => msg.status === 'human').length,
-    automated: messageQueue.filter(msg => msg.status === 'completed' && !msg.isHumanHandled).length,
-    humanHandled: messageQueue.filter(msg => msg.status === 'completed' && msg.isHumanHandled).length
-  };
+  // Ativar/desativar processador
+  const toggleProcessor = useCallback((processorId: string) => {
+    setProcessors(prev => prev.map(p => 
+      p.id === processorId ? { ...p, isActive: !p.isActive } : p
+    ));
+  }, []);
+
+  // Limpar fila
+  const clearQueue = useCallback(() => {
+    setMessageQueue([]);
+    console.log('🧹 Fila de mensagens limpa');
+  }, []);
+
+  // Pausar/retomar processamento
+  const pauseProcessing = useCallback(() => {
+    if (queueIntervalRef.current) {
+      clearInterval(queueIntervalRef.current);
+      queueIntervalRef.current = null;
+    }
+  }, []);
+
+  const resumeProcessing = useCallback(() => {
+    if (!queueIntervalRef.current) {
+      queueIntervalRef.current = setInterval(processQueue, 2000);
+    }
+  }, [processQueue]);
 
   return {
     messageQueue,
+    processors,
     queueStats,
     isProcessing,
-    instanceQueueConnection,
+    enqueueMessage,
     addProcessor,
     removeProcessor,
-    enqueueMessage,
-    processQueue,
-    cleanQueue,
-    markAsHumanHandled,
-    loadInstanceConnection
+    toggleProcessor,
+    clearQueue,
+    pauseProcessing,
+    resumeProcessing,
+    processQueue
   };
 };
