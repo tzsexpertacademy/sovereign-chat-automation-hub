@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationTicket {
@@ -84,6 +83,7 @@ class TicketsService {
 
       return (data || []).map(ticket => ({
         ...ticket,
+        status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
@@ -110,6 +110,7 @@ class TicketsService {
 
       return {
         ...data,
+        status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
       };
@@ -228,6 +229,81 @@ class TicketsService {
       if (error) throw error;
     } catch (error) {
       console.error('Erro ao atualizar status do ticket:', error);
+      throw error;
+    }
+  }
+
+  async assumeTicketManually(ticketId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({
+          status: 'pending',
+          assigned_assistant_id: null,
+          assigned_queue_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erro ao assumir ticket manualmente:', error);
+      throw error;
+    }
+  }
+
+  async transferTicket(ticketId: string, queueId: string, reason?: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({
+          assigned_queue_id: queueId,
+          status: 'open',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      // Add event to history
+      await supabase
+        .from('ticket_events')
+        .insert({
+          ticket_id: ticketId,
+          event_type: 'transfer',
+          description: `Ticket transferido para fila ${queueId}`,
+          metadata: { queue_id: queueId, reason },
+          created_by: 'system'
+        });
+    } catch (error) {
+      console.error('Erro ao transferir ticket:', error);
+      throw error;
+    }
+  }
+
+  async deleteTicket(ticketId: string): Promise<void> {
+    try {
+      // Delete ticket messages first
+      await supabase
+        .from('ticket_messages')
+        .delete()
+        .eq('ticket_id', ticketId);
+
+      // Delete ticket events
+      await supabase
+        .from('ticket_events')
+        .delete()
+        .eq('ticket_id', ticketId);
+
+      // Delete the ticket
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .delete()
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erro ao excluir ticket:', error);
       throw error;
     }
   }

@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MoreVertical, User, ArrowRight, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { MoreVertical, User, ArrowRight, CheckCircle, Clock, AlertCircle, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import { queuesService } from "@/services/queuesService";
@@ -108,6 +108,28 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
       toast({
         title: "Erro",
         description: error.message || "Erro ao transferir ticket",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteTicket = async () => {
+    try {
+      setIsLoading(true);
+      await ticketsService.deleteTicket(ticket.id);
+      
+      toast({
+        title: "Ticket excluído",
+        description: "Ticket e todas as mensagens foram excluídos permanentemente"
+      });
+      
+      onTicketUpdate();
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao excluir ticket",
         variant: "destructive"
       });
     } finally {
@@ -283,6 +305,35 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
               Fechar Ticket
             </DropdownMenuItem>
           )}
+
+          <DropdownMenuSeparator />
+
+          {/* Excluir Ticket */}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Excluir Ticket
+              </DropdownMenuItem>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir Ticket</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação não pode ser desfeita. O ticket e todas as mensagens serão excluídos permanentemente.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDeleteTicket}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  Excluir Permanentemente
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
