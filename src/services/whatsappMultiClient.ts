@@ -1,3 +1,4 @@
+
 import { io } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from "@/integrations/supabase/client";
@@ -82,7 +83,7 @@ export class WhatsAppMultiClientService {
   private socket: any;
 
   constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_WHATSAPP_API_URL || 'http://localhost:3002';
+    this.baseUrl = import.meta.env.VITE_WHATSAPP_API_URL || 'https://146.59.227.248';
     this.socket = null;
   }
 
