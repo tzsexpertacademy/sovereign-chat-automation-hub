@@ -15,9 +15,11 @@ export interface QueueWithAssistant extends Queue {
     is_active: boolean;
     created_at: string;
     whatsapp_instances?: {
+      id: string;
       instance_id: string;
       phone_number?: string;
       status: string;
+      custom_name?: string;
     };
   }>;
   tags?: Tables<"funnel_tags">[];
@@ -25,6 +27,8 @@ export interface QueueWithAssistant extends Queue {
 
 export class QueuesService {
   async getClientQueues(clientId: string): Promise<QueueWithAssistant[]> {
+    console.log('🔍 Buscando filas para cliente:', clientId);
+    
     const { data, error } = await supabase
       .from("queues")
       .select(`
@@ -33,16 +37,23 @@ export class QueuesService {
         instance_queue_connections(
           *,
           whatsapp_instances(
+            id,
             instance_id,
             phone_number,
-            status
+            status,
+            custom_name
           )
         )
       `)
       .eq("client_id", clientId)
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Erro ao buscar filas:', error);
+      throw error;
+    }
+    
+    console.log('✅ Filas carregadas:', data);
     return data || [];
   }
 
@@ -81,32 +92,27 @@ export class QueuesService {
     if (error) throw error;
   }
 
-  async connectInstanceToQueue(whatsappInstanceId: string, queueId: string): Promise<void> {
-    console.log('🔗 Conectando instância à fila:', { whatsappInstanceId, queueId });
+  async connectInstanceToQueue(instanceId: string, queueId: string): Promise<void> {
+    console.log('🔗 Conectando instância à fila:', { instanceId, queueId });
     
-    // Primeiro, buscar o UUID da instância WhatsApp pelo instance_id
+    // Buscar a instância pelo instance_id
     const { data: instanceData, error: instanceError } = await supabase
       .from("whatsapp_instances")
       .select("id")
-      .eq("instance_id", whatsappInstanceId)
+      .eq("instance_id", instanceId)
       .single();
 
-    if (instanceError) {
-      console.error('❌ Erro ao buscar instância:', instanceError);
-      throw new Error(`Instância ${whatsappInstanceId} não encontrada: ${instanceError.message}`);
-    }
-
-    if (!instanceData) {
-      throw new Error(`Instância ${whatsappInstanceId} não encontrada`);
+    if (instanceError || !instanceData) {
+      console.error('❌ Instância não encontrada:', instanceError);
+      throw new Error(`Instância ${instanceId} não encontrada`);
     }
 
     const instanceUuid = instanceData.id;
-    console.log('✅ UUID da instância encontrado:', instanceUuid);
 
-    // Desconectar a instância de todas as outras filas primeiro
+    // Desconectar de todas as outras filas primeiro
     await this.disconnectInstanceFromAllQueues(instanceUuid);
     
-    // Se a fila é "human", não criar conexão (deixar sem fila para interação humana)
+    // Se é "human", não criar conexão
     if (queueId === "human") {
       console.log('👥 Configurando para interação humana (sem fila)');
       return;
@@ -125,22 +131,24 @@ export class QueuesService {
 
     if (error) {
       console.error('❌ Erro ao conectar à fila:', error);
-      throw new Error(`Falha ao conectar à fila: ${error.message}`);
+      throw error;
     }
 
     console.log('✅ Instância conectada à fila com sucesso');
   }
 
-  async disconnectInstanceFromQueue(whatsappInstanceId: string, queueId: string): Promise<void> {
-    // Buscar o UUID da instância WhatsApp pelo instance_id
+  async disconnectInstanceFromQueue(instanceId: string, queueId: string): Promise<void> {
+    console.log('🔌 Desconectando instância da fila:', { instanceId, queueId });
+    
+    // Buscar a instância pelo instance_id
     const { data: instanceData, error: instanceError } = await supabase
       .from("whatsapp_instances")
       .select("id")
-      .eq("instance_id", whatsappInstanceId)
+      .eq("instance_id", instanceId)
       .single();
 
     if (instanceError || !instanceData) {
-      throw new Error(`Instância ${whatsappInstanceId} não encontrada`);
+      throw new Error(`Instância ${instanceId} não encontrada`);
     }
 
     const instanceUuid = instanceData.id;
@@ -151,7 +159,12 @@ export class QueuesService {
       .eq("instance_id", instanceUuid)
       .eq("queue_id", queueId);
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Erro ao desconectar:', error);
+      throw error;
+    }
+    
+    console.log('✅ Instância desconectada da fila');
   }
 
   async disconnectInstanceFromAllQueues(instanceUuid: string): Promise<void> {
@@ -179,15 +192,18 @@ export class QueuesService {
     if (error) throw error;
   }
 
-  async getInstanceConnections(whatsappInstanceId: string): Promise<QueueWithAssistant[]> {
-    // Buscar o UUID da instância WhatsApp pelo instance_id
+  async getInstanceConnections(instanceId: string): Promise<QueueWithAssistant[]> {
+    console.log('🔍 Buscando conexões da instância:', instanceId);
+    
+    // Buscar a instância pelo instance_id
     const { data: instanceData, error: instanceError } = await supabase
       .from("whatsapp_instances")
       .select("id")
-      .eq("instance_id", whatsappInstanceId)
+      .eq("instance_id", instanceId)
       .single();
 
     if (instanceError || !instanceData) {
+      console.log('❌ Instância não encontrada para conexões:', instanceId);
       return [];
     }
 
@@ -205,8 +221,12 @@ export class QueuesService {
       .eq("instance_id", instanceUuid)
       .eq("is_active", true);
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Erro ao buscar conexões:', error);
+      throw error;
+    }
     
+    console.log('✅ Conexões encontradas:', data?.length || 0);
     return (data || []).map(item => ({
       ...item.queues,
       instance_queue_connections: []
@@ -229,12 +249,12 @@ export class QueuesService {
     return (data || []).map(item => item.whatsapp_instances.instance_id);
   }
 
-  async isInstanceConnectedToQueue(whatsappInstanceId: string, queueId: string): Promise<boolean> {
-    // Buscar o UUID da instância WhatsApp pelo instance_id
+  async isInstanceConnectedToQueue(instanceId: string, queueId: string): Promise<boolean> {
+    // Buscar a instância pelo instance_id
     const { data: instanceData, error: instanceError } = await supabase
       .from("whatsapp_instances")
       .select("id")
-      .eq("instance_id", whatsappInstanceId)
+      .eq("instance_id", instanceId)
       .single();
 
     if (instanceError || !instanceData) {

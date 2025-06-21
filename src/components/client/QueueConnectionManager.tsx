@@ -47,9 +47,7 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
       
       console.log('📊 Dados carregados:', { 
         queues: queuesData.length, 
-        instances: instancesData.length,
-        queuesData,
-        instancesData 
+        instances: instancesData.length 
       });
       
       setQueues(queuesData);
@@ -131,19 +129,21 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
     }
   };
 
-  const getInstanceConnections = (instanceId: string) => {
+  const getInstanceConnections = (instance: WhatsAppInstanceData) => {
     return queues.filter(queue => 
       queue.instance_queue_connections?.some(conn => 
-        conn.whatsapp_instances?.instance_id === instanceId && conn.is_active
+        conn.instance_id === instance.id && conn.is_active
       )
     );
   };
 
   const getQueueConnections = (queueId: string) => {
     const queue = queues.find(q => q.id === queueId);
-    return queue?.instance_queue_connections?.filter(conn => conn.is_active).map(conn => 
-      conn.whatsapp_instances?.instance_id
-    ).filter(Boolean) || [];
+    return queue?.instance_queue_connections?.filter(conn => conn.is_active) || [];
+  };
+
+  const getInstanceDisplayName = (instance: WhatsAppInstanceData) => {
+    return instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
   };
 
   if (loading && queues.length === 0) {
@@ -184,7 +184,7 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
                     <SelectItem key={instance.instance_id} value={instance.instance_id}>
                       <div className="flex items-center space-x-2">
                         <Smartphone className="w-4 h-4" />
-                        <span>Instância {instance.instance_id.split('_').pop()}</span>
+                        <span>{getInstanceDisplayName(instance)}</span>
                         {instance.phone_number && (
                           <span className="text-xs text-gray-500">({instance.phone_number})</span>
                         )}
@@ -257,14 +257,14 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
         <CardContent>
           <div className="space-y-4">
             {instances.map((instance) => {
-              const connectedQueues = getInstanceConnections(instance.instance_id);
+              const connectedQueues = getInstanceConnections(instance);
               return (
                 <div key={instance.instance_id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center space-x-3">
                     <Smartphone className="w-5 h-5 text-blue-500" />
                     <div>
                       <h4 className="font-medium">
-                        Instância {instance.instance_id.split('_').pop()}
+                        {getInstanceDisplayName(instance)}
                       </h4>
                       <p className="text-sm text-gray-600">{instance.phone_number || 'Não conectado'}</p>
                     </div>
@@ -352,7 +352,10 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
                       </Badge>
                       {connections.length > 0 && (
                         <div className="text-xs text-gray-500">
-                          {connections.map(c => c?.split('_').pop()).join(', ')}
+                          {connections.map(c => {
+                            const instance = instances.find(i => i.id === c.instance_id);
+                            return getInstanceDisplayName(instance!);
+                          }).join(', ')}
                         </div>
                       )}
                     </div>

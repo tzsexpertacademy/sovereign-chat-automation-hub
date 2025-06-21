@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { 
   ArrowRight, 
   Bot, 
@@ -43,6 +42,10 @@ const QueueFlowManager = ({ clientId }: QueueFlowManagerProps) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getInstanceDisplayName = (instance: WhatsAppInstanceData) => {
+    return instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
   };
 
   const getFlowDescription = () => {
@@ -188,7 +191,7 @@ const QueueFlowManager = ({ clientId }: QueueFlowManagerProps) => {
             {instances.map((instance) => {
               const connectedQueues = queues.filter(queue => 
                 queue.instance_queue_connections?.some(conn => 
-                  conn.instance_id === instance.instance_id && conn.is_active
+                  conn.instance_id === instance.id && conn.is_active
                 )
               );
 
@@ -198,7 +201,7 @@ const QueueFlowManager = ({ clientId }: QueueFlowManagerProps) => {
                     <div className="flex items-center gap-2">
                       <MessageSquare className="h-5 w-5 text-blue-500" />
                       <h4 className="font-medium">
-                        Instância {instance.instance_id.split('_').pop()}
+                        {getInstanceDisplayName(instance)}
                       </h4>
                       <Badge variant="outline">{instance.phone_number}</Badge>
                     </div>

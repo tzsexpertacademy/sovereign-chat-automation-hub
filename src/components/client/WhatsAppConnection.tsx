@@ -6,15 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Plus, 
   Smartphone, 
   QrCode, 
   CheckCircle, 
   AlertCircle, 
-  Wifi,
-  WifiOff,
   RefreshCw,
   Settings,
   Edit,
@@ -182,13 +180,7 @@ const WhatsAppConnection = () => {
       setLoading(true);
       console.log('🔗 Conectando instância à fila:', { instanceId, queueId: selectedQueueId });
       
-      // Buscar a instância pelo instance_id no banco
-      const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
-      if (!instance) {
-        throw new Error('Instância não encontrada');
-      }
-
-      await queuesService.connectInstanceToQueue(instance.id, selectedQueueId);
+      await queuesService.connectInstanceToQueue(instanceId, selectedQueueId);
       
       const isHuman = selectedQueueId === "human";
       const queueName = isHuman ? "Interação Humana" : queues.find(q => q.id === selectedQueueId)?.name;
@@ -217,13 +209,7 @@ const WhatsAppConnection = () => {
     try {
       setLoading(true);
       
-      // Buscar a instância pelo instance_id no banco
-      const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
-      if (!instance) {
-        throw new Error('Instância não encontrada');
-      }
-
-      await queuesService.disconnectInstanceFromQueue(instance.id, queueId);
+      await queuesService.disconnectInstanceFromQueue(instanceId, queueId);
       
       toast({
         title: "Sucesso",
@@ -324,16 +310,16 @@ const WhatsAppConnection = () => {
     }
   };
 
-  const getInstanceConnections = (instanceId: string) => {
-    // Buscar conexões usando o ID da instância no banco
-    const instance = instances.find(i => i.instance_id === instanceId);
-    if (!instance) return [];
-
+  const getInstanceConnections = (instance: WhatsAppInstanceData) => {
     return queues.filter(queue => 
       queue.instance_queue_connections?.some(conn => 
         conn.instance_id === instance.id && conn.is_active
       )
     );
+  };
+
+  const getInstanceDisplayName = (instance: WhatsAppInstanceData) => {
+    return instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
   };
 
   const getStatusIcon = (status: string) => {
@@ -342,7 +328,7 @@ const WhatsAppConnection = () => {
       case 'qr_ready': return <QrCode className="w-5 h-5 text-blue-500" />;
       case 'connecting': return <RefreshCw className="w-5 h-5 text-yellow-500 animate-spin" />;
       case 'error': return <AlertCircle className="w-5 h-5 text-red-500" />;
-      default: return <WifiOff className="w-5 h-5 text-gray-500" />;
+      default: return <AlertCircle className="w-5 h-5 text-gray-500" />;
     }
   };
 
@@ -488,8 +474,8 @@ const WhatsAppConnection = () => {
 
       {/* Instances List */}
       {instances.map((instance) => {
-        const connections = getInstanceConnections(instance.instance_id);
-        const displayName = instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
+        const connections = getInstanceConnections(instance);
+        const displayName = getInstanceDisplayName(instance);
         
         return (
           <Card key={instance.id} className="hover:shadow-lg transition-shadow">
