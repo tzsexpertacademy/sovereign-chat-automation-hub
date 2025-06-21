@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { X, Plus, Settings, Zap, Brain } from "lucide-react";
 import { assistantsService, type Assistant } from "@/services/assistantsService";
-import AssistantAdvancedSettings from "./AssistantAdvancedSettings";
 
 interface AssistantFormProps {
   clientId: string;
@@ -32,6 +31,87 @@ const jsonToStringArray = (json: any): string[] => {
     return json.filter(item => typeof item === 'string') as string[];
   }
   return [];
+};
+
+// Componente inline para configurações avançadas simplificadas
+const SimpleAdvancedSettings = ({ 
+  settings, 
+  onChange 
+}: {
+  settings: any;
+  onChange: (settings: any) => void;
+}) => {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Zap className="h-5 w-5" />
+          Configurações de Humanização
+        </CardTitle>
+        <CardDescription>
+          Configure o comportamento humanizado do assistente
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-3">
+          <Label htmlFor="humanization_level">Nível de Humanização</Label>
+          <Select 
+            value={settings.humanization_level} 
+            onValueChange={(value: 'basic' | 'advanced' | 'maximum') => 
+              onChange({ ...settings, humanization_level: value })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="basic">Básico - Respostas diretas</SelectItem>
+              <SelectItem value="advanced">Avançado - Mais natural</SelectItem>
+              <SelectItem value="maximum">Máximo - Muito humano</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-3">
+          <Label htmlFor="response_delay">
+            Delay na Resposta (segundos): {settings.response_delay_seconds}
+          </Label>
+          <Input
+            id="response_delay"
+            type="range"
+            min="0"
+            max="10"
+            step="1"
+            value={settings.response_delay_seconds}
+            onChange={(e) => onChange({ 
+              ...settings, 
+              response_delay_seconds: parseInt(e.target.value) 
+            })}
+            className="w-full"
+          />
+          <p className="text-sm text-muted-foreground">
+            Tempo de espera antes de enviar a resposta para parecer mais humano
+          </p>
+        </div>
+
+        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <h4 className="font-medium text-blue-900 mb-2">💡 Arquivos de Referência</h4>
+          <p className="text-sm text-blue-800 mb-2">
+            Para adicionar imagens, PDFs e vídeos que o assistente pode usar:
+          </p>
+          <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+            <li>Salve este assistente primeiro</li>
+            <li>Vá para a lista de assistentes</li>
+            <li>Clique em "Configurações Avançadas"</li>
+            <li>Use a aba "Arquivos de Referência"</li>
+          </ol>
+          <p className="text-sm text-blue-800 mt-2">
+            <strong>Exemplo no prompt:</strong> "Você tem acesso a um catálogo com imagens dos produtos. Use essas imagens para descrever os produtos quando perguntado..."
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
 };
 
 const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormProps) => {
@@ -336,13 +416,9 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
             </TabsContent>
 
             <TabsContent value="advanced" className="space-y-6">
-              <AssistantAdvancedSettings
+              <SimpleAdvancedSettings
                 settings={advancedSettings}
-                onChange={(newSettings) => {
-                  setAdvancedSettings(newSettings);
-                  setTemperature(newSettings.temperature || 0.7);
-                  setMaxTokens(newSettings.max_tokens || 1000);
-                }}
+                onChange={setAdvancedSettings}
               />
             </TabsContent>
           </Tabs>
