@@ -13,7 +13,7 @@ import {
 import {
   MessageSquare,
   TicketIcon,
-  Funnel,
+  Workflow,
   Bot,
   Users,
   Layers,
@@ -52,7 +52,7 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
     },
     {
       title: "Funil",
-      icon: Funnel,
+      icon: Workflow,
       url: `/client/${clientId}/funnel`,
       description: "Kanban de Leads"
     },
