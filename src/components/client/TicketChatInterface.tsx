@@ -17,7 +17,11 @@ import { whatsappService } from "@/services/whatsappMultiClient";
 import { queuesService } from "@/services/queuesService";
 import { useTicketRealtime } from "@/hooks/useTicketRealtime";
 import { useTicketMessages } from "@/hooks/useTicketMessages";
+import { useMessageStatus } from "@/hooks/useMessageStatus";
+import { useTypingStatus } from "@/hooks/useTypingStatus";
 import AutomaticProcessorStatus from './AutomaticProcessorStatus';
+import TypingIndicator from './TypingIndicator';
+import MessageStatus from './MessageStatus';
 
 const TicketChatInterface = () => {
   const { clientId } = useParams<{ clientId: string }>();
@@ -39,9 +43,11 @@ const TicketChatInterface = () => {
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Usar hooks customizados para tempo real
-  const { tickets, isLoading, reloadTickets } = useTicketRealtime(clientId || '');
+  // Hooks para tempo real
+  const { tickets, isLoading, reloadTickets, isTyping: assistantTyping } = useTicketRealtime(clientId || '');
   const { messages: ticketMessages, isLoading: loadingMessages } = useTicketMessages(selectedTicket?.id || null);
+  const { getMessageStatus, updateMessageStatus, markMessageAsRead } = useMessageStatus();
+  const { isTyping, isRecording, startTyping, stopTyping, startRecording, stopRecording } = useTypingStatus();
 
   // Auto scroll para última mensagem
   const scrollToBottom = () => {
@@ -50,7 +56,7 @@ const TicketChatInterface = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [ticketMessages]);
+  }, [ticketMessages, assistantTyping]);
 
   useEffect(() => {
     if (clientId) {
@@ -170,13 +176,27 @@ const TicketChatInterface = () => {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedTicket || !clientId) return;
 
+    const tempMessageId = `temp_${Date.now()}`;
+    
     try {
+      // Marcar como enviando
+      updateMessageStatus(tempMessageId, 'sending');
+      
+      // Simular typing do usuário
+      startTyping();
+      
       await whatsappService.sendMessage(clientId, selectedTicket.chat_id, newMessage);
+      
+      // Marcar como enviada
+      updateMessageStatus(tempMessageId, 'sent');
+      
+      // Parar typing
+      stopTyping();
       
       // Adicionar mensagem ao ticket
       await ticketsService.addTicketMessage({
         ticket_id: selectedTicket.id,
-        message_id: `manual_${Date.now()}`,
+        message_id: tempMessageId,
         from_me: true,
         sender_name: "Operador",
         content: newMessage,
@@ -189,11 +209,23 @@ const TicketChatInterface = () => {
 
       setNewMessage("");
       
+      // Simular entrega após delay
+      setTimeout(() => {
+        updateMessageStatus(tempMessageId, 'delivered');
+      }, 1000);
+      
+      // Simular leitura após delay (quando assistente "vê" a mensagem)
+      setTimeout(() => {
+        markMessageAsRead(tempMessageId);
+      }, 3000);
+      
       toast({
         title: "Mensagem enviada",
         description: "Sua mensagem foi enviada com sucesso"
       });
     } catch (error: any) {
+      updateMessageStatus(tempMessageId, 'failed');
+      stopTyping();
       toast({
         title: "Erro ao enviar",
         description: error.message || "Falha ao enviar mensagem",
@@ -329,17 +361,6 @@ const TicketChatInterface = () => {
     
     return 'Contato sem nome';
   };
-
-  if (isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-gray-600">Carregando tickets...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -734,22 +755,28 @@ const TicketChatInterface = () => {
                                   </p>
                                 )}
                                 <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                                <div className="flex items-center justify-between mt-1">
-                                  <p className={`text-xs ${
-                                    message.from_me ? 'text-blue-100' : 'text-gray-500'
-                                  }`}>
-                                    {formatTime(message.timestamp)}
-                                  </p>
-                                  {message.is_ai_response && (
-                                    <Badge variant="secondary" className="text-xs ml-2">
-                                      IA
-                                    </Badge>
-                                  )}
-                                </div>
+                                <MessageStatus 
+                                  status={getMessageStatus(message.message_id)}
+                                  timestamp={message.timestamp}
+                                  fromMe={message.from_me}
+                                />
+                                {message.is_ai_response && (
+                                  <Badge variant="secondary" className="text-xs ml-2">
+                                    IA
+                                  </Badge>
+                                )}
                               </div>
                             </div>
                           ))
                         )}
+                        
+                        {/* Indicador de digitação/gravação */}
+                        <TypingIndicator 
+                          isTyping={assistantTyping && !isRecording}
+                          isRecording={isRecording}
+                          senderName="Assistente"
+                        />
+                        
                         <div ref={messagesEndRef} />
                       </div>
                     </ScrollArea>
@@ -763,14 +790,45 @@ const TicketChatInterface = () => {
                         <Input
                           placeholder="Digite sua mensagem..."
                           value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                          onChange={(e) => {
+                            setNewMessage(e.target.value);
+                            if (e.target.value.trim() && !isTyping) {
+                              startTyping();
+                            } else if (!e.target.value.trim() && isTyping) {
+                              stopTyping();
+                            }
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSendMessage();
+                              stopTyping();
+                            }
+                          }}
+                          onBlur={() => stopTyping()}
                           className="flex-1"
                         />
-                        <Button onClick={handleSendMessage} disabled={!newMessage.trim()} size="sm">
+                        <Button 
+                          onClick={() => {
+                            handleSendMessage();
+                            stopTyping();
+                          }} 
+                          disabled={!newMessage.trim()} 
+                          size="sm"
+                        >
                           <Send className="w-4 h-4" />
                         </Button>
                       </div>
+                      
+                      {/* Indicador de digitação do usuário */}
+                      {isTyping && (
+                        <div className="mt-2">
+                          <TypingIndicator 
+                            isTyping={true}
+                            isRecording={false}
+                            senderName="Você"
+                          />
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (

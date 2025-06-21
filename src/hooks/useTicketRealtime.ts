@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -12,6 +11,7 @@ import { useHumanizedTyping } from './useHumanizedTyping';
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [assistantTyping, setAssistantTyping] = useState(false);
   const channelRef = useRef<any>(null);
   const isLoadingRef = useRef(false);
   const lastMessageIdRef = useRef<string>('');
@@ -28,6 +28,11 @@ export const useTicketRealtime = (clientId: string) => {
     maxDelay: 10000,
     minDelay: 3000
   });
+
+  // Sincronizar estado de typing do assistente
+  useEffect(() => {
+    setAssistantTyping(isTyping);
+  }, [isTyping]);
 
   // Carregar tickets com debounce rigoroso para evitar loops
   const loadTickets = useCallback(async (skipLoadingCheck = false) => {
@@ -111,6 +116,9 @@ export const useTicketRealtime = (clientId: string) => {
     try {
       processingQueueRef.current.add(batchKey);
       console.log(`🤖 Iniciando processamento do lote com ${messages.length} mensagens:`, batchKey);
+      
+      // Simular que assistente está "digitando"
+      setAssistantTyping(true);
       
       // Buscar configurações do cliente
       const [queues, aiConfig] = await Promise.all([
@@ -253,6 +261,7 @@ export const useTicketRealtime = (clientId: string) => {
       console.error('❌ Erro ao processar lote com assistente:', error);
     } finally {
       processingQueueRef.current.delete(batchKey);
+      setAssistantTyping(false);
     }
   }, [clientId, sendWithTypingDelay, loadTickets]);
 
@@ -473,7 +482,7 @@ export const useTicketRealtime = (clientId: string) => {
   return {
     tickets,
     isLoading,
-    isTyping,
+    isTyping: assistantTyping,
     reloadTickets
   };
 };
