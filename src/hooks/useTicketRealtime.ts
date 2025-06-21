@@ -22,6 +22,36 @@ export const useTicketRealtime = (clientId: string) => {
     }
   };
 
+  // Função para extrair nome real do WhatsApp
+  const extractWhatsAppName = (message: any) => {
+    // Prioridade: notifyName > pushName > senderName > author
+    const possibleNames = [
+      message.notifyName,
+      message.pushName, 
+      message.senderName,
+      message.author,
+      message.sender
+    ];
+
+    for (const name of possibleNames) {
+      if (name && 
+          typeof name === 'string' && 
+          name.trim() !== '' && 
+          !name.includes('@') && // Evitar IDs
+          name.length > 1) {
+        return name.trim();
+      }
+    }
+
+    // Se não encontrar nome, usar número formatado
+    const phone = message.from?.replace(/\D/g, '') || '';
+    if (phone.length >= 10) {
+      return phone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+    }
+
+    return null;
+  };
+
   // Configurar listeners para atualizações em tempo real
   useEffect(() => {
     if (!clientId) return;
@@ -33,14 +63,11 @@ export const useTicketRealtime = (clientId: string) => {
       console.log('📨 Nova mensagem WhatsApp recebida:', message);
       
       try {
-        // Extrair nome do WhatsApp (usar notifyName se disponível)
-        const customerName = message.notifyName || 
-                           message.pushName || 
-                           message.author || 
-                           message.senderName ||
-                           `Contato ${message.from?.replace(/\D/g, '') || ''}`;
-        
+        // Extrair nome real do WhatsApp
+        const customerName = extractWhatsAppName(message) || `Contato ${message.from?.replace(/\D/g, '') || ''}`;
         const customerPhone = message.from?.replace(/\D/g, '') || '';
+        
+        console.log('🔍 Nome extraído:', customerName);
         
         // Encontrar ou criar ticket para esta conversa
         const ticketId = await ticketsService.createOrUpdateTicket(

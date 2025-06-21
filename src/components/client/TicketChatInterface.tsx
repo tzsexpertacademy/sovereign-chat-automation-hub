@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -296,16 +297,37 @@ const TicketChatInterface = () => {
     return new Date(timestamp).toLocaleDateString('pt-BR');
   };
 
-  // Extrair nome do WhatsApp do customer name ou usar fallback
+  // Melhorar extração de nome do WhatsApp
   const getDisplayName = (ticket: ConversationTicket) => {
-    if (ticket.customer?.name && ticket.customer.name !== `Contato ${ticket.customer.phone}`) {
+    // Tentar extrair nome do customer primeiro
+    if (ticket.customer?.name && 
+        ticket.customer.name !== `Contato ${ticket.customer.phone}` &&
+        !ticket.customer.name.startsWith('Contato ')) {
       return ticket.customer.name;
     }
-    // Tentar extrair nome do título
-    if (ticket.title.includes('Conversa com ') && ticket.title !== `Conversa com Contato ${ticket.customer?.phone}`) {
-      return ticket.title.replace('Conversa com ', '');
+    
+    // Tentar extrair do título se contém nome real
+    if (ticket.title && ticket.title.includes('Conversa com ')) {
+      const nameFromTitle = ticket.title.replace('Conversa com ', '').trim();
+      if (nameFromTitle && 
+          !nameFromTitle.startsWith('Contato ') && 
+          nameFromTitle !== ticket.customer?.phone) {
+        return nameFromTitle;
+      }
     }
-    return ticket.customer?.name || 'Sem nome';
+    
+    // Tentar usar phone formatado
+    const phone = ticket.customer?.phone || ticket.chat_id;
+    if (phone) {
+      // Formatar telefone brasileiro
+      const cleanPhone = phone.replace(/\D/g, '');
+      if (cleanPhone.length >= 10) {
+        const formattedPhone = cleanPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+        return formattedPhone;
+      }
+    }
+    
+    return 'Contato sem nome';
   };
 
   if (isLoading) {
@@ -321,16 +343,15 @@ const TicketChatInterface = () => {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
-      {/* Header - Responsivo */}
-      <div className="bg-white border-b p-3 md:p-4 flex-shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <h1 className="text-xl md:text-2xl font-bold">Central de Conversas</h1>
-          <div className="flex flex-wrap gap-2">
+      {/* Header */}
+      <div className="bg-white border-b p-4 flex-shrink-0">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold">Central de Conversas</h1>
+          <div className="flex gap-2">
             <Button 
               onClick={handleImportConversations}
               disabled={isImporting}
               size="sm"
-              className="text-xs md:text-sm"
             >
               {isImporting ? (
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
@@ -339,254 +360,240 @@ const TicketChatInterface = () => {
               )}
               {isImporting ? 'Importando...' : 'Importar'}
             </Button>
-            <Button variant="outline" size="sm" className="text-xs md:text-sm">
+            <Button variant="outline" size="sm">
               <Archive className="w-4 h-4 mr-2" />
               Arquivados
             </Button>
-            <Button size="sm" onClick={reloadTickets} className="text-xs md:text-sm">
+            <Button size="sm" onClick={reloadTickets}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Atualizar
             </Button>
           </div>
         </div>
 
-        {/* Tabs - Responsivo */}
+        {/* Tabs */}
         <div className="flex space-x-2">
           <Button
             variant={activeTab === "tickets" ? "default" : "ghost"}
             onClick={() => setActiveTab("tickets")}
-            className="flex items-center gap-2 text-xs md:text-sm"
+            className="flex items-center gap-2"
             size="sm"
           >
             <MessageSquare className="w-4 h-4" />
-            <span className="hidden sm:inline">Tickets</span> ({tickets.length})
+            Tickets ({tickets.length})
           </Button>
           <Button
             variant={activeTab === "contacts" ? "default" : "ghost"}
             onClick={() => setActiveTab("contacts")}
-            className="flex items-center gap-2 text-xs md:text-sm"
+            className="flex items-center gap-2"
             size="sm"
           >
             <Users className="w-4 h-4" />
-            <span className="hidden sm:inline">Contatos</span> ({customers.length})
+            Contatos ({customers.length})
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row gap-2 md:gap-6 p-2 md:p-6 min-h-0">
-        {/* Lista de Tickets/Contatos - Responsivo */}
-        <Card className="w-full lg:w-1/3 xl:w-1/4 flex flex-col min-h-0">
-          <CardHeader className="pb-3 px-3 md:px-6">
-            <div className="space-y-3">
-              {/* Busca */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input 
-                  placeholder={activeTab === "tickets" ? "Buscar tickets..." : "Buscar contatos..."} 
-                  className="pl-10 text-sm"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-
-              {/* Filtros - Responsivo */}
-              {activeTab === "tickets" && (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="text-xs md:text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="open">Aberto</SelectItem>
-                      <SelectItem value="pending">Pendente</SelectItem>
-                      <SelectItem value="resolved">Resolvido</SelectItem>
-                      <SelectItem value="closed">Fechado</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                    <SelectTrigger className="text-xs md:text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Prioridade</SelectItem>
-                      <SelectItem value="1">Baixa</SelectItem>
-                      <SelectItem value="2">Normal</SelectItem>
-                      <SelectItem value="3">Alta</SelectItem>
-                      <SelectItem value="4">Urgente</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+      {/* Main Content - Layout Horizontal */}
+      <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
+        {/* Lista de Tickets - Sidebar */}
+        <div className="w-80 flex flex-col bg-white rounded-lg border">
+          <div className="p-4 border-b">
+            {/* Busca */}
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input 
+                placeholder={activeTab === "tickets" ? "Buscar tickets..." : "Buscar contatos..."} 
+                className="pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
-          </CardHeader>
+
+            {/* Filtros */}
+            {activeTab === "tickets" && (
+              <div className="flex gap-2">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="open">Aberto</SelectItem>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                    <SelectItem value="resolved">Resolvido</SelectItem>
+                    <SelectItem value="closed">Fechado</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Prioridade</SelectItem>
+                    <SelectItem value="1">Baixa</SelectItem>
+                    <SelectItem value="2">Normal</SelectItem>
+                    <SelectItem value="3">Alta</SelectItem>
+                    <SelectItem value="4">Urgente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
           
-          <CardContent className="flex-1 p-0 min-h-0">
-            <ScrollArea className="h-full">
-              {activeTab === "tickets" ? (
-                // Lista de Tickets
-                filteredTickets.length === 0 ? (
-                  <div className="p-4 text-center text-gray-500">
-                    <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm">Nenhum ticket encontrado</p>
-                    <Button 
-                      onClick={handleImportConversations}
-                      disabled={isImporting}
-                      variant="outline"
-                      size="sm"
-                      className="mt-2 text-xs"
-                    >
-                      {isImporting ? 'Importando...' : 'Importar Conversas'}
-                    </Button>
+          {/* Lista */}
+          <ScrollArea className="flex-1">
+            {activeTab === "tickets" ? (
+              // Lista de Tickets
+              filteredTickets.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">
+                  <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm">Nenhum ticket encontrado</p>
+                  <Button 
+                    onClick={handleImportConversations}
+                    disabled={isImporting}
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                  >
+                    {isImporting ? 'Importando...' : 'Importar Conversas'}
+                  </Button>
+                </div>
+              ) : (
+                filteredTickets.map((ticket) => (
+                  <div
+                    key={ticket.id}
+                    onClick={() => setSelectedTicket(ticket)}
+                    className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
+                      selectedTicket?.id === ticket.id ? 'bg-blue-50 border-r-2 border-r-blue-500' : ''
+                    }`}
+                  >
+                    <div className="flex items-start space-x-3">
+                      <Avatar className="w-12 h-12 flex-shrink-0">
+                        <AvatarFallback>
+                          {getDisplayName(ticket).charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start mb-1">
+                          <h3 className="font-medium text-gray-900 truncate">
+                            {getDisplayName(ticket)}
+                          </h3>
+                          <div className="flex items-center space-x-1 flex-shrink-0">
+                            <Star className={`w-3 h-3 ${getPriorityColor(ticket.priority)}`} />
+                            <span className="text-xs text-gray-500">
+                              {formatTime(ticket.last_message_at)}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Status e Tags */}
+                        <div className="flex items-center gap-1 mb-2 flex-wrap">
+                          {getStatusBadge(ticket.status)}
+                          
+                          {ticket.queue && (
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                              <ArrowRight className="w-3 h-3 mr-1" />
+                              {ticket.queue.name}
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <p className="text-sm text-gray-600 truncate">
+                          {ticket.last_message_preview || 'Sem mensagens'}
+                        </p>
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="text-xs text-gray-500">
+                            {ticket.customer?.phone}
+                          </span>
+                          {ticket.internal_notes.length > 0 && (
+                            <Badge variant="secondary" className="text-xs">
+                              {ticket.internal_notes.length} notas
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                ) : (
-                  filteredTickets.map((ticket) => (
+                ))
+              )
+            ) : (
+              // Lista de Contatos
+              customers.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">
+                  <User className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm">Nenhum contato encontrado</p>
+                </div>
+              ) : (
+                customers
+                  .filter(customer => 
+                    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    customer.phone.includes(searchTerm) ||
+                    customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
+                  )
+                  .map((customer) => (
                     <div
-                      key={ticket.id}
-                      onClick={() => setSelectedTicket(ticket)}
-                      className={`p-3 md:p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
-                        selectedTicket?.id === ticket.id ? 'bg-blue-50 border-r-2 border-r-blue-500' : ''
-                      }`}
+                      key={customer.id}
+                      className="p-4 border-b hover:bg-gray-50 transition-colors"
                     >
-                      <div className="flex items-start space-x-3">
-                        <Avatar className="w-10 h-10 md:w-12 md:h-12 flex-shrink-0">
-                          <AvatarFallback className="text-xs md:text-sm">
-                            {getDisplayName(ticket).charAt(0).toUpperCase()}
+                      <div className="flex items-center space-x-3">
+                        <Avatar className="w-12 h-12">
+                          <AvatarFallback>
+                            {customer.name.charAt(0)}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-start mb-1">
-                            <h3 className="font-medium text-gray-900 truncate text-sm md:text-base">
-                              {getDisplayName(ticket)}
-                            </h3>
-                            <div className="flex items-center space-x-1 flex-shrink-0">
-                              <Star className={`w-3 h-3 ${getPriorityColor(ticket.priority)}`} />
-                              <span className="text-xs text-gray-500">
-                                {formatTime(ticket.last_message_at)}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          {/* Etiquetas - Responsivo */}
-                          <div className="flex items-center space-x-1 mb-2 flex-wrap gap-1">
-                            {getStatusBadge(ticket.status)}
-                            
-                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                              <Building2 className="w-3 h-3 mr-1" />
-                              <span className="hidden sm:inline">Conexão</span>
-                            </Badge>
-                            
-                            {ticket.queue && (
-                              <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
-                                <ArrowRight className="w-3 h-3 mr-1" />
-                                <span className="hidden sm:inline">{ticket.queue.name}</span>
-                              </Badge>
-                            )}
-                            
-                            {ticket.assistant && (
-                              <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700">
-                                <Zap className="w-3 h-3 mr-1" />
-                                <span className="hidden sm:inline">{ticket.assistant.name}</span>
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          <p className="text-xs md:text-sm text-gray-600 truncate">
-                            {ticket.last_message_preview || 'Sem mensagens'}
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">{customer.name}</h3>
+                          <p className="text-sm text-gray-600">{customer.phone}</p>
+                          {customer.email && (
+                            <p className="text-sm text-gray-500">{customer.email}</p>
+                          )}
+                          <p className="text-xs text-gray-400">
+                            Cliente desde {formatDate(customer.created_at)}
                           </p>
-                          <div className="flex justify-between items-center mt-2">
-                            <span className="text-xs text-gray-500">
-                              {ticket.customer?.phone}
-                            </span>
-                            {ticket.internal_notes.length > 0 && (
-                              <Badge variant="secondary" className="text-xs">
-                                {ticket.internal_notes.length} notas
-                              </Badge>
-                            )}
-                          </div>
+                        </div>
+                        <div className="flex space-x-1">
+                          <Button variant="ghost" size="sm">
+                            <Phone className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm">
+                            <MessageSquare className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
                     </div>
                   ))
-                )
-              ) : (
-                // Lista de Contatos
-                customers.length === 0 ? (
-                  <div className="p-4 text-center text-gray-500">
-                    <User className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm">Nenhum contato encontrado</p>
-                  </div>
-                ) : (
-                  customers
-                    .filter(customer => 
-                      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      customer.phone.includes(searchTerm) ||
-                      customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
-                    )
-                    .map((customer) => (
-                      <div
-                        key={customer.id}
-                        className="p-3 md:p-4 border-b hover:bg-gray-50 transition-colors"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <Avatar className="w-10 h-10 md:w-12 md:h-12">
-                            <AvatarFallback className="text-xs md:text-sm">
-                              {customer.name.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <h3 className="font-medium text-gray-900 text-sm md:text-base">{customer.name}</h3>
-                            <p className="text-xs md:text-sm text-gray-600">{customer.phone}</p>
-                            {customer.email && (
-                              <p className="text-xs md:text-sm text-gray-500">{customer.email}</p>
-                            )}
-                            <p className="text-xs text-gray-400">
-                              Cliente desde {formatDate(customer.created_at)}
-                            </p>
-                          </div>
-                          <div className="flex space-x-1">
-                            <Button variant="ghost" size="sm">
-                              <Phone className="w-4 h-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <MessageSquare className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                )
-              )}
-            </ScrollArea>
-          </CardContent>
-        </Card>
+              )
+            )}
+          </ScrollArea>
+        </div>
 
-        {/* Área de Conversa/Detalhes - Responsivo */}
-        <Card className="flex-1 flex flex-col min-h-0">
+        {/* Área de Conversa - Main Content */}
+        <div className="flex-1 flex flex-col bg-white rounded-lg border min-w-0">
           {selectedTicket && activeTab === "tickets" ? (
             <>
-              {/* Header do Ticket - Responsivo */}
-              <CardHeader className="border-b px-3 md:px-6 py-3 md:py-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Header do Ticket */}
+              <div className="border-b p-4">
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center space-x-3 min-w-0">
-                    <Avatar className="w-8 h-8 md:w-10 md:h-10 flex-shrink-0">
-                      <AvatarFallback className="text-xs md:text-sm">
+                    <Avatar className="w-10 h-10 flex-shrink-0">
+                      <AvatarFallback>
                         {getDisplayName(selectedTicket).charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <h3 className="font-medium text-gray-900 text-sm md:text-base truncate">
+                      <h3 className="font-medium text-gray-900 truncate">
                         {getDisplayName(selectedTicket)}
                       </h3>
-                      <p className="text-xs md:text-sm text-gray-500 truncate">
+                      <p className="text-sm text-gray-500 truncate">
                         {selectedTicket.customer?.phone}
                       </p>
                     </div>
                   </div>
                   
-                  {/* Ações - Responsivo */}
-                  <div className="flex items-center gap-2 flex-wrap">
+                  {/* Ações */}
+                  <div className="flex items-center gap-2">
                     {getStatusBadge(selectedTicket.status)}
                     
                     <Button 
@@ -594,20 +601,19 @@ const TicketChatInterface = () => {
                       size="sm"
                       onClick={handleAssumeTicket}
                       disabled={selectedTicket.status === 'pending'}
-                      className="text-xs"
                     >
-                      <UserCheck className="w-4 h-4 mr-1 md:mr-2" />
-                      <span className="hidden sm:inline">Assumir</span>
+                      <UserCheck className="w-4 h-4 mr-2" />
+                      Assumir
                     </Button>
                     
                     <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
                       <DialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="text-xs">
-                          <ArrowRight className="w-4 h-4 mr-1 md:mr-2" />
-                          <span className="hidden sm:inline">Transferir</span>
+                        <Button variant="outline" size="sm">
+                          <ArrowRight className="w-4 h-4 mr-2" />
+                          Transferir
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="w-[90vw] max-w-md">
+                      <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Transferir Ticket</DialogTitle>
                         </DialogHeader>
@@ -654,7 +660,7 @@ const TicketChatInterface = () => {
                     </Dialog>
                     
                     <Select value={selectedTicket.status} onValueChange={handleStatusChange}>
-                      <SelectTrigger className="w-24 md:w-32 text-xs">
+                      <SelectTrigger className="w-32">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -670,13 +676,12 @@ const TicketChatInterface = () => {
                   </div>
                 </div>
 
-                {/* Tabs de Conversa e Notas - Responsivo */}
-                <div className="flex space-x-2 mt-4">
+                {/* Tabs de Conversa e Notas */}
+                <div className="flex space-x-2">
                   <Button
                     variant={!showInternalNotes ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setShowInternalNotes(false)}
-                    className="text-xs md:text-sm"
                   >
                     <MessageSquare className="w-4 h-4 mr-2" />
                     Conversa
@@ -685,20 +690,19 @@ const TicketChatInterface = () => {
                     variant={showInternalNotes ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setShowInternalNotes(true)}
-                    className="text-xs md:text-sm"
                   >
                     <FileText className="w-4 h-4 mr-2" />
                     Notas ({selectedTicket.internal_notes.length})
                   </Button>
                 </div>
-              </CardHeader>
+              </div>
 
-              {/* Área de Mensagens/Notas - Responsivo */}
-              <CardContent className="flex-1 p-0 min-h-0">
+              {/* Área de Mensagens/Notas */}
+              <div className="flex-1 min-h-0 flex flex-col">
                 {!showInternalNotes ? (
                   // Conversa
-                  <div className="flex flex-col h-full">
-                    <ScrollArea className="flex-1 p-3 md:p-4">
+                  <>
+                    <ScrollArea className="flex-1 p-4">
                       <div className="space-y-4">
                         {loadingMessages ? (
                           <div className="text-center py-8">
@@ -716,7 +720,7 @@ const TicketChatInterface = () => {
                               key={message.id}
                               className={`flex ${message.from_me ? 'justify-end' : 'justify-start'}`}
                             >
-                              <div className={`max-w-xs md:max-w-md lg:max-w-lg px-3 md:px-4 py-2 rounded-lg ${
+                              <div className={`max-w-md px-4 py-2 rounded-lg ${
                                 message.from_me
                                   ? 'bg-blue-500 text-white'
                                   : 'bg-gray-100 text-gray-900'
@@ -747,8 +751,8 @@ const TicketChatInterface = () => {
                       </div>
                     </ScrollArea>
 
-                    {/* Input de Mensagem - Responsivo */}
-                    <div className="border-t p-3 md:p-4">
+                    {/* Input de Mensagem */}
+                    <div className="border-t p-4">
                       <div className="flex space-x-2">
                         <Button variant="ghost" size="sm">
                           <Paperclip className="w-4 h-4" />
@@ -758,18 +762,18 @@ const TicketChatInterface = () => {
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                          className="flex-1 text-sm"
+                          className="flex-1"
                         />
                         <Button onClick={handleSendMessage} disabled={!newMessage.trim()} size="sm">
                           <Send className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
-                  </div>
+                  </>
                 ) : (
                   // Notas Internas
-                  <div className="flex flex-col h-full">
-                    <ScrollArea className="flex-1 p-3 md:p-4">
+                  <>
+                    <ScrollArea className="flex-1 p-4">
                       <div className="space-y-4">
                         {selectedTicket.internal_notes.length === 0 ? (
                           <div className="text-center text-gray-500 py-8">
@@ -778,7 +782,7 @@ const TicketChatInterface = () => {
                           </div>
                         ) : (
                           selectedTicket.internal_notes.map((note: any) => (
-                            <div key={note.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 md:p-4">
+                            <div key={note.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                               <div className="flex justify-between items-start mb-2">
                                 <span className="font-medium text-sm">{note.created_by}</span>
                                 <span className="text-xs text-gray-500">
@@ -792,15 +796,14 @@ const TicketChatInterface = () => {
                       </div>
                     </ScrollArea>
 
-                    {/* Input de Nota Interna - Responsivo */}
-                    <div className="border-t p-3 md:p-4">
+                    {/* Input de Nota Interna */}
+                    <div className="border-t p-4">
                       <div className="space-y-2">
                         <Textarea
                           placeholder="Adicionar nota interna..."
                           value={internalNote}
                           onChange={(e) => setInternalNote(e.target.value)}
                           rows={3}
-                          className="text-sm"
                         />
                         <div className="flex justify-end">
                           <Button onClick={handleAddInternalNote} disabled={!internalNote.trim()} size="sm">
@@ -810,12 +813,12 @@ const TicketChatInterface = () => {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </>
                 )}
-              </CardContent>
+              </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center p-4">
+            <div className="flex-1 flex items-center justify-center">
               <div className="text-center text-gray-500">
                 <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                 <h3 className="text-lg font-medium mb-2">
@@ -830,7 +833,7 @@ const TicketChatInterface = () => {
               </div>
             </div>
           )}
-        </Card>
+        </div>
       </div>
     </div>
   );
