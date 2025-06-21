@@ -17,7 +17,6 @@ export const useTicketRealtime = (clientId: string) => {
   const lastMessageIdRef = useRef<string>('');
   const socketRef = useRef<any>(null);
   const processingQueueRef = useRef<Set<string>>(new Set());
-  const processedMessagesRef = useRef<Set<string>>(new Set()); // Evitar processamento duplo
 
   // Hook para delay humanizado
   const { isTyping, sendWithTypingDelay } = useHumanizedTyping({
@@ -101,17 +100,6 @@ export const useTicketRealtime = (clientId: string) => {
       processingQueueRef.current.add(batchKey);
       console.log(`🤖 Iniciando processamento do lote com ${messages.length} mensagens:`, batchKey);
       
-      // Verificar se alguma mensagem já foi processada individualmente
-      const unprocessedMessages = messages.filter(msg => !processedMessagesRef.current.has(msg.id));
-      
-      if (unprocessedMessages.length === 0) {
-        console.log('⏭️ Todas as mensagens do lote já foram processadas individualmente');
-        return;
-      }
-
-      // Marcar mensagens como processadas
-      unprocessedMessages.forEach(msg => processedMessagesRef.current.add(msg.id));
-      
       // Buscar configurações do cliente
       const [queues, aiConfig] = await Promise.all([
         queuesService.getClientQueues(clientId),
@@ -174,7 +162,7 @@ export const useTicketRealtime = (clientId: string) => {
         }));
 
       // Combinar mensagens do lote em uma única mensagem
-      const combinedMessage = unprocessedMessages.map(msg => msg.text).join('\n');
+      const combinedMessage = messages.map(msg => msg.text).join('\n');
       console.log(`📨 Processando lote combinado: "${combinedMessage.substring(0, 100)}..."`);
 
       // Chamar a API da OpenAI
@@ -215,7 +203,7 @@ export const useTicketRealtime = (clientId: string) => {
         
         // Enviar resposta com delay humanizado
         await sendWithTypingDelay(assistantResponse, async () => {
-          await whatsappService.sendMessage(clientId, unprocessedMessages[0].from, assistantResponse);
+          await whatsappService.sendMessage(clientId, messages[0].from, assistantResponse);
         });
         
         // Registrar a resposta no ticket
@@ -248,8 +236,6 @@ export const useTicketRealtime = (clientId: string) => {
 
     } catch (error) {
       console.error('❌ Erro ao processar lote com assistente:', error);
-      // Remover mensagens da lista de processadas em caso de erro
-      messages.forEach(msg => processedMessagesRef.current.delete(msg.id));
     } finally {
       processingQueueRef.current.delete(batchKey);
     }
@@ -328,7 +314,7 @@ export const useTicketRealtime = (clientId: string) => {
       });
       
       // Evitar processar a mesma mensagem duas vezes
-      if (lastMessageIdRef.current === message.id || processedMessagesRef.current.has(message.id)) {
+      if (lastMessageIdRef.current === message.id) {
         console.log('⏭️ Mensagem já processada, ignorando');
         return;
       }
@@ -372,7 +358,7 @@ export const useTicketRealtime = (clientId: string) => {
         // Atualizar lista de tickets
         await loadTickets();
 
-        // Adicionar mensagem ao lote para processamento humanizado (apenas mensagens de texto)
+        // Adicionar mensagem ao lote para processamento humanizado
         if (!message.type || message.type === 'text' || message.type === 'chat') {
           addToBatch({
             id: message.id,
@@ -423,14 +409,13 @@ export const useTicketRealtime = (clientId: string) => {
         supabase.removeChannel(channelRef.current);
       }
       processingQueueRef.current.clear();
-      processedMessagesRef.current.clear();
     };
   }, [clientId, addToBatch, sendWithTypingDelay]);
 
   return {
     tickets,
     isLoading,
-    isTyping,
+    isTyping, // Exposar status de digitação
     reloadTickets: loadTickets
   };
 };
