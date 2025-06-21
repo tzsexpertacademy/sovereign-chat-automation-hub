@@ -1,25 +1,33 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { ticketsService, type ConversationTicket, type TicketMessage } from '@/services/ticketsService';
+import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
 import { whatsappService } from '@/services/whatsappMultiClient';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const channelRef = useRef<any>(null);
-  const socketRef = useRef<any>(null);
+  const isLoadingRef = useRef(false);
 
   // Carregar tickets iniciais
   const loadTickets = async () => {
+    if (isLoadingRef.current || !clientId) return;
+    
     try {
+      isLoadingRef.current = true;
       setIsLoading(true);
+      console.log('🔄 Carregando tickets...');
+      
       const ticketsData = await ticketsService.getClientTickets(clientId);
+      console.log('✅ Tickets carregados:', ticketsData);
+      
       setTickets(ticketsData);
     } catch (error) {
       console.error('Erro ao carregar tickets:', error);
     } finally {
       setIsLoading(false);
+      isLoadingRef.current = false;
     }
   };
 
@@ -55,11 +63,14 @@ export const useTicketRealtime = (clientId: string) => {
   useEffect(() => {
     if (!clientId) return;
 
+    console.log('🔌 Configurando listeners de tempo real para:', clientId);
+
+    // Carregar tickets iniciais apenas uma vez
     loadTickets();
 
     // Listener para novas mensagens do WhatsApp via WebSocket
     const handleNewWhatsAppMessage = async (message: any) => {
-      console.log('📨 Nova mensagem WhatsApp recebida em tempo real:', message);
+      console.log('📨 Nova mensagem WhatsApp recebida:', message);
       
       try {
         const customerName = extractWhatsAppName(message) || `Contato ${message.from?.replace(/\D/g, '') || ''}`;
@@ -92,8 +103,13 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date(message.timestamp || Date.now()).toISOString()
         });
 
-        // Recarregar tickets instantaneamente para mostrar a nova mensagem
-        await loadTickets();
+        // Atualizar tickets sem recarregar tudo
+        console.log('📋 Atualizando lista de tickets...');
+        setTimeout(() => {
+          if (!isLoadingRef.current) {
+            loadTickets();
+          }
+        }, 500);
         
       } catch (error) {
         console.error('Erro ao processar nova mensagem:', error);
@@ -117,7 +133,12 @@ export const useTicketRealtime = (clientId: string) => {
         },
         async (payload) => {
           console.log('🔄 Ticket atualizado via Supabase:', payload);
-          await loadTickets();
+          // Pequeno delay para evitar múltiplas chamadas
+          setTimeout(() => {
+            if (!isLoadingRef.current) {
+              loadTickets();
+            }
+          }, 1000);
         }
       )
       .on(
@@ -129,24 +150,24 @@ export const useTicketRealtime = (clientId: string) => {
         },
         async (payload) => {
           console.log('💬 Nova mensagem de ticket via Supabase:', payload);
-          await loadTickets();
+          // Atualizar tickets para mostrar nova mensagem
+          setTimeout(() => {
+            if (!isLoadingRef.current) {
+              loadTickets();
+            }
+          }, 1000);
         }
       )
       .subscribe();
 
     channelRef.current = channel;
 
-    // Atualizar tickets a cada 5 segundos para garantir sincronização
-    const intervalId = setInterval(() => {
-      loadTickets();
-    }, 5000);
-
     return () => {
+      console.log('🔌 Desconectando listeners...');
       whatsappService.removeListener(`message_${clientId}`);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
-      clearInterval(intervalId);
     };
   }, [clientId]);
 

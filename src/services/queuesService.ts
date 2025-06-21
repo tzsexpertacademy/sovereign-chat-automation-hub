@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
@@ -23,7 +22,7 @@ export interface QueueWithAssistant extends Queue {
   tags?: Tables<"funnel_tags">[];
 }
 
-export const queuesService = {
+export class QueuesService {
   async getClientQueues(clientId: string): Promise<QueueWithAssistant[]> {
     const { data, error } = await supabase
       .from("queues")
@@ -44,7 +43,7 @@ export const queuesService = {
 
     if (error) throw error;
     return data || [];
-  },
+  }
 
   async createQueue(queue: QueueInsert): Promise<Queue> {
     const { data, error } = await supabase
@@ -55,7 +54,7 @@ export const queuesService = {
 
     if (error) throw error;
     return data;
-  },
+  }
 
   async updateQueue(id: string, updates: QueueUpdate): Promise<Queue> {
     const { data, error } = await supabase
@@ -67,7 +66,7 @@ export const queuesService = {
 
     if (error) throw error;
     return data;
-  },
+  }
 
   async deleteQueue(id: string): Promise<void> {
     // First disconnect all instances from this queue
@@ -79,7 +78,7 @@ export const queuesService = {
       .eq("id", id);
 
     if (error) throw error;
-  },
+  }
 
   async connectInstanceToQueue(whatsappInstanceId: string, queueId: string): Promise<void> {
     console.log('🔗 Conectando instância à fila:', { whatsappInstanceId, queueId });
@@ -129,7 +128,7 @@ export const queuesService = {
     }
 
     console.log('✅ Instância conectada à fila com sucesso');
-  },
+  }
 
   async disconnectInstanceFromQueue(whatsappInstanceId: string, queueId: string): Promise<void> {
     // Buscar o UUID da instância WhatsApp pelo instance_id
@@ -152,7 +151,7 @@ export const queuesService = {
       .eq("queue_id", queueId);
 
     if (error) throw error;
-  },
+  }
 
   async disconnectInstanceFromAllQueues(instanceUuid: string): Promise<void> {
     console.log('🔄 Desconectando instância de todas as filas:', instanceUuid);
@@ -168,7 +167,7 @@ export const queuesService = {
     }
     
     console.log('✅ Instância desconectada de todas as filas');
-  },
+  }
 
   async disconnectAllInstancesFromQueue(queueId: string): Promise<void> {
     const { error } = await supabase
@@ -177,7 +176,7 @@ export const queuesService = {
       .eq("queue_id", queueId);
 
     if (error) throw error;
-  },
+  }
 
   async getInstanceConnections(whatsappInstanceId: string): Promise<QueueWithAssistant[]> {
     // Buscar o UUID da instância WhatsApp pelo instance_id
@@ -211,7 +210,7 @@ export const queuesService = {
       ...item.queues,
       instance_queue_connections: []
     })) as QueueWithAssistant[];
-  },
+  }
 
   async getQueueConnections(queueId: string): Promise<string[]> {
     const { data, error } = await supabase
@@ -227,7 +226,7 @@ export const queuesService = {
     if (error) throw error;
     
     return (data || []).map(item => item.whatsapp_instances.instance_id);
-  },
+  }
 
   async isInstanceConnectedToQueue(whatsappInstanceId: string, queueId: string): Promise<boolean> {
     // Buscar o UUID da instância WhatsApp pelo instance_id
@@ -254,7 +253,7 @@ export const queuesService = {
     if (error && error.code !== 'PGRST116') throw error;
     
     return !!data;
-  },
+  }
 
   // Métodos para estatísticas e análise
   async getQueueStats(clientId: string) {
@@ -268,7 +267,7 @@ export const queuesService = {
         q.instance_queue_connections && q.instance_queue_connections.length > 0
       ).length
     };
-  },
+  }
 
   // Métodos para busca e filtros
   async searchQueues(clientId: string, searchTerm: string): Promise<QueueWithAssistant[]> {
@@ -285,7 +284,7 @@ export const queuesService = {
 
     if (error) throw error;
     return data || [];
-  },
+  }
 
   async getQueuesByAssistant(assistantId: string): Promise<QueueWithAssistant[]> {
     const { data, error } = await supabase
@@ -302,4 +301,39 @@ export const queuesService = {
     if (error) throw error;
     return data || [];
   }
-};
+
+  async getClientQueueConnections(clientId: string) {
+    const { data, error } = await supabase
+      .from('queue_connections')
+      .select(`
+        *,
+        queues (
+          id,
+          name,
+          description
+        ),
+        assistants (
+          id,
+          name,
+          prompt,
+          personality
+        ),
+        whatsapp_instances (
+          id,
+          instance_id,
+          status,
+          phone_number
+        )
+      `)
+      .eq('client_id', clientId);
+
+    if (error) {
+      console.error('Erro ao buscar conexões de fila:', error);
+      throw error;
+    }
+
+    return data || [];
+  }
+}
+
+export const queuesService = new QueuesService();
