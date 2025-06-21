@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SidebarProvider } from '@/components/ui/sidebar';
 import ClientSidebar from '@/components/client/ClientSidebar';
 import ClientHeader from '@/components/client/ClientHeader';
 import ClientInstancesOverview from '@/components/client/ClientInstancesOverview';
@@ -66,29 +67,31 @@ const ClientDashboard = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <ClientSidebar clientId={clientId} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <ClientHeader />
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-7xl mx-auto space-y-6">
-            <Routes>
-              <Route path="/" element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<ClientInstancesOverview />} />
-              <Route path="connect" element={<WhatsAppConnection clientId={clientId} />} />
-              <Route path="chat" element={<TicketsInterface />} />
-              <Route path="assistants" element={<AssistantsManager />} />
-              <Route path="queues" element={<QueuesManager />} />
-              <Route path="automation" element={<AutomationCenter />} />
-              <Route path="campaigns" element={<CampaignsManager />} />
-              <Route path="analytics" element={<AnalyticsDashboard />} />
-              <Route path="booking" element={<BookingManager clientId={clientId} />} />
-              <Route path="*" element={<Navigate to="overview" replace />} />
-            </Routes>
-          </div>
-        </main>
+    <SidebarProvider>
+      <div className="flex h-screen bg-gray-50">
+        <ClientSidebar clientId={clientId} />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <ClientHeader />
+          <main className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-7xl mx-auto space-y-6">
+              <Routes>
+                <Route path="/" element={<Navigate to="overview" replace />} />
+                <Route path="overview" element={<ClientInstancesOverview />} />
+                <Route path="connect" element={<WhatsAppConnection clientId={clientId} />} />
+                <Route path="chat" element={<TicketsInterface />} />
+                <Route path="assistants" element={<AssistantsManager />} />
+                <Route path="queues" element={<QueuesManager />} />
+                <Route path="automation" element={<AutomationCenter />} />
+                <Route path="campaigns" element={<CampaignsManager />} />
+                <Route path="analytics" element={<AnalyticsDashboard />} />
+                <Route path="booking" element={<BookingManager clientId={clientId} />} />
+                <Route path="*" element={<Navigate to="overview" replace />} />
+              </Routes>
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 };
 
