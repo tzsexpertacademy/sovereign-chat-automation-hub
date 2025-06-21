@@ -1,130 +1,106 @@
 
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
-export interface WhatsAppInstanceData {
-  id: string;
-  client_id: string;
-  instance_id: string;
-  status: string;
-  phone_number?: string;
-  qr_code?: string;
-  has_qr_code: boolean;
-  created_at: string;
-  updated_at: string;
-}
+export type WhatsAppInstanceData = Tables<"whatsapp_instances">;
+export type WhatsAppInstanceInsert = TablesInsert<"whatsapp_instances">;
+export type WhatsAppInstanceUpdate = TablesUpdate<"whatsapp_instances">;
 
-export interface CreateInstanceData {
-  client_id: string;
-  instance_id: string;
-  status?: string;
-}
-
-export const whatsappInstancesService = {
-  // Get all instances
-  async getAllInstances(): Promise<WhatsAppInstanceData[]> {
-    try {
-      const { data, error } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      
-      return data || [];
-    } catch (error) {
-      console.error('Error fetching instances:', error);
-      throw error;
-    }
-  },
-
-  // Get instances by client ID
+export class WhatsAppInstancesService {
   async getInstancesByClientId(clientId: string): Promise<WhatsAppInstanceData[]> {
-    try {
-      const { data, error } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false });
+    console.log('🔍 Buscando instâncias para cliente:', clientId);
+    
+    const { data, error } = await supabase
+      .from("whatsapp_instances")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      
-      return data || [];
-    } catch (error) {
-      console.error('Error fetching client instances:', error);
+    if (error) {
+      console.error('❌ Erro ao buscar instâncias:', error);
       throw error;
     }
-  },
 
-  // Create new instance
-  async createInstance(instanceData: CreateInstanceData): Promise<WhatsAppInstanceData> {
-    try {
-      const { data, error } = await supabase
-        .from('whatsapp_instances')
-        .insert([{
-          ...instanceData,
-          status: instanceData.status || 'connecting'
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-      
-      return data;
-    } catch (error) {
-      console.error('Error creating instance:', error);
-      throw error;
-    }
-  },
-
-  // Update instance
-  async updateInstance(instanceId: string, updates: Partial<WhatsAppInstanceData>): Promise<WhatsAppInstanceData> {
-    try {
-      const { data, error } = await supabase
-        .from('whatsapp_instances')
-        .update(updates)
-        .eq('instance_id', instanceId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      
-      return data;
-    } catch (error) {
-      console.error('Error updating instance:', error);
-      throw error;
-    }
-  },
-
-  // Delete instance
-  async deleteInstance(instanceId: string): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('whatsapp_instances')
-        .delete()
-        .eq('instance_id', instanceId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error deleting instance:', error);
-      throw error;
-    }
-  },
-
-  // Get instance by instance ID
-  async getInstanceByInstanceId(instanceId: string): Promise<WhatsAppInstanceData | null> {
-    try {
-      const { data, error } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .eq('instance_id', instanceId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      
-      return data || null;
-    } catch (error) {
-      console.error('Error fetching instance:', error);
-      return null;
-    }
+    console.log('✅ Instâncias encontradas:', data?.length || 0);
+    return data || [];
   }
-};
+
+  async createInstance(instance: WhatsAppInstanceInsert): Promise<WhatsAppInstanceData> {
+    console.log('🚀 Criando nova instância:', instance);
+    
+    const { data, error } = await supabase
+      .from("whatsapp_instances")
+      .insert(instance)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Erro ao criar instância:', error);
+      throw error;
+    }
+
+    console.log('✅ Instância criada:', data);
+    return data;
+  }
+
+  async updateInstance(instanceId: string, updates: WhatsAppInstanceUpdate): Promise<WhatsAppInstanceData> {
+    console.log('🔄 Atualizando instância:', { instanceId, updates });
+    
+    const { data, error } = await supabase
+      .from("whatsapp_instances")
+      .update(updates)
+      .eq("instance_id", instanceId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Erro ao atualizar instância:', error);
+      throw error;
+    }
+
+    console.log('✅ Instância atualizada:', data);
+    return data;
+  }
+
+  async deleteInstance(instanceId: string): Promise<void> {
+    console.log('🗑️ Removendo instância:', instanceId);
+    
+    const { error } = await supabase
+      .from("whatsapp_instances")
+      .delete()
+      .eq("instance_id", instanceId);
+
+    if (error) {
+      console.error('❌ Erro ao remover instância:', error);
+      throw error;
+    }
+
+    console.log('✅ Instância removida com sucesso');
+  }
+
+  async getInstanceByInstanceId(instanceId: string): Promise<WhatsAppInstanceData | null> {
+    const { data, error } = await supabase
+      .from("whatsapp_instances")
+      .select("*")
+      .eq("instance_id", instanceId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('❌ Erro ao buscar instância:', error);
+      throw error;
+    }
+
+    return data || null;
+  }
+
+  async updateInstanceStatus(instanceId: string, status: string, additionalData?: Partial<WhatsAppInstanceUpdate>): Promise<void> {
+    const updates: WhatsAppInstanceUpdate = {
+      status,
+      ...additionalData
+    };
+
+    await this.updateInstance(instanceId, updates);
+  }
+}
+
+export const whatsappInstancesService = new WhatsAppInstancesService();
