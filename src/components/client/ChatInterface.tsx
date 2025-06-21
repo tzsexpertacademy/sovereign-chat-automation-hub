@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -7,6 +8,7 @@ import { RefreshCw, MessageSquare, Download, Upload, Bot, User, Wifi, Tag } from
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import TicketChatInterface from './TicketChatInterface';
+import TicketActionsMenu from './TicketActionsMenu';
 import { useTicketRealtime } from '@/hooks/useTicketRealtime';
 import TypingIndicator from './TypingIndicator';
 
@@ -124,7 +126,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
-    // Verificar se há usuário humano atribuído - CORRIGIDO: removendo comparação inválida
+    // Verificar se há usuário humano atribuído
     const isHumanAssigned = ticket.status === 'pending' || 
                            ticket.status === 'resolved' ||
                            ticket.status === 'closed' ||
@@ -173,7 +175,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   };
 
   return (
-    <div className="flex h-[calc(100vh-120px)] bg-white"> {/* Altura fixa baseada na viewport */}
+    <div className="flex h-[calc(100vh-120px)] bg-white">
       {/* Lista de Chats - altura fixa com scroll próprio */}
       <div className="w-1/3 border-r border-gray-200 flex flex-col h-full">
         <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
@@ -295,7 +297,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
             {/* Cabeçalho do Chat */}
             <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3 min-w-0">
+                <div className="flex items-center space-x-3 min-w-0 flex-1">
                   <Avatar className="w-10 h-10 flex-shrink-0">
                     <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedChat ? getDisplayName(selectedChat) : ''}`} />
                     <AvatarFallback>
@@ -327,6 +329,16 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                     )}
                   </div>
                 </div>
+                
+                {/* Menu de ações do ticket */}
+                {selectedChat && (
+                  <div className="flex-shrink-0 ml-4">
+                    <TicketActionsMenu 
+                      ticket={selectedChat} 
+                      onTicketUpdate={reloadTickets}
+                    />
+                  </div>
+                )}
               </div>
             </div>
 

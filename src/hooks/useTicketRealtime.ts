@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -161,7 +160,11 @@ export const useTicketRealtime = (clientId: string) => {
 
       // 8. Simular digitação humana
       setAssistantTyping(true);
-      const isAudioResponse = assistant.advanced_settings?.voice_cloning_enabled;
+      const isAudioResponse = assistant.advanced_settings && 
+                             typeof assistant.advanced_settings === 'object' && 
+                             assistant.advanced_settings !== null &&
+                             'voice_cloning_enabled' in assistant.advanced_settings &&
+                             assistant.advanced_settings.voice_cloning_enabled === true;
       await humanizedTyping.simulateHumanTyping(message.from, messageContent, isAudioResponse);
 
       // 9. Chamar a API da OpenAI
