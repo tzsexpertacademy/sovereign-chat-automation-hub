@@ -16,7 +16,16 @@ interface ChatInterfaceProps {
   onSelectChat: (chatId: string) => void;
 }
 
+interface ChatData {
+  id: string;
+  name: string;
+  lastMessage: string;
+  unreadCount: number;
+}
+
 const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterfaceProps) => {
+  const [chats, setChats] = useState<ChatData[]>([]);
+  const [loading, setLoading] = useState(false);
   const [selectedChat, setSelectedChat] = useState<ConversationTicket | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -41,35 +50,6 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const handleSelectChat = (chatId: string) => {
     onSelectChat(chatId);
     navigate(`/client/${clientId}/chat/${chatId}`);
-  };
-
-  // Função para extrair nome do customer ou usar fallback
-  const getDisplayName = (ticket: ConversationTicket) => {
-    if (ticket.customer?.name && 
-        ticket.customer.name !== `Contato ${ticket.customer.phone}` &&
-        !ticket.customer.name.startsWith('Contato ')) {
-      return ticket.customer.name;
-    }
-    
-    if (ticket.title && ticket.title.includes('Conversa com ')) {
-      const nameFromTitle = ticket.title.replace('Conversa com ', '').trim();
-      if (nameFromTitle && 
-          !nameFromTitle.startsWith('Contato ') && 
-          nameFromTitle !== ticket.customer?.phone) {
-        return nameFromTitle;
-      }
-    }
-    
-    const phone = ticket.customer?.phone || ticket.chat_id;
-    if (phone) {
-      const cleanPhone = phone.replace(/\D/g, '');
-      if (cleanPhone.length >= 10) {
-        const formattedPhone = cleanPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
-        return formattedPhone;
-      }
-    }
-    
-    return 'Contato sem nome';
   };
 
   return (
@@ -115,27 +95,27 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                     <div className="flex-1">
                       <div className="flex items-center space-x-3">
                         <Avatar className="w-8 h-8">
-                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(chat)}`} />
+                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${chat.customer?.name || 'User'}`} />
                           <AvatarFallback>
-                            {getDisplayName(chat).substring(0, 2).toUpperCase()}
+                            {chat.customer?.name?.substring(0, 2).toUpperCase() || 'UN'}
                           </AvatarFallback>
                         </Avatar>
                         <div className="space-y-0.5">
-                          <p className="text-sm font-medium text-gray-900">{getDisplayName(chat)}</p>
+                          <p className="text-sm font-medium text-gray-900">{chat.customer?.name || 'Usuário Desconhecido'}</p>
                           <p className="text-xs text-gray-500 truncate">
                             {chat.last_message_preview?.substring(0, 50) || 'Nenhuma mensagem'}
                           </p>
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-1 flex-shrink-0">
-                      <span className="text-xs text-gray-500">
-                        {new Date(chat.last_message_at).toLocaleTimeString('pt-BR', { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })}
-                      </span>
-                    </div>
+                    {/* Simulando unread messages baseado no status */}
+                    {chat.status === 'open' && (
+                      <div className="ml-2">
+                        <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                          1
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
@@ -153,14 +133,14 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <Avatar className="w-10 h-10">
-                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedChat ? getDisplayName(selectedChat) : ''}`} />
+                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedChat?.customer?.name || 'User'}`} />
                     <AvatarFallback>
-                      {selectedChat ? getDisplayName(selectedChat).substring(0, 2).toUpperCase() : 'UN'}
+                      {selectedChat?.customer?.name?.substring(0, 2).toUpperCase() || 'UN'}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <h3 className="font-medium text-gray-900">
-                      {selectedChat ? getDisplayName(selectedChat) : 'Chat'}
+                      {selectedChat?.customer?.name || 'Chat'}
                     </h3>
                     <div className="flex items-center space-x-2 text-sm text-gray-500">
                       <span>{selectedChat?.customer?.phone}</span>
