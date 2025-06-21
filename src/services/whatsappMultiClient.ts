@@ -32,10 +32,10 @@ export type MessageData = {
   self?: string;
   ack?: number;
   isForwarded?: boolean;
-  is ঐতিহাসিক?: boolean;
+  isHistoric?: boolean;
   isMedia?: boolean;
   isMMS?: boolean;
-  is রোaming?: boolean;
+  isRoaming?: boolean;
   mediaKey?: string;
   mediaData?: any;
   filename?: string;
@@ -47,7 +47,7 @@ export type MessageData = {
   latitude?: number;
   longitude?: number;
   vcardList?: string[];
-  is কypনt?: boolean;
+  isEncrypted?: boolean;
   broadcast?: boolean;
   mentionedJidList?: string[];
   orderId?: string;
