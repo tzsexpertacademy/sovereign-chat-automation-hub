@@ -1,27 +1,28 @@
 
 import { Link, useLocation } from "react-router-dom";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
+import { 
+  Sidebar, 
+  SidebarContent, 
+  SidebarHeader, 
+  SidebarMenu, 
+  SidebarMenuItem, 
   SidebarMenuButton,
-  SidebarMenuItem,
+  SidebarFooter
 } from "@/components/ui/sidebar";
-import {
-  MessageSquare,
-  TicketIcon,
-  Workflow,
-  Bot,
-  Users,
-  Layers,
+import { 
+  MessageSquare, 
+  BarChart3, 
+  Users, 
+  Bot, 
+  Wifi, 
   Calendar,
-  Zap,
-  BarChart3,
+  Workflow,
   Settings,
-  Wifi,
+  TrendingUp,
+  Zap,
+  Building2,
+  Layers3,
+  UserCheck
 } from "lucide-react";
 
 interface ClientSidebarProps {
@@ -30,101 +31,120 @@ interface ClientSidebarProps {
 
 const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
   const location = useLocation();
-
+  
   const menuItems = [
-    {
-      title: "Conexão",
-      icon: Wifi,
-      url: `/client/${clientId}/connect`,
+    { 
+      title: "Conexão", 
+      icon: Wifi, 
+      path: `/client/${clientId}/connect`,
       description: "Conectar WhatsApp"
     },
-    {
-      title: "Conversas",
-      icon: MessageSquare,
-      url: `/client/${clientId}/chat`,
-      description: "Chat WhatsApp"
+    { 
+      title: "Conversas", 
+      icon: MessageSquare, 
+      path: `/client/${clientId}/chat`,
+      description: "Tickets e Chat"
     },
-    {
-      title: "Tickets",
-      icon: TicketIcon,
-      url: `/client/${clientId}/tickets`,
-      description: "Sistema de Atendimento"
-    },
-    {
-      title: "Funil",
-      icon: Workflow,
-      url: `/client/${clientId}/funnel`,
+    { 
+      title: "Funil", 
+      icon: TrendingUp, 
+      path: `/client/${clientId}/funnel`,
       description: "Kanban de Leads"
     },
-    {
-      title: "Assistentes",
-      icon: Bot,
-      url: `/client/${clientId}/assistants`,
+    { 
+      title: "Assistentes", 
+      icon: Bot, 
+      path: `/client/${clientId}/assistants`,
       description: "IA Assistentes"
     },
-    {
-      title: "Filas",
-      icon: Users,
-      url: `/client/${clientId}/queues`,
+    { 
+      title: "Filas", 
+      icon: Layers3, 
+      path: `/client/${clientId}/queues`,
       description: "Gerenciar Filas"
     },
-    {
-      title: "Instâncias",
-      icon: Layers,
-      url: `/client/${clientId}/instances`,
+    { 
+      title: "Instâncias", 
+      icon: Building2, 
+      path: `/client/${clientId}/instances`,
       description: "Multi-WhatsApp"
     },
-    {
-      title: "Agendamentos",
-      icon: Calendar,
-      url: `/client/${clientId}/booking`,
+    { 
+      title: "Agendamentos", 
+      icon: Calendar, 
+      path: `/client/${clientId}/booking`,
       description: "Calendário"
     },
-    {
-      title: "Automação",
-      icon: Zap,
-      url: `/client/${clientId}/automation`,
+    { 
+      title: "Automação", 
+      icon: Zap, 
+      path: `/client/${clientId}/automation`,
       description: "Fluxos"
     },
-    {
-      title: "Analytics",
-      icon: BarChart3,
-      url: `/client/${clientId}/analytics`,
-      description: "Métricas"
+    { 
+      title: "Analytics", 
+      icon: BarChart3, 
+      path: `/client/${clientId}/analytics`,
+      description: "Relatórios"
     },
-    {
-      title: "Configurações",
-      icon: Settings,
-      url: `/client/${clientId}/settings`,
-      description: "Settings"
-    },
+    { 
+      title: "Configurações", 
+      icon: Settings, 
+      path: `/client/${clientId}/settings`,
+      description: "Preferências"
+    }
   ];
 
   return (
-    <Sidebar>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>CRM Dashboard</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton 
-                    asChild 
-                    isActive={location.pathname === item.url}
-                    tooltip={item.description}
-                  >
-                    <Link to={item.url}>
-                      <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+    <Sidebar className="border-r bg-white">
+      <SidebarHeader className="border-b p-6">
+        <div className="flex items-center space-x-2">
+          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+            <UserCheck className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">CRM Dashboard</h2>
+            <p className="text-xs text-gray-500">Cliente: {clientId.slice(0, 8)}</p>
+          </div>
+        </div>
+      </SidebarHeader>
+      
+      <SidebarContent className="p-4">
+        <SidebarMenu>
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
+            
+            return (
+              <SidebarMenuItem key={item.path}>
+                <SidebarMenuButton
+                  asChild
+                  className={`w-full justify-start p-3 mb-1 ${
+                    isActive 
+                      ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700' 
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <Link to={item.path}>
+                    <Icon className={`mr-3 h-4 w-4 ${isActive ? 'text-blue-700' : 'text-gray-500'}`} />
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{item.title}</span>
+                      <span className="text-xs text-gray-500">{item.description}</span>
+                    </div>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
       </SidebarContent>
+      
+      <SidebarFooter className="border-t p-4">
+        <div className="text-center">
+          <p className="text-xs text-gray-500">CRM v2.0</p>
+          <p className="text-xs text-gray-400">Powered by AI</p>
+        </div>
+      </SidebarFooter>
     </Sidebar>
   );
 };

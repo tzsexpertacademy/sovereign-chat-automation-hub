@@ -5,80 +5,48 @@ interface BatchedMessage {
   id: string;
   text: string;
   timestamp: number;
-  from: string;
-  chatId: string;
 }
 
 interface UseMessageBatchProps {
   batchTimeoutSeconds: number;
-  onProcessBatch: (messages: BatchedMessage[], chatId: string) => Promise<void>;
+  onProcessBatch: (messages: BatchedMessage[]) => void;
 }
 
 export const useMessageBatch = ({ batchTimeoutSeconds, onProcessBatch }: UseMessageBatchProps) => {
-  const [pendingMessages, setPendingMessages] = useState<Map<string, BatchedMessage[]>>(new Map());
-  const timeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const [pendingMessages, setPendingMessages] = useState<BatchedMessage[]>([]);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const addMessage = useCallback((message: BatchedMessage) => {
-    const { chatId } = message;
-    
     setPendingMessages(prev => {
-      const newMap = new Map(prev);
-      const chatMessages = newMap.get(chatId) || [];
-      const updatedMessages = [...chatMessages, message];
-      newMap.set(chatId, updatedMessages);
+      const updated = [...prev, message];
       
-      // Clear existing timeout for this chat
-      const existingTimeout = timeoutRefs.current.get(chatId);
-      if (existingTimeout) {
-        clearTimeout(existingTimeout);
+      // Clear existing timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
       
-      // Set new timeout for this chat
-      const newTimeout = setTimeout(async () => {
-        console.log(`🎯 Processando lote de ${updatedMessages.length} mensagens para chat ${chatId}`);
-        
-        // Process the batch
-        await onProcessBatch(updatedMessages, chatId);
-        
-        // Clear the batch for this chat
-        setPendingMessages(current => {
-          const clearedMap = new Map(current);
-          clearedMap.delete(chatId);
-          return clearedMap;
-        });
-        
-        // Clear timeout reference
-        timeoutRefs.current.delete(chatId);
+      // Set new timeout
+      timeoutRef.current = setTimeout(() => {
+        if (updated.length > 0) {
+          onProcessBatch(updated);
+          setPendingMessages([]);
+        }
       }, batchTimeoutSeconds * 1000);
       
-      timeoutRefs.current.set(chatId, newTimeout);
-      
-      return newMap;
+      return updated;
     });
   }, [batchTimeoutSeconds, onProcessBatch]);
 
-  const clearBatch = useCallback((chatId: string) => {
-    const timeout = timeoutRefs.current.get(chatId);
-    if (timeout) {
-      clearTimeout(timeout);
-      timeoutRefs.current.delete(chatId);
+  const clearBatch = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
     }
-    
-    setPendingMessages(prev => {
-      const newMap = new Map(prev);
-      newMap.delete(chatId);
-      return newMap;
-    });
+    setPendingMessages([]);
   }, []);
 
-  const getPendingCount = useCallback((chatId: string) => {
-    return pendingMessages.get(chatId)?.length || 0;
-  }, [pendingMessages]);
-
   return {
+    pendingMessages,
     addMessage,
-    clearBatch,
-    getPendingCount,
-    pendingMessages
+    clearBatch
   };
 };
