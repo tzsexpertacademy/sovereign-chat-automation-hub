@@ -6,7 +6,6 @@ import { whatsappService } from '@/services/whatsappMultiClient';
 import { queuesService } from '@/services/queuesService';
 import { assistantsService } from '@/services/assistantsService';
 import { aiConfigService } from '@/services/aiConfigService';
-import { useMessageBatch } from './useMessageBatch';
 import { useHumanizedTyping } from './useHumanizedTyping';
 
 export const useTicketRealtime = (clientId: string) => {
@@ -18,11 +17,9 @@ export const useTicketRealtime = (clientId: string) => {
   const channelRef = useRef<any>(null);
   const socketRef = useRef<any>(null);
   const isLoadingRef = useRef(false);
-  const lastMessageIdRef = useRef<string>('');
-  const processingQueueRef = useRef<Set<string>>(new Set());
   const processedMessagesRef = useRef<Set<string>>(new Set());
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initializationRef = useRef(false);
+  const mountedRef = useRef(false);
 
   // Hook para delay humanizado
   const { isTyping, sendWithTypingDelay } = useHumanizedTyping({
@@ -37,10 +34,9 @@ export const useTicketRealtime = (clientId: string) => {
     setAssistantTyping(isTyping);
   }, [isTyping]);
 
-  // Carregar tickets com controle rigoroso de duplicação
-  const loadTickets = useCallback(async (skipLoadingCheck = false) => {
-    if (!skipLoadingCheck && (isLoadingRef.current || !clientId)) {
-      console.log('⏭️ LoadTickets ignorado - já carregando ou sem clientId');
+  // Carregar tickets SEM loop infinito
+  const loadTickets = useCallback(async () => {
+    if (isLoadingRef.current || !clientId || !mountedRef.current) {
       return;
     }
     
@@ -52,67 +48,37 @@ export const useTicketRealtime = (clientId: string) => {
       const ticketsData = await ticketsService.getClientTickets(clientId);
       console.log('✅ Tickets carregados:', ticketsData.length);
       
-      setTickets(ticketsData);
+      if (mountedRef.current) {
+        setTickets(ticketsData);
+      }
     } catch (error) {
       console.error('❌ Erro ao carregar tickets:', error);
     } finally {
-      setIsLoading(false);
       isLoadingRef.current = false;
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [clientId]);
 
-  // Extrair nome real do WhatsApp
-  const extractWhatsAppName = useCallback((message: any) => {
-    console.log('🔍 Extraindo nome da mensagem:', {
-      notifyName: message.notifyName,
-      pushName: message.pushName,
-      from: message.from
-    });
-
-    const possibleNames = [
-      message.notifyName,
-      message.pushName, 
-      message.senderName,
-      message.author,
-      message.sender
-    ];
-
-    for (const name of possibleNames) {
-      if (name && 
-          typeof name === 'string' && 
-          name.trim() !== '' && 
-          !name.includes('@') && 
-          name.length > 1) {
-        console.log('✅ Nome extraído:', name.trim());
-        return name.trim();
-      }
-    }
-
-    const phone = message.from?.replace(/\D/g, '') || '';
-    if (phone.length >= 10) {
-      const formattedPhone = phone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
-      console.log('📞 Usando telefone formatado:', formattedPhone);
-      return formattedPhone;
-    }
-
-    console.log('⚠️ Nenhum nome válido encontrado, usando padrão');
-    return `Contato ${phone || 'Desconhecido'}`;
-  }, []);
-
-  // Processar lote de mensagens com assistente automático
-  const processBatchWithAssistant = useCallback(async (messages: any[], ticketId: string) => {
-    const batchKey = `batch_${ticketId}_${Date.now()}`;
+  // Processar mensagem com assistente IA
+  const processWithAssistant = useCallback(async (message: any, ticketId: string) => {
+    const messageKey = `${message.id}_${message.from}_${message.timestamp}`;
     
-    if (processingQueueRef.current.has(batchKey)) {
-      console.log('⏭️ Lote já está sendo processado, ignorando:', batchKey);
+    // Verificar duplicação
+    if (processedMessagesRef.current.has(message.id) || 
+        processedMessagesRef.current.has(messageKey)) {
+      console.log('⏭️ Mensagem já processada pelo assistente, ignorando:', message.id);
       return;
     }
-
+    
+    // Marcar como processada
+    processedMessagesRef.current.add(message.id);
+    processedMessagesRef.current.add(messageKey);
+    
     try {
-      processingQueueRef.current.add(batchKey);
-      console.log(`🤖 Iniciando processamento do lote com ${messages.length} mensagens:`, batchKey);
+      console.log('🤖 Processando mensagem com assistente para ticket:', ticketId);
       
-      // Simular que assistente está "digitando"
       setAssistantTyping(true);
       
       // Buscar configurações do cliente
@@ -121,8 +87,9 @@ export const useTicketRealtime = (clientId: string) => {
         aiConfigService.getClientConfig(clientId)
       ]);
 
-      if (!aiConfig) {
+      if (!aiConfig || !aiConfig.openai_api_key) {
         console.log('⚠️ Nenhuma configuração de IA encontrada para cliente:', clientId);
+        setAssistantTyping(false);
         return;
       }
 
@@ -130,19 +97,17 @@ export const useTicketRealtime = (clientId: string) => {
       const activeQueue = queues.find((queue: any) => 
         queue.is_active && 
         queue.assistants && 
-        queue.assistants.is_active &&
-        queue.instance_queue_connections?.some((conn: any) => 
-          conn.instance_id && conn.is_active
-        )
+        queue.assistants.is_active
       );
 
       if (!activeQueue || !activeQueue.assistants) {
         console.log('⚠️ Nenhuma fila ativa com assistente encontrada');
+        setAssistantTyping(false);
         return;
       }
 
       const assistant = activeQueue.assistants;
-      console.log('🤖 Processando lote com assistente:', assistant.name);
+      console.log('🤖 Processando com assistente:', assistant.name);
 
       // Preparar configurações avançadas
       let advancedSettings = {
@@ -170,15 +135,11 @@ export const useTicketRealtime = (clientId: string) => {
       // Buscar histórico de mensagens do ticket
       const ticketMessages = await ticketsService.getTicketMessages(ticketId);
       const recentMessages = ticketMessages
-        .slice(-15)
+        .slice(-10)
         .map(msg => ({
           role: msg.from_me ? 'assistant' : 'user',
           content: msg.content || ''
         }));
-
-      // Combinar mensagens do lote em uma única mensagem
-      const combinedMessage = messages.map(msg => msg.text).join('\n');
-      console.log(`📨 Processando lote combinado: "${combinedMessage.substring(0, 100)}..."`);
 
       // Chamar a API da OpenAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -197,7 +158,7 @@ export const useTicketRealtime = (clientId: string) => {
             ...recentMessages,
             {
               role: 'user',
-              content: combinedMessage
+              content: message.body || message.text || ''
             }
           ],
           temperature: advancedSettings.temperature,
@@ -214,17 +175,17 @@ export const useTicketRealtime = (clientId: string) => {
       const assistantResponse = data.choices?.[0]?.message?.content;
 
       if (assistantResponse && assistantResponse.trim()) {
-        console.log('🤖 Resposta do assistente gerada para lote:', assistantResponse.substring(0, 100) + '...');
+        console.log('🤖 Resposta do assistente gerada:', assistantResponse.substring(0, 100) + '...');
         
         // Enviar resposta com delay humanizado
         await sendWithTypingDelay(assistantResponse, async () => {
-          await whatsappService.sendMessage(clientId, messages[0].from, assistantResponse);
+          await whatsappService.sendMessage(clientId, message.from, assistantResponse);
         });
         
         // Registrar a resposta no ticket
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
-          message_id: `ai_batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           from_me: true,
           sender_name: assistant.name,
           content: assistantResponse,
@@ -236,77 +197,57 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date().toISOString()
         });
 
-        console.log('✅ Resposta automática do lote enviada e registrada');
-        
-        // Recarregar tickets com debounce
-        if (loadingTimeoutRef.current) {
-          clearTimeout(loadingTimeoutRef.current);
-        }
-        loadingTimeoutRef.current = setTimeout(() => {
-          if (!isLoadingRef.current) {
-            loadTickets(true);
-          }
-        }, 2000);
+        console.log('✅ Resposta automática enviada e registrada');
         
       } else {
-        console.log('⚠️ Assistente não gerou resposta válida para o lote');
+        console.log('⚠️ Assistente não gerou resposta válida');
       }
 
     } catch (error) {
-      console.error('❌ Erro ao processar lote com assistente:', error);
+      console.error('❌ Erro ao processar com assistente:', error);
     } finally {
-      processingQueueRef.current.delete(batchKey);
       setAssistantTyping(false);
     }
-  }, [clientId, sendWithTypingDelay, loadTickets]);
+  }, [clientId, sendWithTypingDelay]);
 
-  // Hook para processamento em lote (5 segundos de timeout)
-  const { addMessage: addToBatch } = useMessageBatch({
-    batchTimeoutSeconds: 5,
-    onProcessBatch: useCallback(async (messages) => {
-      if (messages.length === 0) return;
-      
-      // Usar ticket ID do primeiro lote de mensagens
-      const firstMessage = messages[0];
-      
-      // Buscar ou criar ticket
-      try {
-        const existingTickets = tickets.filter(t => t.chat_id === firstMessage.from);
-        let targetTicketId = '';
-        
-        if (existingTickets.length > 0) {
-          targetTicketId = existingTickets[0].id;
-        } else {
-          // Criar novo ticket se não existir
-          const customerName = extractWhatsAppName({ from: firstMessage.from });
-          const customerPhone = firstMessage.from?.replace(/\D/g, '') || '';
-          
-          targetTicketId = await ticketsService.createOrUpdateTicket(
-            clientId,
-            firstMessage.from,
-            clientId,
-            customerName,
-            customerPhone,
-            messages.map(m => m.text).join(' '),
-            new Date().toISOString()
-          );
-        }
-        
-        await processBatchWithAssistant(messages, targetTicketId);
-      } catch (error) {
-        console.error('❌ Erro ao processar lote de mensagens:', error);
+  // Extrair nome real do WhatsApp
+  const extractWhatsAppName = useCallback((message: any) => {
+    const possibleNames = [
+      message.notifyName,
+      message.pushName, 
+      message.senderName,
+      message.author,
+      message.sender
+    ];
+
+    for (const name of possibleNames) {
+      if (name && 
+          typeof name === 'string' && 
+          name.trim() !== '' && 
+          !name.includes('@') && 
+          name.length > 1) {
+        return name.trim();
       }
-    }, [tickets, clientId, extractWhatsAppName, processBatchWithAssistant])
-  });
+    }
 
-  // Configurar listeners para atualizações em tempo real - EFEITO ÚNICO
+    const phone = message.from?.replace(/\D/g, '') || '';
+    if (phone.length >= 10) {
+      const formattedPhone = phone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+      return formattedPhone;
+    }
+
+    return `Contato ${phone || 'Desconhecido'}`;
+  }, []);
+
+  // Configurar listeners - EFEITO ÚNICO SEM LOOPS
   useEffect(() => {
     if (!clientId || initializationRef.current) return;
 
     console.log('🔌 Configurando listeners de tempo real para cliente:', clientId);
     initializationRef.current = true;
+    mountedRef.current = true;
 
-    // Carregar tickets iniciais apenas uma vez
+    // Carregar tickets apenas UMA vez
     loadTickets();
 
     // Conectar ao WebSocket do WhatsApp
@@ -314,7 +255,7 @@ export const useTicketRealtime = (clientId: string) => {
     socketRef.current = socket;
     
     socket.on('connect', () => {
-      console.log('✅ WebSocket conectado, entrando no room do cliente...');
+      console.log('✅ WebSocket conectado');
       whatsappService.joinClientRoom(clientId);
       setIsOnline(true);
     });
@@ -329,7 +270,7 @@ export const useTicketRealtime = (clientId: string) => {
       setIsOnline(true);
     }
 
-    // Listener para novas mensagens do WhatsApp
+    // Listener para novas mensagens do WhatsApp - SEM DUPLICAÇÃO
     const handleNewWhatsAppMessage = async (message: any) => {
       console.log('📨 Nova mensagem WhatsApp recebida:', {
         id: message.id,
@@ -351,13 +292,6 @@ export const useTicketRealtime = (clientId: string) => {
       // Adicionar aos controles de duplicação
       processedMessagesRef.current.add(message.id);
       processedMessagesRef.current.add(messageKey);
-      
-      // Verificação adicional por lastMessageId
-      if (lastMessageIdRef.current === message.id) {
-        console.log('⏭️ Mensagem duplicada pelo lastMessageId, ignorando');
-        return;
-      }
-      lastMessageIdRef.current = message.id;
       
       // Ignorar mensagens próprias
       if (message.fromMe) {
@@ -394,24 +328,16 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date(message.timestamp || Date.now()).toISOString()
         });
 
-        // Recarregar tickets com debounce
-        if (loadingTimeoutRef.current) {
-          clearTimeout(loadingTimeoutRef.current);
-        }
-        loadingTimeoutRef.current = setTimeout(() => {
-          if (!isLoadingRef.current) {
-            loadTickets(true);
+        // Recarregar tickets uma única vez
+        setTimeout(() => {
+          if (!isLoadingRef.current && mountedRef.current) {
+            loadTickets();
           }
-        }, 1500);
+        }, 1000);
 
-        // Adicionar mensagem ao lote para processamento humanizado
+        // Processar com assistente se for mensagem de texto
         if (!message.type || message.type === 'text' || message.type === 'chat') {
-          addToBatch({
-            id: message.id,
-            text: message.body || '',
-            timestamp: message.timestamp || Date.now(),
-            from: message.from
-          });
+          await processWithAssistant(message, ticketId);
         }
         
       } catch (error) {
@@ -422,7 +348,7 @@ export const useTicketRealtime = (clientId: string) => {
     const messageEvent = `message_${clientId}`;
     socket.on(messageEvent, handleNewWhatsAppMessage);
 
-    // Listener para atualizações de tickets no Supabase com debounce
+    // Listener para atualizações de tickets no Supabase - SEM DUPLICAÇÃO
     const channel = supabase
       .channel(`ticket-updates-${clientId}`)
       .on(
@@ -436,15 +362,12 @@ export const useTicketRealtime = (clientId: string) => {
         async (payload) => {
           console.log('🔄 Ticket atualizado via Supabase:', payload.eventType);
           
-          // Debounce para atualizações do Supabase
-          if (loadingTimeoutRef.current) {
-            clearTimeout(loadingTimeoutRef.current);
-          }
-          loadingTimeoutRef.current = setTimeout(() => {
-            if (!isLoadingRef.current) {
-              loadTickets(true);
+          // Recarregar apenas se não estiver já carregando
+          setTimeout(() => {
+            if (!isLoadingRef.current && mountedRef.current) {
+              loadTickets();
             }
-          }, 1000);
+          }, 500);
         }
       )
       .subscribe();
@@ -454,11 +377,7 @@ export const useTicketRealtime = (clientId: string) => {
     return () => {
       console.log('🔌 Limpando listeners...');
       initializationRef.current = false;
-      
-      // Limpar timeouts
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
+      mountedRef.current = false;
       
       if (socketRef.current) {
         socketRef.current.off(messageEvent, handleNewWhatsAppMessage);
@@ -467,16 +386,17 @@ export const useTicketRealtime = (clientId: string) => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
-      processingQueueRef.current.clear();
       processedMessagesRef.current.clear();
       setIsOnline(false);
     };
-  }, [clientId, loadTickets, extractWhatsAppName, processBatchWithAssistant, addToBatch]);
+  }, [clientId]); // Remover dependências desnecessárias
 
   // Função pública para recarregar tickets manualmente
   const reloadTickets = useCallback(() => {
     console.log('🔄 Recarregamento manual solicitado');
-    loadTickets(true);
+    if (!isLoadingRef.current && mountedRef.current) {
+      loadTickets();
+    }
   }, [loadTickets]);
 
   return {

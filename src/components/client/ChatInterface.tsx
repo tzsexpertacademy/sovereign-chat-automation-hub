@@ -35,21 +35,21 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const currentChatId = chatId || selectedChatId;
 
   useEffect(() => {
-    if (currentChatId) {
+    if (currentChatId && tickets.length > 0) {
       const chat = tickets.find(ticket => ticket.id === currentChatId);
       setSelectedChat(chat || null);
-    } else {
+    } else if (!currentChatId) {
       setSelectedChat(null);
     }
   }, [currentChatId, tickets]);
 
-  const handleSelectChat = (ticketId: string) => {
+  const handleSelectChat = useCallback((ticketId: string) => {
     onSelectChat(ticketId);
     navigate(`/client/${clientId}/chat/${ticketId}`);
-  };
+  }, [onSelectChat, navigate, clientId]);
 
   // Função para extrair nome do customer ou usar fallback
-  const getDisplayName = (ticket: ConversationTicket) => {
+  const getDisplayName = useCallback((ticket: ConversationTicket) => {
     if (ticket.customer?.name && 
         ticket.customer.name !== `Contato ${ticket.customer.phone}` &&
         !ticket.customer.name.startsWith('Contato ')) {
@@ -75,7 +75,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     }
     
     return 'Contato sem nome';
-  };
+  }, []);
 
   return (
     <div className="flex h-full bg-white">

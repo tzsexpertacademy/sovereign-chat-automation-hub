@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,24 +26,35 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const [selectedTicket, setSelectedTicket] = useState<ConversationTicket | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(false);
 
   // Hooks para tempo real
   const { messages: ticketMessages, isLoading: loadingMessages } = useTicketMessages(ticketId || null);
   const { getMessageStatus, updateMessageStatus, markMessageAsRead, markMessageAsFailed } = useMessageStatus();
   const { isTyping, startTyping, stopTyping } = useTypingStatus();
 
+  // Mount ref para evitar atualizações desnecessárias
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // Auto scroll para última mensagem
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = useCallback(() => {
+    if (mountedRef.current && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [ticketMessages]);
+  }, [ticketMessages, scrollToBottom]);
 
-  // Buscar ticket específico
+  // Buscar ticket específico apenas quando necessário
   useEffect(() => {
-    if (ticketId) {
+    if (ticketId && mountedRef.current) {
       loadTicketDetails();
     }
   }, [ticketId]);
@@ -51,7 +62,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const loadTicketDetails = async () => {
     try {
       const ticket = await ticketsService.getTicketById(ticketId);
-      setSelectedTicket(ticket);
+      if (mountedRef.current) {
+        setSelectedTicket(ticket);
+      }
     } catch (error) {
       console.error('Erro ao carregar detalhes do ticket:', error);
     }
