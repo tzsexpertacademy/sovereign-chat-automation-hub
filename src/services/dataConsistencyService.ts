@@ -2,9 +2,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import { clientsService, ClientData } from "./clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "./whatsappInstancesService";
+import whatsappService from "./whatsappMultiClient";
 
 export interface DataInconsistency {
-  type: 'orphaned_client_reference' | 'orphaned_instance' | 'missing_instance';
+  type: 'orphaned_client_reference' | 'orphaned_instance' | 'missing_instance' | 'server_instance_mismatch' | 'client_count_mismatch';
   clientId: string;
   clientName: string;
   instanceId?: string;
@@ -21,31 +22,65 @@ export class DataConsistencyService {
       // Buscar todos os clientes
       const clients = await clientsService.getAllClients();
       
-      for (const client of clients) {
-        if (client.instance_id) {
-          // Cliente tem instance_id, verificar se a instância existe
-          const instance = await whatsappInstancesService.getInstanceByInstanceId(client.instance_id);
-          
-          if (!instance) {
-            inconsistencies.push({
-              type: 'orphaned_client_reference',
-              clientId: client.id,
-              clientName: client.name,
-              instanceId: client.instance_id,
-              description: `Cliente ${client.name} referencia instância ${client.instance_id} que não existe`
-            });
-          }
-        }
-      }
-      
-      // Buscar instâncias órfãs (que referenciam clientes que não existem ou não as referenciam de volta)
-      const { data: allInstances, error } = await supabase
+      // Buscar todas as instâncias do banco
+      const { data: allInstancesInDB, error } = await supabase
         .from("whatsapp_instances")
         .select("*");
         
       if (error) throw error;
       
-      for (const instance of allInstances || []) {
+      // Buscar instâncias ativas no servidor WhatsApp
+      let serverInstances: any[] = [];
+      try {
+        serverInstances = await whatsappService.getAllClients();
+        console.log('📱 Instâncias no servidor:', serverInstances);
+      } catch (error) {
+        console.log('⚠️ Não foi possível conectar ao servidor WhatsApp:', error);
+      }
+      
+      for (const client of clients) {
+        // Verificar se cliente tem instance_id mas a instância não existe no banco
+        if (client.instance_id) {
+          const instanceInDB = allInstancesInDB?.find(i => i.instance_id === client.instance_id);
+          
+          if (!instanceInDB) {
+            inconsistencies.push({
+              type: 'orphaned_client_reference',
+              clientId: client.id,
+              clientName: client.name,
+              instanceId: client.instance_id,
+              description: `Cliente ${client.name} referencia instância ${client.instance_id} que não existe no banco`
+            });
+          } else {
+            // Verificar se a instância existe no servidor
+            const instanceInServer = serverInstances.find(s => s.clientId === client.instance_id);
+            
+            if (!instanceInServer && client.instance_status !== 'disconnected') {
+              inconsistencies.push({
+                type: 'server_instance_mismatch',
+                clientId: client.id,
+                clientName: client.name,
+                instanceId: client.instance_id,
+                description: `Cliente ${client.name} tem instância ${client.instance_id} no banco mas não no servidor WhatsApp`
+              });
+            }
+          }
+        }
+        
+        // Verificar contagem de instâncias
+        const clientInstancesInDB = allInstancesInDB?.filter(i => i.client_id === client.id) || [];
+        if (client.current_instances !== clientInstancesInDB.length) {
+          inconsistencies.push({
+            type: 'client_count_mismatch',
+            clientId: client.id,
+            clientName: client.name,
+            description: `Cliente ${client.name} mostra ${client.current_instances} instâncias mas tem ${clientInstancesInDB.length} no banco`
+          });
+        }
+      }
+      
+      // Buscar instâncias órfãs (que referenciam clientes que não existem)
+      for (const instance of allInstancesInDB || []) {
         if (instance.client_id) {
           const client = clients.find(c => c.id === instance.client_id);
           
@@ -126,6 +161,48 @@ export class DataConsistencyService {
     }
   }
 
+  async fixServerInstanceMismatch(clientId: string): Promise<void> {
+    console.log(`🔧 Corrigindo incompatibilidade servidor-banco para cliente ${clientId}`);
+    
+    try {
+      // Marcar instância como desconectada e limpar referência do cliente
+      await clientsService.updateClient(clientId, {
+        instance_id: null,
+        instance_status: 'disconnected'
+      });
+      
+      console.log('✅ Incompatibilidade servidor-banco corrigida');
+    } catch (error) {
+      console.error('❌ Erro ao corrigir incompatibilidade:', error);
+      throw error;
+    }
+  }
+
+  async fixClientCountMismatch(clientId: string): Promise<void> {
+    console.log(`🔧 Corrigindo contagem de instâncias para cliente ${clientId}`);
+    
+    try {
+      // Recalcular contagem real de instâncias
+      const { data: instances, error } = await supabase
+        .from("whatsapp_instances")
+        .select("id")
+        .eq("client_id", clientId);
+        
+      if (error) throw error;
+      
+      const realCount = instances?.length || 0;
+      
+      await clientsService.updateClient(clientId, {
+        current_instances: realCount
+      });
+      
+      console.log('✅ Contagem de instâncias corrigida');
+    } catch (error) {
+      console.error('❌ Erro ao corrigir contagem:', error);
+      throw error;
+    }
+  }
+
   async fixAllInconsistencies(): Promise<number> {
     console.log('🔧 Iniciando correção automática de todas as inconsistências...');
     
@@ -152,6 +229,16 @@ export class DataConsistencyService {
               await this.fixMissingInstanceReference(inconsistency.clientId, inconsistency.instanceId);
               fixedCount++;
             }
+            break;
+            
+          case 'server_instance_mismatch':
+            await this.fixServerInstanceMismatch(inconsistency.clientId);
+            fixedCount++;
+            break;
+            
+          case 'client_count_mismatch':
+            await this.fixClientCountMismatch(inconsistency.clientId);
+            fixedCount++;
             break;
         }
       } catch (error) {

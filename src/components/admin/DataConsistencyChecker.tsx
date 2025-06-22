@@ -9,7 +9,9 @@ import {
   RefreshCw, 
   Wrench,
   Database,
-  AlertCircle
+  AlertCircle,
+  Server,
+  Hash
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { dataConsistencyService, DataInconsistency } from "@/services/dataConsistencyService";
@@ -71,6 +73,12 @@ const DataConsistencyChecker = () => {
             );
           }
           break;
+        case 'server_instance_mismatch':
+          await dataConsistencyService.fixServerInstanceMismatch(inconsistency.clientId);
+          break;
+        case 'client_count_mismatch':
+          await dataConsistencyService.fixClientCountMismatch(inconsistency.clientId);
+          break;
       }
       
       toast({
@@ -124,89 +132,130 @@ const DataConsistencyChecker = () => {
         return 'Instância Órfã';
       case 'missing_instance':
         return 'Referência Faltante';
+      case 'server_instance_mismatch':
+        return 'Instância Fantasma';
+      case 'client_count_mismatch':
+        return 'Contagem Incorreta';
       default:
-        return type;
+        return 'Desconhecido';
+    }
+  };
+
+  const getInconsistencyIcon = (type: string) => {
+    switch (type) {
+      case 'orphaned_client_reference':
+        return <AlertTriangle className="w-4 h-4 text-orange-500" />;
+      case 'orphaned_instance':
+        return <AlertCircle className="w-4 h-4 text-red-500" />;
+      case 'missing_instance':
+        return <Database className="w-4 h-4 text-blue-500" />;
+      case 'server_instance_mismatch':
+        return <Server className="w-4 h-4 text-purple-500" />;
+      case 'client_count_mismatch':
+        return <Hash className="w-4 h-4 text-yellow-500" />;
+      default:
+        return <AlertCircle className="w-4 h-4 text-gray-500" />;
     }
   };
 
   const getInconsistencyColor = (type: string) => {
     switch (type) {
       case 'orphaned_client_reference':
-        return 'bg-red-100 text-red-800';
+        return 'border-orange-200 bg-orange-50';
       case 'orphaned_instance':
-        return 'bg-orange-100 text-orange-800';
+        return 'border-red-200 bg-red-50';
       case 'missing_instance':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'border-blue-200 bg-blue-50';
+      case 'server_instance_mismatch':
+        return 'border-purple-200 bg-purple-50';
+      case 'client_count_mismatch':
+        return 'border-yellow-200 bg-yellow-50';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'border-gray-200 bg-gray-50';
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex justify-between items-center">
-          <div>
-            <CardTitle className="flex items-center space-x-2">
-              <Database className="w-5 h-5" />
-              <span>Verificador de Consistência</span>
-            </CardTitle>
-            <CardDescription>
-              Detecta e corrige inconsistências entre clientes e instâncias
-            </CardDescription>
-          </div>
-          <div className="flex space-x-2">
-            <Button onClick={checkConsistency} disabled={loading} variant="outline">
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Verificar
-            </Button>
-            {inconsistencies.length > 0 && (
-              <Button onClick={fixAllInconsistencies} disabled={fixing}>
-                <Wrench className="w-4 h-4 mr-2" />
-                {fixing ? 'Corrigindo...' : 'Corrigir Tudo'}
-              </Button>
-            )}
-          </div>
-        </div>
+        <CardTitle className="flex items-center space-x-2">
+          <Database className="w-5 h-5" />
+          <span>Verificador de Consistência de Dados</span>
+        </CardTitle>
+        <CardDescription>
+          Detecta e corrige inconsistências entre clientes, instâncias e o servidor WhatsApp
+        </CardDescription>
       </CardHeader>
-      <CardContent>
-        {inconsistencies.length === 0 ? (
+      <CardContent className="space-y-4">
+        
+        {/* Action Buttons */}
+        <div className="flex space-x-2">
+          <Button 
+            onClick={checkConsistency}
+            disabled={loading || fixing}
+            variant="outline"
+          >
+            {loading ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Verificando...
+              </>
+            ) : (
+              <>
+                <Database className="w-4 h-4 mr-2" />
+                Verificar Consistência
+              </>
+            )}
+          </Button>
+          
+          {inconsistencies.length > 0 && (
+            <Button 
+              onClick={fixAllInconsistencies}
+              disabled={loading || fixing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {fixing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Corrigindo...
+                </>
+              ) : (
+                <>
+                  <Wrench className="w-4 h-4 mr-2" />
+                  Corrigir Tudo ({inconsistencies.length})
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+
+        {/* Results */}
+        {inconsistencies.length === 0 && !loading ? (
           <div className="text-center py-8">
             <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Dados Consistentes
-            </h3>
-            <p className="text-gray-600">
-              {loading ? 'Verificando...' : 'Nenhuma inconsistência encontrada'}
-            </p>
+            <h3 className="text-lg font-medium text-green-900 mb-2">Dados Consistentes</h3>
+            <p className="text-green-700">Nenhuma inconsistência encontrada</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2 mb-4">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              <span className="font-medium">
-                {inconsistencies.length} inconsistência(s) encontrada(s)
-              </span>
-            </div>
-            
+          <div className="space-y-3">
             {inconsistencies.map((inconsistency, index) => (
-              <Card key={index} className="border-l-4 border-l-amber-500">
+              <Card key={index} className={getInconsistencyColor(inconsistency.type)}>
                 <CardContent className="pt-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Badge className={getInconsistencyColor(inconsistency.type)}>
-                          {getInconsistencyTypeText(inconsistency.type)}
-                        </Badge>
-                        <span className="font-medium">{inconsistency.clientName}</span>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-2">
-                        {inconsistency.description}
-                      </p>
-                      <div className="text-xs text-gray-500">
-                        Cliente ID: {inconsistency.clientId}
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-3 flex-1">
+                      {getInconsistencyIcon(inconsistency.type)}
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <Badge variant="outline">
+                            {getInconsistencyTypeText(inconsistency.type)}
+                          </Badge>
+                          <span className="text-sm font-medium">{inconsistency.clientName}</span>
+                        </div>
+                        <p className="text-sm text-gray-700">{inconsistency.description}</p>
                         {inconsistency.instanceId && (
-                          <span> • Instância ID: {inconsistency.instanceId}</span>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Instância: {inconsistency.instanceId}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -216,8 +265,14 @@ const DataConsistencyChecker = () => {
                       onClick={() => fixSingleInconsistency(inconsistency)}
                       disabled={fixing}
                     >
-                      <Wrench className="w-4 h-4 mr-1" />
-                      Corrigir
+                      {fixing ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <>
+                          <Wrench className="w-3 h-3 mr-1" />
+                          Corrigir
+                        </>
+                      )}
                     </Button>
                   </div>
                 </CardContent>
@@ -225,6 +280,19 @@ const DataConsistencyChecker = () => {
             ))}
           </div>
         )}
+
+        {/* Instructions */}
+        <div className="bg-blue-50 border border-blue-200 rounded p-3">
+          <h4 className="font-medium text-blue-900 mb-2">Como usar:</h4>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• <strong>Referência Órfã:</strong> Cliente referencia instância que não existe</li>
+            <li>• <strong>Instância Órfã:</strong> Instância no banco sem cliente válido</li>
+            <li>• <strong>Instância Fantasma:</strong> Instância no banco mas não no servidor</li>
+            <li>• <strong>Contagem Incorreta:</strong> Número de instâncias não confere</li>
+            <li>• <strong>Referência Faltante:</strong> Cliente não referencia instância existente</li>
+          </ul>
+        </div>
+
       </CardContent>
     </Card>
   );
