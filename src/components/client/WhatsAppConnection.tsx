@@ -14,12 +14,14 @@ import {
   AlertCircle,
   Play,
   Pause,
-  RotateCcw
+  RotateCcw,
+  Settings
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useParams } from "react-router-dom";
 import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
+import QueueConnectionManager from "./QueueConnectionManager";
 
 const WhatsAppConnection = () => {
   const { clientId } = useParams();
@@ -314,12 +316,15 @@ const WhatsAppConnection = () => {
         status: serverInstance.status,
         phone_number: serverInstance.phoneNumber,
         has_qr_code: serverInstance.hasQrCode,
-        serverData: serverInstance
+        hasServerData: true
       };
     }
     
     // Se não existe no servidor, usar dados do banco
-    return dbInstance;
+    return {
+      ...dbInstance,
+      hasServerData: false
+    };
   };
 
   if (!clientId) {
@@ -417,7 +422,6 @@ const WhatsAppConnection = () => {
         <div className="grid gap-4">
           {instances.map((instance) => {
             const combined = getCombinedInstanceData(instance);
-            const serverData = combined.serverData;
             
             return (
               <Card key={instance.id} className="hover:shadow-lg transition-shadow">
@@ -426,13 +430,13 @@ const WhatsAppConnection = () => {
                     <div>
                       <CardTitle className="text-lg flex items-center space-x-2">
                         <span>Instância {instance.instance_id}</span>
-                        {serverData && <Wifi className="w-4 h-4 text-green-500" />}
+                        {combined.hasServerData && <Wifi className="w-4 h-4 text-green-500" />}
                       </CardTitle>
                       <CardDescription className="flex items-center mt-1">
                         <Smartphone className="w-4 h-4 mr-1" />
                         {combined.phone_number || 'Não conectado'}
                       </CardDescription>
-                      {serverData && (
+                      {combined.hasServerData && (
                         <CardDescription className="flex items-center mt-1 text-green-600">
                           <CheckCircle className="w-4 h-4 mr-1" />
                           Ativa no servidor WhatsApp
@@ -461,7 +465,7 @@ const WhatsAppConnection = () => {
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap gap-2">
-                    {!serverData && combined.status === 'disconnected' && (
+                    {!combined.hasServerData && combined.status === 'disconnected' && (
                       <Button
                         size="sm"
                         onClick={() => handleConnectInstance(instance.instance_id)}
@@ -485,7 +489,7 @@ const WhatsAppConnection = () => {
                       </Button>
                     )}
                     
-                    {serverData && (
+                    {combined.hasServerData && (
                       <>
                         <Button
                           size="sm"
@@ -530,6 +534,25 @@ const WhatsAppConnection = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Queue Management Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Settings className="w-5 h-5" />
+            <span>Gerenciamento de Filas</span>
+          </CardTitle>
+          <CardDescription>
+            Configure como suas instâncias WhatsApp se conectam às filas de atendimento
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <QueueConnectionManager 
+            clientId={clientId} 
+            onConnectionChange={loadInstancesData}
+          />
+        </CardContent>
+      </Card>
 
       {/* QR Code Modal */}
       <Dialog open={showQrModal} onOpenChange={setShowQrModal}>
