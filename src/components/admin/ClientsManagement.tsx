@@ -19,7 +19,8 @@ import {
   Activity,
   RefreshCw,
   ExternalLink,
-  Database
+  Database,
+  AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -206,10 +207,20 @@ const ClientsManagement = () => {
         <div className="flex space-x-2">
           <Button 
             onClick={() => setShowConsistencyChecker(!showConsistencyChecker)} 
-            variant="outline"
+            variant={showConsistencyChecker ? "default" : "outline"}
+            className={showConsistencyChecker ? "bg-amber-600 hover:bg-amber-700" : "border-amber-300 text-amber-700 hover:bg-amber-50"}
           >
-            <Database className="w-4 h-4 mr-2" />
-            Consistência
+            {showConsistencyChecker ? (
+              <>
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Ocultar Verificador
+              </>
+            ) : (
+              <>
+                <Database className="w-4 h-4 mr-2" />
+                Verificar Consistência
+              </>
+            )}
           </Button>
           <Button onClick={loadClients} variant="outline" disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -222,9 +233,36 @@ const ClientsManagement = () => {
         </div>
       </div>
 
-      {/* Data Consistency Checker */}
+      {/* Data Consistency Checker - More prominent */}
       {showConsistencyChecker && (
-        <DataConsistencyChecker />
+        <div className="border-2 border-amber-200 rounded-lg p-1 bg-amber-50/50">
+          <DataConsistencyChecker />
+        </div>
+      )}
+
+      {/* Inconsistency Alert */}
+      {!showConsistencyChecker && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-3">
+              <AlertTriangle className="w-6 h-6 text-amber-600" />
+              <div className="flex-1">
+                <h3 className="font-medium text-amber-900">Problema de Inconsistência Detectado</h3>
+                <p className="text-sm text-amber-700 mt-1">
+                  Se você está vendo instâncias ativas aqui mas não consegue visualizá-las na página de instâncias, 
+                  ou não consegue criar novas instâncias para alguns clientes, use o verificador de consistência.
+                </p>
+              </div>
+              <Button 
+                onClick={() => setShowConsistencyChecker(true)}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                <Database className="w-4 h-4 mr-2" />
+                Verificar Agora
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Summary Stats */}
@@ -428,7 +466,6 @@ const ClientsManagement = () => {
                   </div>
 
                   <div className="flex items-center space-x-4">
-                    {/* Plan and Instance Info */}
                     <div className="text-center">
                       <div className="flex items-center space-x-2 mb-1">
                         <Badge className={getPlanColor(client.plan)}>
@@ -443,7 +480,6 @@ const ClientsManagement = () => {
                       </p>
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="flex space-x-2">
                       <Button
                         size="sm"
@@ -477,7 +513,6 @@ const ClientsManagement = () => {
                   </div>
                 </div>
 
-                {/* Additional Info */}
                 <div className="mt-4 pt-4 border-t flex justify-between items-center text-sm text-gray-500">
                   <div className="flex items-center">
                     <Calendar className="w-4 h-4 mr-1" />
