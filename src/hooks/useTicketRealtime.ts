@@ -169,6 +169,9 @@ export const useTicketRealtime = (clientId: string) => {
         }
       }
       
+      // Marcar lote como completo
+      markBatchAsCompleted(chatId);
+      
       setTimeout(() => {
         if (mountedRef.current) {
           loadTickets();
@@ -260,11 +263,13 @@ export const useTicketRealtime = (clientId: string) => {
       
     } catch (error) {
       console.error('❌ Erro ao processar lote de mensagens:', error);
+      // Marcar lote como completo mesmo em caso de erro
+      markBatchAsCompleted(chatId);
     }
   }, [clientId, processReaction, markActivity, normalizeWhatsAppMessage]);
 
   // Hook para agrupamento de mensagens
-  const { addMessage, getBatchInfo } = useMessageBatch(processBatchWithAssistant);
+  const { addMessage, getBatchInfo, markBatchAsCompleted } = useMessageBatch(processBatchWithAssistant);
 
   // Carregar tickets com debounce melhorado
   const loadTickets = useCallback(async () => {
@@ -472,8 +477,10 @@ export const useTicketRealtime = (clientId: string) => {
         setAssistantTyping(false);
       }
       processingRef.current.delete(ticketId);
+      // Marcar lote como completo após processamento
+      markBatchAsCompleted(message.from);
     }
-  }, [clientId, simulateHumanTyping, markAsRead]);
+  }, [clientId, simulateHumanTyping, markAsRead, markBatchAsCompleted]);
 
   // Configurar listeners uma única vez
   useEffect(() => {
