@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL } from '@/config/environment';
 
@@ -461,7 +462,7 @@ class WhatsAppMultiClientService {
       }
       
       if (file) {
-        // Envio de arquivo com validação melhorada
+        // Envio de arquivo com timeout
         const formData = new FormData();
         formData.append('to', to);
         formData.append('file', file);
@@ -482,11 +483,17 @@ class WhatsAppMultiClientService {
           endpoint = 'send-document';
         }
 
+        // Implementar timeout usando AbortController
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
         const response = await fetch(`${API_BASE_URL}/clients/${clientId}/${endpoint}`, {
           method: 'POST',
           body: formData,
-          timeout: 30000
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
           const errorText = await response.text();
@@ -509,13 +516,18 @@ class WhatsAppMultiClientService {
         return data;
         
       } else if (mediaUrl) {
-        // Envio com URL de mídia
+        // Envio com URL de mídia com timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
         const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-media-url`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ to, message, mediaUrl }),
-          timeout: 30000
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
           const errorText = await response.text();
@@ -538,7 +550,7 @@ class WhatsAppMultiClientService {
         return data;
         
       } else {
-        // Envio de mensagem de texto - CORRIGIDO
+        // Envio de mensagem de texto
         const payload = { 
           to: to.replace('@c.us', ''), // Remover sufixo se existir
           message: message.trim()
@@ -586,7 +598,7 @@ class WhatsAppMultiClientService {
       // Melhorar mensagens de erro
       if (error.message.includes('getChat')) {
         throw new Error('Erro interno do WhatsApp. Tente reconectar a instância.');
-      } else if (error.message.includes('timeout')) {
+      } else if (error.message.includes('timeout') || error.name === 'AbortError') {
         throw new Error('Timeout ao enviar mensagem. Verifique a conexão.');
       } else if (error.message.includes('Failed to fetch')) {
         throw new Error('Erro de conexão com o servidor WhatsApp.');
