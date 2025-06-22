@@ -28,99 +28,124 @@ export const useTicketRealtime = (clientId: string) => {
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
 
-  // Processar lote de mensagens com assistente
-  const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
-    if (!mountedRef.current || messages.length === 0) return;
+  // Processar mensagem individualmente com criação GARANTIDA de ticket
+  const processMessage = useCallback(async (message: any) => {
+    if (!mountedRef.current || !message) return;
 
-    console.log(`📦 Processando lote de ${messages.length} mensagens do chat ${chatId}`);
-    
-    const lastMessage = messages[messages.length - 1];
-    
+    console.log('📨 Processando mensagem individual:', {
+      id: message.id,
+      from: message.from,
+      chatId: message.chatId || message.from,
+      fromMe: message.fromMe,
+      body: message.body?.substring(0, 50),
+      timestamp: message.timestamp
+    });
+
     try {
-      // Extrair informações do contato
-      const customerName = lastMessage.notifyName || lastMessage.pushName || 
-                         lastMessage.from?.replace(/\D/g, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') || 
+      const chatId = message.chatId || message.from;
+      const customerPhone = chatId.replace(/\D/g, '');
+      const customerName = message.notifyName || 
+                         message.pushName || 
+                         message.sender ||
+                         (customerPhone ? customerPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : null) ||
                          'Contato';
-      
-      const customerPhone = lastMessage.from?.replace(/\D/g, '') || '';
-      
-      console.log('🎫 SEMPRE criando ticket (pode recriar se foi excluído):', customerName, customerPhone);
-      
-      // SEMPRE tentar criar ticket - não verificar se existe
-      const ticketId = await ticketsService.createOrUpdateTicket(
+
+      console.log('🎫 SEMPRE criando ticket para:', {
         clientId,
-        lastMessage.from || lastMessage.chatId,
+        chatId,
+        customerPhone,
+        customerName
+      });
+
+      // SEMPRE criar ticket - mesmo se foi excluído antes
+      const ticketId = await ticketsService.ensureTicketExists(
         clientId,
+        chatId,
+        clientId, // instance_id
         customerName,
         customerPhone,
-        lastMessage.body || lastMessage.caption || '[Mídia]',
-        new Date().toISOString()
+        message.body || message.caption || '[Mídia]',
+        new Date(message.timestamp || Date.now()).toISOString()
       );
 
-      console.log('📋 Ticket garantido:', ticketId);
+      console.log('✅ Ticket garantido:', ticketId);
 
-      // Processar reações automáticas para todas as mensagens
-      for (const message of messages) {
-        if (!message.fromMe) {
-          await processReaction(message);
-        }
+      // Processar reação automática apenas se não for minha mensagem
+      if (!message.fromMe) {
+        await processReaction(message);
       }
 
-      // Adicionar todas as mensagens do lote ao ticket
-      for (const message of messages) {
-        let content = message.body || message.caption || '';
-        let messageType = message.type || 'text';
-        
-        if (message.type === 'image') {
-          content = `[Imagem] ${message.caption || 'Imagem enviada'}`;
-          messageType = 'image';
-        } else if (message.type === 'audio' || message.type === 'ptt') {
-          content = `[Áudio] Mensagem de áudio`;
-          messageType = 'audio';
-        } else if (message.type === 'video') {
-          content = `[Vídeo] ${message.caption || 'Vídeo enviado'}`;
-          messageType = 'video';
-        } else if (message.type === 'document') {
-          content = `[Documento] ${message.filename || 'Documento enviado'}`;
-          messageType = 'document';
-        }
-
-        if (message.quotedMessage) {
-          const quotedContent = message.quotedMessage.body || message.quotedMessage.caption || '[Mídia citada]';
-          content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
-        }
-
-        await ticketsService.addTicketMessage({
-          ticket_id: ticketId,
-          message_id: message.id,
-          from_me: message.fromMe,
-          sender_name: message.author || customerName,
-          content: content,
-          message_type: messageType,
-          is_internal_note: false,
-          is_ai_response: false,
-          processing_status: 'received',
-          timestamp: new Date(message.timestamp || Date.now()).toISOString(),
-          media_url: message.mediaUrl || null
-        });
+      // Preparar conteúdo da mensagem
+      let content = message.body || message.caption || '';
+      let messageType = message.type || 'text';
+      
+      if (message.type === 'image') {
+        content = `[Imagem] ${message.caption || 'Imagem enviada'}`;
+        messageType = 'image';
+      } else if (message.type === 'audio' || message.type === 'ptt') {
+        content = `[Áudio] Mensagem de áudio`;
+        messageType = 'audio';
+      } else if (message.type === 'video') {
+        content = `[Vídeo] ${message.caption || 'Vídeo enviado'}`;
+        messageType = 'video';
+      } else if (message.type === 'document') {
+        content = `[Documento] ${message.filename || 'Documento enviado'}`;
+        messageType = 'document';
       }
+
+      if (message.quotedMessage) {
+        const quotedContent = message.quotedMessage.body || message.quotedMessage.caption || '[Mídia citada]';
+        content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
+      }
+
+      // Adicionar mensagem ao ticket
+      await ticketsService.addTicketMessage({
+        ticket_id: ticketId,
+        message_id: message.id,
+        from_me: message.fromMe,
+        sender_name: message.author || customerName,
+        content: content,
+        message_type: messageType,
+        is_internal_note: false,
+        is_ai_response: false,
+        processing_status: 'received',
+        timestamp: new Date(message.timestamp || Date.now()).toISOString(),
+        media_url: message.mediaUrl || null
+      });
 
       markActivity();
 
-      // Processar com assistente apenas se não estiver já processando
-      if (!processingRef.current.has(ticketId)) {
+      // Processar com assistente apenas se não estiver já processando e não for minha mensagem
+      if (!message.fromMe && !processingRef.current.has(ticketId)) {
         processingRef.current.add(ticketId);
         setTimeout(() => {
           if (mountedRef.current) {
-            processWithAssistant(lastMessage, ticketId, messages);
+            processWithAssistant(message, ticketId);
           }
         }, 3000);
       }
+
+      // Recarregar tickets para atualizar a lista
+      setTimeout(() => {
+        if (mountedRef.current) {
+          loadTickets();
+        }
+      }, 1000);
       
     } catch (error) {
-      console.error('❌ Erro ao processar lote de mensagens:', error);
+      console.error('❌ Erro ao processar mensagem:', error);
     }
   }, [clientId, processReaction, markActivity]);
+
+  // Processar lote de mensagens - REMOVIDO e substituído por processamento individual
+  const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
+    console.log(`📦 Processando lote de ${messages.length} mensagens`);
+    
+    // Processar cada mensagem individualmente para garantir que todas sejam capturadas
+    for (const message of messages) {
+      await processMessage(message);
+    }
+  }, [processMessage]);
 
   const { addMessage } = useMessageBatch(processBatchWithAssistant);
 
@@ -152,7 +177,7 @@ export const useTicketRealtime = (clientId: string) => {
   }, [clientId]);
 
   // Processar mensagem com assistente
-  const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
+  const processWithAssistant = useCallback(async (message: any, ticketId: string) => {
     if (!mountedRef.current || !ticketId) {
       processingRef.current.delete(ticketId);
       return;
@@ -313,10 +338,10 @@ export const useTicketRealtime = (clientId: string) => {
       console.log('❌ WebSocket desconectado');
     });
 
-    // Listener para mensagens do WhatsApp - com log detalhado
+    // Listener para mensagens do WhatsApp - SIMPLIFICADO para processar tudo
     const messageEvent = `message_${clientId}`;
     const handleNewMessage = async (message: any) => {
-      console.log('📨 NOVA MENSAGEM RECEBIDA:', {
+      console.log('📨 NOVA MENSAGEM RECEBIDA - PROCESSAMENTO DIRETO:', {
         id: message.id,
         from: message.from,
         fromMe: message.fromMe,
@@ -330,9 +355,8 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
       
-      // Processar TODAS as mensagens, não só as que não são minhas
-      console.log('✅ Adicionando mensagem ao batch para processamento');
-      addMessage(message);
+      // PROCESSAR DIRETAMENTE - não usar batch
+      await processMessage(message);
     };
 
     socket.on(messageEvent, handleNewMessage);
@@ -373,7 +397,7 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       processingRef.current.clear();
     };
-  }, [clientId, loadTickets, addMessage]);
+  }, [clientId, loadTickets, processMessage]);
 
   const reloadTickets = useCallback(() => {
     if (mountedRef.current) {

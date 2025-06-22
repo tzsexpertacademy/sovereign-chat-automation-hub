@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationTicket {
@@ -145,7 +144,7 @@ class TicketsService {
     }
   }
 
-  async createOrUpdateTicket(
+  async ensureTicketExists(
     clientId: string,
     chatId: string,
     instanceId: string,
@@ -155,7 +154,7 @@ class TicketsService {
     lastMessageAt: string
   ): Promise<string> {
     try {
-      console.log('🎫 SEMPRE criando/recriando ticket para:', {
+      console.log('🎫 GARANTINDO ticket existe para:', {
         clientId,
         chatId,
         customerPhone,
@@ -180,7 +179,10 @@ class TicketsService {
         if (existingCustomer.name !== customerName) {
           await supabase
             .from('customers')
-            .update({ name: customerName })
+            .update({ 
+              name: customerName,
+              whatsapp_chat_id: chatId
+            })
             .eq('id', customerId);
         }
       } else {
@@ -200,63 +202,91 @@ class TicketsService {
         console.log('👤 Novo customer criado:', customerId);
       }
 
-      // SEMPRE tentar criar um novo ticket - mesmo se foi excluído
-      const { data: newTicket, error: ticketError } = await supabase
+      // Verificar se já existe ticket ATIVO para este chat
+      const { data: existingTicket, error: searchError } = await supabase
         .from('conversation_tickets')
-        .upsert({
-          client_id: clientId,
-          customer_id: customerId,
-          chat_id: chatId,
-          instance_id: instanceId,
-          title: `Conversa com ${customerName}`,
-          last_message_preview: lastMessage,
-          last_message_at: lastMessageAt,
-          status: 'open',
-          is_archived: false,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'client_id,chat_id,instance_id',
-          ignoreDuplicates: false
-        })
         .select('id')
-        .single();
+        .eq('client_id', clientId)
+        .eq('chat_id', chatId)
+        .eq('instance_id', instanceId)
+        .eq('is_archived', false)
+        .maybeSingle();
 
-      if (ticketError) {
-        console.error('❌ Erro ao criar ticket via upsert:', ticketError);
-        
-        // Fallback: tentar buscar existente e atualizar
-        const { data: existingTicket } = await supabase
-          .from('conversation_tickets')
-          .select('id')
-          .eq('client_id', clientId)
-          .eq('chat_id', chatId)
-          .eq('instance_id', instanceId)
-          .eq('is_archived', false)
-          .maybeSingle();
-
-        if (existingTicket) {
-          await supabase
-            .from('conversation_tickets')
-            .update({
-              last_message_preview: lastMessage,
-              last_message_at: lastMessageAt,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', existingTicket.id);
-          
-          console.log('📝 Ticket existente atualizado via fallback:', existingTicket.id);
-          return existingTicket.id;
-        } else {
-          throw ticketError;
-        }
+      if (searchError) {
+        console.error('❌ Erro ao buscar ticket existente:', searchError);
       }
 
-      console.log('🎫 Ticket criado/recriado com sucesso:', newTicket.id);
-      return newTicket.id;
+      if (existingTicket) {
+        // Atualizar ticket existente
+        const { error: updateError } = await supabase
+          .from('conversation_tickets')
+          .update({
+            customer_id: customerId,
+            title: `Conversa com ${customerName}`,
+            last_message_preview: lastMessage,
+            last_message_at: lastMessageAt,
+            status: 'open',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingTicket.id);
+
+        if (updateError) {
+          console.error('❌ Erro ao atualizar ticket:', updateError);
+        } else {
+          console.log('📝 Ticket existente atualizado:', existingTicket.id);
+        }
+        
+        return existingTicket.id;
+      } else {
+        // Criar novo ticket (mesmo se foi excluído antes)
+        const { data: newTicket, error: createError } = await supabase
+          .from('conversation_tickets')
+          .insert({
+            client_id: clientId,
+            customer_id: customerId,
+            chat_id: chatId,
+            instance_id: instanceId,
+            title: `Conversa com ${customerName}`,
+            last_message_preview: lastMessage,
+            last_message_at: lastMessageAt,
+            status: 'open',
+            is_archived: false
+          })
+          .select('id')
+          .single();
+
+        if (createError) {
+          console.error('❌ Erro ao criar novo ticket:', createError);
+          throw createError;
+        }
+
+        console.log('🎫 Novo ticket criado/recriado:', newTicket.id);
+        return newTicket.id;
+      }
     } catch (error) {
-      console.error('❌ Erro ao criar/atualizar ticket:', error);
+      console.error('❌ Erro crítico ao garantir ticket:', error);
       throw error;
     }
+  }
+
+  async createOrUpdateTicket(
+    clientId: string,
+    chatId: string,
+    instanceId: string,
+    customerName: string,
+    customerPhone: string,
+    lastMessage: string,
+    lastMessageAt: string
+  ): Promise<string> {
+    return this.ensureTicketExists(
+      clientId,
+      chatId,
+      instanceId,
+      customerName,
+      customerPhone,
+      lastMessage,
+      lastMessageAt
+    );
   }
 
   private async createTicketDirectly(
