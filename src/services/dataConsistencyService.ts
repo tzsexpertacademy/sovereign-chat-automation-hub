@@ -67,7 +67,7 @@ export class DataConsistencyService {
           }
         }
         
-        // Verificar contagem de instâncias
+        // Verificar contagem de instâncias - SEMPRE verificar
         const clientInstancesInDB = allInstancesInDB?.filter(i => i.client_id === client.id) || [];
         if (client.current_instances !== clientInstancesInDB.length) {
           inconsistencies.push({
@@ -123,6 +123,9 @@ export class DataConsistencyService {
         instance_status: 'disconnected'
       });
       
+      // Recalcular a contagem de instâncias
+      await this.fixClientCountMismatch(clientId);
+      
       console.log('✅ Referência órfã corrigida');
     } catch (error) {
       console.error('❌ Erro ao corrigir referência órfã:', error);
@@ -146,14 +149,14 @@ export class DataConsistencyService {
     console.log(`🔧 Corrigindo referência faltante do cliente ${clientId} para instância ${instanceId}`);
     
     try {
-      // Para o caso específico do Thalis, vamos limpar a referência e atualizar a contagem
+      // Limpar a referência do cliente para a instância principal
       await clientsService.updateClient(clientId, {
         instance_id: null,
         instance_status: 'disconnected'
       });
       
-      // Recalcular a contagem de instâncias
-      await this.fixClientCountMismatch(clientId);
+      // Recalcular a contagem real de instâncias
+      await this.forceRecalculateInstanceCount(clientId);
       
       console.log('✅ Referência faltante corrigida');
     } catch (error) {
@@ -184,7 +187,7 @@ export class DataConsistencyService {
       }
       
       // Recalcular a contagem de instâncias
-      await this.fixClientCountMismatch(clientId);
+      await this.forceRecalculateInstanceCount(clientId);
       
       console.log('✅ Instância fantasma corrigida');
     } catch (error) {
@@ -197,7 +200,18 @@ export class DataConsistencyService {
     console.log(`🔧 Corrigindo contagem de instâncias para cliente ${clientId}`);
     
     try {
-      // Recalcular contagem real de instâncias
+      await this.forceRecalculateInstanceCount(clientId);
+    } catch (error) {
+      console.error('❌ Erro ao corrigir contagem:', error);
+      throw error;
+    }
+  }
+
+  async forceRecalculateInstanceCount(clientId: string): Promise<void> {
+    console.log(`🧮 Forçando recálculo da contagem para cliente ${clientId}`);
+    
+    try {
+      // Buscar contagem real de instâncias no banco
       const { data: instances, error } = await supabase
         .from("whatsapp_instances")
         .select("id")
@@ -206,14 +220,22 @@ export class DataConsistencyService {
       if (error) throw error;
       
       const realCount = instances?.length || 0;
+      console.log(`📊 Contagem real encontrada: ${realCount} instâncias`);
       
-      await clientsService.updateClient(clientId, {
-        current_instances: realCount
-      });
+      // Atualizar forçadamente a contagem no cliente
+      const { error: updateError } = await supabase
+        .from("clients")
+        .update({ 
+          current_instances: realCount,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", clientId);
+        
+      if (updateError) throw updateError;
       
-      console.log(`✅ Contagem de instâncias corrigida para ${realCount}`);
+      console.log(`✅ Contagem de instâncias atualizada para ${realCount}`);
     } catch (error) {
-      console.error('❌ Erro ao corrigir contagem:', error);
+      console.error('❌ Erro ao recalcular contagem:', error);
       throw error;
     }
   }
@@ -260,7 +282,7 @@ export class DataConsistencyService {
         }
         
         // Pequena pausa entre correções para evitar conflitos
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
         
       } catch (error) {
         console.error(`❌ Erro ao corrigir inconsistência:`, inconsistency, error);
@@ -268,6 +290,11 @@ export class DataConsistencyService {
     }
     
     console.log(`✅ ${fixedCount}/${inconsistencies.length} inconsistências corrigidas`);
+    
+    // Após todas as correções, fazer uma verificação final
+    console.log('🔄 Verificação final após correções...');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     return fixedCount;
   }
 }
