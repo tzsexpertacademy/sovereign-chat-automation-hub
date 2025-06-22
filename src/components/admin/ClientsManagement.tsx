@@ -20,14 +20,19 @@ import {
   RefreshCw,
   ExternalLink,
   Database,
-  AlertTriangle
+  AlertTriangle,
+  Smartphone
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData, CreateClientData } from "@/services/clientsService";
 import DataConsistencyChecker from "./DataConsistencyChecker";
 
-const ClientsManagement = () => {
+interface ClientsManagementProps {
+  onShowInstancesManager?: () => void;
+}
+
+const ClientsManagement = ({ onShowInstancesManager }: ClientsManagementProps) => {
   const [clients, setClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -212,6 +217,15 @@ const ClientsManagement = () => {
           <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
         </div>
         <div className="flex space-x-2">
+          {onShowInstancesManager && (
+            <Button 
+              onClick={onShowInstancesManager}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <Smartphone className="w-4 h-4 mr-2" />
+              Gerenciar Instâncias
+            </Button>
+          )}
           <Button 
             onClick={() => setShowConsistencyChecker(!showConsistencyChecker)} 
             variant={showConsistencyChecker ? "default" : "outline"}
