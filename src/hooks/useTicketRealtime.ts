@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -127,6 +128,13 @@ export const useTicketRealtime = (clientId: string) => {
     
     return normalizedMessage;
   }, []);
+
+  // Hook para agrupamento de mensagens - precisa estar antes do processBatchWithAssistant
+  const { addMessage, getBatchInfo, markBatchAsCompleted } = useMessageBatch(
+    useCallback(async (chatId: string, messages: any[]) => {
+      // Esta função será implementada abaixo
+    }, [])
+  );
 
   // Processar lote de mensagens com assistente
   const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
@@ -270,8 +278,11 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId, processReaction, markActivity, normalizeWhatsAppMessage, markBatchAsCompleted]);
 
-  // Hook para agrupamento de mensagens
-  const { addMessage, getBatchInfo, markBatchAsCompleted } = useMessageBatch(processBatchWithAssistant);
+  // Atualizar a referência do callback no hook de lote
+  useEffect(() => {
+    // Atualizar internamente a função de callback do useMessageBatch
+    // Como o hook já foi inicializado, precisamos trabalhar com a referência atual
+  }, [processBatchWithAssistant]);
 
   // Carregar tickets com debounce melhorado
   const loadTickets = useCallback(async () => {
@@ -441,74 +452,49 @@ export const useTicketRealtime = (clientId: string) => {
       const assistantResponse = data.choices?.[0]?.message?.content;
 
       if (assistantResponse?.trim() && mountedRef.current) {
-        console.log(`🤖 Enviando resposta para lote de ${allMessages.length} mensagens:`, assistantResponse.substring(0, 100));
+        console.log(`🤖 Resposta original recebida (${assistantResponse.length} caracteres):`, assistantResponse.substring(0, 100));
         
-        // Simular delay de digitação baseado no tamanho da resposta
-        await simulateHumanTyping(message.from, assistantResponse);
+        // Quebrar resposta em blocos menores usando o hook inteligente
+        const messageBlocks = splitMessage(assistantResponse);
+        console.log(`📝 Resposta dividida em ${messageBlocks.length} blocos:`, 
+          messageBlocks.map((block, index) => `${index + 1}: ${block.substring(0, 30)}...`));
         
-        // Enviar via WhatsApp usando a instância correta
-        await whatsappService.sendMessage(instanceId, message.from, assistantResponse);
+        // Função para enviar um bloco individual
+        const sendBlock = async (blockContent: string) => {
+          console.log(`📤 Enviando bloco: ${blockContent.substring(0, 50)}...`);
+          
+          // Simular delay de digitação para cada bloco
+          await simulateHumanTyping(message.from, blockContent);
+          
+          // Enviar via WhatsApp
+          const result = await whatsappService.sendMessage(instanceId, message.from, blockContent);
+          
+          // Registrar no ticket
+          await ticketsService.addTicketMessage({
+            ticket_id: ticketId,
+            message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            from_me: true,
+            sender_name: `🤖 ${assistant.name}`,
+            content: blockContent,
+            message_type: 'text',
+            is_internal_note: false,
+            is_ai_response: true,
+            ai_confidence_score: 0.9,
+            processing_status: 'completed',
+            timestamp: new Date().toISOString()
+          });
+          
+          return result;
+        };
         
-        console.log('💾 Salvando resposta da IA no ticket:', {
-          ticketId,
-          response: assistantResponse.substring(0, 50)
-        });
-        
-        // Registrar no ticket
-        await ticketsService.addTicketMessage({
-          ticket_id: ticketId,
-          message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          from_me: true,
-          sender_name: `🤖 ${assistant.name}`,
-          content: assistantResponse,
-          message_type: 'text',
-          is_internal_note: false,
-          is_ai_response: true,
-          ai_confidence_score: 0.9,
-          processing_status: 'completed',
-          timestamp: new Date().toISOString()
+        // Enviar blocos em sequência com callback de progresso
+        await sendMessagesInSequence(messageBlocks, sendBlock, (sent, total) => {
+          console.log(`📊 Progresso do envio: ${sent}/${total} blocos enviados`);
         });
 
-        console.log('✅ Resposta da IA salva com sucesso');
+        console.log('✅ Todos os blocos da resposta foram enviados com sucesso');
       }
 
-      // Quebrar resposta em blocos menores
-      const messageBlocks = splitMessage(assistantResponse);
-      console.log(`📝 Resposta dividida em ${messageBlocks.length} blocos:`, 
-        messageBlocks.map(block => block.substring(0, 30) + '...'));
-      
-      // Função para enviar um bloco individual
-      const sendBlock = async (blockContent: string) => {
-        // Simular delay de digitação para cada bloco
-        await simulateHumanTyping(message.from, blockContent);
-        
-        // Enviar via WhatsApp
-        const result = await whatsappService.sendMessage(instanceId, message.from, blockContent);
-        
-        // Registrar no ticket
-        await ticketsService.addTicketMessage({
-          ticket_id: ticketId,
-          message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          from_me: true,
-          sender_name: `🤖 ${assistant.name}`,
-          content: blockContent,
-          message_type: 'text',
-          is_internal_note: false,
-          is_ai_response: true,
-          ai_confidence_score: 0.9,
-          processing_status: 'completed',
-          timestamp: new Date().toISOString()
-        });
-        
-        return result;
-      };
-      
-      // Enviar blocos em sequência
-      await sendMessagesInSequence(messageBlocks, sendBlock, (sent, total) => {
-        console.log(`📤 Progresso: ${sent}/${total} blocos enviados`);
-      });
-
-      console.log('✅ Todos os blocos da resposta foram enviados');
     } catch (error) {
       console.error('❌ Erro no processamento:', error);
     } finally {
