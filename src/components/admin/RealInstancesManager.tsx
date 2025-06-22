@@ -478,7 +478,7 @@ const RealInstancesManager = () => {
                 <SelectValue placeholder="Todos os clientes" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos os clientes</SelectItem>
+                <SelectItem value="all-clients">Todos os clientes</SelectItem>
                 {availableClients.map((client) => (
                   <SelectItem key={client.id} value={client.id}>
                     {client.name} ({client.email})
@@ -491,7 +491,7 @@ const RealInstancesManager = () => {
                 {selectedClientInfo.name} - {filteredClients.length} instância(s)
               </Badge>
             )}
-            {filterByClient && (
+            {filterByClient && filterByClient !== "all-clients" && (
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -553,7 +553,7 @@ const RealInstancesManager = () => {
       </div>
 
       {/* Add New Instance for Client - only show if no filter or client has space */}
-      {(!filterByClient || (selectedClientInfo && (selectedClientInfo.current_instances || 0) < selectedClientInfo.max_instances)) && (
+      {(!filterByClient || filterByClient === "all-clients" || (selectedClientInfo && (selectedClientInfo.current_instances || 0) < selectedClientInfo.max_instances)) && (
         <Card>
           <CardHeader>
             <CardTitle>🚀 Criar Instância WhatsApp para Cliente</CardTitle>
@@ -577,7 +577,7 @@ const RealInstancesManager = () => {
                     </SelectItem>
                   ) : (
                     clientsWithoutInstances
-                      .filter(client => !filterByClient || client.id === filterByClient)
+                      .filter(client => !filterByClient || filterByClient === "all-clients" || client.id === filterByClient)
                       .map((client) => (
                         <SelectItem key={client.id} value={client.id}>
                           <div className="flex items-center space-x-2">
@@ -637,117 +637,67 @@ const RealInstancesManager = () => {
                       )}
                     </div>
                     <div className="flex items-center space-x-2">
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(client.status)}`} />
                       <Badge variant={client.status === 'connected' ? 'default' : 'secondary'}>
                         <div className="flex items-center space-x-1">
                           {getStatusIcon(client.status)}
                           <span>{getStatusText(client.status)}</span>
                         </div>
                       </Badge>
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(client.status)}`} />
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  
-                  {/* Status Details */}
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-500">Status</p>
-                      <p className="font-medium">{getStatusText(client.status)}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">QR Code</p>
-                      <p className="font-medium">{client.hasQrCode ? 'Disponível' : 'N/A'}</p>
-                    </div>
+                  {/* Status Info */}
+                  <div className="text-sm text-gray-600">
+                    <p><strong>Status:</strong> {getStatusText(client.status)}</p>
+                    {client.phoneNumber && <p><strong>Telefone:</strong> {client.phoneNumber}</p>}
+                    {client.hasQrCode && <p className="text-blue-600"><strong>QR Code disponível</strong></p>}
                   </div>
 
-                  {/* QR Code Display */}
-                  {client.status === 'qr_ready' && client.hasQrCode && (
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded">
-                      <p className="text-sm text-blue-800 mb-2">
-                        📱 QR Code pronto! Escaneie com seu WhatsApp
-                      </p>
-                      <Button 
-                        onClick={() => handleViewQrCode(client.clientId)}
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    {client.status === 'qr_ready' && (
+                      <Button
                         size="sm"
-                        variant="outline"
-                        className="border-blue-300"
+                        onClick={() => handleViewQrCode(client.clientId)}
+                        className="bg-blue-600 hover:bg-blue-700"
                       >
-                        <Eye className="w-4 h-4 mr-1" />
+                        <QrCode className="w-4 h-4 mr-2" />
                         Ver QR Code
                       </Button>
-                    </div>
-                  )}
-
-                  {/* Connected Info */}
-                  {client.status === 'connected' && (
-                    <div className="p-4 bg-green-50 border border-green-200 rounded">
-                      <p className="text-sm text-green-800">
-                        ✅ WhatsApp conectado e funcionando
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Error Info */}
-                  {['error', 'auth_failed'].includes(client.status) && (
-                    <div className="p-4 bg-red-50 border border-red-200 rounded">
-                      <p className="text-sm text-red-800">
-                        ❌ Erro na conexão. Tente reiniciar a instância.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Action Buttons */}
-                  <div className="flex space-x-2 pt-2">
-                    {client.status === 'connected' ? (
-                      <>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleDisconnectClient(client.clientId)}
-                          disabled={loading}
-                        >
-                          <Pause className="w-4 h-4 mr-1" />
-                          Pausar
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleOpenChat(client.clientId)}
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <MessageSquare className="w-4 h-4 mr-1" />
-                          Chat
-                        </Button>
-                      </>
-                    ) : (
-                      <Button 
+                    )}
+                    
+                    {client.status === 'connected' && linkedClient && (
+                      <Button
                         size="sm"
-                        onClick={() => whatsappService.connectClient(client.clientId)}
-                        disabled={loading || client.status === 'connecting'}
+                        onClick={() => handleOpenChat(client.clientId)}
                         className="bg-green-600 hover:bg-green-700"
                       >
-                        <Play className="w-4 h-4 mr-1" />
-                        {client.status === 'connecting' ? 'Conectando...' : 'Conectar'}
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Abrir Chat
                       </Button>
                     )}
-                    <Button 
-                      size="sm" 
+                    
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => handleRestartClient(client.clientId)}
                       disabled={loading}
                     >
-                      <RotateCcw className="w-4 h-4 mr-1" />
+                      <RotateCcw className="w-4 h-4 mr-2" />
                       Reiniciar
                     </Button>
-                    <Button 
-                      size="sm" 
+                    
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => handleDisconnectClient(client.clientId)}
                       disabled={loading}
+                      className="text-red-600 hover:text-red-700"
                     >
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      Remover
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Desconectar
                     </Button>
                   </div>
                 </CardContent>
@@ -755,59 +705,26 @@ const RealInstancesManager = () => {
             );
           })}
         </div>
-      ) : !connectionError ? (
+      ) : (
         <Card>
           <CardContent className="pt-6">
             <div className="text-center py-8">
               <Smartphone className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma instância criada</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {selectedClientInfo 
+                  ? `Nenhuma instância encontrada para ${selectedClientInfo.name}`
+                  : "Nenhuma instância WhatsApp ativa"
+                }
+              </h3>
               <p className="text-gray-600 mb-4">
-                Selecione um cliente cadastrado e crie sua primeira instância WhatsApp
+                {selectedClientInfo 
+                  ? "Crie uma nova instância para este cliente"
+                  : "Crie uma instância para começar a usar o WhatsApp"
+                }
               </p>
             </div>
           </CardContent>
         </Card>
-      ) : null}
-
-      {/* QR Code Modal */}
-      {showQrModal && selectedClient && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
-            <div className="text-center">
-              <h3 className="text-lg font-semibold mb-4">
-                QR Code - {selectedClient.clientId}
-              </h3>
-              
-              {selectedClient.qrCode ? (
-                <div className="space-y-4">
-                  <img 
-                    src={selectedClient.qrCode} 
-                    alt="QR Code WhatsApp"
-                    className="mx-auto border rounded"
-                  />
-                  <p className="text-sm text-gray-600">
-                    Escaneie este QR Code com seu WhatsApp para conectar
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <QrCode className="w-16 h-16 text-gray-400 mx-auto" />
-                  <p className="text-sm text-gray-600">
-                    QR Code não disponível
-                  </p>
-                </div>
-              )}
-              
-              <Button 
-                onClick={() => setShowQrModal(false)}
-                className="mt-4"
-                variant="outline"
-              >
-                Fechar
-              </Button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
