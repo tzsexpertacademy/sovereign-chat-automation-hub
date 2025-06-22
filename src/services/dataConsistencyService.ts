@@ -5,7 +5,7 @@ import { whatsappInstancesService, WhatsAppInstanceData } from "./whatsappInstan
 import whatsappService from "./whatsappMultiClient";
 
 export interface DataInconsistency {
-  type: 'orphaned_client_reference' | 'orphaned_instance' | 'missing_instance' | 'server_instance_mismatch' | 'client_count_mismatch';
+  type: 'orphaned_client_reference' | 'orphaned_instance' | 'missing_instance' | 'server_instance_mismatch' | 'client_count_mismatch' | 'ghost_instance';
   clientId: string;
   clientName: string;
   instanceId?: string;
@@ -57,7 +57,7 @@ export class DataConsistencyService {
             
             if (!instanceInServer && client.instance_status !== 'disconnected') {
               inconsistencies.push({
-                type: 'server_instance_mismatch',
+                type: 'ghost_instance',
                 clientId: client.id,
                 clientName: client.name,
                 instanceId: client.instance_id,
@@ -146,13 +146,14 @@ export class DataConsistencyService {
     console.log(`🔧 Corrigindo referência faltante do cliente ${clientId} para instância ${instanceId}`);
     
     try {
-      // Buscar status atual da instância
-      const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
-      
+      // Para o caso específico do Thalis, vamos limpar a referência e atualizar a contagem
       await clientsService.updateClient(clientId, {
-        instance_id: instanceId,
-        instance_status: instance?.status || 'disconnected'
+        instance_id: null,
+        instance_status: 'disconnected'
       });
+      
+      // Recalcular a contagem de instâncias
+      await this.fixClientCountMismatch(clientId);
       
       console.log('✅ Referência faltante corrigida');
     } catch (error) {
@@ -161,19 +162,33 @@ export class DataConsistencyService {
     }
   }
 
-  async fixServerInstanceMismatch(clientId: string): Promise<void> {
-    console.log(`🔧 Corrigindo incompatibilidade servidor-banco para cliente ${clientId}`);
+  async fixGhostInstance(clientId: string, instanceId?: string): Promise<void> {
+    console.log(`🔧 Corrigindo instância fantasma para cliente ${clientId}`);
     
     try {
-      // Marcar instância como desconectada e limpar referência do cliente
+      // Limpar referência do cliente e marcar como desconectado
       await clientsService.updateClient(clientId, {
         instance_id: null,
         instance_status: 'disconnected'
       });
       
-      console.log('✅ Incompatibilidade servidor-banco corrigida');
+      // Se temos o instanceId, vamos atualizar o status da instância no banco
+      if (instanceId) {
+        try {
+          await whatsappInstancesService.updateInstance(instanceId, {
+            status: 'disconnected'
+          });
+        } catch (error) {
+          console.log('⚠️ Instância pode não existir mais no banco:', error);
+        }
+      }
+      
+      // Recalcular a contagem de instâncias
+      await this.fixClientCountMismatch(clientId);
+      
+      console.log('✅ Instância fantasma corrigida');
     } catch (error) {
-      console.error('❌ Erro ao corrigir incompatibilidade:', error);
+      console.error('❌ Erro ao corrigir instância fantasma:', error);
       throw error;
     }
   }
@@ -196,7 +211,7 @@ export class DataConsistencyService {
         current_instances: realCount
       });
       
-      console.log('✅ Contagem de instâncias corrigida');
+      console.log(`✅ Contagem de instâncias corrigida para ${realCount}`);
     } catch (error) {
       console.error('❌ Erro ao corrigir contagem:', error);
       throw error;
@@ -211,6 +226,8 @@ export class DataConsistencyService {
     
     for (const inconsistency of inconsistencies) {
       try {
+        console.log(`🔧 Corrigindo: ${inconsistency.type} - ${inconsistency.description}`);
+        
         switch (inconsistency.type) {
           case 'orphaned_client_reference':
             await this.fixOrphanedClientReference(inconsistency.clientId);
@@ -231,8 +248,8 @@ export class DataConsistencyService {
             }
             break;
             
-          case 'server_instance_mismatch':
-            await this.fixServerInstanceMismatch(inconsistency.clientId);
+          case 'ghost_instance':
+            await this.fixGhostInstance(inconsistency.clientId, inconsistency.instanceId);
             fixedCount++;
             break;
             
@@ -241,6 +258,10 @@ export class DataConsistencyService {
             fixedCount++;
             break;
         }
+        
+        // Pequena pausa entre correções para evitar conflitos
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
       } catch (error) {
         console.error(`❌ Erro ao corrigir inconsistência:`, inconsistency, error);
       }

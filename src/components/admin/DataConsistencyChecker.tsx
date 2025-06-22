@@ -11,7 +11,8 @@ import {
   Database,
   AlertCircle,
   Server,
-  Hash
+  Hash,
+  Ghost
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { dataConsistencyService, DataInconsistency } from "@/services/dataConsistencyService";
@@ -55,6 +56,7 @@ const DataConsistencyChecker = () => {
   const fixSingleInconsistency = async (inconsistency: DataInconsistency) => {
     try {
       setFixing(true);
+      console.log('🔧 Iniciando correção individual:', inconsistency);
       
       switch (inconsistency.type) {
         case 'orphaned_client_reference':
@@ -73,8 +75,8 @@ const DataConsistencyChecker = () => {
             );
           }
           break;
-        case 'server_instance_mismatch':
-          await dataConsistencyService.fixServerInstanceMismatch(inconsistency.clientId);
+        case 'ghost_instance':
+          await dataConsistencyService.fixGhostInstance(inconsistency.clientId, inconsistency.instanceId);
           break;
         case 'client_count_mismatch':
           await dataConsistencyService.fixClientCountMismatch(inconsistency.clientId);
@@ -132,7 +134,7 @@ const DataConsistencyChecker = () => {
         return 'Instância Órfã';
       case 'missing_instance':
         return 'Referência Faltante';
-      case 'server_instance_mismatch':
+      case 'ghost_instance':
         return 'Instância Fantasma';
       case 'client_count_mismatch':
         return 'Contagem Incorreta';
@@ -149,8 +151,8 @@ const DataConsistencyChecker = () => {
         return <AlertCircle className="w-4 h-4 text-red-500" />;
       case 'missing_instance':
         return <Database className="w-4 h-4 text-blue-500" />;
-      case 'server_instance_mismatch':
-        return <Server className="w-4 h-4 text-purple-500" />;
+      case 'ghost_instance':
+        return <Ghost className="w-4 h-4 text-purple-500" />;
       case 'client_count_mismatch':
         return <Hash className="w-4 h-4 text-yellow-500" />;
       default:
@@ -166,7 +168,7 @@ const DataConsistencyChecker = () => {
         return 'border-red-200 bg-red-50';
       case 'missing_instance':
         return 'border-blue-200 bg-blue-50';
-      case 'server_instance_mismatch':
+      case 'ghost_instance':
         return 'border-purple-200 bg-purple-50';
       case 'client_count_mismatch':
         return 'border-yellow-200 bg-yellow-50';
