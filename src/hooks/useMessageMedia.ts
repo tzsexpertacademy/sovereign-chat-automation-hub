@@ -6,6 +6,11 @@ import { useToast } from './use-toast';
 
 export const useMessageMedia = (clientId: string) => {
   const [isUploading, setIsUploading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioRecording, setAudioRecording] = useState<{
+    audioBlob: Blob | null;
+    duration: number;
+  }>({ audioBlob: null, duration: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -82,12 +87,122 @@ export const useMessageMedia = (clientId: string) => {
     }
   };
 
+  // Métodos para diferentes tipos de arquivo
+  const handleImageUpload = async (file: File, chatId: string): Promise<boolean> => {
+    try {
+      await uploadAndSendFile(file, chatId);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  const handleVideoUpload = async (file: File, chatId: string): Promise<boolean> => {
+    try {
+      await uploadAndSendFile(file, chatId);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  const handleDocumentUpload = async (file: File, chatId: string): Promise<boolean> => {
+    try {
+      await uploadAndSendFile(file, chatId);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  // Métodos para gravação de áudio
+  const startRecording = async (): Promise<MediaRecorder | null> => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      
+      const chunks: Blob[] = [];
+      let startTime = Date.now();
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+        const duration = Math.round((Date.now() - startTime) / 1000);
+        
+        setAudioRecording({ audioBlob, duration });
+        setIsRecording(false);
+        
+        // Parar stream
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      mediaRecorder.start();
+      setIsRecording(true);
+      
+      return mediaRecorder;
+    } catch (error) {
+      console.error('Erro ao iniciar gravação:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível acessar o microfone",
+        variant: "destructive"
+      });
+      return null;
+    }
+  };
+
+  const stopRecording = (mediaRecorder: MediaRecorder) => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+  };
+
+  const sendAudioRecording = async (chatId: string): Promise<boolean> => {
+    try {
+      if (!audioRecording.audioBlob) {
+        throw new Error('Nenhuma gravação disponível');
+      }
+
+      setIsUploading(true);
+      
+      // Converter blob para file
+      const audioFile = new File([audioRecording.audioBlob], 'audio.wav', {
+        type: 'audio/wav'
+      });
+      
+      await uploadAndSendFile(audioFile, chatId);
+      
+      // Limpar gravação
+      setAudioRecording({ audioBlob: null, duration: 0 });
+      
+      return true;
+    } catch (error) {
+      console.error('Erro ao enviar áudio:', error);
+      return false;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return {
     isUploading,
+    isRecording,
+    audioRecording,
     fileInputRef,
     handleFileSelect,
     handleFileChange,
     uploadAndSendFile,
-    sendMediaMessage
+    sendMediaMessage,
+    handleImageUpload,
+    handleVideoUpload,
+    handleDocumentUpload,
+    startRecording,
+    stopRecording,
+    sendAudioRecording
   };
 };

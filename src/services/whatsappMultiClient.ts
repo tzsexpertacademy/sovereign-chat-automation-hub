@@ -3,9 +3,13 @@ import io, { Socket } from 'socket.io-client';
 
 export interface WhatsAppClient {
   id: string;
+  clientId: string;
   socket: Socket;
   isConnected: boolean;
   phoneNumber?: string;
+  status: string;
+  hasQrCode: boolean;
+  qrCode?: string;
 }
 
 export interface MessageData {
@@ -28,24 +32,37 @@ export interface MessageData {
 class WhatsAppMultiClientService {
   private clients: Map<string, WhatsAppClient> = new Map();
   private baseURL = 'https://146.59.227.248';
+  private socket: Socket | null = null;
 
-  // Conectar socket para um cliente específico
+  // Conectar socket principal
   connectSocket(): Socket {
-    const socket = io(this.baseURL, {
+    if (this.socket?.connected) {
+      return this.socket;
+    }
+
+    this.socket = io(this.baseURL, {
       transports: ['websocket'],
       timeout: 10000,
       forceNew: true
     });
 
-    socket.on('connect', () => {
+    this.socket.on('connect', () => {
       console.log('🔌 Socket conectado ao servidor WhatsApp');
     });
 
-    socket.on('disconnect', () => {
+    this.socket.on('disconnect', () => {
       console.log('🔌 Socket desconectado do servidor WhatsApp');
     });
 
-    return socket;
+    return this.socket;
+  }
+
+  // Desconectar socket principal
+  disconnectSocket(): void {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
   }
 
   // Entrar na sala de um cliente
@@ -53,6 +70,133 @@ class WhatsAppMultiClientService {
     const socket = this.connectSocket();
     socket.emit('join-room', clientId);
     console.log(`🏠 Entrando na sala do cliente: ${clientId}`);
+  }
+
+  // Testar conexão com servidor
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/health`, {
+        method: 'GET',
+        timeout: 5000
+      } as any);
+      return response.ok;
+    } catch (error) {
+      console.error('❌ Erro ao testar conexão:', error);
+      return false;
+    }
+  }
+
+  // Buscar todos os clientes
+  async getAllClients(): Promise<WhatsAppClient[]> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/clients`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      return data.clients || [];
+    } catch (error) {
+      console.error('❌ Erro ao buscar clientes:', error);
+      return [];
+    }
+  }
+
+  // Conectar cliente específico
+  async connectClient(clientId: string): Promise<any> {
+    try {
+      console.log(`🚀 Conectando cliente: ${clientId}`);
+      
+      const response = await fetch(`${this.baseURL}/api/clients/${clientId}/connect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Cliente conectado:', data);
+      
+      return data;
+    } catch (error) {
+      console.error('❌ Erro ao conectar cliente:', error);
+      throw error;
+    }
+  }
+
+  // Desconectar cliente específico
+  async disconnectClient(clientId: string): Promise<any> {
+    try {
+      console.log(`🔌 Desconectando cliente: ${clientId}`);
+      
+      const response = await fetch(`${this.baseURL}/api/clients/${clientId}/disconnect`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Cliente desconectado:', data);
+      
+      return data;
+    } catch (error) {
+      console.error('❌ Erro ao desconectar cliente:', error);
+      throw error;
+    }
+  }
+
+  // Buscar status de cliente específico
+  async getClientStatus(clientId: string): Promise<WhatsAppClient> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/clients/${clientId}/status`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      return {
+        id: clientId,
+        clientId: clientId,
+        socket: {} as Socket,
+        isConnected: data.status === 'connected',
+        phoneNumber: data.phoneNumber,
+        status: data.status,
+        hasQrCode: data.hasQrCode || false,
+        qrCode: data.qrCode
+      };
+    } catch (error) {
+      console.error('❌ Erro ao buscar status do cliente:', error);
+      throw error;
+    }
+  }
+
+  // Verificar saúde do servidor
+  async checkServerHealth(): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/health`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('❌ Erro ao verificar saúde do servidor:', error);
+      throw error;
+    }
+  }
+
+  // Listeners para eventos em tempo real
+  onClientsUpdate(callback: (clients: WhatsAppClient[]) => void): void {
+    const socket = this.connectSocket();
+    socket.on('clients-update', callback);
+  }
+
+  onClientStatus(clientId: string, callback: (client: WhatsAppClient) => void): void {
+    const socket = this.connectSocket();
+    socket.on(`client-status-${clientId}`, callback);
   }
 
   // Buscar status de uma instância
@@ -158,7 +302,7 @@ class WhatsAppMultiClientService {
       console.log('✅ Mensagem enviada com sucesso:', result);
       
       return result;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro ao enviar mensagem:', error);
       throw error;
     }
@@ -207,29 +351,6 @@ class WhatsAppMultiClientService {
     } catch (error) {
       console.error('❌ Erro ao buscar QR Code:', error);
       return null;
-    }
-  }
-
-  // Desconectar instância
-  async disconnectInstance(instanceId: string): Promise<any> {
-    try {
-      console.log('🔌 Desconectando instância:', instanceId);
-      
-      const response = await fetch(`${this.baseURL}/api/clients/${instanceId}/disconnect`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('✅ Instância desconectada:', data);
-      
-      return data;
-    } catch (error) {
-      console.error('❌ Erro ao desconectar instância:', error);
-      throw error;
     }
   }
 
