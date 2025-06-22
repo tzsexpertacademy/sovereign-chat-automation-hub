@@ -1,11 +1,28 @@
 
 import io, { Socket } from 'socket.io-client';
 
-interface WhatsAppClient {
+export interface WhatsAppClient {
   id: string;
   socket: Socket;
   isConnected: boolean;
   phoneNumber?: string;
+}
+
+export interface MessageData {
+  id: string;
+  from: string;
+  to?: string;
+  body: string;
+  timestamp: number;
+  type: string;
+  fromMe: boolean;
+  chatId: string;
+  sender?: string;
+  notifyName?: string;
+  content?: string;
+  message_type?: string;
+  media_url?: string;
+  mediaUrl?: string;
 }
 
 class WhatsAppMultiClientService {
@@ -86,7 +103,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // CORRIGIDO: Enviar mensagem usando instanceId correto
+  // Enviar mensagem usando instanceId correto
   async sendMessage(clientId: string, to: string, message: string, hasFile = false, mediaUrl?: string): Promise<any> {
     try {
       console.log('📤 Enviando mensagem:', {
@@ -94,12 +111,10 @@ class WhatsAppMultiClientService {
         to,
         message,
         hasFile,
-        hasMediaUrl: !!mediaUrl,
-        fileType: { _type: "undefined", value: "undefined" },
-        fileSize: { _type: "undefined", value: "undefined" }
+        hasMediaUrl: !!mediaUrl
       });
 
-      // CORREÇÃO: Buscar o instanceId real do banco
+      // Buscar o instanceId real do banco
       const { data: client, error } = await (await import('@/integrations/supabase/client')).supabase
         .from('clients')
         .select('instance_id')
@@ -147,6 +162,41 @@ class WhatsAppMultiClientService {
       console.error('❌ Erro ao enviar mensagem:', error);
       throw error;
     }
+  }
+
+  // Métodos adicionais para compatibilidade
+  async sendReaction(clientId: string, messageId: string, reaction: string): Promise<any> {
+    console.log('🎭 Enviando reação:', { clientId, messageId, reaction });
+    // Implementação futura
+    return { success: true };
+  }
+
+  async setTyping(clientId: string, chatId: string, isTyping: boolean): Promise<any> {
+    console.log('⌨️ Definindo status de digitação:', { clientId, chatId, isTyping });
+    // Implementação futura
+    return { success: true };
+  }
+
+  async setRecording(clientId: string, chatId: string, isRecording: boolean): Promise<any> {
+    console.log('🎙️ Definindo status de gravação:', { clientId, chatId, isRecording });
+    // Implementação futura
+    return { success: true };
+  }
+
+  async markAsRead(clientId: string, messageId: string): Promise<any> {
+    console.log('👁️ Marcando como lida:', { clientId, messageId });
+    // Implementação futura
+    return { success: true };
+  }
+
+  onClientMessage(instanceId: string, callback: (message: MessageData) => void): void {
+    console.log('👂 Registrando listener para mensagens:', instanceId);
+    // Implementação futura para escutar mensagens
+  }
+
+  removeListener(event: string, callback: Function): void {
+    console.log('🔇 Removendo listener:', event);
+    // Implementação futura
   }
 
   // Buscar QR Code de uma instância
@@ -250,3 +300,4 @@ class WhatsAppMultiClientService {
 }
 
 export const whatsappService = new WhatsAppMultiClientService();
+export default whatsappService;
