@@ -69,9 +69,38 @@ const RealInstancesManager = () => {
     }
   };
 
+  const syncClientInstanceCount = async (clientId: string) => {
+    try {
+      // Get actual instances from Supabase
+      const instances = await whatsappInstancesService.getInstancesByClientId(clientId);
+      const actualCount = instances.length;
+      
+      // Update client current_instances count
+      await clientsService.updateClient(clientId, {
+        current_instances: actualCount
+      });
+      
+      console.log(`🔄 Sincronizada contagem de instâncias para cliente ${clientId}: ${actualCount}`);
+      
+      // Update local state
+      setAvailableClients(prev => 
+        prev.map(client => 
+          client.id === clientId 
+            ? { ...client, current_instances: actualCount }
+            : client
+        )
+      );
+    } catch (error) {
+      console.error('Erro ao sincronizar contagem de instâncias:', error);
+    }
+  };
+
   const updateClientInstance = async (clientId: string, instanceId: string, status: string) => {
     try {
       await clientsService.updateClientInstance(clientId, instanceId, status);
+      
+      // Sync instance count after update
+      await syncClientInstanceCount(clientId);
       
       // Update local state
       setAvailableClients(prev => 
@@ -169,25 +198,25 @@ const RealInstancesManager = () => {
       return;
     }
 
-    // Check if client already has an instance
-    if (clientData.instance_id) {
+    // Check current instance count vs limit
+    if ((clientData.current_instances || 0) >= clientData.max_instances) {
       toast({
-        title: "Erro",
-        description: "Este cliente já possui uma instância",
+        title: "Limite Atingido",
+        description: `Limite de ${clientData.max_instances} instâncias atingido para o plano ${clientData.plan}`,
         variant: "destructive",
       });
       return;
     }
 
-    // Use client ID as instance ID
-    const instanceId = clientData.id;
+    // Generate unique instance ID
+    const instanceId = `${clientData.id}_instance_${Date.now()}`;
 
-    // Verificar se já existe uma instância com esse ID
+    // Verificar se já existe uma instância com esse ID no servidor
     const existingClient = clients.find(c => c.clientId === instanceId);
     if (existingClient) {
       toast({
         title: "Erro",
-        description: `Instância ${instanceId} já existe`,
+        description: `Instância ${instanceId} já existe no servidor`,
         variant: "destructive",
       });
       return;
@@ -207,7 +236,7 @@ const RealInstancesManager = () => {
         status: 'connecting'
       });
       
-      // Update client with instance info
+      // Update client with instance info and sync count
       await updateClientInstance(clientData.id, instanceId, 'connecting');
       
       // Ouvir status deste cliente específico
@@ -391,8 +420,12 @@ const RealInstancesManager = () => {
     }
   };
 
-  // Get clients without instances
-  const clientsWithoutInstances = availableClients.filter(client => !client.instance_id);
+  // Get clients without instances - check against actual database instances, not just client fields
+  const clientsWithoutInstances = availableClients.filter(client => {
+    const currentCount = client.current_instances || 0;
+    const maxCount = client.max_instances || 1;
+    return currentCount < maxCount;
+  });
 
   // Filter clients by selected client
   const filteredClients = filterByClient 
@@ -428,10 +461,22 @@ const RealInstancesManager = () => {
           <h1 className="text-3xl font-bold text-gray-900">WhatsApp Multi-Cliente Real</h1>
           <p className="text-gray-600">Gerencie conexões WhatsApp reais para múltiplos clientes</p>
         </div>
-        <Button onClick={loadClients} variant="outline" disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </Button>
+        <div className="flex space-x-2">
+          <Button onClick={loadClients} variant="outline" disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          {selectedClientInfo && (
+            <Button 
+              onClick={() => syncClientInstanceCount(selectedClientInfo.id)} 
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Sincronizar Dados
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Connection Test */}
@@ -481,14 +526,14 @@ const RealInstancesManager = () => {
                 <SelectItem value="all-clients">Todos os clientes</SelectItem>
                 {availableClients.map((client) => (
                   <SelectItem key={client.id} value={client.id}>
-                    {client.name} ({client.email})
+                    {client.name} ({client.email}) - {client.current_instances || 0}/{client.max_instances} instâncias
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             {selectedClientInfo && (
               <Badge variant="outline" className="bg-blue-50">
-                {selectedClientInfo.name} - {filteredClients.length} instância(s)
+                {selectedClientInfo.name} - {selectedClientInfo.current_instances || 0}/{selectedClientInfo.max_instances} instâncias
               </Badge>
             )}
             {filterByClient && filterByClient !== "all-clients" && (
@@ -509,12 +554,26 @@ const RealInstancesManager = () => {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
-              Total Instâncias {selectedClientInfo ? `(${selectedClientInfo.name})` : ''}
+              Instâncias no Servidor {selectedClientInfo ? `(${selectedClientInfo.name})` : ''}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{filteredClients.length}</div>
-            <p className="text-xs text-gray-500">Instâncias ativas</p>
+            <p className="text-xs text-gray-500">Conectadas ao servidor WhatsApp</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">
+              Instâncias no BD {selectedClientInfo ? `(${selectedClientInfo.name})` : ''}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">
+              {selectedClientInfo ? (selectedClientInfo.current_instances || 0) : 
+               availableClients.reduce((sum, c) => sum + (c.current_instances || 0), 0)}
+            </div>
+            <p className="text-xs text-blue-600">Registradas no banco</p>
           </CardContent>
         </Card>
         <Card>
@@ -530,17 +589,6 @@ const RealInstancesManager = () => {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Aguardando QR</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {filteredClients.filter(c => c.status === 'qr_ready').length}
-            </div>
-            <p className="text-xs text-blue-600">Pronto para conectar</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Desconectadas</CardTitle>
           </CardHeader>
           <CardContent>
@@ -552,13 +600,20 @@ const RealInstancesManager = () => {
         </Card>
       </div>
 
-      {/* Add New Instance for Client - only show if no filter or client has space */}
+      {/* Add New Instance for Client */}
       {(!filterByClient || filterByClient === "all-clients" || (selectedClientInfo && (selectedClientInfo.current_instances || 0) < selectedClientInfo.max_instances)) && (
         <Card>
           <CardHeader>
             <CardTitle>🚀 Criar Instância WhatsApp para Cliente</CardTitle>
             <CardDescription>
               Selecione um cliente cadastrado para criar uma nova instância WhatsApp.
+              {selectedClientInfo && (
+                <div className="mt-2 text-sm">
+                  <Badge variant="outline">
+                    {selectedClientInfo.name}: {selectedClientInfo.current_instances || 0}/{selectedClientInfo.max_instances} instâncias
+                  </Badge>
+                </div>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -573,7 +628,7 @@ const RealInstancesManager = () => {
                 <SelectContent>
                   {clientsWithoutInstances.length === 0 ? (
                     <SelectItem value="no-clients-available" disabled>
-                      Todos os clientes já possuem instâncias
+                      Todos os clientes atingiram o limite de instâncias
                     </SelectItem>
                   ) : (
                     clientsWithoutInstances
@@ -582,7 +637,7 @@ const RealInstancesManager = () => {
                         <SelectItem key={client.id} value={client.id}>
                           <div className="flex items-center space-x-2">
                             <User className="w-4 h-4" />
-                            <span>{client.name} ({client.email})</span>
+                            <span>{client.name} ({client.current_instances || 0}/{client.max_instances})</span>
                           </div>
                         </SelectItem>
                       ))
@@ -712,16 +767,26 @@ const RealInstancesManager = () => {
               <Smartphone className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">
                 {selectedClientInfo 
-                  ? `Nenhuma instância encontrada para ${selectedClientInfo.name}`
-                  : "Nenhuma instância WhatsApp ativa"
+                  ? `Nenhuma instância WhatsApp ativa para ${selectedClientInfo.name}`
+                  : "Nenhuma instância WhatsApp ativa no servidor"
                 }
               </h3>
               <p className="text-gray-600 mb-4">
                 {selectedClientInfo 
-                  ? "Crie uma nova instância para este cliente"
+                  ? `Banco de dados mostra ${selectedClientInfo.current_instances || 0} instância(s), mas nenhuma conectada ao servidor WhatsApp`
                   : "Crie uma instância para começar a usar o WhatsApp"
                 }
               </p>
+              {selectedClientInfo && (
+                <Button 
+                  onClick={() => syncClientInstanceCount(selectedClientInfo.id)} 
+                  variant="outline"
+                  className="mr-2"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Sincronizar Dados
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
