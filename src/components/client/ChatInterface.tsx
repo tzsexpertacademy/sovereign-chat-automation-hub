@@ -11,6 +11,7 @@ import { ticketsService, type ConversationTicket } from "@/services/ticketsServi
 import TicketChatInterface from './TicketChatInterface';
 import TicketActionsMenu from './TicketActionsMenu';
 import ContactsManager from './ContactsManager';
+import ManualTicketCreator from './ManualTicketCreator';
 import { useTicketRealtime } from '@/hooks/useTicketRealtime';
 import TypingIndicator from './TypingIndicator';
 
@@ -206,10 +207,10 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                     🚨 NÃO VÊ NOVAS CONVERSAS? 🚨
                   </p>
                   <p className="text-sm text-red-700 mb-2">
-                    <strong>TESTE AGORA:</strong> Envie mensagem do <strong>47 996451886</strong> para WhatsApp
+                    <strong>TESTE MANUAL:</strong> Use "Criar Ticket Manual" para testar
                   </p>
                   <p className="text-xs text-red-600">
-                    1) Clique DEBUG → 2) F12 console → 3) Envie mensagem → 4) Veja logs
+                    1) Clique DEBUG → 2) F12 console → 3) Crie ticket manual → 4) Veja logs
                   </p>
                 </div>
                 <Button
@@ -233,6 +234,10 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                       <span className="text-xs font-medium">Online</span>
                     </div>
                   )}
+                  <ManualTicketCreator 
+                    clientId={clientId} 
+                    onTicketCreated={reloadTickets}
+                  />
                   <Button
                     size="sm"
                     variant="outline"
@@ -286,17 +291,23 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                   <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                   <p className="text-sm mb-2">Nenhuma conversa encontrada</p>
                   <p className="text-xs text-gray-400 mb-4">
-                    Envie mensagem do <strong>47 996451886</strong> para testar
+                    Use "Criar Ticket Manual" para testar o sistema
                   </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDebugMessages}
-                    className="text-red-600 border-red-600"
-                  >
-                    <Bug className="w-4 h-4 mr-1" />
-                    🔍 DEBUG SISTEMA
-                  </Button>
+                  <div className="space-y-2">
+                    <ManualTicketCreator 
+                      clientId={clientId} 
+                      onTicketCreated={reloadTickets}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDebugMessages}
+                      className="text-red-600 border-red-600"
+                    >
+                      <Bug className="w-4 h-4 mr-1" />
+                      🔍 DEBUG SISTEMA
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <ul className="divide-y divide-gray-100">

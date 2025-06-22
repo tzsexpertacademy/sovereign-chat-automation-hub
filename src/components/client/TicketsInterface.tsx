@@ -19,6 +19,7 @@ import {
 import TicketCard from "./TicketCard";
 import TicketChatInterface from "./TicketChatInterface";
 import ContactsManager from "./ContactsManager";
+import ManualTicketCreator from "./ManualTicketCreator";
 import { useTicketRealtime } from "@/hooks/useTicketRealtime";
 import { ticketsService } from "@/services/ticketsService";
 
@@ -101,6 +102,10 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
           </div>
           
           <div className="flex space-x-2">
+            <ManualTicketCreator 
+              clientId={clientId} 
+              onTicketCreated={reloadTickets}
+            />
             <Button
               variant="outline"
               size="sm"
@@ -148,10 +153,10 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
                 🚨 NÃO CONSEGUE VER NOVAS CONVERSAS? 🚨
               </p>
               <p className="text-xs text-red-700 mb-2">
-                <strong>PASSO A PASSO:</strong> 1) Clique no botão "🔍 DEBUG SISTEMA" acima → 2) Pressione F12 para abrir console → 3) Envie mensagem do WhatsApp → 4) Veja os logs
+                <strong>TESTE AGORA:</strong> 1) Clique "Criar Ticket Manual" → 2) Preencha dados → 3) Clique "Criar Ticket" → 4) Veja se aparece na lista
               </p>
               <div className="bg-red-100 p-2 rounded text-xs text-red-800">
-                <strong>Para testar:</strong> Envie uma mensagem do número <strong>47 996451886</strong> para o WhatsApp conectado
+                <strong>Para testar recebimento:</strong> Use o botão "Só Enviar" para mandar mensagem para um número real
               </div>
             </div>
             <Button
