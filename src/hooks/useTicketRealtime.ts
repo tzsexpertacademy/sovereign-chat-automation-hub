@@ -28,7 +28,7 @@ export const useTicketRealtime = (clientId: string) => {
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
 
-  // NOVA FUNÇÃO DE DEBUG MUITO MAIS DETALHADA
+  // FUNÇÃO DE DEBUG MELHORADA
   const comprehensiveDebug = useCallback(async () => {
     console.log('🔍 ===== DEBUG COMPLETO INICIADO =====');
     console.log('🔍 Client ID:', clientId);
@@ -46,27 +46,31 @@ export const useTicketRealtime = (clientId: string) => {
       console.log('❌ Socket não existe!');
     }
     
-    // 2. Verificar mensagens no banco
-    console.log('🔍 2. VERIFICANDO MENSAGENS NO BANCO...');
+    // 2. Verificar mensagens no banco - TODAS AS MENSAGENS
+    console.log('🔍 2. VERIFICANDO TODAS AS MENSAGENS NO BANCO...');
     try {
-      const { data: messages, error } = await supabase
+      const { data: allMessages, error } = await supabase
         .from('whatsapp_messages')
         .select('*')
         .eq('instance_id', clientId)
         .order('timestamp', { ascending: false })
-        .limit(5);
+        .limit(10);
 
       if (error) {
         console.error('❌ Erro ao buscar mensagens:', error);
       } else {
-        console.log('📊 Últimas 5 mensagens no banco:', messages);
-        if (messages && messages.length > 0) {
-          console.log('📊 Mensagem mais recente:', {
-            id: messages[0].id,
-            chat_id: messages[0].chat_id,
-            body: messages[0].body?.substring(0, 50),
-            timestamp: messages[0].timestamp,
-            from_me: messages[0].from_me
+        console.log('📊 Últimas 10 mensagens no banco:', allMessages);
+        if (allMessages && allMessages.length > 0) {
+          allMessages.forEach((msg, index) => {
+            console.log(`📊 Mensagem ${index + 1}:`, {
+              id: msg.id,
+              chat_id: msg.chat_id,
+              body: msg.body?.substring(0, 50),
+              timestamp: msg.timestamp,
+              from_me: msg.from_me,
+              sender: msg.sender,
+              is_processed: msg.is_processed
+            });
           });
         } else {
           console.log('⚠️ NENHUMA MENSAGEM ENCONTRADA NO BANCO!');
@@ -76,152 +80,182 @@ export const useTicketRealtime = (clientId: string) => {
       console.error('❌ Erro na busca de mensagens:', error);
     }
 
-    // 3. Verificar instâncias ativas
-    console.log('🔍 3. VERIFICANDO INSTÂNCIAS...');
+    // 3. Verificar todos os tickets
+    console.log('🔍 3. VERIFICANDO TODOS OS TICKETS...');
     try {
-      const { data: instances, error } = await supabase
-        .from('whatsapp_instances')
+      const { data: allTickets, error } = await supabase
+        .from('conversation_tickets')
         .select('*')
-        .eq('client_id', clientId);
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('❌ Erro ao buscar instâncias:', error);
+        console.error('❌ Erro ao buscar tickets:', error);
       } else {
-        console.log('📊 Instâncias encontradas:', instances);
-      }
-    } catch (error) {
-      console.error('❌ Erro na busca de instâncias:', error);
-    }
-
-    // 4. Testar conexão direta com WhatsApp server
-    console.log('🔍 4. TESTANDO CONEXÃO COM SERVIDOR WHATSAPP...');
-    try {
-      // Tentar fazer uma chamada de teste para o servidor WhatsApp
-      const response = await fetch(`http://localhost:3001/api/instance/${clientId}/status`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
+        console.log('📊 Todos os tickets encontrados:', allTickets?.length || 0);
+        if (allTickets && allTickets.length > 0) {
+          allTickets.forEach((ticket, index) => {
+            console.log(`🎫 Ticket ${index + 1}:`, {
+              id: ticket.id,
+              chat_id: ticket.chat_id,
+              title: ticket.title,
+              status: ticket.status,
+              last_message_at: ticket.last_message_at,
+              is_archived: ticket.is_archived
+            });
+          });
         }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Servidor WhatsApp respondeu:', data);
-      } else {
-        console.log('⚠️ Servidor WhatsApp retornou erro:', response.status, response.statusText);
       }
     } catch (error) {
-      console.log('❌ Não foi possível conectar ao servidor WhatsApp:', error);
-      console.log('⚠️ Isso pode indicar que o servidor WhatsApp não está rodando ou não está acessível');
+      console.error('❌ Erro na busca de tickets:', error);
     }
 
-    // 5. Verificar Supabase Realtime
-    console.log('🔍 5. VERIFICANDO SUPABASE REALTIME...');
-    if (channelRef.current) {
-      console.log('✅ Canal Supabase existe:', channelRef.current.topic);
-    } else {
-      console.log('❌ Canal Supabase não existe!');
+    // 4. Simular criação de ticket com dados reais
+    console.log('🔍 4. SIMULANDO CRIAÇÃO DE TICKET...');
+    try {
+      const testData = {
+        clientId,
+        chatId: '5547996451886@c.us',
+        instanceId: clientId,
+        customerName: 'Teste Debug',
+        customerPhone: '5547996451886',
+        lastMessage: 'Mensagem de teste para verificar criação de ticket',
+        lastMessageAt: new Date().toISOString()
+      };
+      
+      console.log('🧪 Dados de teste para ticket:', testData);
+      
+      const ticketId = await ticketsService.ensureTicketExists(
+        testData.clientId,
+        testData.chatId,
+        testData.instanceId,
+        testData.customerName,
+        testData.customerPhone,
+        testData.lastMessage,
+        testData.lastMessageAt
+      );
+      
+      console.log('✅ Ticket de teste criado/atualizado:', ticketId);
+      
+      // Recarregar tickets
+      setTimeout(() => {
+        if (mountedRef.current) {
+          loadTickets();
+        }
+      }, 2000);
+      
+    } catch (error) {
+      console.error('❌ Erro ao criar ticket de teste:', error);
     }
-
-    // 6. Forçar teste de mensagem
-    console.log('🔍 6. FORÇANDO TESTE DE PROCESSAMENTO...');
-    const testMessage = {
-      id: `test_${Date.now()}`,
-      from: '5547996451886@c.us',
-      chatId: '5547996451886@c.us',
-      fromMe: false,
-      body: 'Mensagem de teste do debug',
-      timestamp: Date.now(),
-      type: 'text'
-    };
-    
-    console.log('🧪 Processando mensagem de teste:', testMessage);
-    await processMessage(testMessage);
     
     console.log('🔍 ===== DEBUG COMPLETO FINALIZADO =====');
   }, [clientId]);
 
-  // Processar mensagem individualmente - SIMPLIFICADO
+  // FUNÇÃO DE PROCESSAMENTO SIMPLIFICADA E MAIS ROBUSTA
   const processMessage = useCallback(async (message: any) => {
     if (!mountedRef.current || !message) {
       console.log('⚠️ Componente desmontado ou mensagem inválida');
       return;
     }
 
-    console.log('📨 ===== PROCESSANDO MENSAGEM =====');
+    console.log('📨 ===== PROCESSANDO NOVA MENSAGEM =====');
     console.log('📨 Message ID:', message.id);
     console.log('📨 From:', message.from);
     console.log('📨 Chat ID:', message.chatId || message.from);
     console.log('📨 From Me:', message.fromMe);
     console.log('📨 Body:', message.body?.substring(0, 100));
     console.log('📨 Timestamp:', message.timestamp);
-    console.log('📨 Mensagem completa:', message);
+    console.log('📨 Dados completos da mensagem:', message);
 
     try {
-      const chatId = message.chatId || message.from;
+      // Determinar chat_id - ACEITAR QUALQUER FORMATO
+      const chatId = message.chatId || message.from || message.chat_id;
       
       if (!chatId) {
-        console.error('❌ Chat ID não encontrado na mensagem');
+        console.error('❌ Nenhum Chat ID encontrado na mensagem');
         return;
       }
 
-      const customerPhone = chatId.replace(/\D/g, '');
-      const customerName = message.notifyName || 
-                         message.pushName || 
-                         message.sender ||
-                         (customerPhone ? customerPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : null) ||
-                         'Contato';
+      console.log('✅ Chat ID determinado:', chatId);
 
-      console.log('🎫 Dados para ticket:', {
-        clientId,
-        chatId,
+      // Extrair telefone - MÉTODO MAIS FLEXÍVEL
+      let customerPhone = '';
+      if (chatId.includes('@')) {
+        customerPhone = chatId.split('@')[0].replace(/\D/g, '');
+      } else {
+        customerPhone = chatId.replace(/\D/g, '');
+      }
+
+      // Determinar nome do cliente - MÚLTIPLAS FONTES
+      let customerName = 'Contato';
+      if (message.notifyName && message.notifyName !== customerPhone) {
+        customerName = message.notifyName;
+      } else if (message.pushName && message.pushName !== customerPhone) {
+        customerName = message.pushName;
+      } else if (message.sender && message.sender !== customerPhone) {
+        customerName = message.sender;
+      } else if (customerPhone && customerPhone.length >= 10) {
+        // Formatar telefone como nome se não tiver nome
+        const formattedPhone = customerPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+        customerName = formattedPhone;
+      }
+
+      console.log('👤 Dados do cliente determinados:', {
         customerPhone,
-        customerName
+        customerName,
+        chatId
       });
 
-      // SEMPRE criar/atualizar ticket
+      // Conteúdo da mensagem
+      const messageContent = message.body || message.caption || message.text || '[Mídia]';
+      
+      console.log('💬 Conteúdo da mensagem:', messageContent);
+
+      // SEMPRE tentar criar/atualizar ticket - SEM VERIFICAÇÕES RESTRITIVAS
       console.log('🎫 Criando/atualizando ticket...');
       const ticketId = await ticketsService.ensureTicketExists(
         clientId,
         chatId,
-        clientId, // instance_id
+        clientId, // instance_id = client_id
         customerName,
         customerPhone,
-        message.body || message.caption || '[Mídia]',
+        messageContent,
         new Date(message.timestamp || Date.now()).toISOString()
       );
 
-      console.log('✅ Ticket processado:', ticketId);
+      console.log('✅ Ticket criado/atualizado:', ticketId);
 
       // Adicionar mensagem ao ticket
       console.log('💬 Adicionando mensagem ao ticket...');
       await ticketsService.addTicketMessage({
         ticket_id: ticketId,
-        message_id: message.id,
-        from_me: message.fromMe,
-        sender_name: message.author || customerName,
-        content: message.body || message.caption || '[Mídia]',
+        message_id: message.id || `msg_${Date.now()}`,
+        from_me: message.fromMe || false,
+        sender_name: customerName,
+        content: messageContent,
         message_type: message.type || 'text',
         is_internal_note: false,
         is_ai_response: false,
         processing_status: 'received',
         timestamp: new Date(message.timestamp || Date.now()).toISOString(),
-        media_url: message.mediaUrl || null
+        media_url: message.mediaUrl || message.media_url || null
       });
 
-      console.log('✅ Mensagem adicionada ao ticket');
+      console.log('✅ Mensagem adicionada ao ticket com sucesso');
 
-      // Recarregar tickets
-      console.log('🔄 Recarregando tickets...');
+      // Recarregar tickets após um delay
+      console.log('🔄 Programando recarga de tickets...');
       setTimeout(() => {
         if (mountedRef.current) {
+          console.log('🔄 Executando recarga de tickets...');
           loadTickets();
         }
-      }, 1000);
+      }, 1500);
       
     } catch (error) {
-      console.error('❌ Erro ao processar mensagem:', error);
-      console.error('❌ Stack:', error instanceof Error ? error.stack : 'N/A');
+      console.error('❌ ERRO CRÍTICO ao processar mensagem:', error);
+      console.error('❌ Stack trace:', error instanceof Error ? error.stack : 'N/A');
+      console.error('❌ Dados da mensagem que falhou:', message);
     }
   }, [clientId]);
 
@@ -238,7 +272,7 @@ export const useTicketRealtime = (clientId: string) => {
   // Carregar tickets
   const loadTickets = useCallback(async () => {
     const now = Date.now();
-    if (!clientId || !mountedRef.current || (now - lastLoadTimeRef.current) < 2000) {
+    if (!clientId || !mountedRef.current || (now - lastLoadTimeRef.current) < 1000) {
       return;
     }
     
@@ -249,10 +283,10 @@ export const useTicketRealtime = (clientId: string) => {
       
       const ticketsData = await ticketsService.getClientTickets(clientId);
       console.log('✅ Tickets carregados:', ticketsData.length);
-      console.log('📊 Tickets:', ticketsData);
       
       if (mountedRef.current) {
         setTickets(ticketsData);
+        console.log('📊 Tickets atualizados no estado:', ticketsData.length);
       }
     } catch (error) {
       console.error('❌ Erro ao carregar tickets:', error);
@@ -267,14 +301,14 @@ export const useTicketRealtime = (clientId: string) => {
   useEffect(() => {
     if (!clientId || initializationRef.current) return;
 
-    console.log('🔌 ===== INICIALIZANDO SISTEMA =====');
+    console.log('🔌 ===== INICIALIZANDO SISTEMA REALTIME =====');
     console.log('🔌 Client ID:', clientId);
     initializationRef.current = true;
     mountedRef.current = true;
 
     loadTickets();
 
-    // Conectar WebSocket
+    // Conectar WebSocket - MÚLTIPLOS LISTENERS
     console.log('🔌 Conectando WebSocket...');
     const socket = whatsappService.connectSocket();
     socketRef.current = socket;
@@ -293,41 +327,42 @@ export const useTicketRealtime = (clientId: string) => {
       console.error('❌ Erro no WebSocket:', error);
     });
 
-    // MÚLTIPLOS LISTENERS para garantir captura
+    // TODOS OS EVENTOS POSSÍVEIS DE MENSAGEM
     const messageEvents = [
       `message_${clientId}`,
       `new_message_${clientId}`,
       `whatsapp_message_${clientId}`,
+      `incoming_message_${clientId}`,
       'message',
       'new_message',
       'message_received',
-      'incoming_message'
+      'incoming_message',
+      'whatsapp_message',
+      'message_create',
+      'message_upsert'
     ];
 
     const handleNewMessage = async (message: any) => {
-      console.log('📨 ===== EVENTO DE MENSAGEM CAPTURADO =====');
-      console.log('📨 Evento recebido via WebSocket');
-      console.log('📨 Message ID:', message.id);
-      console.log('📨 From:', message.from);
-      console.log('📨 Body:', message.body?.substring(0, 50));
-      console.log('📨 Dados completos:', message);
+      console.log('📨 ===== EVENTO DE MENSAGEM CAPTURADO VIA WEBSOCKET =====');
+      console.log('📨 Dados recebidos:', message);
       
       if (!mountedRef.current) {
         console.log('⚠️ Componente desmontado, ignorando mensagem');
         return;
       }
       
+      // Processar imediatamente
       await processMessage(message);
     };
 
-    // Registrar todos os eventos
+    // Registrar TODOS os eventos
     messageEvents.forEach(event => {
       console.log(`🎧 Registrando listener para evento: ${event}`);
       socket.on(event, handleNewMessage);
     });
 
-    // Canal do Supabase para atualizações em tempo real
-    console.log('🔌 Configurando canal Supabase...');
+    // Canal do Supabase para mudanças diretas no banco
+    console.log('🔌 Configurando canal Supabase Realtime...');
     const channel = supabase
       .channel(`tickets-realtime-${clientId}`)
       .on(
@@ -354,11 +389,11 @@ export const useTicketRealtime = (clientId: string) => {
           filter: `instance_id=eq.${clientId}`
         },
         async (payload) => {
-          console.log('📨 ===== NOVA MENSAGEM NO BANCO (via Supabase) =====');
-          console.log('📨 Payload:', payload);
+          console.log('📨 ===== NOVA MENSAGEM NO BANCO (via Supabase Realtime) =====');
+          console.log('📨 Payload completo:', payload);
           
           if (payload.new && mountedRef.current) {
-            // Converter formato do banco para formato esperado
+            // Converter dados do banco para formato de mensagem
             const message = {
               id: payload.new.id,
               from: payload.new.chat_id,
@@ -367,14 +402,12 @@ export const useTicketRealtime = (clientId: string) => {
               body: payload.new.body,
               type: payload.new.message_type,
               timestamp: payload.new.timestamp,
-              caption: payload.new.caption,
-              mediaUrl: payload.new.media_url,
               sender: payload.new.sender,
-              pushName: payload.new.push_name,
-              notifyName: payload.new.notify_name
+              notifyName: payload.new.sender,
+              pushName: payload.new.sender
             };
             
-            console.log('📨 Mensagem convertida:', message);
+            console.log('📨 Mensagem convertida do banco:', message);
             await processMessage(message);
           }
         }
@@ -406,6 +439,7 @@ export const useTicketRealtime = (clientId: string) => {
 
   const reloadTickets = useCallback(() => {
     if (mountedRef.current) {
+      console.log('🔄 Recarregando tickets manualmente...');
       loadTickets();
     }
   }, [loadTickets]);
@@ -416,6 +450,6 @@ export const useTicketRealtime = (clientId: string) => {
     isTyping: assistantTyping,
     isOnline,
     reloadTickets,
-    debugMessages: comprehensiveDebug // Função de debug melhorada
+    debugMessages: comprehensiveDebug
   };
 };

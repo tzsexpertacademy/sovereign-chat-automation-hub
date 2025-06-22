@@ -170,21 +170,23 @@ class TicketsService {
     lastMessageAt: string
   ): Promise<string> {
     try {
-      console.log('🎫 [SERVICE] ===== GARANTINDO TICKET =====');
-      console.log('🎫 [SERVICE] Dados de entrada:', {
+      console.log('🎫 [SERVICE] ===== CRIANDO/ATUALIZANDO TICKET (VERSÃO ROBUSTA) =====');
+      console.log('🎫 [SERVICE] Parâmetros recebidos:', {
         clientId,
         chatId,
         instanceId,
         customerName,
         customerPhone,
-        lastMessage: lastMessage.substring(0, 50),
+        lastMessage: lastMessage.substring(0, 50) + '...',
         lastMessageAt
       });
 
-      // PASSO 1: Encontrar ou criar customer
+      // PASSO 1: Criar/atualizar customer (SEMPRE)
       console.log('👤 [SERVICE] PASSO 1: Processando customer...');
+      
       let customerId: string;
       
+      // Tentar encontrar customer existente
       const { data: existingCustomer, error: customerSearchError } = await supabase
         .from('customers')
         .select('id, name')
@@ -193,33 +195,30 @@ class TicketsService {
         .maybeSingle();
 
       if (customerSearchError) {
-        console.error('❌ [SERVICE] Erro ao buscar customer:', customerSearchError);
-        throw customerSearchError;
+        console.warn('⚠️ [SERVICE] Erro na busca de customer (continuando):', customerSearchError);
       }
 
       if (existingCustomer) {
         customerId = existingCustomer.id;
         console.log('👤 [SERVICE] Customer existente encontrado:', customerId);
         
-        // Atualizar nome se mudou
-        if (existingCustomer.name !== customerName) {
-          console.log('📝 [SERVICE] Atualizando nome do customer...');
-          const { error: updateError } = await supabase
-            .from('customers')
-            .update({ 
-              name: customerName,
-              whatsapp_chat_id: chatId,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', customerId);
-            
-          if (updateError) {
-            console.error('❌ [SERVICE] Erro ao atualizar customer:', updateError);
-          } else {
-            console.log('✅ [SERVICE] Customer atualizado com sucesso');
-          }
+        // Atualizar customer se necessário
+        const { error: updateCustomerError } = await supabase
+          .from('customers')
+          .update({ 
+            name: customerName,
+            whatsapp_chat_id: chatId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', customerId);
+          
+        if (updateCustomerError) {
+          console.warn('⚠️ [SERVICE] Erro ao atualizar customer (continuando):', updateCustomerError);
+        } else {
+          console.log('✅ [SERVICE] Customer atualizado');
         }
       } else {
+        // Criar novo customer
         console.log('👤 [SERVICE] Criando novo customer...');
         const { data: newCustomer, error: customerError } = await supabase
           .from('customers')
@@ -240,32 +239,34 @@ class TicketsService {
         console.log('👤 [SERVICE] Novo customer criado:', customerId);
       }
 
-      // PASSO 2: Verificar ticket existente
-      console.log('🔍 [SERVICE] PASSO 2: Verificando ticket existente...');
+      // PASSO 2: Buscar ticket existente (apenas NÃO arquivados)
+      console.log('🔍 [SERVICE] PASSO 2: Buscando ticket existente...');
+      
       const { data: existingTicket, error: searchError } = await supabase
         .from('conversation_tickets')
         .select('id, status, is_archived')
         .eq('client_id', clientId)
         .eq('chat_id', chatId)
-        .eq('instance_id', instanceId)
         .eq('is_archived', false)
         .maybeSingle();
 
       if (searchError) {
-        console.error('❌ [SERVICE] Erro ao buscar ticket:', searchError);
-        // Continuar mesmo com erro de busca
+        console.warn('⚠️ [SERVICE] Erro na busca de ticket (continuando):', searchError);
       }
 
-      console.log('🔍 [SERVICE] Resultado da busca:', existingTicket);
+      console.log('🔍 [SERVICE] Resultado da busca de ticket:', existingTicket);
+
+      const ticketTitle = `Conversa com ${customerName}`;
 
       if (existingTicket) {
         // PASSO 3A: Atualizar ticket existente
-        console.log('📝 [SERVICE] PASSO 3A: Atualizando ticket existente...');
+        console.log('📝 [SERVICE] PASSO 3A: Atualizando ticket existente:', existingTicket.id);
+        
         const { error: updateError } = await supabase
           .from('conversation_tickets')
           .update({
             customer_id: customerId,
-            title: `Conversa com ${customerName}`,
+            title: ticketTitle,
             last_message_preview: lastMessage,
             last_message_at: lastMessageAt,
             status: 'open',
@@ -278,17 +279,18 @@ class TicketsService {
           throw updateError;
         }
         
-        console.log('✅ [SERVICE] Ticket existente atualizado:', existingTicket.id);
+        console.log('✅ [SERVICE] Ticket existente atualizado com sucesso:', existingTicket.id);
         return existingTicket.id;
       } else {
         // PASSO 3B: Criar novo ticket
         console.log('🆕 [SERVICE] PASSO 3B: Criando novo ticket...');
-        const ticketData = {
+        
+        const newTicketData = {
           client_id: clientId,
           customer_id: customerId,
           chat_id: chatId,
           instance_id: instanceId,
-          title: `Conversa com ${customerName}`,
+          title: ticketTitle,
           last_message_preview: lastMessage,
           last_message_at: lastMessageAt,
           status: 'open' as const,
@@ -299,21 +301,21 @@ class TicketsService {
           internal_notes: []
         };
         
-        console.log('🆕 [SERVICE] Dados do novo ticket:', ticketData);
+        console.log('🆕 [SERVICE] Dados do novo ticket:', newTicketData);
 
         const { data: newTicket, error: createError } = await supabase
           .from('conversation_tickets')
-          .insert(ticketData)
+          .insert(newTicketData)
           .select('id')
           .single();
 
         if (createError) {
           console.error('❌ [SERVICE] Erro ao criar ticket:', createError);
-          console.error('❌ [SERVICE] Dados que falharam:', ticketData);
+          console.error('❌ [SERVICE] Dados que falharam:', newTicketData);
           throw createError;
         }
 
-        console.log('✅ [SERVICE] Novo ticket criado:', newTicket.id);
+        console.log('✅ [SERVICE] Novo ticket criado com sucesso:', newTicket.id);
         return newTicket.id;
       }
     } catch (error) {
@@ -343,114 +345,6 @@ class TicketsService {
     );
   }
 
-  private async createTicketDirectly(
-    clientId: string,
-    chatId: string,
-    instanceId: string,
-    customerName: string,
-    customerPhone: string,
-    lastMessage: string,
-    lastMessageAt: string
-  ): Promise<string> {
-    try {
-      // Primeiro, encontrar ou criar o customer
-      let customerId: string;
-      
-      console.log('👤 [DEBUG] Buscando customer existente...');
-      const { data: existingCustomer, error: customerSearchError } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('client_id', clientId)
-        .eq('phone', customerPhone)
-        .maybeSingle();
-
-      if (customerSearchError) {
-        console.error('❌ [DEBUG] Erro ao buscar customer:', customerSearchError);
-      }
-
-      if (existingCustomer) {
-        customerId = existingCustomer.id;
-        console.log('👤 [DEBUG] Customer existente encontrado:', customerId);
-      } else {
-        console.log('👤 [DEBUG] Criando novo customer...');
-        const { data: newCustomer, error: customerError } = await supabase
-          .from('customers')
-          .insert({
-            client_id: clientId,
-            name: customerName,
-            phone: customerPhone,
-            whatsapp_chat_id: chatId
-          })
-          .select('id')
-          .single();
-
-        if (customerError) {
-          console.error('❌ [DEBUG] Erro ao criar customer:', customerError);
-          throw customerError;
-        }
-        customerId = newCustomer.id;
-        console.log('👤 [DEBUG] Novo customer criado:', customerId);
-      }
-
-      // Verificar se já existe um ticket ATIVO (não arquivado) para este chat
-      console.log('🔍 [DEBUG] Buscando ticket existente...');
-      const { data: existingTicket } = await supabase
-        .from('conversation_tickets')
-        .select('id')
-        .eq('client_id', clientId)
-        .eq('chat_id', chatId)
-        .eq('instance_id', instanceId)
-        .eq('is_archived', false)
-        .maybeSingle();
-
-      if (existingTicket) {
-        // Atualizar ticket existente
-        console.log('📝 [DEBUG] Atualizando ticket existente:', existingTicket.id);
-        const { error: updateError } = await supabase
-          .from('conversation_tickets')
-          .update({
-            last_message_preview: lastMessage,
-            last_message_at: lastMessageAt,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingTicket.id);
-
-        if (updateError) throw updateError;
-        console.log('✅ [DEBUG] Ticket existente atualizado:', existingTicket.id);
-        return existingTicket.id;
-      } else {
-        // Criar novo ticket (incluindo quando foi excluído)
-        console.log('🆕 [DEBUG] Criando novo ticket...');
-        const ticketData = {
-          client_id: clientId,
-          customer_id: customerId,
-          chat_id: chatId,
-          instance_id: instanceId,
-          title: `Conversa com ${customerName}`,
-          last_message_preview: lastMessage,
-          last_message_at: lastMessageAt,
-          status: 'open',
-          is_archived: false
-        };
-        
-        console.log('🆕 [DEBUG] Dados do novo ticket:', ticketData);
-
-        const { data: newTicket, error: ticketError } = await supabase
-          .from('conversation_tickets')
-          .insert(ticketData)
-          .select('id')
-          .single();
-
-        if (ticketError) throw ticketError;
-        console.log('✅ [DEBUG] Novo ticket criado/recriado:', newTicket.id);
-        return newTicket.id;
-      }
-    } catch (error) {
-      console.error('❌ [DEBUG] Erro ao criar ticket:', error);
-      throw error;
-    }
-  }
-
   async addTicketMessage(messageData: CreateTicketMessageData): Promise<void> {
     try {
       console.log('💬 [SERVICE] ===== ADICIONANDO MENSAGEM =====');
@@ -458,7 +352,7 @@ class TicketsService {
         ticketId: messageData.ticket_id,
         messageId: messageData.message_id,
         fromMe: messageData.from_me,
-        content: messageData.content.substring(0, 50),
+        content: messageData.content.substring(0, 50) + '...',
         messageType: messageData.message_type
       });
 
