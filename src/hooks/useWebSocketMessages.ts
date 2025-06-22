@@ -29,11 +29,11 @@ export const useWebSocketMessages = (clientId: string, onMessage: (message: any)
           }
         });
 
-        socket.on('disconnect', (reason) => {
+        socket.on('disconnect', (reason: string) => {
           console.log('🔌 [WS] WebSocket desconectado:', reason);
           
-          // Tentar reconectar após 3 segundos se ainda estiver montado
-          if (mountedRef.current && reason !== 'client disconnect') {
+          // Tentar reconectar após 3 segundos se ainda estiver montado e não foi desconexão manual
+          if (mountedRef.current && reason !== 'io client disconnect') {
             reconnectTimeoutRef.current = setTimeout(() => {
               if (mountedRef.current) {
                 console.log('🔄 [WS] Tentando reconectar...');
@@ -43,7 +43,7 @@ export const useWebSocketMessages = (clientId: string, onMessage: (message: any)
           }
         });
 
-        socket.on('error', (error) => {
+        socket.on('error', (error: any) => {
           console.error('❌ [WS] Erro no WebSocket:', error);
         });
 

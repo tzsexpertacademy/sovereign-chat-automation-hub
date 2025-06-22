@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -14,6 +13,7 @@ import ContactsManager from './ContactsManager';
 import ManualTicketCreator from './ManualTicketCreator';
 import { useTicketRealtime } from '@/hooks/useTicketRealtime';
 import TypingIndicator from './TypingIndicator';
+import DebugPanel from './DebugPanel';
 
 interface ChatInterfaceProps {
   clientId: string;
@@ -182,7 +182,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   };
 
   return (
-    <div className="flex h-[calc(100vh-120px)] bg-white">
+    <div className="h-full flex">
       {/* Painel Esquerdo com Tabs */}
       <div className="w-1/3 border-r border-gray-200 flex flex-col h-full">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
@@ -468,6 +468,9 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
           </div>
         )}
       </div>
+
+      {/* Debug Panel */}
+      <DebugPanel clientId={clientId} />
     </div>
   );
 };

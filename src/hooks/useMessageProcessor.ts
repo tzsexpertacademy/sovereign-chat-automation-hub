@@ -12,6 +12,14 @@ export const useMessageProcessor = (clientId: string) => {
       return;
     }
 
+    console.log('🔄 [PROCESSOR] Dados da mensagem recebida:', {
+      from: messageData.from,
+      chatId: messageData.chat_id || messageData.chatId,
+      body: messageData.body,
+      timestamp: messageData.timestamp,
+      fromMe: messageData.from_me || messageData.fromMe
+    });
+
     // Criar ID único para a mensagem
     const messageId = messageData.id || 
                      messageData.message_id || 
@@ -45,29 +53,28 @@ export const useMessageProcessor = (clientId: string) => {
         return;
       }
 
-      // Normalizar chatId se necessário
-      if (!chatId.includes('@')) {
-        const phoneData = smartFormatPhone(chatId);
-        chatId = phoneData.chatId;
-      }
+      console.log('🔍 [PROCESSOR] Chat ID extraído:', chatId);
 
       // Extrair número limpo do chatId
-      const cleanPhone = extractPhoneFromChatId(chatId);
-      const phoneData = smartFormatPhone(cleanPhone);
+      let cleanPhone = chatId;
+      if (chatId.includes('@')) {
+        cleanPhone = extractPhoneFromChatId(chatId);
+      }
 
-      console.log('📞 [PROCESSOR] Dados do telefone processados:', {
-        originalChatId: messageData.chat_id || messageData.chatId,
-        normalizedChatId: chatId,
-        cleanPhone,
-        formattedPhone: phoneData.displayNumber,
-        isValid: phoneData.isValid
-      });
+      console.log('📞 [PROCESSOR] Número limpo extraído:', cleanPhone);
+
+      // Normalizar e validar número
+      const phoneData = smartFormatPhone(cleanPhone);
+      console.log('📱 [PROCESSOR] Dados do telefone processados:', phoneData);
 
       // Validar se é um número válido
       if (!phoneData.isValid) {
         console.log('⚠️ [PROCESSOR] Número de telefone inválido, ignorando:', cleanPhone);
         return;
       }
+
+      // Usar chatId normalizado
+      const normalizedChatId = phoneData.chatId;
 
       // Nome do cliente (prioritizar sender, depois notifyName, depois número formatado)
       const customerName = messageData.sender || 
@@ -87,9 +94,9 @@ export const useMessageProcessor = (clientId: string) => {
                               new Date(messageData.timestamp).toISOString() :
                               new Date().toISOString();
 
-      console.log('🎫 [PROCESSOR] Criando/atualizando ticket:', {
+      console.log('🎫 [PROCESSOR] Dados para criação do ticket:', {
         customerName,
-        chatId,
+        chatId: normalizedChatId,
         cleanPhone,
         messagePreview: messageContent.substring(0, 100)
       });
@@ -111,10 +118,10 @@ export const useMessageProcessor = (clientId: string) => {
       // Criar/atualizar ticket
       const ticketId = await ticketsService.ensureTicketExists(
         clientId,
-        chatId,
+        normalizedChatId,
         instanceId,
         customerName,
-        cleanPhone,
+        phoneData.cleanNumber,
         messageContent,
         messageTimestamp
       );
