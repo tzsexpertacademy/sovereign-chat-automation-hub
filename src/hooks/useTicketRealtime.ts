@@ -11,7 +11,7 @@ export const useTicketRealtime = (clientId: string) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isOnline, setIsOnline] = useState(true); // SEMPRE ONLINE
   
-  // Hook para gerenciar status online
+  // Hook para gerenciar status online - CORRIGIDO
   const { markActivity } = useOnlineStatus(clientId, true);
 
   const loadTickets = useCallback(async () => {
@@ -35,23 +35,27 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId, markActivity]);
 
-  // Simular indicadores de IA ativa
+  // Simular indicadores de IA ativa - APRIMORADO
   const simulateAIActivity = useCallback(() => {
-    // Simular digitação ocasional
+    // Simular digitação ocasional - mais realista
     const typingInterval = setInterval(() => {
-      if (Math.random() < 0.1) { // 10% chance
+      if (Math.random() < 0.08) { // 8% chance
         setIsTyping(true);
-        setTimeout(() => setIsTyping(false), 2000 + Math.random() * 3000);
-      }
-    }, 30000); // A cada 30 segundos
-
-    // Simular gravação ocasional
-    const recordingInterval = setInterval(() => {
-      if (Math.random() < 0.05) { // 5% chance
-        setIsRecording(true);
-        setTimeout(() => setIsRecording(false), 1000 + Math.random() * 2000);
+        const typingDuration = 2000 + Math.random() * 4000; // 2-6 segundos
+        setTimeout(() => setIsTyping(false), typingDuration);
+        console.log(`⌨️ IA simulando digitação por ${typingDuration}ms`);
       }
     }, 45000); // A cada 45 segundos
+
+    // Simular gravação ocasional - mais realista
+    const recordingInterval = setInterval(() => {
+      if (Math.random() < 0.03) { // 3% chance
+        setIsRecording(true);
+        const recordingDuration = 1500 + Math.random() * 2500; // 1.5-4 segundos
+        setTimeout(() => setIsRecording(false), recordingDuration);
+        console.log(`🎤 IA simulando gravação por ${recordingDuration}ms`);
+      }
+    }, 60000); // A cada 1 minuto
 
     return () => {
       clearInterval(typingInterval);
@@ -59,7 +63,7 @@ export const useTicketRealtime = (clientId: string) => {
     };
   }, []);
 
-  // Escutar mudanças em tempo real
+  // Escutar mudanças em tempo real - OTIMIZADO
   useEffect(() => {
     if (!clientId) return;
 
@@ -83,7 +87,7 @@ export const useTicketRealtime = (clientId: string) => {
       )
       .subscribe();
 
-    // Escutar mudanças em mensagens
+    // Escutar mudanças em mensagens - APRIMORADO
     const messagesChannel = supabase
       .channel('messages-changes')
       .on(
@@ -96,10 +100,11 @@ export const useTicketRealtime = (clientId: string) => {
         (payload) => {
           console.log('💬 Nova mensagem:', payload);
           
-          // Simular indicadores quando há atividade de IA
+          // Simular indicadores quando há atividade de IA - CORRIGIDO
           if (payload.new && (payload.new as any).is_ai_response) {
             setIsTyping(true);
             setTimeout(() => setIsTyping(false), 1500);
+            console.log('🤖 Atividade de IA detectada - mostrando digitação');
           }
           
           loadTickets();
@@ -118,17 +123,19 @@ export const useTicketRealtime = (clientId: string) => {
     };
   }, [clientId, loadTickets, markActivity, simulateAIActivity]);
 
-  // Manter sempre online
+  // Manter sempre online - SIMPLIFICADO
   useEffect(() => {
     setIsOnline(true);
     
+    // Marcar atividade periodicamente
     const onlineInterval = setInterval(() => {
       setIsOnline(true);
       markActivity();
-    }, 10000); // A cada 10 segundos
+      console.log(`📱 Status online mantido para cliente: ${clientId}`);
+    }, 30000); // A cada 30 segundos
 
     return () => clearInterval(onlineInterval);
-  }, [markActivity]);
+  }, [markActivity, clientId]);
 
   const reloadTickets = useCallback(() => {
     loadTickets();
@@ -139,7 +146,7 @@ export const useTicketRealtime = (clientId: string) => {
     isLoading,
     isTyping,
     isRecording,
-    isOnline,
+    isOnline: true, // SEMPRE ONLINE
     reloadTickets
   };
 };

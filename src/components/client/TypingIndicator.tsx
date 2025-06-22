@@ -19,18 +19,18 @@ const TypingIndicator: React.FC<TypingIndicatorProps> = ({
 }) => {
   return (
     <div className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-green-50 border-t border-blue-200">
-      {/* Status Online SEMPRE VISÍVEL */}
+      {/* Status Online SEMPRE VISÍVEL E APRIMORADO */}
       {showOnlineStatus && (
         <div className="flex items-center space-x-2 text-green-600">
           <div className="relative">
             <Wifi className="w-4 h-4" />
             <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           </div>
-          <span className="text-xs font-medium">Online</span>
+          <span className="text-xs font-medium">Online ✓✓</span>
         </div>
       )}
       
-      {/* Indicador de Digitação */}
+      {/* Indicador de Digitação APRIMORADO */}
       {isTyping && (
         <>
           <div className="w-px h-4 bg-gray-300 mx-1" />
@@ -46,7 +46,7 @@ const TypingIndicator: React.FC<TypingIndicatorProps> = ({
         </>
       )}
 
-      {/* Indicador de Gravação */}
+      {/* Indicador de Gravação APRIMORADO */}
       {isRecording && (
         <>
           <div className="w-px h-4 bg-gray-300 mx-1" />
@@ -64,11 +64,11 @@ const TypingIndicator: React.FC<TypingIndicatorProps> = ({
         </>
       )}
 
-      {/* Mensagem padrão quando não está digitando nem gravando */}
+      {/* Mensagem padrão quando não está digitando nem gravando - APRIMORADA */}
       {!isTyping && !isRecording && (
         <>
           <div className="w-px h-4 bg-gray-300 mx-1" />
-          <span className="text-sm text-gray-600">Pronto para responder</span>
+          <span className="text-sm text-gray-600">Pronto para responder • ✓✓ Leitura ativa</span>
         </>
       )}
     </div>

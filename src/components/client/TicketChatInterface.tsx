@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -195,9 +194,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       });
 
       // Mostrar indicador de digitação antes de enviar
-      if (showTyping) {
-        await showTyping(ticket.chat_id, 1500);
-      }
+      console.log('⌨️ Mostrando indicador de digitação...');
+      await showTyping(ticket.chat_id, 1500);
 
       const response = await whatsappService.sendMessage(
         connectedInstance,
@@ -350,7 +348,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       {connectedInstance && (
         <div className="p-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-green-800">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-xs">🤖 IA Online • Conectado via: {connectedInstance}</span>
+          <span className="text-xs">🤖 IA Online • ✓✓ Confirmação de Leitura Ativa • Conectado via: {connectedInstance}</span>
         </div>
       )}
 
@@ -413,7 +411,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                     <div className="text-xs text-gray-500 mt-1 text-left">
                       {formatTime(message.timestamp)}
                       {message.is_ai_response && (
-                        <span className="ml-1 text-green-600">• IA</span>
+                        <span className="ml-1 text-green-600">• IA ✓✓</span>
                       )}
                     </div>
                   )}

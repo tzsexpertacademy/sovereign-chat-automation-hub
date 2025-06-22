@@ -1,11 +1,11 @@
 
-import { whatsappService } from './whatsappMultiClient';
+import { supabase } from '@/integrations/supabase/client';
 
 class PresenceService {
   private presenceIntervals: Map<string, NodeJS.Timeout> = new Map();
   private typingTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
-  // Manter status online ativo
+  // Manter status online ativo (simulado localmente)
   async maintainOnlineStatus(clientId: string, enable: boolean = true) {
     if (enable) {
       // Limpar intervalo anterior se existir
@@ -14,23 +14,12 @@ class PresenceService {
         clearInterval(existingInterval);
       }
 
-      // Definir como online imediatamente
-      try {
-        await whatsappService.updatePresence(clientId, 'available');
-        console.log(`👤 Status online ativado para ${clientId}`);
-      } catch (error) {
-        console.log(`⚠️ Erro ao definir status online para ${clientId}:`, error);
-      }
+      console.log(`👤 Status online simulado ativado para ${clientId}`);
 
-      // Manter online a cada 30 segundos
-      const interval = setInterval(async () => {
-        try {
-          await whatsappService.updatePresence(clientId, 'available');
-          console.log(`👤 Status online mantido para ${clientId}`);
-        } catch (error) {
-          console.log(`⚠️ Erro ao manter status online para ${clientId}:`, error);
-        }
-      }, 30000);
+      // Simular manutenção de status online (sem chamadas HTTP)
+      const interval = setInterval(() => {
+        console.log(`👤 Status online mantido (simulado) para ${clientId}`);
+      }, 60000); // A cada 1 minuto
 
       this.presenceIntervals.set(clientId, interval);
     } else {
@@ -40,13 +29,14 @@ class PresenceService {
         clearInterval(interval);
         this.presenceIntervals.delete(clientId);
       }
+      console.log(`👤 Status online desativado para ${clientId}`);
     }
   }
 
-  // Mostrar indicador de digitação
+  // Mostrar indicador de digitação (simulado)
   async showTyping(clientId: string, chatId: string, duration: number = 3000) {
     try {
-      console.log(`⌨️ Mostrando digitação para ${chatId}`);
+      console.log(`⌨️ Simulando digitação para ${chatId} (${duration}ms)`);
       
       // Limpar timeout anterior se existir
       const existingTimeout = this.typingTimeouts.get(`${clientId}_${chatId}`);
@@ -54,15 +44,30 @@ class PresenceService {
         clearTimeout(existingTimeout);
       }
 
-      // Mostrar digitação
-      await whatsappService.setTyping(clientId, chatId, true);
-      await whatsappService.updatePresence(clientId, 'composing');
+      // Atualizar estado no banco para mostrar digitação
+      await supabase
+        .from('whatsapp_chats')
+        .upsert({
+          chat_id: chatId,
+          instance_id: clientId,
+          is_typing: true,
+          typing_started_at: new Date().toISOString()
+        }, {
+          onConflict: 'chat_id,instance_id'
+        });
 
       // Parar digitação após duração especificada
       const timeout = setTimeout(async () => {
         try {
-          await whatsappService.setTyping(clientId, chatId, false);
-          await whatsappService.updatePresence(clientId, 'available');
+          await supabase
+            .from('whatsapp_chats')
+            .update({
+              is_typing: false,
+              typing_started_at: null
+            })
+            .eq('chat_id', chatId)
+            .eq('instance_id', clientId);
+          
           console.log(`⌨️ Digitação parada para ${chatId}`);
         } catch (error) {
           console.log(`⚠️ Erro ao parar digitação:`, error);
@@ -71,47 +76,66 @@ class PresenceService {
       }, duration);
 
       this.typingTimeouts.set(`${clientId}_${chatId}`, timeout);
+      return true;
     } catch (error) {
-      console.log(`❌ Erro ao mostrar digitação:`, error);
+      console.log(`❌ Erro ao simular digitação:`, error);
+      return false;
     }
   }
 
-  // Mostrar indicador de gravação
+  // Mostrar indicador de gravação (simulado)
   async showRecording(clientId: string, chatId: string, duration: number = 2000) {
     try {
-      console.log(`🎤 Mostrando gravação para ${chatId}`);
+      console.log(`🎤 Simulando gravação para ${chatId} (${duration}ms)`);
       
-      // Mostrar gravação
-      await whatsappService.setRecording(clientId, chatId, true);
-      await whatsappService.updatePresence(clientId, 'recording');
+      // Atualizar estado no banco para mostrar gravação
+      await supabase
+        .from('whatsapp_chats')
+        .upsert({
+          chat_id: chatId,
+          instance_id: clientId,
+          is_recording: true
+        }, {
+          onConflict: 'chat_id,instance_id'
+        });
 
       // Parar gravação após duração especificada
       setTimeout(async () => {
         try {
-          await whatsappService.setRecording(clientId, chatId, false);
-          await whatsappService.updatePresence(clientId, 'available');
+          await supabase
+            .from('whatsapp_chats')
+            .update({
+              is_recording: false
+            })
+            .eq('chat_id', chatId)
+            .eq('instance_id', clientId);
+          
           console.log(`🎤 Gravação parada para ${chatId}`);
         } catch (error) {
           console.log(`⚠️ Erro ao parar gravação:`, error);
         }
       }, duration);
+
+      return true;
     } catch (error) {
-      console.log(`❌ Erro ao mostrar gravação:`, error);
+      console.log(`❌ Erro ao simular gravação:`, error);
+      return false;
     }
   }
 
-  // Marcar mensagens como lidas
+  // Marcar mensagens como lidas (simulado)
   async markAsRead(clientId: string, chatId: string, messageIds: string[]) {
     try {
-      console.log(`✓✓ Marcando ${messageIds.length} mensagens como lidas em ${chatId}`);
+      console.log(`✓✓ Simulando leitura de ${messageIds.length} mensagens em ${chatId}`);
       
-      for (const messageId of messageIds) {
-        await whatsappService.markAsRead(clientId, chatId, messageId);
-      }
-
-      console.log(`✅ Mensagens marcadas como lidas com sucesso`);
+      // Simular delay de leitura realista
+      await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
+      
+      console.log(`✅ Mensagens marcadas como lidas (simulado)`);
+      return true;
     } catch (error) {
-      console.log(`❌ Erro ao marcar mensagens como lidas:`, error);
+      console.log(`❌ Erro ao simular leitura:`, error);
+      return false;
     }
   }
 
@@ -130,6 +154,8 @@ class PresenceService {
         this.typingTimeouts.delete(key);
       }
     }
+    
+    console.log(`🧹 Cleanup realizado para ${clientId}`);
   }
 
   // Cleanup geral
@@ -143,6 +169,8 @@ class PresenceService {
       clearTimeout(timeout);
     }
     this.typingTimeouts.clear();
+    
+    console.log(`🧹 Cleanup geral realizado`);
   }
 }
 

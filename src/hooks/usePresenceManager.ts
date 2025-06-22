@@ -2,50 +2,53 @@
 import { useEffect, useCallback } from 'react';
 import { presenceService } from '@/services/presenceService';
 
-export const usePresenceManager = (clientId: string, isEnabled: boolean = true) => {
+export const usePresenceManager = (instanceId: string, isEnabled: boolean = true) => {
   
   // Manter status online
   useEffect(() => {
-    if (clientId && isEnabled) {
-      console.log(`🔛 Ativando gerenciamento de presença para ${clientId}`);
-      presenceService.maintainOnlineStatus(clientId, true);
+    if (instanceId && isEnabled) {
+      console.log(`🔛 Ativando gerenciamento de presença para instância ${instanceId}`);
+      presenceService.maintainOnlineStatus(instanceId, true);
       
       return () => {
-        console.log(`🔴 Desativando gerenciamento de presença para ${clientId}`);
-        presenceService.maintainOnlineStatus(clientId, false);
+        console.log(`🔴 Desativando gerenciamento de presença para instância ${instanceId}`);
+        presenceService.maintainOnlineStatus(instanceId, false);
       };
     }
-  }, [clientId, isEnabled]);
+  }, [instanceId, isEnabled]);
 
   // Mostrar indicador de digitação
-  const showTyping = useCallback((chatId: string, duration?: number) => {
-    if (clientId && isEnabled) {
-      return presenceService.showTyping(clientId, chatId, duration);
+  const showTyping = useCallback(async (chatId: string, duration?: number) => {
+    if (instanceId && isEnabled) {
+      return await presenceService.showTyping(instanceId, chatId, duration);
     }
-  }, [clientId, isEnabled]);
+    return false;
+  }, [instanceId, isEnabled]);
 
   // Mostrar indicador de gravação
-  const showRecording = useCallback((chatId: string, duration?: number) => {
-    if (clientId && isEnabled) {
-      return presenceService.showRecording(clientId, chatId, duration);
+  const showRecording = useCallback(async (chatId: string, duration?: number) => {
+    if (instanceId && isEnabled) {
+      return await presenceService.showRecording(instanceId, chatId, duration);
     }
-  }, [clientId, isEnabled]);
+    return false;
+  }, [instanceId, isEnabled]);
 
   // Marcar mensagens como lidas
-  const markMessagesAsRead = useCallback((chatId: string, messageIds: string[]) => {
-    if (clientId && isEnabled) {
-      return presenceService.markAsRead(clientId, chatId, messageIds);
+  const markMessagesAsRead = useCallback(async (chatId: string, messageIds: string[]) => {
+    if (instanceId && isEnabled && messageIds.length > 0) {
+      return await presenceService.markAsRead(instanceId, chatId, messageIds);
     }
-  }, [clientId, isEnabled]);
+    return false;
+  }, [instanceId, isEnabled]);
 
   // Cleanup ao desmontar
   useEffect(() => {
     return () => {
-      if (clientId) {
-        presenceService.cleanup(clientId);
+      if (instanceId) {
+        presenceService.cleanup(instanceId);
       }
     };
-  }, [clientId]);
+  }, [instanceId]);
 
   return {
     showTyping,
