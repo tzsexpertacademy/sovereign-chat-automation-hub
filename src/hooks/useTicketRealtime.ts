@@ -52,9 +52,9 @@ export const useTicketRealtime = (clientId: string) => {
       
       const customerPhone = lastMessage.from?.replace(/\D/g, '') || '';
       
-      console.log('🎫 Verificando/criando ticket para contato:', customerName, customerPhone);
+      console.log('🎫 Criando/recriando ticket para contato:', customerName, customerPhone);
       
-      // SEMPRE tentar criar/atualizar ticket (isso vai recriar se foi excluído)
+      // SEMPRE criar um novo ticket (vai recriar se foi excluído)
       const ticketId = await ticketsService.createOrUpdateTicket(
         clientId,
         lastMessage.from || lastMessage.chatId,
@@ -65,7 +65,7 @@ export const useTicketRealtime = (clientId: string) => {
         new Date().toISOString()
       );
 
-      console.log('📋 Ticket criado/atualizado/recriado:', ticketId);
+      console.log('📋 Ticket criado/recriado com sucesso:', ticketId);
 
       // Adicionar todas as mensagens do lote ao ticket
       for (const message of messages) {

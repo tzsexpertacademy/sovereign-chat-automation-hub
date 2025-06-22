@@ -161,40 +161,20 @@ class TicketsService {
         customerName
       });
 
-      const { data, error } = await supabase.rpc('upsert_conversation_ticket', {
-        p_client_id: clientId,
-        p_chat_id: chatId,
-        p_instance_id: instanceId,
-        p_customer_name: customerName,
-        p_customer_phone: customerPhone,
-        p_last_message: lastMessage,
-        p_last_message_at: lastMessageAt
-      });
-
-      if (error) {
-        console.error('❌ Erro na função upsert_conversation_ticket:', error);
-        
-        // Se a função falhar, tentar criar manualmente
-        console.log('🔄 Tentando criar ticket manualmente...');
-        return await this.createTicketManually(
-          clientId, chatId, instanceId, customerName, customerPhone, lastMessage, lastMessageAt
-        );
-      }
-
-      console.log('✅ Ticket criado/atualizado com sucesso:', data);
-      return data;
-    } catch (error) {
-      console.error('❌ Erro ao criar/atualizar ticket:', error);
-      
-      // Fallback: tentar criar manualmente
-      console.log('🔄 Fallback: criando ticket manualmente...');
-      return await this.createTicketManually(
+      // SEMPRE criar um novo ticket se não existir (incluindo se foi excluído)
+      const ticketId = await this.createTicketDirectly(
         clientId, chatId, instanceId, customerName, customerPhone, lastMessage, lastMessageAt
       );
+
+      console.log('✅ Ticket criado/recriado com sucesso:', ticketId);
+      return ticketId;
+    } catch (error) {
+      console.error('❌ Erro ao criar/atualizar ticket:', error);
+      throw error;
     }
   }
 
-  private async createTicketManually(
+  private async createTicketDirectly(
     clientId: string,
     chatId: string,
     instanceId: string,
@@ -212,7 +192,7 @@ class TicketsService {
         .select('id')
         .eq('client_id', clientId)
         .eq('phone', customerPhone)
-        .single();
+        .maybeSingle();
 
       if (existingCustomer) {
         customerId = existingCustomer.id;
@@ -234,7 +214,7 @@ class TicketsService {
         console.log('👤 Novo customer criado:', customerId);
       }
 
-      // Verificar se já existe um ticket para este chat/instance (não arquivado)
+      // Verificar se já existe um ticket ATIVO (não arquivado) para este chat
       const { data: existingTicket } = await supabase
         .from('conversation_tickets')
         .select('id')
@@ -242,7 +222,7 @@ class TicketsService {
         .eq('chat_id', chatId)
         .eq('instance_id', instanceId)
         .eq('is_archived', false)
-        .single();
+        .maybeSingle();
 
       if (existingTicket) {
         // Atualizar ticket existente
@@ -259,7 +239,7 @@ class TicketsService {
         console.log('📝 Ticket existente atualizado:', existingTicket.id);
         return existingTicket.id;
       } else {
-        // Criar novo ticket
+        // Criar novo ticket (incluindo quando foi excluído)
         const { data: newTicket, error: ticketError } = await supabase
           .from('conversation_tickets')
           .insert({
@@ -270,17 +250,18 @@ class TicketsService {
             title: `Conversa com ${customerName}`,
             last_message_preview: lastMessage,
             last_message_at: lastMessageAt,
-            status: 'open'
+            status: 'open',
+            is_archived: false
           })
           .select('id')
           .single();
 
         if (ticketError) throw ticketError;
-        console.log('🎫 Novo ticket criado:', newTicket.id);
+        console.log('🎫 Novo ticket criado/recriado:', newTicket.id);
         return newTicket.id;
       }
     } catch (error) {
-      console.error('❌ Erro ao criar ticket manualmente:', error);
+      console.error('❌ Erro ao criar ticket:', error);
       throw error;
     }
   }
@@ -293,7 +274,7 @@ class TicketsService {
         .select('id')
         .eq('message_id', messageData.message_id)
         .eq('ticket_id', messageData.ticket_id)
-        .single();
+        .maybeSingle();
 
       if (existingMessage) {
         console.log('Mensagem já existe, ignorando duplicata:', messageData.message_id);
@@ -315,103 +296,85 @@ class TicketsService {
 
   async importConversationsFromWhatsApp(clientId: string) {
     try {
-      console.log('📥 Iniciando importação de conversas via Supabase...');
+      console.log('📥 Iniciando importação de conversas...');
       
-      // Em vez de usar uma API externa que não existe, vamos buscar diretamente 
-      // as mensagens do WhatsApp que ainda não foram processadas
-      const { data: unprocessedMessages, error } = await supabase
-        .from('whatsapp_messages')
-        .select(`
-          *,
-          whatsapp_instances!inner(client_id)
-        `)
-        .eq('whatsapp_instances.client_id', clientId)
-        .eq('is_processed', false)
-        .order('timestamp', { ascending: true });
+      // Buscar instâncias do cliente
+      const { data: instances, error: instancesError } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id')
+        .eq('client_id', clientId);
 
-      if (error) {
-        console.error('❌ Erro ao buscar mensagens:', error);
-        throw new Error('Erro ao buscar mensagens do WhatsApp');
+      if (instancesError) {
+        console.error('❌ Erro ao buscar instâncias:', instancesError);
+        throw new Error('Erro ao buscar instâncias do WhatsApp');
       }
 
-      console.log(`📊 Encontradas ${unprocessedMessages?.length || 0} mensagens não processadas`);
-
-      if (!unprocessedMessages || unprocessedMessages.length === 0) {
+      if (!instances || instances.length === 0) {
         return {
           success: 0,
           errors: 0,
-          message: 'Nenhuma mensagem nova encontrada para importar'
+          message: 'Nenhuma instância do WhatsApp encontrada para este cliente'
+        };
+      }
+
+      const instanceIds = instances.map(i => i.instance_id);
+      console.log('📱 Instâncias encontradas:', instanceIds);
+
+      // Buscar chats únicos das instâncias
+      const { data: chats, error: chatsError } = await supabase
+        .from('whatsapp_chats')
+        .select('*')
+        .in('instance_id', instanceIds)
+        .order('last_message_time', { ascending: false });
+
+      if (chatsError) {
+        console.error('❌ Erro ao buscar chats:', chatsError);
+        throw new Error('Erro ao buscar conversas do WhatsApp');
+      }
+
+      console.log(`📊 Encontrados ${chats?.length || 0} chats`);
+
+      if (!chats || chats.length === 0) {
+        return {
+          success: 0,
+          errors: 0,
+          message: 'Nenhuma conversa encontrada para importar'
         };
       }
 
       let successCount = 0;
       let errorCount = 0;
 
-      // Agrupar mensagens por chat_id para criar tickets
-      const messagesByChat = unprocessedMessages.reduce((acc: any, msg: any) => {
-        if (!acc[msg.chat_id]) {
-          acc[msg.chat_id] = [];
-        }
-        acc[msg.chat_id].push(msg);
-        return acc;
-      }, {});
-
       // Processar cada chat
-      for (const [chatId, messages] of Object.entries(messagesByChat)) {
+      for (const chat of chats) {
         try {
-          const chatMessages = messages as any[];
-          const lastMessage = chatMessages[chatMessages.length - 1];
-          
           // Extrair informações do contato
-          const customerName = lastMessage.sender || 
-                             chatId.replace(/\D/g, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') || 
+          const customerName = chat.name || 
+                             chat.chat_id.replace(/\D/g, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') || 
                              'Contato';
-          const customerPhone = chatId.replace(/\D/g, '');
+          const customerPhone = chat.chat_id.replace(/\D/g, '');
+
+          if (!chat.last_message_time) {
+            console.log(`⚠️ Chat ${chat.chat_id} sem mensagens, pulando...`);
+            continue;
+          }
 
           // Criar/atualizar ticket
           const ticketId = await this.createOrUpdateTicket(
             clientId,
-            chatId,
-            lastMessage.instance_id,
+            chat.chat_id,
+            chat.instance_id,
             customerName,
             customerPhone,
-            lastMessage.body || '[Mídia]',
-            lastMessage.timestamp || new Date().toISOString()
+            chat.last_message || '[Conversa importada]',
+            chat.last_message_time
           );
 
-          // Adicionar todas as mensagens ao ticket
-          for (const msg of chatMessages) {
-            try {
-              await this.addTicketMessage({
-                ticket_id: ticketId,
-                message_id: msg.message_id,
-                from_me: msg.from_me || false,
-                sender_name: msg.sender || customerName,
-                content: msg.body || '[Mídia]',
-                message_type: msg.message_type || 'text',
-                is_internal_note: false,
-                is_ai_response: false,
-                processing_status: 'imported',
-                timestamp: msg.timestamp || new Date().toISOString()
-              });
-
-              // Marcar mensagem como processada
-              await supabase
-                .from('whatsapp_messages')
-                .update({ is_processed: true })
-                .eq('id', msg.id);
-
-            } catch (msgError) {
-              console.error('❌ Erro ao processar mensagem:', msgError);
-              errorCount++;
-            }
-          }
-
           successCount++;
-          console.log(`✅ Chat ${chatId} importado com sucesso`);
+          console.log(`✅ Chat ${chat.chat_id} importado como ticket ${ticketId}`);
 
         } catch (chatError) {
-          console.error(`❌ Erro ao processar chat ${chatId}:`, chatError);
+          console.error(`❌ Erro ao processar chat ${chat.chat_id}:`, chatError);
           errorCount++;
         }
       }
@@ -517,6 +480,8 @@ class TicketsService {
         .eq('id', ticketId);
 
       if (error) throw error;
+      
+      console.log('🗑️ Ticket excluído completamente:', ticketId);
     } catch (error) {
       console.error('Erro ao excluir ticket:', error);
       throw error;
