@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -14,6 +15,7 @@ export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [assistantTyping, setAssistantTyping] = useState(false);
+  const [assistantRecording, setAssistantRecording] = useState(false);
   
   const channelRef = useRef<any>(null);
   const socketRef = useRef<any>(null);
@@ -23,12 +25,130 @@ export const useTicketRealtime = (clientId: string) => {
   const initializationRef = useRef(false);
   const processingRef = useRef<Set<string>>(new Set());
   const conversationContextRef = useRef<Map<string, any[]>>(new Map());
+  const onlineStatusIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Hooks humanizados
   const { simulateHumanTyping, markAsRead } = useHumanizedTyping(clientId);
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
   const { splitMessage, sendMessagesInSequence } = useSmartMessageSplit();
+
+  // NOVO: Manter status online sempre ativo
+  useEffect(() => {
+    if (!clientId || !mountedRef.current) return;
+
+    console.log('🌐 Iniciando modo sempre online para cliente:', clientId);
+    
+    // Marcar como online imediatamente
+    markActivity();
+    
+    // Manter online a cada 25 segundos
+    onlineStatusIntervalRef.current = setInterval(() => {
+      if (mountedRef.current) {
+        markActivity();
+        console.log('🌐 Mantendo status online ativo');
+      }
+    }, 25000);
+
+    return () => {
+      if (onlineStatusIntervalRef.current) {
+        clearInterval(onlineStatusIntervalRef.current);
+        onlineStatusIntervalRef.current = null;
+      }
+    };
+  }, [clientId, markActivity]);
+
+  // NOVO: Função para simular indicadores visuais no WhatsApp
+  const simulateWhatsAppIndicators = useCallback(async (chatId: string, instanceId: string, messageLength: number) => {
+    if (!mountedRef.current || !chatId || !instanceId) return;
+
+    try {
+      console.log('🎭 Iniciando simulação de indicadores visuais');
+      
+      // 1. Mostrar como "online" imediatamente
+      try {
+        await whatsappService.setPresence(instanceId, chatId, 'available');
+        console.log('🌐 Status online definido');
+      } catch (error) {
+        console.log('⚠️ Erro ao definir presença (continuando):', error);
+      }
+
+      // 2. Calcular tempos baseado no tamanho da mensagem
+      const wordsCount = messageLength / 5; // média de 5 caracteres por palavra
+      const typingTime = Math.max(2000, Math.min(wordsCount * 200, 8000)); // 200ms por palavra, min 2s, max 8s
+      const recordingTime = Math.max(1000, Math.min(wordsCount * 150, 5000)); // Para áudios fictícios
+
+      console.log(`⏱️ Tempos calculados - Digitação: ${typingTime}ms, Gravação: ${recordingTime}ms`);
+
+      // 3. Simular gravação de áudio (30% das vezes) ou digitação
+      const shouldSimulateAudio = Math.random() < 0.3 && messageLength > 50;
+      
+      if (shouldSimulateAudio) {
+        console.log('🎤 Simulando gravação de áudio');
+        setAssistantRecording(true);
+        
+        try {
+          await whatsappService.setPresence(instanceId, chatId, 'recording');
+        } catch (error) {
+          console.log('⚠️ Erro ao definir presença de gravação (continuando):', error);
+        }
+        
+        // Simular tempo de gravação
+        await new Promise(resolve => setTimeout(resolve, recordingTime));
+        
+        setAssistantRecording(false);
+        
+        // Pequena pausa entre gravação e envio
+        await new Promise(resolve => setTimeout(resolve, 800));
+      } else {
+        console.log('⌨️ Simulando digitação');
+        setAssistantTyping(true);
+        
+        try {
+          await whatsappService.setPresence(instanceId, chatId, 'composing');
+        } catch (error) {
+          console.log('⚠️ Erro ao definir presença de digitação (continuando):', error);
+        }
+        
+        // Simular tempo de digitação com pausas realistas
+        const typingSegments = Math.ceil(typingTime / 1500); // Dividir em segmentos de 1.5s
+        
+        for (let i = 0; i < typingSegments; i++) {
+          if (!mountedRef.current) break;
+          
+          await new Promise(resolve => setTimeout(resolve, 1200 + Math.random() * 600)); // 1.2s-1.8s por segmento
+          
+          // Pausas ocasionais para parecer mais humano
+          if (Math.random() < 0.3) {
+            try {
+              await whatsappService.setPresence(instanceId, chatId, 'paused');
+              await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
+              await whatsappService.setPresence(instanceId, chatId, 'composing');
+            } catch (error) {
+              console.log('⚠️ Erro nas pausas de digitação (continuando):', error);
+            }
+          }
+        }
+        
+        setAssistantTyping(false);
+      }
+
+      // 4. Voltar para online antes de enviar
+      try {
+        await whatsappService.setPresence(instanceId, chatId, 'available');
+      } catch (error) {
+        console.log('⚠️ Erro ao voltar para online (continuando):', error);
+      }
+
+      console.log('✅ Simulação de indicadores concluída');
+      
+    } catch (error) {
+      console.error('❌ Erro na simulação de indicadores:', error);
+      // Limpar estados em caso de erro
+      setAssistantTyping(false);
+      setAssistantRecording(false);
+    }
+  }, []);
 
   // Função para normalizar dados da mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
@@ -48,7 +168,6 @@ export const useTicketRealtime = (clientId: string) => {
       phoneNumber = chatId.split('@')[0];
     }
     
-    // Extrair nome do contato
     let customerName = message.notifyName || 
                       message.pushName || 
                       message.participant || 
@@ -56,12 +175,10 @@ export const useTicketRealtime = (clientId: string) => {
                       message.senderName ||
                       phoneNumber;
     
-    // Se for grupo, usar nome do grupo
     if (chatId?.includes('@g.us')) {
       customerName = message.chat?.name || customerName;
     }
     
-    // Normalizar conteúdo da mensagem
     let content = message.body || 
                   message.caption || 
                   message.text || 
@@ -70,7 +187,6 @@ export const useTicketRealtime = (clientId: string) => {
     
     let messageType = message.type || 'text';
     
-    // Processar diferentes tipos de mídia
     if (message.type === 'image' || message.hasMedia) {
       content = `[Imagem] ${message.caption || 'Imagem enviada'}`;
       messageType = 'image';
@@ -91,14 +207,12 @@ export const useTicketRealtime = (clientId: string) => {
       messageType = 'location';
     }
     
-    // Verificar se é mensagem citada
     if (message.quotedMessage || message.quotedMsg) {
       const quoted = message.quotedMessage || message.quotedMsg;
       const quotedContent = quoted.body || quoted.caption || '[Mídia citada]';
       content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
     }
 
-    // Validar timestamp
     const timestamp = ticketsService.validateAndFixTimestamp(message.timestamp || message.t || Date.now());
 
     const normalizedMessage = {
@@ -156,7 +270,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar mensagem com assistente - VERSÃO MELHORADA COM TRATAMENTO DE ERRO
+  // Processar mensagem com assistente - VERSÃO MELHORADA COM INDICADORES VISUAIS
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     if (!mountedRef.current || !ticketId) {
       console.log('❌ Componente desmontado ou ticketId inválido, cancelando processamento IA');
@@ -167,11 +281,9 @@ export const useTicketRealtime = (clientId: string) => {
     console.log(`🤖 INICIANDO PROCESSAMENTO IA - Ticket: ${ticketId}`);
     console.log(`📨 Mensagens para processar: ${allMessages.length}`);
     
+    let instanceId = null;
+    
     try {
-      setAssistantTyping(true);
-      console.log('🤖 Assistente iniciou digitação');
-      
-      // Buscar configurações necessárias
       console.log('🔍 Buscando configurações de IA e filas...');
       const [queues, aiConfig] = await Promise.all([
         queuesService.getClientQueues(clientId),
@@ -189,7 +301,6 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
 
-      // Encontrar fila ativa com assistente
       const activeQueue = queues.find(q => q.is_active && q.assistants?.is_active);
       if (!activeQueue?.assistants) {
         console.log('⚠️ Nenhuma fila ativa com assistente encontrada');
@@ -199,7 +310,6 @@ export const useTicketRealtime = (clientId: string) => {
       const assistant = activeQueue.assistants;
       console.log(`🤖 Usando assistente: ${assistant.name} na fila: ${activeQueue.name}`);
 
-      // Buscar instância WhatsApp ativa
       const { data: instances } = await supabase
         .from('whatsapp_instances')
         .select('instance_id')
@@ -212,10 +322,9 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
 
-      const instanceId = instances[0].instance_id;
+      instanceId = instances[0].instance_id;
       console.log(`📱 Usando instância WhatsApp: ${instanceId}`);
 
-      // Atualizar ticket com informações da fila
       await supabase
         .from('conversation_tickets')
         .update({
@@ -225,7 +334,6 @@ export const useTicketRealtime = (clientId: string) => {
         })
         .eq('id', ticketId);
 
-      // BUSCAR CONTEXTO COMPLETO DO BANCO SEMPRE (CRÍTICO)
       console.log('📚 Buscando contexto COMPLETO do banco de dados...');
       const ticketMessages = await ticketsService.getTicketMessages(ticketId, 100);
       const contextMessages = ticketMessages.map(msg => ({
@@ -236,12 +344,7 @@ export const useTicketRealtime = (clientId: string) => {
       }));
       
       console.log(`📚 Contexto do banco carregado: ${contextMessages.length} mensagens`);
-      console.log('🔍 Últimas 3 mensagens do contexto:', contextMessages.slice(-3).map(m => ({
-        role: m.role,
-        content: m.content.substring(0, 100)
-      })));
 
-      // Preparar configurações
       let settings = { temperature: 0.7, max_tokens: 1000 };
       try {
         if (assistant.advanced_settings) {
@@ -257,7 +360,6 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('Erro ao parse das configurações:', e);
       }
 
-      // Preparar o contexto das mensagens ATUAIS do lote
       const currentBatchContent = allMessages
         .filter(msg => !msg.fromMe)
         .map(msg => msg.body || msg.caption || '[Mídia]')
@@ -269,13 +371,11 @@ export const useTicketRealtime = (clientId: string) => {
         clientMessagesInBatch: allMessages.filter(msg => !msg.fromMe).length
       });
 
-      // Se não há mensagens novas do cliente, não processar
       if (!currentBatchContent.trim()) {
         console.log('⚠️ Nenhuma mensagem nova do cliente para processar');
         return;
       }
 
-      // CRIAR PROMPT MELHORADO CONSIDERANDO CONTEXTO COMPLETO
       const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto importante: 
 - Você está respondendo mensagens do WhatsApp em tempo real
 - Você tem acesso ao histórico COMPLETO de ${contextMessages.length} mensagens desta conversa
@@ -286,7 +386,6 @@ export const useTicketRealtime = (clientId: string) => {
 - Mantenha a conversa natural e fluida
 - Seja conciso mas completo`;
 
-      // Usar contexto recente + mensagens atuais
       const recentContext = contextMessages.slice(-50).filter(msg => msg.content && msg.content.trim());
       
       const messages = [
@@ -307,7 +406,6 @@ export const useTicketRealtime = (clientId: string) => {
         newContentPreview: currentBatchContent.substring(0, 150)
       });
 
-      // CHAMAR OPENAI COM TRATAMENTO ROBUSTO DE ERROS
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -334,16 +432,13 @@ export const useTicketRealtime = (clientId: string) => {
       if (assistantResponse?.trim() && mountedRef.current) {
         console.log(`🤖 Resposta recebida (${assistantResponse.length} caracteres):`, assistantResponse.substring(0, 200));
         
-        // Quebrar resposta em blocos menores
+        // NOVO: Simular indicadores visuais ANTES de processar a resposta
+        if (instanceId) {
+          await simulateWhatsAppIndicators(message.from, instanceId, assistantResponse.length);
+        }
+        
         const messageBlocks = splitMessage(assistantResponse);
         console.log(`📝 Resposta dividida em ${messageBlocks.length} blocos`);
-        
-        // Simular digitação apenas uma vez antes do primeiro bloco
-        try {
-          await simulateHumanTyping(message.from, assistantResponse);
-        } catch (typingError) {
-          console.warn('⚠️ Erro na simulação de digitação (continuando):', typingError);
-        }
         
         // Enviar blocos em sequência
         for (let i = 0; i < messageBlocks.length; i++) {
@@ -352,17 +447,15 @@ export const useTicketRealtime = (clientId: string) => {
           const blockContent = messageBlocks[i];
           console.log(`📤 Enviando bloco ${i + 1}/${messageBlocks.length}: ${blockContent.substring(0, 100)}`);
           
-          // Delay entre blocos
+          // Delay entre blocos para parecer mais humano
           if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await new Promise(resolve => setTimeout(resolve, 1200 + Math.random() * 800));
           }
           
           try {
-            // Enviar via WhatsApp
             const sendResult = await whatsappService.sendMessage(instanceId, message.from, blockContent);
             console.log(`📤 Resultado do envio bloco ${i + 1}:`, sendResult);
             
-            // Registrar no ticket
             const aiMessageId = `ai_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
             await ticketsService.addTicketMessage({
               ticket_id: ticketId,
@@ -379,13 +472,12 @@ export const useTicketRealtime = (clientId: string) => {
             });
           } catch (sendError) {
             console.error(`❌ Erro ao enviar bloco ${i + 1}:`, sendError);
-            // Continuar com próximo bloco mesmo se houver erro
           }
         }
 
         console.log('✅ Resposta completa enviada');
         
-        // Marcar mensagens como lidas após enviar toda a resposta
+        // Marcar mensagens como lidas
         for (const msg of allMessages.filter(m => !m.fromMe)) {
           try {
             await markAsRead(message.from, msg.id || msg.key?.id);
@@ -399,19 +491,18 @@ export const useTicketRealtime = (clientId: string) => {
 
     } catch (error) {
       console.error('❌ Erro CRÍTICO no processamento do assistente:', error);
-      // IMPORTANTE: Não deixar o assistente travado em caso de erro
     } finally {
-      // SEMPRE limpar estado mesmo em caso de erro
       if (mountedRef.current) {
         setAssistantTyping(false);
-        console.log('🤖 Assistente parou de digitar');
+        setAssistantRecording(false);
+        console.log('🤖 Assistente finalizou processamento');
       }
       processingRef.current.delete(ticketId);
       console.log('✅ Processamento finalizado para ticket:', ticketId);
     }
-  }, [clientId, simulateHumanTyping, markAsRead, splitMessage]);
+  }, [clientId, simulateHumanTyping, markAsRead, splitMessage, simulateWhatsAppIndicators]);
 
-  // Hook para agrupamento de mensagens - COM CORREÇÃO PARA CONTINUIDADE
+  // Hook para agrupamento de mensagens - MANTIDO INTACTO
   const { addMessage, getBatchInfo, markBatchAsCompleted, updateCallback } = useMessageBatch(async (chatId: string, messages: any[]) => {
     console.log(`📦 PROCESSBATCH CHAMADO - chatId: ${chatId}, mensagens: ${messages.length}`);
     
@@ -421,12 +512,6 @@ export const useTicketRealtime = (clientId: string) => {
     }
 
     console.log(`📦 INICIANDO processamento de lote de ${messages.length} mensagens do chat ${chatId}`);
-    console.log(`📝 Detalhes das mensagens:`, messages.map(m => ({
-      id: m.id,
-      content: m.body?.substring(0, 50),
-      fromMe: m.fromMe,
-      timestamp: new Date(m.timestamp || Date.now()).toLocaleTimeString()
-    })));
     
     const clientMessages = messages.filter(msg => !msg.fromMe);
     if (clientMessages.length === 0) {
@@ -489,7 +574,6 @@ export const useTicketRealtime = (clientId: string) => {
 
       console.log('📋 Ticket processado:', ticketId);
 
-      // Salvar TODAS as mensagens do lote
       for (const message of messages) {
         const normalized = normalizeWhatsAppMessage(message);
         
@@ -508,7 +592,6 @@ export const useTicketRealtime = (clientId: string) => {
         });
       }
 
-      // Processar reações para mensagens do cliente
       for (const message of clientMessages) {
         const normalized = normalizeWhatsAppMessage(message);
         await processReaction(normalized);
@@ -516,20 +599,17 @@ export const useTicketRealtime = (clientId: string) => {
 
       markActivity();
 
-      // Atualizar lista de tickets
       setTimeout(() => {
         if (mountedRef.current) {
           loadTickets();
         }
       }, 1000);
 
-      // PROCESSAMENTO COM ASSISTENTE - MELHORADO
       console.log(`🔍 Verificando se ticket ${ticketId} já está sendo processado...`);
       if (!processingRef.current.has(ticketId)) {
         processingRef.current.add(ticketId);
         console.log(`🤖 INICIANDO processamento com assistente para ticket: ${ticketId}`);
         
-        // Delay pequeno para garantir que mensagens foram salvas
         setTimeout(() => {
           if (mountedRef.current && processingRef.current.has(ticketId)) {
             processWithAssistant(normalizedMessage, ticketId, clientMessages);
@@ -537,22 +617,20 @@ export const useTicketRealtime = (clientId: string) => {
         }, 800);
       } else {
         console.log(`⚠️ Ticket ${ticketId} já está sendo processado pelo assistente`);
-        // IMPORTANTE: Não bloquear processamento futuro
         setTimeout(() => {
           processingRef.current.delete(ticketId);
           console.log(`🔄 Liberando processamento para ticket ${ticketId} após timeout`);
-        }, 30000); // 30 segundos timeout
+        }, 30000);
       }
       
     } catch (error) {
       console.error('❌ Erro ao processar lote de mensagens:', error);
     } finally {
-      // Marcar lote como completo
       markBatchAsCompleted(chatId);
     }
   });
 
-  // Configurar listeners uma única vez
+  // Configurar listeners uma única vez - MANTIDO INTACTO
   useEffect(() => {
     if (!clientId || initializationRef.current) return;
 
@@ -580,7 +658,6 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('❌ Erro de conexão WebSocket:', error);
       });
 
-      // Eventos WebSocket para mensagens
       const events = [
         `message_${clientId}`,
         `new_message_${clientId}`,
@@ -604,7 +681,6 @@ export const useTicketRealtime = (clientId: string) => {
         });
       });
 
-      // Canal Supabase para mudanças no banco
       const channel = supabase
         .channel(`tickets-${clientId}`)
         .on(
@@ -641,6 +717,9 @@ export const useTicketRealtime = (clientId: string) => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
+      if (onlineStatusIntervalRef.current) {
+        clearInterval(onlineStatusIntervalRef.current);
+      }
       processedMessagesRef.current.clear();
       processingRef.current.clear();
       conversationContextRef.current.clear();
@@ -657,7 +736,8 @@ export const useTicketRealtime = (clientId: string) => {
     tickets,
     isLoading,
     isTyping: assistantTyping,
-    isOnline,
+    isRecording: assistantRecording,
+    isOnline: true, // SEMPRE ONLINE
     reloadTickets,
     getBatchInfo
   };
