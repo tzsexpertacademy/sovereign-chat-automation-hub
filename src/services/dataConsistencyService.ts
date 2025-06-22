@@ -67,14 +67,18 @@ export class DataConsistencyService {
           }
         }
         
-        // Verificar contagem de instâncias - SEMPRE verificar
+        // SEMPRE verificar contagem de instâncias - isso é o problema principal do Thalis
         const clientInstancesInDB = allInstancesInDB?.filter(i => i.client_id === client.id) || [];
-        if (client.current_instances !== clientInstancesInDB.length) {
+        const realCount = clientInstancesInDB.length;
+        
+        console.log(`📊 Cliente ${client.name}: mostra ${client.current_instances}, real no banco: ${realCount}`);
+        
+        if (client.current_instances !== realCount) {
           inconsistencies.push({
             type: 'client_count_mismatch',
             clientId: client.id,
             clientName: client.name,
-            description: `Cliente ${client.name} mostra ${client.current_instances} instâncias mas tem ${clientInstancesInDB.length} no banco`
+            description: `Cliente ${client.name} mostra ${client.current_instances} instâncias mas tem ${realCount} no banco`
           });
         }
       }
@@ -118,13 +122,13 @@ export class DataConsistencyService {
     
     try {
       // Limpar instance_id e instance_status do cliente
-      await clientsService.updateClient(clientId, {
+      await this.updateClientDirectly(clientId, {
         instance_id: null,
         instance_status: 'disconnected'
       });
       
       // Recalcular a contagem de instâncias
-      await this.fixClientCountMismatch(clientId);
+      await this.forceRecalculateInstanceCount(clientId);
       
       console.log('✅ Referência órfã corrigida');
     } catch (error) {
@@ -150,7 +154,7 @@ export class DataConsistencyService {
     
     try {
       // Limpar a referência do cliente para a instância principal
-      await clientsService.updateClient(clientId, {
+      await this.updateClientDirectly(clientId, {
         instance_id: null,
         instance_status: 'disconnected'
       });
@@ -170,7 +174,7 @@ export class DataConsistencyService {
     
     try {
       // Limpar referência do cliente e marcar como desconectado
-      await clientsService.updateClient(clientId, {
+      await this.updateClientDirectly(clientId, {
         instance_id: null,
         instance_status: 'disconnected'
       });
@@ -207,6 +211,23 @@ export class DataConsistencyService {
     }
   }
 
+  // Método para atualizar cliente diretamente no banco sem usar o service
+  async updateClientDirectly(clientId: string, updates: any): Promise<void> {
+    console.log(`🔄 Atualizando cliente ${clientId} diretamente no banco:`, updates);
+    
+    const { error } = await supabase
+      .from("clients")
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", clientId);
+      
+    if (error) throw error;
+    
+    console.log('✅ Cliente atualizado diretamente no banco');
+  }
+
   async forceRecalculateInstanceCount(clientId: string): Promise<void> {
     console.log(`🧮 Forçando recálculo da contagem para cliente ${clientId}`);
     
@@ -222,7 +243,7 @@ export class DataConsistencyService {
       const realCount = instances?.length || 0;
       console.log(`📊 Contagem real encontrada: ${realCount} instâncias`);
       
-      // Atualizar forçadamente a contagem no cliente
+      // Atualizar forçadamente a contagem no cliente usando update direto
       const { error: updateError } = await supabase
         .from("clients")
         .update({ 
@@ -234,6 +255,10 @@ export class DataConsistencyService {
       if (updateError) throw updateError;
       
       console.log(`✅ Contagem de instâncias atualizada para ${realCount}`);
+      
+      // Aguardar um pouco para garantir que a atualização seja processada
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
     } catch (error) {
       console.error('❌ Erro ao recalcular contagem:', error);
       throw error;
@@ -282,7 +307,7 @@ export class DataConsistencyService {
         }
         
         // Pequena pausa entre correções para evitar conflitos
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 300));
         
       } catch (error) {
         console.error(`❌ Erro ao corrigir inconsistência:`, inconsistency, error);
@@ -293,7 +318,7 @@ export class DataConsistencyService {
     
     // Após todas as correções, fazer uma verificação final
     console.log('🔄 Verificação final após correções...');
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     return fixedCount;
   }

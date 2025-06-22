@@ -51,9 +51,10 @@ const ClientsManagement = () => {
   const loadClients = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Recarregando lista de clientes...');
       const clientsData = await clientsService.getAllClients();
       setClients(clientsData);
-      console.log('Clientes carregados do Supabase:', clientsData);
+      console.log('✅ Clientes recarregados:', clientsData);
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
       toast({
@@ -64,6 +65,12 @@ const ClientsManagement = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Callback para quando dados são corrigidos no verificador de consistência
+  const handleDataFixed = async () => {
+    console.log('🔄 Dados foram corrigidos, recarregando lista de clientes...');
+    await loadClients();
   };
 
   const handleCreateClient = async () => {
@@ -233,10 +240,10 @@ const ClientsManagement = () => {
         </div>
       </div>
 
-      {/* Data Consistency Checker - More prominent */}
+      {/* Data Consistency Checker - Pass callback */}
       {showConsistencyChecker && (
         <div className="border-2 border-amber-200 rounded-lg p-1 bg-amber-50/50">
-          <DataConsistencyChecker />
+          <DataConsistencyChecker onDataFixed={handleDataFixed} />
         </div>
       )}
 

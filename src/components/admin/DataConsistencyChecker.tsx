@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { dataConsistencyService, DataInconsistency } from "@/services/dataConsistencyService";
 
-const DataConsistencyChecker = () => {
+interface DataConsistencyCheckerProps {
+  onDataFixed?: () => void; // Callback para notificar quando dados foram corrigidos
+}
+
+const DataConsistencyChecker = ({ onDataFixed }: DataConsistencyCheckerProps) => {
   const [inconsistencies, setInconsistencies] = useState<DataInconsistency[]>([]);
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState(false);
@@ -88,6 +91,11 @@ const DataConsistencyChecker = () => {
         description: "Problema resolvido com sucesso",
       });
       
+      // Notificar o componente pai que os dados foram corrigidos
+      if (onDataFixed) {
+        onDataFixed();
+      }
+      
       // Recarregar inconsistências
       await checkConsistency();
     } catch (error) {
@@ -111,6 +119,14 @@ const DataConsistencyChecker = () => {
         title: "Correção Concluída",
         description: `${fixedCount} problema(s) corrigido(s)`,
       });
+      
+      // Notificar o componente pai que os dados foram corrigidos
+      if (onDataFixed) {
+        onDataFixed();
+      }
+      
+      // Aguardar um pouco antes de recarregar para garantir que todas as atualizações sejam processadas
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Recarregar inconsistências
       await checkConsistency();
