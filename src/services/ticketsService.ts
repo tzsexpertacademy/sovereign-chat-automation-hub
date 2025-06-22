@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationTicket {
@@ -81,6 +80,56 @@ interface WhatsAppChat {
   };
   body?: string;
   timestamp?: number;
+  t?: number;
+}
+
+// Função para validar e corrigir timestamp
+function validateAndFixTimestamp(timestamp: any): string {
+  console.log('🕐 Validando timestamp:', timestamp);
+  
+  if (!timestamp) {
+    const now = new Date().toISOString();
+    console.log('⚠️ Timestamp vazio, usando agora:', now);
+    return now;
+  }
+  
+  let date: Date;
+  
+  if (typeof timestamp === 'number') {
+    // Se for um número, verificar se está em segundos ou milissegundos
+    if (timestamp.toString().length === 10) {
+      // Segundos - converter para milissegundos
+      date = new Date(timestamp * 1000);
+    } else if (timestamp.toString().length === 13) {
+      // Milissegundos
+      date = new Date(timestamp);
+    } else {
+      // Timestamp inválido, usar data atual
+      console.log('⚠️ Timestamp numérico inválido:', timestamp);
+      date = new Date();
+    }
+  } else if (typeof timestamp === 'string') {
+    date = new Date(timestamp);
+  } else {
+    console.log('⚠️ Tipo de timestamp desconhecido:', typeof timestamp);
+    date = new Date();
+  }
+  
+  // Verificar se a data é válida e não está no futuro distante
+  if (isNaN(date.getTime()) || date.getFullYear() > 2030) {
+    console.log('⚠️ Data inválida ou muito futura, usando data atual');
+    date = new Date();
+  }
+  
+  // Verificar se a data não é muito antiga (antes de 2020)
+  if (date.getFullYear() < 2020) {
+    console.log('⚠️ Data muito antiga, usando data atual');
+    date = new Date();
+  }
+  
+  const validTimestamp = date.toISOString();
+  console.log('✅ Timestamp validado:', validTimestamp);
+  return validTimestamp;
 }
 
 // Função para normalizar números de telefone brasileiros
@@ -270,12 +319,14 @@ class TicketsService {
       // Normalizar dados
       const normalizedPhone = normalizePhoneNumber(customerPhone);
       const formattedName = formatCustomerName(normalizedPhone, customerName);
+      const validTimestamp = validateAndFixTimestamp(lastMessageAt);
 
       console.log('📊 Dados processados:', {
         originalPhone: customerPhone,
         normalizedPhone,
         originalName: customerName,
-        formattedName
+        formattedName,
+        validTimestamp
       });
 
       const { data, error } = await supabase.rpc('upsert_conversation_ticket', {
@@ -285,7 +336,7 @@ class TicketsService {
         p_customer_name: formattedName,
         p_customer_phone: normalizedPhone,
         p_last_message: lastMessage,
-        p_last_message_at: lastMessageAt
+        p_last_message_at: validTimestamp
       });
 
       if (error) {
@@ -323,9 +374,15 @@ class TicketsService {
         return;
       }
 
+      // Validar timestamp antes de inserir
+      const validatedData = {
+        ...messageData,
+        timestamp: validateAndFixTimestamp(messageData.timestamp)
+      };
+
       const { error } = await supabase
         .from('ticket_messages')
-        .insert(messageData);
+        .insert(validatedData);
 
       if (error) {
         console.error('❌ Erro ao inserir mensagem:', error);
@@ -483,11 +540,13 @@ class TicketsService {
                                   chat.body ||
                                   'Conversa importada do WhatsApp';
 
-                const lastMessageAt = chat.lastMessage?.timestamp 
-                  ? new Date(chat.lastMessage.timestamp * 1000).toISOString()
-                  : chat.timestamp
-                  ? new Date(chat.timestamp * 1000).toISOString()
-                  : new Date().toISOString();
+                // Usar timestamp corrigido
+                const lastMessageAt = validateAndFixTimestamp(
+                  chat.lastMessage?.timestamp || 
+                  chat.timestamp || 
+                  chat.t || 
+                  Date.now()
+                );
 
                 console.log('📝 Dados extraídos do chat:', {
                   chatId,

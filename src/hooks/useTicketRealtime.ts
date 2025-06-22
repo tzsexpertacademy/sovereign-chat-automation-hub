@@ -28,6 +28,53 @@ export const useTicketRealtime = (clientId: string) => {
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
 
+  // Função para validar timestamp
+  const validateTimestamp = useCallback((timestamp: any): string => {
+    console.log('🕐 Validando timestamp:', timestamp);
+    
+    if (!timestamp) {
+      return new Date().toISOString();
+    }
+    
+    let date: Date;
+    
+    if (typeof timestamp === 'number') {
+      // Se for um número, verificar se está em segundos ou milissegundos
+      if (timestamp.toString().length === 10) {
+        // Segundos - converter para milissegundos
+        date = new Date(timestamp * 1000);
+      } else if (timestamp.toString().length === 13) {
+        // Milissegundos
+        date = new Date(timestamp);
+      } else {
+        // Timestamp inválido, usar data atual
+        console.log('⚠️ Timestamp numérico inválido:', timestamp);
+        date = new Date();
+      }
+    } else if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    } else {
+      console.log('⚠️ Tipo de timestamp desconhecido:', typeof timestamp);
+      date = new Date();
+    }
+    
+    // Verificar se a data é válida e não está no futuro distante
+    if (isNaN(date.getTime()) || date.getFullYear() > 2030) {
+      console.log('⚠️ Data inválida ou muito futura, usando data atual');
+      date = new Date();
+    }
+    
+    // Verificar se a data não é muito antiga (antes de 2020)
+    if (date.getFullYear() < 2020) {
+      console.log('⚠️ Data muito antiga, usando data atual');
+      date = new Date();
+    }
+    
+    const validTimestamp = date.toISOString();
+    console.log('✅ Timestamp validado:', validTimestamp);
+    return validTimestamp;
+  }, []);
+
   // Função para normalizar dados da mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
     console.log('📨 Normalizando mensagem WhatsApp raw:', message);
@@ -90,11 +137,8 @@ export const useTicketRealtime = (clientId: string) => {
       content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
     }
 
-    // Verificar timestamp
-    let timestamp = message.timestamp || message.t || Date.now();
-    if (typeof timestamp === 'number' && timestamp.toString().length === 10) {
-      timestamp = timestamp * 1000; // Converter de segundos para milissegundos
-    }
+    // Validar timestamp
+    const timestamp = validateTimestamp(message.timestamp || message.t || Date.now());
 
     const normalizedMessage = {
       id: message.id || message.key?.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -117,11 +161,12 @@ export const useTicketRealtime = (clientId: string) => {
       customerName: normalizedMessage.customerName,
       phoneNumber: normalizedMessage.phoneNumber,
       body: normalizedMessage.body.substring(0, 50),
-      fromMe: normalizedMessage.fromMe
+      fromMe: normalizedMessage.fromMe,
+      timestamp: normalizedMessage.timestamp
     });
     
     return normalizedMessage;
-  }, []);
+  }, [validateTimestamp]);
 
   // Processar lote de mensagens com assistente
   const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
@@ -163,7 +208,7 @@ export const useTicketRealtime = (clientId: string) => {
         normalizedMessage.customerName,
         normalizedMessage.phoneNumber,
         normalizedMessage.body,
-        new Date(normalizedMessage.timestamp).toISOString()
+        normalizedMessage.timestamp
       );
 
       console.log('📋 Ticket processado:', ticketId);
@@ -182,7 +227,7 @@ export const useTicketRealtime = (clientId: string) => {
           is_internal_note: false,
           is_ai_response: false,
           processing_status: 'received',
-          timestamp: new Date(normalized.timestamp).toISOString(),
+          timestamp: normalized.timestamp,
           media_url: normalized.mediaUrl
         });
       }
