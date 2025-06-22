@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationTicket {
@@ -85,7 +84,9 @@ class TicketsService {
       return (data || []).map(ticket => ({
         ...ticket,
         status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
-        tags: Array.isArray(ticket.tags) ? ticket.tags.filter(tag => typeof tag === 'string') : [],
+        tags: Array.isArray(ticket.tags) ? ticket.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+        custom_fields: typeof ticket.custom_fields === 'object' && ticket.custom_fields !== null ? ticket.custom_fields as Record<string, any> : {},
+        internal_notes: Array.isArray(ticket.internal_notes) ? ticket.internal_notes : [],
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
@@ -113,7 +114,9 @@ class TicketsService {
       return {
         ...data,
         status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
-        tags: Array.isArray(data.tags) ? data.tags.filter(tag => typeof tag === 'string') : [],
+        tags: Array.isArray(data.tags) ? data.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+        custom_fields: typeof data.custom_fields === 'object' && data.custom_fields !== null ? data.custom_fields as Record<string, any> : {},
+        internal_notes: Array.isArray(data.internal_notes) ? data.internal_notes : [],
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
       };

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,17 +18,23 @@ import {
   Calendar,
   Activity,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  AlertTriangle,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData, CreateClientData } from "@/services/clientsService";
+import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 
 const ClientsManagement = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
+  const [allInstances, setAllInstances] = useState<WhatsAppInstanceData[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showDisconnectedInstances, setShowDisconnectedInstances] = useState(false);
   const [newClient, setNewClient] = useState<CreateClientData>({
     name: "",
     email: "",
@@ -43,6 +48,7 @@ const ClientsManagement = () => {
   // Load clients from Supabase on component mount
   useEffect(() => {
     loadClients();
+    loadAllInstances();
   }, []);
 
   const loadClients = async () => {
@@ -60,6 +66,45 @@ const ClientsManagement = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAllInstances = async () => {
+    try {
+      // Load all instances from all clients
+      const allClientInstances: WhatsAppInstanceData[] = [];
+      const clientsData = await clientsService.getAllClients();
+      
+      for (const client of clientsData) {
+        const instances = await whatsappInstancesService.getInstancesByClientId(client.id);
+        allClientInstances.push(...instances);
+      }
+      
+      setAllInstances(allClientInstances);
+      console.log('Todas as instâncias carregadas:', allClientInstances);
+    } catch (error) {
+      console.error('Erro ao carregar instâncias:', error);
+    }
+  };
+
+  const handleDeleteInstance = async (instanceId: string) => {
+    try {
+      await whatsappInstancesService.deleteInstance(instanceId);
+      
+      toast({
+        title: "Instância Removida",
+        description: "Instância foi removida com sucesso",
+      });
+      
+      await loadAllInstances();
+      await loadClients();
+    } catch (error) {
+      console.error("Erro ao deletar instância:", error);
+      toast({
+        title: "Erro",
+        description: "Falha ao remover instância",
+        variant: "destructive",
+      });
     }
   };
 
@@ -148,6 +193,14 @@ const ClientsManagement = () => {
     window.open(`/client/${client.id}`, '_blank');
   };
 
+  const getClientForInstance = (instanceClientId: string) => {
+    return clients.find(client => client.id === instanceClientId);
+  };
+
+  const disconnectedInstances = allInstances.filter(instance => 
+    ['disconnected', 'error', 'auth_failed'].includes(instance.status || '')
+  );
+
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -202,6 +255,14 @@ const ClientsManagement = () => {
           <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
         </div>
         <div className="flex space-x-2">
+          <Button 
+            onClick={() => setShowDisconnectedInstances(!showDisconnectedInstances)}
+            variant="outline"
+            className={showDisconnectedInstances ? "bg-red-50 text-red-700 border-red-200" : ""}
+          >
+            {showDisconnectedInstances ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+            Instâncias Desconectadas ({disconnectedInstances.length})
+          </Button>
           <Button onClick={loadClients} variant="outline" disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
@@ -212,6 +273,60 @@ const ClientsManagement = () => {
           </Button>
         </div>
       </div>
+
+      {/* Disconnected Instances Section */}
+      {showDisconnectedInstances && disconnectedInstances.length > 0 && (
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-800 flex items-center">
+              <AlertTriangle className="w-5 h-5 mr-2" />
+              Instâncias Desconectadas ({disconnectedInstances.length})
+            </CardTitle>
+            <CardDescription className="text-red-700">
+              Estas instâncias estão desconectadas e podem ser removidas se não forem mais necessárias
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {disconnectedInstances.map((instance) => {
+                const client = getClientForInstance(instance.client_id || '');
+                return (
+                  <div key={instance.id} className="flex items-center justify-between p-3 bg-white border border-red-200 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          ID: {instance.instance_id}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          Cliente: {client ? client.name : 'Cliente não encontrado'}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Status: {getStatusText(instance.status)} | 
+                          Criado em: {new Date(instance.created_at).toLocaleDateString('pt-BR')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <Badge variant="destructive">
+                        {getStatusText(instance.status)}
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDeleteInstance(instance.instance_id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Remover
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
