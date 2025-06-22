@@ -25,12 +25,15 @@ import {
   Smartphone,
   Wifi,
   WifiOff,
-  Database
+  Database,
+  Power,
+  PowerOff
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData, CreateClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
+import whatsappService from "@/services/whatsappMultiClient";
 
 const ClientsManagement = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -108,6 +111,43 @@ const ClientsManagement = () => {
       toast({
         title: "Erro",
         description: "Falha ao remover instância",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDisconnectInstance = async (instanceId: string) => {
+    try {
+      // Try to disconnect from WhatsApp service
+      try {
+        await whatsappService.disconnectClient(instanceId);
+      } catch (error) {
+        console.log('WhatsApp service disconnect failed, continuing with database update...');
+      }
+
+      // Update instance status in database
+      await whatsappInstancesService.updateInstance(instanceId, {
+        status: 'disconnected'
+      });
+
+      // Update client status if linked
+      const linkedClient = getClientForInstance(instanceId);
+      if (linkedClient) {
+        await clientsService.updateClientInstance(linkedClient.id, instanceId, 'disconnected');
+      }
+
+      toast({
+        title: "Instância Desconectada",
+        description: "Instância foi desconectada com sucesso",
+      });
+      
+      await loadAllInstances();
+      await loadClients();
+    } catch (error) {
+      console.error("Erro ao desconectar instância:", error);
+      toast({
+        title: "Erro",
+        description: "Falha ao desconectar instância",
         variant: "destructive",
       });
     }
@@ -378,6 +418,23 @@ const ClientsManagement = () => {
                                   Chat
                                 </Button>
                               )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDisconnectInstance(instance.instance_id)}
+                                className="text-orange-600 hover:text-orange-700 border-orange-300 hover:bg-orange-50"
+                              >
+                                <PowerOff className="w-4 h-4 mr-1" />
+                                Desconectar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleDeleteInstance(instance.instance_id)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Remover
+                              </Button>
                             </div>
                           </div>
                         );
