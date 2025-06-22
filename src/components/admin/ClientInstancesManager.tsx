@@ -16,7 +16,8 @@ import {
   Plus,
   Edit,
   Eye,
-  Users
+  Users,
+  MessageSquare
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
@@ -24,6 +25,7 @@ import { clientsService, ClientData } from "@/services/clientsService";
 import whatsappService from "@/services/whatsappMultiClient";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useNavigate } from "react-router-dom";
 
 const ClientInstancesManager = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -35,6 +37,7 @@ const ClientInstancesManager = () => {
   const [showQrDialog, setShowQrDialog] = useState(false);
   const [qrCodeData, setQrCodeData] = useState<{instanceId: string, qrCode: string} | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadData();
@@ -111,6 +114,11 @@ const ClientInstancesManager = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoToClientChat = (clientId: string) => {
+    // Navegar para a área do cliente diretamente na aba de tickets/chat
+    navigate(`/client/${clientId}/tickets`);
   };
 
   const handleReconnectInstance = async (instanceId: string) => {
@@ -412,15 +420,25 @@ const ClientInstancesManager = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleViewClientInstances(client)}
-                        disabled={loading}
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        Ver Instâncias
-                      </Button>
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleViewClientInstances(client)}
+                          disabled={loading}
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          Ver Instâncias
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleGoToClientChat(client.id)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <MessageSquare className="w-4 h-4 mr-1" />
+                          Ir para o Chat
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

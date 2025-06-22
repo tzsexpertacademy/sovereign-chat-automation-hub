@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -124,8 +125,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     // Marcar mensagens não lidas como lidas
     if (messages.length > 0 && ticket?.chat_id && connectedInstance) {
       const unreadMessages = messages
-        .filter(msg => !msg.from_me && !msg.is_read)
-        .map(msg => msg.message_id)
+        .filter(msg => !msg.from_me && msg.message_id)
+        .map(msg => msg.message_id!)
         .filter(Boolean);
 
       if (unreadMessages.length > 0) {

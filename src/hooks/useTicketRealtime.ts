@@ -97,7 +97,7 @@ export const useTicketRealtime = (clientId: string) => {
           console.log('💬 Nova mensagem:', payload);
           
           // Simular indicadores quando há atividade de IA
-          if (payload.new && payload.new.is_ai_response) {
+          if (payload.new && (payload.new as any).is_ai_response) {
             setIsTyping(true);
             setTimeout(() => setIsTyping(false), 1500);
           }
