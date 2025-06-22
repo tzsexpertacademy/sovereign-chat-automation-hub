@@ -5,6 +5,7 @@ import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase
 export type ClientData = Tables<"clients">;
 export type ClientInsert = TablesInsert<"clients">;
 export type ClientUpdate = TablesUpdate<"clients">;
+export type CreateClientData = ClientInsert; // Adicionar tipo que estava faltando
 
 export class ClientsService {
   async getAllClients(): Promise<ClientData[]> {
