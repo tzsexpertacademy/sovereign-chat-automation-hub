@@ -1,127 +1,147 @@
 
-import { useState, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { whatsappService } from '@/services/whatsappMultiClient';
-import { fileUploadService } from '@/services/fileUploadService';
 import { useToast } from './use-toast';
+
+export interface MediaMessage {
+  type: 'image' | 'audio' | 'video' | 'document';
+  file: File;
+  caption?: string;
+  to: string;
+}
+
+export interface AudioRecording {
+  isRecording: boolean;
+  audioBlob: Blob | null;
+  duration: number;
+}
 
 export const useMessageMedia = (clientId: string) => {
   const [isUploading, setIsUploading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioRecording, setAudioRecording] = useState<{
-    audioBlob: Blob | null;
-    duration: number;
-  }>({ audioBlob: null, duration: 0 });
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
+  const [audioRecording, setAudioRecording] = useState<AudioRecording>({
+    isRecording: false,
+    audioBlob: null,
+    duration: 0
+  });
   const { toast } = useToast();
 
-  const handleFileSelect = () => {
-    fileInputRef.current?.click();
-  };
+  // Enviar mídia
+  const sendMedia = useCallback(async (mediaMessage: MediaMessage) => {
+    if (!clientId) {
+      toast({
+        title: "Erro",
+        description: "Cliente não encontrado",
+        variant: "destructive"
+      });
+      return false;
+    }
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    await uploadAndSendFile(file);
-  };
-
-  const uploadAndSendFile = async (file: File, chatId?: string) => {
     try {
       setIsUploading(true);
       
-      // Upload do arquivo
-      const uploadedFile = await fileUploadService.uploadFile(file, 'media');
-      
-      if (!uploadedFile.url) {
-        throw new Error('Falha no upload do arquivo');
-      }
+      await whatsappService.sendMessage(
+        clientId,
+        mediaMessage.to,
+        mediaMessage.caption || '',
+        undefined,
+        mediaMessage.file
+      );
 
-      // Se temos chatId, enviar mensagem com mídia
-      if (chatId) {
-        const message = `📎 Arquivo: ${file.name}`;
-        await whatsappService.sendMessage(clientId, chatId, message, true, uploadedFile.url);
-        
-        toast({
-          title: "Arquivo enviado",
-          description: `${file.name} foi enviado com sucesso`
-        });
-      }
-
-      return uploadedFile;
-
-    } catch (error: any) {
-      console.error('Erro ao enviar arquivo:', error);
-      toast({
-        title: "Erro no envio",
-        description: error.message || "Falha ao enviar arquivo",
-        variant: "destructive"
-      });
-      throw error;
-    } finally {
-      setIsUploading(false);
-      // Limpar input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const sendMediaMessage = async (chatId: string, mediaUrl: string, caption?: string) => {
-    try {
-      const message = caption || '📎 Mídia enviada';
-      await whatsappService.sendMessage(clientId, chatId, message, true, mediaUrl);
-      
       toast({
         title: "Mídia enviada",
-        description: "Arquivo de mídia enviado com sucesso"
+        description: `${mediaMessage.type} enviado com sucesso`,
       });
-      
+
+      return true;
     } catch (error: any) {
       console.error('Erro ao enviar mídia:', error);
       toast({
         title: "Erro ao enviar mídia",
-        description: error.message || "Falha ao enviar arquivo de mídia",
+        description: error.message || "Falha ao enviar arquivo",
         variant: "destructive"
       });
-      throw error;
+      return false;
+    } finally {
+      setIsUploading(false);
     }
-  };
+  }, [clientId, toast]);
 
-  // Métodos para diferentes tipos de arquivo
-  const handleImageUpload = async (file: File, chatId: string): Promise<boolean> => {
-    try {
-      await uploadAndSendFile(file, chatId);
-      return true;
-    } catch (error) {
+  // Processar imagem
+  const handleImageUpload = useCallback(async (file: File, to: string, caption?: string) => {
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Erro",
+        description: "Arquivo deve ser uma imagem",
+        variant: "destructive"
+      });
       return false;
     }
-  };
 
-  const handleVideoUpload = async (file: File, chatId: string): Promise<boolean> => {
-    try {
-      await uploadAndSendFile(file, chatId);
-      return true;
-    } catch (error) {
+    return await sendMedia({
+      type: 'image',
+      file,
+      caption,
+      to
+    });
+  }, [sendMedia, toast]);
+
+  // Processar vídeo
+  const handleVideoUpload = useCallback(async (file: File, to: string, caption?: string) => {
+    if (!file.type.startsWith('video/')) {
+      toast({
+        title: "Erro",
+        description: "Arquivo deve ser um vídeo",
+        variant: "destructive"
+      });
       return false;
     }
-  };
 
-  const handleDocumentUpload = async (file: File, chatId: string): Promise<boolean> => {
-    try {
-      await uploadAndSendFile(file, chatId);
-      return true;
-    } catch (error) {
+    // Verificar tamanho do arquivo (máximo 64MB)
+    if (file.size > 64 * 1024 * 1024) {
+      toast({
+        title: "Erro",
+        description: "Vídeo muito grande (máximo 64MB)",
+        variant: "destructive"
+      });
       return false;
     }
-  };
 
-  // Métodos para gravação de áudio
-  const startRecording = async (): Promise<MediaRecorder | null> => {
+    return await sendMedia({
+      type: 'video',
+      file,
+      caption,
+      to
+    });
+  }, [sendMedia, toast]);
+
+  // Processar documento
+  const handleDocumentUpload = useCallback(async (file: File, to: string, caption?: string) => {
+    // Verificar tamanho do arquivo (máximo 100MB)
+    if (file.size > 100 * 1024 * 1024) {
+      toast({
+        title: "Erro",
+        description: "Documento muito grande (máximo 100MB)",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    return await sendMedia({
+      type: 'document',
+      file,
+      caption,
+      to
+    });
+  }, [sendMedia, toast]);
+
+  // Gravação de áudio
+  const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       
-      const chunks: Blob[] = [];
+      const chunks: BlobPart[] = [];
       let startTime = Date.now();
       
       mediaRecorder.ondataavailable = (event) => {
@@ -129,20 +149,22 @@ export const useMessageMedia = (clientId: string) => {
           chunks.push(event.data);
         }
       };
-      
+
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(chunks, { type: 'audio/wav' });
-        const duration = Math.round((Date.now() - startTime) / 1000);
+        const duration = Math.floor((Date.now() - startTime) / 1000);
         
-        setAudioRecording({ audioBlob, duration });
-        setIsRecording(false);
+        setAudioRecording({
+          isRecording: false,
+          audioBlob,
+          duration
+        });
         
-        // Parar stream
         stream.getTracks().forEach(track => track.stop());
       };
-      
+
       mediaRecorder.start();
-      setIsRecording(true);
+      setAudioRecording(prev => ({ ...prev, isRecording: true }));
       
       return mediaRecorder;
     } catch (error) {
@@ -154,55 +176,64 @@ export const useMessageMedia = (clientId: string) => {
       });
       return null;
     }
-  };
+  }, [toast]);
 
-  const stopRecording = (mediaRecorder: MediaRecorder) => {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+  const stopRecording = useCallback((mediaRecorder: MediaRecorder | null) => {
+    if (mediaRecorder && audioRecording.isRecording) {
       mediaRecorder.stop();
     }
-  };
+  }, [audioRecording.isRecording]);
 
-  const sendAudioRecording = async (chatId: string): Promise<boolean> => {
-    try {
-      if (!audioRecording.audioBlob) {
-        throw new Error('Nenhuma gravação disponível');
-      }
-
-      setIsUploading(true);
-      
-      // Converter blob para file
-      const audioFile = new File([audioRecording.audioBlob], 'audio.wav', {
-        type: 'audio/wav'
+  const sendAudioRecording = useCallback(async (to: string) => {
+    if (!audioRecording.audioBlob) {
+      toast({
+        title: "Erro",
+        description: "Nenhuma gravação de áudio encontrada",
+        variant: "destructive"
       });
-      
-      await uploadAndSendFile(audioFile, chatId);
-      
-      // Limpar gravação
-      setAudioRecording({ audioBlob: null, duration: 0 });
-      
-      return true;
-    } catch (error) {
-      console.error('Erro ao enviar áudio:', error);
       return false;
-    } finally {
-      setIsUploading(false);
     }
-  };
+
+    const audioFile = new File([audioRecording.audioBlob], 'audio.wav', { type: 'audio/wav' });
+    
+    const success = await sendMedia({
+      type: 'audio',
+      file: audioFile,
+      to
+    });
+
+    if (success) {
+      setAudioRecording({
+        isRecording: false,
+        audioBlob: null,
+        duration: 0
+      });
+    }
+
+    return success;
+  }, [audioRecording.audioBlob, sendMedia, toast]);
+
+  const clearSelectedMedia = useCallback(() => {
+    setSelectedMedia(null);
+    setAudioRecording({
+      isRecording: false,
+      audioBlob: null,
+      duration: 0
+    });
+  }, []);
 
   return {
     isUploading,
-    isRecording,
+    selectedMedia,
+    setSelectedMedia,
     audioRecording,
-    fileInputRef,
-    handleFileSelect,
-    handleFileChange,
-    uploadAndSendFile,
-    sendMediaMessage,
+    sendMedia,
     handleImageUpload,
     handleVideoUpload,
     handleDocumentUpload,
     startRecording,
     stopRecording,
-    sendAudioRecording
+    sendAudioRecording,
+    clearSelectedMedia
   };
 };

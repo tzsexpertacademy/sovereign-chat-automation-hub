@@ -160,132 +160,51 @@ const RealInstancesManager = () => {
       return;
     }
 
-    // Check if client can create more instances
-    const canCreate = await clientsService.canCreateInstance(clientData.id);
-    if (!canCreate) {
+    // Check if client already has an instance
+    if (clientData.instance_id) {
       toast({
-        title: "Limite Atingido",
-        description: `Cliente já atingiu o limite de instâncias do plano ${clientData.plan.toUpperCase()}`,
+        title: "Erro",
+        description: "Este cliente já possui uma instância",
         variant: "destructive",
       });
       return;
     }
 
-    // Use a more specific instance ID format
-    const instanceId = `${clientData.id}_instance_${Date.now()}`;
+    // Use client ID as instance ID
+    const instanceId = clientData.id;
+
+    // Verificar se já existe uma instância com esse ID
+    const existingClient = clients.find(c => c.clientId === instanceId);
+    if (existingClient) {
+      toast({
+        title: "Erro",
+        description: `Instância ${instanceId} já existe`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       setLoading(true);
-      console.log(`🚀 Criando instância para cliente: ${clientData.name} (ID: ${clientData.id})`);
-      console.log(`📋 Instance ID gerado: ${instanceId}`);
+      console.log(`🚀 Criando instância para cliente: ${clientData.name} (${instanceId})`);
       
       const result = await whatsappService.connectClient(instanceId);
       console.log("✅ Resultado da criação:", result);
       
-      // Create instance in Supabase PRIMEIRO
-      console.log('💾 Criando instância no Supabase...');
+      // Create instance in Supabase
       await whatsappInstancesService.createInstance({
         client_id: clientData.id,
         instance_id: instanceId,
         status: 'connecting'
       });
       
-      // Update client with instance info DEPOIS
-      console.log('🔄 Atualizando cliente no Supabase...');
+      // Update client with instance info
       await updateClientInstance(clientData.id, instanceId, 'connecting');
       
-      // Join client room for real-time updates
+      // Ouvir status deste cliente específico
       whatsappService.joinClientRoom(instanceId);
-      whatsappService.onClientStatus(instanceId, async (clientStatusData) => {
-        console.log(`📱 Status atualizado para ${instanceId}:`, clientStatusData);
-        
-        // Update local state
-        setClients(prev => {
-          const index = prev.findIndex(c => c.clientId === clientStatusData.clientId);
-          if (index >= 0) {
-            const updated = [...prev];
-            updated[index] = clientStatusData;
-            return updated;
-          } else {
-            return [...prev, clientStatusData];
-          }
-        });
-        
-        // Update client status in Supabase
-        await updateClientInstance(clientData.id, clientStatusData.clientId, clientStatusData.status);
-
-        // Update instance in Supabase
-        try {
-          await whatsappInstancesService.updateInstance(clientStatusData.clientId, {
-            status: clientStatusData.status,
-            phone_number: clientStatusData.phoneNumber,
-            has_qr_code: clientStatusData.hasQrCode
-          });
-        } catch (error) {
-          console.error('Erro ao atualizar instância no Supabase:', error);
-        }
-      });
-
-      setSelectedClientForInstance("");
-      toast({
-        title: "Sucesso",
-        description: `Instância criada para ${clientData.name}! Aguardando conexão...`,
-      });
-
-      // Reload data after creation
-      setTimeout(() => {
-        loadClients();
-        loadAvailableClients();
-      }, 2000);
-
-    } catch (error: any) {
-      console.error("❌ Erro ao criar instância:", error);
-      toast({
-        title: "Erro ao Criar Instância",
-        description: error.message || "Falha ao criar instância. Verifique se o servidor está rodando.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReconnectClient = async (clientId: string) => {
-    try {
-      setLoading(true);
-      console.log(`🔄 Tentando reconectar cliente: ${clientId}`);
-      
-      // First try to disconnect if connected
-      try {
-        await whatsappService.disconnectClient(clientId);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } catch (error) {
-        console.log('Cliente já desconectado ou não existe, continuando...');
-      }
-      
-      // Create new connection
-      const result = await whatsappService.connectClient(clientId);
-      console.log("✅ Resultado da reconexão:", result);
-      
-      // Update instance status in Supabase
-      try {
-        await whatsappInstancesService.updateInstance(clientId, {
-          status: 'connecting'
-        });
-      } catch (error) {
-        console.error('Erro ao atualizar status da instância:', error);
-      }
-
-      // Update client status
-      const linkedClient = getClientByInstanceId(clientId);
-      if (linkedClient) {
-        await updateClientInstance(linkedClient.id, clientId, 'connecting');
-      }
-      
-      // Listen for status updates
-      whatsappService.joinClientRoom(clientId);
-      whatsappService.onClientStatus(clientId, async (clientData) => {
-        console.log(`📱 Status reconectado para ${clientId}:`, clientData);
+      whatsappService.onClientStatus(instanceId, async (clientData) => {
+        console.log(`📱 Status atualizado para ${instanceId}:`, clientData);
         setClients(prev => {
           const index = prev.findIndex(c => c.clientId === clientData.clientId);
           if (index >= 0) {
@@ -314,18 +233,24 @@ const RealInstancesManager = () => {
           console.error('Erro ao atualizar instância no Supabase:', error);
         }
       });
-      
+
+      setSelectedClientForInstance("");
       toast({
         title: "Sucesso",
-        description: `Reconectando instância ${clientId}...`,
+        description: `Instância criada para ${clientData.name}! Aguarde o QR Code aparecer...`,
       });
-      
-      await loadClients();
-      await loadAvailableClients();
+
+      // Recarregar a lista de clientes após 2 segundos
+      setTimeout(() => {
+        loadClients();
+        loadAvailableClients();
+      }, 2000);
+
     } catch (error: any) {
+      console.error("❌ Erro ao criar instância:", error);
       toast({
-        title: "Erro",
-        description: error.message || "Falha ao reconectar instância",
+        title: "Erro ao Criar Instância",
+        description: error.message || "Falha ao criar instância. Verifique se o servidor está rodando.",
         variant: "destructive",
       });
     } finally {
@@ -372,43 +297,15 @@ const RealInstancesManager = () => {
   };
 
   const handleOpenChat = (clientId: string) => {
-    console.log('🔍 Tentando abrir chat para instância:', clientId);
-    console.log('📋 Clientes disponíveis:', availableClients);
-    console.log('📱 Instâncias conectadas:', clients);
-    
-    // Find the linked client by instance_id
-    const linkedClient = availableClients.find(client => 
-      client.instance_id === clientId || 
-      clients.some(c => c.clientId === clientId && client.id === client.id)
-    );
-    
-    console.log('🔗 Cliente encontrado:', linkedClient);
-    
+    const linkedClient = getClientByInstanceId(clientId);
     if (linkedClient) {
-      console.log('✅ Redirecionando para:', `/client/${linkedClient.id}/tickets`);
-      navigate(`/client/${linkedClient.id}/tickets`);
+      navigate(`/client/${linkedClient.id}/chat`);
     } else {
-      console.error('❌ Cliente não encontrado para instância:', clientId);
-      
-      // Try alternative method - find by checking whatsapp instances
-      const alternativeClient = availableClients.find(client => {
-        // Check if any instance belongs to this client
-        return clients.some(instance => 
-          instance.clientId === clientId && 
-          instance.clientId.includes(client.id)
-        );
+      toast({
+        title: "Cliente não encontrado",
+        description: "Esta instância não está associada a nenhum cliente",
+        variant: "destructive",
       });
-      
-      if (alternativeClient) {
-        console.log('✅ Cliente encontrado por método alternativo:', alternativeClient);
-        navigate(`/client/${alternativeClient.id}/tickets`);
-      } else {
-        toast({
-          title: "Cliente não encontrado",
-          description: "Esta instância não está associada a nenhum cliente. Verifique a configuração.",
-          variant: "destructive",
-        });
-      }
     }
   };
 
@@ -485,19 +382,8 @@ const RealInstancesManager = () => {
     }
   };
 
-  // Get clients without instances or with disconnected instances
-  const clientsNeedingInstances = availableClients.filter(client => {
-    // Check if client has any active instances
-    const hasActiveInstance = clients.some(c => {
-      // More robust check for client association
-      return (
-        (client.instance_id === c.clientId || c.clientId.includes(client.id)) &&
-        ['connected', 'qr_ready', 'connecting', 'authenticated'].includes(c.status)
-      );
-    });
-    
-    return !hasActiveInstance;
-  });
+  // Get clients without instances
+  const clientsWithoutInstances = availableClients.filter(client => !client.instance_id);
 
   // Loading inicial
   if (initialLoading) {
@@ -604,9 +490,9 @@ const RealInstancesManager = () => {
       {/* Add New Instance for Client */}
       <Card>
         <CardHeader>
-          <CardTitle>🚀 Criar/Reconectar Instância WhatsApp</CardTitle>
+          <CardTitle>🚀 Criar Instância WhatsApp para Cliente</CardTitle>
           <CardDescription>
-            Selecione um cliente para criar uma nova instância ou reconectar uma instância desconectada.
+            Selecione um cliente cadastrado para criar uma nova instância WhatsApp.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -616,19 +502,16 @@ const RealInstancesManager = () => {
                 <SelectValue placeholder="Selecione um cliente..." />
               </SelectTrigger>
               <SelectContent>
-                {clientsNeedingInstances.length === 0 ? (
+                {clientsWithoutInstances.length === 0 ? (
                   <SelectItem value="no-clients-available" disabled>
-                    Todos os clientes possuem instâncias ativas
+                    Todos os clientes já possuem instâncias
                   </SelectItem>
                 ) : (
-                  clientsNeedingInstances.map((client) => (
+                  clientsWithoutInstances.map((client) => (
                     <SelectItem key={client.id} value={client.id}>
                       <div className="flex items-center space-x-2">
                         <User className="w-4 h-4" />
                         <span>{client.name} ({client.email})</span>
-                        <span className="text-xs text-gray-500">
-                          {client.instance_status === 'disconnected' ? '- Reconectar' : '- Criar Nova'}
-                        </span>
                       </div>
                     </SelectItem>
                   ))
@@ -643,19 +526,19 @@ const RealInstancesManager = () => {
               {loading ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Processando...
+                  Criando...
                 </>
               ) : (
                 <>
                   <Plus className="w-4 h-4 mr-2" />
-                  Criar/Reconectar
+                  Criar Instância
                 </>
               )}
             </Button>
           </div>
-          {clientsNeedingInstances.length === 0 && availableClients.length > 0 && (
+          {clientsWithoutInstances.length === 0 && availableClients.length > 0 && (
             <p className="text-sm text-gray-500 mt-2">
-              💡 Todos os clientes possuem instâncias ativas
+              💡 Todos os clientes já possuem instâncias. Crie novos clientes na seção "Clientes"
             </p>
           )}
           {availableClients.length === 0 && (
@@ -670,13 +553,7 @@ const RealInstancesManager = () => {
       {clients.length > 0 ? (
         <div className="grid lg:grid-cols-2 gap-6">
           {clients.map((client) => {
-            // More robust client finding
-            const linkedClient = availableClients.find(availableClient => 
-              availableClient.instance_id === client.clientId || 
-              client.clientId.includes(availableClient.id) ||
-              availableClient.id === client.clientId.split('_')[0] // Extract client ID from instance ID
-            );
-            
+            const linkedClient = getClientByInstanceId(client.clientId);
             return (
               <Card key={client.clientId} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
@@ -694,12 +571,6 @@ const RealInstancesManager = () => {
                         <CardDescription className="flex items-center mt-1 text-green-600">
                           <User className="w-4 h-4 mr-1" />
                           Cliente: {linkedClient.name}
-                        </CardDescription>
-                      )}
-                      {!linkedClient && (
-                        <CardDescription className="flex items-center mt-1 text-orange-600">
-                          <AlertCircle className="w-4 h-4 mr-1" />
-                          ⚠️ Instância não associada a cliente
                         </CardDescription>
                       )}
                     </div>
@@ -777,27 +648,25 @@ const RealInstancesManager = () => {
                           <Pause className="w-4 h-4 mr-1" />
                           Pausar
                         </Button>
-                        {linkedClient && (
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleOpenChat(client.clientId)}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                          >
-                            <MessageSquare className="w-4 h-4 mr-1" />
-                            Chat
-                          </Button>
-                        )}
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleOpenChat(client.clientId)}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <MessageSquare className="w-4 h-4 mr-1" />
+                          Chat
+                        </Button>
                       </>
                     ) : (
                       <Button 
                         size="sm"
-                        onClick={() => handleReconnectClient(client.clientId)}
-                        disabled={loading}
+                        onClick={() => whatsappService.connectClient(client.clientId)}
+                        disabled={loading || client.status === 'connecting'}
                         className="bg-green-600 hover:bg-green-700"
                       >
                         <Play className="w-4 h-4 mr-1" />
-                        {client.status === 'connecting' ? 'Conectando...' : 'Reconectar'}
+                        {client.status === 'connecting' ? 'Conectando...' : 'Conectar'}
                       </Button>
                     )}
                     <Button 
@@ -814,7 +683,6 @@ const RealInstancesManager = () => {
                       variant="outline"
                       onClick={() => handleDisconnectClient(client.clientId)}
                       disabled={loading}
-                      className="text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="w-4 h-4 mr-1" />
                       Remover

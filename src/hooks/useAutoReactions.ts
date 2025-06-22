@@ -1,70 +1,102 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { whatsappService } from '@/services/whatsappMultiClient';
-import { useToast } from './use-toast';
 
-export const useAutoReactions = (clientId: string) => {
-  const [isEnabled, setIsEnabled] = useState(false);
-  const { toast } = useToast();
+interface AutoReactionConfig {
+  enabled: boolean;
+  delay: { min: number; max: number };
+  emotions: {
+    love: string[];
+    approval: string[];
+    laugh: string[];
+    surprise: string[];
+    sad: string[];
+    angry: string[];
+  };
+}
 
-  const sendReaction = useCallback(async (chatId: string, messageId: string, reaction: string) => {
-    if (!isEnabled) return;
+const defaultConfig: AutoReactionConfig = {
+  enabled: true,
+  delay: { min: 1000, max: 3000 },
+  emotions: {
+    love: ['amor', 'amo', 'adoro', 'paixão', 'coração', '❤️', '💕', '💖'],
+    approval: ['ótimo', 'excelente', 'perfeito', 'concordo', 'sim', 'certo', '👍', '✅'],
+    laugh: ['haha', 'kkkk', 'rsrs', 'lol', 'engraçado', 'piada', '😂', '🤣'],
+    surprise: ['nossa', 'uau', 'incrível', 'surpreendente', 'caramba', '😮', '😱'],
+    sad: ['triste', 'chateado', 'deprimido', 'mal', 'péssimo', '😢', '😭'],
+    angry: ['raiva', 'irritado', 'ódio', 'furioso', 'bravo', '😠', '😡']
+  }
+};
 
-    try {
-      await whatsappService.sendReaction(clientId, messageId, reaction);
-      console.log(`✅ Reação ${reaction} enviada para mensagem ${messageId}`);
-    } catch (error) {
-      console.error('❌ Erro ao enviar reação:', error);
-      toast({
-        title: "Erro ao enviar reação",
-        description: "Não foi possível enviar a reação",
-        variant: "destructive"
-      });
-    }
-  }, [clientId, isEnabled, toast]);
+const reactionEmojis = {
+  love: '❤️',
+  approval: '👍',
+  laugh: '😂',
+  surprise: '😮',
+  sad: '😢',
+  angry: '😠'
+};
 
-  const sendAutoReply = useCallback(async (chatId: string, message: string) => {
-    if (!isEnabled) return;
+export const useAutoReactions = (clientId: string, enabled = true) => {
+  const [config, setConfig] = useState<AutoReactionConfig>(defaultConfig);
+  const [processingReactions, setProcessingReactions] = useState<Set<string>>(new Set());
 
-    try {
-      // Corrigido: removido o terceiro parâmetro hasFile
-      await whatsappService.sendMessage(clientId, chatId, message);
-      console.log(`✅ Resposta automática enviada para ${chatId}`);
-    } catch (error) {
-      console.error('❌ Erro ao enviar resposta automática:', error);
-      toast({
-        title: "Erro na resposta automática",
-        description: "Não foi possível enviar resposta automática",
-        variant: "destructive"
-      });
-    }
-  }, [clientId, isEnabled, toast]);
-
-  const processMessage = useCallback(async (messageData: any) => {
-    if (!isEnabled || messageData.fromMe) return;
-
-    const messageText = messageData.body?.toLowerCase() || '';
+  const detectEmotion = useCallback((text: string): keyof typeof reactionEmojis | null => {
+    const lowerText = text.toLowerCase();
     
-    // Reações automáticas baseadas no conteúdo
-    if (messageText.includes('obrigad')) {
-      await sendReaction(messageData.chatId, messageData.id, '👍');
-    } else if (messageText.includes('oi') || messageText.includes('olá')) {
-      await sendReaction(messageData.chatId, messageData.id, '👋');
-    } else if (messageText.includes('❤') || messageText.includes('💖')) {
-      await sendReaction(messageData.chatId, messageData.id, '❤️');
+    for (const [emotion, keywords] of Object.entries(config.emotions)) {
+      if (keywords.some(keyword => lowerText.includes(keyword.toLowerCase()))) {
+        return emotion as keyof typeof reactionEmojis;
+      }
     }
     
-    // Respostas automáticas
-    if (messageText.includes('horário') || messageText.includes('horario')) {
-      await sendAutoReply(messageData.chatId, 'Nosso horário de atendimento é de segunda a sexta, das 8h às 18h.');
+    return null;
+  }, [config.emotions]);
+
+  const sendReaction = useCallback(async (chatId: string, messageId: string, emotion: keyof typeof reactionEmojis) => {
+    if (!enabled || !config.enabled) return;
+    
+    const reactionKey = `${messageId}_${emotion}`;
+    if (processingReactions.has(reactionKey)) return;
+    
+    setProcessingReactions(prev => new Set(prev).add(reactionKey));
+    
+    try {
+      // Delay natural
+      const delay = Math.random() * (config.delay.max - config.delay.min) + config.delay.min;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Enviar reação
+      await whatsappService.sendReaction(clientId, chatId, messageId, reactionEmojis[emotion]);
+      
+      console.log(`🎭 Reação automática enviada: ${reactionEmojis[emotion]} para mensagem ${messageId}`);
+      
+    } catch (error) {
+      console.error('❌ Erro ao enviar reação automática:', error);
+    } finally {
+      setProcessingReactions(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(reactionKey);
+        return newSet;
+      });
     }
-  }, [isEnabled, sendReaction, sendAutoReply]);
+  }, [enabled, config, clientId, processingReactions]);
+
+  const processMessage = useCallback(async (message: any) => {
+    if (!message.body || message.fromMe) return;
+    
+    const emotion = detectEmotion(message.body);
+    if (emotion) {
+      await sendReaction(message.from, message.id, emotion);
+    }
+  }, [detectEmotion, sendReaction]);
 
   return {
-    isEnabled,
-    setIsEnabled,
+    config,
+    setConfig,
     processMessage,
+    detectEmotion,
     sendReaction,
-    sendAutoReply
+    isProcessing: processingReactions.size > 0
   };
 };

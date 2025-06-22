@@ -1,5 +1,5 @@
+
 import { supabase } from '@/integrations/supabase/client';
-import { formatToChatId, extractPhoneFromChatId, smartFormatPhone } from '@/utils/phoneFormatter';
 
 export interface ConversationTicket {
   id: string;
@@ -68,8 +68,6 @@ export interface CreateTicketMessageData {
 class TicketsService {
   async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
     try {
-      console.log('🎫 [SERVICE] Buscando tickets para cliente:', clientId);
-      
       const { data, error } = await supabase
         .from('conversation_tickets')
         .select(`
@@ -82,26 +80,17 @@ class TicketsService {
         .eq('is_archived', false)
         .order('last_message_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ [SERVICE] Erro na query:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('✅ [SERVICE] Tickets encontrados:', data?.length || 0);
-
-      const processedTickets = (data || []).map(ticket => ({
+      return (data || []).map(ticket => ({
         ...ticket,
         status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
-        tags: Array.isArray(ticket.tags) ? ticket.tags.filter((tag): tag is string => typeof tag === 'string') : [],
-        custom_fields: typeof ticket.custom_fields === 'object' && ticket.custom_fields !== null ? ticket.custom_fields as Record<string, any> : {},
-        internal_notes: Array.isArray(ticket.internal_notes) ? ticket.internal_notes : [],
+        tags: Array.isArray(ticket.tags) ? ticket.tags : [],
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
-
-      return processedTickets;
     } catch (error) {
-      console.error('❌ [SERVICE] Erro ao buscar tickets:', error);
+      console.error('Erro ao buscar tickets:', error);
       throw error;
     }
   }
@@ -124,9 +113,7 @@ class TicketsService {
       return {
         ...data,
         status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
-        tags: Array.isArray(data.tags) ? data.tags.filter((tag): tag is string => typeof tag === 'string') : [],
-        custom_fields: typeof data.custom_fields === 'object' && data.custom_fields !== null ? data.custom_fields as Record<string, any> : {},
-        internal_notes: Array.isArray(data.internal_notes) ? data.internal_notes : [],
+        tags: Array.isArray(data.tags) ? data.tags : [],
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
       };
@@ -147,131 +134,9 @@ class TicketsService {
 
       if (error) throw error;
 
-      return (data || []).reverse();
+      return (data || []).reverse(); // Retornar em ordem cronológica
     } catch (error) {
       console.error('Erro ao buscar mensagens do ticket:', error);
-      throw error;
-    }
-  }
-
-  async ensureTicketExists(
-    clientId: string,
-    chatId: string,
-    instanceId: string,
-    customerName: string,
-    customerPhone: string,
-    lastMessage: string,
-    lastMessageAt: string
-  ): Promise<string> {
-    try {
-      console.log('🎫 [SERVICE] Garantindo ticket existe para:', chatId);
-
-      // Normalizar números de telefone
-      const phoneData = smartFormatPhone(customerPhone);
-      const normalizedChatId = chatId.includes('@') ? chatId : formatToChatId(customerPhone);
-      const cleanPhone = extractPhoneFromChatId(normalizedChatId);
-
-      console.log('📞 [SERVICE] Formatação de telefone:', {
-        original: customerPhone,
-        chatId: normalizedChatId,
-        cleanPhone: cleanPhone,
-        isValid: phoneData.isValid
-      });
-
-      // PASSO 1: Customer
-      let customerId: string;
-      
-      const { data: existingCustomer } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('client_id', clientId)
-        .eq('phone', cleanPhone)
-        .maybeSingle();
-
-      if (existingCustomer) {
-        customerId = existingCustomer.id;
-        
-        // Atualizar customer
-        await supabase
-          .from('customers')
-          .update({ 
-            name: customerName,
-            whatsapp_chat_id: normalizedChatId,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', customerId);
-      } else {
-        const { data: newCustomer, error: customerError } = await supabase
-          .from('customers')
-          .insert({
-            client_id: clientId,
-            name: customerName,
-            phone: cleanPhone,
-            whatsapp_chat_id: normalizedChatId
-          })
-          .select('id')
-          .single();
-
-        if (customerError) throw customerError;
-        customerId = newCustomer.id;
-      }
-
-      // PASSO 2: Ticket
-      const { data: existingTicket } = await supabase
-        .from('conversation_tickets')
-        .select('id')
-        .eq('client_id', clientId)
-        .eq('chat_id', normalizedChatId)
-        .eq('is_archived', false)
-        .maybeSingle();
-
-      const ticketTitle = `Conversa com ${customerName}`;
-
-      if (existingTicket) {
-        const { error: updateError } = await supabase
-          .from('conversation_tickets')
-          .update({
-            customer_id: customerId,
-            title: ticketTitle,
-            last_message_preview: lastMessage,
-            last_message_at: lastMessageAt,
-            status: 'open',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingTicket.id);
-
-        if (updateError) throw updateError;
-        
-        console.log('✅ [SERVICE] Ticket atualizado:', existingTicket.id);
-        return existingTicket.id;
-      } else {
-        const { data: newTicket, error: createError } = await supabase
-          .from('conversation_tickets')
-          .insert({
-            client_id: clientId,
-            customer_id: customerId,
-            chat_id: normalizedChatId,
-            instance_id: instanceId,
-            title: ticketTitle,
-            last_message_preview: lastMessage,
-            last_message_at: lastMessageAt,
-            status: 'open' as const,
-            priority: 1,
-            is_archived: false,
-            tags: [],
-            custom_fields: {},
-            internal_notes: []
-          })
-          .select('id')
-          .single();
-
-        if (createError) throw createError;
-
-        console.log('✅ [SERVICE] Ticket criado:', newTicket.id);
-        return newTicket.id;
-      }
-    } catch (error) {
-      console.error('❌ [SERVICE] Erro ao garantir ticket:', error);
       throw error;
     }
   }
@@ -285,31 +150,37 @@ class TicketsService {
     lastMessage: string,
     lastMessageAt: string
   ): Promise<string> {
-    return this.ensureTicketExists(
-      clientId,
-      chatId,
-      instanceId,
-      customerName,
-      customerPhone,
-      lastMessage,
-      lastMessageAt
-    );
+    try {
+      const { data, error } = await supabase.rpc('upsert_conversation_ticket', {
+        p_client_id: clientId,
+        p_chat_id: chatId,
+        p_instance_id: instanceId,
+        p_customer_name: customerName,
+        p_customer_phone: customerPhone,
+        p_last_message: lastMessage,
+        p_last_message_at: lastMessageAt
+      });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erro ao criar/atualizar ticket:', error);
+      throw error;
+    }
   }
 
   async addTicketMessage(messageData: CreateTicketMessageData): Promise<void> {
     try {
-      console.log('💬 [SERVICE] Adicionando mensagem ao ticket:', messageData.ticket_id);
-
-      // Verificar se mensagem já existe
+      // Verificar se a mensagem já existe para evitar duplicatas
       const { data: existingMessage } = await supabase
         .from('ticket_messages')
         .select('id')
         .eq('message_id', messageData.message_id)
         .eq('ticket_id', messageData.ticket_id)
-        .maybeSingle();
+        .single();
 
       if (existingMessage) {
-        console.log('⚠️ [SERVICE] Mensagem já existe, ignorando duplicata');
+        console.log('Mensagem já existe, ignorando duplicata:', messageData.message_id);
         return;
       }
 
@@ -319,109 +190,31 @@ class TicketsService {
 
       if (error) throw error;
       
-      console.log('✅ [SERVICE] Mensagem adicionada com sucesso');
+      console.log('✅ Mensagem adicionada ao ticket:', messageData.message_id);
     } catch (error) {
-      console.error('❌ [SERVICE] Erro ao adicionar mensagem:', error);
+      console.error('Erro ao adicionar mensagem ao ticket:', error);
       throw error;
     }
   }
 
   async importConversationsFromWhatsApp(clientId: string) {
     try {
-      console.log('📥 Iniciando importação de conversas...');
-      
-      // Buscar mensagens diretamente para criar tickets
-      const { data: messages, error: messagesError } = await supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .eq('instance_id', clientId)
-        .order('timestamp', { ascending: false })
-        .limit(1000);
+      const response = await fetch(`/api/whatsapp/${clientId}/conversations`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-      if (messagesError) {
-        console.error('❌ Erro ao buscar mensagens:', messagesError);
-        throw new Error('Erro ao buscar mensagens do WhatsApp');
+      if (!response.ok) {
+        throw new Error('Falha ao importar conversas');
       }
 
-      console.log(`📊 Encontradas ${messages?.length || 0} mensagens`);
-
-      if (!messages || messages.length === 0) {
-        return {
-          success: 0,
-          errors: 0,
-          message: 'Nenhuma mensagem encontrada para importar'
-        };
-      }
-
-      // Agrupar mensagens por chat_id
-      const messagesByChat = messages.reduce((acc, message) => {
-        if (!acc[message.chat_id]) {
-          acc[message.chat_id] = [];
-        }
-        acc[message.chat_id].push(message);
-        return acc;
-      }, {} as Record<string, any[]>);
-
-      let successCount = 0;
-      let errorCount = 0;
-
-      // Processar cada chat
-      for (const [chatId, chatMessages] of Object.entries(messagesByChat)) {
-        try {
-          // Pegar a mensagem mais recente
-          const lastMessage = chatMessages[0];
-          
-          // Extrair número do chat_id e formatar corretamente
-          const phoneNumber = extractPhoneFromChatId(chatId);
-          const phoneData = smartFormatPhone(phoneNumber);
-          
-          const customerName = lastMessage.sender || 
-                             phoneData.displayNumber || 
-                             'Contato';
-
-          if (!lastMessage.timestamp) {
-            console.log(`⚠️ Chat ${chatId} sem timestamp, pulando...`);
-            continue;
-          }
-
-          console.log('📞 [IMPORT] Processando chat:', {
-            chatId,
-            phoneNumber,
-            formattedPhone: phoneData.displayNumber,
-            isValid: phoneData.isValid
-          });
-
-          // Criar/atualizar ticket com formatação correta
-          const ticketId = await this.createOrUpdateTicket(
-            clientId,
-            phoneData.chatId, // Usar chatId normalizado
-            lastMessage.instance_id,
-            customerName,
-            phoneNumber, // Usar número limpo
-            lastMessage.body || '[Conversa importada]',
-            lastMessage.timestamp
-          );
-
-          successCount++;
-          console.log(`✅ Chat ${chatId} importado como ticket ${ticketId}`);
-
-        } catch (chatError) {
-          console.error(`❌ Erro ao processar chat ${chatId}:`, chatError);
-          errorCount++;
-        }
-      }
-
-      console.log(`📊 Importação concluída: ${successCount} sucessos, ${errorCount} erros`);
-
-      return {
-        success: successCount,
-        errors: errorCount,
-        message: `Importação concluída: ${successCount} conversas importadas`
-      };
-
+      const result = await response.json();
+      return result;
     } catch (error) {
-      console.error('❌ Erro na importação:', error);
-      throw new Error('Falha ao importar conversas: ' + (error as Error).message);
+      console.error('Erro ao importar conversas:', error);
+      throw error;
     }
   }
 
@@ -443,83 +236,10 @@ class TicketsService {
     }
   }
 
-  async assumeTicketManually(ticketId: string): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('conversation_tickets')
-        .update({
-          status: 'pending',
-          assigned_assistant_id: null,
-          assigned_queue_id: null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', ticketId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Erro ao assumir ticket manualmente:', error);
-      throw error;
-    }
-  }
-
-  async transferTicket(ticketId: string, queueId: string, reason?: string): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('conversation_tickets')
-        .update({
-          assigned_queue_id: queueId,
-          status: 'open',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', ticketId);
-
-      if (error) throw error;
-
-      await supabase
-        .from('ticket_events')
-        .insert({
-          ticket_id: ticketId,
-          event_type: 'transfer',
-          description: `Ticket transferido para fila ${queueId}`,
-          metadata: { queue_id: queueId, reason },
-          created_by: 'system'
-        });
-    } catch (error) {
-      console.error('Erro ao transferir ticket:', error);
-      throw error;
-    }
-  }
-
-  async deleteTicket(ticketId: string): Promise<void> {
-    try {
-      await supabase
-        .from('ticket_messages')
-        .delete()
-        .eq('ticket_id', ticketId);
-
-      await supabase
-        .from('ticket_events')
-        .delete()
-        .eq('ticket_id', ticketId);
-
-      const { error } = await supabase
-        .from('conversation_tickets')
-        .delete()
-        .eq('id', ticketId);
-
-      if (error) throw error;
-      
-      console.log('🗑️ Ticket excluído completamente:', ticketId);
-    } catch (error) {
-      console.error('Erro ao excluir ticket:', error);
-      throw error;
-    }
-  }
-
   async addTicketTag(ticketId: string, tag: string): Promise<void> {
     try {
       const ticket = await this.getTicketById(ticketId);
-      const currentTags = Array.isArray(ticket.tags) ? ticket.tags : [];
+      const currentTags = ticket.tags || [];
       
       if (!currentTags.includes(tag)) {
         const updatedTags = [...currentTags, tag];
@@ -543,7 +263,7 @@ class TicketsService {
   async removeTicketTag(ticketId: string, tag: string): Promise<void> {
     try {
       const ticket = await this.getTicketById(ticketId);
-      const currentTags = Array.isArray(ticket.tags) ? ticket.tags : [];
+      const currentTags = ticket.tags || [];
       const updatedTags = currentTags.filter(t => t !== tag);
       
       const { error } = await supabase
@@ -557,6 +277,93 @@ class TicketsService {
       if (error) throw error;
     } catch (error) {
       console.error('Erro ao remover tag do ticket:', error);
+      throw error;
+    }
+  }
+
+  async deleteTicket(ticketId: string): Promise<void> {
+    try {
+      // Primeiro excluir todas as mensagens do ticket
+      const { error: messagesError } = await supabase
+        .from('ticket_messages')
+        .delete()
+        .eq('ticket_id', ticketId);
+
+      if (messagesError) throw messagesError;
+
+      // Depois excluir o ticket
+      const { error: ticketError } = await supabase
+        .from('conversation_tickets')
+        .delete()
+        .eq('id', ticketId);
+
+      if (ticketError) throw ticketError;
+
+      console.log('✅ Ticket excluído com sucesso:', ticketId);
+    } catch (error) {
+      console.error('Erro ao excluir ticket:', error);
+      throw error;
+    }
+  }
+
+  async assumeTicketManually(ticketId: string, operatorName: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({
+          status: 'pending',
+          assigned_assistant_id: null,
+          assigned_queue_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      // Adicionar evento de assumir ticket
+      await supabase
+        .from('ticket_events')
+        .insert({
+          ticket_id: ticketId,
+          event_type: 'manual_takeover',
+          description: `Ticket assumido manualmente por ${operatorName}`,
+          created_by: operatorName
+        });
+
+      console.log('✅ Ticket assumido manualmente:', ticketId);
+    } catch (error) {
+      console.error('Erro ao assumir ticket:', error);
+      throw error;
+    }
+  }
+
+  async transferTicket(ticketId: string, targetQueueId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({
+          assigned_queue_id: targetQueueId,
+          assigned_assistant_id: null,
+          status: 'open',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      // Adicionar evento de transferência
+      await supabase
+        .from('ticket_events')
+        .insert({
+          ticket_id: ticketId,
+          event_type: 'queue_transfer',
+          description: `Ticket transferido para nova fila`,
+          metadata: { target_queue_id: targetQueueId }
+        });
+
+      console.log('✅ Ticket transferido:', ticketId);
+    } catch (error) {
+      console.error('Erro ao transferir ticket:', error);
       throw error;
     }
   }
