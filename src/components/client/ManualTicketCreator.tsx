@@ -15,6 +15,7 @@ import { Plus, Send, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService } from "@/services/ticketsService";
 import { whatsappService } from "@/services/whatsappMultiClient";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ManualTicketCreatorProps {
   clientId: string;
@@ -33,6 +34,21 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
     initialMessage: ""
   });
 
+  // Buscar instanceId do cliente
+  const getClientInstanceId = async (): Promise<string> => {
+    const { data: client, error } = await supabase
+      .from('clients')
+      .select('instance_id')
+      .eq('id', clientId)
+      .single();
+
+    if (error || !client?.instance_id) {
+      throw new Error('Cliente não tem instância ativa');
+    }
+
+    return client.instance_id;
+  };
+
   const handleCreateTicket = async () => {
     if (!formData.customerName.trim() || !formData.customerPhone.trim()) {
       toast({
@@ -47,6 +63,10 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
       setIsCreating(true);
       console.log('🎫 [MANUAL] Criando ticket manual...');
 
+      // Buscar instanceId real
+      const instanceId = await getClientInstanceId();
+      console.log('🔍 [MANUAL] InstanceId encontrado:', instanceId);
+
       // Limpar e formatar telefone
       const cleanPhone = formData.customerPhone.replace(/\D/g, '');
       const chatId = `${cleanPhone}@c.us`;
@@ -55,7 +75,7 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
       const ticketId = await ticketsService.ensureTicketExists(
         clientId,
         chatId,
-        clientId, // usando clientId como instanceId temporariamente
+        instanceId,
         formData.customerName,
         cleanPhone,
         formData.initialMessage || 'Ticket criado manualmente',
