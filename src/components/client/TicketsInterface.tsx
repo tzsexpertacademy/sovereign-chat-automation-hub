@@ -12,7 +12,8 @@ import {
   Users,
   Download,
   RefreshCw,
-  Search
+  Search,
+  AlertTriangle
 } from "lucide-react";
 import TicketCard from "./TicketCard";
 import TicketChatInterface from "./TicketChatInterface";
@@ -68,10 +69,12 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
   };
 
   const handleDebugMessages = () => {
+    console.log('🔍 ===== INICIANDO DEBUG COMPLETO =====');
     debugMessages();
     toast({
-      title: "Debug executado",
-      description: "Verifique o console para logs detalhados das mensagens"
+      title: "🔍 Debug Executado",
+      description: "Verifique o console do navegador para logs detalhados. Pressione F12 para abrir as ferramentas de desenvolvedor.",
+      duration: 8000,
     });
   };
 
@@ -101,10 +104,10 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
               variant="outline"
               size="sm"
               onClick={handleDebugMessages}
-              className="text-orange-600 border-orange-600 hover:bg-orange-50"
+              className="text-red-600 border-red-600 hover:bg-red-50"
             >
-              <Search className="w-4 h-4 mr-1" />
-              Debug
+              <AlertTriangle className="w-4 h-4 mr-1" />
+              Debug Sistema
             </Button>
             <Button
               variant="outline"
@@ -132,6 +135,21 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
                 <RefreshCw className="w-4 h-4" />
               )}
             </Button>
+          </div>
+        </div>
+
+        {/* Alerta de debug */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-5 h-5 text-yellow-600" />
+            <div>
+              <p className="text-sm font-medium text-yellow-800">
+                Não consegue ver novas conversas?
+              </p>
+              <p className="text-xs text-yellow-700">
+                Clique em "Debug Sistema" e verifique o console do navegador (F12) para diagnóstico completo.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -188,9 +206,18 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
                     <div className="text-center py-8 text-gray-500">
                       <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                       <p className="text-sm font-medium mb-2">Nenhuma conversa</p>
-                      <p className="text-xs">
+                      <p className="text-xs mb-4">
                         As conversas aparecerão aqui quando chegarem mensagens
                       </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDebugMessages}
+                        className="text-red-600 border-red-600"
+                      >
+                        <AlertTriangle className="w-4 h-4 mr-1" />
+                        Diagnosticar Problema
+                      </Button>
                     </div>
                   ) : (
                     <div className="space-y-2">
