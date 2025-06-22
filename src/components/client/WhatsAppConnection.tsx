@@ -2,9 +2,6 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Plus, 
@@ -21,13 +18,15 @@ import {
   Power,
   RotateCcw,
   Wifi,
-  WifiOff
+  WifiOff,
+  X
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { queuesService, QueueWithAssistant } from "@/services/queuesService";
 import { useConnectionMonitor } from "@/hooks/useConnectionMonitor";
+import whatsappService from "@/services/whatsappMultiClient";
 
 const WhatsAppConnection = () => {
   const { clientId } = useParams();
@@ -44,19 +43,35 @@ const WhatsAppConnection = () => {
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [queues, setQueues] = useState<QueueWithAssistant[]>([]);
   const [loading, setLoading] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-  const [selectedQueueId, setSelectedQueueId] = useState<string>("");
-  const [editingInstance, setEditingInstance] = useState<any>(null);
-  const [editName, setEditName] = useState("");
-  const [showEditDialog, setShowEditDialog] = useState(false);
   const [showQrDialog, setShowQrDialog] = useState(false);
   const [qrCodeData, setQrCodeData] = useState<{instanceId: string, qrCode: string} | null>(null);
+  const [loadingQr, setLoadingQr] = useState(false);
 
   useEffect(() => {
     if (clientId) {
       loadClientData();
     }
   }, [clientId]);
+
+  // Auto-reconexão para instâncias desconectadas
+  useEffect(() => {
+    const disconnectedInstances = instances.filter(i => 
+      ['disconnected', 'error'].includes(i.status)
+    );
+
+    if (disconnectedInstances.length > 0) {
+      console.log('🔄 Detectadas instâncias desconectadas, tentando reconectar...');
+      
+      disconnectedInstances.forEach(async (instance) => {
+        try {
+          console.log(`🔄 Auto-reconectando instância: ${instance.instance_id}`);
+          await handleReconnectInstance(instance.instance_id, false); // false = não mostrar toast
+        } catch (error) {
+          console.error(`❌ Erro na auto-reconexão de ${instance.instance_id}:`, error);
+        }
+      });
+    }
+  }, [instances]);
 
   const loadClientData = async () => {
     try {
@@ -83,6 +98,39 @@ const WhatsAppConnection = () => {
     }
   };
 
+  const handleShowQrCode = async (instanceId: string) => {
+    try {
+      setLoadingQr(true);
+      console.log('🔍 Buscando QR Code para instância:', instanceId);
+      
+      // Buscar status atual do servidor para obter QR code
+      const serverStatus = await whatsappService.getClientStatus(instanceId);
+      
+      if (serverStatus.qrCode) {
+        setQrCodeData({
+          instanceId,
+          qrCode: serverStatus.qrCode
+        });
+        setShowQrDialog(true);
+      } else {
+        toast({
+          title: "QR Code não disponível",
+          description: "QR Code não está pronto ainda. Tente reconectar a instância.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar QR Code:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao buscar QR Code",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingQr(false);
+    }
+  };
+
   const handleDisconnectInstance = async (instanceId: string) => {
     const success = await disconnectInstance(instanceId);
     
@@ -95,22 +143,24 @@ const WhatsAppConnection = () => {
       toast({
         title: "Erro",
         description: "Falha ao desconectar instância",
+        variant: "destructive",
       });
     }
   };
 
-  const handleReconnectInstance = async (instanceId: string) => {
+  const handleReconnectInstance = async (instanceId: string, showToast: boolean = true) => {
     const success = await reconnectInstance(instanceId);
     
-    if (success) {
+    if (success && showToast) {
       toast({
         title: "Reconectando",
         description: "Instância sendo reconectada. Aguarde o QR Code...",
       });
-    } else {
+    } else if (!success && showToast) {
       toast({
         title: "Erro",
         description: "Falha ao reconectar instância",
+        variant: "destructive",
       });
     }
   };
@@ -179,6 +229,7 @@ const WhatsAppConnection = () => {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Conexões WhatsApp</h1>
@@ -325,11 +376,12 @@ const WhatsAppConnection = () => {
                   {instance.status === 'qr_ready' && (
                     <Button 
                       size="sm"
-                      variant="outline"
-                      className="border-blue-300"
+                      onClick={() => handleShowQrCode(instance.instance_id)}
+                      disabled={loadingQr}
+                      className="bg-blue-600 hover:bg-blue-700"
                     >
                       <QrCode className="w-4 h-4 mr-1" />
-                      Ver QR Code
+                      {loadingQr ? 'Carregando...' : 'Ver QR Code'}
                     </Button>
                   )}
                 </div>
@@ -357,7 +409,7 @@ const WhatsAppConnection = () => {
                     <div>
                       <h4 className="font-medium text-red-800">Conexão Perdida</h4>
                       <p className="text-sm text-red-700">
-                        A conexão com o WhatsApp foi perdida. Clique em "Reconectar" para restabelecer.
+                        A conexão com o WhatsApp foi perdida. Sistema tentando reconectar automaticamente...
                       </p>
                     </div>
                     <Button
@@ -383,11 +435,12 @@ const WhatsAppConnection = () => {
                     </div>
                     <Button 
                       size="sm"
-                      variant="outline"
-                      className="border-blue-300"
+                      onClick={() => handleShowQrCode(instance.instance_id)}
+                      disabled={loadingQr}
+                      className="bg-blue-600 hover:bg-blue-700"
                     >
                       <QrCode className="w-4 h-4 mr-1" />
-                      Ver QR Code
+                      {loadingQr ? 'Carregando...' : 'Ver QR Code'}
                     </Button>
                   </div>
                 </div>
@@ -396,6 +449,59 @@ const WhatsAppConnection = () => {
           </Card>
         );
       })}
+
+      {/* QR Code Dialog */}
+      <Dialog open={showQrDialog} onOpenChange={setShowQrDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <QrCode className="w-5 h-5" />
+              <span>QR Code WhatsApp</span>
+            </DialogTitle>
+            <DialogDescription>
+              Escaneie este QR Code com seu WhatsApp para conectar a instância
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex flex-col items-center space-y-4">
+            {qrCodeData?.qrCode ? (
+              <div className="p-4 bg-white border-2 border-gray-200 rounded-lg">
+                <img 
+                  src={qrCodeData.qrCode} 
+                  alt="QR Code WhatsApp" 
+                  className="w-64 h-64 object-contain"
+                />
+              </div>
+            ) : (
+              <div className="w-64 h-64 flex items-center justify-center bg-gray-100 rounded-lg">
+                <div className="text-center">
+                  <QrCode className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm text-gray-600">QR Code não disponível</p>
+                </div>
+              </div>
+            )}
+            
+            <div className="text-center text-sm text-gray-600">
+              <p className="font-medium">Como escanear:</p>
+              <p>1. Abra o WhatsApp no seu celular</p>
+              <p>2. Vá em ⋮ (menu) &gt; Dispositivos conectados</p>
+              <p>3. Toque em "Conectar um dispositivo"</p>
+              <p>4. Aponte a câmera para este QR Code</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowQrDialog(false)}
+              className="w-full"
+            >
+              <X className="w-4 h-4 mr-2" />
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

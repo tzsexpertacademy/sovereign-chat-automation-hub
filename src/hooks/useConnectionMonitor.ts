@@ -7,6 +7,7 @@ import { whatsappInstancesService, WhatsAppInstanceData } from '@/services/whats
 export const useConnectionMonitor = (clientId: string) => {
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState<Record<string, number>>({});
 
   const checkInstanceStatus = useCallback(async (instance: WhatsAppInstanceData) => {
     try {
@@ -24,7 +25,8 @@ export const useConnectionMonitor = (clientId: string) => {
           status: serverStatus.status,
           phone_number: serverStatus.phoneNumber || instance.phone_number,
           has_qr_code: !!serverStatus.qrCode,
-          qr_code: serverStatus.qrCode || null
+          qr_code: serverStatus.qrCode || null,
+          updated_at: new Date().toISOString()
         });
         
         return {
@@ -32,7 +34,8 @@ export const useConnectionMonitor = (clientId: string) => {
           status: serverStatus.status,
           phone_number: serverStatus.phoneNumber || instance.phone_number,
           has_qr_code: !!serverStatus.qrCode,
-          qr_code: serverStatus.qrCode || null
+          qr_code: serverStatus.qrCode || null,
+          updated_at: new Date().toISOString()
         };
       }
       
@@ -44,23 +47,77 @@ export const useConnectionMonitor = (clientId: string) => {
       if (instance.status !== 'disconnected') {
         console.log(`📴 Marcando instância como desconectada: ${instance.instance_id}`);
         
-        await whatsappInstancesService.updateInstanceById(instance.id, {
-          status: 'disconnected',
-          has_qr_code: false,
-          qr_code: null
-        });
+        try {
+          await whatsappInstancesService.updateInstanceById(instance.id, {
+            status: 'disconnected',
+            has_qr_code: false,
+            qr_code: null,
+            updated_at: new Date().toISOString()
+          });
+        } catch (updateError) {
+          console.error('Erro ao atualizar status para desconectado:', updateError);
+        }
         
         return {
           ...instance,
           status: 'disconnected',
           has_qr_code: false,
-          qr_code: null
+          qr_code: null,
+          updated_at: new Date().toISOString()
         };
       }
       
       return instance;
     }
   }, []);
+
+  const autoReconnectInstance = useCallback(async (instanceId: string) => {
+    const attempts = reconnectAttempts[instanceId] || 0;
+    const maxAttempts = 3;
+    
+    if (attempts >= maxAttempts) {
+      console.log(`❌ Máximo de tentativas de reconexão atingido para ${instanceId}`);
+      return false;
+    }
+    
+    try {
+      console.log(`🔄 Auto-reconexão tentativa ${attempts + 1}/${maxAttempts} para ${instanceId}`);
+      
+      // Incrementar contador de tentativas
+      setReconnectAttempts(prev => ({
+        ...prev,
+        [instanceId]: attempts + 1
+      }));
+      
+      // Tentar reconectar
+      await whatsappService.connectClient(instanceId);
+      
+      // Aguardar um pouco e verificar se conectou
+      setTimeout(async () => {
+        try {
+          const instance = instances.find(i => i.instance_id === instanceId);
+          if (instance) {
+            await checkInstanceStatus(instance);
+          }
+        } catch (error) {
+          console.error('Erro ao verificar status após reconexão:', error);
+        }
+      }, 5000);
+      
+      return true;
+    } catch (error) {
+      console.error(`❌ Erro na auto-reconexão de ${instanceId}:`, error);
+      
+      // Tentar novamente após um tempo
+      if (attempts < maxAttempts - 1) {
+        setTimeout(() => {
+          autoReconnectInstance(instanceId);
+        }, 30000); // Tentar novamente em 30 segundos
+      }
+      
+      return false;
+    }
+  }, [instances, reconnectAttempts, checkInstanceStatus]);
 
   const monitorInstances = useCallback(async () => {
     if (!clientId || isMonitoring) return;
@@ -80,16 +137,41 @@ export const useConnectionMonitor = (clientId: string) => {
       setInstances(updatedInstances);
       console.log(`✅ Monitoramento concluído - ${updatedInstances.length} instâncias verificadas`);
       
+      // Verificar se há instâncias que precisam de reconexão automática
+      const disconnectedInstances = updatedInstances.filter(i => 
+        ['disconnected', 'error'].includes(i.status)
+      );
+      
+      if (disconnectedInstances.length > 0) {
+        console.log(`🔄 Detectadas ${disconnectedInstances.length} instâncias desconectadas`);
+        
+        // Tentar reconectar automaticamente após um pequeno delay
+        setTimeout(() => {
+          disconnectedInstances.forEach(instance => {
+            const attempts = reconnectAttempts[instance.instance_id] || 0;
+            if (attempts < 3) { // Máximo 3 tentativas
+              autoReconnectInstance(instance.instance_id);
+            }
+          });
+        }, 2000);
+      }
+      
     } catch (error) {
       console.error('❌ Erro no monitoramento:', error);
     } finally {
       setIsMonitoring(false);
     }
-  }, [clientId, isMonitoring, checkInstanceStatus]);
+  }, [clientId, isMonitoring, checkInstanceStatus, reconnectAttempts, autoReconnectInstance]);
 
   const disconnectInstance = useCallback(async (instanceId: string) => {
     try {
       console.log(`🔌 Desconectando instância: ${instanceId}`);
+      
+      // Resetar contador de tentativas
+      setReconnectAttempts(prev => ({
+        ...prev,
+        [instanceId]: 0
+      }));
       
       // Desconectar no servidor WhatsApp
       await whatsappService.disconnectClient(instanceId);
@@ -100,14 +182,21 @@ export const useConnectionMonitor = (clientId: string) => {
         await whatsappInstancesService.updateInstanceById(instance.id, {
           status: 'disconnected',
           has_qr_code: false,
-          qr_code: null
+          qr_code: null,
+          updated_at: new Date().toISOString()
         });
       }
       
       // Atualizar estado local
       setInstances(prev => prev.map(inst => 
         inst.instance_id === instanceId 
-          ? { ...inst, status: 'disconnected', has_qr_code: false, qr_code: null }
+          ? { 
+              ...inst, 
+              status: 'disconnected', 
+              has_qr_code: false, 
+              qr_code: null,
+              updated_at: new Date().toISOString()
+            }
           : inst
       ));
       
@@ -123,22 +212,51 @@ export const useConnectionMonitor = (clientId: string) => {
     try {
       console.log(`🔄 Reconectando instância: ${instanceId}`);
       
+      // Resetar contador de tentativas
+      setReconnectAttempts(prev => ({
+        ...prev,
+        [instanceId]: 0
+      }));
+      
       // Atualizar status para "connecting"
       const instance = instances.find(i => i.instance_id === instanceId);
       if (instance) {
         await whatsappInstancesService.updateInstanceById(instance.id, {
           status: 'connecting',
           has_qr_code: false,
-          qr_code: null
+          qr_code: null,
+          updated_at: new Date().toISOString()
         });
+        
+        // Atualizar estado local imediatamente
+        setInstances(prev => prev.map(inst => 
+          inst.instance_id === instanceId 
+            ? { 
+                ...inst, 
+                status: 'connecting', 
+                has_qr_code: false, 
+                qr_code: null,
+                updated_at: new Date().toISOString()
+              }
+            : inst
+        ));
       }
       
       // Conectar no servidor WhatsApp
       await whatsappService.connectClient(instanceId);
       
       // Aguardar um pouco e verificar status
-      setTimeout(() => {
-        checkInstanceStatus(instance!);
+      setTimeout(async () => {
+        if (instance) {
+          try {
+            const updatedInstance = await checkInstanceStatus(instance);
+            setInstances(prev => prev.map(inst => 
+              inst.instance_id === instanceId ? updatedInstance : inst
+            ));
+          } catch (error) {
+            console.error('Erro ao verificar status após reconexão manual:', error);
+          }
+        }
       }, 3000);
       
       console.log(`✅ Reconexão iniciada: ${instanceId}`);
@@ -192,6 +310,18 @@ export const useConnectionMonitor = (clientId: string) => {
       supabase.removeChannel(channel);
     };
   }, [clientId]);
+
+  // Resetar tentativas quando instância conecta com sucesso
+  useEffect(() => {
+    instances.forEach(instance => {
+      if (instance.status === 'connected' && reconnectAttempts[instance.instance_id] > 0) {
+        setReconnectAttempts(prev => ({
+          ...prev,
+          [instance.instance_id]: 0
+        }));
+      }
+    });
+  }, [instances, reconnectAttempts]);
 
   return {
     instances,
