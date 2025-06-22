@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import whatsappService from '@/services/whatsappMultiClient';
@@ -137,6 +136,27 @@ export const useConnectionMonitor = (clientId: string) => {
       setInstances(updatedInstances);
       console.log(`✅ Monitoramento concluído - ${updatedInstances.length} instâncias verificadas`);
       
+      // Configurar listeners de mensagens para instâncias conectadas
+      updatedInstances.forEach(instance => {
+        if (instance.status === 'connected') {
+          console.log(`📱 Configurando listener para instância: ${instance.instance_id}`);
+          
+          // Garantir conexão WebSocket
+          const socket = whatsappService.connectSocket();
+          whatsappService.joinClientRoom(instance.instance_id);
+          
+          // Escutar mensagens desta instância
+          whatsappService.onClientMessage(instance.instance_id, (message) => {
+            console.log(`📨 Nova mensagem recebida na instância ${instance.instance_id}:`, message);
+            
+            // Trigger para processamento de mensagem
+            if (!message.fromMe) {
+              console.log(`🤖 Mensagem será processada pelo assistente: ${message.body?.substring(0, 50)}...`);
+            }
+          });
+        }
+      });
+      
       // Verificar se há instâncias que precisam de reconexão automática
       const disconnectedInstances = updatedInstances.filter(i => 
         ['disconnected', 'error'].includes(i.status)
@@ -267,15 +287,15 @@ export const useConnectionMonitor = (clientId: string) => {
     }
   }, [instances, checkInstanceStatus]);
 
-  // Monitoramento automático a cada 30 segundos
+  // Monitoramento automático melhorado
   useEffect(() => {
     if (!clientId) return;
 
     // Monitoramento inicial
     monitorInstances();
 
-    // Monitoramento periódico
-    const interval = setInterval(monitorInstances, 30000);
+    // Monitoramento periódico mais frequente para mensagens
+    const interval = setInterval(monitorInstances, 15000); // A cada 15 segundos
 
     return () => clearInterval(interval);
   }, [clientId, monitorInstances]);

@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { whatsappService, type MessageData } from '@/services/whatsappMultiClient';
 import { queuesService } from '@/services/queuesService';
@@ -39,8 +38,16 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
     if (!instanceId) return;
     
     try {
+      console.log(`🔗 Carregando conexão da fila para instância: ${instanceId}`);
       const connections = await queuesService.getInstanceConnections(instanceId);
-      setInstanceQueueConnection(connections[0] || null);
+      const connection = connections[0] || null;
+      setInstanceQueueConnection(connection);
+      
+      if (connection) {
+        console.log(`✅ Conexão encontrada - Fila: ${connection.name}, Assistente: ${connection.assistants?.name}`);
+      } else {
+        console.log(`⚠️ Nenhuma conexão de fila encontrada para instância: ${instanceId}`);
+      }
     } catch (error) {
       console.error('Erro ao carregar conexão da instância:', error);
     }
@@ -62,8 +69,16 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
 
   // Adicionar mensagem à fila
   const enqueueMessage = useCallback((message: MessageData, queueId?: string, assistantId?: string) => {
+    console.log(`📥 Adicionando mensagem à fila:`, {
+      from: message.from,
+      body: message.body?.substring(0, 50),
+      hasConnection: !!instanceQueueConnection,
+      assistantId: assistantId || instanceQueueConnection?.assistants?.id
+    });
+
     // Determinar se deve ser processada automaticamente ou manualmente
-    const isHumanHandled = !instanceQueueConnection;
+    const hasAssistant = !!(assistantId || instanceQueueConnection?.assistants?.id);
+    const isHumanHandled = !hasAssistant;
     
     const queuedMessage: QueuedMessage = {
       ...message,
@@ -87,7 +102,7 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
     });
 
     // Log da mensagem recebida
-    console.log(`📥 Nova mensagem ${isHumanHandled ? 'para interação humana' : 'para processamento automático'}:`, {
+    console.log(`📝 Mensagem ${isHumanHandled ? 'para interação humana' : 'para processamento automático'}:`, {
       from: message.from,
       type: message.type,
       preview: message.body?.substring(0, 50),
@@ -96,14 +111,57 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
     });
   }, [instanceQueueConnection]);
 
-  // Processar fila de mensagens automaticamente
+  // Processar mensagem com assistente IA
+  const processWithAssistant = async (message: MessageData, assistant: any): Promise<string> => {
+    try {
+      console.log(`🤖 Processando mensagem com assistente: ${assistant.name}`);
+      console.log(`📨 Mensagem: ${message.body?.substring(0, 100)}`);
+      
+      // Chamar a edge function ai-assistant-process
+      const response = await fetch('/api/ai-assistant-process', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messageText: message.body,
+          assistantId: assistant.id,
+          chatId: message.from,
+          instanceId: instanceId,
+          messageId: message.id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      console.log(`✅ Resposta do assistente recebida: ${result.response?.substring(0, 100)}`);
+      return result.response || 'Desculpe, não consegui processar sua mensagem no momento.';
+      
+    } catch (error) {
+      console.error('❌ Erro ao processar com assistente:', error);
+      return 'Desculpe, houve um erro ao processar sua mensagem. Um atendente entrará em contato em breve.';
+    }
+  };
+
+  // Processar fila de mensagens
   const processQueue = useCallback(async () => {
     if (isProcessing || messageQueue.length === 0) return;
+
+    const pendingMessages = messageQueue.filter(msg => msg.status === 'pending');
+    if (pendingMessages.length === 0) return;
 
     setIsProcessing(true);
 
     try {
-      const pendingMessages = messageQueue.filter(msg => msg.status === 'pending');
+      console.log(`🔄 Processando ${pendingMessages.length} mensagens pendentes`);
       
       for (const message of pendingMessages) {
         // Marcar como processando
@@ -114,11 +172,14 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
         );
 
         try {
+          console.log(`🎯 Processando mensagem: ${message.id}`);
+          
           // Se tem assistente configurado, processar com IA
           if (message.assistantId && instanceQueueConnection?.assistants) {
             const response = await processWithAssistant(message, instanceQueueConnection.assistants);
             
             if (response && response.trim()) {
+              console.log(`📤 Enviando resposta: ${response.substring(0, 50)}...`);
               await whatsappService.sendMessage(clientId, message.from, response);
             }
 
@@ -184,41 +245,14 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
         }
 
         // Pequeno delay entre processamentos
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     } catch (error) {
-      console.error('Erro no processamento da fila:', error);
+      console.error('❌ Erro no processamento da fila:', error);
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, messageQueue, processors, clientId, instanceQueueConnection]);
-
-  // Processar mensagem com assistente IA
-  const processWithAssistant = async (message: MessageData, assistant: any): Promise<string> => {
-    try {
-      // Aqui você pode integrar com seu serviço de IA
-      // Por ora, vou simular uma resposta automática
-      
-      if (message.body?.toLowerCase().includes('olá') || message.body?.toLowerCase().includes('oi')) {
-        return `Olá! Sou o assistente ${assistant.name}. Como posso ajudá-lo hoje?`;
-      }
-      
-      if (message.body?.toLowerCase().includes('horário')) {
-        return 'Nosso horário de atendimento é de segunda a sexta, das 8h às 18h.';
-      }
-      
-      if (message.body?.toLowerCase().includes('obrigad')) {
-        return 'De nada! Fico feliz em ajudar. Se precisar de mais alguma coisa, é só falar!';
-      }
-      
-      // Resposta padrão do assistente
-      return assistant.default_response || 'Obrigado pela sua mensagem. Em breve retornaremos o contato.';
-      
-    } catch (error) {
-      console.error('Erro ao processar com assistente:', error);
-      return 'Desculpe, houve um erro ao processar sua mensagem. Um atendente entrará em contato em breve.';
-    }
-  };
+  }, [isProcessing, messageQueue, processors, clientId, instanceQueueConnection, instanceId]);
 
   // Marcar mensagem como tratada humanamente
   const markAsHumanHandled = useCallback((messageId: string) => {
@@ -253,16 +287,30 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
   useEffect(() => {
     if (!clientId || !instanceId) return;
 
+    console.log(`👂 Configurando listener de mensagens para: ${instanceId}`);
+
     const handleNewMessage = (message: MessageData) => {
-      // Não processar mensagens próprias por padrão
+      console.log(`📨 Nova mensagem interceptada:`, {
+        from: message.from,
+        fromMe: message.fromMe,
+        type: message.type,
+        body: message.body?.substring(0, 50)
+      });
+
+      // Processar apenas mensagens recebidas (não enviadas)
       if (!message.fromMe) {
+        console.log(`🎯 Adicionando à fila de processamento: ${message.from}`);
         enqueueMessage(message);
       }
     };
 
+    // Conectar WebSocket se necessário
+    const socket = whatsappService.connectSocket();
+    whatsappService.joinClientRoom(instanceId);
     whatsappService.onClientMessage(instanceId, handleNewMessage);
 
     return () => {
+      console.log(`🔌 Removendo listener para: ${instanceId}`);
       whatsappService.removeListener(`message_${instanceId}`, handleNewMessage);
     };
   }, [clientId, instanceId, enqueueMessage]);
@@ -272,7 +320,7 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
     const interval = setInterval(() => {
       processQueue();
       cleanQueue();
-    }, 2000); // Processar a cada 2 segundos
+    }, 1000); // Processar a cada 1 segundo para ser mais responsivo
 
     return () => clearInterval(interval);
   }, [processQueue, cleanQueue]);

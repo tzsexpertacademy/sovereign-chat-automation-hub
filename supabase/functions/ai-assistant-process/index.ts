@@ -28,24 +28,34 @@ serve(async (req) => {
       isAudioMessage = false 
     } = await req.json();
 
-    console.log('🔍 Processando mensagem para assistente:', {
+    console.log('🔍 AI Assistant Process - Dados recebidos:', {
       assistantId,
       chatId,
       instanceId,
       messageId,
       hasMessage: !!messageText,
-      messageLength: messageText?.length || 0
+      messageLength: messageText?.length || 0,
+      isAudio: isAudioMessage
     });
 
+    // Validações básicas
     if (!assistantId) {
+      console.error('❌ ID do assistente não fornecido');
       throw new Error('ID do assistente é obrigatório');
     }
 
-    if (!messageText) {
+    if (!messageText || !messageText.trim()) {
+      console.error('❌ Texto da mensagem vazio ou não fornecido');
       throw new Error('Texto da mensagem é obrigatório');
     }
 
+    if (!chatId) {
+      console.error('❌ ID do chat não fornecido');
+      throw new Error('ID do chat é obrigatório');
+    }
+
     // Buscar configurações do assistente
+    console.log(`🔍 Buscando assistente: ${assistantId}`);
     const { data: assistant, error: assistantError } = await supabase
       .from('assistants')
       .select('*, advanced_settings')
@@ -54,10 +64,14 @@ serve(async (req) => {
 
     if (assistantError || !assistant) {
       console.error('❌ Assistente não encontrado:', assistantError);
-      throw new Error('Assistente não encontrado');
+      throw new Error(`Assistente não encontrado: ${assistantError?.message || 'ID inválido'}`);
     }
 
-    console.log('✅ Assistente encontrado:', assistant.name);
+    console.log('✅ Assistente encontrado:', {
+      name: assistant.name,
+      model: assistant.model,
+      clientId: assistant.client_id
+    });
 
     // Parse das configurações avançadas
     let settings: any = {};
@@ -78,6 +92,7 @@ serve(async (req) => {
     console.log('🎛️ Configurações de IA:', { temperature, maxTokens, responseDelay });
     
     // Buscar configuração de API do cliente
+    console.log(`🔍 Buscando configuração de IA para cliente: ${assistant.client_id}`);
     const { data: aiConfig, error: configError } = await supabase
       .from('client_ai_configs')
       .select('*')
@@ -86,16 +101,17 @@ serve(async (req) => {
 
     if (configError || !aiConfig) {
       console.error('❌ Configuração de IA não encontrada:', configError);
-      throw new Error('Configuração de IA não encontrada para este cliente');
+      throw new Error(`Configuração de IA não encontrada para este cliente: ${configError?.message || 'Sem configuração'}`);
     }
 
     if (!aiConfig.openai_api_key) {
+      console.error('❌ Chave da API OpenAI não configurada');
       throw new Error('Chave da API OpenAI não configurada');
     }
 
-    console.log('🔑 Configuração de API encontrada');
+    console.log('🔑 Configuração de API encontrada para cliente:', assistant.client_id);
 
-    let processedText = messageText;
+    let processedText = messageText.trim();
 
     // Processar áudio se necessário
     if (isAudioMessage && settings.audio_processing_enabled) {
@@ -137,7 +153,9 @@ serve(async (req) => {
       systemMessage += `\n\nArquivos de referência disponíveis: ${settings.custom_files.map((f: any) => f.name).join(', ')}`;
     }
 
-    console.log('🤖 Processando com OpenAI...');
+    console.log('🤖 Iniciando processamento com OpenAI...');
+    console.log('📝 Prompt do sistema:', systemMessage.substring(0, 100) + '...');
+    console.log('💬 Mensagem do usuário:', processedText.substring(0, 100) + '...');
 
     // Processar com OpenAI
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -160,6 +178,8 @@ serve(async (req) => {
       }),
     });
 
+    console.log(`📡 Resposta da OpenAI: ${openaiResponse.status} ${openaiResponse.statusText}`);
+
     if (!openaiResponse.ok) {
       const errorText = await openaiResponse.text();
       console.error('❌ Erro da OpenAI:', errorText);
@@ -178,11 +198,12 @@ serve(async (req) => {
       throw new Error('Resposta inválida da OpenAI');
     }
 
-    console.log('✅ Resposta da OpenAI recebida');
+    console.log('✅ Resposta da OpenAI recebida com sucesso');
 
     const responseText = aiResult.choices[0].message.content;
 
     if (!responseText || !responseText.trim()) {
+      console.error('❌ OpenAI retornou resposta vazia');
       throw new Error('OpenAI retornou resposta vazia');
     }
 
@@ -221,12 +242,14 @@ serve(async (req) => {
     }
 
     console.log('✅ Processamento concluído com sucesso');
+    console.log('📤 Resposta final:', finalResponse.substring(0, 100) + '...');
 
     return new Response(JSON.stringify({ 
       response: finalResponse,
       isAudio: isAudioResponse,
       processed: true,
       success: true,
+      timestamp: new Date().toISOString(),
       settings: {
         temperature,
         maxTokens,
@@ -242,7 +265,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       error: error.message,
       success: false,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      details: error.stack
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
