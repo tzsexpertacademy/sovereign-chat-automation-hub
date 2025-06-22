@@ -30,16 +30,10 @@ export const useTicketRealtime = (clientId: string) => {
 
   // Função para normalizar dados da mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
-    console.log('📨 Normalizando mensagem WhatsApp:', {
-      id: message.id,
-      from: message.from,
-      type: message.type,
-      fromMe: message.fromMe,
-      body: message.body?.substring(0, 50)
-    });
+    console.log('📨 Normalizando mensagem WhatsApp raw:', message);
     
-    // Extrair chat ID e telefone
-    let chatId = message.from || message.chatId || message.key?.remoteJid;
+    // Diferentes formatos possíveis de mensagem
+    let chatId = message.from || message.chatId || message.key?.remoteJid || message.chat?.id;
     let phoneNumber = chatId;
     
     if (chatId?.includes('@')) {
@@ -47,19 +41,29 @@ export const useTicketRealtime = (clientId: string) => {
     }
     
     // Extrair nome do contato
-    let customerName = message.notifyName || message.pushName || message.participant || phoneNumber;
+    let customerName = message.notifyName || 
+                      message.pushName || 
+                      message.participant || 
+                      message.author ||
+                      message.senderName ||
+                      phoneNumber;
     
     // Se for grupo, usar nome do grupo
     if (chatId?.includes('@g.us')) {
       customerName = message.chat?.name || customerName;
     }
     
-    // Normalizar conteúdo
-    let content = message.body || message.caption || message.text || '';
+    // Normalizar conteúdo da mensagem
+    let content = message.body || 
+                  message.caption || 
+                  message.text || 
+                  message.content ||
+                  '';
+    
     let messageType = message.type || 'text';
     
     // Processar diferentes tipos de mídia
-    if (message.type === 'image') {
+    if (message.type === 'image' || message.hasMedia) {
       content = `[Imagem] ${message.caption || 'Imagem enviada'}`;
       messageType = 'image';
     } else if (message.type === 'audio' || message.type === 'ptt') {
@@ -71,6 +75,12 @@ export const useTicketRealtime = (clientId: string) => {
     } else if (message.type === 'document') {
       content = `[Documento] ${message.filename || 'Documento enviado'}`;
       messageType = 'document';
+    } else if (message.type === 'sticker') {
+      content = `[Figurinha] Figurinha enviada`;
+      messageType = 'sticker';
+    } else if (message.type === 'location') {
+      content = `[Localização] Localização compartilhada`;
+      messageType = 'location';
     }
     
     // Verificar se é mensagem citada
@@ -80,13 +90,19 @@ export const useTicketRealtime = (clientId: string) => {
       content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
     }
 
+    // Verificar timestamp
+    let timestamp = message.timestamp || message.t || Date.now();
+    if (typeof timestamp === 'number' && timestamp.toString().length === 10) {
+      timestamp = timestamp * 1000; // Converter de segundos para milissegundos
+    }
+
     const normalizedMessage = {
-      id: message.id || message.key?.id || `msg_${Date.now()}_${Math.random()}`,
+      id: message.id || message.key?.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       from: chatId,
       fromMe: message.fromMe || false,
       body: content,
       type: messageType,
-      timestamp: message.timestamp || Date.now(),
+      timestamp: timestamp,
       author: message.author || customerName,
       notifyName: customerName,
       pushName: customerName,
@@ -100,7 +116,8 @@ export const useTicketRealtime = (clientId: string) => {
       from: normalizedMessage.from,
       customerName: normalizedMessage.customerName,
       phoneNumber: normalizedMessage.phoneNumber,
-      body: normalizedMessage.body.substring(0, 50)
+      body: normalizedMessage.body.substring(0, 50),
+      fromMe: normalizedMessage.fromMe
     });
     
     return normalizedMessage;
@@ -115,6 +132,12 @@ export const useTicketRealtime = (clientId: string) => {
     // Usar apenas a última mensagem para resposta do assistente
     const lastMessage = messages[messages.length - 1];
     const normalizedMessage = normalizeWhatsAppMessage(lastMessage);
+    
+    // Só processar se não for mensagem enviada por nós
+    if (normalizedMessage.fromMe) {
+      console.log('📤 Mensagem enviada por nós, não processando');
+      return;
+    }
     
     try {
       // Processar reações automáticas para todas as mensagens
@@ -412,31 +435,37 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('❌ Erro de conexão WebSocket:', error);
       });
 
-      // Listener para mensagens do WhatsApp
-      const messageEvent = `message_${clientId}`;
-      const handleNewMessage = async (message: any) => {
-        if (!mountedRef.current || message.fromMe) {
-          return;
-        }
-        
-        console.log('📨 Nova mensagem recebida via WebSocket:', {
-          id: message.id,
-          from: message.from,
-          type: message.type,
-          body: message.body?.substring(0, 50),
-          timestamp: message.timestamp
-        });
-        
-        // Adicionar ao batch para processamento
-        addMessage(message);
-      };
+      // Listeners mais específicos para diferentes tipos de eventos
+      const events = [
+        `message_${clientId}`,
+        `new_message_${clientId}`,
+        `whatsapp_message_${clientId}`,
+        `message`
+      ];
 
-      socket.on(messageEvent, handleNewMessage);
+      events.forEach(eventName => {
+        socket.on(eventName, async (message: any) => {
+          if (!mountedRef.current) return;
+          
+          console.log(`📨 Evento ${eventName} recebido:`, {
+            id: message.id,
+            from: message.from,
+            type: message.type,
+            body: message.body?.substring(0, 50),
+            fromMe: message.fromMe
+          });
+          
+          // Só processar mensagens que não são nossas
+          if (!message.fromMe) {
+            addMessage(message);
+          }
+        });
+      });
 
       // Listener genérico para debug
       socket.onAny((eventName: string, ...args: any[]) => {
-        if (eventName.includes(clientId)) {
-          console.log(`🔔 Evento WebSocket recebido: ${eventName}`, args);
+        if (eventName.includes(clientId) || eventName.includes('message')) {
+          console.log(`🔔 Evento WebSocket: ${eventName}`, args);
         }
       });
 

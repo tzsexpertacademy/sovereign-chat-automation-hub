@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationTicket {
@@ -78,11 +79,41 @@ function normalizePhoneNumber(phone: string): string {
     cleanPhone = cleanPhone.substring(2);
   }
   
-  // Para números com 10 dígitos (sem 9), adiciona o 9
-  if (cleanPhone.length === 10 && (cleanPhone.startsWith('11') || cleanPhone.startsWith('21') || 
-      cleanPhone.startsWith('27') || cleanPhone.startsWith('28') || cleanPhone.startsWith('47') || 
-      cleanPhone.startsWith('48') || cleanPhone.startsWith('49'))) {
-    cleanPhone = cleanPhone.slice(0, 2) + '9' + cleanPhone.slice(2);
+  // Para números com 10 dígitos (principais DDDs), adiciona o 9
+  if (cleanPhone.length === 10) {
+    const ddd = cleanPhone.substring(0, 2);
+    // Lista dos principais DDDs que precisam do 9
+    const dddList = ['11', '12', '13', '14', '15', '16', '17', '18', '19', // SP
+                     '21', '22', '24', // RJ
+                     '27', '28', // ES
+                     '31', '32', '33', '34', '35', '37', '38', // MG
+                     '41', '42', '43', '44', '45', '46', // PR
+                     '47', '48', '49', // SC
+                     '51', '53', '54', '55', // RS
+                     '61', // DF
+                     '62', '64', // GO
+                     '63', // TO
+                     '65', '66', // MT
+                     '67', // MS
+                     '68', // AC
+                     '69', // RO
+                     '71', '73', '74', '75', '77', // BA
+                     '79', // SE
+                     '81', '87', // PE
+                     '82', // AL
+                     '83', // PB
+                     '84', // RN
+                     '85', '88', // CE
+                     '86', '89', // PI
+                     '91', '93', '94', // PA
+                     '92', '97', // AM
+                     '95', // RR
+                     '96', // AP
+                     '98', '99']; // MA
+    
+    if (dddList.includes(ddd)) {
+      cleanPhone = cleanPhone.slice(0, 2) + '9' + cleanPhone.slice(2);
+    }
   }
   
   // Adiciona código do país (55)
@@ -320,62 +351,104 @@ class TicketsService {
         try {
           console.log(`📥 Importando conversas da instância: ${instance.instance_id}`);
           
-          // URL corrigida para o servidor WhatsApp
-          const url = `https://146.59.227.248/api/clients/${instance.instance_id}/chats`;
-          console.log('🌐 URL de importação:', url);
+          // Testar diferentes URLs do servidor WhatsApp
+          const possibleUrls = [
+            `https://146.59.227.248/api/clients/${instance.instance_id}/chats`,
+            `https://146.59.227.248/api/instances/${instance.instance_id}/chats`,
+            `https://146.59.227.248/${instance.instance_id}/chats`
+          ];
           
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000);
+          let response;
+          let workingUrl;
+          
+          for (const url of possibleUrls) {
+            try {
+              console.log('🌐 Testando URL:', url);
+              
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-          const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            signal: controller.signal
-          });
+              response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                },
+                signal: controller.signal
+              });
 
-          clearTimeout(timeoutId);
+              clearTimeout(timeoutId);
+              
+              if (response.ok) {
+                workingUrl = url;
+                console.log('✅ URL funcionando:', url);
+                break;
+              }
+            } catch (urlError) {
+              console.log('❌ URL falhou:', url, urlError.message);
+              continue;
+            }
+          }
 
-          console.log(`📡 Resposta da API:`, {
-            status: response.status,
-            statusText: response.statusText,
-            ok: response.ok
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`❌ Erro HTTP ${response.status} para instância ${instance.instance_id}:`, errorText);
+          if (!response || !response.ok) {
+            console.error(`❌ Todas as URLs falharam para instância ${instance.instance_id}`);
             totalErrors++;
             continue;
           }
 
-          const chats = await response.json();
-          console.log(`📊 Chats recebidos da instância ${instance.instance_id}:`, {
-            total: Array.isArray(chats) ? chats.length : 'não é array',
-            type: typeof chats,
-            sample: Array.isArray(chats) && chats.length > 0 ? chats[0] : null
+          const data = await response.json();
+          console.log(`📊 Dados recebidos da instância ${instance.instance_id}:`, {
+            type: typeof data,
+            isArray: Array.isArray(data),
+            keys: typeof data === 'object' ? Object.keys(data) : 'not object'
           });
           
-          if (Array.isArray(chats) && chats.length > 0) {
+          let chats = [];
+          
+          // Tratar diferentes formatos de resposta
+          if (Array.isArray(data)) {
+            chats = data;
+          } else if (data && typeof data === 'object') {
+            // Se for um objeto, procurar por propriedades que possam conter os chats
+            if (data.chats && Array.isArray(data.chats)) {
+              chats = data.chats;
+            } else if (data.data && Array.isArray(data.data)) {
+              chats = data.data;
+            } else if (data.conversations && Array.isArray(data.conversations)) {
+              chats = data.conversations;
+            } else {
+              // Se for um objeto com IDs como chaves, converter para array
+              const possibleChats = Object.values(data).filter(item => 
+                typeof item === 'object' && 
+                item !== null && 
+                (item.id || item.chatId || item.name)
+              );
+              if (possibleChats.length > 0) {
+                chats = possibleChats;
+              }
+            }
+          }
+          
+          console.log(`📋 Chats processados: ${chats.length}`);
+          
+          if (chats.length > 0) {
             for (const chat of chats) {
               try {
                 console.log('💬 Processando chat:', {
-                  id: chat.id,
+                  id: chat.id || chat.chatId,
                   name: chat.name,
-                  lastMessage: chat.lastMessage?.body?.substring(0, 30)
+                  lastMessage: chat.lastMessage?.body?.substring(0, 30) || 'sem mensagem'
                 });
 
-                // Extrair informações do chat
-                const chatId = chat.id || chat.chatId;
+                // Extrair informações do chat com múltiplos formatos
+                const chatId = chat.id || chat.chatId || chat.key?.remoteJid;
                 if (!chatId) {
                   console.log('⚠️ Chat sem ID, pulando...');
                   continue;
                 }
 
                 // Extrair nome e telefone
-                let customerName = chat.name || chat.pushName || chatId.replace('@c.us', '').replace('@g.us', '');
+                let customerName = chat.name || chat.pushName || chat.notifyName || 'Contato';
                 let customerPhone = chatId.replace('@c.us', '').replace('@g.us', '');
 
                 // Para grupos, usar nome do grupo
@@ -385,11 +458,14 @@ class TicketsService {
 
                 const lastMessage = chat.lastMessage?.body || 
                                   chat.lastMessage?.caption || 
-                                  chat.lastMessage?.type || 
+                                  chat.lastMessage?.text ||
+                                  chat.body ||
                                   'Conversa importada do WhatsApp';
 
                 const lastMessageAt = chat.lastMessage?.timestamp 
                   ? new Date(chat.lastMessage.timestamp * 1000).toISOString()
+                  : chat.timestamp
+                  ? new Date(chat.timestamp * 1000).toISOString()
                   : new Date().toISOString();
 
                 console.log('📝 Dados extraídos do chat:', {
@@ -418,7 +494,7 @@ class TicketsService {
               }
             }
           } else {
-            console.log(`ℹ️ Nenhum chat válido encontrado na instância ${instance.instance_id}`);
+            console.log(`ℹ️ Nenhum chat encontrado na instância ${instance.instance_id}`);
           }
         } catch (instanceError) {
           console.error(`❌ Erro ao processar instância ${instance.instance_id}:`, instanceError);
