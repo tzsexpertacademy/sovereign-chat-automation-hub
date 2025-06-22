@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,8 @@ import {
   AlertCircle,
   User,
   Link,
-  Filter
+  Filter,
+  Database
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -27,11 +29,12 @@ import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient"
 import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import ConnectionTest from "./ConnectionTest";
 import { clientsService, ClientData } from "@/services/clientsService";
-import { whatsappInstancesService } from "@/services/whatsappInstancesService";
+import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 
 const RealInstancesManager = () => {
   const [clients, setClients] = useState<WhatsAppClient[]>([]);
   const [availableClients, setAvailableClients] = useState<ClientData[]>([]);
+  const [databaseInstances, setDatabaseInstances] = useState<WhatsAppInstanceData[]>([]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [selectedClientForInstance, setSelectedClientForInstance] = useState("");
@@ -47,6 +50,7 @@ const RealInstancesManager = () => {
     loadAvailableClients();
     initializeService();
     loadClients();
+    loadDatabaseInstances();
 
     // Check if there's a clientId in URL params
     const clientIdFromUrl = searchParams.get('clientId');
@@ -69,6 +73,24 @@ const RealInstancesManager = () => {
     }
   };
 
+  const loadDatabaseInstances = async () => {
+    try {
+      if (filterByClient && filterByClient !== "all-clients") {
+        const instances = await whatsappInstancesService.getInstancesByClientId(filterByClient);
+        setDatabaseInstances(instances);
+        console.log('Instâncias do banco carregadas:', instances);
+      } else {
+        setDatabaseInstances([]);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar instâncias do banco:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadDatabaseInstances();
+  }, [filterByClient]);
+
   const syncClientInstanceCount = async (clientId: string) => {
     try {
       // Get actual instances from Supabase
@@ -90,6 +112,9 @@ const RealInstancesManager = () => {
             : client
         )
       );
+
+      // Reload database instances
+      await loadDatabaseInstances();
     } catch (error) {
       console.error('Erro ao sincronizar contagem de instâncias:', error);
     }
@@ -282,6 +307,7 @@ const RealInstancesManager = () => {
       setTimeout(() => {
         loadClients();
         loadAvailableClients();
+        loadDatabaseInstances();
       }, 2000);
 
     } catch (error: any) {
@@ -289,6 +315,29 @@ const RealInstancesManager = () => {
       toast({
         title: "Erro ao Criar Instância",
         description: error.message || "Falha ao criar instância. Verifique se o servidor está rodando.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConnectInstance = async (instanceId: string) => {
+    try {
+      setLoading(true);
+      await whatsappService.connectClient(instanceId);
+      
+      toast({
+        title: "Sucesso",
+        description: `Conectando instância ${instanceId}...`,
+      });
+      
+      await loadClients();
+      await loadDatabaseInstances();
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao conectar instância",
         variant: "destructive",
       });
     } finally {
@@ -322,11 +371,49 @@ const RealInstancesManager = () => {
       });
       
       await loadClients();
-      await loadAvailableClients();
+      await loadDatabaseInstances();
     } catch (error: any) {
       toast({
         title: "Erro",
         description: error.message || "Falha ao desconectar instância",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteInstance = async (instanceId: string) => {
+    try {
+      setLoading(true);
+      
+      // First try to disconnect from server
+      try {
+        await whatsappService.disconnectClient(instanceId);
+      } catch (error) {
+        console.log('Instância não estava conectada no servidor');
+      }
+      
+      // Delete from database
+      await whatsappInstancesService.deleteInstance(instanceId);
+      
+      // Update client instance count
+      const dbInstance = databaseInstances.find(i => i.instance_id === instanceId);
+      if (dbInstance) {
+        await syncClientInstanceCount(dbInstance.client_id);
+      }
+      
+      toast({
+        title: "Sucesso",
+        description: `Instância ${instanceId} removida`,
+      });
+      
+      await loadClients();
+      await loadDatabaseInstances();
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao remover instância",
         variant: "destructive",
       });
     } finally {
@@ -435,10 +522,30 @@ const RealInstancesManager = () => {
       })
     : clients;
 
+  // Filter database instances by selected client
+  const filteredDatabaseInstances = filterByClient && filterByClient !== "all-clients"
+    ? databaseInstances
+    : [];
+
   // Get selected client info for display
   const selectedClientInfo = filterByClient 
     ? availableClients.find(c => c.id === filterByClient)
     : null;
+
+  // Combine server instances and database-only instances
+  const allInstances = [
+    ...filteredClients.map(client => ({ ...client, source: 'server' })),
+    ...filteredDatabaseInstances
+      .filter(dbInstance => !filteredClients.find(serverClient => serverClient.clientId === dbInstance.instance_id))
+      .map(dbInstance => ({
+        clientId: dbInstance.instance_id,
+        status: dbInstance.status || 'disconnected',
+        phoneNumber: dbInstance.phone_number,
+        hasQrCode: dbInstance.has_qr_code || false,
+        source: 'database',
+        dbInstance
+      }))
+  ];
 
   // Loading inicial
   if (initialLoading) {
@@ -582,7 +689,7 @@ const RealInstancesManager = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {filteredClients.filter(c => c.status === 'connected').length}
+              {allInstances.filter(i => i.status === 'connected').length}
             </div>
             <p className="text-xs text-green-600">Online</p>
           </CardContent>
@@ -593,7 +700,7 @@ const RealInstancesManager = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {filteredClients.filter(c => ['disconnected', 'error', 'auth_failed'].includes(c.status)).length}
+              {allInstances.filter(i => ['disconnected', 'error', 'auth_failed'].includes(i.status)).length}
             </div>
             <p className="text-xs text-red-600">Requerem atenção</p>
           </CardContent>
@@ -666,23 +773,26 @@ const RealInstancesManager = () => {
         </Card>
       )}
 
-      {/* Clients Grid */}
-      {filteredClients.length > 0 ? (
+      {/* Instances Grid */}
+      {allInstances.length > 0 ? (
         <div className="grid lg:grid-cols-2 gap-6">
-          {filteredClients.map((client) => {
-            const linkedClient = getClientByInstanceId(client.clientId);
+          {allInstances.map((instance) => {
+            const linkedClient = getClientByInstanceId(instance.clientId);
+            const isFromDatabase = instance.source === 'database';
+            
             return (
-              <Card key={client.clientId} className="hover:shadow-lg transition-shadow">
+              <Card key={instance.clientId} className={`hover:shadow-lg transition-shadow ${isFromDatabase ? 'border-blue-200 bg-blue-50' : ''}`}>
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle className="text-lg flex items-center space-x-2">
-                        <span>{client.clientId}</span>
+                        <span>{instance.clientId}</span>
                         {linkedClient && <Link className="w-4 h-4 text-green-500" />}
+                        {isFromDatabase && <Database className="w-4 h-4 text-blue-500" />}
                       </CardTitle>
                       <CardDescription className="flex items-center mt-1">
                         <Smartphone className="w-4 h-4 mr-1" />
-                        {client.phoneNumber || 'Não conectado'}
+                        {instance.phoneNumber || 'Não conectado'}
                       </CardDescription>
                       {linkedClient && (
                         <CardDescription className="flex items-center mt-1 text-green-600">
@@ -690,32 +800,50 @@ const RealInstancesManager = () => {
                           Cliente: {linkedClient.name}
                         </CardDescription>
                       )}
+                      {isFromDatabase && (
+                        <CardDescription className="flex items-center mt-1 text-blue-600">
+                          <Database className="w-4 h-4 mr-1" />
+                          Apenas no banco de dados
+                        </CardDescription>
+                      )}
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Badge variant={client.status === 'connected' ? 'default' : 'secondary'}>
+                      <Badge variant={instance.status === 'connected' ? 'default' : 'secondary'}>
                         <div className="flex items-center space-x-1">
-                          {getStatusIcon(client.status)}
-                          <span>{getStatusText(client.status)}</span>
+                          {getStatusIcon(instance.status)}
+                          <span>{getStatusText(instance.status)}</span>
                         </div>
                       </Badge>
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(client.status)}`} />
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Status Info */}
                   <div className="text-sm text-gray-600">
-                    <p><strong>Status:</strong> {getStatusText(client.status)}</p>
-                    {client.phoneNumber && <p><strong>Telefone:</strong> {client.phoneNumber}</p>}
-                    {client.hasQrCode && <p className="text-blue-600"><strong>QR Code disponível</strong></p>}
+                    <p><strong>Status:</strong> {getStatusText(instance.status)}</p>
+                    {instance.phoneNumber && <p><strong>Telefone:</strong> {instance.phoneNumber}</p>}
+                    {instance.hasQrCode && <p className="text-blue-600"><strong>QR Code disponível</strong></p>}
                   </div>
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap gap-2">
-                    {client.status === 'qr_ready' && (
+                    {isFromDatabase && instance.status === 'disconnected' && (
                       <Button
                         size="sm"
-                        onClick={() => handleViewQrCode(client.clientId)}
+                        onClick={() => handleConnectInstance(instance.clientId)}
+                        disabled={loading}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Play className="w-4 h-4 mr-2" />
+                        Conectar
+                      </Button>
+                    )}
+                    
+                    {instance.status === 'qr_ready' && !isFromDatabase && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleViewQrCode(instance.clientId)}
                         className="bg-blue-600 hover:bg-blue-700"
                       >
                         <QrCode className="w-4 h-4 mr-2" />
@@ -723,10 +851,10 @@ const RealInstancesManager = () => {
                       </Button>
                     )}
                     
-                    {client.status === 'connected' && linkedClient && (
+                    {instance.status === 'connected' && linkedClient && !isFromDatabase && (
                       <Button
                         size="sm"
-                        onClick={() => handleOpenChat(client.clientId)}
+                        onClick={() => handleOpenChat(instance.clientId)}
                         className="bg-green-600 hover:bg-green-700"
                       >
                         <MessageSquare className="w-4 h-4 mr-2" />
@@ -734,25 +862,40 @@ const RealInstancesManager = () => {
                       </Button>
                     )}
                     
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleRestartClient(client.clientId)}
-                      disabled={loading}
-                    >
-                      <RotateCcw className="w-4 h-4 mr-2" />
-                      Reiniciar
-                    </Button>
+                    {!isFromDatabase && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleRestartClient(instance.clientId)}
+                        disabled={loading}
+                      >
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Reiniciar
+                      </Button>
+                    )}
+                    
+                    {!isFromDatabase && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDisconnectClient(instance.clientId)}
+                        disabled={loading}
+                        className="text-orange-600 hover:text-orange-700"
+                      >
+                        <Pause className="w-4 h-4 mr-2" />
+                        Desconectar
+                      </Button>
+                    )}
                     
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleDisconnectClient(client.clientId)}
+                      onClick={() => handleDeleteInstance(instance.clientId)}
                       disabled={loading}
                       className="text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
-                      Desconectar
+                      Excluir
                     </Button>
                   </div>
                 </CardContent>
