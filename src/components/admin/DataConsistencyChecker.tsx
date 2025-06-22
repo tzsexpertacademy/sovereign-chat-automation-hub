@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ const DataConsistencyChecker = ({ onDataFixed }: DataConsistencyCheckerProps) =>
   const checkConsistency = async () => {
     try {
       setLoading(true);
+      console.log('🔍 Iniciando verificação de consistência...');
       const found = await dataConsistencyService.findInconsistencies();
       setInconsistencies(found);
       
@@ -91,13 +93,16 @@ const DataConsistencyChecker = ({ onDataFixed }: DataConsistencyCheckerProps) =>
         description: "Problema resolvido com sucesso",
       });
       
-      // Notificar o componente pai que os dados foram corrigidos
+      // FORÇAR atualização completa da interface
+      console.log('🔄 Forçando atualização completa da interface...');
       if (onDataFixed) {
-        onDataFixed();
+        await onDataFixed();
       }
       
-      // Recarregar inconsistências
+      // Aguardar e recarregar inconsistências
+      await new Promise(resolve => setTimeout(resolve, 1500));
       await checkConsistency();
+      
     } catch (error) {
       console.error('Erro ao corrigir inconsistência:', error);
       toast({
@@ -113,6 +118,8 @@ const DataConsistencyChecker = ({ onDataFixed }: DataConsistencyCheckerProps) =>
   const fixAllInconsistencies = async () => {
     try {
       setFixing(true);
+      console.log('🔧 Iniciando correção automática de todas as inconsistências...');
+      
       const fixedCount = await dataConsistencyService.fixAllInconsistencies();
       
       toast({
@@ -120,16 +127,30 @@ const DataConsistencyChecker = ({ onDataFixed }: DataConsistencyCheckerProps) =>
         description: `${fixedCount} problema(s) corrigido(s)`,
       });
       
-      // Notificar o componente pai que os dados foram corrigidos
+      // FORÇAR atualização MÚLTIPLA da interface
+      console.log('🔄 Forçando múltiplas atualizações da interface...');
+      
       if (onDataFixed) {
-        onDataFixed();
+        // Primeira atualização imediata
+        await onDataFixed();
+        
+        // Segunda atualização após 1 segundo
+        setTimeout(async () => {
+          await onDataFixed();
+        }, 1000);
+        
+        // Terceira atualização após 2 segundos
+        setTimeout(async () => {
+          await onDataFixed();
+        }, 2000);
       }
       
-      // Aguardar um pouco antes de recarregar para garantir que todas as atualizações sejam processadas
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Aguardar mais tempo antes de recarregar para garantir que todas as atualizações sejam processadas
+      await new Promise(resolve => setTimeout(resolve, 2500));
       
       // Recarregar inconsistências
       await checkConsistency();
+      
     } catch (error) {
       console.error('Erro ao corrigir todas as inconsistências:', error);
       toast({

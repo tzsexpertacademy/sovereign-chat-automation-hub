@@ -204,6 +204,7 @@ export class DataConsistencyService {
     console.log(`🔧 Corrigindo contagem de instâncias para cliente ${clientId}`);
     
     try {
+      // Força uma atualização completa da contagem
       await this.forceRecalculateInstanceCount(clientId);
     } catch (error) {
       console.error('❌ Erro ao corrigir contagem:', error);
@@ -232,19 +233,21 @@ export class DataConsistencyService {
     console.log(`🧮 Forçando recálculo da contagem para cliente ${clientId}`);
     
     try {
-      // Buscar contagem real de instâncias no banco
+      // Buscar contagem real de instâncias no banco com logs detalhados
       const { data: instances, error } = await supabase
         .from("whatsapp_instances")
-        .select("id")
+        .select("id, instance_id, status")
         .eq("client_id", clientId);
         
       if (error) throw error;
       
       const realCount = instances?.length || 0;
-      console.log(`📊 Contagem real encontrada: ${realCount} instâncias`);
+      console.log(`📊 Contagem real encontrada: ${realCount} instâncias para cliente ${clientId}`);
+      console.log(`📝 Instâncias encontradas:`, instances);
       
-      // Atualizar forçadamente a contagem no cliente usando update direto
-      const { error: updateError } = await supabase
+      // Atualizar FORÇADAMENTE a contagem no cliente - múltiplas tentativas
+      console.log(`🔄 Tentativa 1: Atualizando contagem para ${realCount}`);
+      let { error: updateError } = await supabase
         .from("clients")
         .update({ 
           current_instances: realCount,
@@ -252,12 +255,39 @@ export class DataConsistencyService {
         })
         .eq("id", clientId);
         
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('❌ Erro na primeira tentativa:', updateError);
+        
+        // Segunda tentativa com delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(`🔄 Tentativa 2: Atualizando contagem para ${realCount}`);
+        
+        const { error: updateError2 } = await supabase
+          .from("clients")
+          .update({ 
+            current_instances: realCount,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", clientId);
+          
+        if (updateError2) throw updateError2;
+      }
       
-      console.log(`✅ Contagem de instâncias atualizada para ${realCount}`);
+      console.log(`✅ Contagem de instâncias atualizada FORÇADAMENTE para ${realCount}`);
+      
+      // Verificar se a atualização realmente funcionou
+      const { data: updatedClient, error: checkError } = await supabase
+        .from("clients")
+        .select("current_instances, name")
+        .eq("id", clientId)
+        .single();
+        
+      if (!checkError && updatedClient) {
+        console.log(`✅ Verificação: Cliente ${updatedClient.name} agora tem ${updatedClient.current_instances} instâncias registradas`);
+      }
       
       // Aguardar um pouco para garantir que a atualização seja processada
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
     } catch (error) {
       console.error('❌ Erro ao recalcular contagem:', error);
@@ -306,8 +336,8 @@ export class DataConsistencyService {
             break;
         }
         
-        // Pequena pausa entre correções para evitar conflitos
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Pausa entre correções para evitar conflitos
+        await new Promise(resolve => setTimeout(resolve, 500));
         
       } catch (error) {
         console.error(`❌ Erro ao corrigir inconsistência:`, inconsistency, error);
@@ -316,8 +346,8 @@ export class DataConsistencyService {
     
     console.log(`✅ ${fixedCount}/${inconsistencies.length} inconsistências corrigidas`);
     
-    // Após todas as correções, fazer uma verificação final
-    console.log('🔄 Verificação final após correções...');
+    // Após todas as correções, forçar uma atualização geral
+    console.log('🔄 Forçando atualização geral após correções...');
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     return fixedCount;
