@@ -13,7 +13,8 @@ import {
   Download,
   RefreshCw,
   Search,
-  AlertTriangle
+  AlertTriangle,
+  Bug
 } from "lucide-react";
 import TicketCard from "./TicketCard";
 import TicketChatInterface from "./TicketChatInterface";
@@ -80,7 +81,7 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header com status e controles */}
+      {/* Header principal com status e controles de debug */}
       <div className="border-b p-4 bg-white">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
@@ -104,10 +105,10 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
               variant="outline"
               size="sm"
               onClick={handleDebugMessages}
-              className="text-red-600 border-red-600 hover:bg-red-50"
+              className="text-red-600 border-red-600 hover:bg-red-50 font-medium"
             >
-              <AlertTriangle className="w-4 h-4 mr-1" />
-              Debug Sistema
+              <Bug className="w-4 h-4 mr-1" />
+              🔍 DEBUG SISTEMA
             </Button>
             <Button
               variant="outline"
@@ -134,6 +135,32 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
               ) : (
                 <RefreshCw className="w-4 h-4" />
               )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Alerta de debug MUITO MAIS VISÍVEL */}
+        <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4">
+          <div className="flex items-center space-x-3">
+            <Bug className="w-6 h-6 text-red-600 animate-pulse" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-red-800 mb-1">
+                🚨 NÃO CONSEGUE VER NOVAS CONVERSAS? 🚨
+              </p>
+              <p className="text-xs text-red-700 mb-2">
+                <strong>PASSO A PASSO:</strong> 1) Clique no botão "🔍 DEBUG SISTEMA" acima → 2) Pressione F12 para abrir console → 3) Envie mensagem do WhatsApp → 4) Veja os logs
+              </p>
+              <div className="bg-red-100 p-2 rounded text-xs text-red-800">
+                <strong>Para testar:</strong> Envie uma mensagem do número <strong>47 996451886</strong> para o WhatsApp conectado
+              </div>
+            </div>
+            <Button
+              onClick={handleDebugMessages}
+              size="sm"
+              className="bg-red-600 text-white hover:bg-red-700 font-bold animate-pulse"
+            >
+              <Bug className="w-4 h-4 mr-1" />
+              EXECUTAR DEBUG
             </Button>
           </div>
         </div>
@@ -215,8 +242,8 @@ const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
                         onClick={handleDebugMessages}
                         className="text-red-600 border-red-600"
                       >
-                        <AlertTriangle className="w-4 h-4 mr-1" />
-                        Diagnosticar Problema
+                        <Bug className="w-4 h-4 mr-1" />
+                        🔍 DEBUG SISTEMA
                       </Button>
                     </div>
                   ) : (
