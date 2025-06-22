@@ -373,13 +373,20 @@ const RealInstancesManager = () => {
   };
 
   const handleOpenChat = (clientId: string) => {
+    console.log('🔍 Tentando abrir chat para instância:', clientId);
+    console.log('📋 Clientes disponíveis:', availableClients);
+    
     const linkedClient = getClientByInstanceId(clientId);
+    console.log('🔗 Cliente encontrado:', linkedClient);
+    
     if (linkedClient) {
-      navigate(`/client/${linkedClient.id}/chat`);
+      console.log('✅ Redirecionando para:', `/client/${linkedClient.id}/tickets`);
+      navigate(`/client/${linkedClient.id}/tickets`);
     } else {
+      console.error('❌ Cliente não encontrado para instância:', clientId);
       toast({
         title: "Cliente não encontrado",
-        description: "Esta instância não está associada a nenhum cliente",
+        description: "Esta instância não está associada a nenhum cliente. Verifique a configuração.",
         variant: "destructive",
       });
     }

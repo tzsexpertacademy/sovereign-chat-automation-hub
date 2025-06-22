@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationTicket {
@@ -84,6 +85,7 @@ class TicketsService {
       return (data || []).map(ticket => ({
         ...ticket,
         status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
+        tags: Array.isArray(ticket.tags) ? ticket.tags : [],
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
@@ -111,6 +113,7 @@ class TicketsService {
       return {
         ...data,
         status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
+        tags: Array.isArray(data.tags) ? data.tags : [],
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
       };
@@ -311,7 +314,7 @@ class TicketsService {
   async addTicketTag(ticketId: string, tag: string): Promise<void> {
     try {
       const ticket = await this.getTicketById(ticketId);
-      const currentTags = ticket.tags || [];
+      const currentTags = Array.isArray(ticket.tags) ? ticket.tags : [];
       
       if (!currentTags.includes(tag)) {
         const updatedTags = [...currentTags, tag];
@@ -335,7 +338,7 @@ class TicketsService {
   async removeTicketTag(ticketId: string, tag: string): Promise<void> {
     try {
       const ticket = await this.getTicketById(ticketId);
-      const currentTags = ticket.tags || [];
+      const currentTags = Array.isArray(ticket.tags) ? ticket.tags : [];
       const updatedTags = currentTags.filter(t => t !== tag);
       
       const { error } = await supabase
