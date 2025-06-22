@@ -22,6 +22,7 @@ export const useTicketRealtime = (clientId: string) => {
   const lastLoadTimeRef = useRef<number>(0);
   const initializationRef = useRef(false);
   const processingRef = useRef<Set<string>>(new Set());
+  const conversationContextRef = useRef<Map<string, any[]>>(new Map());
 
   // Hooks humanizados
   const { simulateHumanTyping, markAsRead } = useHumanizedTyping(clientId);
@@ -155,7 +156,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Hook para agrupamento de mensagens - ANTES de processWithAssistant
+  // Hook para agrupamento de mensagens
   const { addMessage, getBatchInfo, markBatchAsCompleted, updateCallback } = useMessageBatch(async (chatId: string, messages: any[]) => {
     console.log(`📦 PROCESSBATCH CHAMADO - chatId: ${chatId}, mensagens: ${messages.length}`);
     
@@ -237,6 +238,9 @@ export const useTicketRealtime = (clientId: string) => {
 
       console.log('📋 Ticket processado:', ticketId);
 
+      // Atualizar contexto da conversa ANTES de salvar as mensagens
+      const existingContext = conversationContextRef.current.get(ticketId) || [];
+      
       for (const message of messages) {
         const normalized = normalizeWhatsAppMessage(message);
         
@@ -260,7 +264,23 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: normalized.timestamp,
           media_url: normalized.mediaUrl
         });
+
+        // Adicionar ao contexto local
+        existingContext.push({
+          role: normalized.fromMe ? 'assistant' : 'user',
+          content: normalized.body,
+          timestamp: normalized.timestamp,
+          messageId: normalized.id
+        });
       }
+
+      // Manter apenas as últimas 100 mensagens no contexto
+      if (existingContext.length > 100) {
+        existingContext.splice(0, existingContext.length - 100);
+      }
+      
+      conversationContextRef.current.set(ticketId, existingContext);
+      console.log(`📝 Contexto da conversa atualizado: ${existingContext.length} mensagens`);
 
       for (const message of clientMessages) {
         const normalized = normalizeWhatsAppMessage(message);
@@ -292,7 +312,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   });
 
-  // Processar mensagem com assistente - AGORA PODE USAR markBatchAsCompleted
+  // Processar mensagem com assistente - COM CONTEXTO MELHORADO
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     if (!mountedRef.current || !ticketId) {
       console.log('❌ Componente desmontado ou ticketId inválido, cancelando processamento IA');
@@ -300,17 +320,19 @@ export const useTicketRealtime = (clientId: string) => {
       return;
     }
     
-    // Verificar duplicação por ID da mensagem
-    const messageKey = `${message.id}_${ticketId}`;
-    if (processedMessagesRef.current.has(messageKey)) {
-      console.log('⚠️ Mensagem já processada pelo assistente, ignorando:', messageKey);
+    // Verificar duplicação por ID da mensagem e contexto
+    const conversationContext = conversationContextRef.current.get(ticketId) || [];
+    const lastUserMessages = allMessages.map(m => m.body).join(' | ');
+    const contextKey = `${ticketId}_${lastUserMessages}`;
+    
+    if (processedMessagesRef.current.has(contextKey)) {
+      console.log('⚠️ Contexto já processado pelo assistente, ignorando:', contextKey);
       processingRef.current.delete(ticketId);
       return;
     }
     
-    console.log(`🤖 PROCESSAMENTO IA - Lote de ${allMessages.length} mensagens:`, 
-      allMessages.map(m => m.body?.substring(0, 30) || '[mídia]').join(', '));
-    processedMessagesRef.current.add(messageKey);
+    console.log(`🤖 PROCESSAMENTO IA - Lote de ${allMessages.length} mensagens com contexto de ${conversationContext.length} mensagens`);
+    processedMessagesRef.current.add(contextKey);
     
     try {
       setAssistantTyping(true);
@@ -364,15 +386,21 @@ export const useTicketRealtime = (clientId: string) => {
         })
         .eq('id', ticketId);
 
-      // Buscar contexto das últimas 100 mensagens do ticket (aumentado de 40)
-      const ticketMessages = await ticketsService.getTicketMessages(ticketId, 100);
-      
-      // Preparar contexto para IA
-      const contextMessages = ticketMessages.map(msg => ({
-        role: msg.from_me ? 'assistant' : 'user',
-        content: msg.content,
-        timestamp: msg.timestamp
-      })).reverse(); // Ordem cronológica
+      // Usar contexto local se disponível, senão buscar do banco
+      let contextMessages = conversationContext;
+      if (contextMessages.length === 0) {
+        console.log('📚 Buscando contexto completo do banco de dados...');
+        const ticketMessages = await ticketsService.getTicketMessages(ticketId, 100);
+        contextMessages = ticketMessages.map(msg => ({
+          role: msg.from_me ? 'assistant' : 'user',
+          content: msg.content,
+          timestamp: msg.timestamp,
+          messageId: msg.message_id
+        }));
+        
+        // Atualizar contexto local
+        conversationContextRef.current.set(ticketId, contextMessages);
+      }
 
       // Preparar configurações
       let settings = { temperature: 0.7, max_tokens: 1000 };
@@ -390,32 +418,47 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('Erro ao parse das configurações:', e);
       }
 
-      // Preparar o contexto das mensagens do lote para o assistente
-      const batchContext = allMessages.map(msg => msg.body || msg.caption || '[Mídia]').join('\n');
+      // Preparar o contexto das mensagens atuais
+      const currentBatchContent = allMessages.map(msg => msg.body || msg.caption || '[Mídia]').join('\n');
       
-      console.log('📝 Contexto do lote para IA:', batchContext);
+      console.log('📝 Contexto atual para IA:', {
+        totalContext: contextMessages.length,
+        currentBatch: currentBatchContent.substring(0, 100)
+      });
 
-      // Chamar OpenAI com contexto completo e prompt melhorado
+      // Criar mensagens para OpenAI - ordem cronológica CORRETA
+      const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto importante: 
+- Você está respondendo mensagens do WhatsApp em uma conversa contínua
+- O cliente enviou ${allMessages.length} mensagens em sequência que você deve responder
+- Você tem acesso ao histórico completo de ${contextMessages.length} mensagens desta conversa
+- IMPORTANTE: Analise toda a conversa anterior para dar continuidade natural, NÃO repita respostas
+- Se o cliente fez uma pergunta específica na sequência atual, responda especificamente a ela
+- Mantenha a continuidade e coerência com as interações passadas
+- Se o cliente fizer referência a algo mencionado anteriormente, demonstre que você lembra
+- Seja conciso mas completo em suas respostas
+- NUNCA repita a mesma resposta que já foi enviada anteriormente`;
+
+      // Usar as últimas 50 mensagens do contexto + as mensagens atuais
+      const recentContext = contextMessages.slice(-50);
+      
       const messages = [
         {
           role: 'system',
-          content: `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto importante: 
-- Você está respondendo mensagens do WhatsApp em uma conversa contínua
-- O cliente enviou ${allMessages.length} mensagens em sequência
-- Você tem acesso ao histórico das últimas ${contextMessages.length} mensagens desta conversa
-- Responda de forma natural, humanizada e contextualizada considerando TODA a conversa anterior
-- Mantenha a continuidade e coerência com as interações passadas
-- Se o cliente fizer referência a algo mencionado anteriormente, demonstre que você lembra
-- Seja conciso mas completo em suas respostas`
+          content: systemPrompt
         },
-        ...contextMessages.slice(-30), // Últimas 30 mensagens para contexto imediato
+        ...recentContext.filter(msg => msg.content && msg.content.trim()),
         {
           role: 'user',
-          content: batchContext
+          content: `NOVA SEQUÊNCIA DE MENSAGENS:\n${currentBatchContent}`
         }
       ];
 
-      console.log('🚀 Chamando OpenAI com contexto de', messages.length, 'mensagens');
+      console.log('🚀 Chamando OpenAI com contexto estruturado:', {
+        systemPrompt: systemPrompt.substring(0, 100),
+        contextMessages: recentContext.length,
+        totalMessages: messages.length
+      });
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -445,28 +488,30 @@ export const useTicketRealtime = (clientId: string) => {
         console.log(`📝 Resposta dividida em ${messageBlocks.length} blocos:`, 
           messageBlocks.map((block, index) => `${index + 1}: ${block.substring(0, 30)}...`));
         
-        // Função para enviar um bloco individual com controle de digitação melhorado
-        const sendBlock = async (blockContent: string, blockIndex: number, totalBlocks: number) => {
-          console.log(`📤 Enviando bloco ${blockIndex + 1}/${totalBlocks}: ${blockContent.substring(0, 50)}...`);
+        // Simular digitação APENAS UMA VEZ antes de começar a enviar
+        await simulateHumanTyping(message.from, assistantResponse);
+        
+        // Enviar blocos em sequência com delay natural entre eles
+        for (let i = 0; i < messageBlocks.length; i++) {
+          if (!mountedRef.current) break;
           
-          // Simular delay de digitação apenas uma vez antes de cada bloco
-          if (blockIndex === 0) {
-            // Primeira mensagem - simular digitação baseada no conteúdo total
-            await simulateHumanTyping(message.from, assistantResponse);
-          } else {
-            // Blocos subsequentes - delay menor e mais natural
-            const shortDelay = Math.min(blockContent.length * 30, 2000); // máximo 2 segundos
-            console.log(`⏱️ Aguardando ${shortDelay}ms antes do bloco ${blockIndex + 1}`);
-            await new Promise(resolve => setTimeout(resolve, shortDelay));
+          const blockContent = messageBlocks[i];
+          console.log(`📤 Enviando bloco ${i + 1}/${messageBlocks.length}: ${blockContent.substring(0, 50)}...`);
+          
+          // Delay natural entre blocos (exceto o primeiro)
+          if (i > 0) {
+            const naturalDelay = Math.min(blockContent.length * 30, 2000);
+            await new Promise(resolve => setTimeout(resolve, naturalDelay));
           }
           
           // Enviar via WhatsApp
-          const result = await whatsappService.sendMessage(instanceId, message.from, blockContent);
+          await whatsappService.sendMessage(instanceId, message.from, blockContent);
           
           // Registrar no ticket
+          const aiMessageId = `ai_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
           await ticketsService.addTicketMessage({
             ticket_id: ticketId,
-            message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            message_id: aiMessageId,
             from_me: true,
             sender_name: `🤖 ${assistant.name}`,
             content: blockContent,
@@ -477,19 +522,27 @@ export const useTicketRealtime = (clientId: string) => {
             processing_status: 'completed',
             timestamp: new Date().toISOString()
           });
+
+          // Atualizar contexto local com a resposta
+          const currentContext = conversationContextRef.current.get(ticketId) || [];
+          currentContext.push({
+            role: 'assistant',
+            content: blockContent,
+            timestamp: new Date().toISOString(),
+            messageId: aiMessageId
+          });
           
-          return result;
-        };
-        
-        // Enviar blocos em sequência sem callback de progresso (já temos logs)
-        for (let i = 0; i < messageBlocks.length; i++) {
-          if (!mountedRef.current) break;
-          await sendBlock(messageBlocks[i], i, messageBlocks.length);
+          // Manter apenas as últimas 100 mensagens
+          if (currentContext.length > 100) {
+            currentContext.splice(0, currentContext.length - 100);
+          }
+          
+          conversationContextRef.current.set(ticketId, currentContext);
         }
 
         console.log('✅ Todos os blocos da resposta foram enviados com sucesso');
         
-        // Marcar mensagens como lidas após envio completo
+        // Marcar mensagens como lidas APÓS envio completo
         for (const msg of allMessages) {
           await markAsRead(message.from, msg.id || msg.key?.id);
         }
@@ -505,11 +558,10 @@ export const useTicketRealtime = (clientId: string) => {
         console.log('🤖 Assistente parou de digitar');
       }
       processingRef.current.delete(ticketId);
-      // Marcar lote como completo após processamento
       markBatchAsCompleted(message.from);
       console.log('✅ Processamento do assistente finalizado');
     }
-  }, [clientId, simulateHumanTyping, markAsRead, markBatchAsCompleted, splitMessage, sendMessagesInSequence]);
+  }, [clientId, simulateHumanTyping, markAsRead, markBatchAsCompleted, splitMessage]);
 
   // Configurar listeners uma única vez
   useEffect(() => {
@@ -608,6 +660,7 @@ export const useTicketRealtime = (clientId: string) => {
       }
       processedMessagesRef.current.clear();
       processingRef.current.clear();
+      conversationContextRef.current.clear();
     };
   }, [clientId, loadTickets, addMessage]);
 
