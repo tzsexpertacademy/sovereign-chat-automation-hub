@@ -6,11 +6,13 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Send, Bot, User, AlertCircle, Users, Trash2 } from 'lucide-react';
 import { useTicketMessages } from '@/hooks/useTicketMessages';
+import { usePresenceManager } from '@/hooks/usePresenceManager';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { ticketsService } from '@/services/ticketsService';
 import { queuesService } from '@/services/queuesService';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import MessageStatus from './MessageStatus';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -27,6 +29,12 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { messages, isLoading } = useTicketMessages(ticketId);
   const { toast } = useToast();
+
+  // Hook para gerenciar presença online, digitação e leitura
+  const { showTyping, showRecording, markMessagesAsRead } = usePresenceManager(
+    connectedInstance || '', 
+    !!connectedInstance
+  );
 
   // Carregar dados do ticket e verificar instância conectada
   useEffect(() => {
@@ -104,7 +112,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
   }, [ticketId, clientId, toast]);
 
-  // Auto-scroll para última mensagem
+  // Auto-scroll e marcar mensagens como lidas
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
@@ -112,7 +120,20 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [messages]);
+
+    // Marcar mensagens não lidas como lidas
+    if (messages.length > 0 && ticket?.chat_id && connectedInstance) {
+      const unreadMessages = messages
+        .filter(msg => !msg.from_me && !msg.is_read)
+        .map(msg => msg.message_id)
+        .filter(Boolean);
+
+      if (unreadMessages.length > 0) {
+        console.log(`📖 Marcando ${unreadMessages.length} mensagens como lidas`);
+        markMessagesAsRead(ticket.chat_id, unreadMessages);
+      }
+    }
+  }, [messages, ticket?.chat_id, connectedInstance, markMessagesAsRead]);
 
   const handleClearHistory = async () => {
     if (!ticketId || isClearing) return;
@@ -172,7 +193,11 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         customerPhone: ticket.customer?.phone
       });
 
-      // Enviar mensagem via WhatsApp
+      // Mostrar indicador de digitação antes de enviar
+      if (showTyping) {
+        await showTyping(ticket.chat_id, 1500);
+      }
+
       const response = await whatsappService.sendMessage(
         connectedInstance,
         ticket.chat_id,
@@ -324,7 +349,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       {connectedInstance && (
         <div className="p-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-green-800">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-xs">Conectado via: {connectedInstance}</span>
+          <span className="text-xs">🤖 IA Online • Conectado via: {connectedInstance}</span>
         </div>
       )}
 
@@ -376,16 +401,21 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                     </div>
                   </div>
                   
-                  <div
-                    className={`text-xs text-gray-500 mt-1 ${
-                      message.from_me ? 'text-right' : 'text-left'
-                    }`}
-                  >
-                    {formatTime(message.timestamp)}
-                    {message.is_ai_response && (
-                      <span className="ml-1 text-green-600">• IA</span>
-                    )}
-                  </div>
+                  {message.from_me ? (
+                    <MessageStatus 
+                      status="read"
+                      timestamp={message.timestamp}
+                      fromMe={true}
+                      isAiMessage={message.is_ai_response}
+                    />
+                  ) : (
+                    <div className="text-xs text-gray-500 mt-1 text-left">
+                      {formatTime(message.timestamp)}
+                      {message.is_ai_response && (
+                        <span className="ml-1 text-green-600">• IA</span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 {message.from_me && (
