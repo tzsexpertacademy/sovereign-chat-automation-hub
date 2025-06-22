@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { customersService } from "./customersService";
 
@@ -414,8 +413,9 @@ export const ticketsService = {
       let totalSuccess = 0;
       let totalErrors = 0;
 
-      // URLs possíveis do servidor WhatsApp
+      // URLs possíveis do servidor WhatsApp (incluindo a URL do servidor externo)
       const possibleUrls = [
+        'https://146.59.227.248', // URL do servidor externo baseado nos logs
         'http://localhost:3001',
         'http://127.0.0.1:3001',
         'https://whatsapp-server.yourdomain.com',
@@ -486,7 +486,7 @@ export const ticketsService = {
                               chat.lastMessage?.content || 
                               chat.lastMessage?.text ||
                               (chat.lastMessage?.type !== 'text' ? `[${chat.lastMessage?.type || 'Mídia'}]` : '') ||
-                              'Sem mensagens';
+                              'Conversa importada do WhatsApp';
 
             const lastMessageTime = this.validateAndFixTimestamp(
               chat.lastMessage?.timestamp || 
@@ -558,9 +558,9 @@ export const ticketsService = {
         }
       }
       
-      // Estratégia 4: Buscar perfil completo via API
+      // Estratégia 4: Buscar perfil completo via API do servidor WhatsApp
       try {
-        const profileResponse = await fetch(`${serverUrl}/contact/${instanceId}/${chatId}`, {
+        const profileResponse = await fetch(`${serverUrl}/contact/${instanceId}/${encodeURIComponent(chatId)}`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(5000)
@@ -632,15 +632,5 @@ export const ticketsService = {
       .split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
-  },
-
-  // Função para formatar número de telefone para exibição
-  formatPhoneNumber(phoneNumber: string): string {
-    const cleaned = ('' + phoneNumber).replace(/\D/g, '');
-    const match = cleaned.match(/^(\d{2})(\d{4,5})(\d{4})$/);
-    if (match) {
-      return '(' + match[1] + ') ' + match[2] + '-' + match[3];
-    }
-    return phoneNumber;
   },
 };

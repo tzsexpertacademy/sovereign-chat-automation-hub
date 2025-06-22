@@ -194,6 +194,13 @@ export const useTicketRealtime = (clientId: string) => {
       // Marcar atividade online
       markActivity();
 
+      // Recarregar tickets para atualizar a lista
+      setTimeout(() => {
+        if (mountedRef.current) {
+          loadTickets();
+        }
+      }, 1000);
+
       // Processar com assistente apenas se não estiver já processando
       if (!processingRef.current.has(ticketId)) {
         processingRef.current.add(ticketId);
@@ -444,7 +451,9 @@ export const useTicketRealtime = (clientId: string) => {
         `message_${clientId}`,
         `new_message_${clientId}`,
         `whatsapp_message_${clientId}`,
-        `message`
+        `message`,
+        // Adicionar mais eventos específicos
+        `message_${clientId}_instance_1750600195961`
       ];
 
       events.forEach(eventName => {
@@ -462,6 +471,13 @@ export const useTicketRealtime = (clientId: string) => {
           // Só processar mensagens que não são nossas
           if (!message.fromMe) {
             addMessage(message);
+          } else {
+            // Para mensagens enviadas por nós, apenas recarregar os tickets
+            setTimeout(() => {
+              if (mountedRef.current) {
+                loadTickets();
+              }
+            }, 1000);
           }
         });
       });
