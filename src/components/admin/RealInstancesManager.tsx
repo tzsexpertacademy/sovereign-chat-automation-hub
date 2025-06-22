@@ -171,56 +171,55 @@ const RealInstancesManager = () => {
       return;
     }
 
-    // Use client ID as instance ID
-    const instanceId = `${clientData.id}_${Date.now()}`;
+    // Use a more specific instance ID format
+    const instanceId = `${clientData.id}_instance_${Date.now()}`;
 
     try {
       setLoading(true);
-      console.log(`🚀 Criando instância para cliente: ${clientData.name} (${instanceId})`);
+      console.log(`🚀 Criando instância para cliente: ${clientData.name} (ID: ${clientData.id})`);
+      console.log(`📋 Instance ID gerado: ${instanceId}`);
       
       const result = await whatsappService.connectClient(instanceId);
       console.log("✅ Resultado da criação:", result);
       
-      // Create instance in Supabase
+      // Create instance in Supabase PRIMEIRO
+      console.log('💾 Criando instância no Supabase...');
       await whatsappInstancesService.createInstance({
         client_id: clientData.id,
         instance_id: instanceId,
         status: 'connecting'
       });
       
-      // Update client with instance info if it's the first one
-      const clientInstances = await clientsService.getClientInstances(clientData.id);
-      if (clientInstances.length === 1) {
-        await updateClientInstance(clientData.id, instanceId, 'connecting');
-      }
+      // Update client with instance info DEPOIS
+      console.log('🔄 Atualizando cliente no Supabase...');
+      await updateClientInstance(clientData.id, instanceId, 'connecting');
       
-      // Ouvir status deste cliente específico
+      // Join client room for real-time updates
       whatsappService.joinClientRoom(instanceId);
-      whatsappService.onClientStatus(instanceId, async (clientData) => {
-        console.log(`📱 Status atualizado para ${instanceId}:`, clientData);
+      whatsappService.onClientStatus(instanceId, async (clientStatusData) => {
+        console.log(`📱 Status atualizado para ${instanceId}:`, clientStatusData);
+        
+        // Update local state
         setClients(prev => {
-          const index = prev.findIndex(c => c.clientId === clientData.clientId);
+          const index = prev.findIndex(c => c.clientId === clientStatusData.clientId);
           if (index >= 0) {
             const updated = [...prev];
-            updated[index] = clientData;
+            updated[index] = clientStatusData;
             return updated;
           } else {
-            return [...prev, clientData];
+            return [...prev, clientStatusData];
           }
         });
         
         // Update client status in Supabase
-        const linkedClient = getClientByInstanceId(clientData.clientId);
-        if (linkedClient) {
-          await updateClientInstance(linkedClient.id, clientData.clientId, clientData.status);
-        }
+        await updateClientInstance(clientData.id, clientStatusData.clientId, clientStatusData.status);
 
         // Update instance in Supabase
         try {
-          await whatsappInstancesService.updateInstance(clientData.clientId, {
-            status: clientData.status,
-            phone_number: clientData.phoneNumber,
-            has_qr_code: clientData.hasQrCode
+          await whatsappInstancesService.updateInstance(clientStatusData.clientId, {
+            status: clientStatusData.status,
+            phone_number: clientStatusData.phoneNumber,
+            has_qr_code: clientStatusData.hasQrCode
           });
         } catch (error) {
           console.error('Erro ao atualizar instância no Supabase:', error);
@@ -230,10 +229,10 @@ const RealInstancesManager = () => {
       setSelectedClientForInstance("");
       toast({
         title: "Sucesso",
-        description: `Instância criada para ${clientData.name}! Aguarde o QR Code aparecer...`,
+        description: `Instância criada para ${clientData.name}! Aguardando conexão...`,
       });
 
-      // Recarregar a lista de clientes após 2 segundos
+      // Reload data after creation
       setTimeout(() => {
         loadClients();
         loadAvailableClients();
@@ -375,8 +374,14 @@ const RealInstancesManager = () => {
   const handleOpenChat = (clientId: string) => {
     console.log('🔍 Tentando abrir chat para instância:', clientId);
     console.log('📋 Clientes disponíveis:', availableClients);
+    console.log('📱 Instâncias conectadas:', clients);
     
-    const linkedClient = getClientByInstanceId(clientId);
+    // Find the linked client by instance_id
+    const linkedClient = availableClients.find(client => 
+      client.instance_id === clientId || 
+      clients.some(c => c.clientId === clientId && client.id === client.id)
+    );
+    
     console.log('🔗 Cliente encontrado:', linkedClient);
     
     if (linkedClient) {
@@ -384,11 +389,26 @@ const RealInstancesManager = () => {
       navigate(`/client/${linkedClient.id}/tickets`);
     } else {
       console.error('❌ Cliente não encontrado para instância:', clientId);
-      toast({
-        title: "Cliente não encontrado",
-        description: "Esta instância não está associada a nenhum cliente. Verifique a configuração.",
-        variant: "destructive",
+      
+      // Try alternative method - find by checking whatsapp instances
+      const alternativeClient = availableClients.find(client => {
+        // Check if any instance belongs to this client
+        return clients.some(instance => 
+          instance.clientId === clientId && 
+          instance.clientId.includes(client.id)
+        );
       });
+      
+      if (alternativeClient) {
+        console.log('✅ Cliente encontrado por método alternativo:', alternativeClient);
+        navigate(`/client/${alternativeClient.id}/tickets`);
+      } else {
+        toast({
+          title: "Cliente não encontrado",
+          description: "Esta instância não está associada a nenhum cliente. Verifique a configuração.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -469,8 +489,11 @@ const RealInstancesManager = () => {
   const clientsNeedingInstances = availableClients.filter(client => {
     // Check if client has any active instances
     const hasActiveInstance = clients.some(c => {
-      const linkedClient = getClientByInstanceId(c.clientId);
-      return linkedClient?.id === client.id && ['connected', 'qr_ready', 'connecting'].includes(c.status);
+      // More robust check for client association
+      return (
+        (client.instance_id === c.clientId || c.clientId.includes(client.id)) &&
+        ['connected', 'qr_ready', 'connecting', 'authenticated'].includes(c.status)
+      );
     });
     
     return !hasActiveInstance;
@@ -647,7 +670,13 @@ const RealInstancesManager = () => {
       {clients.length > 0 ? (
         <div className="grid lg:grid-cols-2 gap-6">
           {clients.map((client) => {
-            const linkedClient = getClientByInstanceId(client.clientId);
+            // More robust client finding
+            const linkedClient = availableClients.find(availableClient => 
+              availableClient.instance_id === client.clientId || 
+              client.clientId.includes(availableClient.id) ||
+              availableClient.id === client.clientId.split('_')[0] // Extract client ID from instance ID
+            );
+            
             return (
               <Card key={client.clientId} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
@@ -665,6 +694,12 @@ const RealInstancesManager = () => {
                         <CardDescription className="flex items-center mt-1 text-green-600">
                           <User className="w-4 h-4 mr-1" />
                           Cliente: {linkedClient.name}
+                        </CardDescription>
+                      )}
+                      {!linkedClient && (
+                        <CardDescription className="flex items-center mt-1 text-orange-600">
+                          <AlertCircle className="w-4 h-4 mr-1" />
+                          ⚠️ Instância não associada a cliente
                         </CardDescription>
                       )}
                     </div>
@@ -742,15 +777,17 @@ const RealInstancesManager = () => {
                           <Pause className="w-4 h-4 mr-1" />
                           Pausar
                         </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleOpenChat(client.clientId)}
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <MessageSquare className="w-4 h-4 mr-1" />
-                          Chat
-                        </Button>
+                        {linkedClient && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleOpenChat(client.clientId)}
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <MessageSquare className="w-4 h-4 mr-1" />
+                            Chat
+                          </Button>
+                        )}
                       </>
                     ) : (
                       <Button 
