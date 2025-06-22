@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,17 +18,20 @@ import {
   Calendar,
   Activity,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Database
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData, CreateClientData } from "@/services/clientsService";
+import DataConsistencyChecker from "./DataConsistencyChecker";
 
 const ClientsManagement = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showConsistencyChecker, setShowConsistencyChecker] = useState(false);
   const [newClient, setNewClient] = useState<CreateClientData>({
     name: "",
     email: "",
@@ -202,6 +204,13 @@ const ClientsManagement = () => {
           <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
         </div>
         <div className="flex space-x-2">
+          <Button 
+            onClick={() => setShowConsistencyChecker(!showConsistencyChecker)} 
+            variant="outline"
+          >
+            <Database className="w-4 h-4 mr-2" />
+            Consistência
+          </Button>
           <Button onClick={loadClients} variant="outline" disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
@@ -212,6 +221,11 @@ const ClientsManagement = () => {
           </Button>
         </div>
       </div>
+
+      {/* Data Consistency Checker */}
+      {showConsistencyChecker && (
+        <DataConsistencyChecker />
+      )}
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
