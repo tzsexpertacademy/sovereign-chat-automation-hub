@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag, Users } from "lucide-react";
+import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag, Users, Bug, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import TicketChatInterface from './TicketChatInterface';
@@ -33,7 +34,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     isLoading: ticketsLoading,
     isTyping: assistantTyping,
     isOnline: assistentOnline,
-    reloadTickets
+    reloadTickets,
+    debugMessages
   } = useTicketRealtime(clientId);
 
   const currentChatId = chatId || selectedChatId;
@@ -52,6 +54,17 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     navigate(`/client/${clientId}/chat/${ticketId}`);
     setActiveTab("conversations");
   }, [onSelectChat, navigate, clientId]);
+
+  // Função de debug
+  const handleDebugMessages = () => {
+    console.log('🔍 ===== INICIANDO DEBUG COMPLETO =====');
+    debugMessages();
+    toast({
+      title: "🔍 DEBUG EXECUTADO",
+      description: "Verifique o console do navegador para logs detalhados. Pressione F12 para abrir as ferramentas de desenvolvedor.",
+      duration: 8000,
+    });
+  };
 
   // Importar conversas do WhatsApp
   const handleImportConversations = async () => {
@@ -184,7 +197,33 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
           </TabsList>
 
           <TabsContent value="conversations" className="flex-1 flex flex-col m-0 overflow-hidden">
-            <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+            {/* ALERTA DE DEBUG SUPER VISÍVEL - NO TOPO */}
+            <div className="bg-red-50 border-2 border-red-500 rounded-lg p-4 m-4 mb-2">
+              <div className="flex items-center space-x-3">
+                <Bug className="w-8 h-8 text-red-600 animate-pulse" />
+                <div className="flex-1">
+                  <p className="text-base font-bold text-red-800 mb-2">
+                    🚨 NÃO VÊ NOVAS CONVERSAS? 🚨
+                  </p>
+                  <p className="text-sm text-red-700 mb-2">
+                    <strong>TESTE AGORA:</strong> Envie mensagem do <strong>47 996451886</strong> para WhatsApp
+                  </p>
+                  <p className="text-xs text-red-600">
+                    1) Clique DEBUG → 2) F12 console → 3) Envie mensagem → 4) Veja logs
+                  </p>
+                </div>
+                <Button
+                  onClick={handleDebugMessages}
+                  size="sm"
+                  className="bg-red-600 text-white hover:bg-red-700 font-bold animate-pulse px-6 py-3"
+                >
+                  <Bug className="w-5 h-5 mr-2" />
+                  🔍 DEBUG SISTEMA
+                </Button>
+              </div>
+            </div>
+
+            <div className="p-4 pt-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-semibold text-gray-900">Conversas Ativas</h2>
                 <div className="flex items-center space-x-2">
@@ -194,6 +233,15 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                       <span className="text-xs font-medium">Online</span>
                     </div>
                   )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDebugMessages}
+                    className="text-red-600 border-red-600 hover:bg-red-50"
+                  >
+                    <Bug className="w-4 h-4 mr-1" />
+                    DEBUG
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
@@ -237,9 +285,18 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                 <div className="p-4 text-center text-gray-500">
                   <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                   <p className="text-sm mb-2">Nenhuma conversa encontrada</p>
-                  <p className="text-xs text-gray-400 mb-3">
-                    Importe suas conversas do WhatsApp ou aguarde novas mensagens
+                  <p className="text-xs text-gray-400 mb-4">
+                    Envie mensagem do <strong>47 996451886</strong> para testar
                   </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDebugMessages}
+                    className="text-red-600 border-red-600"
+                  >
+                    <Bug className="w-4 h-4 mr-1" />
+                    🔍 DEBUG SISTEMA
+                  </Button>
                 </div>
               ) : (
                 <ul className="divide-y divide-gray-100">
