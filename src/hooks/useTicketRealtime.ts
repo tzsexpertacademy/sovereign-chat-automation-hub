@@ -1,15 +1,14 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { queuesService } from '@/services/queuesService';
 import { aiConfigService } from '@/services/aiConfigService';
-import { useMessageBatch } from './useMessageBatch';
 import { useHumanizedTyping } from './useHumanizedTyping';
 import { useAutoReactions } from './useAutoReactions';
 import { useOnlineStatus } from './useOnlineStatus';
 import { useSmartMessageSplit } from './useSmartMessageSplit';
+import { useMessageBatch } from './useMessageBatch';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -156,8 +155,8 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar lote de mensagens com assistente - DEFINIDO ANTES DO useMessageBatch
-  const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
+  // Hook para agrupamento de mensagens - ANTES de processWithAssistant
+  const { addMessage, getBatchInfo, markBatchAsCompleted, updateCallback } = useMessageBatch(async (chatId: string, messages: any[]) => {
     console.log(`📦 PROCESSBATCH CHAMADO - chatId: ${chatId}, mensagens: ${messages.length}`);
     
     if (!mountedRef.current || messages.length === 0) {
@@ -290,14 +289,10 @@ export const useTicketRealtime = (clientId: string) => {
       
     } catch (error) {
       console.error('❌ Erro ao processar lote de mensagens:', error);
-      markBatchAsCompleted(chatId);
     }
-  }, [clientId, processReaction, markActivity, normalizeWhatsAppMessage, loadTickets]);
+  });
 
-  // Hook para agrupamento de mensagens - AGORA PODE USAR processBatchWithAssistant
-  const { addMessage, getBatchInfo, markBatchAsCompleted, updateCallback } = useMessageBatch(processBatchWithAssistant);
-
-  // Processar mensagem com assistente
+  // Processar mensagem com assistente - AGORA PODE USAR markBatchAsCompleted
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     if (!mountedRef.current || !ticketId) {
       console.log('❌ Componente desmontado ou ticketId inválido, cancelando processamento IA');
@@ -369,8 +364,8 @@ export const useTicketRealtime = (clientId: string) => {
         })
         .eq('id', ticketId);
 
-      // Buscar contexto das últimas 40 mensagens do ticket
-      const ticketMessages = await ticketsService.getTicketMessages(ticketId, 40);
+      // Buscar contexto das últimas 100 mensagens do ticket (aumentado de 40)
+      const ticketMessages = await ticketsService.getTicketMessages(ticketId, 100);
       
       // Preparar contexto para IA
       const contextMessages = ticketMessages.map(msg => ({
@@ -400,21 +395,20 @@ export const useTicketRealtime = (clientId: string) => {
       
       console.log('📝 Contexto do lote para IA:', batchContext);
 
-      // Simular digitação humana baseada no tamanho da resposta esperada
-      await simulateHumanTyping(message.from, batchContext);
-
-      // Marcar mensagens como lidas
-      for (const msg of allMessages) {
-        await markAsRead(message.from, msg.id || msg.key?.id);
-      }
-
-      // Chamar OpenAI com contexto completo
+      // Chamar OpenAI com contexto completo e prompt melhorado
       const messages = [
         {
           role: 'system',
-          content: `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto: Você está respondendo mensagens do WhatsApp. O cliente enviou ${allMessages.length} mensagens em sequência. Responda de forma natural e humanizada considerando todas as mensagens como uma conversa contínua.`
+          content: `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto importante: 
+- Você está respondendo mensagens do WhatsApp em uma conversa contínua
+- O cliente enviou ${allMessages.length} mensagens em sequência
+- Você tem acesso ao histórico das últimas ${contextMessages.length} mensagens desta conversa
+- Responda de forma natural, humanizada e contextualizada considerando TODA a conversa anterior
+- Mantenha a continuidade e coerência com as interações passadas
+- Se o cliente fizer referência a algo mencionado anteriormente, demonstre que você lembra
+- Seja conciso mas completo em suas respostas`
         },
-        ...contextMessages.slice(-15), // Últimas 15 mensagens para contexto
+        ...contextMessages.slice(-30), // Últimas 30 mensagens para contexto imediato
         {
           role: 'user',
           content: batchContext
@@ -451,12 +445,20 @@ export const useTicketRealtime = (clientId: string) => {
         console.log(`📝 Resposta dividida em ${messageBlocks.length} blocos:`, 
           messageBlocks.map((block, index) => `${index + 1}: ${block.substring(0, 30)}...`));
         
-        // Função para enviar um bloco individual
-        const sendBlock = async (blockContent: string) => {
-          console.log(`📤 Enviando bloco: ${blockContent.substring(0, 50)}...`);
+        // Função para enviar um bloco individual com controle de digitação melhorado
+        const sendBlock = async (blockContent: string, blockIndex: number, totalBlocks: number) => {
+          console.log(`📤 Enviando bloco ${blockIndex + 1}/${totalBlocks}: ${blockContent.substring(0, 50)}...`);
           
-          // Simular delay de digitação para cada bloco
-          await simulateHumanTyping(message.from, blockContent);
+          // Simular delay de digitação apenas uma vez antes de cada bloco
+          if (blockIndex === 0) {
+            // Primeira mensagem - simular digitação baseada no conteúdo total
+            await simulateHumanTyping(message.from, assistantResponse);
+          } else {
+            // Blocos subsequentes - delay menor e mais natural
+            const shortDelay = Math.min(blockContent.length * 30, 2000); // máximo 2 segundos
+            console.log(`⏱️ Aguardando ${shortDelay}ms antes do bloco ${blockIndex + 1}`);
+            await new Promise(resolve => setTimeout(resolve, shortDelay));
+          }
           
           // Enviar via WhatsApp
           const result = await whatsappService.sendMessage(instanceId, message.from, blockContent);
@@ -479,12 +481,18 @@ export const useTicketRealtime = (clientId: string) => {
           return result;
         };
         
-        // Enviar blocos em sequência com callback de progresso
-        await sendMessagesInSequence(messageBlocks, sendBlock, (sent, total) => {
-          console.log(`📊 Progresso do envio: ${sent}/${total} blocos enviados`);
-        });
+        // Enviar blocos em sequência sem callback de progresso (já temos logs)
+        for (let i = 0; i < messageBlocks.length; i++) {
+          if (!mountedRef.current) break;
+          await sendBlock(messageBlocks[i], i, messageBlocks.length);
+        }
 
         console.log('✅ Todos os blocos da resposta foram enviados com sucesso');
+        
+        // Marcar mensagens como lidas após envio completo
+        for (const msg of allMessages) {
+          await markAsRead(message.from, msg.id || msg.key?.id);
+        }
       } else {
         console.log('⚠️ Resposta do assistente vazia ou inválida');
       }
