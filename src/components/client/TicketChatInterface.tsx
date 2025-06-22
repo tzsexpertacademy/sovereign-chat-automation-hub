@@ -39,10 +39,11 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           id: ticketData.id,
           chatId: ticketData.chat_id,
           customerName: ticketData.customer?.name,
-          phone: ticketData.customer?.phone
+          phone: ticketData.customer?.phone,
+          instanceId: ticketData.instance_id
         });
 
-        // Verificar instâncias conectadas
+        // Verificar instâncias conectadas do cliente
         const { data: instances, error } = await supabase
           .from('whatsapp_instances')
           .select('instance_id, phone_number, status')
@@ -54,12 +55,14 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           return;
         }
 
+        console.log('📱 Instâncias encontradas:', instances);
+
         if (instances && instances.length > 0) {
           // Preferir a instância específica do ticket, ou usar a primeira conectada
           const preferredInstance = instances.find(i => i.instance_id === ticketData.instance_id) || instances[0];
           setConnectedInstance(preferredInstance.instance_id);
           
-          console.log('📱 Instância conectada encontrada:', {
+          console.log('📱 Instância selecionada para envio:', {
             instanceId: preferredInstance.instance_id,
             phoneNumber: preferredInstance.phone_number,
             isPreferred: preferredInstance.instance_id === ticketData.instance_id
@@ -110,7 +113,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       console.log('📤 Enviando mensagem:', {
         instanceId: connectedInstance,
         chatId: ticket.chat_id,
-        message: newMessage.substring(0, 50),
+        message: newMessage.substring(0, 50) + '...',
         customerPhone: ticket.customer?.phone
       });
 
@@ -121,8 +124,10 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         newMessage
       );
 
+      console.log('📡 Resposta do envio:', response);
+
       if (response.success) {
-        console.log('✅ Mensagem enviada com sucesso');
+        console.log('✅ Mensagem enviada com sucesso via WhatsApp');
 
         // Registrar mensagem no ticket
         await ticketsService.addTicketMessage({
@@ -138,6 +143,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: new Date().toISOString()
         });
 
+        console.log('💾 Mensagem registrada no ticket');
         setNewMessage('');
         
         toast({
@@ -145,7 +151,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           description: "Mensagem enviada com sucesso"
         });
       } else {
-        console.error('❌ Erro ao enviar mensagem:', response.error);
+        console.error('❌ Erro ao enviar mensagem via WhatsApp:', response.error);
         toast({
           title: "Erro",
           description: response.error || "Erro ao enviar mensagem",
@@ -221,6 +227,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         <div className="p-3 bg-yellow-50 border-b border-yellow-200 flex items-center gap-2 text-yellow-800">
           <AlertCircle className="w-4 h-4" />
           <span className="text-sm">Nenhuma instância WhatsApp conectada. As mensagens não poderão ser enviadas.</span>
+        </div>
+      )}
+
+      {connectedInstance && (
+        <div className="p-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-green-800">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <span className="text-xs">Conectado via: {connectedInstance}</span>
         </div>
       )}
 
@@ -324,12 +337,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             )}
           </Button>
         </div>
-        
-        {connectedInstance && (
-          <p className="text-xs text-gray-500 mt-1">
-            Conectado via: {connectedInstance}
-          </p>
-        )}
       </div>
     </div>
   );

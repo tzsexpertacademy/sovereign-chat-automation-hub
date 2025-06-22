@@ -30,7 +30,13 @@ export const useTicketRealtime = (clientId: string) => {
 
   // Função para normalizar dados da mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
-    console.log('📨 Normalizando mensagem WhatsApp:', message);
+    console.log('📨 Normalizando mensagem WhatsApp:', {
+      id: message.id,
+      from: message.from,
+      type: message.type,
+      fromMe: message.fromMe,
+      body: message.body?.substring(0, 50)
+    });
     
     // Extrair chat ID e telefone
     let chatId = message.from || message.chatId || message.key?.remoteJid;
@@ -73,8 +79,8 @@ export const useTicketRealtime = (clientId: string) => {
       const quotedContent = quoted.body || quoted.caption || '[Mídia citada]';
       content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
     }
-    
-    return {
+
+    const normalizedMessage = {
       id: message.id || message.key?.id || `msg_${Date.now()}_${Math.random()}`,
       from: chatId,
       fromMe: message.fromMe || false,
@@ -88,6 +94,16 @@ export const useTicketRealtime = (clientId: string) => {
       phoneNumber,
       customerName
     };
+
+    console.log('✅ Mensagem normalizada:', {
+      id: normalizedMessage.id,
+      from: normalizedMessage.from,
+      customerName: normalizedMessage.customerName,
+      phoneNumber: normalizedMessage.phoneNumber,
+      body: normalizedMessage.body.substring(0, 50)
+    });
+    
+    return normalizedMessage;
   }, []);
 
   // Processar lote de mensagens com assistente
@@ -109,7 +125,8 @@ export const useTicketRealtime = (clientId: string) => {
         }
       }
 
-      console.log('👤 Dados do cliente extraídos:', {
+      console.log('👤 Criando/atualizando ticket para:', {
+        clientId,
         chatId: normalizedMessage.from,
         customerName: normalizedMessage.customerName,
         phoneNumber: normalizedMessage.phoneNumber
@@ -126,7 +143,7 @@ export const useTicketRealtime = (clientId: string) => {
         new Date(normalizedMessage.timestamp).toISOString()
       );
 
-      console.log('📋 Ticket criado/atualizado:', ticketId);
+      console.log('📋 Ticket processado:', ticketId);
 
       // Adicionar todas as mensagens do lote ao ticket
       for (const message of messages) {
@@ -171,7 +188,7 @@ export const useTicketRealtime = (clientId: string) => {
   // Carregar tickets com debounce melhorado
   const loadTickets = useCallback(async () => {
     const now = Date.now();
-    if (!clientId || !mountedRef.current || (now - lastLoadTimeRef.current) < 2000) {
+    if (!clientId || !mountedRef.current || (now - lastLoadTimeRef.current) < 1000) {
       return;
     }
     
@@ -387,8 +404,8 @@ export const useTicketRealtime = (clientId: string) => {
         whatsappService.joinClientRoom(clientId);
       });
 
-      socket.on('disconnect', () => {
-        console.log('❌ WebSocket desconectado');
+      socket.on('disconnect', (reason: any) => {
+        console.log('❌ WebSocket desconectado:', reason);
       });
 
       socket.on('connect_error', (error: any) => {
@@ -402,11 +419,12 @@ export const useTicketRealtime = (clientId: string) => {
           return;
         }
         
-        console.log('📨 Nova mensagem recebida:', {
+        console.log('📨 Nova mensagem recebida via WebSocket:', {
           id: message.id,
           from: message.from,
           type: message.type,
-          body: message.body?.substring(0, 50)
+          body: message.body?.substring(0, 50),
+          timestamp: message.timestamp
         });
         
         // Adicionar ao batch para processamento

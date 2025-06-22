@@ -64,41 +64,46 @@ export interface CreateTicketMessageData {
   timestamp: string;
 }
 
-// Função utilitária para normalizar números de telefone
+// Função para normalizar números de telefone brasileiros
 function normalizePhoneNumber(phone: string): string {
   if (!phone) return '';
   
+  console.log('📞 Normalizando telefone original:', phone);
+  
   // Remove todos os caracteres não numéricos
-  const cleanPhone = phone.replace(/\D/g, '');
+  let cleanPhone = phone.replace(/\D/g, '');
   
-  // Se o número começar com 55 (Brasil), mantém como está
-  if (cleanPhone.startsWith('55') && cleanPhone.length >= 13) {
-    return cleanPhone;
+  // Remove +55 se presente
+  if (cleanPhone.startsWith('55')) {
+    cleanPhone = cleanPhone.substring(2);
   }
   
-  // Se tiver 11 dígitos e começar com código de área, adiciona 55
-  if (cleanPhone.length === 11 && cleanPhone.startsWith('4')) {
-    return `55${cleanPhone}`;
+  // Para números com 10 dígitos (sem 9), adiciona o 9
+  if (cleanPhone.length === 10 && (cleanPhone.startsWith('47') || cleanPhone.startsWith('48'))) {
+    cleanPhone = cleanPhone.slice(0, 2) + '9' + cleanPhone.slice(2);
   }
   
-  // Se tiver 10 dígitos, adiciona 55 + 9 no meio
-  if (cleanPhone.length === 10 && cleanPhone.startsWith('47')) {
-    return `55${cleanPhone.slice(0, 2)}9${cleanPhone.slice(2)}`;
-  }
+  // Adiciona código do país (55)
+  const normalizedPhone = `55${cleanPhone}`;
   
-  return cleanPhone;
+  console.log('📞 Telefone normalizado:', normalizedPhone);
+  return normalizedPhone;
 }
 
 // Função para formatar nome do cliente
 function formatCustomerName(phone: string, name?: string): string {
-  if (name && name !== phone && !name.includes('@') && name !== 'undefined') {
-    return name;
+  console.log('👤 Formatando nome:', { phone, name });
+  
+  if (name && name.trim() && name !== phone && !name.includes('@') && name !== 'undefined') {
+    return name.trim();
   }
   
+  // Formatar telefone para exibição
   const normalizedPhone = normalizePhoneNumber(phone);
-  if (normalizedPhone.length >= 11) {
-    // Formato brasileiro: +55 (XX) 9XXXX-XXXX
+  if (normalizedPhone.length >= 13) {
+    // Formato: +55 (XX) 9XXXX-XXXX
     const formatted = normalizedPhone.replace(/(\d{2})(\d{2})(\d{1})(\d{4})(\d{4})/, '+$1 ($2) $3$4-$5');
+    console.log('👤 Nome formatado (telefone):', formatted);
     return formatted;
   }
   
@@ -108,6 +113,8 @@ function formatCustomerName(phone: string, name?: string): string {
 class TicketsService {
   async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
     try {
+      console.log('🎫 Buscando tickets para cliente:', clientId);
+      
       const { data, error } = await supabase
         .from('conversation_tickets')
         .select(`
@@ -120,8 +127,13 @@ class TicketsService {
         .eq('is_archived', false)
         .order('last_message_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao buscar tickets:', error);
+        throw error;
+      }
 
+      console.log('✅ Tickets encontrados:', data?.length || 0);
+      
       return (data || []).map(ticket => ({
         ...ticket,
         status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
@@ -132,7 +144,7 @@ class TicketsService {
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
     } catch (error) {
-      console.error('Erro ao buscar tickets:', error);
+      console.error('❌ Erro ao buscar tickets:', error);
       throw error;
     }
   }
@@ -162,7 +174,7 @@ class TicketsService {
         assigned_assistant_name: data.assigned_assistant?.name
       };
     } catch (error) {
-      console.error('Erro ao buscar ticket:', error);
+      console.error('❌ Erro ao buscar ticket:', error);
       throw error;
     }
   }
@@ -180,7 +192,7 @@ class TicketsService {
 
       return (data || []).reverse(); // Retornar em ordem cronológica
     } catch (error) {
-      console.error('Erro ao buscar mensagens do ticket:', error);
+      console.error('❌ Erro ao buscar mensagens do ticket:', error);
       throw error;
     }
   }
@@ -200,17 +212,18 @@ class TicketsService {
         chatId,
         instanceId,
         customerName,
-        customerPhone,
-        lastMessage: lastMessage.substring(0, 50)
+        customerPhone: customerPhone.substring(0, 10) + '...',
+        lastMessage: lastMessage.substring(0, 50) + '...'
       });
 
-      // Normalizar número de telefone
+      // Normalizar dados
       const normalizedPhone = normalizePhoneNumber(customerPhone);
       const formattedName = formatCustomerName(normalizedPhone, customerName);
 
-      console.log('📞 Dados normalizados:', {
+      console.log('📊 Dados processados:', {
         originalPhone: customerPhone,
         normalizedPhone,
+        originalName: customerName,
         formattedName
       });
 
@@ -229,7 +242,7 @@ class TicketsService {
         throw error;
       }
 
-      console.log('✅ Ticket criado/atualizado com sucesso:', data);
+      console.log('✅ Ticket criado/atualizado com ID:', data);
       return data;
     } catch (error) {
       console.error('❌ Erro ao criar/atualizar ticket:', error);
@@ -243,10 +256,10 @@ class TicketsService {
         ticketId: messageData.ticket_id,
         messageId: messageData.message_id,
         fromMe: messageData.from_me,
-        content: messageData.content.substring(0, 50)
+        content: messageData.content.substring(0, 50) + '...'
       });
 
-      // Verificar se a mensagem já existe para evitar duplicatas
+      // Verificar se a mensagem já existe
       const { data: existingMessage } = await supabase
         .from('ticket_messages')
         .select('id')
@@ -268,7 +281,7 @@ class TicketsService {
         throw error;
       }
       
-      console.log('✅ Mensagem adicionada ao ticket:', messageData.message_id);
+      console.log('✅ Mensagem adicionada com sucesso');
     } catch (error) {
       console.error('❌ Erro ao adicionar mensagem ao ticket:', error);
       throw error;
@@ -282,17 +295,20 @@ class TicketsService {
       // Buscar instâncias ativas do cliente
       const { data: instances, error: instancesError } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id, status')
+        .select('instance_id, status, phone_number')
         .eq('client_id', clientId)
         .eq('status', 'connected');
 
-      if (instancesError) throw instancesError;
+      if (instancesError) {
+        console.error('❌ Erro ao buscar instâncias:', instancesError);
+        throw instancesError;
+      }
 
       if (!instances || instances.length === 0) {
         throw new Error('Nenhuma instância WhatsApp conectada encontrada. Conecte uma instância primeiro.');
       }
 
-      console.log('📱 Instâncias conectadas encontradas:', instances.length);
+      console.log('📱 Instâncias conectadas encontradas:', instances.map(i => ({ id: i.instance_id, phone: i.phone_number })));
 
       let totalImported = 0;
       let totalErrors = 0;
@@ -302,34 +318,80 @@ class TicketsService {
         try {
           console.log(`📥 Importando conversas da instância: ${instance.instance_id}`);
           
-          // Usar servidor WhatsApp correto
-          const response = await fetch(`https://146.59.227.248/api/instances/${instance.instance_id}/chats`, {
+          // URL corrigida para o servidor WhatsApp
+          const url = `https://146.59.227.248/api/instances/${instance.instance_id}/chats`;
+          console.log('🌐 URL de importação:', url);
+          
+          const response = await fetch(url, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
+              'Accept': 'application/json',
             },
+            timeout: 30000, // 30 segundos de timeout
+          });
+
+          console.log(`📡 Resposta da API:`, {
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok
           });
 
           if (!response.ok) {
-            console.error(`❌ Erro HTTP ${response.status} para instância ${instance.instance_id}`);
             const errorText = await response.text();
-            console.error('Resposta do servidor:', errorText);
+            console.error(`❌ Erro HTTP ${response.status} para instância ${instance.instance_id}:`, errorText);
             totalErrors++;
             continue;
           }
 
           const chats = await response.json();
-          console.log(`📊 Chats encontrados:`, chats.length);
+          console.log(`📊 Chats recebidos da instância ${instance.instance_id}:`, {
+            total: Array.isArray(chats) ? chats.length : 'não é array',
+            type: typeof chats,
+            sample: Array.isArray(chats) && chats.length > 0 ? chats[0] : null
+          });
           
           if (Array.isArray(chats) && chats.length > 0) {
             for (const chat of chats) {
               try {
+                console.log('💬 Processando chat:', {
+                  id: chat.id,
+                  name: chat.name,
+                  lastMessage: chat.lastMessage?.body?.substring(0, 30)
+                });
+
                 // Extrair informações do chat
                 const chatId = chat.id || chat.chatId;
-                const customerName = chat.name || chat.pushName || chatId.replace('@c.us', '').replace('@g.us', '');
-                const customerPhone = chatId.replace('@c.us', '').replace('@g.us', '');
-                const lastMessage = chat.lastMessage?.body || chat.lastMessage?.caption || 'Conversa importada do WhatsApp';
-                const lastMessageAt = chat.lastMessage?.timestamp ? new Date(chat.lastMessage.timestamp * 1000).toISOString() : new Date().toISOString();
+                if (!chatId) {
+                  console.log('⚠️ Chat sem ID, pulando...');
+                  continue;
+                }
+
+                // Extrair nome e telefone
+                let customerName = chat.name || chat.pushName || chatId.replace('@c.us', '').replace('@g.us', '');
+                let customerPhone = chatId.replace('@c.us', '').replace('@g.us', '');
+
+                // Para grupos, usar nome do grupo
+                if (chatId.includes('@g.us')) {
+                  customerName = chat.name || `Grupo ${customerPhone}`;
+                }
+
+                const lastMessage = chat.lastMessage?.body || 
+                                  chat.lastMessage?.caption || 
+                                  chat.lastMessage?.type || 
+                                  'Conversa importada do WhatsApp';
+
+                const lastMessageAt = chat.lastMessage?.timestamp 
+                  ? new Date(chat.lastMessage.timestamp * 1000).toISOString()
+                  : new Date().toISOString();
+
+                console.log('📝 Dados extraídos do chat:', {
+                  chatId,
+                  customerName,
+                  customerPhone,
+                  lastMessage: lastMessage.substring(0, 30),
+                  lastMessageAt
+                });
 
                 await this.createOrUpdateTicket(
                   clientId,
@@ -342,25 +404,29 @@ class TicketsService {
                 );
 
                 totalImported++;
+                console.log(`✅ Chat ${chatId} importado com sucesso`);
               } catch (chatError) {
                 console.error(`❌ Erro ao processar chat:`, chatError);
                 totalErrors++;
               }
             }
           } else {
-            console.log(`ℹ️ Nenhum chat encontrado na instância ${instance.instance_id}`);
+            console.log(`ℹ️ Nenhum chat válido encontrado na instância ${instance.instance_id}`);
           }
-        } catch (error) {
-          console.error(`❌ Erro ao processar instância ${instance.instance_id}:`, error);
+        } catch (instanceError) {
+          console.error(`❌ Erro ao processar instância ${instance.instance_id}:`, instanceError);
           totalErrors++;
         }
       }
 
-      return {
+      const result = {
         success: totalImported,
         errors: totalErrors,
         total_instances: instances.length
       };
+
+      console.log('🎉 Importação concluída:', result);
+      return result;
     } catch (error) {
       console.error('❌ Erro na importação:', error);
       throw error;
