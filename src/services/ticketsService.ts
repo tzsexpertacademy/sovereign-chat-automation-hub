@@ -65,6 +65,24 @@ export interface CreateTicketMessageData {
   timestamp: string;
 }
 
+// Interface para chat do WhatsApp
+interface WhatsAppChat {
+  id?: string;
+  chatId?: string;
+  key?: { remoteJid?: string };
+  name?: string;
+  pushName?: string;
+  notifyName?: string;
+  lastMessage?: {
+    body?: string;
+    caption?: string;
+    text?: string;
+    timestamp?: number;
+  };
+  body?: string;
+  timestamp?: number;
+}
+
 // Função para normalizar números de telefone brasileiros
 function normalizePhoneNumber(phone: string): string {
   if (!phone) return '';
@@ -355,7 +373,8 @@ class TicketsService {
           const possibleUrls = [
             `https://146.59.227.248/api/clients/${instance.instance_id}/chats`,
             `https://146.59.227.248/api/instances/${instance.instance_id}/chats`,
-            `https://146.59.227.248/${instance.instance_id}/chats`
+            `https://146.59.227.248/${instance.instance_id}/chats`,
+            `https://146.59.227.248/api/chats/${instance.instance_id}`
           ];
           
           let response;
@@ -366,7 +385,7 @@ class TicketsService {
               console.log('🌐 Testando URL:', url);
               
               const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 15000);
+              const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos
 
               response = await fetch(url, {
                 method: 'GET',
@@ -383,9 +402,11 @@ class TicketsService {
                 workingUrl = url;
                 console.log('✅ URL funcionando:', url);
                 break;
+              } else {
+                console.log(`❌ URL retornou status ${response.status}:`, url);
               }
             } catch (urlError) {
-              console.log('❌ URL falhou:', url, urlError.message);
+              console.log('❌ URL falhou:', url, urlError instanceof Error ? urlError.message : 'Erro desconhecido');
               continue;
             }
           }
@@ -403,7 +424,7 @@ class TicketsService {
             keys: typeof data === 'object' ? Object.keys(data) : 'not object'
           });
           
-          let chats = [];
+          let chats: WhatsAppChat[] = [];
           
           // Tratar diferentes formatos de resposta
           if (Array.isArray(data)) {
@@ -418,10 +439,10 @@ class TicketsService {
               chats = data.conversations;
             } else {
               // Se for um objeto com IDs como chaves, converter para array
-              const possibleChats = Object.values(data).filter(item => 
+              const possibleChats = Object.values(data).filter((item): item is WhatsAppChat => 
                 typeof item === 'object' && 
                 item !== null && 
-                (item.id || item.chatId || item.name)
+                (Boolean((item as any).id) || Boolean((item as any).chatId) || Boolean((item as any).name))
               );
               if (possibleChats.length > 0) {
                 chats = possibleChats;
