@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -129,18 +128,23 @@ export const useTicketRealtime = (clientId: string) => {
     return normalizedMessage;
   }, []);
 
-  // Hook para agrupamento de mensagens - precisa estar antes do processBatchWithAssistant
-  const { addMessage, getBatchInfo, markBatchAsCompleted } = useMessageBatch(
-    useCallback(async (chatId: string, messages: any[]) => {
-      // Esta função será implementada abaixo
-    }, [])
-  );
+  // Hook para agrupamento de mensagens
+  const { addMessage, getBatchInfo, markBatchAsCompleted, updateCallback } = useMessageBatch();
+
+  // Atualizar o callback do useMessageBatch quando processBatchWithAssistant mudar
+  useEffect(() => {
+    console.log('🔄 Atualizando callback do sistema de lotes');
+    updateCallback(processBatchWithAssistant);
+  }, [processBatchWithAssistant, updateCallback]);
 
   // Processar lote de mensagens com assistente
   const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
-    if (!mountedRef.current || messages.length === 0) return;
+    if (!mountedRef.current || messages.length === 0) {
+      console.log('❌ Componente desmontado ou lote vazio, cancelando processamento');
+      return;
+    }
 
-    console.log(`📦 Processando lote de ${messages.length} mensagens do chat ${chatId}:`);
+    console.log(`📦 INICIANDO processamento de lote de ${messages.length} mensagens do chat ${chatId}:`);
     messages.forEach((msg, index) => {
       console.log(`  ${index + 1}. ${msg.body?.substring(0, 50) || '[mídia]'} (${msg.fromMe ? 'nossa' : 'cliente'})`);
     });
@@ -263,12 +267,14 @@ export const useTicketRealtime = (clientId: string) => {
       // Processar com assistente apenas se não estiver já processando
       if (!processingRef.current.has(ticketId)) {
         processingRef.current.add(ticketId);
-        console.log(`🤖 Iniciando processamento com assistente para ${clientMessages.length} mensagens do cliente`);
+        console.log(`🤖 INICIANDO processamento com assistente para ${clientMessages.length} mensagens do cliente`);
         setTimeout(() => {
           if (mountedRef.current) {
             processWithAssistant(normalizedMessage, ticketId, clientMessages);
           }
         }, 1000);
+      } else {
+        console.log(`⚠️ Ticket ${ticketId} já está sendo processado pelo assistente, ignorando`);
       }
       
     } catch (error) {
@@ -277,12 +283,6 @@ export const useTicketRealtime = (clientId: string) => {
       markBatchAsCompleted(chatId);
     }
   }, [clientId, processReaction, markActivity, normalizeWhatsAppMessage, markBatchAsCompleted]);
-
-  // Atualizar a referência do callback no hook de lote
-  useEffect(() => {
-    // Atualizar internamente a função de callback do useMessageBatch
-    // Como o hook já foi inicializado, precisamos trabalhar com a referência atual
-  }, [processBatchWithAssistant]);
 
   // Carregar tickets com debounce melhorado
   const loadTickets = useCallback(async () => {
@@ -314,6 +314,7 @@ export const useTicketRealtime = (clientId: string) => {
   // Processar mensagem com assistente
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     if (!mountedRef.current || !ticketId) {
+      console.log('❌ Componente desmontado ou ticketId inválido, cancelando processamento IA');
       processingRef.current.delete(ticketId);
       return;
     }
@@ -321,25 +322,28 @@ export const useTicketRealtime = (clientId: string) => {
     // Verificar duplicação por ID da mensagem
     const messageKey = `${message.id}_${ticketId}`;
     if (processedMessagesRef.current.has(messageKey)) {
+      console.log('⚠️ Mensagem já processada pelo assistente, ignorando:', messageKey);
       processingRef.current.delete(ticketId);
       return;
     }
     
-    console.log(`🤖 Processando lote de ${allMessages.length} mensagens com assistente:`, 
+    console.log(`🤖 PROCESSAMENTO IA - Lote de ${allMessages.length} mensagens:`, 
       allMessages.map(m => m.body?.substring(0, 30) || '[mídia]').join(', '));
     processedMessagesRef.current.add(messageKey);
     
     try {
       setAssistantTyping(true);
+      console.log('🤖 Assistente iniciou digitação');
       
       // Buscar configurações necessárias
+      console.log('🔍 Buscando configurações de IA e filas...');
       const [queues, aiConfig] = await Promise.all([
         queuesService.getClientQueues(clientId),
         aiConfigService.getClientConfig(clientId)
       ]);
 
       if (!aiConfig?.openai_api_key) {
-        console.log('⚠️ Configuração de IA não encontrada');
+        console.log('⚠️ Configuração de IA não encontrada - chave OpenAI ausente');
         return;
       }
 
@@ -367,6 +371,7 @@ export const useTicketRealtime = (clientId: string) => {
       }
 
       const instanceId = instances[0].instance_id;
+      console.log(`📱 Usando instância WhatsApp: ${instanceId}`);
 
       // Atualizar ticket com informações da fila
       await supabase
@@ -430,6 +435,7 @@ export const useTicketRealtime = (clientId: string) => {
         }
       ];
 
+      console.log('🚀 Chamando OpenAI com contexto de', messages.length, 'mensagens');
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -493,17 +499,21 @@ export const useTicketRealtime = (clientId: string) => {
         });
 
         console.log('✅ Todos os blocos da resposta foram enviados com sucesso');
+      } else {
+        console.log('⚠️ Resposta do assistente vazia ou inválida');
       }
 
     } catch (error) {
-      console.error('❌ Erro no processamento:', error);
+      console.error('❌ Erro no processamento do assistente:', error);
     } finally {
       if (mountedRef.current) {
         setAssistantTyping(false);
+        console.log('🤖 Assistente parou de digitar');
       }
       processingRef.current.delete(ticketId);
       // Marcar lote como completo após processamento
       markBatchAsCompleted(message.from);
+      console.log('✅ Processamento do assistente finalizado');
     }
   }, [clientId, simulateHumanTyping, markAsRead, markBatchAsCompleted, splitMessage, sendMessagesInSequence]);
 
