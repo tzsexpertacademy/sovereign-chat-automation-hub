@@ -21,7 +21,11 @@ import {
   ExternalLink,
   AlertTriangle,
   Eye,
-  EyeOff
+  EyeOff,
+  Smartphone,
+  Wifi,
+  WifiOff,
+  Database
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -35,6 +39,7 @@ const ClientsManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showDisconnectedInstances, setShowDisconnectedInstances] = useState(false);
+  const [showAllInstances, setShowAllInstances] = useState(false);
   const [newClient, setNewClient] = useState<CreateClientData>({
     name: "",
     email: "",
@@ -201,6 +206,10 @@ const ClientsManagement = () => {
     ['disconnected', 'error', 'auth_failed'].includes(instance.status || '')
   );
 
+  const connectedInstances = allInstances.filter(instance => 
+    ['connected', 'qr_ready', 'connecting', 'authenticated'].includes(instance.status || '')
+  );
+
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -212,7 +221,9 @@ const ClientsManagement = () => {
       case 'connected': return 'bg-green-500';
       case 'qr_ready': return 'bg-blue-500';
       case 'connecting': return 'bg-yellow-500';
+      case 'authenticated': return 'bg-cyan-500';
       case 'disconnected': return 'bg-gray-500';
+      case 'error': case 'auth_failed': return 'bg-red-500';
       default: return 'bg-gray-300';
     }
   };
@@ -222,8 +233,23 @@ const ClientsManagement = () => {
       case 'connected': return 'Conectado';
       case 'qr_ready': return 'QR Pronto';
       case 'connecting': return 'Conectando';
+      case 'authenticated': return 'Autenticado';
       case 'disconnected': return 'Desconectado';
+      case 'error': return 'Erro';
+      case 'auth_failed': return 'Falha na Auth';
       default: return 'Sem Instância';
+    }
+  };
+
+  const getStatusIcon = (status?: string) => {
+    switch (status) {
+      case 'connected': return <Wifi className="w-4 h-4" />;
+      case 'qr_ready': return <Smartphone className="w-4 h-4" />;
+      case 'connecting': return <RefreshCw className="w-4 h-4 animate-spin" />;
+      case 'authenticated': return <Smartphone className="w-4 h-4" />;
+      case 'disconnected': return <WifiOff className="w-4 h-4" />;
+      case 'error': case 'auth_failed': return <WifiOff className="w-4 h-4" />;
+      default: return <WifiOff className="w-4 h-4" />;
     }
   };
 
@@ -256,6 +282,14 @@ const ClientsManagement = () => {
         </div>
         <div className="flex space-x-2">
           <Button 
+            onClick={() => setShowAllInstances(!showAllInstances)}
+            variant="outline"
+            className={showAllInstances ? "bg-blue-50 text-blue-700 border-blue-200" : ""}
+          >
+            <Database className="w-4 h-4 mr-2" />
+            Todas as Instâncias ({allInstances.length})
+          </Button>
+          <Button 
             onClick={() => setShowDisconnectedInstances(!showDisconnectedInstances)}
             variant="outline"
             className={showDisconnectedInstances ? "bg-red-50 text-red-700 border-red-200" : ""}
@@ -274,8 +308,149 @@ const ClientsManagement = () => {
         </div>
       </div>
 
-      {/* Disconnected Instances Section */}
-      {showDisconnectedInstances && disconnectedInstances.length > 0 && (
+      {/* All Instances Section */}
+      {showAllInstances && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="text-blue-800 flex items-center">
+              <Database className="w-5 h-5 mr-2" />
+              Todas as Instâncias WhatsApp ({allInstances.length})
+            </CardTitle>
+            <CardDescription className="text-blue-700">
+              Visualização completa de todas as instâncias no sistema, conectadas e desconectadas
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {allInstances.length === 0 ? (
+              <div className="text-center py-8">
+                <Database className="w-16 h-16 text-blue-300 mx-auto mb-4" />
+                <p className="text-blue-600">Nenhuma instância encontrada no sistema</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Connected Instances */}
+                {connectedInstances.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="font-semibold text-green-800 mb-3 flex items-center">
+                      <Wifi className="w-4 h-4 mr-2" />
+                      Instâncias Conectadas ({connectedInstances.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {connectedInstances.map((instance) => {
+                        const client = getClientForInstance(instance.client_id || '');
+                        return (
+                          <div key={instance.id} className="flex items-center justify-between p-3 bg-white border border-green-200 rounded-lg">
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
+                              <div className="flex items-center space-x-2">
+                                {getStatusIcon(instance.status)}
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  ID: {instance.instance_id}
+                                  {instance.custom_name && (
+                                    <span className="ml-2 text-sm text-gray-600">({instance.custom_name})</span>
+                                  )}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Cliente: {client ? client.name : 'Cliente não encontrado'}
+                                  {instance.phone_number && (
+                                    <span className="ml-2">| Tel: {instance.phone_number}</span>
+                                  )}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  Criado em: {new Date(instance.created_at).toLocaleDateString('pt-BR')} às {new Date(instance.created_at).toLocaleTimeString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex space-x-2">
+                              <Badge variant="default" className="bg-green-500">
+                                {getStatusText(instance.status)}
+                              </Badge>
+                              {client && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => navigate(`/client/${client.id}/tickets`)}
+                                  className="bg-green-600 hover:bg-green-700 text-white border-green-600"
+                                >
+                                  <MessageSquare className="w-4 h-4 mr-1" />
+                                  Chat
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Disconnected Instances */}
+                {disconnectedInstances.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-red-800 mb-3 flex items-center">
+                      <WifiOff className="w-4 h-4 mr-2" />
+                      Instâncias Desconectadas ({disconnectedInstances.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {disconnectedInstances.map((instance) => {
+                        const client = getClientForInstance(instance.client_id || '');
+                        return (
+                          <div key={instance.id} className="flex items-center justify-between p-3 bg-white border border-red-200 rounded-lg">
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
+                              <div className="flex items-center space-x-2">
+                                {getStatusIcon(instance.status)}
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  ID: {instance.instance_id}
+                                  {instance.custom_name && (
+                                    <span className="ml-2 text-sm text-gray-600">({instance.custom_name})</span>
+                                  )}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Cliente: {client ? client.name : 'Cliente não encontrado'}
+                                  {instance.phone_number && (
+                                    <span className="ml-2">| Tel: {instance.phone_number}</span>
+                                  )}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  Criado em: {new Date(instance.created_at).toLocaleDateString('pt-BR')} às {new Date(instance.created_at).toLocaleTimeString('pt-BR')}
+                                  {instance.updated_at !== instance.created_at && (
+                                    <span className="ml-2">| Atualizado: {new Date(instance.updated_at).toLocaleDateString('pt-BR')}</span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex space-x-2">
+                              <Badge variant="destructive">
+                                {getStatusText(instance.status)}
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleDeleteInstance(instance.instance_id)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Remover
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Disconnected Instances Section (Legacy - keep for compatibility) */}
+      {showDisconnectedInstances && disconnectedInstances.length > 0 && !showAllInstances && (
         <Card className="border-red-200 bg-red-50">
           <CardHeader>
             <CardTitle className="text-red-800 flex items-center">
@@ -329,7 +504,7 @@ const ClientsManagement = () => {
       )}
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Total Clientes</CardTitle>
@@ -341,24 +516,29 @@ const ClientsManagement = () => {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Instâncias Ativas</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Total Instâncias</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {clients.reduce((sum, c) => sum + (c.current_instances || 0), 0)}
-            </div>
-            <p className="text-xs text-green-600">Conectadas</p>
+            <div className="text-2xl font-bold text-blue-600">{allInstances.length}</div>
+            <p className="text-xs text-blue-600">No sistema</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Plano Básico</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Conectadas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {clients.filter(c => c.plan === 'basic').length}
-            </div>
-            <p className="text-xs text-blue-600">Clientes</p>
+            <div className="text-2xl font-bold text-green-600">{connectedInstances.length}</div>
+            <p className="text-xs text-green-600">Online</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Desconectadas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">{disconnectedInstances.length}</div>
+            <p className="text-xs text-red-600">Offline</p>
           </CardContent>
         </Card>
         <Card>
