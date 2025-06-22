@@ -22,32 +22,26 @@ const defaultConfig: BatchConfig = {
 
 export const useMessageBatch = (onBatchComplete: (chatId: string, messages: any[]) => void) => {
   const [config, setConfig] = useState<BatchConfig>(defaultConfig);
-  const [batches, setBatches] = useState<Map<string, MessageBatch>>(new Map());
   const batchesRef = useRef<Map<string, MessageBatch>>(new Map());
-
-  // Manter referência atualizada
-  batchesRef.current = batches;
 
   const processBatch = useCallback((chatId: string) => {
     const batch = batchesRef.current.get(chatId);
     if (!batch || batch.messages.length === 0) return;
 
-    console.log(`📦 Processando lote de ${batch.messages.length} mensagens para ${chatId}`);
+    console.log(`📦 Processando lote de ${batch.messages.length} mensagens para ${chatId}:`, 
+      batch.messages.map(m => m.body?.substring(0, 30) || '[mídia]').join(', '));
     
     // Chamar callback com as mensagens agrupadas
     onBatchComplete(chatId, [...batch.messages]);
     
     // Limpar lote
-    setBatches(prev => {
-      const newBatches = new Map(prev);
-      newBatches.delete(chatId);
-      return newBatches;
-    });
+    batchesRef.current.delete(chatId);
   }, [onBatchComplete]);
 
   const addMessage = useCallback((message: any) => {
     if (!config.enabled) {
       // Se agrupamento está desabilitado, processar imediatamente
+      console.log('📨 Agrupamento desabilitado, processando mensagem imediatamente');
       onBatchComplete(message.from || message.chatId, [message]);
       return;
     }
@@ -55,79 +49,88 @@ export const useMessageBatch = (onBatchComplete: (chatId: string, messages: any[
     const chatId = message.from || message.chatId;
     const now = Date.now();
     
-    setBatches(prev => {
-      const newBatches = new Map(prev);
-      const existingBatch = newBatches.get(chatId);
-      
-      if (existingBatch) {
-        // Limpar timeout anterior
-        if (existingBatch.timeoutId) {
-          clearTimeout(existingBatch.timeoutId);
-        }
-        
-        // Adicionar mensagem ao lote existente
-        const updatedMessages = [...existingBatch.messages, message];
-        
-        // Verificar se atingiu tamanho máximo
-        if (updatedMessages.length >= config.maxBatchSize) {
-          // Processar imediatamente
-          setTimeout(() => processBatch(chatId), 0);
-          return newBatches;
-        }
-        
-        // Configurar novo timeout
-        const timeoutId = setTimeout(() => processBatch(chatId), config.timeout);
-        
-        newBatches.set(chatId, {
-          ...existingBatch,
-          messages: updatedMessages,
-          timeoutId,
-          lastMessageTime: now
-        });
-      } else {
-        // Criar novo lote
-        const timeoutId = setTimeout(() => processBatch(chatId), config.timeout);
-        
-        newBatches.set(chatId, {
-          chatId,
-          messages: [message],
-          timeoutId,
-          lastMessageTime: now
-        });
-      }
-      
-      return newBatches;
+    console.log(`📨 Adicionando mensagem ao lote ${chatId}:`, {
+      content: message.body?.substring(0, 50) || '[mídia]',
+      fromMe: message.fromMe,
+      timestamp: new Date(message.timestamp || now).toLocaleTimeString()
     });
     
-    console.log(`📨 Mensagem adicionada ao lote ${chatId}. Aguardando ${config.timeout}ms para mais mensagens...`);
+    const existingBatch = batchesRef.current.get(chatId);
+    
+    if (existingBatch) {
+      // Limpar timeout anterior
+      if (existingBatch.timeoutId) {
+        clearTimeout(existingBatch.timeoutId);
+        console.log(`⏰ Cancelando timeout anterior para ${chatId}`);
+      }
+      
+      // Adicionar mensagem ao lote existente
+      const updatedMessages = [...existingBatch.messages, message];
+      
+      // Verificar se atingiu tamanho máximo
+      if (updatedMessages.length >= config.maxBatchSize) {
+        console.log(`📊 Tamanho máximo atingido (${config.maxBatchSize}), processando imediatamente`);
+        batchesRef.current.delete(chatId);
+        setTimeout(() => onBatchComplete(chatId, updatedMessages), 0);
+        return;
+      }
+      
+      // Configurar novo timeout
+      const timeoutId = setTimeout(() => {
+        console.log(`⏰ Timeout de ${config.timeout}ms atingido para ${chatId}, processando lote`);
+        processBatch(chatId);
+      }, config.timeout);
+      
+      batchesRef.current.set(chatId, {
+        ...existingBatch,
+        messages: updatedMessages,
+        timeoutId,
+        lastMessageTime: now
+      });
+      
+      console.log(`📦 Lote atualizado para ${chatId}: ${updatedMessages.length} mensagens, próximo timeout em ${config.timeout}ms`);
+    } else {
+      // Criar novo lote
+      const timeoutId = setTimeout(() => {
+        console.log(`⏰ Timeout inicial de ${config.timeout}ms atingido para ${chatId}, processando lote`);
+        processBatch(chatId);
+      }, config.timeout);
+      
+      batchesRef.current.set(chatId, {
+        chatId,
+        messages: [message],
+        timeoutId,
+        lastMessageTime: now
+      });
+      
+      console.log(`📦 Novo lote criado para ${chatId}: 1 mensagem, timeout em ${config.timeout}ms`);
+    }
   }, [config, processBatch, onBatchComplete]);
 
   const forceProcessBatch = useCallback((chatId: string) => {
+    console.log(`🔄 Forçando processamento do lote ${chatId}`);
     processBatch(chatId);
   }, [processBatch]);
 
   const clearBatch = useCallback((chatId: string) => {
-    setBatches(prev => {
-      const newBatches = new Map(prev);
-      const batch = newBatches.get(chatId);
-      
-      if (batch?.timeoutId) {
-        clearTimeout(batch.timeoutId);
-      }
-      
-      newBatches.delete(chatId);
-      return newBatches;
-    });
+    const batch = batchesRef.current.get(chatId);
+    
+    if (batch?.timeoutId) {
+      clearTimeout(batch.timeoutId);
+    }
+    
+    batchesRef.current.delete(chatId);
+    console.log(`🗑️ Lote ${chatId} limpo`);
   }, []);
 
   const getBatchInfo = useCallback((chatId: string) => {
-    const batch = batches.get(chatId);
+    const batch = batchesRef.current.get(chatId);
     return {
       exists: !!batch,
       messageCount: batch?.messages.length || 0,
       timeRemaining: batch ? config.timeout - (Date.now() - batch.lastMessageTime) : 0
     };
-  }, [batches, config.timeout]);
+  }, [config.timeout]);
 
   return {
     config,
@@ -136,6 +139,6 @@ export const useMessageBatch = (onBatchComplete: (chatId: string, messages: any[
     forceProcessBatch,
     clearBatch,
     getBatchInfo,
-    activeBatches: batches.size
+    activeBatches: batchesRef.current.size
   };
 };
