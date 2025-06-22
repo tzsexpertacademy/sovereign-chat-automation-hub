@@ -22,6 +22,7 @@ export const useTicketRealtime = (clientId: string) => {
   const lastLoadTimeRef = useRef<number>(0);
   const initializationRef = useRef(false);
   const processingRef = useRef<Set<string>>(new Set());
+  const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Hooks humanizados
   const { simulateHumanTyping, markAsRead } = useHumanizedTyping(clientId);
@@ -137,12 +138,21 @@ export const useTicketRealtime = (clientId: string) => {
       
       console.log('✅ Ticket de teste criado/atualizado:', ticketId);
       
-      // Recarregar tickets
-      setTimeout(() => {
-        if (mountedRef.current) {
-          loadTickets();
-        }
-      }, 2000);
+      // FORÇA RECARGA IMEDIATA MÚLTIPLA
+      console.log('🔄 FORÇANDO RECARGA IMEDIATA DA UI...');
+      if (mountedRef.current) {
+        await loadTickets();
+        setTimeout(() => {
+          if (mountedRef.current) {
+            loadTickets();
+          }
+        }, 1000);
+        setTimeout(() => {
+          if (mountedRef.current) {
+            loadTickets();
+          }
+        }, 3000);
+      }
       
     } catch (error) {
       console.error('❌ Erro ao criar ticket de teste:', error);
@@ -243,14 +253,9 @@ export const useTicketRealtime = (clientId: string) => {
 
       console.log('✅ Mensagem adicionada ao ticket com sucesso');
 
-      // Recarregar tickets após um delay
-      console.log('🔄 Programando recarga de tickets...');
-      setTimeout(() => {
-        if (mountedRef.current) {
-          console.log('🔄 Executando recarga de tickets...');
-          loadTickets();
-        }
-      }, 1500);
+      // RECARGA FORÇADA MÚLTIPLA - GARANTINDO ATUALIZAÇÃO DA UI
+      console.log('🔄 INICIANDO RECARGA FORÇADA DA UI...');
+      scheduleTicketReload();
       
     } catch (error) {
       console.error('❌ ERRO CRÍTICO ao processar mensagem:', error);
@@ -258,6 +263,38 @@ export const useTicketRealtime = (clientId: string) => {
       console.error('❌ Dados da mensagem que falhou:', message);
     }
   }, [clientId]);
+
+  // FUNÇÃO DE RECARGA PROGRAMADA COM DEBOUNCE MELHORADO
+  const scheduleTicketReload = useCallback(() => {
+    console.log('⏰ Programando recarga de tickets...');
+    
+    // Limpar timeout anterior
+    if (reloadTimeoutRef.current) {
+      clearTimeout(reloadTimeoutRef.current);
+    }
+    
+    // Recarga imediata
+    if (mountedRef.current) {
+      console.log('🔄 Executando recarga IMEDIATA...');
+      loadTickets();
+    }
+    
+    // Recarga após 500ms
+    reloadTimeoutRef.current = setTimeout(() => {
+      if (mountedRef.current) {
+        console.log('🔄 Executando recarga após 500ms...');
+        loadTickets();
+      }
+    }, 500);
+    
+    // Recarga após 2s para garantir
+    setTimeout(() => {
+      if (mountedRef.current) {
+        console.log('🔄 Executando recarga de segurança após 2s...');
+        loadTickets();
+      }
+    }, 2000);
+  }, []);
 
   const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
     console.log(`📦 Processando lote de ${messages.length} mensagens para ${chatId}`);
@@ -269,15 +306,13 @@ export const useTicketRealtime = (clientId: string) => {
 
   const { addMessage } = useMessageBatch(processBatchWithAssistant);
 
-  // Carregar tickets
+  // Carregar tickets - SEM THROTTLING RESTRITIVO
   const loadTickets = useCallback(async () => {
-    const now = Date.now();
-    if (!clientId || !mountedRef.current || (now - lastLoadTimeRef.current) < 1000) {
+    if (!clientId || !mountedRef.current) {
       return;
     }
     
     try {
-      lastLoadTimeRef.current = now;
       setIsLoading(true);
       console.log('🔄 Carregando tickets para cliente:', clientId);
       
@@ -287,6 +322,16 @@ export const useTicketRealtime = (clientId: string) => {
       if (mountedRef.current) {
         setTickets(ticketsData);
         console.log('📊 Tickets atualizados no estado:', ticketsData.length);
+        
+        // Log dos primeiros tickets para debug
+        if (ticketsData.length > 0) {
+          console.log('📊 Primeiro ticket:', {
+            id: ticketsData[0].id,
+            title: ticketsData[0].title,
+            chat_id: ticketsData[0].chat_id,
+            last_message_at: ticketsData[0].last_message_at
+          });
+        }
       }
     } catch (error) {
       console.error('❌ Erro ao carregar tickets:', error);
@@ -361,7 +406,7 @@ export const useTicketRealtime = (clientId: string) => {
       socket.on(event, handleNewMessage);
     });
 
-    // Canal do Supabase para mudanças diretas no banco
+    // Canal do Supabase para mudanças diretas no banco - MAIS AGRESSIVO
     console.log('🔌 Configurando canal Supabase Realtime...');
     const channel = supabase
       .channel(`tickets-realtime-${clientId}`)
@@ -374,9 +419,10 @@ export const useTicketRealtime = (clientId: string) => {
           filter: `client_id=eq.${clientId}`
         },
         (payload) => {
-          console.log('📊 Mudança em ticket via Supabase:', payload);
+          console.log('📊 ===== MUDANÇA EM TICKET VIA SUPABASE =====');
+          console.log('📊 Payload:', payload);
           if (mountedRef.current) {
-            setTimeout(loadTickets, 500);
+            scheduleTicketReload();
           }
         }
       )
@@ -412,6 +458,22 @@ export const useTicketRealtime = (clientId: string) => {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ticket_messages',
+          filter: `ticket_id=in.(${tickets.map(t => t.id).join(',')})`
+        },
+        (payload) => {
+          console.log('💬 ===== MUDANÇA EM MENSAGEM DE TICKET =====');
+          console.log('💬 Payload:', payload);
+          if (mountedRef.current) {
+            scheduleTicketReload();
+          }
+        }
+      )
       .subscribe((status) => {
         console.log('📡 Status do canal Supabase:', status);
       });
@@ -422,6 +484,10 @@ export const useTicketRealtime = (clientId: string) => {
       console.log('🔌 ===== LIMPANDO RECURSOS =====');
       mountedRef.current = false;
       initializationRef.current = false;
+      
+      if (reloadTimeoutRef.current) {
+        clearTimeout(reloadTimeoutRef.current);
+      }
       
       if (socketRef.current) {
         messageEvents.forEach(event => {
@@ -435,14 +501,14 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       processingRef.current.clear();
     };
-  }, [clientId, loadTickets, processMessage]);
+  }, [clientId, loadTickets, processMessage, scheduleTicketReload]);
 
   const reloadTickets = useCallback(() => {
     if (mountedRef.current) {
       console.log('🔄 Recarregando tickets manualmente...');
-      loadTickets();
+      scheduleTicketReload();
     }
-  }, [loadTickets]);
+  }, [scheduleTicketReload]);
 
   return {
     tickets,
