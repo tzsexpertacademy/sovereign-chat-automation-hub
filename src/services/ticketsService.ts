@@ -79,7 +79,9 @@ function normalizePhoneNumber(phone: string): string {
   }
   
   // Para números com 10 dígitos (sem 9), adiciona o 9
-  if (cleanPhone.length === 10 && (cleanPhone.startsWith('47') || cleanPhone.startsWith('48'))) {
+  if (cleanPhone.length === 10 && (cleanPhone.startsWith('11') || cleanPhone.startsWith('21') || 
+      cleanPhone.startsWith('27') || cleanPhone.startsWith('28') || cleanPhone.startsWith('47') || 
+      cleanPhone.startsWith('48') || cleanPhone.startsWith('49'))) {
     cleanPhone = cleanPhone.slice(0, 2) + '9' + cleanPhone.slice(2);
   }
   
@@ -319,17 +321,22 @@ class TicketsService {
           console.log(`📥 Importando conversas da instância: ${instance.instance_id}`);
           
           // URL corrigida para o servidor WhatsApp
-          const url = `https://146.59.227.248/api/instances/${instance.instance_id}/chats`;
+          const url = `https://146.59.227.248/api/clients/${instance.instance_id}/chats`;
           console.log('🌐 URL de importação:', url);
           
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
+
           const response = await fetch(url, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
-            timeout: 30000, // 30 segundos de timeout
+            signal: controller.signal
           });
+
+          clearTimeout(timeoutId);
 
           console.log(`📡 Resposta da API:`, {
             status: response.status,
