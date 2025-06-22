@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import {
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { clientsService, ClientData } from "@/services/clientsService";
+import { whatsappInstancesService } from "@/services/whatsappInstancesService";
 import { queuesService, QueueWithAssistant } from "@/services/queuesService";
 import { useConnectionMonitor } from "@/hooks/useConnectionMonitor";
 import whatsappService from "@/services/whatsappMultiClient";
@@ -43,6 +45,7 @@ const WhatsAppConnection = () => {
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [queues, setQueues] = useState<QueueWithAssistant[]>([]);
   const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [showQrDialog, setShowQrDialog] = useState(false);
   const [qrCodeData, setQrCodeData] = useState<{instanceId: string, qrCode: string} | null>(null);
   const [loadingQr, setLoadingQr] = useState(false);
@@ -52,26 +55,6 @@ const WhatsAppConnection = () => {
       loadClientData();
     }
   }, [clientId]);
-
-  // Auto-reconexão para instâncias desconectadas
-  useEffect(() => {
-    const disconnectedInstances = instances.filter(i => 
-      ['disconnected', 'error'].includes(i.status)
-    );
-
-    if (disconnectedInstances.length > 0) {
-      console.log('🔄 Detectadas instâncias desconectadas, tentando reconectar...');
-      
-      disconnectedInstances.forEach(async (instance) => {
-        try {
-          console.log(`🔄 Auto-reconectando instância: ${instance.instance_id}`);
-          await handleReconnectInstance(instance.instance_id, false); // false = não mostrar toast
-        } catch (error) {
-          console.error(`❌ Erro na auto-reconexão de ${instance.instance_id}:`, error);
-        }
-      });
-    }
-  }, [instances]);
 
   const loadClientData = async () => {
     try {
@@ -95,6 +78,80 @@ const WhatsAppConnection = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const createNewInstance = async () => {
+    if (!clientData) {
+      toast({
+        title: "Erro",
+        description: "Dados do cliente não carregados",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const canCreate = await clientsService.canCreateInstance(clientId!);
+      if (!canCreate) {
+        toast({
+          title: "Limite Atingido",
+          description: `Limite de ${clientData.max_instances} instâncias atingido para o plano ${clientData.plan}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setCreating(true);
+      const instanceId = `${clientId}_${Date.now()}`;
+      
+      await whatsappInstancesService.createInstance({
+        client_id: clientId!,
+        instance_id: instanceId,
+        status: 'disconnected'
+      });
+
+      toast({
+        title: "Instância Criada",
+        description: "Nova instância WhatsApp criada com sucesso",
+      });
+
+      // Recarregar dados
+      await loadClientData();
+      await monitorInstances();
+      
+    } catch (error) {
+      console.error('Erro ao criar instância:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao criar nova instância",
+        variant: "destructive",
+      });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const deleteInstance = async (instanceId: string) => {
+    try {
+      await whatsappInstancesService.deleteInstance(instanceId);
+      
+      toast({
+        title: "Instância Removida",
+        description: "Instância WhatsApp removida com sucesso",
+      });
+
+      // Recarregar dados
+      await loadClientData();
+      await monitorInstances();
+      
+    } catch (error) {
+      console.error('Erro ao deletar instância:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao remover instância",
+        variant: "destructive",
+      });
     }
   };
 
@@ -244,6 +301,14 @@ const WhatsAppConnection = () => {
         </div>
         <div className="flex space-x-2">
           <Button 
+            onClick={createNewInstance}
+            disabled={creating || !clientData || instances.length >= (clientData?.max_instances || 1)}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            {creating ? 'Criando...' : 'Nova Instância'}
+          </Button>
+          <Button 
             onClick={monitorInstances} 
             variant="outline" 
             disabled={isMonitoring}
@@ -313,6 +378,29 @@ const WhatsAppConnection = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Empty State */}
+      {instances.length === 0 && !loading && (
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center">
+              <Smartphone className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma instância criada</h3>
+              <p className="text-gray-600 mb-4">
+                Crie sua primeira instância WhatsApp para começar a receber mensagens
+              </p>
+              <Button 
+                onClick={createNewInstance}
+                disabled={creating}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {creating ? 'Criando...' : 'Criar Primeira Instância'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Instances List */}
       {instances.map((instance) => {
@@ -384,6 +472,16 @@ const WhatsAppConnection = () => {
                       {loadingQr ? 'Carregando...' : 'Ver QR Code'}
                     </Button>
                   )}
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => deleteInstance(instance.instance_id)}
+                    className="text-red-600 hover:text-red-700 border-red-300"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Remover
+                  </Button>
                 </div>
                 
                 <div className="text-xs text-gray-500">
