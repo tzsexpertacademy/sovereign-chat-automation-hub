@@ -139,7 +139,44 @@ export const useTicketRealtime = (clientId: string) => {
     
     // Só processar se não for mensagem enviada por nós
     if (normalizedMessage.fromMe) {
-      console.log('📤 Mensagem enviada por nós, não processando');
+      console.log('📤 Mensagem enviada por nós, salvando no ticket...');
+      
+      try {
+        // Buscar ticket existente
+        const ticketsData = await ticketsService.getClientTickets(clientId);
+        const existingTicket = ticketsData.find(t => t.chat_id === normalizedMessage.from);
+        
+        if (existingTicket) {
+          console.log('💾 Salvando mensagem enviada no ticket:', existingTicket.id);
+          
+          // Salvar mensagem enviada por nós
+          await ticketsService.addTicketMessage({
+            ticket_id: existingTicket.id,
+            message_id: normalizedMessage.id,
+            from_me: true,
+            sender_name: 'Atendente',
+            content: normalizedMessage.body,
+            message_type: normalizedMessage.type,
+            is_internal_note: false,
+            is_ai_response: false,
+            processing_status: 'completed',
+            timestamp: normalizedMessage.timestamp,
+            media_url: normalizedMessage.mediaUrl
+          });
+          
+          console.log('✅ Mensagem enviada salva com sucesso');
+        }
+      } catch (error) {
+        console.error('❌ Erro ao salvar mensagem enviada:', error);
+      }
+      
+      // Recarregar tickets
+      setTimeout(() => {
+        if (mountedRef.current) {
+          loadTickets();
+        }
+      }, 1000);
+      
       return;
     }
     
@@ -176,6 +213,13 @@ export const useTicketRealtime = (clientId: string) => {
       for (const message of messages) {
         const normalized = normalizeWhatsAppMessage(message);
         
+        console.log('💾 Salvando mensagem recebida no ticket:', {
+          ticketId,
+          messageId: normalized.id,
+          fromMe: normalized.fromMe,
+          content: normalized.body.substring(0, 50)
+        });
+        
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: normalized.id,
@@ -189,6 +233,8 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: normalized.timestamp,
           media_url: normalized.mediaUrl
         });
+        
+        console.log('✅ Mensagem recebida salva com sucesso');
       }
 
       // Marcar atividade online
@@ -388,6 +434,11 @@ export const useTicketRealtime = (clientId: string) => {
         // Enviar via WhatsApp usando a instância correta
         await whatsappService.sendMessage(instanceId, message.from, assistantResponse);
         
+        console.log('💾 Salvando resposta da IA no ticket:', {
+          ticketId,
+          response: assistantResponse.substring(0, 50)
+        });
+        
         // Registrar no ticket
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
@@ -403,7 +454,7 @@ export const useTicketRealtime = (clientId: string) => {
           timestamp: new Date().toISOString()
         });
 
-        console.log('✅ Resposta enviada com sucesso');
+        console.log('✅ Resposta da IA salva com sucesso');
       }
 
     } catch (error) {

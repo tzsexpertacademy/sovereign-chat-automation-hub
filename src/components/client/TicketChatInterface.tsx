@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Send, Bot, User, AlertCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Send, Bot, User, AlertCircle, Queue } from 'lucide-react';
 import { useTicketMessages } from '@/hooks/useTicketMessages';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { ticketsService } from '@/services/ticketsService';
+import { queuesService } from '@/services/queuesService';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,6 +22,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [ticket, setTicket] = useState<any>(null);
+  const [queueInfo, setQueueInfo] = useState<any>(null);
   const [connectedInstance, setConnectedInstance] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { messages, isLoading } = useTicketMessages(ticketId);
@@ -40,8 +43,23 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           chatId: ticketData.chat_id,
           customerName: ticketData.customer?.name,
           phone: ticketData.customer?.phone,
-          instanceId: ticketData.instance_id
+          instanceId: ticketData.instance_id,
+          assignedQueueId: ticketData.assigned_queue_id
         });
+
+        // Carregar informações da fila se estiver atribuída
+        if (ticketData.assigned_queue_id) {
+          try {
+            const queues = await queuesService.getClientQueues(clientId);
+            const assignedQueue = queues.find(q => q.id === ticketData.assigned_queue_id);
+            if (assignedQueue) {
+              setQueueInfo(assignedQueue);
+              console.log('📋 Fila encontrada:', assignedQueue.name);
+            }
+          } catch (error) {
+            console.error('❌ Erro ao carregar informações da fila:', error);
+          }
+        }
 
         // Verificar instâncias conectadas do cliente
         const { data: instances, error } = await supabase
@@ -130,6 +148,11 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         console.log('✅ Mensagem enviada com sucesso via WhatsApp');
 
         // Registrar mensagem no ticket
+        console.log('💾 Salvando mensagem manual no ticket:', {
+          ticketId,
+          content: newMessage.substring(0, 50)
+        });
+        
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -143,7 +166,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: new Date().toISOString()
         });
 
-        console.log('💾 Mensagem registrada no ticket');
+        console.log('💾 Mensagem manual registrada no ticket');
         setNewMessage('');
         
         toast({
@@ -222,6 +245,19 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
   return (
     <div className="flex-1 flex flex-col h-full">
+      {/* Informações da fila ativa */}
+      {queueInfo && (
+        <div className="p-3 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-blue-800">
+          <Queue className="w-4 h-4" />
+          <span className="text-sm font-medium">Fila Ativa: {queueInfo.name}</span>
+          {queueInfo.assistants && (
+            <Badge variant="secondary" className="text-xs">
+              🤖 {queueInfo.assistants.name}
+            </Badge>
+          )}
+        </div>
+      )}
+
       {/* Status da conexão */}
       {!connectedInstance && (
         <div className="p-3 bg-yellow-50 border-b border-yellow-200 flex items-center gap-2 text-yellow-800">

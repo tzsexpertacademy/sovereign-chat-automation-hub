@@ -19,7 +19,7 @@ export const useTicketMessages = (ticketId: string) => {
         console.log('🔄 Carregando mensagens para ticket:', ticketId);
         
         const messagesData = await ticketsService.getTicketMessages(ticketId, 100);
-        console.log(`📨 ${messagesData.length} mensagens carregadas`);
+        console.log(`📨 ${messagesData.length} mensagens carregadas para ticket ${ticketId}`);
         
         setMessages(messagesData);
       } catch (error) {
@@ -32,7 +32,9 @@ export const useTicketMessages = (ticketId: string) => {
 
     loadMessages();
 
-    // Configurar listener para novas mensagens
+    // Configurar listener para novas mensagens em tempo real
+    console.log('🔔 Configurando listener para mensagens do ticket:', ticketId);
+    
     const channel = supabase
       .channel(`ticket-messages-${ticketId}`)
       .on(
@@ -44,36 +46,59 @@ export const useTicketMessages = (ticketId: string) => {
           filter: `ticket_id=eq.${ticketId}`
         },
         (payload) => {
-          console.log('🔔 Nova mensagem recebida:', payload);
+          console.log('🔔 Mudança na tabela ticket_messages detectada:', {
+            event: payload.eventType,
+            messageId: payload.new?.id || payload.old?.id,
+            content: payload.new?.content?.substring(0, 50) || 'N/A'
+          });
           
           if (payload.eventType === 'INSERT') {
             const newMessage = payload.new as TicketMessage;
+            console.log('📨 Nova mensagem recebida via realtime:', {
+              id: newMessage.id,
+              fromMe: newMessage.from_me,
+              content: newMessage.content.substring(0, 50)
+            });
+            
             setMessages(prev => {
               // Evitar duplicatas
               const exists = prev.some(msg => msg.id === newMessage.id);
-              if (exists) return prev;
+              if (exists) {
+                console.log('⚠️ Mensagem já existe, ignorando duplicata');
+                return prev;
+              }
               
               // Inserir na posição correta (ordenado por timestamp)
               const newMessages = [...prev, newMessage];
-              return newMessages.sort((a, b) => 
+              const sortedMessages = newMessages.sort((a, b) => 
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
               );
+              
+              console.log('✅ Mensagem adicionada à lista, total:', sortedMessages.length);
+              return sortedMessages;
             });
           } else if (payload.eventType === 'UPDATE') {
             const updatedMessage = payload.new as TicketMessage;
+            console.log('🔄 Mensagem atualizada via realtime:', updatedMessage.id);
+            
             setMessages(prev => 
               prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
             );
           } else if (payload.eventType === 'DELETE') {
+            console.log('🗑️ Mensagem removida via realtime:', payload.old.id);
+            
             setMessages(prev => 
               prev.filter(msg => msg.id !== payload.old.id)
             );
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Status da subscription para mensagens:', status);
+      });
 
     return () => {
+      console.log('🔌 Removendo listener de mensagens para ticket:', ticketId);
       supabase.removeChannel(channel);
     };
   }, [ticketId]);
