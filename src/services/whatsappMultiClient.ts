@@ -1,3 +1,4 @@
+
 import io, { Socket } from 'socket.io-client';
 import { SERVER_URL } from '@/config/environment';
 
@@ -33,7 +34,7 @@ class WhatsAppMultiClientService {
   private clients: Map<string, WhatsAppClient> = new Map();
   private socket: Socket | null = null;
 
-  // Conectar socket principal
+  // Conectar socket principal com configuração robusta
   connectSocket(): Socket {
     if (this.socket?.connected) {
       return this.socket;
@@ -42,8 +43,11 @@ class WhatsAppMultiClientService {
     console.log(`🔌 [WS] Conectando ao servidor: ${SERVER_URL}`);
 
     this.socket = io(SERVER_URL, {
-      transports: ['websocket'],
-      timeout: 10000,
+      transports: ['websocket', 'polling'],
+      timeout: 15000,
+      reconnection: true,
+      reconnectionDelay: 2000,
+      reconnectionAttempts: 5,
       forceNew: true
     });
 
@@ -51,12 +55,16 @@ class WhatsAppMultiClientService {
       console.log('✅ [WS] Socket conectado ao servidor WhatsApp');
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('🔌 [WS] Socket desconectado do servidor WhatsApp');
+    this.socket.on('disconnect', (reason) => {
+      console.log('🔌 [WS] Socket desconectado:', reason);
     });
 
     this.socket.on('connect_error', (error) => {
       console.error('❌ [WS] Erro na conexão WebSocket:', error);
+    });
+
+    this.socket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 [WS] Reconectado após', attemptNumber, 'tentativas');
     });
 
     return this.socket;
@@ -77,7 +85,7 @@ class WhatsAppMultiClientService {
     console.log(`🏠 [WS] Entrando na sala do cliente: ${clientId}`);
   }
 
-  // Testar conexão com servidor
+  // Testar conexão com servidor - Versão melhorada
   async testConnection(): Promise<boolean> {
     try {
       console.log(`🧪 [TEST] Testando conexão: ${SERVER_URL}/health`);
@@ -87,7 +95,8 @@ class WhatsAppMultiClientService {
         headers: {
           'Content-Type': 'application/json',
         },
-        signal: AbortSignal.timeout(5000)
+        cache: 'no-cache',
+        signal: AbortSignal.timeout(8000)
       });
       
       if (response.ok) {

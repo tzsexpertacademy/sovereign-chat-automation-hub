@@ -22,37 +22,44 @@ const WhatsAppSystemStatus = () => {
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
   const { toast } = useToast();
 
-  // Força o uso do IP de produção se estivermos no Lovable
-  const getProductionServerUrl = () => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('lovableproject.com')) {
-      return 'http://146.59.227.248:4000';
-    }
-    return SERVER_URL;
-  };
-
-  const productionServerUrl = getProductionServerUrl();
-
   useEffect(() => {
-    console.log(`🔍 Componente WhatsAppSystemStatus iniciado`);
-    console.log(`🌐 SERVER_URL configurado: ${SERVER_URL}`);
-    console.log(`🎯 URL de produção: ${productionServerUrl}`);
+    console.log(`🔍 [STATUS] Iniciando verificação de status`);
+    console.log(`🌐 [STATUS] SERVER_URL: ${SERVER_URL}`);
     
     checkServerStatus();
     
-    // Verificar status a cada 30 segundos
-    const interval = setInterval(checkServerStatus, 30000);
+    // Verificar status a cada 15 segundos
+    const interval = setInterval(checkServerStatus, 15000);
     
     return () => clearInterval(interval);
   }, []);
 
   const checkServerStatus = async () => {
     try {
+      console.log(`🏥 [STATUS] Testando conexão: ${SERVER_URL}/health`);
       setServerStatus('checking');
-      const health = await whatsappService.checkServerHealth();
-      setServerInfo(health);
-      setServerStatus('online');
+      
+      const response = await fetch(`${SERVER_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-cache',
+        signal: AbortSignal.timeout(8000)
+      });
+      
+      if (response.ok) {
+        const health = await response.json();
+        console.log(`✅ [STATUS] Servidor online:`, health);
+        setServerInfo(health);
+        setServerStatus('online');
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
       setLastCheck(new Date());
-    } catch (error) {
+    } catch (error: any) {
+      console.error(`❌ [STATUS] Erro:`, error.message);
       setServerStatus('offline');
       setServerInfo(null);
       setLastCheck(new Date());
@@ -60,6 +67,7 @@ const WhatsAppSystemStatus = () => {
   };
 
   const handleRefresh = async () => {
+    console.log(`🔄 [STATUS] Refresh manual`);
     await checkServerStatus();
     toast({
       title: "Status atualizado",
@@ -111,7 +119,7 @@ const WhatsAppSystemStatus = () => {
           </Button>
         </div>
         <CardDescription>
-          Status do servidor backend e APIs disponíveis
+          Status do servidor backend - Verificação automática a cada 15s
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -123,7 +131,7 @@ const WhatsAppSystemStatus = () => {
             <div>
               <p className="font-medium">Status do Servidor</p>
               <p className="text-sm text-gray-600">
-                {productionServerUrl} • {lastCheck ? `Última verificação: ${lastCheck.toLocaleTimeString()}` : 'Não verificado'}
+                {SERVER_URL} • {lastCheck ? `Última verificação: ${lastCheck.toLocaleTimeString()}` : 'Verificando...'}
               </p>
             </div>
           </div>
@@ -140,8 +148,8 @@ const WhatsAppSystemStatus = () => {
               <p className="text-lg font-bold">{serverInfo.activeClients || 0}</p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-600">Timestamp</p>
-              <p className="text-sm">{new Date(serverInfo.timestamp).toLocaleString()}</p>
+              <p className="text-sm font-medium text-gray-600">Uptime</p>
+              <p className="text-sm">{Math.floor((serverInfo.uptime || 0) / 60)} min</p>
             </div>
           </div>
         )}
@@ -151,14 +159,14 @@ const WhatsAppSystemStatus = () => {
           <p className="text-sm font-medium text-gray-600">Links Úteis</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" asChild>
-              <a href={`${productionServerUrl}/health`} target="_blank" rel="noopener noreferrer">
+              <a href={`${SERVER_URL}/health`} target="_blank" rel="noopener noreferrer">
                 <Wifi className="w-4 h-4 mr-1" />
                 Health Check
                 <ExternalLink className="w-3 h-3 ml-1" />
               </a>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <a href={`${productionServerUrl}/api-docs`} target="_blank" rel="noopener noreferrer">
+              <a href={`${SERVER_URL}/api-docs`} target="_blank" rel="noopener noreferrer">
                 <Server className="w-4 h-4 mr-1" />
                 API Swagger
                 <ExternalLink className="w-3 h-3 ml-1" />
@@ -173,14 +181,17 @@ const WhatsAppSystemStatus = () => {
             <div className="flex items-start space-x-2">
               <WifiOff className="w-5 h-5 text-red-500 mt-0.5" />
               <div>
-                <p className="font-medium text-red-900">Servidor Offline</p>
+                <p className="font-medium text-red-900">❌ Servidor Não Responde</p>
                 <p className="text-sm text-red-700">
-                  O servidor WhatsApp Multi-Cliente não está respondendo em {productionServerUrl}.
+                  Não foi possível conectar em {SERVER_URL}
                 </p>
                 <div className="mt-2 space-y-1">
-                  <p className="text-xs text-red-600">Comandos úteis:</p>
-                  <code className="text-xs bg-red-100 px-2 py-1 rounded">
+                  <p className="text-xs text-red-600">🔧 Soluções:</p>
+                  <code className="text-xs bg-red-100 px-2 py-1 rounded block">
                     ./scripts/production-start-whatsapp.sh
+                  </code>
+                  <code className="text-xs bg-red-100 px-2 py-1 rounded block">
+                    ./scripts/check-whatsapp-health.sh
                   </code>
                 </div>
               </div>
@@ -188,22 +199,19 @@ const WhatsAppSystemStatus = () => {
           </div>
         )}
 
-        {/* Status Online com informações detalhadas */}
+        {/* Status Online */}
         {serverStatus === 'online' && (
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-start space-x-2">
               <CheckCircle className="w-5 h-5 text-green-500 mt-0.5" />
               <div>
-                <p className="font-medium text-green-900">Servidor Online</p>
+                <p className="font-medium text-green-900">✅ Servidor Online</p>
                 <p className="text-sm text-green-700">
-                  WhatsApp Multi-Cliente funcionando corretamente
+                  WhatsApp Multi-Cliente funcionando perfeitamente!
                 </p>
                 <div className="mt-2 text-xs text-green-600">
-                  <p>URL do Servidor: <code className="bg-green-100 px-1 rounded">{productionServerUrl}</code></p>
-                  <p className="mt-1">Hostname Frontend: <code className="bg-green-100 px-1 rounded">{window.location.hostname}</code></p>
-                  {import.meta.env.VITE_SERVER_URL && (
-                    <p className="mt-1">Configurado via: <code className="bg-green-100 px-1 rounded">VITE_SERVER_URL = {import.meta.env.VITE_SERVER_URL}</code></p>
-                  )}
+                  <p>🌐 URL: <code className="bg-green-100 px-1 rounded">{SERVER_URL}</code></p>
+                  <p className="mt-1">📊 Versão: <code className="bg-green-100 px-1 rounded">{serverInfo?.version || 'N/A'}</code></p>
                 </div>
               </div>
             </div>
