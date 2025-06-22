@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Send, Bot, User, AlertCircle, Users } from 'lucide-react';
+import { Send, Bot, User, AlertCircle, Users, Trash2 } from 'lucide-react';
 import { useTicketMessages } from '@/hooks/useTicketMessages';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { ticketsService } from '@/services/ticketsService';
@@ -20,6 +20,7 @@ interface TicketChatInterfaceProps {
 const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) => {
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [ticket, setTicket] = useState<any>(null);
   const [queueInfo, setQueueInfo] = useState<any>(null);
   const [connectedInstance, setConnectedInstance] = useState<string | null>(null);
@@ -112,6 +113,43 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       }
     }
   }, [messages]);
+
+  const handleClearHistory = async () => {
+    if (!ticketId || isClearing) return;
+
+    try {
+      setIsClearing(true);
+      console.log('🗑️ Limpando histórico do ticket:', ticketId);
+
+      // Deletar todas as mensagens do ticket
+      const { error } = await supabase
+        .from('ticket_messages')
+        .delete()
+        .eq('ticket_id', ticketId);
+
+      if (error) {
+        console.error('❌ Erro ao limpar histórico:', error);
+        throw error;
+      }
+
+      console.log('✅ Histórico do ticket limpo com sucesso');
+      
+      toast({
+        title: "Histórico Limpo",
+        description: "Todas as mensagens do ticket foram removidas com sucesso"
+      });
+
+    } catch (error) {
+      console.error('❌ Erro ao limpar histórico:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao limpar histórico do ticket",
+        variant: "destructive"
+      });
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !ticket || !connectedInstance || isSending) {
@@ -246,14 +284,32 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     <div className="flex-1 flex flex-col h-full">
       {/* Informações da fila ativa */}
       {queueInfo && (
-        <div className="p-3 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-blue-800">
-          <Users className="w-4 h-4" />
-          <span className="text-sm font-medium">Fila Ativa: {queueInfo.name}</span>
-          {queueInfo.assistants && (
-            <Badge variant="secondary" className="text-xs">
-              🤖 {queueInfo.assistants.name}
-            </Badge>
-          )}
+        <div className="p-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between text-blue-800">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4" />
+            <span className="text-sm font-medium">Fila Ativa: {queueInfo.name}</span>
+            {queueInfo.assistants && (
+              <Badge variant="secondary" className="text-xs">
+                🤖 {queueInfo.assistants.name}
+              </Badge>
+            )}
+          </div>
+          
+          {/* Botão para limpar histórico */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearHistory}
+            disabled={isClearing || messages.length === 0}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+          >
+            {isClearing ? (
+              <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+            {isClearing ? 'Limpando...' : 'Limpar Histórico'}
+          </Button>
         </div>
       )}
 
