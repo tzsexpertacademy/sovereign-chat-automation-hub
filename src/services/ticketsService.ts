@@ -84,6 +84,7 @@ class TicketsService {
 
       return (data || []).map(ticket => ({
         ...ticket,
+        status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
@@ -110,6 +111,7 @@ class TicketsService {
 
       return {
         ...data,
+        status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
       };
@@ -228,6 +230,55 @@ class TicketsService {
       if (error) throw error;
     } catch (error) {
       console.error('Erro ao atualizar status do ticket:', error);
+      throw error;
+    }
+  }
+
+  async assumeTicketManually(ticketId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          status: 'pending',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+      
+      console.log('✅ Ticket assumido manualmente:', ticketId);
+    } catch (error) {
+      console.error('Erro ao assumir ticket manualmente:', error);
+      throw error;
+    }
+  }
+
+  async transferTicket(ticketId: string, queueId: string, reason?: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          assigned_queue_id: queueId,
+          assigned_assistant_id: null, // Reset assistant when transferring
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+      
+      // Log the transfer event
+      await supabase
+        .from('ticket_events')
+        .insert({
+          ticket_id: ticketId,
+          event_type: 'transfer',
+          description: `Ticket transferido para fila ${queueId}`,
+          metadata: { queue_id: queueId, reason: reason || 'Sem motivo especificado' }
+        });
+      
+      console.log('✅ Ticket transferido:', ticketId);
+    } catch (error) {
+      console.error('Erro ao transferir ticket:', error);
       throw error;
     }
   }
