@@ -12,8 +12,19 @@ export const useConnectionMonitor = (clientId: string) => {
     try {
       console.log(`🔍 Verificando status da instância: ${instance.instance_id}`);
       
-      // Verificar status real no servidor WhatsApp
-      const serverStatus = await whatsappService.getClientStatus(instance.instance_id);
+      // Verificar status real no servidor WhatsApp com timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const serverStatus = await Promise.race([
+        whatsappService.getClientStatus(instance.instance_id),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout na verificação de status')), 10000)
+        )
+      ]) as any;
+      
+      clearTimeout(timeoutId);
+      
       console.log(`📊 Status do servidor: ${serverStatus.status}, Status local: ${instance.status}`);
       
       // Se o status for diferente, atualizar no banco
@@ -72,7 +83,7 @@ export const useConnectionMonitor = (clientId: string) => {
 
   const autoReconnectInstance = useCallback(async (instanceId: string) => {
     const attempts = reconnectAttempts[instanceId] || 0;
-    const maxAttempts = 3;
+    const maxAttempts = 2; // Reduzir tentativas para evitar spam
     
     if (attempts >= maxAttempts) {
       console.log(`❌ Máximo de tentativas de reconexão atingido para ${instanceId}`);
@@ -88,8 +99,16 @@ export const useConnectionMonitor = (clientId: string) => {
         [instanceId]: attempts + 1
       }));
       
-      // Tentar reconectar
-      await whatsappService.connectClient(instanceId);
+      // Aguardar antes de tentar reconectar
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Tentar reconectar com timeout
+      await Promise.race([
+        whatsappService.connectClient(instanceId),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout na reconexão')), 30000)
+        )
+      ]);
       
       // Aguardar um pouco e verificar se conectou
       setTimeout(async () => {
@@ -101,19 +120,11 @@ export const useConnectionMonitor = (clientId: string) => {
         } catch (error) {
           console.error('Erro ao verificar status após reconexão:', error);
         }
-      }, 5000);
+      }, 10000);
       
       return true;
     } catch (error) {
       console.error(`❌ Erro na auto-reconexão de ${instanceId}:`, error);
-      
-      // Tentar novamente após um tempo
-      if (attempts < maxAttempts - 1) {
-        setTimeout(() => {
-          autoReconnectInstance(instanceId);
-        }, 30000); // Tentar novamente em 30 segundos
-      }
-      
       return false;
     }
   }, [instances, reconnectAttempts, checkInstanceStatus]);
@@ -128,32 +139,50 @@ export const useConnectionMonitor = (clientId: string) => {
       // Buscar instâncias do cliente
       const instancesData = await whatsappInstancesService.getInstancesByClientId(clientId);
       
-      // Verificar status de cada instância
-      const updatedInstances = await Promise.all(
+      // Verificar status de cada instância com Promise.allSettled para não falhar tudo
+      const statusChecks = await Promise.allSettled(
         instancesData.map(instance => checkInstanceStatus(instance))
       );
+      
+      const updatedInstances = statusChecks
+        .map((result, index) => {
+          if (result.status === 'fulfilled') {
+            return result.value;
+          } else {
+            console.error(`Erro ao verificar instância ${instancesData[index].instance_id}:`, result.reason);
+            return instancesData[index]; // Retornar dados originais em caso de erro
+          }
+        });
       
       setInstances(updatedInstances);
       console.log(`✅ Monitoramento concluído - ${updatedInstances.length} instâncias verificadas`);
       
-      // Configurar listeners de mensagens para instâncias conectadas
+      // Configurar listeners de mensagens apenas para instâncias conectadas
       updatedInstances.forEach(instance => {
         if (instance.status === 'connected') {
           console.log(`📱 Configurando listener para instância: ${instance.instance_id}`);
           
-          // Garantir conexão WebSocket
-          const socket = whatsappService.connectSocket();
-          whatsappService.joinClientRoom(instance.instance_id);
-          
-          // Escutar mensagens desta instância
-          whatsappService.onClientMessage(instance.instance_id, (message) => {
-            console.log(`📨 Nova mensagem recebida na instância ${instance.instance_id}:`, message);
-            
-            // Trigger para processamento de mensagem
-            if (!message.fromMe) {
-              console.log(`🤖 Mensagem será processada pelo assistente: ${message.body?.substring(0, 50)}...`);
+          try {
+            // Garantir conexão WebSocket com retry
+            const socket = whatsappService.connectSocket();
+            if (socket && socket.connected) {
+              whatsappService.joinClientRoom(instance.instance_id);
+              
+              // Escutar mensagens desta instância
+              whatsappService.onClientMessage(instance.instance_id, (message) => {
+                console.log(`📨 Nova mensagem recebida na instância ${instance.instance_id}:`, {
+                  from: message.from,
+                  type: message.type,
+                  fromMe: message.fromMe,
+                  body: message.body?.substring(0, 50)
+                });
+              });
+            } else {
+              console.warn(`⚠️ WebSocket não conectado para ${instance.instance_id}`);
             }
-          });
+          } catch (error) {
+            console.error(`❌ Erro ao configurar listener para ${instance.instance_id}:`, error);
+          }
         }
       });
       
@@ -165,15 +194,15 @@ export const useConnectionMonitor = (clientId: string) => {
       if (disconnectedInstances.length > 0) {
         console.log(`🔄 Detectadas ${disconnectedInstances.length} instâncias desconectadas`);
         
-        // Tentar reconectar automaticamente após um pequeno delay
+        // Tentar reconectar automaticamente após um delay maior
         setTimeout(() => {
           disconnectedInstances.forEach(instance => {
             const attempts = reconnectAttempts[instance.instance_id] || 0;
-            if (attempts < 3) { // Máximo 3 tentativas
+            if (attempts < 2) { // Máximo 2 tentativas
               autoReconnectInstance(instance.instance_id);
             }
           });
-        }, 2000);
+        }, 10000); // Aguardar 10 segundos antes de tentar reconectar
       }
       
     } catch (error) {
@@ -187,16 +216,13 @@ export const useConnectionMonitor = (clientId: string) => {
     try {
       console.log(`🔌 Desconectando instância: ${instanceId}`);
       
-      // Resetar contador de tentativas
       setReconnectAttempts(prev => ({
         ...prev,
         [instanceId]: 0
       }));
       
-      // Desconectar no servidor WhatsApp
       await whatsappService.disconnectClient(instanceId);
       
-      // Atualizar status no banco
       const instance = instances.find(i => i.instance_id === instanceId);
       if (instance) {
         await whatsappInstancesService.updateInstanceById(instance.id, {
@@ -207,7 +233,6 @@ export const useConnectionMonitor = (clientId: string) => {
         });
       }
       
-      // Atualizar estado local
       setInstances(prev => prev.map(inst => 
         inst.instance_id === instanceId 
           ? { 
@@ -232,13 +257,11 @@ export const useConnectionMonitor = (clientId: string) => {
     try {
       console.log(`🔄 Reconectando instância: ${instanceId}`);
       
-      // Resetar contador de tentativas
       setReconnectAttempts(prev => ({
         ...prev,
         [instanceId]: 0
       }));
       
-      // Atualizar status para "connecting"
       const instance = instances.find(i => i.instance_id === instanceId);
       if (instance) {
         await whatsappInstancesService.updateInstanceById(instance.id, {
@@ -248,7 +271,6 @@ export const useConnectionMonitor = (clientId: string) => {
           updated_at: new Date().toISOString()
         });
         
-        // Atualizar estado local imediatamente
         setInstances(prev => prev.map(inst => 
           inst.instance_id === instanceId 
             ? { 
@@ -262,10 +284,8 @@ export const useConnectionMonitor = (clientId: string) => {
         ));
       }
       
-      // Conectar no servidor WhatsApp
       await whatsappService.connectClient(instanceId);
       
-      // Aguardar um pouco e verificar status
       setTimeout(async () => {
         if (instance) {
           try {
@@ -277,7 +297,7 @@ export const useConnectionMonitor = (clientId: string) => {
             console.error('Erro ao verificar status após reconexão manual:', error);
           }
         }
-      }, 3000);
+      }, 5000);
       
       console.log(`✅ Reconexão iniciada: ${instanceId}`);
       return true;
@@ -287,15 +307,14 @@ export const useConnectionMonitor = (clientId: string) => {
     }
   }, [instances, checkInstanceStatus]);
 
-  // Monitoramento automático melhorado
+  // Monitoramento automático com intervalo maior para evitar spam
   useEffect(() => {
     if (!clientId) return;
 
-    // Monitoramento inicial
     monitorInstances();
 
-    // Monitoramento periódico mais frequente para mensagens
-    const interval = setInterval(monitorInstances, 15000); // A cada 15 segundos
+    // Monitoramento periódico menos frequente
+    const interval = setInterval(monitorInstances, 30000); // A cada 30 segundos
 
     return () => clearInterval(interval);
   }, [clientId, monitorInstances]);

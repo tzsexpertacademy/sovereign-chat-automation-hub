@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -38,33 +37,67 @@ serve(async (req) => {
       isAudio: isAudioMessage
     });
 
-    // Validações básicas
+    // Validações básicas com mensagens mais claras
     if (!assistantId) {
       console.error('❌ ID do assistente não fornecido');
-      throw new Error('ID do assistente é obrigatório');
+      return new Response(JSON.stringify({ 
+        error: 'ID do assistente é obrigatório',
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (!messageText || !messageText.trim()) {
       console.error('❌ Texto da mensagem vazio ou não fornecido');
-      throw new Error('Texto da mensagem é obrigatório');
+      return new Response(JSON.stringify({ 
+        error: 'Texto da mensagem é obrigatório',
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (!chatId) {
       console.error('❌ ID do chat não fornecido');
-      throw new Error('ID do chat é obrigatório');
+      return new Response(JSON.stringify({ 
+        error: 'ID do chat é obrigatório',
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Buscar configurações do assistente
+    // Buscar configurações do assistente com timeout
     console.log(`🔍 Buscando assistente: ${assistantId}`);
-    const { data: assistant, error: assistantError } = await supabase
-      .from('assistants')
-      .select('*, advanced_settings')
-      .eq('id', assistantId)
-      .single();
+    
+    const { data: assistant, error: assistantError } = await Promise.race([
+      supabase
+        .from('assistants')
+        .select('*, advanced_settings')
+        .eq('id', assistantId)
+        .single(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout ao buscar assistente')), 10000)
+      )
+    ]) as any;
 
     if (assistantError || !assistant) {
       console.error('❌ Assistente não encontrado:', assistantError);
-      throw new Error(`Assistente não encontrado: ${assistantError?.message || 'ID inválido'}`);
+      return new Response(JSON.stringify({ 
+        error: `Assistente não encontrado: ${assistantError?.message || 'ID inválido'}`,
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log('✅ Assistente encontrado:', {
@@ -73,7 +106,7 @@ serve(async (req) => {
       clientId: assistant.client_id
     });
 
-    // Parse das configurações avançadas
+    // Parse das configurações avançadas com fallback
     let settings: any = {};
     try {
       settings = assistant.advanced_settings ? 
@@ -85,28 +118,48 @@ serve(async (req) => {
     }
 
     // Configurações padrão
-    const temperature = settings.temperature ?? 0.7;
-    const maxTokens = settings.max_tokens ?? 1000;
-    const responseDelay = settings.response_delay_seconds ?? 0;
+    const temperature = Math.min(Math.max(settings.temperature ?? 0.7, 0), 2);
+    const maxTokens = Math.min(Math.max(settings.max_tokens ?? 1000, 1), 4000);
+    const responseDelay = Math.min(Math.max(settings.response_delay_seconds ?? 0, 0), 30);
     
     console.log('🎛️ Configurações de IA:', { temperature, maxTokens, responseDelay });
     
-    // Buscar configuração de API do cliente
+    // Buscar configuração de API do cliente com timeout
     console.log(`🔍 Buscando configuração de IA para cliente: ${assistant.client_id}`);
-    const { data: aiConfig, error: configError } = await supabase
-      .from('client_ai_configs')
-      .select('*')
-      .eq('client_id', assistant.client_id)
-      .single();
+    
+    const { data: aiConfig, error: configError } = await Promise.race([
+      supabase
+        .from('client_ai_configs')
+        .select('*')
+        .eq('client_id', assistant.client_id)
+        .single(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout ao buscar configuração')), 10000)
+      )
+    ]) as any;
 
     if (configError || !aiConfig) {
       console.error('❌ Configuração de IA não encontrada:', configError);
-      throw new Error(`Configuração de IA não encontrada para este cliente: ${configError?.message || 'Sem configuração'}`);
+      return new Response(JSON.stringify({ 
+        error: `Configuração de IA não encontrada para este cliente: ${configError?.message || 'Sem configuração'}`,
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (!aiConfig.openai_api_key) {
       console.error('❌ Chave da API OpenAI não configurada');
-      throw new Error('Chave da API OpenAI não configurada');
+      return new Response(JSON.stringify({ 
+        error: 'Chave da API OpenAI não configurada',
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log('🔑 Configuração de API encontrada para cliente:', assistant.client_id);
@@ -157,45 +210,91 @@ serve(async (req) => {
     console.log('📝 Prompt do sistema:', systemMessage.substring(0, 100) + '...');
     console.log('💬 Mensagem do usuário:', processedText.substring(0, 100) + '...');
 
-    // Processar com OpenAI
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: assistant.model || 'gpt-4o-mini',
-        messages: [
-          { 
-            role: 'system', 
-            content: systemMessage
-          },
-          { role: 'user', content: processedText }
-        ],
-        max_tokens: maxTokens,
-        temperature: temperature
-      }),
-    });
+    // Processar com OpenAI com timeout e retry
+    let openaiResponse;
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    console.log(`📡 Resposta da OpenAI: ${openaiResponse.status} ${openaiResponse.statusText}`);
+    while (attempts < maxAttempts) {
+      try {
+        attempts++;
+        console.log(`🔄 Tentativa ${attempts}/${maxAttempts} de processamento OpenAI`);
 
-    if (!openaiResponse.ok) {
-      const errorText = await openaiResponse.text();
-      console.error('❌ Erro da OpenAI:', errorText);
-      throw new Error(`Erro da OpenAI: ${errorText}`);
+        openaiResponse = await Promise.race([
+          fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${aiConfig.openai_api_key}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: assistant.model || 'gpt-4o-mini',
+              messages: [
+                { 
+                  role: 'system', 
+                  content: systemMessage
+                },
+                { role: 'user', content: processedText }
+              ],
+              max_tokens: maxTokens,
+              temperature: temperature
+            }),
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout na OpenAI')), 30000)
+          )
+        ]) as Response;
+
+        break; // Sucesso, sair do loop
+      } catch (error) {
+        console.error(`❌ Erro na tentativa ${attempts}:`, error);
+        if (attempts === maxAttempts) {
+          throw error;
+        }
+        // Aguardar antes da próxima tentativa
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempts));
+      }
     }
 
-    const aiResult = await openaiResponse.json();
+    console.log(`📡 Resposta da OpenAI: ${openaiResponse!.status} ${openaiResponse!.statusText}`);
+
+    if (!openaiResponse!.ok) {
+      const errorText = await openaiResponse!.text();
+      console.error('❌ Erro da OpenAI:', errorText);
+      return new Response(JSON.stringify({ 
+        error: `Erro da OpenAI: ${errorText}`,
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const aiResult = await openaiResponse!.json();
     
     if (aiResult.error) {
       console.error('❌ Erro da OpenAI:', aiResult.error);
-      throw new Error(`Erro da OpenAI: ${aiResult.error.message}`);
+      return new Response(JSON.stringify({ 
+        error: `Erro da OpenAI: ${aiResult.error.message}`,
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (!aiResult.choices || !aiResult.choices[0]) {
       console.error('❌ Resposta inválida da OpenAI:', aiResult);
-      throw new Error('Resposta inválida da OpenAI');
+      return new Response(JSON.stringify({ 
+        error: 'Resposta inválida da OpenAI',
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log('✅ Resposta da OpenAI recebida com sucesso');
@@ -204,7 +303,14 @@ serve(async (req) => {
 
     if (!responseText || !responseText.trim()) {
       console.error('❌ OpenAI retornou resposta vazia');
-      throw new Error('OpenAI retornou resposta vazia');
+      return new Response(JSON.stringify({ 
+        error: 'OpenAI retornou resposta vazia',
+        success: false,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     let finalResponse = responseText;
@@ -263,7 +369,7 @@ serve(async (req) => {
     console.error('❌ Error in ai-assistant-process function:', error);
     
     return new Response(JSON.stringify({ 
-      error: error.message,
+      error: error.message || 'Erro interno do servidor',
       success: false,
       timestamp: new Date().toISOString(),
       details: error.stack

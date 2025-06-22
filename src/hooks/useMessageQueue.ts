@@ -117,11 +117,19 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
       console.log(`🤖 Processando mensagem com assistente: ${assistant.name}`);
       console.log(`📨 Mensagem: ${message.body?.substring(0, 100)}`);
       
-      // Chamar a edge function ai-assistant-process
-      const response = await fetch('/api/ai-assistant-process', {
+      // Usar o Supabase URL correto para edge function
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseKey) {
+        throw new Error('Configuração do Supabase não encontrada');
+      }
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/ai-assistant-process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`
         },
         body: JSON.stringify({
           messageText: message.body,
@@ -132,13 +140,18 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
         })
       });
 
+      console.log(`📡 Resposta da edge function: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ Erro da edge function:', errorText);
+        throw new Error(`Erro HTTP: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
       
       if (result.error) {
+        console.error('❌ Erro retornado pela edge function:', result.error);
         throw new Error(result.error);
       }
 
@@ -163,6 +176,7 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
     try {
       console.log(`🔄 Processando ${pendingMessages.length} mensagens pendentes`);
       
+      // Processar mensagens uma por uma para evitar sobrecarga
       for (const message of pendingMessages) {
         // Marcar como processando
         setMessageQueue(prev =>
@@ -179,11 +193,47 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
             const response = await processWithAssistant(message, instanceQueueConnection.assistants);
             
             if (response && response.trim()) {
-              console.log(`📤 Enviando resposta: ${response.substring(0, 50)}...`);
-              await whatsappService.sendMessage(clientId, message.from, response);
+              console.log(`📤 Enviando resposta via WhatsApp: ${response.substring(0, 50)}...`);
+              
+              // Tentar enviar com retry
+              let sendSuccess = false;
+              let sendAttempts = 0;
+              const maxSendAttempts = 3;
+              
+              while (!sendSuccess && sendAttempts < maxSendAttempts) {
+                try {
+                  sendAttempts++;
+                  console.log(`📤 Tentativa ${sendAttempts}/${maxSendAttempts} de envio`);
+                  
+                  const sendResult = await whatsappService.sendMessage(
+                    instanceId!,
+                    message.from,
+                    response
+                  );
+                  
+                  if (sendResult.success) {
+                    sendSuccess = true;
+                    console.log(`✅ Mensagem enviada com sucesso`);
+                  } else {
+                    console.error(`❌ Falha no envio (tentativa ${sendAttempts}):`, sendResult.error);
+                    if (sendAttempts < maxSendAttempts) {
+                      await new Promise(resolve => setTimeout(resolve, 2000 * sendAttempts));
+                    }
+                  }
+                } catch (sendError) {
+                  console.error(`❌ Erro no envio (tentativa ${sendAttempts}):`, sendError);
+                  if (sendAttempts < maxSendAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, 2000 * sendAttempts));
+                  }
+                }
+              }
+              
+              if (!sendSuccess) {
+                console.error(`❌ Falha ao enviar após ${maxSendAttempts} tentativas`);
+              }
             }
 
-            // Marcar como completado
+            // Marcar como completado independente do envio
             setMessageQueue(prev =>
               prev.map(msg =>
                 msg.id === message.id 
@@ -207,7 +257,7 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
               const response = await processor.processMessage(message);
               
               if (response && response.trim()) {
-                await whatsappService.sendMessage(clientId, message.from, response);
+                await whatsappService.sendMessage(instanceId!, message.from, response);
               }
 
               setMessageQueue(prev =>
@@ -225,7 +275,6 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
 
               console.log(`✅ Mensagem processada por processador: ${message.id}`);
             } else {
-              // Marcar para interação humana
               setMessageQueue(prev =>
                 prev.map(msg =>
                   msg.id === message.id ? { ...msg, status: 'human' } : msg
@@ -236,7 +285,6 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
         } catch (error) {
           console.error(`❌ Erro ao processar mensagem ${message.id}:`, error);
           
-          // Marcar como falha
           setMessageQueue(prev =>
             prev.map(msg =>
               msg.id === message.id ? { ...msg, status: 'failed' } : msg
@@ -244,15 +292,15 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
           );
         }
 
-        // Pequeno delay entre processamentos
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Delay entre processamentos para evitar spam
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     } catch (error) {
       console.error('❌ Erro no processamento da fila:', error);
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, messageQueue, processors, clientId, instanceQueueConnection, instanceId]);
+  }, [isProcessing, messageQueue, processors, instanceId, instanceQueueConnection]);
 
   // Marcar mensagem como tratada humanamente
   const markAsHumanHandled = useCallback((messageId: string) => {
@@ -320,7 +368,7 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
     const interval = setInterval(() => {
       processQueue();
       cleanQueue();
-    }, 1000); // Processar a cada 1 segundo para ser mais responsivo
+    }, 2000); // Processar a cada 2 segundos
 
     return () => clearInterval(interval);
   }, [processQueue, cleanQueue]);
