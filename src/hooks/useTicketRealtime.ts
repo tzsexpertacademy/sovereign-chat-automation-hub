@@ -128,162 +128,6 @@ export const useTicketRealtime = (clientId: string) => {
     return normalizedMessage;
   }, []);
 
-  // Hook para agrupamento de mensagens
-  const { addMessage, getBatchInfo, markBatchAsCompleted, updateCallback } = useMessageBatch();
-
-  // Atualizar o callback do useMessageBatch quando processBatchWithAssistant mudar
-  useEffect(() => {
-    console.log('🔄 Atualizando callback do sistema de lotes');
-    updateCallback(processBatchWithAssistant);
-  }, [processBatchWithAssistant, updateCallback]);
-
-  // Processar lote de mensagens com assistente
-  const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
-    if (!mountedRef.current || messages.length === 0) {
-      console.log('❌ Componente desmontado ou lote vazio, cancelando processamento');
-      return;
-    }
-
-    console.log(`📦 INICIANDO processamento de lote de ${messages.length} mensagens do chat ${chatId}:`);
-    messages.forEach((msg, index) => {
-      console.log(`  ${index + 1}. ${msg.body?.substring(0, 50) || '[mídia]'} (${msg.fromMe ? 'nossa' : 'cliente'})`);
-    });
-    
-    // Filtrar apenas mensagens do cliente (não nossas)
-    const clientMessages = messages.filter(msg => !msg.fromMe);
-    if (clientMessages.length === 0) {
-      console.log('📤 Todas as mensagens são nossas, apenas salvando...');
-      
-      // Salvar mensagens enviadas por nós
-      for (const message of messages) {
-        if (message.fromMe) {
-          try {
-            const normalizedMessage = normalizeWhatsAppMessage(message);
-            const ticketsData = await ticketsService.getClientTickets(clientId);
-            const existingTicket = ticketsData.find(t => t.chat_id === normalizedMessage.from);
-            
-            if (existingTicket) {
-              await ticketsService.addTicketMessage({
-                ticket_id: existingTicket.id,
-                message_id: normalizedMessage.id,
-                from_me: true,
-                sender_name: 'Atendente',
-                content: normalizedMessage.body,
-                message_type: normalizedMessage.type,
-                is_internal_note: false,
-                is_ai_response: false,
-                processing_status: 'completed',
-                timestamp: normalizedMessage.timestamp,
-                media_url: normalizedMessage.mediaUrl
-              });
-            }
-          } catch (error) {
-            console.error('❌ Erro ao salvar mensagem enviada:', error);
-          }
-        }
-      }
-      
-      // Marcar lote como completo
-      markBatchAsCompleted(chatId);
-      
-      setTimeout(() => {
-        if (mountedRef.current) {
-          loadTickets();
-        }
-      }, 1000);
-      
-      return;
-    }
-    
-    // Usar a primeira mensagem do cliente para criar/atualizar o ticket
-    const firstClientMessage = clientMessages[0];
-    const normalizedMessage = normalizeWhatsAppMessage(firstClientMessage);
-    
-    try {
-      console.log('👤 Criando/atualizando ticket para:', {
-        clientId,
-        chatId: normalizedMessage.from,
-        customerName: normalizedMessage.customerName,
-        phoneNumber: normalizedMessage.phoneNumber,
-        totalMessages: messages.length,
-        clientMessages: clientMessages.length
-      });
-      
-      // Criar/atualizar ticket
-      const ticketId = await ticketsService.createOrUpdateTicket(
-        clientId,
-        normalizedMessage.from,
-        clientId, // Usar clientId como instance_id temporariamente
-        normalizedMessage.customerName,
-        normalizedMessage.phoneNumber,
-        normalizedMessage.body,
-        normalizedMessage.timestamp
-      );
-
-      console.log('📋 Ticket processado:', ticketId);
-
-      // Adicionar todas as mensagens do lote ao ticket
-      for (const message of messages) {
-        const normalized = normalizeWhatsAppMessage(message);
-        
-        console.log('💾 Salvando mensagem no ticket:', {
-          ticketId,
-          messageId: normalized.id,
-          fromMe: normalized.fromMe,
-          content: normalized.body.substring(0, 50)
-        });
-        
-        await ticketsService.addTicketMessage({
-          ticket_id: ticketId,
-          message_id: normalized.id,
-          from_me: normalized.fromMe,
-          sender_name: normalized.author,
-          content: normalized.body,
-          message_type: normalized.type,
-          is_internal_note: false,
-          is_ai_response: false,
-          processing_status: 'received',
-          timestamp: normalized.timestamp,
-          media_url: normalized.mediaUrl
-        });
-      }
-
-      // Processar reações automáticas para mensagens do cliente
-      for (const message of clientMessages) {
-        const normalized = normalizeWhatsAppMessage(message);
-        await processReaction(normalized);
-      }
-
-      // Marcar atividade online
-      markActivity();
-
-      // Recarregar tickets para atualizar a lista
-      setTimeout(() => {
-        if (mountedRef.current) {
-          loadTickets();
-        }
-      }, 1000);
-
-      // Processar com assistente apenas se não estiver já processando
-      if (!processingRef.current.has(ticketId)) {
-        processingRef.current.add(ticketId);
-        console.log(`🤖 INICIANDO processamento com assistente para ${clientMessages.length} mensagens do cliente`);
-        setTimeout(() => {
-          if (mountedRef.current) {
-            processWithAssistant(normalizedMessage, ticketId, clientMessages);
-          }
-        }, 1000);
-      } else {
-        console.log(`⚠️ Ticket ${ticketId} já está sendo processado pelo assistente, ignorando`);
-      }
-      
-    } catch (error) {
-      console.error('❌ Erro ao processar lote de mensagens:', error);
-      // Marcar lote como completo mesmo em caso de erro
-      markBatchAsCompleted(chatId);
-    }
-  }, [clientId, processReaction, markActivity, normalizeWhatsAppMessage, markBatchAsCompleted]);
-
   // Carregar tickets com debounce melhorado
   const loadTickets = useCallback(async () => {
     const now = Date.now();
@@ -517,6 +361,147 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId, simulateHumanTyping, markAsRead, markBatchAsCompleted, splitMessage, sendMessagesInSequence]);
 
+  // Processar lote de mensagens com assistente - DEFINIR ANTES DO useMessageBatch
+  const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
+    console.log(`📦 PROCESSBATCH CHAMADO - chatId: ${chatId}, mensagens: ${messages.length}`);
+    
+    if (!mountedRef.current || messages.length === 0) {
+      console.log('❌ Componente desmontado ou lote vazio, cancelando processamento');
+      return;
+    }
+
+    console.log(`📦 INICIANDO processamento de lote de ${messages.length} mensagens do chat ${chatId}:`);
+    messages.forEach((msg, index) => {
+      console.log(`  ${index + 1}. ${msg.body?.substring(0, 50) || '[mídia]'} (${msg.fromMe ? 'nossa' : 'cliente'})`);
+    });
+    
+    const clientMessages = messages.filter(msg => !msg.fromMe);
+    if (clientMessages.length === 0) {
+      console.log('📤 Todas as mensagens são nossas, apenas salvando...');
+      
+      for (const message of messages) {
+        if (message.fromMe) {
+          try {
+            const normalizedMessage = normalizeWhatsAppMessage(message);
+            const ticketsData = await ticketsService.getClientTickets(clientId);
+            const existingTicket = ticketsData.find(t => t.chat_id === normalizedMessage.from);
+            
+            if (existingTicket) {
+              await ticketsService.addTicketMessage({
+                ticket_id: existingTicket.id,
+                message_id: normalizedMessage.id,
+                from_me: true,
+                sender_name: 'Atendente',
+                content: normalizedMessage.body,
+                message_type: normalizedMessage.type,
+                is_internal_note: false,
+                is_ai_response: false,
+                processing_status: 'completed',
+                timestamp: normalizedMessage.timestamp,
+                media_url: normalizedMessage.mediaUrl
+              });
+            }
+          } catch (error) {
+            console.error('❌ Erro ao salvar mensagem enviada:', error);
+          }
+        }
+      }
+      
+      markBatchAsCompleted(chatId);
+      
+      setTimeout(() => {
+        if (mountedRef.current) {
+          loadTickets();
+        }
+      }, 1000);
+      
+      return;
+    }
+    
+    const firstClientMessage = clientMessages[0];
+    const normalizedMessage = normalizeWhatsAppMessage(firstClientMessage);
+    
+    try {
+      console.log('👤 Criando/atualizando ticket para:', {
+        clientId,
+        chatId: normalizedMessage.from,
+        customerName: normalizedMessage.customerName,
+        phoneNumber: normalizedMessage.phoneNumber,
+        totalMessages: messages.length,
+        clientMessages: clientMessages.length
+      });
+      
+      const ticketId = await ticketsService.createOrUpdateTicket(
+        clientId,
+        normalizedMessage.from,
+        clientId,
+        normalizedMessage.customerName,
+        normalizedMessage.phoneNumber,
+        normalizedMessage.body,
+        normalizedMessage.timestamp
+      );
+
+      console.log('📋 Ticket processado:', ticketId);
+
+      for (const message of messages) {
+        const normalized = normalizeWhatsAppMessage(message);
+        
+        console.log('💾 Salvando mensagem no ticket:', {
+          ticketId,
+          messageId: normalized.id,
+          fromMe: normalized.fromMe,
+          content: normalized.body.substring(0, 50)
+        });
+        
+        await ticketsService.addTicketMessage({
+          ticket_id: ticketId,
+          message_id: normalized.id,
+          from_me: normalized.fromMe,
+          sender_name: normalized.author,
+          content: normalized.body,
+          message_type: normalized.type,
+          is_internal_note: false,
+          is_ai_response: false,
+          processing_status: 'received',
+          timestamp: normalized.timestamp,
+          media_url: normalized.mediaUrl
+        });
+      }
+
+      for (const message of clientMessages) {
+        const normalized = normalizeWhatsAppMessage(message);
+        await processReaction(normalized);
+      }
+
+      markActivity();
+
+      setTimeout(() => {
+        if (mountedRef.current) {
+          loadTickets();
+        }
+      }, 1000);
+
+      if (!processingRef.current.has(ticketId)) {
+        processingRef.current.add(ticketId);
+        console.log(`🤖 INICIANDO processamento com assistente para ${clientMessages.length} mensagens do cliente`);
+        setTimeout(() => {
+          if (mountedRef.current) {
+            processWithAssistant(normalizedMessage, ticketId, clientMessages);
+          }
+        }, 1000);
+      } else {
+        console.log(`⚠️ Ticket ${ticketId} já está sendo processado pelo assistente, ignorando`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao processar lote de mensagens:', error);
+      markBatchAsCompleted(chatId);
+    }
+  }, [clientId, processReaction, markActivity, normalizeWhatsAppMessage, processWithAssistant]);
+
+  // Hook para agrupamento de mensagens - AGORA PODE USAR processBatchWithAssistant
+  const { addMessage, getBatchInfo, markBatchAsCompleted, updateCallback } = useMessageBatch(processBatchWithAssistant);
+
   // Configurar listeners uma única vez
   useEffect(() => {
     if (!clientId || initializationRef.current) return;
@@ -525,10 +510,8 @@ export const useTicketRealtime = (clientId: string) => {
     initializationRef.current = true;
     mountedRef.current = true;
 
-    // Carregar tickets inicial
     loadTickets();
 
-    // Conectar ao WebSocket com melhor tratamento de erros
     let socket: any = null;
     try {
       socket = whatsappService.connectSocket();
@@ -547,13 +530,11 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('❌ Erro de conexão WebSocket:', error);
       });
 
-      // Listeners mais específicos para diferentes tipos de eventos
       const events = [
         `message_${clientId}`,
         `new_message_${clientId}`,
         `whatsapp_message_${clientId}`,
         `message`,
-        // Adicionar mais eventos específicos
         `message_${clientId}_instance_1750600195961`
       ];
 
@@ -569,19 +550,17 @@ export const useTicketRealtime = (clientId: string) => {
             fromMe: message.fromMe
           });
           
-          // Adicionar todas as mensagens ao lote (o sistema de lote decidirá como processar)
+          console.log('📦 CHAMANDO addMessage para:', message.id);
           addMessage(message);
         });
       });
 
-      // Listener genérico para debug
       socket.onAny((eventName: string, ...args: any[]) => {
         if (eventName.includes(clientId) || eventName.includes('message')) {
           console.log(`🔔 Evento WebSocket: ${eventName}`, args);
         }
       });
 
-      // Canal do Supabase para atualizações
       const channel = supabase
         .channel(`tickets-${clientId}`)
         .on(
