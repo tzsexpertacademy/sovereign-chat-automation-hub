@@ -141,7 +141,7 @@ export const useTicketRealtime = (clientId: string) => {
       const chatId = message.chatId || message.from || message.chat_id;
       if (!chatId) {
         console.error('❌ Chat ID não encontrado');
-        return;
+        return;  
       }
 
       const customerPhone = chatId.replace(/\D/g, '');
@@ -306,16 +306,17 @@ export const useTicketRealtime = (clientId: string) => {
         },
         async (payload) => {
           console.log('📨 NOVA MENSAGEM NO BANCO:', payload);
-          if (payload.new) {
+          if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
+            const messageData = payload.new as any;
             const message = {
-              id: payload.new.id,
-              from: payload.new.chat_id,
-              chatId: payload.new.chat_id,
-              fromMe: payload.new.from_me,
-              body: payload.new.body,
-              type: payload.new.message_type,
-              timestamp: payload.new.timestamp,
-              sender: payload.new.sender
+              id: messageData.id,
+              from: messageData.chat_id,
+              chatId: messageData.chat_id,
+              fromMe: messageData.from_me,
+              body: messageData.body,
+              type: messageData.message_type,
+              timestamp: messageData.timestamp,
+              sender: messageData.sender
             };
             await processMessage(message);
           }
