@@ -4,7 +4,7 @@ import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import ClientSidebar from "@/components/client/ClientSidebar";
 import ClientHeader from "@/components/client/ClientHeader";
-import ChatInterface from "@/components/client/ChatInterface";
+import ChatTabsInterface from "@/components/client/ChatTabsInterface";
 import CampaignsManager from "@/components/client/CampaignsManager";
 import AutomationCenter from "@/components/client/AutomationCenter";
 import AnalyticsDashboard from "@/components/client/AnalyticsDashboard";
@@ -40,7 +40,7 @@ const ClientDashboard = () => {
               <Route 
                 path="chat" 
                 element={
-                  <ChatInterface 
+                  <ChatTabsInterface 
                     clientId={clientId} 
                     selectedChatId={selectedChatId}
                     onSelectChat={handleSelectChat}
@@ -50,7 +50,7 @@ const ClientDashboard = () => {
               <Route 
                 path="chat/:chatId" 
                 element={
-                  <ChatInterface 
+                  <ChatTabsInterface 
                     clientId={clientId} 
                     selectedChatId={selectedChatId}
                     onSelectChat={handleSelectChat}

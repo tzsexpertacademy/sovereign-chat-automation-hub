@@ -1,35 +1,29 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/integrations/supabase/client";
+import { customersService } from "./customersService";
 
 export interface ConversationTicket {
   id: string;
   client_id: string;
-  customer_id?: string;
   chat_id: string;
   instance_id: string;
   title: string;
-  status: 'open' | 'pending' | 'resolved' | 'closed';
+  status: string;
   priority: number;
-  last_message_preview?: string;
-  last_message_at: string;
-  assigned_queue_id?: string;
-  assigned_assistant_id?: string;
-  assigned_queue_name?: string;
-  assigned_assistant_name?: string;
-  tags: string[];
-  custom_fields: Record<string, any>;
-  internal_notes: any[];
-  is_archived: boolean;
   created_at: string;
   updated_at: string;
-  closed_at?: string;
-  resolution_time_minutes?: number;
-  customer_satisfaction_score?: number;
+  last_message_at: string;
+  last_message_preview: string;
+  customer_id?: string;
+  assigned_queue_id?: string;
+  assigned_assistant_id?: string;
+  tags?: string[];
   customer?: {
     id: string;
+    client_id: string;
     name: string;
     phone: string;
-    email?: string;
   };
+  assigned_queue_name?: string;
 }
 
 export interface TicketMessage {
@@ -40,672 +34,475 @@ export interface TicketMessage {
   sender_name: string;
   content: string;
   message_type: string;
+  timestamp: string;
+  is_internal_note: boolean;
+  is_ai_response: boolean;
+  ai_confidence_score?: number;
+  processing_status: string;
   media_url?: string;
-  is_internal_note: boolean;
-  is_ai_response: boolean;
-  ai_confidence_score?: number;
-  processing_status: string;
-  timestamp: string;
-  created_at: string;
 }
 
-export interface CreateTicketMessageData {
-  ticket_id: string;
-  message_id: string;
-  from_me: boolean;
-  sender_name: string;
-  content: string;
-  message_type: string;
-  media_url?: string | null;
-  is_internal_note: boolean;
-  is_ai_response: boolean;
-  ai_confidence_score?: number;
-  processing_status: string;
-  timestamp: string;
-}
-
-// Interface para chat do WhatsApp
-interface WhatsAppChat {
-  id?: string;
-  chatId?: string;
-  key?: { remoteJid?: string };
-  name?: string;
-  pushName?: string;
-  notifyName?: string;
-  lastMessage?: {
-    body?: string;
-    caption?: string;
-    text?: string;
-    timestamp?: number;
-  };
-  body?: string;
-  timestamp?: number;
-  t?: number;
-}
-
-// Função para validar e corrigir timestamp
-function validateAndFixTimestamp(timestamp: any): string {
-  console.log('🕐 Validando timestamp:', timestamp);
-  
-  if (!timestamp) {
-    const now = new Date().toISOString();
-    console.log('⚠️ Timestamp vazio, usando agora:', now);
-    return now;
-  }
-  
-  let date: Date;
-  
-  if (typeof timestamp === 'number') {
-    // Se for um número, verificar se está em segundos ou milissegundos
-    if (timestamp.toString().length === 10) {
-      // Segundos - converter para milissegundos
-      date = new Date(timestamp * 1000);
-    } else if (timestamp.toString().length === 13) {
-      // Milissegundos
-      date = new Date(timestamp);
-    } else {
-      // Timestamp inválido, usar data atual
-      console.log('⚠️ Timestamp numérico inválido:', timestamp);
-      date = new Date();
-    }
-  } else if (typeof timestamp === 'string') {
-    date = new Date(timestamp);
-  } else {
-    console.log('⚠️ Tipo de timestamp desconhecido:', typeof timestamp);
-    date = new Date();
-  }
-  
-  // Verificar se a data é válida e não está no futuro distante
-  if (isNaN(date.getTime()) || date.getFullYear() > 2030) {
-    console.log('⚠️ Data inválida ou muito futura, usando data atual');
-    date = new Date();
-  }
-  
-  // Verificar se a data não é muito antiga (antes de 2020)
-  if (date.getFullYear() < 2020) {
-    console.log('⚠️ Data muito antiga, usando data atual');
-    date = new Date();
-  }
-  
-  const validTimestamp = date.toISOString();
-  console.log('✅ Timestamp validado:', validTimestamp);
-  return validTimestamp;
-}
-
-// Função para normalizar números de telefone brasileiros
-function normalizePhoneNumber(phone: string): string {
-  if (!phone) return '';
-  
-  console.log('📞 Normalizando telefone original:', phone);
-  
-  // Remove todos os caracteres não numéricos
-  let cleanPhone = phone.replace(/\D/g, '');
-  
-  // Remove +55 se presente
-  if (cleanPhone.startsWith('55')) {
-    cleanPhone = cleanPhone.substring(2);
-  }
-  
-  // Para números com 10 dígitos (principais DDDs), adiciona o 9
-  if (cleanPhone.length === 10) {
-    const ddd = cleanPhone.substring(0, 2);
-    // Lista dos principais DDDs que precisam do 9
-    const dddList = ['11', '12', '13', '14', '15', '16', '17', '18', '19', // SP
-                     '21', '22', '24', // RJ
-                     '27', '28', // ES
-                     '31', '32', '33', '34', '35', '37', '38', // MG
-                     '41', '42', '43', '44', '45', '46', // PR
-                     '47', '48', '49', // SC
-                     '51', '53', '54', '55', // RS
-                     '61', // DF
-                     '62', '64', // GO
-                     '63', // TO
-                     '65', '66', // MT
-                     '67', // MS
-                     '68', // AC
-                     '69', // RO
-                     '71', '73', '74', '75', '77', // BA
-                     '79', // SE
-                     '81', '87', // PE
-                     '82', // AL
-                     '83', // PB
-                     '84', // RN
-                     '85', '88', // CE
-                     '86', '89', // PI
-                     '91', '93', '94', // PA
-                     '92', '97', // AM
-                     '95', // RR
-                     '96', // AP
-                     '98', '99']; // MA
-    
-    if (dddList.includes(ddd)) {
-      cleanPhone = cleanPhone.slice(0, 2) + '9' + cleanPhone.slice(2);
-    }
-  }
-  
-  // Adiciona código do país (55)
-  const normalizedPhone = `55${cleanPhone}`;
-  
-  console.log('📞 Telefone normalizado:', normalizedPhone);
-  return normalizedPhone;
-}
-
-// Função para formatar nome do cliente
-function formatCustomerName(phone: string, name?: string): string {
-  console.log('👤 Formatando nome:', { phone, name });
-  
-  if (name && name.trim() && name !== phone && !name.includes('@') && name !== 'undefined') {
-    return name.trim();
-  }
-  
-  // Formatar telefone para exibição
-  const normalizedPhone = normalizePhoneNumber(phone);
-  if (normalizedPhone.length >= 13) {
-    // Formato: +55 (XX) 9XXXX-XXXX
-    const formatted = normalizedPhone.replace(/(\d{2})(\d{2})(\d{1})(\d{4})(\d{4})/, '+$1 ($2) $3$4-$5');
-    console.log('👤 Nome formatado (telefone):', formatted);
-    return formatted;
-  }
-  
-  return phone || 'Contato';
-}
-
-class TicketsService {
+export const ticketsService = {
   async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
-    try {
-      console.log('🎫 Buscando tickets para cliente:', clientId);
-      
-      const { data, error } = await supabase
-        .from('conversation_tickets')
-        .select(`
-          *,
-          customer:customers(*),
-          assigned_queue:queues(name),
-          assigned_assistant:assistants(name)
-        `)
-        .eq('client_id', clientId)
-        .eq('is_archived', false)
-        .order('last_message_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('conversation_tickets')
+      .select(`
+        *,
+        customer: customers (*)
+      `)
+      .eq('client_id', clientId)
+      .order('last_message_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Erro ao buscar tickets:', error);
-        throw error;
-      }
+    if (error) throw error;
+    return data || [];
+  },
 
-      console.log('✅ Tickets encontrados:', data?.length || 0);
-      
-      return (data || []).map(ticket => ({
-        ...ticket,
-        status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
-        tags: Array.isArray(ticket.tags) ? ticket.tags.filter(tag => typeof tag === 'string') : [],
-        custom_fields: typeof ticket.custom_fields === 'object' && ticket.custom_fields !== null ? ticket.custom_fields : {},
-        internal_notes: Array.isArray(ticket.internal_notes) ? ticket.internal_notes : [],
-        assigned_queue_name: ticket.assigned_queue?.name,
-        assigned_assistant_name: ticket.assigned_assistant?.name
-      }));
-    } catch (error) {
-      console.error('❌ Erro ao buscar tickets:', error);
-      throw error;
-    }
-  }
+  async getTicketById(ticketId: string): Promise<ConversationTicket | null> {
+    const { data, error } = await supabase
+      .from('conversation_tickets')
+      .select(`
+        *,
+        customer: customers (*)
+      `)
+      .eq('id', ticketId)
+      .single();
 
-  async getTicketById(ticketId: string): Promise<ConversationTicket> {
-    try {
-      const { data, error } = await supabase
-        .from('conversation_tickets')
-        .select(`
-          *,
-          customer:customers(*),
-          assigned_queue:queues(name),
-          assigned_assistant:assistants(name)
-        `)
-        .eq('id', ticketId)
-        .single();
-
-      if (error) throw error;
-
-      return {
-        ...data,
-        status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
-        tags: Array.isArray(data.tags) ? data.tags.filter(tag => typeof tag === 'string') : [],
-        custom_fields: typeof data.custom_fields === 'object' && data.custom_fields !== null ? data.custom_fields : {},
-        internal_notes: Array.isArray(data.internal_notes) ? data.internal_notes : [],
-        assigned_queue_name: data.assigned_queue?.name,
-        assigned_assistant_name: data.assigned_assistant?.name
-      };
-    } catch (error) {
-      console.error('❌ Erro ao buscar ticket:', error);
-      throw error;
-    }
-  }
-
-  async getTicketMessages(ticketId: string, limit: number = 50): Promise<TicketMessage[]> {
-    try {
-      const { data, error } = await supabase
-        .from('ticket_messages')
-        .select('*')
-        .eq('ticket_id', ticketId)
-        .order('timestamp', { ascending: false })
-        .limit(limit);
-
-      if (error) throw error;
-
-      return (data || []).reverse(); // Retornar em ordem cronológica
-    } catch (error) {
-      console.error('❌ Erro ao buscar mensagens do ticket:', error);
-      throw error;
-    }
-  }
+    if (error) throw error;
+    return data;
+  },
 
   async createOrUpdateTicket(
     clientId: string,
     chatId: string,
     instanceId: string,
-    customerName: string,
-    customerPhone: string,
+    title: string,
+    phoneNumber: string,
     lastMessage: string,
-    lastMessageAt: string
+    lastMessageTime: string
   ): Promise<string> {
     try {
-      console.log('🎫 Criando/atualizando ticket:', {
-        clientId,
-        chatId,
-        instanceId,
-        customerName,
-        customerPhone: customerPhone.substring(0, 10) + '...',
-        lastMessage: lastMessage.substring(0, 50) + '...'
-      });
-
-      // Normalizar dados
-      const normalizedPhone = normalizePhoneNumber(customerPhone);
-      const formattedName = formatCustomerName(normalizedPhone, customerName);
-      const validTimestamp = validateAndFixTimestamp(lastMessageAt);
-
-      console.log('📊 Dados processados:', {
-        originalPhone: customerPhone,
-        normalizedPhone,
-        originalName: customerName,
-        formattedName,
-        validTimestamp
-      });
-
-      const { data, error } = await supabase.rpc('upsert_conversation_ticket', {
-        p_client_id: clientId,
-        p_chat_id: chatId,
-        p_instance_id: instanceId,
-        p_customer_name: formattedName,
-        p_customer_phone: normalizedPhone,
-        p_last_message: lastMessage,
-        p_last_message_at: validTimestamp
-      });
-
-      if (error) {
-        console.error('❌ Erro na função upsert_conversation_ticket:', error);
-        throw error;
-      }
-
-      console.log('✅ Ticket criado/atualizado com ID:', data);
-      return data;
-    } catch (error) {
-      console.error('❌ Erro ao criar/atualizar ticket:', error);
-      throw error;
-    }
-  }
-
-  async addTicketMessage(messageData: CreateTicketMessageData): Promise<void> {
-    try {
-      console.log('💬 Adicionando mensagem ao ticket:', {
-        ticketId: messageData.ticket_id,
-        messageId: messageData.message_id,
-        fromMe: messageData.from_me,
-        content: messageData.content.substring(0, 50) + '...'
-      });
-
-      // Verificar se a mensagem já existe
-      const { data: existingMessage } = await supabase
-        .from('ticket_messages')
+      // Verificar se já existe um ticket para este chat_id
+      const { data: existingTicket, error: selectError } = await supabase
+        .from('conversation_tickets')
         .select('id')
-        .eq('message_id', messageData.message_id)
-        .eq('ticket_id', messageData.ticket_id)
+        .eq('client_id', clientId)
+        .eq('chat_id', chatId)
         .single();
 
-      if (existingMessage) {
-        console.log('⚠️ Mensagem já existe, ignorando duplicata:', messageData.message_id);
-        return;
+      if (selectError && selectError.code !== 'PGRST116') {
+        console.error('Erro ao verificar ticket existente:', selectError);
+        throw selectError;
       }
 
-      // Validar timestamp antes de inserir
-      const validatedData = {
-        ...messageData,
-        timestamp: validateAndFixTimestamp(messageData.timestamp)
-      };
+      if (existingTicket) {
+        // Atualizar ticket existente
+        const { error: updateError } = await supabase
+          .from('conversation_tickets')
+          .update({
+            instance_id: instanceId,
+            title: title,
+            last_message_preview: lastMessage,
+            last_message_at: lastMessageTime,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingTicket.id);
 
-      const { error } = await supabase
-        .from('ticket_messages')
-        .insert(validatedData);
+        if (updateError) {
+          console.error('Erro ao atualizar ticket:', updateError);
+          throw updateError;
+        }
 
-      if (error) {
-        console.error('❌ Erro ao inserir mensagem:', error);
-        throw error;
+        console.log(`Ticket atualizado: ${existingTicket.id}`);
+        return existingTicket.id;
+      } else {
+        // Criar novo ticket
+        const { data: newTicket, error: insertError } = await supabase
+          .from('conversation_tickets')
+          .insert({
+            client_id: clientId,
+            chat_id: chatId,
+            instance_id: instanceId,
+            title: title,
+            status: 'open',
+            priority: 1,
+            last_message_preview: lastMessage,
+            last_message_at: lastMessageTime
+          })
+          .select('id')
+          .single();
+
+        if (insertError) {
+          console.error('Erro ao criar ticket:', insertError);
+          throw insertError;
+        }
+
+        console.log(`Ticket criado: ${newTicket.id}`);
+        return newTicket.id;
       }
-      
-      console.log('✅ Mensagem adicionada com sucesso');
     } catch (error) {
-      console.error('❌ Erro ao adicionar mensagem ao ticket:', error);
+      console.error('Erro ao criar ou atualizar ticket:', error);
       throw error;
     }
-  }
+  },
 
-  async importConversationsFromWhatsApp(clientId: string) {
+  async getTicketMessages(ticketId: string, limit: number = 50): Promise<TicketMessage[]> {
+    const { data, error } = await supabase
+      .from('ticket_messages')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('timestamp', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async addTicketMessage(message: Omit<TicketMessage, 'id'>): Promise<TicketMessage> {
+    const { data, error } = await supabase
+      .from('ticket_messages')
+      .insert(message)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async updateTicketStatus(ticketId: string, status: string): Promise<void> {
+    const { error } = await supabase
+      .from('conversation_tickets')
+      .update({ status: status, updated_at: new Date().toISOString() })
+      .eq('id', ticketId);
+
+    if (error) throw error;
+  },
+
+  async assignTicketToQueue(ticketId: string, queueId: string): Promise<void> {
+    const { error } = await supabase
+      .from('conversation_tickets')
+      .update({ assigned_queue_id: queueId, updated_at: new Date().toISOString() })
+      .eq('id', ticketId);
+
+    if (error) throw error;
+  },
+
+  async removeTicketFromQueue(ticketId: string): Promise<void> {
+    const { error } = await supabase
+      .from('conversation_tickets')
+      .update({ assigned_queue_id: null, updated_at: new Date().toISOString() })
+      .eq('id', ticketId);
+
+    if (error) throw error;
+  },
+
+  async updateTicketTags(ticketId: string, tags: string[]): Promise<void> {
+    const { error } = await supabase
+      .from('conversation_tickets')
+      .update({ tags: tags, updated_at: new Date().toISOString() })
+      .eq('id', ticketId);
+
+    if (error) throw error;
+  },
+
+  normalizePhoneNumber(phoneNumber: string): string {
+    let cleanedNumber = phoneNumber.replace(/\D/g, '');
+
+    if (cleanedNumber.length < 10) {
+      return cleanedNumber;
+    }
+
+    if (cleanedNumber.startsWith('55')) {
+      cleanedNumber = cleanedNumber.slice(2);
+    }
+
+    return cleanedNumber;
+  },
+
+  formatPhoneForDisplay(phoneNumber: string): string {
+    const cleanedNumber = this.normalizePhoneNumber(phoneNumber);
+
+    if (cleanedNumber.length === 10) {
+      return cleanedNumber.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+    } else if (cleanedNumber.length === 11) {
+      return cleanedNumber.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    }
+
+    return phoneNumber;
+  },
+
+  validateAndFixTimestamp(timestamp: any): string {
+    if (!timestamp) {
+      return new Date().toISOString();
+    }
+
+    let date: Date;
+
+    if (typeof timestamp === 'number') {
+      if (timestamp.toString().length === 10) {
+        date = new Date(timestamp * 1000);
+      } else {
+        date = new Date(timestamp);
+      }
+    } else if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    } else {
+      return new Date().toISOString();
+    }
+
+    if (isNaN(date.getTime()) || date.getFullYear() > 2030) {
+      return new Date().toISOString();
+    }
+
+    return date.toISOString();
+  },
+
+  async importConversationsFromWhatsApp(clientId: string): Promise<{ success: number; errors: number }> {
     try {
       console.log('🔄 Iniciando importação de conversas para cliente:', clientId);
       
       // Buscar instâncias ativas do cliente
       const { data: instances, error: instancesError } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id, status, phone_number')
+        .select('instance_id, phone_number')
         .eq('client_id', clientId)
         .eq('status', 'connected');
 
       if (instancesError) {
         console.error('❌ Erro ao buscar instâncias:', instancesError);
-        throw instancesError;
+        throw new Error('Falha ao buscar instâncias WhatsApp');
       }
 
       if (!instances || instances.length === 0) {
-        throw new Error('Nenhuma instância WhatsApp conectada encontrada. Conecte uma instância primeiro.');
+        throw new Error('Nenhuma instância WhatsApp conectada encontrada');
       }
 
-      console.log('📱 Instâncias conectadas encontradas:', instances.map(i => ({ id: i.instance_id, phone: i.phone_number })));
-
-      let totalImported = 0;
+      let totalSuccess = 0;
       let totalErrors = 0;
 
-      // Importar conversas de cada instância
+      // Testar múltiplas URLs do servidor WhatsApp
+      const possibleUrls = [
+        'http://localhost:3001',
+        'http://127.0.0.1:3001',
+        'https://whatsapp-server.yourdomain.com',
+        'http://192.168.1.100:3001'
+      ];
+
       for (const instance of instances) {
-        try {
-          console.log(`📥 Importando conversas da instância: ${instance.instance_id}`);
-          
-          // Testar diferentes URLs do servidor WhatsApp
-          const possibleUrls = [
-            `https://146.59.227.248/api/clients/${instance.instance_id}/chats`,
-            `https://146.59.227.248/api/instances/${instance.instance_id}/chats`,
-            `https://146.59.227.248/${instance.instance_id}/chats`,
-            `https://146.59.227.248/api/chats/${instance.instance_id}`
-          ];
-          
-          let response;
-          let workingUrl;
-          
-          for (const url of possibleUrls) {
-            try {
-              console.log('🌐 Testando URL:', url);
-              
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos
+        console.log(`📱 Processando instância: ${instance.instance_id}`);
+        
+        let chatsData = null;
+        let serverUrl = null;
 
-              response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                },
-                signal: controller.signal
-              });
+        // Tentar cada URL até encontrar uma que funcione
+        for (const url of possibleUrls) {
+          try {
+            console.log(`🌐 Testando URL: ${url}/chats/${instance.instance_id}`);
+            
+            const response = await fetch(`${url}/chats/${instance.instance_id}`, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              signal: AbortSignal.timeout(10000) // 10 segundos timeout
+            });
 
-              clearTimeout(timeoutId);
-              
-              if (response.ok) {
-                workingUrl = url;
-                console.log('✅ URL funcionando:', url);
+            if (response.ok) {
+              const data = await response.json();
+              if (data && (Array.isArray(data) || (data.chats && Array.isArray(data.chats)))) {
+                chatsData = Array.isArray(data) ? data : data.chats;
+                serverUrl = url;
+                console.log(`✅ Conectado com sucesso em: ${url}`);
                 break;
-              } else {
-                console.log(`❌ URL retornou status ${response.status}:`, url);
               }
-            } catch (urlError) {
-              console.log('❌ URL falhou:', url, urlError instanceof Error ? urlError.message : 'Erro desconhecido');
-              continue;
             }
-          }
-
-          if (!response || !response.ok) {
-            console.error(`❌ Todas as URLs falharam para instância ${instance.instance_id}`);
-            totalErrors++;
+          } catch (error) {
+            console.log(`❌ Falha em ${url}:`, error);
             continue;
           }
+        }
 
-          const data = await response.json();
-          console.log(`📊 Dados recebidos da instância ${instance.instance_id}:`, {
-            type: typeof data,
-            isArray: Array.isArray(data),
-            keys: typeof data === 'object' ? Object.keys(data) : 'not object'
-          });
-          
-          let chats: WhatsAppChat[] = [];
-          
-          // Tratar diferentes formatos de resposta
-          if (Array.isArray(data)) {
-            chats = data;
-          } else if (data && typeof data === 'object') {
-            // Se for um objeto, procurar por propriedades que possam conter os chats
-            if (data.chats && Array.isArray(data.chats)) {
-              chats = data.chats;
-            } else if (data.data && Array.isArray(data.data)) {
-              chats = data.data;
-            } else if (data.conversations && Array.isArray(data.conversations)) {
-              chats = data.conversations;
-            } else {
-              // Se for um objeto com IDs como chaves, converter para array
-              const possibleChats = Object.values(data).filter((item): item is WhatsAppChat => 
-                typeof item === 'object' && 
-                item !== null && 
-                (Boolean((item as any).id) || Boolean((item as any).chatId) || Boolean((item as any).name))
-              );
-              if (possibleChats.length > 0) {
-                chats = possibleChats;
-              }
-            }
-          }
-          
-          console.log(`📋 Chats processados: ${chats.length}`);
-          
-          if (chats.length > 0) {
-            for (const chat of chats) {
-              try {
-                console.log('💬 Processando chat:', {
-                  id: chat.id || chat.chatId,
-                  name: chat.name,
-                  lastMessage: chat.lastMessage?.body?.substring(0, 30) || 'sem mensagem'
-                });
-
-                // Extrair informações do chat com múltiplos formatos
-                const chatId = chat.id || chat.chatId || chat.key?.remoteJid;
-                if (!chatId) {
-                  console.log('⚠️ Chat sem ID, pulando...');
-                  continue;
-                }
-
-                // Extrair nome e telefone
-                let customerName = chat.name || chat.pushName || chat.notifyName || 'Contato';
-                let customerPhone = chatId.replace('@c.us', '').replace('@g.us', '');
-
-                // Para grupos, usar nome do grupo
-                if (chatId.includes('@g.us')) {
-                  customerName = chat.name || `Grupo ${customerPhone}`;
-                }
-
-                const lastMessage = chat.lastMessage?.body || 
-                                  chat.lastMessage?.caption || 
-                                  chat.lastMessage?.text ||
-                                  chat.body ||
-                                  'Conversa importada do WhatsApp';
-
-                // Usar timestamp corrigido
-                const lastMessageAt = validateAndFixTimestamp(
-                  chat.lastMessage?.timestamp || 
-                  chat.timestamp || 
-                  chat.t || 
-                  Date.now()
-                );
-
-                console.log('📝 Dados extraídos do chat:', {
-                  chatId,
-                  customerName,
-                  customerPhone,
-                  lastMessage: lastMessage.substring(0, 30),
-                  lastMessageAt
-                });
-
-                await this.createOrUpdateTicket(
-                  clientId,
-                  chatId,
-                  instance.instance_id,
-                  customerName,
-                  customerPhone,
-                  lastMessage,
-                  lastMessageAt
-                );
-
-                totalImported++;
-                console.log(`✅ Chat ${chatId} importado com sucesso`);
-              } catch (chatError) {
-                console.error(`❌ Erro ao processar chat:`, chatError);
-                totalErrors++;
-              }
-            }
-          } else {
-            console.log(`ℹ️ Nenhum chat encontrado na instância ${instance.instance_id}`);
-          }
-        } catch (instanceError) {
-          console.error(`❌ Erro ao processar instância ${instance.instance_id}:`, instanceError);
+        if (!chatsData || !serverUrl) {
+          console.error(`❌ Não foi possível conectar em nenhuma URL para instância ${instance.instance_id}`);
           totalErrors++;
+          continue;
+        }
+
+        console.log(`📊 ${chatsData.length} conversas encontradas para ${instance.instance_id}`);
+
+        // Processar cada conversa
+        for (const chat of chatsData) {
+          try {
+            const chatId = chat.id?.user || chat.id?._serialized || chat.chatId || chat.id;
+            
+            if (!chatId) {
+              console.log('⚠️ Chat sem ID válido, pulando...');
+              totalErrors++;
+              continue;
+            }
+
+            // Extrair nome do contato com múltiplas estratégias
+            let contactName = 'Contato sem nome';
+            
+            // Estratégia 1: Nome direto do chat
+            if (chat.name && chat.name.trim() && !chat.name.includes('@')) {
+              contactName = chat.name.trim();
+            }
+            // Estratégia 2: pushName da última mensagem
+            else if (chat.lastMessage?.author || chat.lastMessage?.pushName) {
+              const authorName = chat.lastMessage.author || chat.lastMessage.pushName;
+              if (authorName && !authorName.includes('@') && !authorName.match(/^\d+$/)) {
+                contactName = authorName.trim();
+              }
+            }
+            // Estratégia 3: Nome do contato da agenda
+            else if (chat.contact?.name || chat.contact?.pushname) {
+              const phoneName = chat.contact.name || chat.contact.pushname;
+              if (phoneName && !phoneName.includes('@') && !phoneName.match(/^\d+$/)) {
+                contactName = phoneName.trim();
+              }
+            }
+            // Estratégia 4: Buscar perfil completo via API para obter nome da imagem
+            else {
+              try {
+                const profileResponse = await fetch(`${serverUrl}/contact/${instance.instance_id}/${chatId}`, {
+                  method: 'GET',
+                  headers: { 'Content-Type': 'application/json' },
+                  signal: AbortSignal.timeout(5000)
+                });
+                
+                if (profileResponse.ok) {
+                  const profileData = await profileResponse.json();
+                  console.log(`👤 Dados do perfil para ${chatId}:`, profileData);
+                  
+                  // Tentar extrair nome do perfil
+                  const profileName = profileData.name || 
+                                    profileData.pushname || 
+                                    profileData.notify || 
+                                    profileData.verifiedName ||
+                                    profileData.businessProfile?.name;
+                  
+                  if (profileName && !profileName.includes('@') && !profileName.match(/^\d+$/)) {
+                    contactName = profileName.trim();
+                    console.log(`✅ Nome obtido do perfil: ${contactName}`);
+                  }
+                }
+              } catch (profileError) {
+                console.log(`⚠️ Não foi possível obter perfil para ${chatId}:`, profileError);
+              }
+            }
+
+            // Extrair e normalizar número de telefone
+            const phoneNumber = this.normalizePhoneNumber(chatId);
+            
+            // Formatar nome final
+            const finalName = this.formatCustomerName(contactName, phoneNumber);
+
+            // Preparar última mensagem
+            const lastMessage = chat.lastMessage?.body || 
+                              chat.lastMessage?.content || 
+                              chat.lastMessage?.text ||
+                              (chat.lastMessage?.type !== 'text' ? `[${chat.lastMessage?.type || 'Mídia'}]` : '') ||
+                              'Sem mensagens';
+
+            const lastMessageTime = this.validateAndFixTimestamp(
+              chat.lastMessage?.timestamp || 
+              chat.lastMessage?.t || 
+              chat.timestamp || 
+              Date.now()
+            );
+
+            console.log(`💾 Salvando conversa: ${finalName} (${phoneNumber})`);
+
+            // Criar ou atualizar ticket
+            const ticketId = await this.createOrUpdateTicket(
+              clientId,
+              chatId,
+              instance.instance_id,
+              finalName,
+              phoneNumber,
+              lastMessage,
+              lastMessageTime
+            );
+
+            // Buscar ou criar cliente
+            let customer = await customersService.findByPhone(clientId, phoneNumber);
+            if (!customer) {
+              customer = await customersService.createCustomer({
+                client_id: clientId,
+                name: finalName,
+                phone: phoneNumber,
+                whatsapp_chat_id: chatId
+              });
+              console.log(`👤 Cliente criado: ${customer.name}`);
+            } else if (customer.name !== finalName && !customer.name.startsWith('Contato ')) {
+              // Atualizar nome se encontramos um nome melhor
+              await customersService.updateCustomer(customer.id, {
+                name: finalName,
+                whatsapp_chat_id: chatId
+              });
+              console.log(`👤 Cliente atualizado: ${finalName}`);
+            }
+
+            totalSuccess++;
+
+          } catch (chatError) {
+            console.error('❌ Erro ao processar chat:', chat, chatError);
+            totalErrors++;
+          }
         }
       }
 
-      const result = {
-        success: totalImported,
-        errors: totalErrors,
-        total_instances: instances.length
-      };
+      console.log(`✅ Importação concluída: ${totalSuccess} sucessos, ${totalErrors} erros`);
+      return { success: totalSuccess, errors: totalErrors };
 
-      console.log('🎉 Importação concluída:', result);
-      return result;
     } catch (error) {
       console.error('❌ Erro na importação:', error);
       throw error;
     }
-  }
+  },
 
-  async updateTicketStatus(ticketId: string, status: string): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('conversation_tickets')
-        .update({ 
-          status,
-          updated_at: new Date().toISOString(),
-          ...(status === 'closed' && { closed_at: new Date().toISOString() })
-        })
-        .eq('id', ticketId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Erro ao atualizar status do ticket:', error);
-      throw error;
+  // Função para formatar nome do cliente
+  formatCustomerName(rawName: string, phoneNumber: string): string {
+    if (!rawName || rawName.trim() === '') {
+      return this.formatPhoneForDisplay(phoneNumber);
     }
-  }
 
-  async assumeTicketManually(ticketId: string): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('conversation_tickets')
-        .update({ 
-          status: 'pending',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', ticketId);
-
-      if (error) throw error;
-      
-      console.log('✅ Ticket assumido manualmente:', ticketId);
-    } catch (error) {
-      console.error('Erro ao assumir ticket manualmente:', error);
-      throw error;
+    const cleanName = rawName.trim();
+    
+    // Se é apenas um número, usar formato de telefone
+    if (/^\d+$/.test(cleanName)) {
+      return this.formatPhoneForDisplay(phoneNumber);
     }
-  }
-
-  async transferTicket(ticketId: string, queueId: string, reason?: string): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('conversation_tickets')
-        .update({ 
-          assigned_queue_id: queueId,
-          assigned_assistant_id: null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', ticketId);
-
-      if (error) throw error;
-      
-      await supabase
-        .from('ticket_events')
-        .insert({
-          ticket_id: ticketId,
-          event_type: 'transfer',
-          description: `Ticket transferido para fila ${queueId}`,
-          metadata: { queue_id: queueId, reason: reason || 'Sem motivo especificado' }
-        });
-      
-      console.log('✅ Ticket transferido:', ticketId);
-    } catch (error) {
-      console.error('Erro ao transferir ticket:', error);
-      throw error;
+    
+    // Se contém @ (email), usar telefone
+    if (cleanName.includes('@')) {
+      return this.formatPhoneForDisplay(phoneNumber);
     }
-  }
-
-  async addTicketTag(ticketId: string, tag: string): Promise<void> {
-    try {
-      const ticket = await this.getTicketById(ticketId);
-      const currentTags = ticket.tags || [];
-      
-      if (!currentTags.includes(tag)) {
-        const updatedTags = [...currentTags, tag];
-        
-        const { error } = await supabase
-          .from('conversation_tickets')
-          .update({ 
-            tags: updatedTags,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', ticketId);
-
-        if (error) throw error;
-      }
-    } catch (error) {
-      console.error('Erro ao adicionar tag ao ticket:', error);
-      throw error;
+    
+    // Se é muito curto (menos de 2 caracteres), usar telefone
+    if (cleanName.length < 2) {
+      return this.formatPhoneForDisplay(phoneNumber);
     }
-  }
-
-  async removeTicketTag(ticketId: string, tag: string): Promise<void> {
-    try {
-      const ticket = await this.getTicketById(ticketId);
-      const currentTags = ticket.tags || [];
-      const updatedTags = currentTags.filter(t => t !== tag);
-      
-      const { error } = await supabase
-        .from('conversation_tickets')
-        .update({ 
-          tags: updatedTags,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', ticketId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Erro ao remover tag do ticket:', error);
-      throw error;
+    
+    // Se parece com um ID de usuário, usar telefone
+    if (cleanName.startsWith('user_') || cleanName.startsWith('contact_')) {
+      return this.formatPhoneForDisplay(phoneNumber);
     }
-  }
-}
+    
+    // Nome válido - capitalizar primeira letra de cada palavra
+    return cleanName
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  },
 
-export const ticketsService = new TicketsService();
+  // Função para formatar número de telefone para exibição
+  formatPhoneNumber(phoneNumber: string): string {
+    const cleaned = ('' + phoneNumber).replace(/\D/g, '');
+    const match = cleaned.match(/^(\d{2})(\d{4,5})(\d{4})$/);
+    if (match) {
+      return '(' + match[1] + ') ' + match[2] + '-' + match[3];
+    }
+    return phoneNumber;
+  },
+};
