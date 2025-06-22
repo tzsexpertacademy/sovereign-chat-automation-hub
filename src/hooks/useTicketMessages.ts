@@ -1,30 +1,11 @@
 
-import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect } from 'react';
 import { ticketsService, type TicketMessage } from '@/services/ticketsService';
+import { supabase } from '@/integrations/supabase/client';
 
-export const useTicketMessages = (ticketId: string | null) => {
+export const useTicketMessages = (ticketId: string) => {
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const channelRef = useRef<any>(null);
-
-  // Carregar mensagens do ticket
-  const loadMessages = async () => {
-    if (!ticketId) {
-      setMessages([]);
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      const messagesData = await ticketsService.getTicketMessages(ticketId);
-      setMessages(messagesData);
-    } catch (error) {
-      console.error('Erro ao carregar mensagens:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   useEffect(() => {
     if (!ticketId) {
@@ -32,61 +13,70 @@ export const useTicketMessages = (ticketId: string | null) => {
       return;
     }
 
+    const loadMessages = async () => {
+      try {
+        setIsLoading(true);
+        console.log('🔄 Carregando mensagens para ticket:', ticketId);
+        
+        const messagesData = await ticketsService.getTicketMessages(ticketId, 100);
+        console.log(`📨 ${messagesData.length} mensagens carregadas`);
+        
+        setMessages(messagesData);
+      } catch (error) {
+        console.error('❌ Erro ao carregar mensagens:', error);
+        setMessages([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     loadMessages();
 
-    // Remover canal anterior se existir
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-    }
-
-    // Configurar listener para novas mensagens deste ticket
+    // Configurar listener para novas mensagens
     const channel = supabase
       .channel(`ticket-messages-${ticketId}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'ticket_messages',
           filter: `ticket_id=eq.${ticketId}`
         },
-        async (payload) => {
-          console.log('💬 Nova mensagem no ticket:', payload);
-          // Adicionar nova mensagem à lista sem recarregar tudo
-          const newMessage = payload.new as TicketMessage;
-          setMessages(prev => [...prev, newMessage]);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'ticket_messages',
-          filter: `ticket_id=eq.${ticketId}`
-        },
-        async (payload) => {
-          console.log('📝 Mensagem atualizada:', payload);
-          const updatedMessage = payload.new as TicketMessage;
-          setMessages(prev => prev.map(msg => 
-            msg.id === updatedMessage.id ? updatedMessage : msg
-          ));
+        (payload) => {
+          console.log('🔔 Nova mensagem recebida:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            const newMessage = payload.new as TicketMessage;
+            setMessages(prev => {
+              // Evitar duplicatas
+              const exists = prev.some(msg => msg.id === newMessage.id);
+              if (exists) return prev;
+              
+              // Inserir na posição correta (ordenado por timestamp)
+              const newMessages = [...prev, newMessage];
+              return newMessages.sort((a, b) => 
+                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              );
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedMessage = payload.new as TicketMessage;
+            setMessages(prev => 
+              prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
+            );
+          } else if (payload.eventType === 'DELETE') {
+            setMessages(prev => 
+              prev.filter(msg => msg.id !== payload.old.id)
+            );
+          }
         }
       )
       .subscribe();
 
-    channelRef.current = channel;
-
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
+      supabase.removeChannel(channel);
     };
   }, [ticketId]);
 
-  return {
-    messages,
-    isLoading,
-    reloadMessages: loadMessages
-  };
+  return { messages, isLoading };
 };

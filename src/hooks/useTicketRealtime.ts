@@ -28,56 +28,15 @@ export const useTicketRealtime = (clientId: string) => {
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
 
-  // Função para validar timestamp
-  const validateTimestamp = useCallback((timestamp: any): string => {
-    console.log('🕐 Validando timestamp:', timestamp);
-    
-    if (!timestamp) {
-      return new Date().toISOString();
-    }
-    
-    let date: Date;
-    
-    if (typeof timestamp === 'number') {
-      // Se for um número, verificar se está em segundos ou milissegundos
-      if (timestamp.toString().length === 10) {
-        // Segundos - converter para milissegundos
-        date = new Date(timestamp * 1000);
-      } else if (timestamp.toString().length === 13) {
-        // Milissegundos
-        date = new Date(timestamp);
-      } else {
-        // Timestamp inválido, usar data atual
-        console.log('⚠️ Timestamp numérico inválido:', timestamp);
-        date = new Date();
-      }
-    } else if (typeof timestamp === 'string') {
-      date = new Date(timestamp);
-    } else {
-      console.log('⚠️ Tipo de timestamp desconhecido:', typeof timestamp);
-      date = new Date();
-    }
-    
-    // Verificar se a data é válida e não está no futuro distante
-    if (isNaN(date.getTime()) || date.getFullYear() > 2030) {
-      console.log('⚠️ Data inválida ou muito futura, usando data atual');
-      date = new Date();
-    }
-    
-    // Verificar se a data não é muito antiga (antes de 2020)
-    if (date.getFullYear() < 2020) {
-      console.log('⚠️ Data muito antiga, usando data atual');
-      date = new Date();
-    }
-    
-    const validTimestamp = date.toISOString();
-    console.log('✅ Timestamp validado:', validTimestamp);
-    return validTimestamp;
-  }, []);
-
   // Função para normalizar dados da mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
-    console.log('📨 Normalizando mensagem WhatsApp raw:', message);
+    console.log('📨 Normalizando mensagem WhatsApp:', {
+      id: message.id,
+      from: message.from,
+      body: message.body?.substring(0, 50),
+      fromMe: message.fromMe,
+      timestamp: message.timestamp
+    });
     
     // Diferentes formatos possíveis de mensagem
     let chatId = message.from || message.chatId || message.key?.remoteJid || message.chat?.id;
@@ -138,7 +97,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
 
     // Validar timestamp
-    const timestamp = validateTimestamp(message.timestamp || message.t || Date.now());
+    const timestamp = ticketsService.validateAndFixTimestamp(message.timestamp || message.t || Date.now());
 
     const normalizedMessage = {
       id: message.id || message.key?.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -166,7 +125,7 @@ export const useTicketRealtime = (clientId: string) => {
     });
     
     return normalizedMessage;
-  }, [validateTimestamp]);
+  }, []);
 
   // Processar lote de mensagens com assistente
   const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {

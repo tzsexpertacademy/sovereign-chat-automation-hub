@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { customersService } from "./customersService";
 
@@ -42,6 +43,28 @@ export interface TicketMessage {
   media_url?: string;
 }
 
+// Interface para dados do WhatsApp
+interface WhatsAppChat {
+  id: any;
+  name?: string;
+  lastMessage?: {
+    body?: string;
+    content?: string;
+    text?: string;
+    type?: string;
+    timestamp?: any;
+    t?: any;
+    author?: string;
+    pushName?: string;
+  };
+  contact?: {
+    name?: string;
+    pushname?: string;
+  };
+  timestamp?: any;
+  chatId?: string;
+}
+
 export const ticketsService = {
   async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
     const { data, error } = await supabase
@@ -54,7 +77,15 @@ export const ticketsService = {
       .order('last_message_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    
+    // Converter tags do tipo Json para string[]
+    const normalizedData = (data || []).map(ticket => ({
+      ...ticket,
+      tags: Array.isArray(ticket.tags) ? ticket.tags : 
+            (ticket.tags ? [ticket.tags] : [])
+    }));
+    
+    return normalizedData as ConversationTicket[];
   },
 
   async getTicketById(ticketId: string): Promise<ConversationTicket | null> {
@@ -68,7 +99,15 @@ export const ticketsService = {
       .single();
 
     if (error) throw error;
-    return data;
+    
+    // Normalizar tags
+    const normalizedTicket = {
+      ...data,
+      tags: Array.isArray(data.tags) ? data.tags : 
+            (data.tags ? [data.tags] : [])
+    };
+    
+    return normalizedTicket as ConversationTicket;
   },
 
   async createOrUpdateTicket(
@@ -81,10 +120,17 @@ export const ticketsService = {
     lastMessageTime: string
   ): Promise<string> {
     try {
+      console.log('🎫 Criando/atualizando ticket:', {
+        clientId,
+        chatId,
+        title,
+        phoneNumber
+      });
+
       // Verificar se já existe um ticket para este chat_id
       const { data: existingTicket, error: selectError } = await supabase
         .from('conversation_tickets')
-        .select('id')
+        .select('id, customer_id')
         .eq('client_id', clientId)
         .eq('chat_id', chatId)
         .single();
@@ -94,6 +140,27 @@ export const ticketsService = {
         throw selectError;
       }
 
+      // Buscar ou criar cliente
+      let customer = await customersService.findByPhone(clientId, phoneNumber);
+      if (!customer) {
+        customer = await customersService.createCustomer({
+          client_id: clientId,
+          name: title,
+          phone: phoneNumber,
+          whatsapp_chat_id: chatId
+        });
+        console.log('👤 Cliente criado:', customer.name);
+      } else {
+        // Atualizar nome se encontramos um nome melhor
+        if (customer.name !== title && !customer.name.startsWith('Contato ') && title !== customer.phone) {
+          await customersService.updateCustomer(customer.id, {
+            name: title,
+            whatsapp_chat_id: chatId
+          });
+          console.log('👤 Cliente atualizado:', title);
+        }
+      }
+
       if (existingTicket) {
         // Atualizar ticket existente
         const { error: updateError } = await supabase
@@ -101,6 +168,7 @@ export const ticketsService = {
           .update({
             instance_id: instanceId,
             title: title,
+            customer_id: customer.id,
             last_message_preview: lastMessage,
             last_message_at: lastMessageTime,
             updated_at: new Date().toISOString()
@@ -112,7 +180,7 @@ export const ticketsService = {
           throw updateError;
         }
 
-        console.log(`Ticket atualizado: ${existingTicket.id}`);
+        console.log(`✅ Ticket atualizado: ${existingTicket.id}`);
         return existingTicket.id;
       } else {
         // Criar novo ticket
@@ -120,6 +188,7 @@ export const ticketsService = {
           .from('conversation_tickets')
           .insert({
             client_id: clientId,
+            customer_id: customer.id,
             chat_id: chatId,
             instance_id: instanceId,
             title: title,
@@ -136,35 +205,54 @@ export const ticketsService = {
           throw insertError;
         }
 
-        console.log(`Ticket criado: ${newTicket.id}`);
+        console.log(`✅ Ticket criado: ${newTicket.id}`);
         return newTicket.id;
       }
     } catch (error) {
-      console.error('Erro ao criar ou atualizar ticket:', error);
+      console.error('❌ Erro ao criar ou atualizar ticket:', error);
       throw error;
     }
   },
 
   async getTicketMessages(ticketId: string, limit: number = 50): Promise<TicketMessage[]> {
+    console.log('📨 Carregando mensagens do ticket:', ticketId);
+    
     const { data, error } = await supabase
       .from('ticket_messages')
       .select('*')
       .eq('ticket_id', ticketId)
-      .order('timestamp', { ascending: false })
+      .order('timestamp', { ascending: true })
       .limit(limit);
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Erro ao carregar mensagens:', error);
+      throw error;
+    }
+    
+    console.log(`📨 ${data?.length || 0} mensagens carregadas para ticket ${ticketId}`);
     return data || [];
   },
 
   async addTicketMessage(message: Omit<TicketMessage, 'id'>): Promise<TicketMessage> {
+    console.log('💾 Salvando mensagem no ticket:', {
+      ticketId: message.ticket_id,
+      messageId: message.message_id,
+      fromMe: message.from_me,
+      content: message.content.substring(0, 50)
+    });
+
     const { data, error } = await supabase
       .from('ticket_messages')
       .insert(message)
       .select('*')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Erro ao salvar mensagem:', error);
+      throw error;
+    }
+    
+    console.log('✅ Mensagem salva com sucesso');
     return data;
   },
 
@@ -204,6 +292,33 @@ export const ticketsService = {
     if (error) throw error;
   },
 
+  async assumeTicketManually(ticketId: string): Promise<void> {
+    const { error } = await supabase
+      .from('conversation_tickets')
+      .update({ 
+        status: 'pending',
+        assigned_queue_id: null,
+        assigned_assistant_id: null,
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', ticketId);
+
+    if (error) throw error;
+  },
+
+  async transferTicket(ticketId: string, queueId: string): Promise<void> {
+    const { error } = await supabase
+      .from('conversation_tickets')
+      .update({ 
+        assigned_queue_id: queueId,
+        status: 'open',
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', ticketId);
+
+    if (error) throw error;
+  },
+
   normalizePhoneNumber(phoneNumber: string): string {
     let cleanedNumber = phoneNumber.replace(/\D/g, '');
 
@@ -231,29 +346,49 @@ export const ticketsService = {
   },
 
   validateAndFixTimestamp(timestamp: any): string {
+    console.log('🕐 Validando timestamp:', timestamp);
+    
     if (!timestamp) {
       return new Date().toISOString();
     }
-
+    
     let date: Date;
-
+    
     if (typeof timestamp === 'number') {
+      // Se for um número, verificar se está em segundos ou milissegundos
       if (timestamp.toString().length === 10) {
+        // Segundos - converter para milissegundos
         date = new Date(timestamp * 1000);
-      } else {
+      } else if (timestamp.toString().length === 13) {
+        // Milissegundos
         date = new Date(timestamp);
+      } else {
+        // Timestamp inválido, usar data atual
+        console.log('⚠️ Timestamp numérico inválido:', timestamp);
+        date = new Date();
       }
     } else if (typeof timestamp === 'string') {
       date = new Date(timestamp);
     } else {
-      return new Date().toISOString();
+      console.log('⚠️ Tipo de timestamp desconhecido:', typeof timestamp);
+      date = new Date();
     }
-
+    
+    // Verificar se a data é válida e não está no futuro distante
     if (isNaN(date.getTime()) || date.getFullYear() > 2030) {
-      return new Date().toISOString();
+      console.log('⚠️ Data inválida ou muito futura, usando data atual');
+      date = new Date();
     }
-
-    return date.toISOString();
+    
+    // Verificar se a data não é muito antiga (antes de 2020)
+    if (date.getFullYear() < 2020) {
+      console.log('⚠️ Data muito antiga, usando data atual');
+      date = new Date();
+    }
+    
+    const validTimestamp = date.toISOString();
+    console.log('✅ Timestamp validado:', validTimestamp);
+    return validTimestamp;
   },
 
   async importConversationsFromWhatsApp(clientId: string): Promise<{ success: number; errors: number }> {
@@ -279,7 +414,7 @@ export const ticketsService = {
       let totalSuccess = 0;
       let totalErrors = 0;
 
-      // Testar múltiplas URLs do servidor WhatsApp
+      // URLs possíveis do servidor WhatsApp
       const possibleUrls = [
         'http://localhost:3001',
         'http://127.0.0.1:3001',
@@ -303,7 +438,7 @@ export const ticketsService = {
               headers: {
                 'Content-Type': 'application/json',
               },
-              signal: AbortSignal.timeout(10000) // 10 segundos timeout
+              signal: AbortSignal.timeout(10000)
             });
 
             if (response.ok) {
@@ -340,63 +475,12 @@ export const ticketsService = {
               continue;
             }
 
-            // Extrair nome do contato com múltiplas estratégias
-            let contactName = 'Contato sem nome';
+            // Melhorar extração de nome usando múltiplas estratégias
+            let contactName = await this.extractBestContactName(chat, serverUrl, instance.instance_id, chatId);
             
-            // Estratégia 1: Nome direto do chat
-            if (chat.name && chat.name.trim() && !chat.name.includes('@')) {
-              contactName = chat.name.trim();
-            }
-            // Estratégia 2: pushName da última mensagem
-            else if (chat.lastMessage?.author || chat.lastMessage?.pushName) {
-              const authorName = chat.lastMessage.author || chat.lastMessage.pushName;
-              if (authorName && !authorName.includes('@') && !authorName.match(/^\d+$/)) {
-                contactName = authorName.trim();
-              }
-            }
-            // Estratégia 3: Nome do contato da agenda
-            else if (chat.contact?.name || chat.contact?.pushname) {
-              const phoneName = chat.contact.name || chat.contact.pushname;
-              if (phoneName && !phoneName.includes('@') && !phoneName.match(/^\d+$/)) {
-                contactName = phoneName.trim();
-              }
-            }
-            // Estratégia 4: Buscar perfil completo via API para obter nome da imagem
-            else {
-              try {
-                const profileResponse = await fetch(`${serverUrl}/contact/${instance.instance_id}/${chatId}`, {
-                  method: 'GET',
-                  headers: { 'Content-Type': 'application/json' },
-                  signal: AbortSignal.timeout(5000)
-                });
-                
-                if (profileResponse.ok) {
-                  const profileData = await profileResponse.json();
-                  console.log(`👤 Dados do perfil para ${chatId}:`, profileData);
-                  
-                  // Tentar extrair nome do perfil
-                  const profileName = profileData.name || 
-                                    profileData.pushname || 
-                                    profileData.notify || 
-                                    profileData.verifiedName ||
-                                    profileData.businessProfile?.name;
-                  
-                  if (profileName && !profileName.includes('@') && !profileName.match(/^\d+$/)) {
-                    contactName = profileName.trim();
-                    console.log(`✅ Nome obtido do perfil: ${contactName}`);
-                  }
-                }
-              } catch (profileError) {
-                console.log(`⚠️ Não foi possível obter perfil para ${chatId}:`, profileError);
-              }
-            }
-
             // Extrair e normalizar número de telefone
             const phoneNumber = this.normalizePhoneNumber(chatId);
             
-            // Formatar nome final
-            const finalName = this.formatCustomerName(contactName, phoneNumber);
-
             // Preparar última mensagem
             const lastMessage = chat.lastMessage?.body || 
                               chat.lastMessage?.content || 
@@ -411,37 +495,18 @@ export const ticketsService = {
               Date.now()
             );
 
-            console.log(`💾 Salvando conversa: ${finalName} (${phoneNumber})`);
+            console.log(`💾 Salvando conversa: ${contactName} (${phoneNumber})`);
 
             // Criar ou atualizar ticket
-            const ticketId = await this.createOrUpdateTicket(
+            await this.createOrUpdateTicket(
               clientId,
               chatId,
               instance.instance_id,
-              finalName,
+              contactName,
               phoneNumber,
               lastMessage,
               lastMessageTime
             );
-
-            // Buscar ou criar cliente
-            let customer = await customersService.findByPhone(clientId, phoneNumber);
-            if (!customer) {
-              customer = await customersService.createCustomer({
-                client_id: clientId,
-                name: finalName,
-                phone: phoneNumber,
-                whatsapp_chat_id: chatId
-              });
-              console.log(`👤 Cliente criado: ${customer.name}`);
-            } else if (customer.name !== finalName && !customer.name.startsWith('Contato ')) {
-              // Atualizar nome se encontramos um nome melhor
-              await customersService.updateCustomer(customer.id, {
-                name: finalName,
-                whatsapp_chat_id: chatId
-              });
-              console.log(`👤 Cliente atualizado: ${finalName}`);
-            }
 
             totalSuccess++;
 
@@ -459,6 +524,79 @@ export const ticketsService = {
       console.error('❌ Erro na importação:', error);
       throw error;
     }
+  },
+
+  // Função melhorada para extrair o melhor nome do contato
+  async extractBestContactName(chat: WhatsAppChat, serverUrl: string, instanceId: string, chatId: string): Promise<string> {
+    let contactName = 'Contato sem nome';
+    
+    try {
+      // Estratégia 1: Nome direto do chat
+      if (chat.name && chat.name.trim() && !chat.name.includes('@') && !chat.name.match(/^\d+$/)) {
+        contactName = this.formatCustomerName(chat.name.trim(), chatId);
+        console.log(`✅ Nome obtido do chat: ${contactName}`);
+        return contactName;
+      }
+      
+      // Estratégia 2: pushName da última mensagem
+      if (chat.lastMessage?.author || chat.lastMessage?.pushName) {
+        const authorName = chat.lastMessage.author || chat.lastMessage.pushName;
+        if (authorName && !authorName.includes('@') && !authorName.match(/^\d+$/)) {
+          contactName = this.formatCustomerName(authorName.trim(), chatId);
+          console.log(`✅ Nome obtido da mensagem: ${contactName}`);
+          return contactName;
+        }
+      }
+      
+      // Estratégia 3: Nome do contato da agenda
+      if (chat.contact?.name || chat.contact?.pushname) {
+        const phoneName = chat.contact.name || chat.contact.pushname;
+        if (phoneName && !phoneName.includes('@') && !phoneName.match(/^\d+$/)) {
+          contactName = this.formatCustomerName(phoneName.trim(), chatId);
+          console.log(`✅ Nome obtido do contato: ${contactName}`);
+          return contactName;
+        }
+      }
+      
+      // Estratégia 4: Buscar perfil completo via API
+      try {
+        const profileResponse = await fetch(`${serverUrl}/contact/${instanceId}/${chatId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(5000)
+        });
+        
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          console.log(`👤 Dados do perfil para ${chatId}:`, profileData);
+          
+          // Tentar extrair nome do perfil
+          const profileName = profileData.name || 
+                            profileData.pushname || 
+                            profileData.notify || 
+                            profileData.verifiedName ||
+                            profileData.businessProfile?.name;
+          
+          if (profileName && !profileName.includes('@') && !profileName.match(/^\d+$/)) {
+            contactName = this.formatCustomerName(profileName.trim(), chatId);
+            console.log(`✅ Nome obtido do perfil API: ${contactName}`);
+            return contactName;
+          }
+        }
+      } catch (profileError) {
+        console.log(`⚠️ Não foi possível obter perfil para ${chatId}:`, profileError);
+      }
+      
+      // Estratégia 5: Usar número formatado como último recurso
+      contactName = this.formatPhoneForDisplay(this.normalizePhoneNumber(chatId));
+      console.log(`📞 Usando telefone formatado: ${contactName}`);
+      
+    } catch (error) {
+      console.error('❌ Erro ao extrair nome do contato:', error);
+      contactName = this.formatPhoneForDisplay(this.normalizePhoneNumber(chatId));
+    }
+    
+    return contactName;
   },
 
   // Função para formatar nome do cliente
