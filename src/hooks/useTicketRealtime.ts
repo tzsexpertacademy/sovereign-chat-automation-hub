@@ -29,214 +29,147 @@ export const useTicketRealtime = (clientId: string) => {
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
 
-  // FUNÇÃO DE DEBUG MELHORADA
+  // FUNÇÃO PARA FORÇAR ATUALIZAÇÃO DA UI
+  const forceUIUpdate = useCallback(() => {
+    console.log('🔄 FORÇANDO ATUALIZAÇÃO IMEDIATA DA UI...');
+    loadTickets();
+    
+    // Múltiplas tentativas para garantir que a UI seja atualizada
+    setTimeout(() => {
+      if (mountedRef.current) {
+        console.log('🔄 Segunda tentativa de atualização UI...');
+        loadTickets();
+      }
+    }, 500);
+    
+    setTimeout(() => {
+      if (mountedRef.current) {
+        console.log('🔄 Terceira tentativa de atualização UI...');
+        loadTickets();
+      }
+    }, 1500);
+  }, []);
+
+  // FUNÇÃO DE DEBUG COMPLETA
   const comprehensiveDebug = useCallback(async () => {
     console.log('🔍 ===== DEBUG COMPLETO INICIADO =====');
     console.log('🔍 Client ID:', clientId);
-    console.log('🔍 Data/Hora:', new Date().toISOString());
     
-    // 1. Testar conexão WebSocket
-    console.log('🔍 1. TESTANDO WEBSOCKET...');
-    if (socketRef.current) {
-      console.log('✅ Socket existe:', {
-        connected: socketRef.current.connected,
-        id: socketRef.current.id,
-        listeners: Object.keys(socketRef.current._callbacks || {})
-      });
-    } else {
-      console.log('❌ Socket não existe!');
-    }
-    
-    // 2. Verificar mensagens no banco - TODAS AS MENSAGENS
-    console.log('🔍 2. VERIFICANDO TODAS AS MENSAGENS NO BANCO...');
     try {
-      const { data: allMessages, error } = await supabase
+      // 1. Verificar TODAS as mensagens no banco
+      console.log('🔍 1. VERIFICANDO MENSAGENS NO BANCO...');
+      const { data: allMessages, error: msgError } = await supabase
         .from('whatsapp_messages')
         .select('*')
         .eq('instance_id', clientId)
         .order('timestamp', { ascending: false })
-        .limit(10);
+        .limit(20);
 
-      if (error) {
-        console.error('❌ Erro ao buscar mensagens:', error);
+      if (msgError) {
+        console.error('❌ Erro ao buscar mensagens:', msgError);
       } else {
-        console.log('📊 Últimas 10 mensagens no banco:', allMessages);
+        console.log('📊 Mensagens encontradas:', allMessages?.length || 0);
         if (allMessages && allMessages.length > 0) {
           allMessages.forEach((msg, index) => {
-            console.log(`📊 Mensagem ${index + 1}:`, {
+            console.log(`📨 Mensagem ${index + 1}:`, {
               id: msg.id,
               chat_id: msg.chat_id,
               body: msg.body?.substring(0, 50),
               timestamp: msg.timestamp,
               from_me: msg.from_me,
-              sender: msg.sender,
               is_processed: msg.is_processed
             });
           });
-        } else {
-          console.log('⚠️ NENHUMA MENSAGEM ENCONTRADA NO BANCO!');
         }
       }
-    } catch (error) {
-      console.error('❌ Erro na busca de mensagens:', error);
-    }
 
-    // 3. Verificar todos os tickets
-    console.log('🔍 3. VERIFICANDO TODOS OS TICKETS...');
-    try {
-      const { data: allTickets, error } = await supabase
+      // 2. Verificar TODOS os tickets
+      console.log('🔍 2. VERIFICANDO TICKETS NO BANCO...');
+      const { data: allTickets, error: ticketError } = await supabase
         .from('conversation_tickets')
         .select('*')
         .eq('client_id', clientId)
-        .order('created_at', { ascending: false });
+        .eq('is_archived', false)
+        .order('last_message_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Erro ao buscar tickets:', error);
+      if (ticketError) {
+        console.error('❌ Erro ao buscar tickets:', ticketError);
       } else {
-        console.log('📊 Todos os tickets encontrados:', allTickets?.length || 0);
+        console.log('🎫 Tickets no banco:', allTickets?.length || 0);
         if (allTickets && allTickets.length > 0) {
           allTickets.forEach((ticket, index) => {
             console.log(`🎫 Ticket ${index + 1}:`, {
               id: ticket.id,
               chat_id: ticket.chat_id,
               title: ticket.title,
-              status: ticket.status,
               last_message_at: ticket.last_message_at,
-              is_archived: ticket.is_archived
+              status: ticket.status
             });
           });
         }
       }
-    } catch (error) {
-      console.error('❌ Erro na busca de tickets:', error);
-    }
 
-    // 4. Simular criação de ticket com dados reais
-    console.log('🔍 4. SIMULANDO CRIAÇÃO DE TICKET...');
-    try {
-      const testData = {
-        clientId,
-        chatId: '5547996451886@c.us',
-        instanceId: clientId,
-        customerName: 'Teste Debug',
-        customerPhone: '5547996451886',
-        lastMessage: 'Mensagem de teste para verificar criação de ticket',
-        lastMessageAt: new Date().toISOString()
-      };
-      
-      console.log('🧪 Dados de teste para ticket:', testData);
-      
-      const ticketId = await ticketsService.ensureTicketExists(
-        testData.clientId,
-        testData.chatId,
-        testData.instanceId,
-        testData.customerName,
-        testData.customerPhone,
-        testData.lastMessage,
-        testData.lastMessageAt
-      );
-      
-      console.log('✅ Ticket de teste criado/atualizado:', ticketId);
-      
-      // FORÇA RECARGA IMEDIATA MÚLTIPLA
-      console.log('🔄 FORÇANDO RECARGA IMEDIATA DA UI...');
-      if (mountedRef.current) {
-        await loadTickets();
-        setTimeout(() => {
-          if (mountedRef.current) {
-            loadTickets();
-          }
-        }, 1000);
-        setTimeout(() => {
-          if (mountedRef.current) {
-            loadTickets();
-          }
-        }, 3000);
-      }
-      
+      // 3. Comparar com estado atual da UI
+      console.log('🔍 3. ESTADO ATUAL DA UI...');
+      console.log('📊 Tickets na UI:', tickets.length);
+      console.log('📊 Tickets carregados:', tickets.map(t => ({
+        id: t.id,
+        title: t.title,
+        chat_id: t.chat_id
+      })));
+
+      // 4. FORÇA RECARGA TOTAL
+      console.log('🔍 4. FORÇANDO RECARGA TOTAL...');
+      forceUIUpdate();
+
     } catch (error) {
-      console.error('❌ Erro ao criar ticket de teste:', error);
+      console.error('❌ Erro no debug:', error);
     }
     
     console.log('🔍 ===== DEBUG COMPLETO FINALIZADO =====');
-  }, [clientId]);
+  }, [clientId, tickets, forceUIUpdate]);
 
-  // FUNÇÃO DE PROCESSAMENTO SIMPLIFICADA E MAIS ROBUSTA
+  // PROCESSAMENTO DE MENSAGEM MAIS DIRETO
   const processMessage = useCallback(async (message: any) => {
-    if (!mountedRef.current || !message) {
-      console.log('⚠️ Componente desmontado ou mensagem inválida');
-      return;
-    }
+    if (!mountedRef.current || !message) return;
 
-    console.log('📨 ===== PROCESSANDO NOVA MENSAGEM =====');
-    console.log('📨 Message ID:', message.id);
-    console.log('📨 From:', message.from);
-    console.log('📨 Chat ID:', message.chatId || message.from);
-    console.log('📨 From Me:', message.fromMe);
-    console.log('📨 Body:', message.body?.substring(0, 100));
-    console.log('📨 Timestamp:', message.timestamp);
-    console.log('📨 Dados completos da mensagem:', message);
+    console.log('📨 ===== PROCESSANDO MENSAGEM =====');
+    console.log('📨 Dados completos:', message);
 
     try {
-      // Determinar chat_id - ACEITAR QUALQUER FORMATO
+      // Extrair dados básicos
       const chatId = message.chatId || message.from || message.chat_id;
-      
       if (!chatId) {
-        console.error('❌ Nenhum Chat ID encontrado na mensagem');
+        console.error('❌ Chat ID não encontrado');
         return;
       }
 
-      console.log('✅ Chat ID determinado:', chatId);
+      const customerPhone = chatId.replace(/\D/g, '');
+      const customerName = message.notifyName || message.pushName || message.sender || 
+                          customerPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+      const messageContent = message.body || message.caption || message.text || '[Mídia]';
 
-      // Extrair telefone - MÉTODO MAIS FLEXÍVEL
-      let customerPhone = '';
-      if (chatId.includes('@')) {
-        customerPhone = chatId.split('@')[0].replace(/\D/g, '');
-      } else {
-        customerPhone = chatId.replace(/\D/g, '');
-      }
-
-      // Determinar nome do cliente - MÚLTIPLAS FONTES
-      let customerName = 'Contato';
-      if (message.notifyName && message.notifyName !== customerPhone) {
-        customerName = message.notifyName;
-      } else if (message.pushName && message.pushName !== customerPhone) {
-        customerName = message.pushName;
-      } else if (message.sender && message.sender !== customerPhone) {
-        customerName = message.sender;
-      } else if (customerPhone && customerPhone.length >= 10) {
-        // Formatar telefone como nome se não tiver nome
-        const formattedPhone = customerPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
-        customerName = formattedPhone;
-      }
-
-      console.log('👤 Dados do cliente determinados:', {
+      console.log('📨 Dados processados:', {
+        chatId,
         customerPhone,
         customerName,
-        chatId
+        messageContent: messageContent.substring(0, 50)
       });
 
-      // Conteúdo da mensagem
-      const messageContent = message.body || message.caption || message.text || '[Mídia]';
-      
-      console.log('💬 Conteúdo da mensagem:', messageContent);
-
-      // SEMPRE tentar criar/atualizar ticket - SEM VERIFICAÇÕES RESTRITIVAS
-      console.log('🎫 Criando/atualizando ticket...');
+      // Criar/atualizar ticket
       const ticketId = await ticketsService.ensureTicketExists(
         clientId,
         chatId,
-        clientId, // instance_id = client_id
+        clientId,
         customerName,
         customerPhone,
         messageContent,
         new Date(message.timestamp || Date.now()).toISOString()
       );
 
-      console.log('✅ Ticket criado/atualizado:', ticketId);
+      console.log('✅ Ticket processado:', ticketId);
 
       // Adicionar mensagem ao ticket
-      console.log('💬 Adicionando mensagem ao ticket...');
       await ticketsService.addTicketMessage({
         ticket_id: ticketId,
         message_id: message.id || `msg_${Date.now()}`,
@@ -248,56 +181,21 @@ export const useTicketRealtime = (clientId: string) => {
         is_ai_response: false,
         processing_status: 'received',
         timestamp: new Date(message.timestamp || Date.now()).toISOString(),
-        media_url: message.mediaUrl || message.media_url || null
+        media_url: message.mediaUrl || null
       });
 
-      console.log('✅ Mensagem adicionada ao ticket com sucesso');
+      console.log('✅ Mensagem adicionada ao ticket');
 
-      // RECARGA FORÇADA MÚLTIPLA - GARANTINDO ATUALIZAÇÃO DA UI
-      console.log('🔄 INICIANDO RECARGA FORÇADA DA UI...');
-      scheduleTicketReload();
-      
+      // FORÇA ATUALIZAÇÃO IMEDIATA DA UI
+      forceUIUpdate();
+
     } catch (error) {
-      console.error('❌ ERRO CRÍTICO ao processar mensagem:', error);
-      console.error('❌ Stack trace:', error instanceof Error ? error.stack : 'N/A');
-      console.error('❌ Dados da mensagem que falhou:', message);
+      console.error('❌ Erro ao processar mensagem:', error);
     }
-  }, [clientId]);
-
-  // FUNÇÃO DE RECARGA PROGRAMADA COM DEBOUNCE MELHORADO
-  const scheduleTicketReload = useCallback(() => {
-    console.log('⏰ Programando recarga de tickets...');
-    
-    // Limpar timeout anterior
-    if (reloadTimeoutRef.current) {
-      clearTimeout(reloadTimeoutRef.current);
-    }
-    
-    // Recarga imediata
-    if (mountedRef.current) {
-      console.log('🔄 Executando recarga IMEDIATA...');
-      loadTickets();
-    }
-    
-    // Recarga após 500ms
-    reloadTimeoutRef.current = setTimeout(() => {
-      if (mountedRef.current) {
-        console.log('🔄 Executando recarga após 500ms...');
-        loadTickets();
-      }
-    }, 500);
-    
-    // Recarga após 2s para garantir
-    setTimeout(() => {
-      if (mountedRef.current) {
-        console.log('🔄 Executando recarga de segurança após 2s...');
-        loadTickets();
-      }
-    }, 2000);
-  }, []);
+  }, [clientId, forceUIUpdate]);
 
   const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
-    console.log(`📦 Processando lote de ${messages.length} mensagens para ${chatId}`);
+    console.log(`📦 Processando lote de ${messages.length} mensagens`);
     
     for (const message of messages) {
       await processMessage(message);
@@ -306,33 +204,32 @@ export const useTicketRealtime = (clientId: string) => {
 
   const { addMessage } = useMessageBatch(processBatchWithAssistant);
 
-  // Carregar tickets - SEM THROTTLING RESTRITIVO
+  // CARREGAR TICKETS COM LOGS DETALHADOS
   const loadTickets = useCallback(async () => {
-    if (!clientId || !mountedRef.current) {
-      return;
-    }
+    if (!clientId || !mountedRef.current) return;
     
     try {
       setIsLoading(true);
-      console.log('🔄 Carregando tickets para cliente:', clientId);
+      console.log('🔄 ===== CARREGANDO TICKETS =====');
+      console.log('🔄 Client ID:', clientId);
       
       const ticketsData = await ticketsService.getClientTickets(clientId);
-      console.log('✅ Tickets carregados:', ticketsData.length);
+      console.log('✅ Tickets retornados do service:', ticketsData.length);
+      
+      if (ticketsData.length > 0) {
+        console.log('📊 Primeiro ticket:', {
+          id: ticketsData[0].id,
+          title: ticketsData[0].title,
+          chat_id: ticketsData[0].chat_id,
+          last_message_at: ticketsData[0].last_message_at
+        });
+      }
       
       if (mountedRef.current) {
         setTickets(ticketsData);
-        console.log('📊 Tickets atualizados no estado:', ticketsData.length);
-        
-        // Log dos primeiros tickets para debug
-        if (ticketsData.length > 0) {
-          console.log('📊 Primeiro ticket:', {
-            id: ticketsData[0].id,
-            title: ticketsData[0].title,
-            chat_id: ticketsData[0].chat_id,
-            last_message_at: ticketsData[0].last_message_at
-          });
-        }
+        console.log('✅ Estado atualizado com', ticketsData.length, 'tickets');
       }
+      
     } catch (error) {
       console.error('❌ Erro ao carregar tickets:', error);
     } finally {
@@ -342,37 +239,27 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Configurar listeners
+  // CONFIGURAR LISTENERS COM MAIS EVENTOS
   useEffect(() => {
     if (!clientId || initializationRef.current) return;
 
-    console.log('🔌 ===== INICIALIZANDO SISTEMA REALTIME =====');
-    console.log('🔌 Client ID:', clientId);
+    console.log('🔌 ===== INICIALIZANDO SISTEMA =====');
     initializationRef.current = true;
     mountedRef.current = true;
 
+    // Carregar tickets imediatamente
     loadTickets();
 
-    // Conectar WebSocket - MÚLTIPLOS LISTENERS
-    console.log('🔌 Conectando WebSocket...');
+    // Conectar WebSocket
     const socket = whatsappService.connectSocket();
     socketRef.current = socket;
     
     socket.on('connect', () => {
-      console.log('✅ WebSocket conectado, ID:', socket.id);
+      console.log('✅ WebSocket conectado');
       whatsappService.joinClientRoom(clientId);
-      console.log('✅ Joinado na sala do cliente:', clientId);
     });
 
-    socket.on('disconnect', () => {
-      console.log('❌ WebSocket desconectado');
-    });
-
-    socket.on('error', (error: any) => {
-      console.error('❌ Erro no WebSocket:', error);
-    });
-
-    // TODOS OS EVENTOS POSSÍVEIS DE MENSAGEM
+    // TODOS OS EVENTOS POSSÍVEIS
     const messageEvents = [
       `message_${clientId}`,
       `new_message_${clientId}`,
@@ -380,36 +267,22 @@ export const useTicketRealtime = (clientId: string) => {
       `incoming_message_${clientId}`,
       'message',
       'new_message',
-      'message_received',
-      'incoming_message',
-      'whatsapp_message',
-      'message_create',
-      'message_upsert'
+      'whatsapp_message'
     ];
 
-    const handleNewMessage = async (message: any) => {
-      console.log('📨 ===== EVENTO DE MENSAGEM CAPTURADO VIA WEBSOCKET =====');
-      console.log('📨 Dados recebidos:', message);
-      
-      if (!mountedRef.current) {
-        console.log('⚠️ Componente desmontado, ignorando mensagem');
-        return;
-      }
-      
-      // Processar imediatamente
+    const handleMessage = async (message: any) => {
+      console.log('📨 MENSAGEM VIA WEBSOCKET:', message);
       await processMessage(message);
     };
 
-    // Registrar TODOS os eventos
     messageEvents.forEach(event => {
-      console.log(`🎧 Registrando listener para evento: ${event}`);
-      socket.on(event, handleNewMessage);
+      console.log(`🎧 Registrando evento: ${event}`);
+      socket.on(event, handleMessage);
     });
 
-    // Canal do Supabase para mudanças diretas no banco - MAIS AGRESSIVO
-    console.log('🔌 Configurando canal Supabase Realtime...');
+    // Canal Supabase MAIS AGRESSIVO
     const channel = supabase
-      .channel(`tickets-realtime-${clientId}`)
+      .channel(`realtime-${clientId}`)
       .on(
         'postgres_changes',
         {
@@ -419,27 +292,21 @@ export const useTicketRealtime = (clientId: string) => {
           filter: `client_id=eq.${clientId}`
         },
         (payload) => {
-          console.log('📊 ===== MUDANÇA EM TICKET VIA SUPABASE =====');
-          console.log('📊 Payload:', payload);
-          if (mountedRef.current) {
-            scheduleTicketReload();
-          }
+          console.log('📊 MUDANÇA EM TICKET:', payload);
+          forceUIUpdate();
         }
       )
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'whatsapp_messages',
           filter: `instance_id=eq.${clientId}`
         },
         async (payload) => {
-          console.log('📨 ===== NOVA MENSAGEM NO BANCO (via Supabase Realtime) =====');
-          console.log('📨 Payload completo:', payload);
-          
-          if (payload.new && mountedRef.current) {
-            // Converter dados do banco para formato de mensagem
+          console.log('📨 NOVA MENSAGEM NO BANCO:', payload);
+          if (payload.new) {
             const message = {
               id: payload.new.id,
               from: payload.new.chat_id,
@@ -448,40 +315,20 @@ export const useTicketRealtime = (clientId: string) => {
               body: payload.new.body,
               type: payload.new.message_type,
               timestamp: payload.new.timestamp,
-              sender: payload.new.sender,
-              notifyName: payload.new.sender,
-              pushName: payload.new.sender
+              sender: payload.new.sender
             };
-            
-            console.log('📨 Mensagem convertida do banco:', message);
             await processMessage(message);
           }
         }
       )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ticket_messages',
-          filter: `ticket_id=in.(${tickets.map(t => t.id).join(',')})`
-        },
-        (payload) => {
-          console.log('💬 ===== MUDANÇA EM MENSAGEM DE TICKET =====');
-          console.log('💬 Payload:', payload);
-          if (mountedRef.current) {
-            scheduleTicketReload();
-          }
-        }
-      )
       .subscribe((status) => {
-        console.log('📡 Status do canal Supabase:', status);
+        console.log('📡 Status do canal:', status);
       });
 
     channelRef.current = channel;
 
     return () => {
-      console.log('🔌 ===== LIMPANDO RECURSOS =====');
+      console.log('🔌 Limpando recursos...');
       mountedRef.current = false;
       initializationRef.current = false;
       
@@ -491,24 +338,21 @@ export const useTicketRealtime = (clientId: string) => {
       
       if (socketRef.current) {
         messageEvents.forEach(event => {
-          socketRef.current.off(event, handleNewMessage);
+          socketRef.current.off(event, handleMessage);
         });
         socketRef.current.disconnect();
       }
+      
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
-      processedMessagesRef.current.clear();
-      processingRef.current.clear();
     };
-  }, [clientId, loadTickets, processMessage, scheduleTicketReload]);
+  }, [clientId, processMessage, forceUIUpdate]);
 
   const reloadTickets = useCallback(() => {
-    if (mountedRef.current) {
-      console.log('🔄 Recarregando tickets manualmente...');
-      scheduleTicketReload();
-    }
-  }, [scheduleTicketReload]);
+    console.log('🔄 RELOAD MANUAL SOLICITADO');
+    forceUIUpdate();
+  }, [forceUIUpdate]);
 
   return {
     tickets,

@@ -67,7 +67,8 @@ export interface CreateTicketMessageData {
 class TicketsService {
   async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
     try {
-      console.log('🎫 [SERVICE] Buscando tickets para cliente:', clientId);
+      console.log('🎫 [SERVICE] ===== BUSCANDO TICKETS =====');
+      console.log('🎫 [SERVICE] Cliente:', clientId);
       
       const { data, error } = await supabase
         .from('conversation_tickets')
@@ -82,22 +83,29 @@ class TicketsService {
         .order('last_message_at', { ascending: false });
 
       if (error) {
-        console.error('❌ [SERVICE] Erro ao buscar tickets:', error);
+        console.error('❌ [SERVICE] Erro na query:', error);
         throw error;
       }
 
-      console.log('✅ [SERVICE] Tickets encontrados:', data?.length || 0);
-      if (data && data.length > 0) {
-        console.log('📊 [SERVICE] Primeiro ticket:', {
-          id: data[0].id,
-          title: data[0].title,
-          chat_id: data[0].chat_id,
-          last_message_at: data[0].last_message_at,
-          status: data[0].status
+      const ticketCount = data?.length || 0;
+      console.log('✅ [SERVICE] Query executada com sucesso');
+      console.log('📊 [SERVICE] Tickets encontrados:', ticketCount);
+      
+      if (ticketCount > 0) {
+        console.log('📊 [SERVICE] Primeiros 3 tickets:');
+        data.slice(0, 3).forEach((ticket, index) => {
+          console.log(`📊 [SERVICE] Ticket ${index + 1}:`, {
+            id: ticket.id,
+            title: ticket.title,
+            chat_id: ticket.chat_id,
+            last_message_at: ticket.last_message_at,
+            status: ticket.status,
+            customer_name: ticket.customer?.name
+          });
         });
       }
 
-      return (data || []).map(ticket => ({
+      const processedTickets = (data || []).map(ticket => ({
         ...ticket,
         status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
         tags: Array.isArray(ticket.tags) ? ticket.tags.filter((tag): tag is string => typeof tag === 'string') : [],
@@ -106,8 +114,11 @@ class TicketsService {
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
+
+      console.log('✅ [SERVICE] Tickets processados:', processedTickets.length);
+      return processedTickets;
     } catch (error) {
-      console.error('❌ [SERVICE] Erro crítico ao buscar tickets:', error);
+      console.error('❌ [SERVICE] ERRO CRÍTICO:', error);
       throw error;
     }
   }
@@ -170,40 +181,33 @@ class TicketsService {
     lastMessageAt: string
   ): Promise<string> {
     try {
-      console.log('🎫 [SERVICE] ===== CRIANDO/ATUALIZANDO TICKET (VERSÃO ROBUSTA) =====');
-      console.log('🎫 [SERVICE] Parâmetros recebidos:', {
+      console.log('🎫 [SERVICE] ===== GARANTINDO TICKET EXISTE =====');
+      console.log('🎫 [SERVICE] Dados:', {
         clientId,
         chatId,
-        instanceId,
         customerName,
         customerPhone,
-        lastMessage: lastMessage.substring(0, 50) + '...',
-        lastMessageAt
+        lastMessage: lastMessage.substring(0, 50)
       });
 
-      // PASSO 1: Criar/atualizar customer (SEMPRE)
-      console.log('👤 [SERVICE] PASSO 1: Processando customer...');
+      // PASSO 1: Customer
+      console.log('👤 [SERVICE] Processando customer...');
       
       let customerId: string;
       
-      // Tentar encontrar customer existente
-      const { data: existingCustomer, error: customerSearchError } = await supabase
+      const { data: existingCustomer } = await supabase
         .from('customers')
-        .select('id, name')
+        .select('id')
         .eq('client_id', clientId)
         .eq('phone', customerPhone)
         .maybeSingle();
 
-      if (customerSearchError) {
-        console.warn('⚠️ [SERVICE] Erro na busca de customer (continuando):', customerSearchError);
-      }
-
       if (existingCustomer) {
         customerId = existingCustomer.id;
-        console.log('👤 [SERVICE] Customer existente encontrado:', customerId);
+        console.log('👤 [SERVICE] Customer existente:', customerId);
         
-        // Atualizar customer se necessário
-        const { error: updateCustomerError } = await supabase
+        // Atualizar customer
+        await supabase
           .from('customers')
           .update({ 
             name: customerName,
@@ -211,14 +215,7 @@ class TicketsService {
             updated_at: new Date().toISOString()
           })
           .eq('id', customerId);
-          
-        if (updateCustomerError) {
-          console.warn('⚠️ [SERVICE] Erro ao atualizar customer (continuando):', updateCustomerError);
-        } else {
-          console.log('✅ [SERVICE] Customer atualizado');
-        }
       } else {
-        // Criar novo customer
         console.log('👤 [SERVICE] Criando novo customer...');
         const { data: newCustomer, error: customerError } = await supabase
           .from('customers')
@@ -236,31 +233,24 @@ class TicketsService {
           throw customerError;
         }
         customerId = newCustomer.id;
-        console.log('👤 [SERVICE] Novo customer criado:', customerId);
+        console.log('👤 [SERVICE] Customer criado:', customerId);
       }
 
-      // PASSO 2: Buscar ticket existente (apenas NÃO arquivados)
-      console.log('🔍 [SERVICE] PASSO 2: Buscando ticket existente...');
+      // PASSO 2: Ticket
+      console.log('🎫 [SERVICE] Processando ticket...');
       
-      const { data: existingTicket, error: searchError } = await supabase
+      const { data: existingTicket } = await supabase
         .from('conversation_tickets')
-        .select('id, status, is_archived')
+        .select('id')
         .eq('client_id', clientId)
         .eq('chat_id', chatId)
         .eq('is_archived', false)
         .maybeSingle();
 
-      if (searchError) {
-        console.warn('⚠️ [SERVICE] Erro na busca de ticket (continuando):', searchError);
-      }
-
-      console.log('🔍 [SERVICE] Resultado da busca de ticket:', existingTicket);
-
       const ticketTitle = `Conversa com ${customerName}`;
 
       if (existingTicket) {
-        // PASSO 3A: Atualizar ticket existente
-        console.log('📝 [SERVICE] PASSO 3A: Atualizando ticket existente:', existingTicket.id);
+        console.log('🎫 [SERVICE] Atualizando ticket existente:', existingTicket.id);
         
         const { error: updateError } = await supabase
           .from('conversation_tickets')
@@ -279,48 +269,41 @@ class TicketsService {
           throw updateError;
         }
         
-        console.log('✅ [SERVICE] Ticket existente atualizado com sucesso:', existingTicket.id);
+        console.log('✅ [SERVICE] Ticket atualizado:', existingTicket.id);
         return existingTicket.id;
       } else {
-        // PASSO 3B: Criar novo ticket
-        console.log('🆕 [SERVICE] PASSO 3B: Criando novo ticket...');
+        console.log('🎫 [SERVICE] Criando novo ticket...');
         
-        const newTicketData = {
-          client_id: clientId,
-          customer_id: customerId,
-          chat_id: chatId,
-          instance_id: instanceId,
-          title: ticketTitle,
-          last_message_preview: lastMessage,
-          last_message_at: lastMessageAt,
-          status: 'open' as const,
-          priority: 1,
-          is_archived: false,
-          tags: [],
-          custom_fields: {},
-          internal_notes: []
-        };
-        
-        console.log('🆕 [SERVICE] Dados do novo ticket:', newTicketData);
-
         const { data: newTicket, error: createError } = await supabase
           .from('conversation_tickets')
-          .insert(newTicketData)
+          .insert({
+            client_id: clientId,
+            customer_id: customerId,
+            chat_id: chatId,
+            instance_id: instanceId,
+            title: ticketTitle,
+            last_message_preview: lastMessage,
+            last_message_at: lastMessageAt,
+            status: 'open' as const,
+            priority: 1,
+            is_archived: false,
+            tags: [],
+            custom_fields: {},
+            internal_notes: []
+          })
           .select('id')
           .single();
 
         if (createError) {
           console.error('❌ [SERVICE] Erro ao criar ticket:', createError);
-          console.error('❌ [SERVICE] Dados que falharam:', newTicketData);
           throw createError;
         }
 
-        console.log('✅ [SERVICE] Novo ticket criado com sucesso:', newTicket.id);
+        console.log('✅ [SERVICE] Ticket criado:', newTicket.id);
         return newTicket.id;
       }
     } catch (error) {
-      console.error('❌ [SERVICE] ERRO CRÍTICO ao garantir ticket:', error);
-      console.error('❌ [SERVICE] Stack trace:', error instanceof Error ? error.stack : 'N/A');
+      console.error('❌ [SERVICE] ERRO CRÍTICO:', error);
       throw error;
     }
   }
