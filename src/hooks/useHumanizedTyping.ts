@@ -1,125 +1,109 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { whatsappService } from '@/services/whatsappMultiClient';
 
-interface TypingConfig {
-  wpm: number; // palavras por minuto
-  minDelay: number;
-  maxDelay: number;
-  showTyping: boolean;
-  showRecording: boolean;
-}
-
-const defaultConfig: TypingConfig = {
-  wpm: 40, // velocidade humana média
-  minDelay: 1000,
-  maxDelay: 3000,
-  showTyping: true,
-  showRecording: true
-};
-
 export const useHumanizedTyping = (clientId: string) => {
-  const [config, setConfig] = useState<TypingConfig>(defaultConfig);
-  const [typingStatus, setTypingStatus] = useState<Map<string, boolean>>(new Map());
-  const [recordingStatus, setRecordingStatus] = useState<Map<string, boolean>>(new Map());
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const recordingTimeoutRef = useRef<NodeJS.Timeout>();
 
-  const calculateTypingTime = useCallback((text: string): number => {
-    const words = text.trim().split(/\s+/).length;
-    const typingTimeMs = (words / config.wpm) * 60 * 1000;
-    
-    // Adicionar variação natural
-    const variation = Math.random() * 0.3 + 0.85; // 85% a 115% do tempo base
-    return Math.max(config.minDelay, Math.min(config.maxDelay, typingTimeMs * variation));
-  }, [config]);
-
-  const startTyping = useCallback(async (chatId: string) => {
-    if (!config.showTyping) return;
-    
+  const simulateTyping = useCallback(async (chatId: string, message: string, delayMs: number = 2000) => {
     try {
-      setTypingStatus(prev => new Map(prev).set(chatId, true));
-      await whatsappService.setTyping(clientId, chatId, true);
-      console.log(`⌨️ Indicador de digitação iniciado para ${chatId}`);
-    } catch (error) {
-      console.error('❌ Erro ao iniciar indicador de digitação:', error);
-    }
-  }, [clientId, config.showTyping]);
-
-  const stopTyping = useCallback(async (chatId: string) => {
-    if (!config.showTyping) return;
-    
-    try {
-      setTypingStatus(prev => new Map(prev).set(chatId, false));
-      await whatsappService.setTyping(clientId, chatId, false);
-      console.log(`⌨️ Indicador de digitação parado para ${chatId}`);
-    } catch (error) {
-      console.error('❌ Erro ao parar indicador de digitação:', error);
-    }
-  }, [clientId, config.showTyping]);
-
-  const startRecording = useCallback(async (chatId: string) => {
-    if (!config.showRecording) return;
-    
-    try {
-      setRecordingStatus(prev => new Map(prev).set(chatId, true));
-      await whatsappService.setRecording(clientId, chatId, true);
-      console.log(`🎤 Indicador de gravação iniciado para ${chatId}`);
-    } catch (error) {
-      console.error('❌ Erro ao iniciar indicador de gravação:', error);
-    }
-  }, [clientId, config.showRecording]);
-
-  const stopRecording = useCallback(async (chatId: string) => {
-    if (!config.showRecording) return;
-    
-    try {
-      setRecordingStatus(prev => new Map(prev).set(chatId, false));
-      await whatsappService.setRecording(clientId, chatId, false);
-      console.log(`🎤 Indicador de gravação parado para ${chatId}`);
-    } catch (error) {
-      console.error('❌ Erro ao parar indicador de gravação:', error);
-    }
-  }, [clientId, config.showRecording]);
-
-  const simulateHumanTyping = useCallback(async (chatId: string, text: string, isAudio = false) => {
-    const typingTime = calculateTypingTime(text);
-    
-    try {
-      if (isAudio) {
-        await startRecording(chatId);
-        await new Promise(resolve => setTimeout(resolve, typingTime));
-        await stopRecording(chatId);
-      } else {
-        await startTyping(chatId);
-        await new Promise(resolve => setTimeout(resolve, typingTime));
-        await stopTyping(chatId);
-      }
+      setIsTyping(true);
       
-      console.log(`🤖 Simulação humana concluída: ${typingTime}ms para "${text.substring(0, 50)}..."`);
+      // Calcular tempo de digitação baseado no tamanho da mensagem
+      const typingTime = Math.min(Math.max(message.length * 50, 1000), 5000);
+      
+      // Indicar que está digitando
+      await whatsappService.setTyping(clientId, chatId, true);
+      
+      // Aguardar tempo de digitação + delay adicional
+      await new Promise(resolve => setTimeout(resolve, typingTime + delayMs));
+      
+      // Parar indicação de digitação
+      await whatsappService.setTyping(clientId, chatId, false);
+      
+      // Corrigido: removido o terceiro parâmetro hasFile
+      await whatsappService.sendMessage(clientId, chatId, message);
+      
     } catch (error) {
-      console.error('❌ Erro na simulação de digitação humana:', error);
+      console.error('❌ Erro na simulação de digitação:', error);
+    } finally {
+      setIsTyping(false);
     }
-  }, [calculateTypingTime, startTyping, stopTyping, startRecording, stopRecording]);
+  }, [clientId]);
 
-  const markAsRead = useCallback(async (chatId: string, messageId: string) => {
+  const simulateRecording = useCallback(async (chatId: string, audioUrl: string, duration: number = 3000) => {
     try {
-      await whatsappService.markAsRead(clientId, chatId, messageId);
-      console.log(`✓ Mensagem marcada como lida: ${messageId}`);
+      // Indicar que está gravando
+      await whatsappService.setRecording(clientId, chatId, true);
+      
+      // Aguardar duração da "gravação"
+      await new Promise(resolve => setTimeout(resolve, duration));
+      
+      // Parar indicação de gravação
+      await whatsappService.setRecording(clientId, chatId, false);
+      
+      // Enviar áudio
+      await whatsappService.sendMessage(clientId, chatId, '🎤 Áudio', true, audioUrl);
+      
     } catch (error) {
-      console.error('❌ Erro ao marcar como lida:', error);
+      console.error('❌ Erro na simulação de gravação:', error);
+    }
+  }, [clientId]);
+
+  const startTyping = useCallback((chatId: string) => {
+    whatsappService.setTyping(clientId, chatId, true);
+    setIsTyping(true);
+    
+    // Auto-parar depois de 10 segundos
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      whatsappService.setTyping(clientId, chatId, false);
+      setIsTyping(false);
+    }, 10000);
+  }, [clientId]);
+
+  const stopTyping = useCallback((chatId: string) => {
+    whatsappService.setTyping(clientId, chatId, false);
+    setIsTyping(false);
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+  }, [clientId]);
+
+  const startRecording = useCallback((chatId: string) => {
+    whatsappService.setRecording(clientId, chatId, true);
+    
+    // Auto-parar depois de 30 segundos
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+    }
+    
+    recordingTimeoutRef.current = setTimeout(() => {
+      whatsappService.setRecording(clientId, chatId, false);
+    }, 30000);
+  }, [clientId]);
+
+  const stopRecording = useCallback((chatId: string) => {
+    whatsappService.setRecording(clientId, chatId, false);
+    
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
     }
   }, [clientId]);
 
   return {
-    config,
-    setConfig,
-    typingStatus,
-    recordingStatus,
-    calculateTypingTime,
-    simulateHumanTyping,
+    isTyping,
+    simulateTyping,
+    simulateRecording,
     startTyping,
     stopTyping,
     startRecording,
-    stopRecording,
-    markAsRead
+    stopRecording
   };
 };

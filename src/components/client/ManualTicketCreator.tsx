@@ -11,11 +11,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Send, MessageSquare } from "lucide-react";
+import { Plus, Send, MessageSquare, Phone } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService } from "@/services/ticketsService";
 import { whatsappService } from "@/services/whatsappMultiClient";
 import { supabase } from "@/integrations/supabase/client";
+import { smartFormatPhone, formatToDisplay } from "@/utils/phoneFormatter";
 
 interface ManualTicketCreatorProps {
   clientId: string;
@@ -34,6 +35,12 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
     initialMessage: ""
   });
 
+  // Estado para preview do número formatado
+  const [phonePreview, setPhonePreview] = useState<{
+    formatted: string;
+    isValid: boolean;
+  }>({ formatted: "", isValid: false });
+
   // Buscar instanceId do cliente
   const getClientInstanceId = async (): Promise<string> => {
     const { data: client, error } = await supabase
@@ -47,6 +54,21 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
     }
 
     return client.instance_id;
+  };
+
+  // Atualizar preview do telefone quando mudar
+  const handlePhoneChange = (phone: string) => {
+    setFormData(prev => ({ ...prev, customerPhone: phone }));
+    
+    if (phone.trim()) {
+      const phoneData = smartFormatPhone(phone);
+      setPhonePreview({
+        formatted: phoneData.displayNumber,
+        isValid: phoneData.isValid
+      });
+    } else {
+      setPhonePreview({ formatted: "", isValid: false });
+    }
   };
 
   const handleCreateTicket = async () => {
@@ -67,17 +89,27 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
       const instanceId = await getClientInstanceId();
       console.log('🔍 [MANUAL] InstanceId encontrado:', instanceId);
 
-      // Limpar e formatar telefone
-      const cleanPhone = formData.customerPhone.replace(/\D/g, '');
-      const chatId = `${cleanPhone}@c.us`;
+      // Formatar telefone corretamente
+      const phoneData = smartFormatPhone(formData.customerPhone);
       
+      if (!phoneData.isValid) {
+        toast({
+          title: "Número inválido",
+          description: "Por favor, insira um número de celular brasileiro válido",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('📞 [MANUAL] Dados do telefone:', phoneData);
+
       // Criar ticket
       const ticketId = await ticketsService.ensureTicketExists(
         clientId,
-        chatId,
+        phoneData.chatId,
         instanceId,
         formData.customerName,
-        cleanPhone,
+        phoneData.cleanNumber,
         formData.initialMessage || 'Ticket criado manualmente',
         new Date().toISOString()
       );
@@ -86,16 +118,17 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
 
       toast({
         title: "Ticket criado",
-        description: `Ticket criado para ${formData.customerName}`
+        description: `Ticket criado para ${formData.customerName} (${phoneData.displayNumber})`
       });
 
       // Se tem mensagem inicial, vamos tentar enviar
       if (formData.initialMessage.trim()) {
-        await handleSendMessage(chatId, formData.initialMessage);
+        await handleSendMessage(phoneData.chatId, formData.initialMessage);
       }
 
       // Resetar form e fechar
       setFormData({ customerName: "", customerPhone: "", initialMessage: "" });
+      setPhonePreview({ formatted: "", isValid: false });
       setIsOpen(false);
       
       // Notificar para recarregar tickets
@@ -149,10 +182,18 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
       return;
     }
 
-    const cleanPhone = formData.customerPhone.replace(/\D/g, '');
-    const chatId = `${cleanPhone}@c.us`;
+    const phoneData = smartFormatPhone(formData.customerPhone);
     
-    await handleSendMessage(chatId, formData.initialMessage);
+    if (!phoneData.isValid) {
+      toast({
+        title: "Número inválido",
+        description: "Por favor, insira um número de celular brasileiro válido",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    await handleSendMessage(phoneData.chatId, formData.initialMessage);
   };
 
   return (
@@ -185,17 +226,25 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
           
           <div>
             <Label htmlFor="customerPhone">Telefone/WhatsApp</Label>
-            <Input
-              id="customerPhone"
-              placeholder="47999999999"
-              value={formData.customerPhone}
-              onChange={(e) => setFormData(prev => ({ 
-                ...prev, 
-                customerPhone: e.target.value 
-              }))}
-            />
+            <div className="space-y-2">
+              <Input
+                id="customerPhone"
+                placeholder="47999999999 ou +55 47 99999-9999"
+                value={formData.customerPhone}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+              />
+              {phonePreview.formatted && (
+                <div className={`text-xs flex items-center gap-1 ${
+                  phonePreview.isValid ? 'text-green-600' : 'text-orange-600'
+                }`}>
+                  <Phone className="w-3 h-3" />
+                  {phonePreview.formatted}
+                  {phonePreview.isValid ? ' ✓' : ' (verificar formato)'}
+                </div>
+              )}
+            </div>
             <p className="text-xs text-gray-500 mt-1">
-              Apenas números (ex: 47999999999)
+              Aceita: 47999999999, +55 47 99999-9999, etc.
             </p>
           </div>
           
@@ -216,7 +265,7 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
           <div className="flex gap-2">
             <Button
               onClick={handleCreateTicket}
-              disabled={isCreating || isSending}
+              disabled={isCreating || isSending || !phonePreview.isValid}
               className="flex-1"
             >
               {isCreating ? "Criando..." : "Criar Ticket"}
@@ -225,7 +274,7 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
             {formData.initialMessage.trim() && (
               <Button
                 onClick={handleQuickSend}
-                disabled={isCreating || isSending}
+                disabled={isCreating || isSending || !phonePreview.isValid}
                 variant="outline"
                 size="sm"
                 className="gap-1"
@@ -238,12 +287,12 @@ const ManualTicketCreator = ({ clientId, onTicketCreated }: ManualTicketCreatorP
           
           <div className="bg-blue-50 p-3 rounded-lg">
             <p className="text-sm text-blue-800 font-medium mb-1">
-              💡 Como funciona:
+              📞 Formatação de Número:
             </p>
             <ul className="text-xs text-blue-700 space-y-1">
-              <li>• <strong>Criar Ticket:</strong> Cria conversa + envia mensagem</li>
-              <li>• <strong>Só Enviar:</strong> Apenas envia mensagem (para teste)</li>
-              <li>• O ticket aparecerá na lista quando criar/receber resposta</li>
+              <li>• <strong>Aceita:</strong> 47999999999 ou +55 47 99999-9999</li>
+              <li>• <strong>Resultado:</strong> +55 47 99999-9999@c.us</li>
+              <li>• <strong>Válido:</strong> Celulares brasileiros com DDD</li>
             </ul>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { formatToChatId, extractPhoneFromChatId, smartFormatPhone } from '@/utils/phoneFormatter';
 
 export interface ConversationTicket {
   id: string;
@@ -165,6 +166,18 @@ class TicketsService {
     try {
       console.log('🎫 [SERVICE] Garantindo ticket existe para:', chatId);
 
+      // Normalizar números de telefone
+      const phoneData = smartFormatPhone(customerPhone);
+      const normalizedChatId = chatId.includes('@') ? chatId : formatToChatId(customerPhone);
+      const cleanPhone = extractPhoneFromChatId(normalizedChatId);
+
+      console.log('📞 [SERVICE] Formatação de telefone:', {
+        original: customerPhone,
+        chatId: normalizedChatId,
+        cleanPhone: cleanPhone,
+        isValid: phoneData.isValid
+      });
+
       // PASSO 1: Customer
       let customerId: string;
       
@@ -172,7 +185,7 @@ class TicketsService {
         .from('customers')
         .select('id')
         .eq('client_id', clientId)
-        .eq('phone', customerPhone)
+        .eq('phone', cleanPhone)
         .maybeSingle();
 
       if (existingCustomer) {
@@ -183,7 +196,7 @@ class TicketsService {
           .from('customers')
           .update({ 
             name: customerName,
-            whatsapp_chat_id: chatId,
+            whatsapp_chat_id: normalizedChatId,
             updated_at: new Date().toISOString()
           })
           .eq('id', customerId);
@@ -193,8 +206,8 @@ class TicketsService {
           .insert({
             client_id: clientId,
             name: customerName,
-            phone: customerPhone,
-            whatsapp_chat_id: chatId
+            phone: cleanPhone,
+            whatsapp_chat_id: normalizedChatId
           })
           .select('id')
           .single();
@@ -208,7 +221,7 @@ class TicketsService {
         .from('conversation_tickets')
         .select('id')
         .eq('client_id', clientId)
-        .eq('chat_id', chatId)
+        .eq('chat_id', normalizedChatId)
         .eq('is_archived', false)
         .maybeSingle();
 
@@ -237,7 +250,7 @@ class TicketsService {
           .insert({
             client_id: clientId,
             customer_id: customerId,
-            chat_id: chatId,
+            chat_id: normalizedChatId,
             instance_id: instanceId,
             title: ticketTitle,
             last_message_preview: lastMessage,
@@ -358,23 +371,33 @@ class TicketsService {
           // Pegar a mensagem mais recente
           const lastMessage = chatMessages[0];
           
+          // Extrair número do chat_id e formatar corretamente
+          const phoneNumber = extractPhoneFromChatId(chatId);
+          const phoneData = smartFormatPhone(phoneNumber);
+          
           const customerName = lastMessage.sender || 
-                             chatId.replace(/\D/g, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') || 
+                             phoneData.displayNumber || 
                              'Contato';
-          const customerPhone = chatId.replace(/\D/g, '');
 
           if (!lastMessage.timestamp) {
             console.log(`⚠️ Chat ${chatId} sem timestamp, pulando...`);
             continue;
           }
 
-          // Criar/atualizar ticket
+          console.log('📞 [IMPORT] Processando chat:', {
+            chatId,
+            phoneNumber,
+            formattedPhone: phoneData.displayNumber,
+            isValid: phoneData.isValid
+          });
+
+          // Criar/atualizar ticket com formatação correta
           const ticketId = await this.createOrUpdateTicket(
             clientId,
-            chatId,
+            phoneData.chatId, // Usar chatId normalizado
             lastMessage.instance_id,
             customerName,
-            customerPhone,
+            phoneNumber, // Usar número limpo
             lastMessage.body || '[Conversa importada]',
             lastMessage.timestamp
           );
