@@ -8,6 +8,7 @@ import { useMessageBatch } from './useMessageBatch';
 import { useHumanizedTyping } from './useHumanizedTyping';
 import { useAutoReactions } from './useAutoReactions';
 import { useOnlineStatus } from './useOnlineStatus';
+import { useSmartMessageSplit } from './useSmartMessageSplit';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -26,6 +27,7 @@ export const useTicketRealtime = (clientId: string) => {
   const { simulateHumanTyping, markAsRead } = useHumanizedTyping(clientId);
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
+  const { splitMessage, sendMessagesInSequence } = useSmartMessageSplit();
 
   // Função para normalizar dados da mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
@@ -266,7 +268,7 @@ export const useTicketRealtime = (clientId: string) => {
       // Marcar lote como completo mesmo em caso de erro
       markBatchAsCompleted(chatId);
     }
-  }, [clientId, processReaction, markActivity, normalizeWhatsAppMessage]);
+  }, [clientId, processReaction, markActivity, normalizeWhatsAppMessage, markBatchAsCompleted]);
 
   // Hook para agrupamento de mensagens
   const { addMessage, getBatchInfo, markBatchAsCompleted } = useMessageBatch(processBatchWithAssistant);
@@ -470,6 +472,43 @@ export const useTicketRealtime = (clientId: string) => {
         console.log('✅ Resposta da IA salva com sucesso');
       }
 
+      // Quebrar resposta em blocos menores
+      const messageBlocks = splitMessage(assistantResponse);
+      console.log(`📝 Resposta dividida em ${messageBlocks.length} blocos:`, 
+        messageBlocks.map(block => block.substring(0, 30) + '...'));
+      
+      // Função para enviar um bloco individual
+      const sendBlock = async (blockContent: string) => {
+        // Simular delay de digitação para cada bloco
+        await simulateHumanTyping(message.from, blockContent);
+        
+        // Enviar via WhatsApp
+        const result = await whatsappService.sendMessage(instanceId, message.from, blockContent);
+        
+        // Registrar no ticket
+        await ticketsService.addTicketMessage({
+          ticket_id: ticketId,
+          message_id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          from_me: true,
+          sender_name: `🤖 ${assistant.name}`,
+          content: blockContent,
+          message_type: 'text',
+          is_internal_note: false,
+          is_ai_response: true,
+          ai_confidence_score: 0.9,
+          processing_status: 'completed',
+          timestamp: new Date().toISOString()
+        });
+        
+        return result;
+      };
+      
+      // Enviar blocos em sequência
+      await sendMessagesInSequence(messageBlocks, sendBlock, (sent, total) => {
+        console.log(`📤 Progresso: ${sent}/${total} blocos enviados`);
+      });
+
+      console.log('✅ Todos os blocos da resposta foram enviados');
     } catch (error) {
       console.error('❌ Erro no processamento:', error);
     } finally {
@@ -480,7 +519,7 @@ export const useTicketRealtime = (clientId: string) => {
       // Marcar lote como completo após processamento
       markBatchAsCompleted(message.from);
     }
-  }, [clientId, simulateHumanTyping, markAsRead, markBatchAsCompleted]);
+  }, [clientId, simulateHumanTyping, markAsRead, markBatchAsCompleted, splitMessage, sendMessagesInSequence]);
 
   // Configurar listeners uma única vez
   useEffect(() => {
@@ -600,6 +639,6 @@ export const useTicketRealtime = (clientId: string) => {
     isTyping: assistantTyping,
     isOnline,
     reloadTickets,
-    getBatchInfo // Expor informações do lote para debug
+    getBatchInfo
   };
 };
