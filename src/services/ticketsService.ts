@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationTicket {
@@ -137,7 +138,7 @@ class TicketsService {
 
       if (error) throw error;
 
-      return (data || []).reverse(); // Retornar em ordem cronológica
+      return (data || []).reverse();
     } catch (error) {
       console.error('Erro ao buscar mensagens do ticket:', error);
       throw error;
@@ -154,20 +155,104 @@ class TicketsService {
     lastMessageAt: string
   ): Promise<string> {
     try {
-      console.log('🎫 Criando/atualizando ticket para:', {
+      console.log('🎫 SEMPRE criando/recriando ticket para:', {
         clientId,
         chatId,
         customerPhone,
         customerName
       });
 
-      // SEMPRE criar um novo ticket se não existir (incluindo se foi excluído)
-      const ticketId = await this.createTicketDirectly(
-        clientId, chatId, instanceId, customerName, customerPhone, lastMessage, lastMessageAt
-      );
+      // Primeiro, encontrar ou criar o customer
+      let customerId: string;
+      
+      const { data: existingCustomer } = await supabase
+        .from('customers')
+        .select('id, name')
+        .eq('client_id', clientId)
+        .eq('phone', customerPhone)
+        .maybeSingle();
 
-      console.log('✅ Ticket criado/recriado com sucesso:', ticketId);
-      return ticketId;
+      if (existingCustomer) {
+        customerId = existingCustomer.id;
+        console.log('👤 Customer existente encontrado:', customerId);
+        
+        // Atualizar nome se mudou
+        if (existingCustomer.name !== customerName) {
+          await supabase
+            .from('customers')
+            .update({ name: customerName })
+            .eq('id', customerId);
+        }
+      } else {
+        const { data: newCustomer, error: customerError } = await supabase
+          .from('customers')
+          .insert({
+            client_id: clientId,
+            name: customerName,
+            phone: customerPhone,
+            whatsapp_chat_id: chatId
+          })
+          .select('id')
+          .single();
+
+        if (customerError) throw customerError;
+        customerId = newCustomer.id;
+        console.log('👤 Novo customer criado:', customerId);
+      }
+
+      // SEMPRE tentar criar um novo ticket - mesmo se foi excluído
+      const { data: newTicket, error: ticketError } = await supabase
+        .from('conversation_tickets')
+        .upsert({
+          client_id: clientId,
+          customer_id: customerId,
+          chat_id: chatId,
+          instance_id: instanceId,
+          title: `Conversa com ${customerName}`,
+          last_message_preview: lastMessage,
+          last_message_at: lastMessageAt,
+          status: 'open',
+          is_archived: false,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'client_id,chat_id,instance_id',
+          ignoreDuplicates: false
+        })
+        .select('id')
+        .single();
+
+      if (ticketError) {
+        console.error('❌ Erro ao criar ticket via upsert:', ticketError);
+        
+        // Fallback: tentar buscar existente e atualizar
+        const { data: existingTicket } = await supabase
+          .from('conversation_tickets')
+          .select('id')
+          .eq('client_id', clientId)
+          .eq('chat_id', chatId)
+          .eq('instance_id', instanceId)
+          .eq('is_archived', false)
+          .maybeSingle();
+
+        if (existingTicket) {
+          await supabase
+            .from('conversation_tickets')
+            .update({
+              last_message_preview: lastMessage,
+              last_message_at: lastMessageAt,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingTicket.id);
+          
+          console.log('📝 Ticket existente atualizado via fallback:', existingTicket.id);
+          return existingTicket.id;
+        } else {
+          throw ticketError;
+        }
+      }
+
+      console.log('🎫 Ticket criado/recriado com sucesso:', newTicket.id);
+      return newTicket.id;
     } catch (error) {
       console.error('❌ Erro ao criar/atualizar ticket:', error);
       throw error;
@@ -268,7 +353,6 @@ class TicketsService {
 
   async addTicketMessage(messageData: CreateTicketMessageData): Promise<void> {
     try {
-      // Verificar se a mensagem já existe para evitar duplicatas
       const { data: existingMessage } = await supabase
         .from('ticket_messages')
         .select('id')
@@ -298,83 +382,73 @@ class TicketsService {
     try {
       console.log('📥 Iniciando importação de conversas...');
       
-      // Buscar instâncias do cliente
-      const { data: instances, error: instancesError } = await supabase
-        .from('whatsapp_instances')
-        .select('instance_id')
-        .eq('client_id', clientId);
-
-      if (instancesError) {
-        console.error('❌ Erro ao buscar instâncias:', instancesError);
-        throw new Error('Erro ao buscar instâncias do WhatsApp');
-      }
-
-      if (!instances || instances.length === 0) {
-        return {
-          success: 0,
-          errors: 0,
-          message: 'Nenhuma instância do WhatsApp encontrada para este cliente'
-        };
-      }
-
-      const instanceIds = instances.map(i => i.instance_id);
-      console.log('📱 Instâncias encontradas:', instanceIds);
-
-      // Buscar chats únicos das instâncias
-      const { data: chats, error: chatsError } = await supabase
-        .from('whatsapp_chats')
+      // Buscar mensagens diretamente para criar tickets
+      const { data: messages, error: messagesError } = await supabase
+        .from('whatsapp_messages')
         .select('*')
-        .in('instance_id', instanceIds)
-        .order('last_message_time', { ascending: false });
+        .eq('instance_id', clientId)
+        .order('timestamp', { ascending: false })
+        .limit(1000);
 
-      if (chatsError) {
-        console.error('❌ Erro ao buscar chats:', chatsError);
-        throw new Error('Erro ao buscar conversas do WhatsApp');
+      if (messagesError) {
+        console.error('❌ Erro ao buscar mensagens:', messagesError);
+        throw new Error('Erro ao buscar mensagens do WhatsApp');
       }
 
-      console.log(`📊 Encontrados ${chats?.length || 0} chats`);
+      console.log(`📊 Encontradas ${messages?.length || 0} mensagens`);
 
-      if (!chats || chats.length === 0) {
+      if (!messages || messages.length === 0) {
         return {
           success: 0,
           errors: 0,
-          message: 'Nenhuma conversa encontrada para importar'
+          message: 'Nenhuma mensagem encontrada para importar'
         };
       }
+
+      // Agrupar mensagens por chat_id
+      const messagesByChat = messages.reduce((acc, message) => {
+        if (!acc[message.chat_id]) {
+          acc[message.chat_id] = [];
+        }
+        acc[message.chat_id].push(message);
+        return acc;
+      }, {} as Record<string, any[]>);
 
       let successCount = 0;
       let errorCount = 0;
 
       // Processar cada chat
-      for (const chat of chats) {
+      for (const [chatId, chatMessages] of Object.entries(messagesByChat)) {
         try {
-          // Extrair informações do contato
-          const customerName = chat.name || 
-                             chat.chat_id.replace(/\D/g, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') || 
+          // Pegar a mensagem mais recente
+          const lastMessage = chatMessages[0];
+          
+          const customerName = lastMessage.sender || 
+                             chatId.replace(/\D/g, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') || 
                              'Contato';
-          const customerPhone = chat.chat_id.replace(/\D/g, '');
+          const customerPhone = chatId.replace(/\D/g, '');
 
-          if (!chat.last_message_time) {
-            console.log(`⚠️ Chat ${chat.chat_id} sem mensagens, pulando...`);
+          if (!lastMessage.timestamp) {
+            console.log(`⚠️ Chat ${chatId} sem timestamp, pulando...`);
             continue;
           }
 
           // Criar/atualizar ticket
           const ticketId = await this.createOrUpdateTicket(
             clientId,
-            chat.chat_id,
-            chat.instance_id,
+            chatId,
+            lastMessage.instance_id,
             customerName,
             customerPhone,
-            chat.last_message || '[Conversa importada]',
-            chat.last_message_time
+            lastMessage.body || '[Conversa importada]',
+            lastMessage.timestamp
           );
 
           successCount++;
-          console.log(`✅ Chat ${chat.chat_id} importado como ticket ${ticketId}`);
+          console.log(`✅ Chat ${chatId} importado como ticket ${ticketId}`);
 
         } catch (chatError) {
-          console.error(`❌ Erro ao processar chat ${chat.chat_id}:`, chatError);
+          console.error(`❌ Erro ao processar chat ${chatId}:`, chatError);
           errorCount++;
         }
       }
@@ -443,7 +517,6 @@ class TicketsService {
 
       if (error) throw error;
 
-      // Add event to history
       await supabase
         .from('ticket_events')
         .insert({
@@ -461,19 +534,16 @@ class TicketsService {
 
   async deleteTicket(ticketId: string): Promise<void> {
     try {
-      // Delete ticket messages first
       await supabase
         .from('ticket_messages')
         .delete()
         .eq('ticket_id', ticketId);
 
-      // Delete ticket events
       await supabase
         .from('ticket_events')
         .delete()
         .eq('ticket_id', ticketId);
 
-      // Delete the ticket
       const { error } = await supabase
         .from('conversation_tickets')
         .delete()
