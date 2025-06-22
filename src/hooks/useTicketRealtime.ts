@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -58,40 +57,24 @@ export const useTicketRealtime = (clientId: string) => {
     };
   }, [clientId, markActivity]);
 
-  // NOVO: Função para simular indicadores visuais no WhatsApp
-  const simulateWhatsAppIndicators = useCallback(async (chatId: string, instanceId: string, messageLength: number) => {
+  // NOVO: Função para simular indicadores visuais (SEM setPresence)
+  const simulateWhatsAppIndicators = useCallback(async (chatId: string, instanceId: string, messageLength: number, hasAudio: boolean = false) => {
     if (!mountedRef.current || !chatId || !instanceId) return;
 
     try {
       console.log('🎭 Iniciando simulação de indicadores visuais');
       
-      // 1. Mostrar como "online" imediatamente
-      try {
-        await whatsappService.setPresence(instanceId, chatId, 'available');
-        console.log('🌐 Status online definido');
-      } catch (error) {
-        console.log('⚠️ Erro ao definir presença (continuando):', error);
-      }
-
-      // 2. Calcular tempos baseado no tamanho da mensagem
+      // Calcular tempos baseado no tamanho da mensagem
       const wordsCount = messageLength / 5; // média de 5 caracteres por palavra
       const typingTime = Math.max(2000, Math.min(wordsCount * 200, 8000)); // 200ms por palavra, min 2s, max 8s
       const recordingTime = Math.max(1000, Math.min(wordsCount * 150, 5000)); // Para áudios fictícios
 
       console.log(`⏱️ Tempos calculados - Digitação: ${typingTime}ms, Gravação: ${recordingTime}ms`);
 
-      // 3. Simular gravação de áudio (30% das vezes) ou digitação
-      const shouldSimulateAudio = Math.random() < 0.3 && messageLength > 50;
-      
-      if (shouldSimulateAudio) {
+      // Simular gravação de áudio APENAS se hasAudio for true
+      if (hasAudio) {
         console.log('🎤 Simulando gravação de áudio');
         setAssistantRecording(true);
-        
-        try {
-          await whatsappService.setPresence(instanceId, chatId, 'recording');
-        } catch (error) {
-          console.log('⚠️ Erro ao definir presença de gravação (continuando):', error);
-        }
         
         // Simular tempo de gravação
         await new Promise(resolve => setTimeout(resolve, recordingTime));
@@ -104,12 +87,6 @@ export const useTicketRealtime = (clientId: string) => {
         console.log('⌨️ Simulando digitação');
         setAssistantTyping(true);
         
-        try {
-          await whatsappService.setPresence(instanceId, chatId, 'composing');
-        } catch (error) {
-          console.log('⚠️ Erro ao definir presença de digitação (continuando):', error);
-        }
-        
         // Simular tempo de digitação com pausas realistas
         const typingSegments = Math.ceil(typingTime / 1500); // Dividir em segmentos de 1.5s
         
@@ -120,24 +97,11 @@ export const useTicketRealtime = (clientId: string) => {
           
           // Pausas ocasionais para parecer mais humano
           if (Math.random() < 0.3) {
-            try {
-              await whatsappService.setPresence(instanceId, chatId, 'paused');
-              await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
-              await whatsappService.setPresence(instanceId, chatId, 'composing');
-            } catch (error) {
-              console.log('⚠️ Erro nas pausas de digitação (continuando):', error);
-            }
+            await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
           }
         }
         
         setAssistantTyping(false);
-      }
-
-      // 4. Voltar para online antes de enviar
-      try {
-        await whatsappService.setPresence(instanceId, chatId, 'available');
-      } catch (error) {
-        console.log('⚠️ Erro ao voltar para online (continuando):', error);
       }
 
       console.log('✅ Simulação de indicadores concluída');
@@ -376,6 +340,13 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
 
+      // Verificar se há áudio nas mensagens para decidir o tipo de simulação
+      const hasAudioMessages = allMessages.some(msg => 
+        msg.type === 'audio' || 
+        msg.type === 'ptt' || 
+        msg.body?.includes('[Áudio]')
+      );
+
       const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto importante: 
 - Você está respondendo mensagens do WhatsApp em tempo real
 - Você tem acesso ao histórico COMPLETO de ${contextMessages.length} mensagens desta conversa
@@ -434,7 +405,7 @@ export const useTicketRealtime = (clientId: string) => {
         
         // NOVO: Simular indicadores visuais ANTES de processar a resposta
         if (instanceId) {
-          await simulateWhatsAppIndicators(message.from, instanceId, assistantResponse.length);
+          await simulateWhatsAppIndicators(message.from, instanceId, assistantResponse.length, hasAudioMessages);
         }
         
         const messageBlocks = splitMessage(assistantResponse);
@@ -477,10 +448,12 @@ export const useTicketRealtime = (clientId: string) => {
 
         console.log('✅ Resposta completa enviada');
         
-        // Marcar mensagens como lidas
+        // Marcar mensagens como lidas com tratamento de erro
         for (const msg of allMessages.filter(m => !m.fromMe)) {
           try {
-            await markAsRead(message.from, msg.id || msg.key?.id);
+            if (markAsRead && typeof markAsRead === 'function') {
+              await markAsRead(message.from, msg.id || msg.key?.id);
+            }
           } catch (readError) {
             console.warn('⚠️ Erro ao marcar como lida (continuando):', readError);
           }
@@ -517,7 +490,6 @@ export const useTicketRealtime = (clientId: string) => {
     if (clientMessages.length === 0) {
       console.log('📤 Todas as mensagens são nossas, apenas salvando...');
       
-      // ... keep existing code (save our messages logic)
       for (const message of messages) {
         if (message.fromMe) {
           try {
@@ -594,7 +566,13 @@ export const useTicketRealtime = (clientId: string) => {
 
       for (const message of clientMessages) {
         const normalized = normalizeWhatsAppMessage(message);
-        await processReaction(normalized);
+        try {
+          if (processReaction && typeof processReaction === 'function') {
+            await processReaction(normalized);
+          }
+        } catch (reactionError) {
+          console.warn('⚠️ Erro ao processar reação (continuando):', reactionError);
+        }
       }
 
       markActivity();
