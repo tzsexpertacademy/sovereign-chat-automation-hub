@@ -28,13 +28,22 @@ serve(async (req) => {
       isAudioMessage = false 
     } = await req.json();
 
-    console.log('🔍 Processando mensagem para assistente:', assistantId);
-    console.log('📋 Dados recebidos:', {
+    console.log('🔍 Processando mensagem para assistente:', {
+      assistantId,
       chatId,
       instanceId,
       messageId,
-      messagePreview: messageText?.substring(0, 50)
+      hasMessage: !!messageText,
+      messageLength: messageText?.length || 0
     });
+
+    if (!assistantId) {
+      throw new Error('ID do assistente é obrigatório');
+    }
+
+    if (!messageText) {
+      throw new Error('Texto da mensagem é obrigatório');
+    }
 
     // Buscar configurações do assistente
     const { data: assistant, error: assistantError } = await supabase
@@ -80,6 +89,10 @@ serve(async (req) => {
       throw new Error('Configuração de IA não encontrada para este cliente');
     }
 
+    if (!aiConfig.openai_api_key) {
+      throw new Error('Chave da API OpenAI não configurada');
+    }
+
     console.log('🔑 Configuração de API encontrada');
 
     let processedText = messageText;
@@ -118,21 +131,6 @@ serve(async (req) => {
       await new Promise(resolve => setTimeout(resolve, responseDelay * 1000));
     }
 
-    // Mostrar indicador de digitação
-    if (settings.typing_indicator_enabled !== false) {
-      console.log('⌨️ Mostrando indicador de digitação...');
-      await supabase
-        .from('whatsapp_chats')
-        .upsert({
-          chat_id: chatId,
-          instance_id: instanceId,
-          is_typing: true,
-          typing_started_at: new Date().toISOString()
-        }, {
-          onConflict: 'chat_id,instance_id'
-        });
-    }
-
     // Construir prompt do sistema
     let systemMessage = assistant.prompt || 'Você é um assistente virtual útil e prestativo.';
     if (settings.custom_files?.length > 0) {
@@ -162,6 +160,12 @@ serve(async (req) => {
       }),
     });
 
+    if (!openaiResponse.ok) {
+      const errorText = await openaiResponse.text();
+      console.error('❌ Erro da OpenAI:', errorText);
+      throw new Error(`Erro da OpenAI: ${errorText}`);
+    }
+
     const aiResult = await openaiResponse.json();
     
     if (aiResult.error) {
@@ -178,17 +182,8 @@ serve(async (req) => {
 
     const responseText = aiResult.choices[0].message.content;
 
-    // Remover indicador de digitação
-    if (settings.typing_indicator_enabled !== false) {
-      console.log('⌨️ Removendo indicador de digitação...');
-      await supabase
-        .from('whatsapp_chats')
-        .update({
-          is_typing: false,
-          typing_started_at: null
-        })
-        .eq('chat_id', chatId)
-        .eq('instance_id', instanceId);
+    if (!responseText || !responseText.trim()) {
+      throw new Error('OpenAI retornou resposta vazia');
     }
 
     let finalResponse = responseText;
@@ -198,16 +193,6 @@ serve(async (req) => {
     if (settings.voice_cloning_enabled && settings.eleven_labs_api_key && settings.eleven_labs_voice_id) {
       console.log('🎤 Gerando resposta em áudio...');
       
-      if (settings.recording_indicator_enabled) {
-        await supabase
-          .from('whatsapp_chats')
-          .update({
-            is_recording: true
-          })
-          .eq('chat_id', chatId)
-          .eq('instance_id', instanceId);
-      }
-
       try {
         const ttsResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/text-to-speech`, {
           method: 'POST',
@@ -232,16 +217,6 @@ serve(async (req) => {
         }
       } catch (error) {
         console.error('❌ Erro ao processar TTS:', error);
-      }
-
-      if (settings.recording_indicator_enabled) {
-        await supabase
-          .from('whatsapp_chats')
-          .update({
-            is_recording: false
-          })
-          .eq('chat_id', chatId)
-          .eq('instance_id', instanceId);
       }
     }
 
