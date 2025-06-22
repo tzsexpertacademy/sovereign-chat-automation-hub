@@ -165,18 +165,13 @@ export const useTicketRealtime = (clientId: string) => {
       return;
     }
     
-    // Simplificar verificação de duplicação - usar apenas timestamp das primeiras mensagens
-    const firstMessageTimestamp = allMessages[0]?.timestamp || Date.now();
-    const contextKey = `${ticketId}_${firstMessageTimestamp}`;
-    
-    if (processedMessagesRef.current.has(contextKey)) {
-      console.log('⚠️ Contexto já processado pelo assistente, ignorando:', contextKey);
-      processingRef.current.delete(ticketId);
-      return;
-    }
-    
-    console.log(`🤖 PROCESSAMENTO IA - Lote de ${allMessages.length} mensagens do cliente`);
-    processedMessagesRef.current.add(contextKey);
+    console.log(`🤖 INICIANDO PROCESSAMENTO IA - Ticket: ${ticketId}`);
+    console.log(`📨 Mensagens para processar: ${allMessages.length}`);
+    console.log(`📝 Conteúdo das mensagens:`, allMessages.map(m => ({
+      id: m.id,
+      content: m.body?.substring(0, 100),
+      fromMe: m.fromMe
+    })));
     
     try {
       setAssistantTyping(true);
@@ -189,6 +184,12 @@ export const useTicketRealtime = (clientId: string) => {
         aiConfigService.getClientConfig(clientId)
       ]);
 
+      console.log('🔍 Configurações encontradas:', {
+        queuesCount: queues.length,
+        hasAiConfig: !!aiConfig,
+        hasOpenAiKey: !!aiConfig?.openai_api_key
+      });
+
       if (!aiConfig?.openai_api_key) {
         console.log('⚠️ Configuração de IA não encontrada - chave OpenAI ausente');
         return;
@@ -198,6 +199,13 @@ export const useTicketRealtime = (clientId: string) => {
       const activeQueue = queues.find(q => q.is_active && q.assistants?.is_active);
       if (!activeQueue?.assistants) {
         console.log('⚠️ Nenhuma fila ativa com assistente encontrada');
+        console.log('🔍 Filas disponíveis:', queues.map(q => ({
+          id: q.id,
+          name: q.name,
+          isActive: q.is_active,
+          hasAssistant: !!q.assistants,
+          assistantActive: q.assistants?.is_active
+        })));
         return;
       }
 
@@ -240,6 +248,8 @@ export const useTicketRealtime = (clientId: string) => {
         messageId: msg.message_id
       }));
       
+      console.log(`📚 Contexto do banco carregado: ${contextMessages.length} mensagens`);
+      
       // Atualizar contexto local
       conversationContextRef.current.set(ticketId, contextMessages);
 
@@ -260,41 +270,55 @@ export const useTicketRealtime = (clientId: string) => {
       }
 
       // Preparar o contexto das mensagens atuais
-      const currentBatchContent = allMessages.map(msg => msg.body || msg.caption || '[Mídia]').join('\n');
+      const currentBatchContent = allMessages
+        .filter(msg => !msg.fromMe) // Apenas mensagens do cliente
+        .map(msg => msg.body || msg.caption || '[Mídia]')
+        .join('\n');
       
       console.log('📝 Contexto atual para IA:', {
         totalContext: contextMessages.length,
-        currentBatch: currentBatchContent.substring(0, 100)
+        currentBatch: currentBatchContent.substring(0, 100),
+        clientMessagesInBatch: allMessages.filter(msg => !msg.fromMe).length
       });
+
+      // Se não há mensagens novas do cliente, não processar
+      if (!currentBatchContent.trim()) {
+        console.log('⚠️ Nenhuma mensagem nova do cliente para processar');
+        return;
+      }
 
       // Criar mensagens para OpenAI - MELHORAR PROMPT DO SISTEMA
       const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto importante: 
 - Você está respondendo mensagens do WhatsApp em uma conversa em tempo real
-- O cliente enviou ${allMessages.length} mensagens que você deve considerar
-- Você tem acesso ao histórico de ${contextMessages.length} mensagens desta conversa
+- O cliente enviou novas mensagens que você deve considerar
+- Você tem acesso ao histórico completo de ${contextMessages.length} mensagens desta conversa
 - ANALISE todo o contexto para dar uma resposta coerente e natural
-- NÃO repita informações já dadas anteriormente
-- Mantenha a conversa fluida e natural
-- Responda de forma específica ao que o cliente perguntou
-- Seja conciso mas completo`;
+- NÃO repita informações já dadas anteriormente na conversa
+- Mantenha a conversa fluida e natural, respondendo especificamente às novas mensagens
+- Responda de forma específica ao que o cliente perguntou ou comentou
+- Seja conciso mas completo
+- Use um tom natural e conversacional`;
 
-      // Usar o contexto completo + as mensagens atuais
+      // Usar as últimas 100 mensagens do contexto + as mensagens atuais
+      const recentContext = contextMessages.slice(-100).filter(msg => msg.content && msg.content.trim());
+      
       const messages = [
         {
           role: 'system',
           content: systemPrompt
         },
-        ...contextMessages.slice(-80).filter(msg => msg.content && msg.content.trim()),
+        ...recentContext,
         {
           role: 'user',
-          content: `NOVA MENSAGEM: ${currentBatchContent}`
+          content: `NOVAS MENSAGENS DO CLIENTE: ${currentBatchContent}`
         }
       ];
 
       console.log('🚀 Chamando OpenAI com contexto estruturado:', {
         systemPrompt: systemPrompt.substring(0, 100),
-        contextMessages: contextMessages.length,
-        totalMessages: messages.length
+        recentContextMessages: recentContext.length,
+        totalMessages: messages.length,
+        newContent: currentBatchContent.substring(0, 100)
       });
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -312,14 +336,16 @@ export const useTicketRealtime = (clientId: string) => {
       });
 
       if (!response.ok) {
-        throw new Error(`Erro da OpenAI: ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ Erro da OpenAI:', response.status, errorText);
+        throw new Error(`Erro da OpenAI: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
       const assistantResponse = data.choices?.[0]?.message?.content;
 
       if (assistantResponse?.trim() && mountedRef.current) {
-        console.log(`🤖 Resposta recebida (${assistantResponse.length} caracteres):`, assistantResponse.substring(0, 100));
+        console.log(`🤖 Resposta recebida (${assistantResponse.length} caracteres):`, assistantResponse.substring(0, 200));
         
         // Quebrar resposta em blocos menores
         const messageBlocks = splitMessage(assistantResponse);
@@ -333,7 +359,7 @@ export const useTicketRealtime = (clientId: string) => {
           if (!mountedRef.current) break;
           
           const blockContent = messageBlocks[i];
-          console.log(`📤 Enviando bloco ${i + 1}/${messageBlocks.length}`);
+          console.log(`📤 Enviando bloco ${i + 1}/${messageBlocks.length}: ${blockContent.substring(0, 100)}`);
           
           // Delay entre blocos
           if (i > 0) {
@@ -341,7 +367,8 @@ export const useTicketRealtime = (clientId: string) => {
           }
           
           // Enviar via WhatsApp
-          await whatsappService.sendMessage(instanceId, message.from, blockContent);
+          const sendResult = await whatsappService.sendMessage(instanceId, message.from, blockContent);
+          console.log(`📤 Resultado do envio bloco ${i + 1}:`, sendResult);
           
           // Registrar no ticket
           const aiMessageId = `ai_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
@@ -362,12 +389,12 @@ export const useTicketRealtime = (clientId: string) => {
 
         console.log('✅ Resposta completa enviada');
         
-        // Marcar mensagens como lidas
-        for (const msg of allMessages) {
+        // Marcar mensagens como lidas após enviar toda a resposta
+        for (const msg of allMessages.filter(m => !m.fromMe)) {
           await markAsRead(message.from, msg.id || msg.key?.id);
         }
       } else {
-        console.log('⚠️ Resposta do assistente vazia');
+        console.log('⚠️ Resposta do assistente vazia ou inválida:', assistantResponse);
       }
 
     } catch (error) {
@@ -378,14 +405,7 @@ export const useTicketRealtime = (clientId: string) => {
         console.log('🤖 Assistente parou de digitar');
       }
       processingRef.current.delete(ticketId);
-      
-      // Limpar contexto processado após um tempo
-      setTimeout(() => {
-        const contextKey = `${ticketId}_${allMessages[0]?.timestamp || Date.now()}`;
-        processedMessagesRef.current.delete(contextKey);
-      }, 60000); // 1 minuto
-      
-      console.log('✅ Processamento finalizado');
+      console.log('✅ Processamento finalizado para ticket:', ticketId);
     }
   }, [clientId, simulateHumanTyping, markAsRead, splitMessage]);
 
@@ -399,6 +419,12 @@ export const useTicketRealtime = (clientId: string) => {
     }
 
     console.log(`📦 INICIANDO processamento de lote de ${messages.length} mensagens do chat ${chatId}`);
+    console.log(`📝 Mensagens do lote:`, messages.map(m => ({
+      id: m.id,
+      content: m.body?.substring(0, 50),
+      fromMe: m.fromMe,
+      timestamp: new Date(m.timestamp || Date.now()).toLocaleTimeString()
+    })));
     
     const clientMessages = messages.filter(msg => !msg.fromMe);
     if (clientMessages.length === 0) {
@@ -446,7 +472,7 @@ export const useTicketRealtime = (clientId: string) => {
     const normalizedMessage = normalizeWhatsAppMessage(firstClientMessage);
     
     try {
-      console.log('👤 Criando/atualizando ticket');
+      console.log('👤 Criando/atualizando ticket para:', normalizedMessage.customerName);
       
       const ticketId = await ticketsService.createOrUpdateTicket(
         clientId,
@@ -496,14 +522,14 @@ export const useTicketRealtime = (clientId: string) => {
       // Processar com assistente apenas se não estiver já processando
       if (!processingRef.current.has(ticketId)) {
         processingRef.current.add(ticketId);
-        console.log(`🤖 INICIANDO processamento com assistente`);
+        console.log(`🤖 INICIANDO processamento com assistente para ticket: ${ticketId}`);
         setTimeout(() => {
           if (mountedRef.current) {
             processWithAssistant(normalizedMessage, ticketId, clientMessages);
           }
         }, 1000);
       } else {
-        console.log(`⚠️ Ticket ${ticketId} já está sendo processado, aguardando`);
+        console.log(`⚠️ Ticket ${ticketId} já está sendo processado pelo assistente, aguardando`);
       }
       
     } catch (error) {
