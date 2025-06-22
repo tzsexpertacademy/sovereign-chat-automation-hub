@@ -1,9 +1,9 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Plus, 
   Play, 
@@ -325,16 +325,56 @@ const RealInstancesManager = () => {
   const handleConnectInstance = async (instanceId: string) => {
     try {
       setLoading(true);
-      await whatsappService.connectClient(instanceId);
+      console.log('🔗 Conectando instância:', instanceId);
+      
+      const result = await whatsappService.connectClient(instanceId);
+      console.log('✅ Resultado da conexão:', result);
+      
+      // Update instance status
+      await whatsappInstancesService.updateInstance(instanceId, {
+        status: 'connecting'
+      });
+      
+      // Set up real-time listener
+      whatsappService.joinClientRoom(instanceId);
+      whatsappService.onClientStatus(instanceId, async (clientData) => {
+        console.log(`📱 Status atualizado para ${instanceId}:`, clientData);
+        setClients(prev => {
+          const index = prev.findIndex(c => c.clientId === clientData.clientId);
+          if (index >= 0) {
+            const updated = [...prev];
+            updated[index] = clientData;
+            return updated;
+          } else {
+            return [...prev, clientData];
+          }
+        });
+        
+        // Update instance in Supabase
+        try {
+          await whatsappInstancesService.updateInstance(clientData.clientId, {
+            status: clientData.status,
+            phone_number: clientData.phoneNumber,
+            has_qr_code: clientData.hasQrCode
+          });
+        } catch (error) {
+          console.error('Erro ao atualizar instância no Supabase:', error);
+        }
+      });
       
       toast({
         title: "Sucesso",
         description: `Conectando instância ${instanceId}...`,
       });
       
-      await loadClients();
-      await loadDatabaseInstances();
+      // Reload data after a short delay
+      setTimeout(() => {
+        loadClients();
+        loadDatabaseInstances();
+      }, 2000);
+      
     } catch (error: any) {
+      console.error('❌ Erro ao conectar instância:', error);
       toast({
         title: "Erro",
         description: error.message || "Falha ao conectar instância",
@@ -436,15 +476,31 @@ const RealInstancesManager = () => {
 
   const handleViewQrCode = async (clientId: string) => {
     try {
+      setLoading(true);
+      console.log('🔍 Buscando QR Code para:', clientId);
+      
       const clientStatus = await whatsappService.getClientStatus(clientId);
-      setSelectedClient(clientStatus);
-      setShowQrModal(true);
+      console.log('📱 Status do cliente:', clientStatus);
+      
+      if (clientStatus && clientStatus.hasQrCode) {
+        setSelectedClient(clientStatus);
+        setShowQrModal(true);
+      } else {
+        toast({
+          title: "QR Code não disponível",
+          description: "QR Code ainda não foi gerado ou a instância não está no status correto",
+          variant: "destructive",
+        });
+      }
     } catch (error: any) {
+      console.error('❌ Erro ao buscar QR Code:', error);
       toast({
         title: "Erro",
         description: error.message || "Falha ao buscar QR Code",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -840,10 +896,11 @@ const RealInstancesManager = () => {
                       </Button>
                     )}
                     
-                    {instance.status === 'qr_ready' && !isFromDatabase && (
+                    {(instance.status === 'qr_ready' || instance.hasQrCode) && (
                       <Button
                         size="sm"
                         onClick={() => handleViewQrCode(instance.clientId)}
+                        disabled={loading}
                         className="bg-blue-600 hover:bg-blue-700"
                       >
                         <QrCode className="w-4 h-4 mr-2" />
@@ -934,6 +991,37 @@ const RealInstancesManager = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* QR Code Modal */}
+      <Dialog open={showQrModal} onOpenChange={setShowQrModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>QR Code WhatsApp</DialogTitle>
+            <DialogDescription>
+              Escaneie este QR Code com seu WhatsApp para conectar a instância
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center p-4">
+            {selectedClient?.qrCode ? (
+              <div className="text-center">
+                <img 
+                  src={selectedClient.qrCode} 
+                  alt="QR Code" 
+                  className="max-w-full h-auto border rounded"
+                />
+                <p className="text-sm text-gray-600 mt-2">
+                  Instância: {selectedClient.clientId}
+                </p>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <QrCode className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-600">QR Code não disponível</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
