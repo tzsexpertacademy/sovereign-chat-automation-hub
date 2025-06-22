@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Send, Bot, User, AlertCircle, Queue } from 'lucide-react';
+import { Send, Bot, User, AlertCircle, Users } from 'lucide-react';
 import { useTicketMessages } from '@/hooks/useTicketMessages';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { ticketsService } from '@/services/ticketsService';
@@ -248,7 +247,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       {/* Informações da fila ativa */}
       {queueInfo && (
         <div className="p-3 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-blue-800">
-          <Queue className="w-4 h-4" />
+          <Users className="w-4 h-4" />
           <span className="text-sm font-medium">Fila Ativa: {queueInfo.name}</span>
           {queueInfo.assistants && (
             <Badge variant="secondary" className="text-xs">

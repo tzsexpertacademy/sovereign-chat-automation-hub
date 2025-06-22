@@ -48,11 +48,11 @@ export const useTicketMessages = (ticketId: string) => {
         (payload) => {
           console.log('🔔 Mudança na tabela ticket_messages detectada:', {
             event: payload.eventType,
-            messageId: payload.new?.id || payload.old?.id,
-            content: payload.new?.content?.substring(0, 50) || 'N/A'
+            messageId: (payload.new as any)?.id || (payload.old as any)?.id,
+            content: (payload.new as any)?.content?.substring(0, 50) || 'N/A'
           });
           
-          if (payload.eventType === 'INSERT') {
+          if (payload.eventType === 'INSERT' && payload.new) {
             const newMessage = payload.new as TicketMessage;
             console.log('📨 Nova mensagem recebida via realtime:', {
               id: newMessage.id,
@@ -77,18 +77,18 @@ export const useTicketMessages = (ticketId: string) => {
               console.log('✅ Mensagem adicionada à lista, total:', sortedMessages.length);
               return sortedMessages;
             });
-          } else if (payload.eventType === 'UPDATE') {
+          } else if (payload.eventType === 'UPDATE' && payload.new) {
             const updatedMessage = payload.new as TicketMessage;
             console.log('🔄 Mensagem atualizada via realtime:', updatedMessage.id);
             
             setMessages(prev => 
               prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
             );
-          } else if (payload.eventType === 'DELETE') {
-            console.log('🗑️ Mensagem removida via realtime:', payload.old.id);
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            console.log('🗑️ Mensagem removida via realtime:', (payload.old as any).id);
             
             setMessages(prev => 
-              prev.filter(msg => msg.id !== payload.old.id)
+              prev.filter(msg => msg.id !== (payload.old as any).id)
             );
           }
         }
