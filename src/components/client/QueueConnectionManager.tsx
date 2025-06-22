@@ -12,11 +12,13 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  RefreshCw
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queuesService, QueueWithAssistant } from "@/services/queuesService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
+import whatsappService from "@/services/whatsappMultiClient";
 
 interface QueueConnectionManagerProps {
   clientId: string;
@@ -45,13 +47,39 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
         whatsappInstancesService.getInstancesByClientId(clientId)
       ]);
       
+      // Verificar status real das instâncias no servidor WhatsApp
+      const instancesWithRealStatus = await Promise.all(
+        instancesData.map(async (instance) => {
+          try {
+            const serverStatus = await whatsappService.getClientStatus(instance.instance_id);
+            if (serverStatus && serverStatus.status !== instance.status) {
+              // Atualizar status no banco
+              await whatsappInstancesService.updateInstanceById(instance.id, {
+                status: serverStatus.status,
+                phone_number: serverStatus.phoneNumber || instance.phone_number
+              });
+              
+              return {
+                ...instance,
+                status: serverStatus.status,
+                phone_number: serverStatus.phoneNumber || instance.phone_number
+              };
+            }
+            return instance;
+          } catch (error) {
+            console.log(`❌ Erro ao verificar status para ${instance.instance_id}:`, error);
+            return instance;
+          }
+        })
+      );
+      
       console.log('📊 Dados carregados:', { 
         queues: queuesData.length, 
-        instances: instancesData.length 
+        instances: instancesWithRealStatus.length 
       });
       
       setQueues(queuesData);
-      setInstances(instancesData.filter(i => i.status === 'connected'));
+      setInstances(instancesWithRealStatus.filter(i => i.status === 'connected'));
     } catch (error) {
       console.error('❌ Erro ao carregar dados:', error);
       toast({
@@ -159,6 +187,20 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
 
   return (
     <div className="space-y-6">
+      {/* Header com botão de refresh */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold">Gerenciamento de Filas</h2>
+          <p className="text-muted-foreground">
+            Configure conexões entre instâncias WhatsApp e filas de atendimento
+          </p>
+        </div>
+        <Button onClick={loadData} variant="outline" disabled={loading}>
+          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Atualizar
+        </Button>
+      </div>
+
       {/* Connection Form */}
       <Card>
         <CardHeader>
@@ -261,6 +303,9 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
               return (
                 <div key={instance.instance_id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center space-x-3">
+                    <div className={`w-3 h-3 rounded-full ${
+                      instance.status === 'connected' ? 'bg-green-500' : 'bg-red-500'
+                    }`} />
                     <Smartphone className="w-5 h-5 text-blue-500" />
                     <div>
                       <h4 className="font-medium">

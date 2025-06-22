@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,9 +30,8 @@ const WhatsAppConnection = () => {
   const { clientId } = useParams();
   const { toast } = useToast();
   
-  const [client, setClient] = useState<WhatsAppClient | null>(null);
-  const [clientData, setClientData] = useState<ClientData | null>(null);
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
+  const [clientData, setClientData] = useState<ClientData | null>(null);
   const [queues, setQueues] = useState<QueueWithAssistant[]>([]);
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -58,22 +56,44 @@ const WhatsAppConnection = () => {
       const clientsData = await clientsService.getAllClients();
       const clientInfo = clientsData.find(c => c.id === clientId);
       setClientData(clientInfo || null);
-      
-      if (clientInfo?.instance_id) {
-        try {
-          const clientStatus = await whatsappService.getClientStatus(clientInfo.instance_id);
-          setClient(clientStatus);
-        } catch (error) {
-          console.log('Cliente não encontrado no servidor WhatsApp');
-        }
-      }
 
-      // Carregar instâncias com refresh dos dados
+      // Carregar instâncias do banco de dados
       const instancesData = await whatsappInstancesService.getInstancesByClientId(clientId!);
-      console.log('📱 Instâncias carregadas:', instancesData);
-      setInstances(instancesData);
+      console.log('📱 Instâncias do banco:', instancesData);
 
-      // Carregar filas com conexões atualizadas
+      // Para cada instância, verificar status real no servidor WhatsApp
+      const instancesWithRealStatus = await Promise.all(
+        instancesData.map(async (instance) => {
+          try {
+            const serverStatus = await whatsappService.getClientStatus(instance.instance_id);
+            console.log(`📱 Status do servidor para ${instance.instance_id}:`, serverStatus);
+            
+            // Atualizar no banco se status for diferente
+            if (serverStatus && serverStatus.status !== instance.status) {
+              console.log(`📱 Atualizando status de ${instance.status} para ${serverStatus.status}`);
+              await whatsappInstancesService.updateInstanceById(instance.id, {
+                status: serverStatus.status,
+                phone_number: serverStatus.phoneNumber || instance.phone_number
+              });
+              
+              return {
+                ...instance,
+                status: serverStatus.status,
+                phone_number: serverStatus.phoneNumber || instance.phone_number
+              };
+            }
+            
+            return instance;
+          } catch (error) {
+            console.log(`❌ Erro ao verificar status para ${instance.instance_id}:`, error);
+            return instance;
+          }
+        })
+      );
+
+      setInstances(instancesWithRealStatus);
+
+      // Carregar filas
       const queuesData = await queuesService.getClientQueues(clientId!);
       console.log('📋 Filas carregadas:', queuesData);
       setQueues(queuesData);
@@ -93,15 +113,32 @@ const WhatsAppConnection = () => {
   const setupRealtimeUpdates = () => {
     if (!clientId) return;
 
-    const clientData = clientsService.getAllClients().then(clients => {
-      const client = clients.find(c => c.id === clientId);
-      if (client?.instance_id) {
-        whatsappService.onClientStatus(client.instance_id, (status) => {
-          console.log('📱 Status atualizado:', status);
-          setClient(status);
-        });
-      }
+    // Configurar listener para atualizações de status via WebSocket
+    const socket = whatsappService.connectSocket();
+    
+    socket.on('connect', () => {
+      console.log('✅ WebSocket conectado para updates');
+      whatsappService.joinClientRoom(clientId);
     });
+
+    socket.on(`status_${clientId}`, (statusUpdate: any) => {
+      console.log('📱 Status update recebido:', statusUpdate);
+      
+      setInstances(prev => prev.map(instance => {
+        if (instance.instance_id === statusUpdate.instanceId) {
+          return {
+            ...instance,
+            status: statusUpdate.status,
+            phone_number: statusUpdate.phoneNumber || instance.phone_number
+          };
+        }
+        return instance;
+      }));
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   };
 
   const canCreateNewInstance = () => {
@@ -342,6 +379,17 @@ const WhatsAppConnection = () => {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'connected': return 'Conectado';
+      case 'qr_ready': return 'Aguardando QR';
+      case 'connecting': return 'Conectando';
+      case 'error': return 'Erro';
+      case 'disconnected': return 'Desconectado';
+      default: return status;
+    }
+  };
+
   if (loading && instances.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -497,7 +545,7 @@ const WhatsAppConnection = () => {
                   <Badge variant={instance.status === 'connected' ? 'default' : 'secondary'}>
                     <div className="flex items-center space-x-1">
                       {getStatusIcon(instance.status)}
-                      <span className="capitalize">{instance.status}</span>
+                      <span className="capitalize">{getStatusLabel(instance.status)}</span>
                     </div>
                   </Badge>
                   <Button

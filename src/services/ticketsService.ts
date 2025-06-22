@@ -85,6 +85,9 @@ class TicketsService {
       return (data || []).map(ticket => ({
         ...ticket,
         status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
+        tags: Array.isArray(ticket.tags) ? ticket.tags : [],
+        custom_fields: ticket.custom_fields || {},
+        internal_notes: Array.isArray(ticket.internal_notes) ? ticket.internal_notes : [],
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
@@ -112,6 +115,9 @@ class TicketsService {
       return {
         ...data,
         status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        custom_fields: data.custom_fields || {},
+        internal_notes: Array.isArray(data.internal_notes) ? data.internal_notes : [],
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
       };
@@ -259,14 +265,13 @@ class TicketsService {
         .from('conversation_tickets')
         .update({ 
           assigned_queue_id: queueId,
-          assigned_assistant_id: null, // Reset assistant when transferring
+          assigned_assistant_id: null,
           updated_at: new Date().toISOString()
         })
         .eq('id', ticketId);
 
       if (error) throw error;
       
-      // Log the transfer event
       await supabase
         .from('ticket_events')
         .insert({
