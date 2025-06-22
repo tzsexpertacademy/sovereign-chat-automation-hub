@@ -28,6 +28,68 @@ export const useTicketRealtime = (clientId: string) => {
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
 
+  // Função para normalizar dados da mensagem do WhatsApp
+  const normalizeWhatsAppMessage = useCallback((message: any) => {
+    console.log('📨 Normalizando mensagem WhatsApp:', message);
+    
+    // Extrair chat ID e telefone
+    let chatId = message.from || message.chatId || message.key?.remoteJid;
+    let phoneNumber = chatId;
+    
+    if (chatId?.includes('@')) {
+      phoneNumber = chatId.split('@')[0];
+    }
+    
+    // Extrair nome do contato
+    let customerName = message.notifyName || message.pushName || message.participant || phoneNumber;
+    
+    // Se for grupo, usar nome do grupo
+    if (chatId?.includes('@g.us')) {
+      customerName = message.chat?.name || customerName;
+    }
+    
+    // Normalizar conteúdo
+    let content = message.body || message.caption || message.text || '';
+    let messageType = message.type || 'text';
+    
+    // Processar diferentes tipos de mídia
+    if (message.type === 'image') {
+      content = `[Imagem] ${message.caption || 'Imagem enviada'}`;
+      messageType = 'image';
+    } else if (message.type === 'audio' || message.type === 'ptt') {
+      content = `[Áudio] Mensagem de áudio`;
+      messageType = 'audio';
+    } else if (message.type === 'video') {
+      content = `[Vídeo] ${message.caption || 'Vídeo enviado'}`;
+      messageType = 'video';
+    } else if (message.type === 'document') {
+      content = `[Documento] ${message.filename || 'Documento enviado'}`;
+      messageType = 'document';
+    }
+    
+    // Verificar se é mensagem citada
+    if (message.quotedMessage || message.quotedMsg) {
+      const quoted = message.quotedMessage || message.quotedMsg;
+      const quotedContent = quoted.body || quoted.caption || '[Mídia citada]';
+      content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
+    }
+    
+    return {
+      id: message.id || message.key?.id || `msg_${Date.now()}_${Math.random()}`,
+      from: chatId,
+      fromMe: message.fromMe || false,
+      body: content,
+      type: messageType,
+      timestamp: message.timestamp || Date.now(),
+      author: message.author || customerName,
+      notifyName: customerName,
+      pushName: customerName,
+      mediaUrl: message.mediaUrl || null,
+      phoneNumber,
+      customerName
+    };
+  }, []);
+
   // Processar lote de mensagens com assistente
   const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
     if (!mountedRef.current || messages.length === 0) return;
@@ -36,73 +98,52 @@ export const useTicketRealtime = (clientId: string) => {
     
     // Usar apenas a última mensagem para resposta do assistente
     const lastMessage = messages[messages.length - 1];
+    const normalizedMessage = normalizeWhatsAppMessage(lastMessage);
     
     try {
       // Processar reações automáticas para todas as mensagens
       for (const message of messages) {
         if (!message.fromMe) {
-          await processReaction(message);
+          const normalized = normalizeWhatsAppMessage(message);
+          await processReaction(normalized);
         }
       }
 
-      // Extrair informações do contato
-      const customerName = lastMessage.notifyName || lastMessage.pushName || 
-                         lastMessage.from?.replace(/\D/g, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') || 
-                         'Contato';
-      
-      const customerPhone = lastMessage.from?.replace(/\D/g, '') || '';
+      console.log('👤 Dados do cliente extraídos:', {
+        chatId: normalizedMessage.from,
+        customerName: normalizedMessage.customerName,
+        phoneNumber: normalizedMessage.phoneNumber
+      });
       
       // Criar/atualizar ticket
       const ticketId = await ticketsService.createOrUpdateTicket(
         clientId,
-        lastMessage.from || lastMessage.chatId,
-        clientId,
-        customerName,
-        customerPhone,
-        lastMessage.body || lastMessage.caption || '[Mídia]',
-        new Date().toISOString()
+        normalizedMessage.from,
+        clientId, // Usar clientId como instance_id temporariamente
+        normalizedMessage.customerName,
+        normalizedMessage.phoneNumber,
+        normalizedMessage.body,
+        new Date(normalizedMessage.timestamp).toISOString()
       );
 
       console.log('📋 Ticket criado/atualizado:', ticketId);
 
       // Adicionar todas as mensagens do lote ao ticket
       for (const message of messages) {
-        // Processar conteúdo baseado no tipo
-        let content = message.body || message.caption || '';
-        let messageType = message.type || 'text';
+        const normalized = normalizeWhatsAppMessage(message);
         
-        if (message.type === 'image') {
-          content = `[Imagem] ${message.caption || 'Imagem enviada'}`;
-          messageType = 'image';
-        } else if (message.type === 'audio' || message.type === 'ptt') {
-          content = `[Áudio] Mensagem de áudio`;
-          messageType = 'audio';
-        } else if (message.type === 'video') {
-          content = `[Vídeo] ${message.caption || 'Vídeo enviado'}`;
-          messageType = 'video';
-        } else if (message.type === 'document') {
-          content = `[Documento] ${message.filename || 'Documento enviado'}`;
-          messageType = 'document';
-        }
-
-        // Verificar se é mensagem citada
-        if (message.quotedMessage) {
-          const quotedContent = message.quotedMessage.body || message.quotedMessage.caption || '[Mídia citada]';
-          content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
-        }
-
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
-          message_id: message.id,
-          from_me: message.fromMe,
-          sender_name: message.author || customerName,
-          content: content,
-          message_type: messageType,
+          message_id: normalized.id,
+          from_me: normalized.fromMe,
+          sender_name: normalized.author,
+          content: normalized.body,
+          message_type: normalized.type,
           is_internal_note: false,
           is_ai_response: false,
           processing_status: 'received',
-          timestamp: new Date(message.timestamp || Date.now()).toISOString(),
-          media_url: message.mediaUrl || null
+          timestamp: new Date(normalized.timestamp).toISOString(),
+          media_url: normalized.mediaUrl
         });
       }
 
@@ -114,15 +155,15 @@ export const useTicketRealtime = (clientId: string) => {
         processingRef.current.add(ticketId);
         setTimeout(() => {
           if (mountedRef.current) {
-            processWithAssistant(lastMessage, ticketId, messages);
+            processWithAssistant(normalizedMessage, ticketId, messages);
           }
-        }, 3000);
+        }, 2000);
       }
       
     } catch (error) {
       console.error('❌ Erro ao processar lote de mensagens:', error);
     }
-  }, [clientId, processReaction, markActivity]);
+  }, [clientId, processReaction, markActivity, normalizeWhatsAppMessage]);
 
   // Hook para agrupamento de mensagens
   const { addMessage } = useMessageBatch(processBatchWithAssistant);
@@ -130,7 +171,7 @@ export const useTicketRealtime = (clientId: string) => {
   // Carregar tickets com debounce melhorado
   const loadTickets = useCallback(async () => {
     const now = Date.now();
-    if (!clientId || !mountedRef.current || (now - lastLoadTimeRef.current) < 3000) {
+    if (!clientId || !mountedRef.current || (now - lastLoadTimeRef.current) < 2000) {
       return;
     }
     
@@ -342,7 +383,7 @@ export const useTicketRealtime = (clientId: string) => {
       socketRef.current = socket;
       
       socket.on('connect', () => {
-        console.log('✅ WebSocket conectado');
+        console.log('✅ WebSocket conectado para cliente:', clientId);
         whatsappService.joinClientRoom(clientId);
       });
 
@@ -374,6 +415,13 @@ export const useTicketRealtime = (clientId: string) => {
 
       socket.on(messageEvent, handleNewMessage);
 
+      // Listener genérico para debug
+      socket.onAny((eventName: string, ...args: any[]) => {
+        if (eventName.includes(clientId)) {
+          console.log(`🔔 Evento WebSocket recebido: ${eventName}`, args);
+        }
+      });
+
       // Canal do Supabase para atualizações
       const channel = supabase
         .channel(`tickets-${clientId}`)
@@ -385,9 +433,10 @@ export const useTicketRealtime = (clientId: string) => {
             table: 'conversation_tickets',
             filter: `client_id=eq.${clientId}`
           },
-          () => {
+          (payload) => {
+            console.log('🔄 Mudança no banco de dados detectada:', payload);
             if (mountedRef.current) {
-              setTimeout(loadTickets, 2000);
+              setTimeout(loadTickets, 1000);
             }
           }
         )

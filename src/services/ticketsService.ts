@@ -64,6 +64,47 @@ export interface CreateTicketMessageData {
   timestamp: string;
 }
 
+// Função utilitária para normalizar números de telefone
+function normalizePhoneNumber(phone: string): string {
+  if (!phone) return '';
+  
+  // Remove todos os caracteres não numéricos
+  const cleanPhone = phone.replace(/\D/g, '');
+  
+  // Se o número começar com 55 (Brasil), mantém como está
+  if (cleanPhone.startsWith('55') && cleanPhone.length >= 13) {
+    return cleanPhone;
+  }
+  
+  // Se tiver 11 dígitos e começar com código de área, adiciona 55
+  if (cleanPhone.length === 11 && cleanPhone.startsWith('4')) {
+    return `55${cleanPhone}`;
+  }
+  
+  // Se tiver 10 dígitos, adiciona 55 + 9 no meio
+  if (cleanPhone.length === 10 && cleanPhone.startsWith('47')) {
+    return `55${cleanPhone.slice(0, 2)}9${cleanPhone.slice(2)}`;
+  }
+  
+  return cleanPhone;
+}
+
+// Função para formatar nome do cliente
+function formatCustomerName(phone: string, name?: string): string {
+  if (name && name !== phone && !name.includes('@') && name !== 'undefined') {
+    return name;
+  }
+  
+  const normalizedPhone = normalizePhoneNumber(phone);
+  if (normalizedPhone.length >= 11) {
+    // Formato brasileiro: +55 (XX) 9XXXX-XXXX
+    const formatted = normalizedPhone.replace(/(\d{2})(\d{2})(\d{1})(\d{4})(\d{4})/, '+$1 ($2) $3$4-$5');
+    return formatted;
+  }
+  
+  return phone || 'Contato';
+}
+
 class TicketsService {
   async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
     try {
@@ -154,26 +195,57 @@ class TicketsService {
     lastMessageAt: string
   ): Promise<string> {
     try {
+      console.log('🎫 Criando/atualizando ticket:', {
+        clientId,
+        chatId,
+        instanceId,
+        customerName,
+        customerPhone,
+        lastMessage: lastMessage.substring(0, 50)
+      });
+
+      // Normalizar número de telefone
+      const normalizedPhone = normalizePhoneNumber(customerPhone);
+      const formattedName = formatCustomerName(normalizedPhone, customerName);
+
+      console.log('📞 Dados normalizados:', {
+        originalPhone: customerPhone,
+        normalizedPhone,
+        formattedName
+      });
+
       const { data, error } = await supabase.rpc('upsert_conversation_ticket', {
         p_client_id: clientId,
         p_chat_id: chatId,
         p_instance_id: instanceId,
-        p_customer_name: customerName,
-        p_customer_phone: customerPhone,
+        p_customer_name: formattedName,
+        p_customer_phone: normalizedPhone,
         p_last_message: lastMessage,
         p_last_message_at: lastMessageAt
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro na função upsert_conversation_ticket:', error);
+        throw error;
+      }
+
+      console.log('✅ Ticket criado/atualizado com sucesso:', data);
       return data;
     } catch (error) {
-      console.error('Erro ao criar/atualizar ticket:', error);
+      console.error('❌ Erro ao criar/atualizar ticket:', error);
       throw error;
     }
   }
 
   async addTicketMessage(messageData: CreateTicketMessageData): Promise<void> {
     try {
+      console.log('💬 Adicionando mensagem ao ticket:', {
+        ticketId: messageData.ticket_id,
+        messageId: messageData.message_id,
+        fromMe: messageData.from_me,
+        content: messageData.content.substring(0, 50)
+      });
+
       // Verificar se a mensagem já existe para evitar duplicatas
       const { data: existingMessage } = await supabase
         .from('ticket_messages')
@@ -183,7 +255,7 @@ class TicketsService {
         .single();
 
       if (existingMessage) {
-        console.log('Mensagem já existe, ignorando duplicata:', messageData.message_id);
+        console.log('⚠️ Mensagem já existe, ignorando duplicata:', messageData.message_id);
         return;
       }
 
@@ -191,11 +263,14 @@ class TicketsService {
         .from('ticket_messages')
         .insert(messageData);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao inserir mensagem:', error);
+        throw error;
+      }
       
       console.log('✅ Mensagem adicionada ao ticket:', messageData.message_id);
     } catch (error) {
-      console.error('Erro ao adicionar mensagem ao ticket:', error);
+      console.error('❌ Erro ao adicionar mensagem ao ticket:', error);
       throw error;
     }
   }
@@ -227,28 +302,53 @@ class TicketsService {
         try {
           console.log(`📥 Importando conversas da instância: ${instance.instance_id}`);
           
-          const response = await fetch(`/api/whatsapp/${instance.instance_id}/conversations`, {
+          // Usar servidor WhatsApp correto
+          const response = await fetch(`https://146.59.227.248/api/instances/${instance.instance_id}/chats`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
-              'X-Client-ID': clientId
             },
           });
 
           if (!response.ok) {
             console.error(`❌ Erro HTTP ${response.status} para instância ${instance.instance_id}`);
+            const errorText = await response.text();
+            console.error('Resposta do servidor:', errorText);
             totalErrors++;
             continue;
           }
 
-          const result = await response.json();
+          const chats = await response.json();
+          console.log(`📊 Chats encontrados:`, chats.length);
           
-          if (result.success) {
-            totalImported += result.imported || 0;
-            console.log(`✅ Instância ${instance.instance_id}: ${result.imported} conversas importadas`);
+          if (Array.isArray(chats) && chats.length > 0) {
+            for (const chat of chats) {
+              try {
+                // Extrair informações do chat
+                const chatId = chat.id || chat.chatId;
+                const customerName = chat.name || chat.pushName || chatId.replace('@c.us', '').replace('@g.us', '');
+                const customerPhone = chatId.replace('@c.us', '').replace('@g.us', '');
+                const lastMessage = chat.lastMessage?.body || chat.lastMessage?.caption || 'Conversa importada do WhatsApp';
+                const lastMessageAt = chat.lastMessage?.timestamp ? new Date(chat.lastMessage.timestamp * 1000).toISOString() : new Date().toISOString();
+
+                await this.createOrUpdateTicket(
+                  clientId,
+                  chatId,
+                  instance.instance_id,
+                  customerName,
+                  customerPhone,
+                  lastMessage,
+                  lastMessageAt
+                );
+
+                totalImported++;
+              } catch (chatError) {
+                console.error(`❌ Erro ao processar chat:`, chatError);
+                totalErrors++;
+              }
+            }
           } else {
-            console.error(`❌ Erro na instância ${instance.instance_id}:`, result.error);
-            totalErrors++;
+            console.log(`ℹ️ Nenhum chat encontrado na instância ${instance.instance_id}`);
           }
         } catch (error) {
           console.error(`❌ Erro ao processar instância ${instance.instance_id}:`, error);
