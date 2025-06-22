@@ -1,311 +1,328 @@
-
-import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from "react";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, MessageSquare, Clock, User, Bot, AlertCircle, RefreshCw, Settings, Filter, CheckCircle } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import {
+  MessageSquare,
+  Users,
+  Download,
+  RefreshCw,
+  Search
+} from "lucide-react";
+import TicketCard from "./TicketCard";
+import TicketChatInterface from "./TicketChatInterface";
+import ContactsManager from "./ContactsManager";
 import { useTicketRealtime } from "@/hooks/useTicketRealtime";
 import { ticketsService } from "@/services/ticketsService";
 
-const TicketsInterface = () => {
-  const { clientId } = useParams<{ clientId: string }>();
+interface TicketsInterfaceProps {
+  clientId: string;
+}
+
+const TicketsInterface = ({ clientId }: TicketsInterfaceProps) => {
   const { toast } = useToast();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [selectedTicket, setSelectedTicket] = useState<string>("");
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'conversations' | 'contacts'>('conversations');
+  const [isImporting, setIsImporting] = useState(false);
+  
+  // Hook para tickets em tempo real
+  const { 
+    tickets, 
+    isLoading, 
+    isTyping, 
+    isOnline, 
+    reloadTickets,
+    debugMessages 
+  } = useTicketRealtime(clientId);
 
-  // Hook de tempo real
-  const { tickets, isLoading, reloadTickets } = useTicketRealtime(clientId || '');
-
-  const filteredTickets = tickets.filter(ticket => {
-    const matchesSearch = ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         ticket.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         ticket.last_message_preview?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
-
-  const handleImportConversations = async () => {
-    if (!clientId) return;
-    
-    try {
-      toast({
-        title: "Importando...",
-        description: "Iniciando importação de conversas do WhatsApp",
-      });
-
-      const result = await ticketsService.importConversationsFromWhatsApp(clientId);
-      
-      toast({
-        title: "Importação Concluída",
-        description: `${result.success} conversas importadas com sucesso. ${result.errors} erros.`,
-      });
-
-      reloadTickets();
-    } catch (error: any) {
-      toast({
-        title: "Erro na Importação",
-        description: error.message || "Erro ao importar conversas",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
+  const handleTicketAction = (action: string, ticketId: string) => {
+    console.log(`Ação ${action} no ticket ${ticketId}`);
+    toast({
+      title: "Ação realizada",
+      description: `Você ${action} o ticket ${ticketId}`
     });
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'open': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'resolved': return 'bg-blue-100 text-blue-800';
-      case 'closed': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const handleImport = async () => {
+    setIsImporting(true);
+    try {
+      const result = await ticketsService.importConversationsFromWhatsApp(clientId);
+      toast({
+        title: "Importação concluída",
+        description: result.message
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro ao importar",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsImporting(false);
     }
   };
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'open': return 'Aberto';
-      case 'pending': return 'Pendente';
-      case 'resolved': return 'Resolvido';
-      case 'closed': return 'Fechado';
-      default: return status;
-    }
+  const handleDebugMessages = () => {
+    debugMessages();
+    toast({
+      title: "Debug executado",
+      description: "Verifique o console para logs detalhados das mensagens"
+    });
   };
-
-  // Auto-refresh a cada 5 segundos
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!isLoading) {
-        reloadTickets();
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [isLoading, reloadTickets]);
-
-  if (isLoading && tickets.length === 0) {
-    return (
-      <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando tickets...</p>
-          <p className="text-sm text-gray-500 mt-2">Conectando ao sistema de tempo real...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="h-[calc(100vh-8rem)] grid grid-cols-12 gap-6">
-      {/* Lista de Tickets */}
-      <Card className="col-span-5 flex flex-col">
-        <CardHeader className="pb-3">
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                Tickets ({filteredTickets.length})
-                {isLoading && <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>}
-              </CardTitle>
-              <CardDescription className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                Sistema de atendimento em tempo real ativo
-              </CardDescription>
+    <div className="flex flex-col h-full">
+      {/* Header com status e controles */}
+      <div className="border-b p-4 bg-white">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-lg font-semibold">Conversas</h2>
+            <div className="flex items-center space-x-2">
+              <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className="text-sm text-gray-600">
+                {isOnline ? 'Online' : 'Offline'}
+              </span>
             </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={reloadTickets}
-                disabled={isLoading}
-                title="Recarregar tickets manualmente"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleImportConversations}
-                title="Importar conversas do WhatsApp"
-              >
-                <Settings className="w-4 h-4 mr-1" />
-                Importar
-              </Button>
-            </div>
+            {isTyping && (
+              <div className="flex items-center space-x-1 text-blue-500">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <span className="text-xs">Assistente digitando...</span>
+              </div>
+            )}
           </div>
           
-          <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input 
-                placeholder="Buscar tickets..." 
-                className="pl-10"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            
-            <div className="flex gap-2">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Filtrar por status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os status</SelectItem>
-                  <SelectItem value="open">Aberto</SelectItem>
-                  <SelectItem value="pending">Pendente</SelectItem>
-                  <SelectItem value="resolved">Resolvido</SelectItem>
-                  <SelectItem value="closed">Fechado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="flex space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDebugMessages}
+              className="text-orange-600 border-orange-600 hover:bg-orange-50"
+            >
+              <Search className="w-4 h-4 mr-1" />
+              Debug
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleImport}
+              disabled={isImporting}
+              className="text-blue-600 border-blue-600 hover:bg-blue-50"
+            >
+              {isImporting ? (
+                <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4 mr-1" />
+              )}
+              {isImporting ? 'Importando...' : 'Importar'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={reloadTickets}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+            </Button>
           </div>
-        </CardHeader>
-        
-        <CardContent className="flex-1 p-0">
-          <ScrollArea className="h-full">
-            {filteredTickets.length === 0 ? (
-              <div className="p-4 text-center text-gray-500">
-                <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                <p>Nenhum ticket encontrado</p>
-                <p className="text-sm">
-                  {tickets.length === 0 
-                    ? "Aguardando mensagens do WhatsApp ou importe conversas existentes"
-                    : "Nenhum ticket corresponde aos filtros aplicados"
-                  }
-                </p>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={handleImportConversations}
-                  className="mt-2"
-                >
-                  <Settings className="w-3 h-3 mr-1" />
-                  Importar Conversas
-                </Button>
-              </div>
-            ) : (
-              filteredTickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  onClick={() => setSelectedTicket(ticket.id)}
-                  className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
-                    selectedTicket === ticket.id ? 'bg-blue-50 border-r-2 border-r-blue-500' : ''
-                  }`}
-                >
-                  <div className="flex items-start space-x-3">
-                    <Avatar className="w-10 h-10 flex-shrink-0">
-                      <AvatarFallback>
-                        {ticket.customer?.name?.charAt(0) || 'C'}
-                      </AvatarFallback>
-                    </Avatar>
-                    
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <div className="flex justify-between items-start">
-                        <h3 className="font-medium text-gray-900 truncate">
-                          {ticket.customer?.name || ticket.title}
-                        </h3>
-                        <div className="flex flex-col items-end gap-1">
-                          <Badge className={`text-xs ${getStatusColor(ticket.status)}`}>
-                            {getStatusLabel(ticket.status)}
-                          </Badge>
-                          <span className="text-xs text-gray-500">
-                            {formatTime(ticket.last_message_at)}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      <p className="text-sm text-gray-600 truncate">
-                        {ticket.last_message_preview || 'Sem mensagens'}
-                      </p>
-                      
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <div className="flex items-center gap-1">
-                          <span>{ticket.customer?.phone}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {ticket.assigned_assistant_id && (
-                            <div className="flex items-center gap-1 text-blue-600">
-                              <Bot className="w-3 h-3" />
-                              <span>IA</span>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+          <button
+            onClick={() => setActiveTab('conversations')}
+            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'conversations'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 inline mr-2" />
+            Conversas ({tickets.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('contacts')}
+            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'contacts'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Users className="w-4 h-4 inline mr-2" />
+            Contatos
+          </button>
+        </div>
+      </div>
+
+      {/* Conteúdo das tabs */}
+      <div className="flex-1 flex overflow-hidden">
+        {activeTab === 'conversations' ? (
+          <>
+            {/* Lista de tickets/conversas */}
+            <div className="w-1/3 border-r bg-gray-50 overflow-hidden flex flex-col">
+              <ScrollArea className="flex-1">
+                <div className="p-2">
+                  {isLoading && tickets.length === 0 ? (
+                    <div className="space-y-3">
+                      {[...Array(5)].map((_, i) => (
+                        <div key={i} className="p-3 bg-white rounded-lg">
+                          <div className="flex items-center space-x-3">
+                            <Skeleton className="h-10 w-10 rounded-full" />
+                            <div className="flex-1">
+                              <Skeleton className="h-4 w-3/4 mb-2" />
+                              <Skeleton className="h-3 w-1/2" />
                             </div>
-                          )}
-                          {ticket.priority > 1 && (
-                            <Badge variant="outline" className="text-xs">
-                              P{ticket.priority}
-                            </Badge>
-                          )}
+                          </div>
                         </div>
-                      </div>
+                      ))}
                     </div>
+                  ) : tickets.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-sm font-medium mb-2">Nenhuma conversa</p>
+                      <p className="text-xs">
+                        As conversas aparecerão aqui quando chegarem mensagens
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {tickets.map((ticket) => (
+                        <TicketCard
+                          key={ticket.id}
+                          ticket={ticket}
+                          isSelected={selectedTicketId === ticket.id}
+                          onClick={() => setSelectedTicketId(ticket.id)}
+                          onAction={handleTicketAction}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+
+            {/* Interface de chat */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {selectedTicketId ? (
+                <TicketChatInterface 
+                  clientId={clientId}
+                  ticketId={selectedTicketId}
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center bg-gray-50">
+                  <div className="text-center text-gray-500">
+                    <MessageSquare className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <h3 className="text-lg font-medium mb-2">Selecione uma conversa</h3>
+                    <p className="text-sm">
+                      Escolha uma conversa da lista para visualizar e responder mensagens
+                    </p>
                   </div>
                 </div>
-              ))
-            )}
-          </ScrollArea>
-        </CardContent>
-      </Card>
-
-      {/* Detalhes do Ticket */}
-      <Card className="col-span-7 flex flex-col">
-        {selectedTicket ? (
-          <div className="h-full flex flex-col">
-            <CardHeader className="border-b">
-              <CardTitle>Detalhes do Ticket</CardTitle>
-              <CardDescription>
-                Visualização e gerenciamento do atendimento
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 p-4">
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                <div className="text-center">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Detalhes do ticket em desenvolvimento</p>
-                  <p className="text-sm">Em breve: visualização de mensagens, histórico e ações</p>
-                  <p className="text-xs mt-2 text-green-600">
-                    ✅ Sistema de tempo real funcionando - mensagens chegam automaticamente
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center text-muted-foreground">
-              <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <h3 className="text-lg font-medium mb-2">Selecione um ticket</h3>
-              <p>Escolha um ticket da lista para ver os detalhes</p>
-              <div className="mt-4 space-y-2 text-sm">
-                <div className="flex items-center justify-center gap-2 text-green-600">
-                  <CheckCircle className="h-4 w-4" />
-                  <span>Sistema de tempo real ativo</span>
-                </div>
-                <p className="text-xs text-gray-500">
-                  Mensagens do WhatsApp aparecem automaticamente
-                </p>
-              </div>
+              )}
             </div>
+          </>
+        ) : (
+          <div className="flex-1">
+            <ContactsManager clientId={clientId} />
           </div>
         )}
-      </Card>
+      </div>
     </div>
   );
 };
+
+interface TicketCardProps {
+  ticket: any;
+  isSelected: boolean;
+  onClick: () => void;
+  onAction: (action: string, ticketId: string) => void;
+}
+
+const TicketCardComponent = ({
+  ticket,
+  isSelected,
+  onClick,
+  onAction
+}: TicketCardProps) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const handleAction = (action: string) => {
+    onAction(action, ticket.id);
+    setIsMenuOpen(false);
+  };
+
+  const getDisplayName = (ticket: any) => {
+    if (ticket.customer?.name && 
+        ticket.customer.name !== `Contato ${ticket.customer.phone}` &&
+        !ticket.customer.name.startsWith('Contato ')) {
+      return ticket.customer.name;
+    }
+    
+    if (ticket.title && ticket.title.includes('Conversa com ')) {
+      const nameFromTitle = ticket.title.replace('Conversa com ', '').trim();
+      if (nameFromTitle && 
+          !nameFromTitle.startsWith('Contato ') && 
+          nameFromTitle !== ticket.customer?.phone) {
+        return nameFromTitle;
+      }
+    }
+    
+    const phone = ticket.customer?.phone || ticket.chat_id;
+    if (phone) {
+      const cleanPhone = phone.replace(/\D/g, '');
+      if (cleanPhone.length >= 10) {
+        const formattedPhone = cleanPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
+        return formattedPhone;
+      }
+    }
+    
+    return 'Contato sem nome';
+  };
+
+  return (
+    <Card
+      className={`p-3 rounded-lg cursor-pointer transition-colors ${
+        isSelected ? 'bg-blue-50 text-blue-900' : 'bg-white hover:bg-gray-50'
+      }`}
+      onClick={onClick}
+    >
+      <div className="flex items-center space-x-3">
+        <div className="relative">
+          <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+            {ticket.customer?.name ? (
+              <span className="text-sm font-semibold">{ticket.customer.name.charAt(0).toUpperCase()}</span>
+            ) : (
+              <MessageSquare className="w-5 h-5 text-gray-400" />
+            )}
+          </div>
+          {ticket.status === 'open' && (
+            <span className="absolute top-0 right-0 w-3 h-3 bg-green-500 rounded-full border border-white"></span>
+          )}
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">{getDisplayName(ticket)}</div>
+            <div className="text-xs text-gray-500">
+              {new Date(ticket.last_message_at).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </div>
+          </div>
+          <p className="text-xs text-gray-600 truncate">{ticket.last_message_preview}</p>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+const TicketCard = TicketCardComponent;
 
 export default TicketsInterface;

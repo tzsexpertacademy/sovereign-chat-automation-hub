@@ -28,21 +28,67 @@ export const useTicketRealtime = (clientId: string) => {
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
 
-  // Processar mensagem individualmente com criação GARANTIDA de ticket
-  const processMessage = useCallback(async (message: any) => {
-    if (!mountedRef.current || !message) return;
+  // Debug - verificar se mensagens estão chegando do WhatsApp
+  const checkWhatsAppMessages = useCallback(async () => {
+    console.log('🔍 DEBUG: Verificando mensagens no banco...');
+    try {
+      const { data: messages, error } = await supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('instance_id', clientId)
+        .order('timestamp', { ascending: false })
+        .limit(10);
 
-    console.log('📨 Processando mensagem individual:', {
+      if (error) {
+        console.error('❌ Erro ao buscar mensagens:', error);
+      } else {
+        console.log('📊 DEBUG: Últimas 10 mensagens no banco:', messages);
+      }
+
+      // Verificar chats também
+      const { data: chats, error: chatsError } = await supabase
+        .from('whatsapp_chats')
+        .select('*')
+        .eq('instance_id', clientId)
+        .order('last_message_at', { ascending: false })
+        .limit(10);
+
+      if (chatsError) {
+        console.error('❌ Erro ao buscar chats:', chatsError);
+      } else {
+        console.log('💬 DEBUG: Últimos 10 chats no banco:', chats);
+      }
+    } catch (error) {
+      console.error('❌ Erro na verificação:', error);
+    }
+  }, [clientId]);
+
+  // Processar mensagem individualmente
+  const processMessage = useCallback(async (message: any) => {
+    if (!mountedRef.current || !message) {
+      console.log('⚠️ Componente desmontado ou mensagem inválida');
+      return;
+    }
+
+    console.log('📨 PROCESSANDO MENSAGEM RECEBIDA:', {
       id: message.id,
       from: message.from,
       chatId: message.chatId || message.from,
       fromMe: message.fromMe,
-      body: message.body?.substring(0, 50),
-      timestamp: message.timestamp
+      body: message.body?.substring(0, 100),
+      timestamp: message.timestamp,
+      type: message.type,
+      fullMessage: message // Log completo para debug
     });
 
     try {
       const chatId = message.chatId || message.from;
+      
+      if (!chatId) {
+        console.error('❌ Chat ID não encontrado na mensagem');
+        return;
+      }
+
       const customerPhone = chatId.replace(/\D/g, '');
       const customerName = message.notifyName || 
                          message.pushName || 
@@ -50,14 +96,14 @@ export const useTicketRealtime = (clientId: string) => {
                          (customerPhone ? customerPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : null) ||
                          'Contato';
 
-      console.log('🎫 SEMPRE criando ticket para:', {
+      console.log('🎫 Criando/atualizando ticket para:', {
         clientId,
         chatId,
         customerPhone,
         customerName
       });
 
-      // SEMPRE criar ticket - mesmo se foi excluído antes
+      // SEMPRE criar/atualizar ticket
       const ticketId = await ticketsService.ensureTicketExists(
         clientId,
         chatId,
@@ -68,7 +114,7 @@ export const useTicketRealtime = (clientId: string) => {
         new Date(message.timestamp || Date.now()).toISOString()
       );
 
-      console.log('✅ Ticket garantido:', ticketId);
+      console.log('✅ Ticket garantido/atualizado:', ticketId);
 
       // Processar reação automática apenas se não for minha mensagem
       if (!message.fromMe) {
@@ -137,11 +183,10 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId, processReaction, markActivity]);
 
-  // Processar lote de mensagens - REMOVIDO e substituído por processamento individual
   const processBatchWithAssistant = useCallback(async (chatId: string, messages: any[]) => {
     console.log(`📦 Processando lote de ${messages.length} mensagens`);
     
-    // Processar cada mensagem individualmente para garantir que todas sejam capturadas
+    // Processar cada mensagem individualmente
     for (const message of messages) {
       await processMessage(message);
     }
@@ -326,6 +371,11 @@ export const useTicketRealtime = (clientId: string) => {
 
     loadTickets();
 
+    // Debug inicial
+    setTimeout(() => {
+      checkWhatsAppMessages();
+    }, 2000);
+
     const socket = whatsappService.connectSocket();
     socketRef.current = socket;
     
@@ -338,16 +388,28 @@ export const useTicketRealtime = (clientId: string) => {
       console.log('❌ WebSocket desconectado');
     });
 
-    // Listener para mensagens do WhatsApp - SIMPLIFICADO para processar tudo
-    const messageEvent = `message_${clientId}`;
+    socket.on('error', (error: any) => {
+      console.error('❌ Erro no WebSocket:', error);
+    });
+
+    // MÚLTIPLOS LISTENERS para garantir captura
+    const messageEvents = [
+      `message_${clientId}`,
+      `new_message_${clientId}`,
+      `whatsapp_message_${clientId}`,
+      'message',
+      'new_message'
+    ];
+
     const handleNewMessage = async (message: any) => {
-      console.log('📨 NOVA MENSAGEM RECEBIDA - PROCESSAMENTO DIRETO:', {
-        id: message.id,
+      console.log('📨 EVENTO DE MENSAGEM CAPTURADO:', {
+        event: 'message received',
+        messageId: message.id,
         from: message.from,
         fromMe: message.fromMe,
-        type: message.type,
         body: message.body?.substring(0, 50),
-        timestamp: message.timestamp
+        timestamp: message.timestamp,
+        fullData: message
       });
       
       if (!mountedRef.current) {
@@ -355,11 +417,15 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
       
-      // PROCESSAR DIRETAMENTE - não usar batch
+      // PROCESSAR DIRETAMENTE
       await processMessage(message);
     };
 
-    socket.on(messageEvent, handleNewMessage);
+    // Registrar todos os eventos
+    messageEvents.forEach(event => {
+      console.log(`🎧 Registrando listener para evento: ${event}`);
+      socket.on(event, handleNewMessage);
+    });
 
     // Canal do Supabase para atualizações
     const channel = supabase
@@ -378,6 +444,37 @@ export const useTicketRealtime = (clientId: string) => {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'whatsapp_messages',
+          filter: `instance_id=eq.${clientId}`
+        },
+        async (payload) => {
+          console.log('📨 NOVA MENSAGEM NO BANCO (via Supabase):', payload);
+          if (payload.new && mountedRef.current) {
+            // Converter formato do banco para formato esperado
+            const message = {
+              id: payload.new.id,
+              from: payload.new.chat_id,
+              chatId: payload.new.chat_id,
+              fromMe: payload.new.from_me,
+              body: payload.new.body,
+              type: payload.new.message_type,
+              timestamp: payload.new.timestamp,
+              caption: payload.new.caption,
+              mediaUrl: payload.new.media_url,
+              sender: payload.new.sender,
+              pushName: payload.new.push_name,
+              notifyName: payload.new.notify_name
+            };
+            
+            await processMessage(message);
+          }
+        }
+      )
       .subscribe();
 
     channelRef.current = channel;
@@ -388,7 +485,9 @@ export const useTicketRealtime = (clientId: string) => {
       initializationRef.current = false;
       
       if (socketRef.current) {
-        socketRef.current.off(messageEvent, handleNewMessage);
+        messageEvents.forEach(event => {
+          socketRef.current.off(event, handleNewMessage);
+        });
         socketRef.current.disconnect();
       }
       if (channelRef.current) {
@@ -397,7 +496,7 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       processingRef.current.clear();
     };
-  }, [clientId, loadTickets, processMessage]);
+  }, [clientId, loadTickets, processMessage, checkWhatsAppMessages]);
 
   const reloadTickets = useCallback(() => {
     if (mountedRef.current) {
@@ -405,11 +504,16 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [loadTickets]);
 
+  const debugMessages = useCallback(() => {
+    checkWhatsAppMessages();
+  }, [checkWhatsAppMessages]);
+
   return {
     tickets,
     isLoading,
     isTyping: assistantTyping,
     isOnline,
-    reloadTickets
+    reloadTickets,
+    debugMessages // Função de debug para o usuário
   };
 };
