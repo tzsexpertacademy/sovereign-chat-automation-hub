@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -138,7 +137,7 @@ const ClientsManagement = () => {
 
       toast({
         title: "Instância Criada",
-        description: "Nova instância WhatsApp criada com sucesso! Acesse o painel do cliente para conectar.",
+        description: "Nova instância WhatsApp criada com sucesso! Vá para 'Instâncias' para gerenciar.",
       });
 
       await loadClients();
@@ -152,6 +151,10 @@ const ClientsManagement = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewInstances = (clientId: string) => {
+    navigate(`/admin/instances?clientId=${clientId}`);
   };
 
   const handleDeleteClient = async (clientId: string) => {
@@ -482,6 +485,16 @@ const ClientsManagement = () => {
                       >
                         <Smartphone className="w-4 h-4 mr-1" />
                         {loading ? 'Criando...' : 'Nova Instância'}
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleViewInstances(client.id)}
+                        className="bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200"
+                      >
+                        <Settings className="w-4 h-4 mr-1" />
+                        Ver Instâncias
                       </Button>
 
                       <Button

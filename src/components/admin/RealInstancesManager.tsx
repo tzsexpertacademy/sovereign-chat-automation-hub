@@ -18,10 +18,11 @@ import {
   MessageSquare,
   AlertCircle,
   User,
-  Link
+  Link,
+  Filter
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
 import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import ConnectionTest from "./ConnectionTest";
@@ -37,18 +38,26 @@ const RealInstancesManager = () => {
   const [selectedClient, setSelectedClient] = useState<WhatsAppClient | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [filterByClient, setFilterByClient] = useState("");
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     loadAvailableClients();
     initializeService();
     loadClients();
 
+    // Check if there's a clientId in URL params
+    const clientIdFromUrl = searchParams.get('clientId');
+    if (clientIdFromUrl) {
+      setFilterByClient(clientIdFromUrl);
+    }
+
     return () => {
       whatsappService.disconnectSocket();
     };
-  }, []);
+  }, [searchParams]);
 
   const loadAvailableClients = async () => {
     try {
@@ -385,6 +394,19 @@ const RealInstancesManager = () => {
   // Get clients without instances
   const clientsWithoutInstances = availableClients.filter(client => !client.instance_id);
 
+  // Filter clients by selected client
+  const filteredClients = filterByClient 
+    ? clients.filter(client => {
+        const linkedClient = getClientByInstanceId(client.clientId);
+        return linkedClient?.id === filterByClient;
+      })
+    : clients;
+
+  // Get selected client info for display
+  const selectedClientInfo = filterByClient 
+    ? availableClients.find(c => c.id === filterByClient)
+    : null;
+
   // Loading inicial
   if (initialLoading) {
     return (
@@ -441,14 +463,57 @@ const RealInstancesManager = () => {
         </Card>
       )}
 
+      {/* Client Filter */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Filter className="w-5 h-5" />
+            <span>Filtrar por Cliente</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex space-x-4 items-center">
+            <Select value={filterByClient} onValueChange={setFilterByClient}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Todos os clientes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Todos os clientes</SelectItem>
+                {availableClients.map((client) => (
+                  <SelectItem key={client.id} value={client.id}>
+                    {client.name} ({client.email})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedClientInfo && (
+              <Badge variant="outline" className="bg-blue-50">
+                {selectedClientInfo.name} - {filteredClients.length} instância(s)
+              </Badge>
+            )}
+            {filterByClient && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setFilterByClient("")}
+              >
+                Limpar Filtro
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Instâncias</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">
+              Total Instâncias {selectedClientInfo ? `(${selectedClientInfo.name})` : ''}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{clients.length}</div>
+            <div className="text-2xl font-bold">{filteredClients.length}</div>
             <p className="text-xs text-gray-500">Instâncias ativas</p>
           </CardContent>
         </Card>
@@ -458,7 +523,7 @@ const RealInstancesManager = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {clients.filter(c => c.status === 'connected').length}
+              {filteredClients.filter(c => c.status === 'connected').length}
             </div>
             <p className="text-xs text-green-600">Online</p>
           </CardContent>
@@ -469,7 +534,7 @@ const RealInstancesManager = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {clients.filter(c => c.status === 'qr_ready').length}
+              {filteredClients.filter(c => c.status === 'qr_ready').length}
             </div>
             <p className="text-xs text-blue-600">Pronto para conectar</p>
           </CardContent>
@@ -480,79 +545,76 @@ const RealInstancesManager = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {clients.filter(c => ['disconnected', 'error', 'auth_failed'].includes(c.status)).length}
+              {filteredClients.filter(c => ['disconnected', 'error', 'auth_failed'].includes(c.status)).length}
             </div>
             <p className="text-xs text-red-600">Requerem atenção</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Add New Instance for Client */}
-      <Card>
-        <CardHeader>
-          <CardTitle>🚀 Criar Instância WhatsApp para Cliente</CardTitle>
-          <CardDescription>
-            Selecione um cliente cadastrado para criar uma nova instância WhatsApp.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex space-x-4">
-            <Select value={selectedClientForInstance} onValueChange={setSelectedClientForInstance}>
-              <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Selecione um cliente..." />
-              </SelectTrigger>
-              <SelectContent>
-                {clientsWithoutInstances.length === 0 ? (
-                  <SelectItem value="no-clients-available" disabled>
-                    Todos os clientes já possuem instâncias
-                  </SelectItem>
-                ) : (
-                  clientsWithoutInstances.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      <div className="flex items-center space-x-2">
-                        <User className="w-4 h-4" />
-                        <span>{client.name} ({client.email})</span>
-                      </div>
+      {/* Add New Instance for Client - only show if no filter or client has space */}
+      {(!filterByClient || (selectedClientInfo && (selectedClientInfo.current_instances || 0) < selectedClientInfo.max_instances)) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>🚀 Criar Instância WhatsApp para Cliente</CardTitle>
+            <CardDescription>
+              Selecione um cliente cadastrado para criar uma nova instância WhatsApp.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex space-x-4">
+              <Select 
+                value={selectedClientForInstance} 
+                onValueChange={setSelectedClientForInstance}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Selecione um cliente..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {clientsWithoutInstances.length === 0 ? (
+                    <SelectItem value="no-clients-available" disabled>
+                      Todos os clientes já possuem instâncias
                     </SelectItem>
-                  ))
+                  ) : (
+                    clientsWithoutInstances
+                      .filter(client => !filterByClient || client.id === filterByClient)
+                      .map((client) => (
+                        <SelectItem key={client.id} value={client.id}>
+                          <div className="flex items-center space-x-2">
+                            <User className="w-4 h-4" />
+                            <span>{client.name} ({client.email})</span>
+                          </div>
+                        </SelectItem>
+                      ))
+                  )}
+                </SelectContent>
+              </Select>
+              <Button 
+                onClick={handleCreateClient}
+                disabled={loading || !selectedClientForInstance || selectedClientForInstance === "no-clients-available" || !!connectionError}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Criando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Criar Instância
+                  </>
                 )}
-              </SelectContent>
-            </Select>
-            <Button 
-              onClick={handleCreateClient}
-              disabled={loading || !selectedClientForInstance || selectedClientForInstance === "no-clients-available" || !!connectionError}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {loading ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Criando...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Criar Instância
-                </>
-              )}
-            </Button>
-          </div>
-          {clientsWithoutInstances.length === 0 && availableClients.length > 0 && (
-            <p className="text-sm text-gray-500 mt-2">
-              💡 Todos os clientes já possuem instâncias. Crie novos clientes na seção "Clientes"
-            </p>
-          )}
-          {availableClients.length === 0 && (
-            <p className="text-sm text-gray-500 mt-2">
-              💡 Nenhum cliente cadastrado. Vá para a seção "Clientes" para criar o primeiro cliente
-            </p>
-          )}
-        </CardContent>
-      </Card>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Clients Grid */}
-      {clients.length > 0 ? (
+      {filteredClients.length > 0 ? (
         <div className="grid lg:grid-cols-2 gap-6">
-          {clients.map((client) => {
+          {filteredClients.map((client) => {
             const linkedClient = getClientByInstanceId(client.clientId);
             return (
               <Card key={client.clientId} className="hover:shadow-lg transition-shadow">

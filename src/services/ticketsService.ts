@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationTicket {
@@ -85,6 +86,8 @@ class TicketsService {
         ...ticket,
         status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
         tags: Array.isArray(ticket.tags) ? ticket.tags.filter(tag => typeof tag === 'string') : [],
+        custom_fields: (ticket.custom_fields as Record<string, any>) || {},
+        internal_notes: (ticket.internal_notes as any[]) || [],
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
       }));
@@ -113,6 +116,8 @@ class TicketsService {
         ...data,
         status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
         tags: Array.isArray(data.tags) ? data.tags.filter(tag => typeof tag === 'string') : [],
+        custom_fields: (data.custom_fields as Record<string, any>) || {},
+        internal_notes: (data.internal_notes as any[]) || [],
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
       };
