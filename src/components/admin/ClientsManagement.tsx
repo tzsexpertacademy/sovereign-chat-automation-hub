@@ -19,11 +19,13 @@ import {
   Calendar,
   Activity,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Smartphone
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData, CreateClientData } from "@/services/clientsService";
+import { whatsappInstancesService } from "@/services/whatsappInstancesService";
 
 const ClientsManagement = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -112,6 +114,46 @@ const ClientsManagement = () => {
     }
   };
 
+  const handleCreateInstance = async (clientId: string) => {
+    try {
+      const canCreate = await clientsService.canCreateInstance(clientId);
+      if (!canCreate) {
+        const client = clients.find(c => c.id === clientId);
+        toast({
+          title: "Limite Atingido",
+          description: `Limite de ${client?.max_instances} instâncias atingido para o plano ${client?.plan}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setLoading(true);
+      const instanceId = `${clientId}_${Date.now()}`;
+      
+      await whatsappInstancesService.createInstance({
+        client_id: clientId,
+        instance_id: instanceId,
+        status: 'disconnected'
+      });
+
+      toast({
+        title: "Instância Criada",
+        description: "Nova instância WhatsApp criada com sucesso! Acesse o painel do cliente para conectar.",
+      });
+
+      await loadClients();
+    } catch (error) {
+      console.error('Erro ao criar instância:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao criar nova instância",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteClient = async (clientId: string) => {
     try {
       await clientsService.deleteClient(clientId);
@@ -126,7 +168,7 @@ const ClientsManagement = () => {
       console.error("Erro ao deletar cliente:", error);
       toast({
         title: "Erro",
-        description: "Falha ao remover cliente",
+        description: "Falha ao remover cliente. Verifique se não existem tickets ou instâncias associados.",
         variant: "destructive",
       });
     }
@@ -431,6 +473,17 @@ const ClientsManagement = () => {
 
                     {/* Action Buttons */}
                     <div className="flex space-x-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCreateInstance(client.id)}
+                        disabled={loading || (client.current_instances || 0) >= client.max_instances}
+                        className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                      >
+                        <Smartphone className="w-4 h-4 mr-1" />
+                        {loading ? 'Criando...' : 'Nova Instância'}
+                      </Button>
+
                       <Button
                         size="sm"
                         variant="outline"
