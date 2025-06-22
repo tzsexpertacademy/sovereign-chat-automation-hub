@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationTicket {
@@ -85,8 +84,8 @@ class TicketsService {
       return (data || []).map(ticket => ({
         ...ticket,
         status: ticket.status as 'open' | 'pending' | 'resolved' | 'closed',
-        tags: Array.isArray(ticket.tags) ? ticket.tags : [],
-        custom_fields: ticket.custom_fields || {},
+        tags: Array.isArray(ticket.tags) ? ticket.tags.filter(tag => typeof tag === 'string') : [],
+        custom_fields: typeof ticket.custom_fields === 'object' && ticket.custom_fields !== null ? ticket.custom_fields : {},
         internal_notes: Array.isArray(ticket.internal_notes) ? ticket.internal_notes : [],
         assigned_queue_name: ticket.assigned_queue?.name,
         assigned_assistant_name: ticket.assigned_assistant?.name
@@ -115,8 +114,8 @@ class TicketsService {
       return {
         ...data,
         status: data.status as 'open' | 'pending' | 'resolved' | 'closed',
-        tags: Array.isArray(data.tags) ? data.tags : [],
-        custom_fields: data.custom_fields || {},
+        tags: Array.isArray(data.tags) ? data.tags.filter(tag => typeof tag === 'string') : [],
+        custom_fields: typeof data.custom_fields === 'object' && data.custom_fields !== null ? data.custom_fields : {},
         internal_notes: Array.isArray(data.internal_notes) ? data.internal_notes : [],
         assigned_queue_name: data.assigned_queue?.name,
         assigned_assistant_name: data.assigned_assistant?.name
@@ -203,21 +202,67 @@ class TicketsService {
 
   async importConversationsFromWhatsApp(clientId: string) {
     try {
-      const response = await fetch(`/api/whatsapp/${clientId}/conversations`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      console.log('🔄 Iniciando importação de conversas para cliente:', clientId);
+      
+      // Buscar instâncias ativas do cliente
+      const { data: instances, error: instancesError } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, status')
+        .eq('client_id', clientId)
+        .eq('status', 'connected');
 
-      if (!response.ok) {
-        throw new Error('Falha ao importar conversas');
+      if (instancesError) throw instancesError;
+
+      if (!instances || instances.length === 0) {
+        throw new Error('Nenhuma instância WhatsApp conectada encontrada. Conecte uma instância primeiro.');
       }
 
-      const result = await response.json();
-      return result;
+      console.log('📱 Instâncias conectadas encontradas:', instances.length);
+
+      let totalImported = 0;
+      let totalErrors = 0;
+
+      // Importar conversas de cada instância
+      for (const instance of instances) {
+        try {
+          console.log(`📥 Importando conversas da instância: ${instance.instance_id}`);
+          
+          const response = await fetch(`/api/whatsapp/${instance.instance_id}/conversations`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Client-ID': clientId
+            },
+          });
+
+          if (!response.ok) {
+            console.error(`❌ Erro HTTP ${response.status} para instância ${instance.instance_id}`);
+            totalErrors++;
+            continue;
+          }
+
+          const result = await response.json();
+          
+          if (result.success) {
+            totalImported += result.imported || 0;
+            console.log(`✅ Instância ${instance.instance_id}: ${result.imported} conversas importadas`);
+          } else {
+            console.error(`❌ Erro na instância ${instance.instance_id}:`, result.error);
+            totalErrors++;
+          }
+        } catch (error) {
+          console.error(`❌ Erro ao processar instância ${instance.instance_id}:`, error);
+          totalErrors++;
+        }
+      }
+
+      return {
+        success: totalImported,
+        errors: totalErrors,
+        total_instances: instances.length
+      };
     } catch (error) {
-      console.error('Erro ao importar conversas:', error);
+      console.error('❌ Erro na importação:', error);
       throw error;
     }
   }

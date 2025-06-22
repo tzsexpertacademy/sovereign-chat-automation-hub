@@ -9,6 +9,7 @@ import { Send, Paperclip, RefreshCw, MessageSquare, Mic, MicOff, Image, Video, P
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import { whatsappService } from "@/services/whatsappMultiClient";
+import { supabase } from "@/integrations/supabase/client";
 import { useTicketMessages } from "@/hooks/useTicketMessages";
 import { useMessageStatus } from "@/hooks/useMessageStatus";
 import { useTypingStatus } from "@/hooks/useTypingStatus";
@@ -29,6 +30,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [availableInstances, setAvailableInstances] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,7 +57,31 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     };
   }, []);
 
-  // Scroll automático para o final - MELHORADO
+  // Carregar instâncias disponíveis
+  useEffect(() => {
+    const loadAvailableInstances = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('whatsapp_instances')
+          .select('instance_id, custom_name, phone_number')
+          .eq('client_id', clientId)
+          .eq('status', 'connected');
+
+        if (error) throw error;
+        
+        console.log('📱 Instâncias disponíveis:', data);
+        setAvailableInstances(data || []);
+      } catch (error) {
+        console.error('❌ Erro ao carregar instâncias:', error);
+      }
+    };
+
+    if (clientId) {
+      loadAvailableInstances();
+    }
+  }, [clientId]);
+
+  // Scroll automático para o final
   const scrollToBottom = useCallback(() => {
     if (mountedRef.current && messagesEndRef.current) {
       setTimeout(() => {
@@ -67,7 +93,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
   }, []);
 
-  // Scroll para o final sempre que mensagens mudarem ou quando selecionar chat
   useEffect(() => {
     scrollToBottom();
   }, [ticketMessages, ticketId, scrollToBottom]);
@@ -97,13 +122,24 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     try {
       console.log('📤 Enviando mensagem:', newMessage);
       
+      // Verificar se há instâncias disponíveis
+      if (availableInstances.length === 0) {
+        throw new Error('Nenhuma instância WhatsApp conectada encontrada. Conecte uma instância primeiro.');
+      }
+
+      // Usar a primeira instância disponível
+      const instanceId = availableInstances[0].instance_id;
+      console.log('📱 Usando instância:', instanceId);
+      
       updateMessageStatus(tempMessageId, 'sending');
       stopTyping();
       
-      await whatsappService.sendMessage(clientId, selectedTicket.chat_id, newMessage);
+      // Enviar via WhatsApp usando a instância correta
+      await whatsappService.sendMessage(instanceId, selectedTicket.chat_id, newMessage);
       
       updateMessageStatus(tempMessageId, 'sent');
       
+      // Registrar no ticket
       await ticketsService.addTicketMessage({
         ticket_id: selectedTicket.id,
         message_id: tempMessageId,
@@ -314,7 +350,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             accept="image/*,video/*,.pdf,.doc,.docx,.txt"
           />
 
-          {/* Área de Mensagens - com altura fixa calculada e scroll interno */}
+          {/* Área de Mensagens */}
           <div className="flex-1 min-h-0 overflow-hidden">
             <ScrollArea className="h-full">
               <div className="p-4 space-y-4">
@@ -430,7 +466,16 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             </div>
           )}
 
-          {/* Input de Mensagem - sempre fixo no final */}
+          {/* Indicador de status de conexão */}
+          {availableInstances.length === 0 && (
+            <div className="p-4 bg-yellow-50 border-t flex-shrink-0">
+              <div className="text-sm text-yellow-800">
+                ⚠️ Nenhuma instância WhatsApp conectada. Conecte uma instância para enviar mensagens.
+              </div>
+            </div>
+          )}
+
+          {/* Input de Mensagem */}
           <div className="border-t p-4 flex-shrink-0 bg-white">
             <div className="flex space-x-2">
               {/* Botão de anexo */}
@@ -454,7 +499,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
               </Button>
 
               <Input
-                placeholder="Digite sua mensagem..."
+                placeholder={availableInstances.length > 0 ? "Digite sua mensagem..." : "Conecte uma instância WhatsApp primeiro..."}
                 value={newMessage}
                 onChange={(e) => {
                   setNewMessage(e.target.value);
@@ -473,12 +518,12 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                   setTimeout(() => stopTyping(), 1000);
                 }}
                 className="flex-1"
-                disabled={isRecording}
+                disabled={isRecording || availableInstances.length === 0}
               />
               
               <Button 
                 onClick={handleSendMessage} 
-                disabled={!newMessage.trim() || isRecording} 
+                disabled={!newMessage.trim() || isRecording || availableInstances.length === 0} 
                 size="sm"
               >
                 <Send className="w-4 h-4" />
@@ -497,6 +542,11 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                   <div className="text-xs text-red-500 flex items-center space-x-1">
                     <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                     <span>Gravando áudio...</span>
+                  </div>
+                )}
+                {availableInstances.length > 0 && (
+                  <div className="text-xs text-green-600">
+                    📱 Conectado via: {availableInstances[0].custom_name || availableInstances[0].instance_id}
                   </div>
                 )}
               </div>

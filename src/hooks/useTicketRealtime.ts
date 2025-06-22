@@ -154,7 +154,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar mensagem com assistente - com contexto de 40 mensagens
+  // Processar mensagem com assistente
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     if (!mountedRef.current || !ticketId) {
       processingRef.current.delete(ticketId);
@@ -194,6 +194,21 @@ export const useTicketRealtime = (clientId: string) => {
 
       const assistant = activeQueue.assistants;
       console.log(`🤖 Usando assistente: ${assistant.name} na fila: ${activeQueue.name}`);
+
+      // Buscar instância WhatsApp ativa
+      const { data: instances } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id')
+        .eq('client_id', clientId)
+        .eq('status', 'connected')
+        .limit(1);
+
+      if (!instances || instances.length === 0) {
+        console.log('⚠️ Nenhuma instância WhatsApp conectada');
+        return;
+      }
+
+      const instanceId = instances[0].instance_id;
 
       // Atualizar ticket com informações da fila
       await supabase
@@ -278,8 +293,8 @@ export const useTicketRealtime = (clientId: string) => {
         // Simular delay de digitação baseado no tamanho da resposta
         await simulateHumanTyping(message.from, assistantResponse);
         
-        // Enviar via WhatsApp
-        await whatsappService.sendMessage(clientId, message.from, assistantResponse);
+        // Enviar via WhatsApp usando a instância correta
+        await whatsappService.sendMessage(instanceId, message.from, assistantResponse);
         
         // Registrar no ticket
         await ticketsService.addTicketMessage({
@@ -320,59 +335,69 @@ export const useTicketRealtime = (clientId: string) => {
     // Carregar tickets inicial
     loadTickets();
 
-    // Conectar ao WebSocket
-    const socket = whatsappService.connectSocket();
-    socketRef.current = socket;
-    
-    socket.on('connect', () => {
-      console.log('✅ WebSocket conectado');
-      whatsappService.joinClientRoom(clientId);
-    });
-
-    socket.on('disconnect', () => {
-      console.log('❌ WebSocket desconectado');
-    });
-
-    // Listener para mensagens do WhatsApp - usando batching
-    const messageEvent = `message_${clientId}`;
-    const handleNewMessage = async (message: any) => {
-      if (!mountedRef.current || message.fromMe) {
-        return;
-      }
+    // Conectar ao WebSocket com melhor tratamento de erros
+    let socket: any = null;
+    try {
+      socket = whatsappService.connectSocket();
+      socketRef.current = socket;
       
-      console.log('📨 Nova mensagem recebida para batching:', {
-        id: message.id,
-        from: message.from,
-        type: message.type,
-        body: message.body?.substring(0, 50)
+      socket.on('connect', () => {
+        console.log('✅ WebSocket conectado');
+        whatsappService.joinClientRoom(clientId);
       });
-      
-      // Adicionar ao batch para processamento
-      addMessage(message);
-    };
 
-    socket.on(messageEvent, handleNewMessage);
+      socket.on('disconnect', () => {
+        console.log('❌ WebSocket desconectado');
+      });
 
-    // Canal do Supabase para atualizações
-    const channel = supabase
-      .channel(`tickets-${clientId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'conversation_tickets',
-          filter: `client_id=eq.${clientId}`
-        },
-        () => {
-          if (mountedRef.current) {
-            setTimeout(loadTickets, 2000);
-          }
+      socket.on('connect_error', (error: any) => {
+        console.error('❌ Erro de conexão WebSocket:', error);
+      });
+
+      // Listener para mensagens do WhatsApp
+      const messageEvent = `message_${clientId}`;
+      const handleNewMessage = async (message: any) => {
+        if (!mountedRef.current || message.fromMe) {
+          return;
         }
-      )
-      .subscribe();
+        
+        console.log('📨 Nova mensagem recebida:', {
+          id: message.id,
+          from: message.from,
+          type: message.type,
+          body: message.body?.substring(0, 50)
+        });
+        
+        // Adicionar ao batch para processamento
+        addMessage(message);
+      };
 
-    channelRef.current = channel;
+      socket.on(messageEvent, handleNewMessage);
+
+      // Canal do Supabase para atualizações
+      const channel = supabase
+        .channel(`tickets-${clientId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'conversation_tickets',
+            filter: `client_id=eq.${clientId}`
+          },
+          () => {
+            if (mountedRef.current) {
+              setTimeout(loadTickets, 2000);
+            }
+          }
+        )
+        .subscribe();
+
+      channelRef.current = channel;
+
+    } catch (error) {
+      console.error('❌ Erro ao inicializar conexões:', error);
+    }
 
     return () => {
       console.log('🔌 Limpando recursos...');
@@ -380,7 +405,6 @@ export const useTicketRealtime = (clientId: string) => {
       initializationRef.current = false;
       
       if (socketRef.current) {
-        socketRef.current.off(messageEvent, handleNewMessage);
         socketRef.current.disconnect();
       }
       if (channelRef.current) {
