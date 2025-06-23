@@ -7,29 +7,32 @@ import { whatsappInstancesService, WhatsAppInstanceData } from '@/services/whats
 export const useConnectionMonitor = (clientId: string) => {
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(false);
-  const [reconnectAttempts, setReconnectAttempts] = useState<Record<string, number>>({});
 
+  // Função simplificada apenas para buscar instâncias do banco
+  const loadInstances = useCallback(async () => {
+    if (!clientId) return;
+    
+    try {
+      console.log('🔍 Carregando instâncias do banco...');
+      const instancesData = await whatsappInstancesService.getInstancesByClientId(clientId);
+      setInstances(instancesData);
+      console.log(`✅ ${instancesData.length} instâncias carregadas`);
+    } catch (error) {
+      console.error('❌ Erro ao carregar instâncias:', error);
+    }
+  }, [clientId]);
+
+  // Verificação manual de status (apenas quando solicitado)
   const checkInstanceStatus = useCallback(async (instance: WhatsAppInstanceData) => {
     try {
       console.log(`🔍 Verificando status da instância: ${instance.instance_id}`);
       
-      // Verificar status real no servidor WhatsApp com timeout mais longo
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // Aumentar timeout
-      
-      const serverStatus = await Promise.race([
-        whatsappService.getClientStatus(instance.instance_id),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout na verificação de status')), 15000)
-        )
-      ]) as any;
-      
-      clearTimeout(timeoutId);
+      const serverStatus = await whatsappService.getClientStatus(instance.instance_id);
       
       console.log(`📊 Status do servidor: ${serverStatus.status}, Status local: ${instance.status}`);
       
-      // Só atualizar se o status for realmente diferente E não for uma conexão ativa
-      if (serverStatus.status !== instance.status && instance.status !== 'connected') {
+      // Atualizar apenas se houver diferença significativa
+      if (serverStatus.status !== instance.status) {
         console.log(`🔄 Atualizando status de ${instance.status} para ${serverStatus.status}`);
         
         await whatsappInstancesService.updateInstanceById(instance.id, {
@@ -53,27 +56,24 @@ export const useConnectionMonitor = (clientId: string) => {
       return instance;
     } catch (error) {
       console.error(`❌ Erro ao verificar instância ${instance.instance_id}:`, error);
-      
-      // NÃO marcar como desconectado automaticamente para evitar interferência
       return instance;
     }
   }, []);
 
-  // Remover auto-reconexão automática - só fazer quando solicitado
+  // Monitoramento manual (apenas quando o usuário solicita)
   const monitorInstances = useCallback(async () => {
     if (!clientId || isMonitoring) return;
     
     try {
       setIsMonitoring(true);
-      console.log('🔍 Verificação de status das instâncias...');
+      console.log('🔍 Verificação manual de status das instâncias...');
       
-      // Buscar instâncias do cliente
+      // Buscar instâncias atuais do banco
       const instancesData = await whatsappInstancesService.getInstancesByClientId(clientId);
       
-      // Verificar status com menos agressividade
+      // Verificar status apenas para instâncias que não estão conectadas
       const statusChecks = await Promise.allSettled(
         instancesData.map(instance => {
-          // Só verificar instâncias que não estão conectadas
           if (instance.status === 'connected') {
             return Promise.resolve(instance);
           }
@@ -92,28 +92,10 @@ export const useConnectionMonitor = (clientId: string) => {
         });
       
       setInstances(updatedInstances);
-      console.log(`✅ Verificação concluída - ${updatedInstances.length} instâncias`);
-      
-      // Configurar listeners apenas para instâncias conectadas (sem interferir)
-      updatedInstances.forEach(instance => {
-        if (instance.status === 'connected') {
-          try {
-            const socket = whatsappService.connectSocket();
-            if (socket && socket.connected) {
-              whatsappService.joinClientRoom(instance.instance_id);
-              
-              whatsappService.onClientMessage(instance.instance_id, (message) => {
-                console.log(`📨 Nova mensagem na instância ${instance.instance_id}`);
-              });
-            }
-          } catch (error) {
-            console.error(`❌ Erro ao configurar listener para ${instance.instance_id}:`, error);
-          }
-        }
-      });
+      console.log(`✅ Verificação manual concluída - ${updatedInstances.length} instâncias`);
       
     } catch (error) {
-      console.error('❌ Erro no monitoramento:', error);
+      console.error('❌ Erro no monitoramento manual:', error);
     } finally {
       setIsMonitoring(false);
     }
@@ -122,12 +104,6 @@ export const useConnectionMonitor = (clientId: string) => {
   const disconnectInstance = useCallback(async (instanceId: string) => {
     try {
       console.log(`🔌 Desconectando instância: ${instanceId}`);
-      
-      // Parar tentativas de reconexão
-      setReconnectAttempts(prev => ({
-        ...prev,
-        [instanceId]: 0
-      }));
       
       await whatsappService.disconnectClient(instanceId);
       
@@ -165,11 +141,6 @@ export const useConnectionMonitor = (clientId: string) => {
     try {
       console.log(`🔄 Reconectando instância: ${instanceId}`);
       
-      setReconnectAttempts(prev => ({
-        ...prev,
-        [instanceId]: 0
-      }));
-      
       const instance = instances.find(i => i.instance_id === instanceId);
       if (instance) {
         await whatsappInstancesService.updateInstanceById(instance.id, {
@@ -194,7 +165,7 @@ export const useConnectionMonitor = (clientId: string) => {
       
       await whatsappService.connectClient(instanceId);
       
-      // Verificar resultado após delay
+      // Verificar resultado após um delay maior
       setTimeout(async () => {
         if (instance) {
           try {
@@ -206,7 +177,7 @@ export const useConnectionMonitor = (clientId: string) => {
             console.error('Erro ao verificar status após reconexão:', error);
           }
         }
-      }, 8000); // Aumentar delay
+      }, 10000); // 10 segundos
       
       console.log(`✅ Reconexão iniciada: ${instanceId}`);
       return true;
@@ -216,20 +187,14 @@ export const useConnectionMonitor = (clientId: string) => {
     }
   }, [instances, checkInstanceStatus]);
 
-  // Monitoramento menos frequente - apenas quando solicitado
+  // Carregar instâncias apenas uma vez ao montar
   useEffect(() => {
     if (!clientId) return;
 
-    // Carregar inicialmente
-    monitorInstances();
+    loadInstances();
+  }, [clientId, loadInstances]);
 
-    // Monitoramento muito menos frequente para não interferir
-    const interval = setInterval(monitorInstances, 60000); // A cada 1 minuto apenas
-
-    return () => clearInterval(interval);
-  }, [clientId, monitorInstances]);
-
-  // Escutar mudanças em tempo real (menos intrusivo)
+  // Escutar mudanças em tempo real do Supabase (sem verificações externas)
   useEffect(() => {
     if (!clientId) return;
 
@@ -250,6 +215,10 @@ export const useConnectionMonitor = (clientId: string) => {
             setInstances(prev => prev.map(inst => 
               inst.id === payload.new.id ? payload.new as WhatsAppInstanceData : inst
             ));
+          } else if (payload.eventType === 'INSERT' && payload.new) {
+            setInstances(prev => [...prev, payload.new as WhatsAppInstanceData]);
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setInstances(prev => prev.filter(inst => inst.id !== payload.old.id));
           }
         }
       )
@@ -263,9 +232,10 @@ export const useConnectionMonitor = (clientId: string) => {
   return {
     instances,
     isMonitoring,
-    monitorInstances,
+    monitorInstances, // Apenas verificação manual
     disconnectInstance,
     reconnectInstance,
-    checkInstanceStatus
+    checkInstanceStatus,
+    loadInstances // Função para recarregar do banco
   };
 };

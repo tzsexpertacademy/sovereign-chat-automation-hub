@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,7 +38,8 @@ const WhatsAppConnection = () => {
     isMonitoring,
     monitorInstances,
     disconnectInstance,
-    reconnectInstance
+    reconnectInstance,
+    loadInstances
   } = useConnectionMonitor(clientId!);
   
   const [clientData, setClientData] = useState<ClientData | null>(null);
@@ -118,7 +118,7 @@ const WhatsAppConnection = () => {
 
       // Recarregar dados
       await loadClientData();
-      await monitorInstances();
+      await loadInstances();
       
     } catch (error) {
       console.error('Erro ao criar instância:', error);
@@ -143,7 +143,7 @@ const WhatsAppConnection = () => {
 
       // Recarregar dados
       await loadClientData();
-      await monitorInstances();
+      await loadInstances();
       
     } catch (error) {
       console.error('Erro ao deletar instância:', error);
@@ -291,7 +291,7 @@ const WhatsAppConnection = () => {
         <div>
           <h1 className="text-3xl font-bold">Conexões WhatsApp</h1>
           <p className="text-muted-foreground">
-            Gerencie suas conexões WhatsApp - Status em tempo real
+            Gerencie suas conexões WhatsApp - Verificação manual
           </p>
           {clientData && (
             <p className="text-sm text-gray-500 mt-1">
@@ -495,7 +495,7 @@ const WhatsAppConnection = () => {
                   <div className="flex items-center space-x-2">
                     <CheckCircle className="w-5 h-5 text-green-500" />
                     <span className="text-sm text-green-800">
-                      ✅ WhatsApp conectado e funcionando - Monitoramento ativo
+                      ✅ WhatsApp conectado e funcionando
                     </span>
                   </div>
                 </div>
@@ -507,7 +507,7 @@ const WhatsAppConnection = () => {
                     <div>
                       <h4 className="font-medium text-red-800">Conexão Perdida</h4>
                       <p className="text-sm text-red-700">
-                        A conexão com o WhatsApp foi perdida. Sistema tentando reconectar automaticamente...
+                        A conexão com o WhatsApp foi perdida. Clique em "Reconectar" para tentar novamente.
                       </p>
                     </div>
                     <Button
