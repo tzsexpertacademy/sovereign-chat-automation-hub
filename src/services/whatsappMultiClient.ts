@@ -50,46 +50,29 @@ class WhatsAppMultiClientService {
   // Conectar ao WebSocket
   connectSocket(): Socket {
     if (!this.socket) {
-      console.log(`🔌 CONECTANDO ao WebSocket WhatsApp: ${SOCKET_URL}`);
+      console.log(`🔌 Conectando ao WebSocket: ${SOCKET_URL}`);
       
       this.socket = io(SOCKET_URL, {
         transports: ['websocket', 'polling'],
-        timeout: 30000, // Aumentar timeout
+        timeout: 20000,
         forceNew: true,
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
-        reconnectionDelay: 1000, // Reduzir delay
-        reconnectionDelayMax: 5000,
-        randomizationFactor: 0.2
+        reconnectionDelay: 2000
       });
 
       this.socket.on('connect', () => {
-        console.log(`✅ WebSocket CONECTADO com sucesso: ${SOCKET_URL}`);
+        console.log(`✅ WebSocket conectado: ${SOCKET_URL}`);
         this.reconnectAttempts = 0;
       });
 
       this.socket.on('disconnect', (reason) => {
-        console.log('❌ WebSocket DESCONECTADO:', reason);
+        console.log('❌ WebSocket desconectado:', reason);
       });
 
       this.socket.on('connect_error', (error) => {
-        console.error('❌ ERRO de conexão WebSocket:', error);
+        console.error('❌ Erro WebSocket:', error);
         this.reconnectAttempts++;
-      });
-
-      this.socket.on('reconnect', (attemptNumber) => {
-        console.log(`🔄 WebSocket RECONECTADO (tentativa ${attemptNumber})`);
-      });
-
-      this.socket.on('reconnect_error', (error) => {
-        console.error('❌ ERRO de reconexão WebSocket:', error);
-      });
-
-      // Listener GLOBAL para todas as mensagens
-      this.socket.onAny((eventName, ...args) => {
-        if (eventName.includes('message') || eventName.includes('whatsapp')) {
-          console.log(`📨 EVENTO GLOBAL RECEBIDO: ${eventName}`, args[0]?.id || 'sem-id');
-        }
       });
     }
 
@@ -123,39 +106,16 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Listeners aprimorados
+  // Listeners
   onClientStatus(clientId: string, callback: (data: WhatsAppClient) => void) {
     if (this.socket) {
-      const eventName = `client_status_${clientId}`;
-      console.log(`👂 Ouvindo evento de status: ${eventName}`);
-      this.socket.on(eventName, callback);
+      this.socket.on(`client_status_${clientId}`, callback);
     }
   }
 
   onClientMessage(clientId: string, callback: (message: MessageData) => void) {
     if (this.socket) {
-      // Múltiplos eventos para garantir recepção
-      const messageEvents = [
-        `message_${clientId}`,
-        `new_message_${clientId}`,
-        `whatsapp_message_${clientId}`,
-        `client_message_${clientId}`,
-        'message',
-        'new_whatsapp_message'
-      ];
-
-      messageEvents.forEach(eventName => {
-        console.log(`👂 Ouvindo evento de mensagem: ${eventName}`);
-        this.socket!.on(eventName, (message: MessageData) => {
-          console.log(`📨 MENSAGEM RECEBIDA via ${eventName}:`, {
-            id: message.id,
-            from: message.from,
-            body: message.body?.substring(0, 50),
-            fromMe: message.fromMe
-          });
-          callback(message);
-        });
-      });
+      this.socket.on(`message_${clientId}`, callback);
     }
   }
 
@@ -171,17 +131,14 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Atualizar presença no WhatsApp REAL
+  // Atualizar presença (status online)
   async updatePresence(clientId: string, presence: 'available' | 'unavailable' | 'composing' | 'recording'): Promise<any> {
     try {
-      console.log(`👤 ATUALIZANDO PRESENÇA REAL no WhatsApp ${clientId}: ${presence}`);
+      console.log(`👤 Atualizando presença para ${clientId}: ${presence}`);
       
       const response = await fetch(`${API_BASE_URL}/clients/${clientId}/presence`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ presence })
       });
       
@@ -195,32 +152,27 @@ class WhatsAppMultiClientService {
         throw new Error(data.error || 'Erro ao atualizar presença');
       }
       
-      console.log(`✅ PRESENÇA REAL ATUALIZADA no WhatsApp: ${presence}`);
+      console.log(`✅ Presença atualizada: ${presence}`);
       return data;
     } catch (error) {
-      console.error(`❌ ERRO ao atualizar presença REAL ${clientId}:`, error);
+      console.error(`❌ Erro ao atualizar presença ${clientId}:`, error);
       throw error;
     }
   }
 
-  // Indicador de digitação REAL no WhatsApp
+  // Indicador de digitação
   async setTyping(clientId: string, chatId: string, isTyping: boolean): Promise<any> {
     try {
-      console.log(`⌨️ ${isTyping ? 'INICIANDO' : 'PARANDO'} digitação REAL no WhatsApp para ${chatId}`);
+      console.log(`⌨️ ${isTyping ? 'Iniciando' : 'Parando'} indicador de digitação para ${chatId}`);
       
       const response = await fetch(`${API_BASE_URL}/clients/${clientId}/set-typing`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chatId, isTyping })
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Erro HTTP ${response.status}:`, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
@@ -229,10 +181,10 @@ class WhatsAppMultiClientService {
         throw new Error(data.error || 'Erro ao definir status de digitação');
       }
       
-      console.log(`✅ DIGITAÇÃO REAL ATUALIZADA no WhatsApp: ${isTyping}`);
+      console.log(`✅ Status de digitação atualizado: ${isTyping}`);
       return data;
     } catch (error) {
-      console.error(`❌ ERRO ao definir digitação REAL:`, error);
+      console.error(`❌ Erro ao definir digitação:`, error);
       // Não fazer throw para não quebrar o fluxo
       return { success: false, error: error.message };
     }
@@ -241,7 +193,7 @@ class WhatsAppMultiClientService {
   // Indicador de gravação
   async setRecording(clientId: string, chatId: string, isRecording: boolean): Promise<any> {
     try {
-      console.log(`🎤 ${isRecording ? 'INICIANDO' : 'PARANDO'} indicador de gravação para ${chatId}`);
+      console.log(`🎤 ${isRecording ? 'Iniciando' : 'Parando'} indicador de gravação para ${chatId}`);
       
       const response = await fetch(`${API_BASE_URL}/clients/${clientId}/set-recording`, {
         method: 'POST',
@@ -488,10 +440,10 @@ class WhatsAppMultiClientService {
 
   async sendMessage(clientId: string, to: string, message: string, mediaUrl?: string, file?: File): Promise<any> {
     try {
-      console.log('📤 ENVIANDO MENSAGEM PARA WHATSAPP REAL:', { 
+      console.log('📤 Enviando mensagem:', { 
         clientId, 
-        to: to.substring(0, 15) + '...', 
-        message: message.substring(0, 50) + '...', 
+        to, 
+        message: message.substring(0, 50), 
         hasFile: !!file,
         hasMediaUrl: !!mediaUrl,
         fileType: file?.type,
@@ -552,21 +504,12 @@ class WhatsAppMultiClientService {
         return data;
         
       } else {
-        // Envio de mensagem de texto para WhatsApp REAL
+        // Envio de mensagem de texto
         const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-message`, {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ to, message })
         });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`❌ Erro HTTP ${response.status}:`, errorText);
-          throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
-        }
         
         const data = await response.json();
         
@@ -574,14 +517,11 @@ class WhatsAppMultiClientService {
           throw new Error(data.error || 'Erro ao enviar mensagem');
         }
         
-        console.log('✅ MENSAGEM ENVIADA COM SUCESSO para WhatsApp REAL:', {
-          messageId: data.messageId,
-          status: data.status
-        });
+        console.log('✅ Mensagem enviada com sucesso');
         return data;
       }
     } catch (error: any) {
-      console.error('❌ ERRO CRÍTICO ao enviar mensagem para WhatsApp REAL:', error);
+      console.error('❌ Erro ao enviar mensagem:', error);
       throw error;
     }
   }
