@@ -227,6 +227,7 @@ export const useRobustAssistant = (config: AssistantConfig) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout
 
+    let responseData;
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -250,13 +251,13 @@ export const useRobustAssistant = (config: AssistantConfig) => {
         throw new Error(`OpenAI API Error: ${response.status} - ${errorText.substring(0, 200)}`);
       }
 
-      const data = await response.json();
+      responseData = await response.json();
       
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      if (!responseData.choices || !responseData.choices[0] || !responseData.choices[0].message) {
         throw new Error('Resposta inválida da OpenAI API');
       }
 
-      const assistantResponse = data.choices[0].message.content;
+      const assistantResponse = responseData.choices[0].message.content;
 
       if (!assistantResponse?.trim()) {
         throw new Error('Resposta vazia da OpenAI API');
@@ -273,7 +274,7 @@ export const useRobustAssistant = (config: AssistantConfig) => {
     }
 
     // VALIDAR RESPOSTA ANTES DE ENVIAR
-    const finalResponse = data.choices[0].message.content.trim();
+    const finalResponse = responseData.choices[0].message.content.trim();
     if (finalResponse.length === 0) {
       throw new Error('Resposta final vazia após processamento');
     }
