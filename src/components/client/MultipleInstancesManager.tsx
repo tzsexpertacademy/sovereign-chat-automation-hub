@@ -3,8 +3,6 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { 
   Plus, 
   Smartphone, 
@@ -13,10 +11,7 @@ import {
   CheckCircle,
   AlertCircle,
   Clock,
-  Activity,
-  Edit,
-  Save,
-  X
+  Activity
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
@@ -32,8 +27,6 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -59,30 +52,8 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
 
   const createNewInstance = async () => {
     try {
-      // Check if we can create more instances
       const canCreate = await clientsService.canCreateInstance(clientId);
-      
       if (!canCreate) {
-        // Auto-upgrade for special client
-        if (client.email === 'thalisportal@gmail.com') {
-          const newPlan = client.plan === 'basic' ? 'standard' : 
-                         client.plan === 'standard' ? 'premium' : 'enterprise';
-          
-          await clientsService.updateClient(client.id, { plan: newPlan });
-          
-          toast({
-            title: "Plano Atualizado",
-            description: `Plano atualizado para ${newPlan.toUpperCase()} automaticamente`,
-          });
-          
-          // Reload client data
-          onInstancesUpdate?.();
-          
-          // Try creating again after upgrade
-          setTimeout(() => createNewInstance(), 1000);
-          return;
-        }
-        
         toast({
           title: "Limite Atingido",
           description: `Limite de ${client.max_instances} instâncias atingido para o plano ${client.plan}`,
@@ -93,13 +64,11 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
 
       setCreating(true);
       const instanceId = `${clientId}_${Date.now()}`;
-      const customName = `Instância ${instances.length + 1}`;
       
       await whatsappInstancesService.createInstance({
         client_id: clientId,
         instance_id: instanceId,
-        status: 'disconnected',
-        custom_name: customName
+        status: 'disconnected'
       });
 
       toast({
@@ -142,39 +111,6 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
     }
   };
 
-  const startEdit = (instance: WhatsAppInstanceData) => {
-    setEditingId(instance.id);
-    setEditName(instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`);
-  };
-
-  const saveEdit = async (instanceId: string) => {
-    try {
-      await whatsappInstancesService.updateInstanceById(instanceId, {
-        custom_name: editName
-      });
-
-      toast({
-        title: "Nome Atualizado",
-        description: "Nome da instância atualizado com sucesso",
-      });
-
-      setEditingId(null);
-      await loadInstances();
-    } catch (error) {
-      console.error('Erro ao atualizar nome:', error);
-      toast({
-        title: "Erro",
-        description: "Falha ao atualizar nome da instância",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditName("");
-  };
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'connected': return <CheckCircle className="w-4 h-4 text-green-500" />;
@@ -205,7 +141,15 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
     }
   };
 
-  const isSpecialClient = client.email === 'thalisportal@gmail.com';
+  const getPlanLimitInfo = () => {
+    const limits = {
+      basic: 1,
+      standard: 3,
+      premium: 10,
+      enterprise: 50
+    };
+    return limits[client.plan as keyof typeof limits] || 1;
+  };
 
   return (
     <div className="space-y-6">
@@ -215,15 +159,10 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
             <div>
               <CardTitle className="flex items-center space-x-2">
                 <Smartphone className="w-5 h-5" />
-                <span>Gerenciar Instâncias WhatsApp</span>
+                <span>Instâncias WhatsApp</span>
               </CardTitle>
               <CardDescription>
                 Gerencie múltiplas instâncias WhatsApp para este cliente
-                {isSpecialClient && (
-                  <Badge variant="secondary" className="ml-2">
-                    Cliente Especial - Sem Limite
-                  </Badge>
-                )}
               </CardDescription>
             </div>
             <div className="text-right">
@@ -231,7 +170,7 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
                 Plano: <Badge variant="outline">{client.plan.toUpperCase()}</Badge>
               </div>
               <div className="text-sm text-gray-600">
-                {instances.length} / {isSpecialClient ? '∞' : client.max_instances} instâncias
+                {client.current_instances} / {client.max_instances} instâncias
               </div>
             </div>
           </div>
@@ -243,9 +182,8 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
             </div>
             <Button 
               onClick={createNewInstance}
-              disabled={creating}
+              disabled={creating || client.current_instances >= client.max_instances}
               size="sm"
-              className="bg-green-600 hover:bg-green-700"
             >
               <Plus className="w-4 h-4 mr-2" />
               {creating ? 'Criando...' : 'Nova Instância'}
@@ -274,54 +212,16 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         {getStatusIcon(instance.status)}
-                        <div className="flex-1">
-                          {editingId === instance.id ? (
-                            <div className="flex items-center space-x-2">
-                              <Input
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                className="max-w-xs"
-                                placeholder="Nome da instância"
-                              />
-                              <Button
-                                size="sm"
-                                onClick={() => saveEdit(instance.id)}
-                              >
-                                <Save className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={cancelEdit}
-                              >
-                                <X className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <h3 className="font-medium">
-                                  {instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`}
-                                </h3>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => startEdit(instance)}
-                                >
-                                  <Edit className="w-3 h-3" />
-                                </Button>
-                              </div>
-                              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                                <Badge variant={getStatusColor(instance.status)}>
-                                  {getStatusText(instance.status)}
-                                </Badge>
-                                {instance.phone_number && (
-                                  <span>• {instance.phone_number}</span>
-                                )}
-                                <span>• ID: {instance.instance_id.split('_').pop()}</span>
-                              </div>
-                            </div>
-                          )}
+                        <div>
+                          <h3 className="font-medium">Instância {instance.instance_id.split('_').pop()}</h3>
+                          <div className="flex items-center space-x-2 text-sm text-gray-600">
+                            <Badge variant={getStatusColor(instance.status)}>
+                              {getStatusText(instance.status)}
+                            </Badge>
+                            {instance.phone_number && (
+                              <span>• {instance.phone_number}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       

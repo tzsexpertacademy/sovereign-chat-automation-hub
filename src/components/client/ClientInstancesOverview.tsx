@@ -10,8 +10,7 @@ import {
   AlertCircle, 
   Clock, 
   Activity,
-  QrCode,
-  RefreshCw
+  QrCode
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
@@ -27,7 +26,6 @@ const ClientInstancesOverview = () => {
   const [client, setClient] = useState<ClientData | null>(null);
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (clientId) {
@@ -71,85 +69,6 @@ const ClientInstancesOverview = () => {
     }
   };
 
-  const handleUpgradePlan = async () => {
-    if (!client) return;
-
-    try {
-      setLoading(true);
-      
-      // Upgrade plan to allow more instances
-      const newPlan = client.plan === 'basic' ? 'standard' : 
-                     client.plan === 'standard' ? 'premium' : 'enterprise';
-      
-      await clientsService.updateClient(client.id, { plan: newPlan });
-      
-      toast({
-        title: "Plano Atualizado",
-        description: `Plano alterado para ${newPlan.toUpperCase()}`,
-      });
-
-      await loadClientData();
-      
-    } catch (error) {
-      console.error('Erro ao atualizar plano:', error);
-      toast({
-        title: "Erro",
-        description: "Falha ao atualizar plano",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateInstance = async () => {
-    if (!client) return;
-
-    const canCreate = await clientsService.canCreateInstance(client.id);
-    if (!canCreate) {
-      toast({
-        title: "Limite Atingido",
-        description: `Limite de ${client.max_instances} instância(s) atingido. Atualizando plano...`,
-        variant: "destructive",
-      });
-      
-      // Auto-upgrade if thalisportal@gmail.com
-      if (client.email === 'thalisportal@gmail.com') {
-        await handleUpgradePlan();
-        return;
-      }
-      return;
-    }
-
-    try {
-      setCreating(true);
-      const instanceId = `${client.id}_${Date.now()}`;
-      
-      await whatsappInstancesService.createInstance({
-        client_id: client.id,
-        instance_id: instanceId,
-        status: 'disconnected',
-        custom_name: `Instância ${instances.length + 1}`
-      });
-
-      toast({
-        title: "Instância Criada",
-        description: "Nova instância WhatsApp criada com sucesso",
-      });
-
-      await loadClientData();
-    } catch (error) {
-      console.error('Erro ao criar instância:', error);
-      toast({
-        title: "Erro",
-        description: "Falha ao criar nova instância",
-        variant: "destructive",
-      });
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'connected': return <CheckCircle className="w-5 h-5 text-green-500" />;
@@ -182,8 +101,6 @@ const ClientInstancesOverview = () => {
     );
   }
 
-  const isSpecialClient = client.email === 'thalisportal@gmail.com';
-
   return (
     <div className="space-y-6">
       {/* Client Header */}
@@ -193,49 +110,18 @@ const ClientInstancesOverview = () => {
             <div>
               <CardTitle className="text-2xl">{client.name}</CardTitle>
               <CardDescription>{client.email}</CardDescription>
-              {isSpecialClient && (
-                <Badge variant="secondary" className="mt-2">
-                  Cliente Especial
-                </Badge>
-              )}
             </div>
             <div className="text-right">
               <Badge className="mb-2">
                 Plano {client.plan.toUpperCase()}
               </Badge>
               <div className="text-sm text-gray-600">
-                {instances.length} / {client.max_instances} instâncias
+                {client.current_instances || 0} / {client.max_instances} instâncias
               </div>
             </div>
           </div>
         </CardHeader>
       </Card>
-
-      {/* Quick Actions for Special Client */}
-      {isSpecialClient && instances.length >= client.max_instances && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium text-blue-900">Adicionar Nova Instância</h3>
-                <p className="text-sm text-blue-700">
-                  Cliente especial - podemos atualizar automaticamente o plano
-                </p>
-              </div>
-              <div className="flex space-x-2">
-                <Button onClick={handleUpgradePlan} disabled={loading}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Atualizar Plano
-                </Button>
-                <Button onClick={handleCreateInstance} disabled={creating}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  {creating ? 'Criando...' : 'Nova Instância'}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

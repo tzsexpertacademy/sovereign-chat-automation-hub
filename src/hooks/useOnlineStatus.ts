@@ -1,107 +1,99 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { whatsappService } from '@/services/whatsappMultiClient';
 
 export const useOnlineStatus = (clientId: string, isEnabled: boolean = true) => {
   const [isOnline, setIsOnline] = useState(false);
-  const enabledRef = useRef(isEnabled);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
-  const onlineTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const enabledRef = useRef(isEnabled);
 
   // Atualizar ref quando enabled mudar
   useEffect(() => {
     enabledRef.current = isEnabled;
   }, [isEnabled]);
 
-  const setOnlineWithTimeout = useCallback(() => {
+  const updateOnlineStatus = useCallback(async () => {
     if (!enabledRef.current || !clientId) return;
 
-    setIsOnline(true);
-    lastActivityRef.current = Date.now();
-    
-    console.log('📱 Status ONLINE simulado para cliente:', clientId, new Date().toLocaleTimeString());
-
-    // Limpar timeout anterior
-    if (onlineTimeoutRef.current) {
-      clearTimeout(onlineTimeoutRef.current);
+    try {
+      // Simular atividade online - comentado para evitar 404s
+      // await whatsappService.updatePresence(clientId, 'available');
+      setIsOnline(true);
+      lastActivityRef.current = Date.now();
+      console.log('📱 Status online simulado para cliente:', clientId);
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status online:', error);
+      setIsOnline(false);
     }
+  }, [clientId]);
 
-    // Manter online por 5 minutos após última atividade
-    onlineTimeoutRef.current = setTimeout(() => {
-      const timeSinceLastActivity = Date.now() - lastActivityRef.current;
-      if (timeSinceLastActivity >= 300000) { // 5 minutos
-        setIsOnline(false);
-        console.log('📱 Status OFFLINE por inatividade para cliente:', clientId);
-      }
-    }, 300000);
+  const setOnline = useCallback(() => {
+    if (enabledRef.current) {
+      updateOnlineStatus();
+    }
+  }, [updateOnlineStatus]);
+
+  const setOffline = useCallback(async () => {
+    if (!enabledRef.current || !clientId) return;
+
+    try {
+      // Comentado para evitar 404s
+      // await whatsappService.updatePresence(clientId, 'unavailable');
+      setIsOnline(false);
+      console.log('📱 Status offline simulado para cliente:', clientId);
+    } catch (error) {
+      console.error('❌ Erro ao marcar offline:', error);
+    }
   }, [clientId]);
 
   const markActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
     if (enabledRef.current) {
-      setOnlineWithTimeout();
+      updateOnlineStatus();
     }
-  }, [setOnlineWithTimeout]);
+  }, [updateOnlineStatus]);
 
-  const setOnline = useCallback(() => {
-    if (enabledRef.current) {
-      setOnlineWithTimeout();
-    }
-  }, [setOnlineWithTimeout]);
-
-  const setOffline = useCallback(() => {
-    if (!enabledRef.current || !clientId) return;
-
-    setIsOnline(false);
-    console.log('📱 Status OFFLINE manual para cliente:', clientId);
-    
-    if (onlineTimeoutRef.current) {
-      clearTimeout(onlineTimeoutRef.current);
-      onlineTimeoutRef.current = null;
-    }
-  }, [clientId]);
-
-  // Inicializar como online quando habilitado
+  // Configurar intervalo de 30 segundos - REMOVIDO para evitar loops
   useEffect(() => {
     if (!enabledRef.current || !clientId) return;
 
-    // Marcar como online imediatamente
-    setOnlineWithTimeout();
+    // Atualizar imediatamente
+    updateOnlineStatus();
+
+    // Comentado o intervalo para evitar loops infinitos
+    /*
+    intervalRef.current = setInterval(() => {
+      updateOnlineStatus();
+    }, 30000);
+    */
 
     return () => {
-      if (onlineTimeoutRef.current) {
-        clearTimeout(onlineTimeoutRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
       setIsOnline(false);
     };
-  }, [clientId, setOnlineWithTimeout]);
+  }, [clientId, updateOnlineStatus]);
 
-  // Detectar atividade na página
+  // Detectar quando a aba fica inativa - SIMPLIFICADO
   useEffect(() => {
-    const handleActivity = () => {
-      markActivity();
-    };
-
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        markActivity();
+      if (document.hidden) {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
       }
     };
-
-    // Eventos de atividade
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-    events.forEach(event => {
-      document.addEventListener(event, handleActivity, { passive: true });
-    });
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
-      events.forEach(event => {
-        document.removeEventListener(event, handleActivity);
-      });
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [markActivity]);
+  }, []);
 
   return {
     isOnline,

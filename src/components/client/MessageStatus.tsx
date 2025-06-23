@@ -1,20 +1,14 @@
 
 import React from 'react';
-import { Check, CheckCheck, Clock, XCircle } from 'lucide-react';
+import { Check, CheckCheck, Clock, XCircle, Send } from 'lucide-react';
 
 interface MessageStatusProps {
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   timestamp: string;
   fromMe: boolean;
-  isAiResponse?: boolean;
 }
 
-const MessageStatus: React.FC<MessageStatusProps> = ({ 
-  status, 
-  timestamp, 
-  fromMe, 
-  isAiResponse = false 
-}) => {
+const MessageStatus: React.FC<MessageStatusProps> = ({ status, timestamp, fromMe }) => {
   if (!fromMe) return null;
 
   const getStatusIcon = () => {
@@ -26,14 +20,7 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
       case 'delivered':
         return <CheckCheck className="w-3 h-3 text-gray-500" />;
       case 'read':
-        return (
-          <div className="flex items-center space-x-1">
-            <CheckCheck className="w-3 h-3 text-blue-500" />
-            {isAiResponse && (
-              <span className="text-xs text-blue-500 font-medium">IA ✓✓</span>
-            )}
-          </div>
-        );
+        return <CheckCheck className="w-3 h-3 text-blue-500" />;
       case 'failed':
         return <XCircle className="w-3 h-3 text-red-500" />;
       default:
@@ -50,7 +37,7 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
       case 'delivered':
         return 'Entregue';
       case 'read':
-        return isAiResponse ? 'Lida pela IA ✓✓' : 'Lida ✓✓';
+        return 'Lida ✓✓';
       case 'failed':
         return 'Falha no envio';
       default:
@@ -75,11 +62,6 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
         {formatTime(timestamp)}
       </span>
       {getStatusIcon()}
-      {status === 'read' && (
-        <span className="text-xs text-blue-300 ml-1">
-          Leitura ativa
-        </span>
-      )}
     </div>
   );
 };
