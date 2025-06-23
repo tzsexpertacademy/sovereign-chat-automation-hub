@@ -24,12 +24,12 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const { toast } = useToast();
   const { chatId } = useParams();
 
-  // Hook para tempo real
+  // Hook para tempo real com status REAL do WhatsApp
   const {
     tickets,
     isLoading: ticketsLoading,
     isTyping: assistantTyping,
-    isOnline: assistantOnline,
+    isOnline: whatsappOnlineReal, // Status REAL do WhatsApp
     reloadTickets
   } = useTicketRealtime(clientId);
 
@@ -114,13 +114,22 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const renderTicketBadges = (ticket: ConversationTicket) => {
     const badges = [];
 
-    // Status da conexão - sempre online
-    badges.push(
-      <Badge key="connection" variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-        <Wifi className="w-3 h-3 mr-1" />
-        Online
-      </Badge>
-    );
+    // Status da conexão REAL do WhatsApp
+    if (whatsappOnlineReal) {
+      badges.push(
+        <Badge key="whatsapp-online" variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+          <Wifi className="w-3 h-3 mr-1" />
+          WhatsApp Online
+        </Badge>
+      );
+    } else {
+      badges.push(
+        <Badge key="whatsapp-offline" variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
+          <Wifi className="w-3 h-3 mr-1" />
+          WhatsApp Offline
+        </Badge>
+      );
+    }
 
     // Status do atendimento
     const isHumanAssigned = ticket.status === 'pending' || 
@@ -169,10 +178,16 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900">Conversas</h2>
             <div className="flex items-center space-x-2">
-              {assistantOnline && (
+              {/* Status REAL do WhatsApp */}
+              {whatsappOnlineReal ? (
                 <div className="flex items-center space-x-1 text-green-600">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-xs font-medium">Online</span>
+                  <span className="text-xs font-medium">WhatsApp Online</span>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-1 text-red-600">
+                  <div className="w-2 h-2 bg-red-500 rounded-full" />
+                  <span className="text-xs font-medium">WhatsApp Offline</span>
                 </div>
               )}
               <Button
@@ -295,12 +310,20 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                     </h3>
                     <div className="flex items-center space-x-2 text-sm text-gray-500">
                       <span className="truncate">{selectedChat?.customer?.phone}</span>
-                      {assistantOnline && (
+                      {whatsappOnlineReal ? (
                         <>
                           <span>•</span>
                           <div className="flex items-center space-x-1 text-green-600">
                             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                            <span className="whitespace-nowrap">Assistente Online</span>
+                            <span className="whitespace-nowrap">WhatsApp Online</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span>•</span>
+                          <div className="flex items-center space-x-1 text-red-600">
+                            <div className="w-2 h-2 bg-red-500 rounded-full" />
+                            <span className="whitespace-nowrap">WhatsApp Offline</span>
                           </div>
                         </>
                       )}
@@ -333,14 +356,14 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               />
               
               {assistantTyping && (
-                <div className="p-3 bg-gray-50 border-t">
-                  <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <div className="p-3 bg-green-50 border-t border-green-200">
+                  <div className="flex items-center space-x-2 text-sm text-green-700">
                     <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
                     </div>
-                    <span>🤖 Assistente está digitando...</span>
+                    <span>🤖 Assistente está digitando no WhatsApp...</span>
                   </div>
                 </div>
               )}
@@ -354,10 +377,15 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               <p className="text-gray-600 mb-4">
                 Escolha uma conversa da lista para começar a responder mensagens
               </p>
-              {assistantOnline && (
+              {whatsappOnlineReal ? (
                 <div className="mt-4 flex items-center justify-center space-x-2 text-green-600">
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-sm font-medium">🤖 Assistente Online - Pronto para Atender</span>
+                  <span className="text-sm font-medium">🤖 WhatsApp Online - Assistente Pronto</span>
+                </div>
+              ) : (
+                <div className="mt-4 flex items-center justify-center space-x-2 text-red-600">
+                  <div className="w-3 h-3 bg-red-500 rounded-full" />
+                  <span className="text-sm font-medium">⚠️ WhatsApp Offline - Verifique Conexão</span>
                 </div>
               )}
             </div>

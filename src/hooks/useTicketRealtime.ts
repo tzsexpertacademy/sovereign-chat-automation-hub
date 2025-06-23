@@ -11,7 +11,7 @@ export const useTicketRealtime = (clientId: string) => {
   const [isLoading, setIsLoading] = useState(false);
   const [assistantTyping, setAssistantTyping] = useState(false);
   const [instanceId, setInstanceId] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(false);
   
   const channelRef = useRef<any>(null);
   const socketRef = useRef<any>(null);
@@ -20,6 +20,7 @@ export const useTicketRealtime = (clientId: string) => {
   const lastLoadTimeRef = useRef<number>(0);
   const initializationRef = useRef(false);
   const processingRef = useRef<Set<string>>(new Set());
+  const onlineStatusRef = useRef<NodeJS.Timeout | null>(null);
 
   // Buscar instância ativa
   useEffect(() => {
@@ -35,6 +36,9 @@ export const useTicketRealtime = (clientId: string) => {
         if (instances && instances.length > 0) {
           setInstanceId(instances[0].instance_id);
           console.log('📱 Instância ativa encontrada:', instances[0].instance_id);
+          
+          // Conectar ao status online REAL do WhatsApp
+          await maintainRealWhatsAppOnlineStatus(instances[0].instance_id);
         }
       } catch (error) {
         console.error('❌ Erro ao buscar instâncias:', error);
@@ -45,6 +49,41 @@ export const useTicketRealtime = (clientId: string) => {
       findActiveInstance();
     }
   }, [clientId]);
+
+  // Manter status online REAL no WhatsApp
+  const maintainRealWhatsAppOnlineStatus = useCallback(async (instanceId: string) => {
+    if (!instanceId || !mountedRef.current) return;
+
+    try {
+      console.log('🟢 Definindo status ONLINE REAL no WhatsApp para:', instanceId);
+      
+      // Enviar presença "available" para o WhatsApp real
+      await whatsappService.updatePresence(instanceId, 'available');
+      
+      setIsOnline(true);
+      console.log('✅ Status online REAL ativado no WhatsApp');
+      
+      // Manter status online a cada 30 segundos
+      if (onlineStatusRef.current) {
+        clearInterval(onlineStatusRef.current);
+      }
+      
+      onlineStatusRef.current = setInterval(async () => {
+        if (mountedRef.current) {
+          try {
+            await whatsappService.updatePresence(instanceId, 'available');
+            console.log('🔄 Status online REAL mantido no WhatsApp');
+          } catch (error) {
+            console.warn('⚠️ Erro ao manter status online:', error);
+          }
+        }
+      }, 30000);
+      
+    } catch (error) {
+      console.error('❌ Erro ao definir status online REAL:', error);
+      setIsOnline(false);
+    }
+  }, []);
 
   // Carregar tickets
   const loadTickets = useCallback(async () => {
@@ -73,7 +112,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar com assistente IA - SIMPLIFICADO
+  // Processar com assistente IA
   const processWithAssistant = useCallback(async (message: any, ticketId: string) => {
     if (!mountedRef.current || !ticketId || !instanceId) {
       console.log('❌ Componente desmontado, ticketId inválido ou instância não encontrada');
@@ -86,6 +125,16 @@ export const useTicketRealtime = (clientId: string) => {
     try {
       setAssistantTyping(true);
       console.log('🤖 Assistente iniciou digitação');
+      
+      // Indicar digitação no WhatsApp REAL
+      if (message.from) {
+        try {
+          await whatsappService.setTyping(instanceId, message.from, true);
+          console.log('⌨️ Indicador de digitação ATIVADO no WhatsApp real');
+        } catch (error) {
+          console.warn('⚠️ Erro ao ativar digitação no WhatsApp:', error);
+        }
+      }
       
       // Buscar configurações
       const [queues, aiConfig] = await Promise.all([
@@ -111,9 +160,9 @@ export const useTicketRealtime = (clientId: string) => {
       const assistant = activeQueue.assistants;
       console.log(`🤖 Usando assistente: ${assistant.name}`);
 
-      // Simular tempo de digitação realístico
+      // Tempo de digitação realístico
       const messageLength = (message.body || '').length;
-      const typingDuration = Math.max(2000, Math.min(8000, messageLength * 50));
+      const typingDuration = Math.max(3000, Math.min(8000, messageLength * 60));
       console.log(`⌨️ Duração de digitação simulada: ${typingDuration}ms`);
       
       await new Promise(resolve => setTimeout(resolve, typingDuration));
@@ -170,13 +219,22 @@ export const useTicketRealtime = (clientId: string) => {
         console.log(`🤖 Resposta recebida (${assistantResponse.length} caracteres):`, assistantResponse.substring(0, 200));
         
         try {
-          // Criar ID único para rastreamento
+          // Parar indicador de digitação no WhatsApp REAL
+          if (message.from) {
+            try {
+              await whatsappService.setTyping(instanceId, message.from, false);
+              console.log('⌨️ Indicador de digitação DESATIVADO no WhatsApp real');
+            } catch (error) {
+              console.warn('⚠️ Erro ao desativar digitação no WhatsApp:', error);
+            }
+          }
+          
           const messageId = `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           
-          // Enviar via WhatsApp - CORRIGIDO
-          console.log('📤 Enviando resposta via WhatsApp...');
+          // Enviar via WhatsApp REAL
+          console.log('📤 Enviando resposta via WhatsApp REAL...');
           const sendResult = await whatsappService.sendMessage(instanceId, message.from, assistantResponse);
-          console.log(`📤 Resultado do envio:`, sendResult);
+          console.log(`📤 Resultado do envio no WhatsApp REAL:`, sendResult);
           
           // Registrar no ticket
           await ticketsService.addTicketMessage({
@@ -193,7 +251,7 @@ export const useTicketRealtime = (clientId: string) => {
             timestamp: new Date().toISOString()
           });
 
-          console.log('✅ Resposta enviada e registrada');
+          console.log('✅ Resposta enviada para WhatsApp REAL e registrada');
 
           // Recarregar tickets após envio
           setTimeout(() => {
@@ -203,7 +261,7 @@ export const useTicketRealtime = (clientId: string) => {
           }, 1500);
 
         } catch (sendError) {
-          console.error(`❌ Erro ao enviar resposta:`, sendError);
+          console.error(`❌ Erro ao enviar resposta para WhatsApp REAL:`, sendError);
         }
       }
 
@@ -220,12 +278,13 @@ export const useTicketRealtime = (clientId: string) => {
 
   // Normalizar mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
-    console.log('📨 Normalizando mensagem WhatsApp:', {
+    console.log('📨 RECEBENDO MENSAGEM DO WHATSAPP:', {
       id: message.id,
       from: message.from,
       body: message.body?.substring(0, 50),
       fromMe: message.fromMe,
-      timestamp: message.timestamp
+      timestamp: message.timestamp,
+      type: message.type
     });
     
     let chatId = message.from || message.chatId || message.key?.remoteJid || message.chat?.id;
@@ -274,7 +333,7 @@ export const useTicketRealtime = (clientId: string) => {
       customerName
     };
 
-    console.log('✅ Mensagem normalizada:', {
+    console.log('✅ Mensagem NORMALIZADA do WhatsApp:', {
       id: normalizedMessage.id,
       from: normalizedMessage.from,
       customerName: normalizedMessage.customerName,
@@ -285,14 +344,14 @@ export const useTicketRealtime = (clientId: string) => {
     return normalizedMessage;
   }, []);
 
-  // Processar mensagem recebida - SIMPLIFICADO
+  // Processar mensagem recebida do WhatsApp
   const processMessage = useCallback(async (message: any) => {
     if (!mountedRef.current || !message || processedMessagesRef.current.has(message.id)) {
       return;
     }
     
     processedMessagesRef.current.add(message.id);
-    console.log('📨 Processando mensagem nova:', {
+    console.log('📨 PROCESSANDO NOVA MENSAGEM DO WHATSAPP:', {
       id: message.id,
       from: message.from,
       body: message.body?.substring(0, 50),
@@ -303,7 +362,7 @@ export const useTicketRealtime = (clientId: string) => {
     
     // Se for mensagem nossa, apenas salvar
     if (normalizedMessage.fromMe) {
-      console.log('📤 Mensagem nossa, apenas salvando...');
+      console.log('📤 Nossa mensagem, apenas salvando...');
       setTimeout(() => {
         if (mountedRef.current) {
           loadTickets();
@@ -313,7 +372,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
     
     try {
-      console.log('👤 Processando mensagem do cliente:', normalizedMessage.customerName);
+      console.log('👤 PROCESSANDO MENSAGEM DO CLIENTE:', normalizedMessage.customerName);
       
       const ticketId = await ticketsService.createOrUpdateTicket(
         clientId,
@@ -350,66 +409,77 @@ export const useTicketRealtime = (clientId: string) => {
         }
       }, 1000);
 
-      // Processamento com assistente
+      // PROCESSAR COM ASSISTENTE IMEDIATAMENTE
       if (!processingRef.current.has(ticketId)) {
         processingRef.current.add(ticketId);
-        console.log(`🤖 INICIANDO processamento com assistente para ticket: ${ticketId}`);
+        console.log(`🤖 INICIANDO processamento IMEDIATO com assistente para ticket: ${ticketId}`);
         
+        // Processar imediatamente
         setTimeout(() => {
           if (mountedRef.current && processingRef.current.has(ticketId)) {
             processWithAssistant(normalizedMessage, ticketId);
           }
-        }, 1500);
+        }, 500); // Reduzir delay para resposta mais rápida
       }
       
     } catch (error) {
-      console.error('❌ Erro ao processar mensagem:', error);
+      console.error('❌ Erro ao processar mensagem do WhatsApp:', error);
     }
   }, [clientId, normalizeWhatsAppMessage, loadTickets, processWithAssistant]);
 
-  // Configurar listeners - SIMPLIFICADO
+  // Configurar conexões e listeners
   useEffect(() => {
     if (!clientId || initializationRef.current) return;
 
-    console.log('🔌 Inicializando listeners para cliente:', clientId);
+    console.log('🔌 INICIANDO CONEXÕES COMPLETAS para cliente:', clientId);
     initializationRef.current = true;
     mountedRef.current = true;
-
-    // Manter sempre online
-    setIsOnline(true);
 
     loadTickets();
 
     try {
+      // Conectar ao WebSocket do servidor WhatsApp
       const socket = whatsappService.connectSocket();
       socketRef.current = socket;
       
       socket.on('connect', () => {
-        console.log('✅ WebSocket conectado para cliente:', clientId);
+        console.log('✅ WebSocket CONECTADO ao servidor WhatsApp para cliente:', clientId);
         whatsappService.joinClientRoom(clientId);
       });
 
       socket.on('disconnect', (reason: any) => {
-        console.log('❌ WebSocket desconectado:', reason);
+        console.log('❌ WebSocket DESCONECTADO do servidor WhatsApp:', reason);
+        setIsOnline(false);
       });
 
-      // Eventos de mensagem - SIMPLIFICADOS
-      const messageEvents = [
+      socket.on('reconnect', () => {
+        console.log('🔄 WebSocket RECONECTADO ao servidor WhatsApp');
+        whatsappService.joinClientRoom(clientId);
+        if (instanceId) {
+          maintainRealWhatsAppOnlineStatus(instanceId);
+        }
+      });
+
+      // Eventos CRÍTICOS de mensagem do WhatsApp
+      const criticalMessageEvents = [
         `message_${clientId}`,
         `new_message_${clientId}`,
         `whatsapp_message_${clientId}`,
-        'message'
+        'message',
+        'message_create',
+        'new_whatsapp_message'
       ];
 
-      messageEvents.forEach(eventName => {
+      criticalMessageEvents.forEach(eventName => {
         socket.on(eventName, (message: any) => {
           if (!mountedRef.current) return;
           
-          console.log(`📨 Evento ${eventName} recebido:`, {
+          console.log(`📨 EVENTO CRÍTICO ${eventName} RECEBIDO do WhatsApp:`, {
             id: message.id,
             from: message.from,
             body: message.body?.substring(0, 50),
-            fromMe: message.fromMe
+            fromMe: message.fromMe,
+            timestamp: new Date().toISOString()
           });
           
           processMessage(message);
@@ -418,7 +488,7 @@ export const useTicketRealtime = (clientId: string) => {
 
       // Canal do Supabase para mudanças nos tickets
       const channel = supabase
-        .channel(`tickets-${clientId}`)
+        .channel(`tickets-realtime-${clientId}`)
         .on(
           'postgres_changes',
           {
@@ -428,9 +498,23 @@ export const useTicketRealtime = (clientId: string) => {
             filter: `client_id=eq.${clientId}`
           },
           (payload) => {
-            console.log('🔄 Mudança no banco detectada:', payload);
+            console.log('🔄 MUDANÇA NO BANCO detectada para tickets:', payload.eventType);
             if (mountedRef.current) {
-              setTimeout(loadTickets, 1000);
+              setTimeout(loadTickets, 500);
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'ticket_messages',
+          },
+          (payload) => {
+            console.log('🔄 MUDANÇA NO BANCO detectada para mensagens:', payload.eventType);
+            if (mountedRef.current) {
+              setTimeout(loadTickets, 500);
             }
           }
         )
@@ -439,13 +523,17 @@ export const useTicketRealtime = (clientId: string) => {
       channelRef.current = channel;
 
     } catch (error) {
-      console.error('❌ Erro ao inicializar conexões:', error);
+      console.error('❌ Erro CRÍTICO ao inicializar conexões:', error);
     }
 
     return () => {
-      console.log('🔌 Limpando recursos...');
+      console.log('🔌 LIMPANDO RECURSOS...');
       mountedRef.current = false;
       initializationRef.current = false;
+      
+      if (onlineStatusRef.current) {
+        clearInterval(onlineStatusRef.current);
+      }
       
       if (socketRef.current) {
         socketRef.current.disconnect();
@@ -456,7 +544,7 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       processingRef.current.clear();
     };
-  }, [clientId, loadTickets, processMessage]);
+  }, [clientId, loadTickets, processMessage, maintainRealWhatsAppOnlineStatus, instanceId]);
 
   const reloadTickets = useCallback(() => {
     if (mountedRef.current) {
@@ -468,7 +556,7 @@ export const useTicketRealtime = (clientId: string) => {
     tickets,
     isLoading,
     isTyping: assistantTyping,
-    isOnline: true, // Sempre online
+    isOnline, // Status online REAL do WhatsApp
     reloadTickets
   };
 };
