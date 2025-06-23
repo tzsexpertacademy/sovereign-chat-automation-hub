@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -147,13 +146,11 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
-    // Safe handling of tags JSON field
-    const tags = Array.isArray(ticket.tags) ? ticket.tags : [];
-    if (tags.length > 0) {
+    if (ticket.tags && ticket.tags.length > 0) {
       badges.push(
         <Badge key="tags" variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-200">
           <Tag className="w-3 h-3 mr-1" />
-          {tags.length} tag{tags.length > 1 ? 's' : ''}
+          {ticket.tags.length} tag{ticket.tags.length > 1 ? 's' : ''}
         </Badge>
       );
     }

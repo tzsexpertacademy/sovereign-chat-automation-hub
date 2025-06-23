@@ -7,24 +7,6 @@ export const useTicketMessages = (ticketId: string) => {
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const reloadMessages = async () => {
-    if (!ticketId) return;
-    
-    try {
-      setIsLoading(true);
-      console.log('🔄 Recarregando mensagens para ticket:', ticketId);
-      
-      const messagesData = await ticketsService.getTicketMessages(ticketId, 100);
-      setMessages(messagesData);
-      
-      console.log(`✅ ${messagesData.length} mensagens recarregadas`);
-    } catch (error) {
-      console.error('❌ Erro ao recarregar mensagens:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (!ticketId) {
       setMessages([]);
@@ -121,5 +103,5 @@ export const useTicketMessages = (ticketId: string) => {
     };
   }, [ticketId]);
 
-  return { messages, isLoading, reloadMessages };
+  return { messages, isLoading };
 };

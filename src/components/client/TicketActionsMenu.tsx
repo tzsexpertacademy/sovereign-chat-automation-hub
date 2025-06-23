@@ -92,8 +92,7 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
     const tag = prompt('Digite a tag:');
     if (tag) {
       try {
-        // Safe handling of tags JSON field
-        const currentTags = Array.isArray(ticket.tags) ? ticket.tags : [];
+        const currentTags = ticket.tags || [];
         const newTags = [...currentTags, tag];
         await ticketsService.updateTicketTags(ticket.id, newTags);
         toast({
@@ -113,8 +112,7 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
 
   const handleRemoveTag = async (tagToRemove: string) => {
     try {
-      // Safe handling of tags JSON field
-      const currentTags = Array.isArray(ticket.tags) ? ticket.tags : [];
+      const currentTags = ticket.tags || [];
       const newTags = currentTags.filter(tag => tag !== tagToRemove);
       await ticketsService.updateTicketTags(ticket.id, newTags);
       toast({
@@ -130,9 +128,6 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
       });
     }
   };
-
-  // Safe handling of tags for rendering
-  const ticketTags = Array.isArray(ticket.tags) ? ticket.tags : [];
 
   return (
     <DropdownMenu>
@@ -177,12 +172,12 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
           Adicionar Tag
         </DropdownMenuItem>
 
-        {ticketTags.length > 0 && (
+        {ticket.tags && ticket.tags.length > 0 && (
           <>
             <DropdownMenuSeparator />
             <div className="px-2 py-1">
               <div className="flex flex-wrap gap-1">
-                {ticketTags.map((tag, index) => (
+                {ticket.tags.map((tag, index) => (
                   <Badge 
                     key={index} 
                     variant="secondary" 

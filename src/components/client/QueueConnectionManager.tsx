@@ -170,10 +170,7 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
     return queue?.instance_queue_connections?.filter(conn => conn.is_active) || [];
   };
 
-  const getInstanceDisplayName = (instance: WhatsAppInstanceData | undefined | null) => {
-    if (!instance) {
-      return 'Instância não encontrada';
-    }
+  const getInstanceDisplayName = (instance: WhatsAppInstanceData) => {
     return instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
   };
 
@@ -402,7 +399,7 @@ const QueueConnectionManager = ({ clientId, onConnectionChange }: QueueConnectio
                         <div className="text-xs text-gray-500">
                           {connections.map(c => {
                             const instance = instances.find(i => i.id === c.instance_id);
-                            return getInstanceDisplayName(instance);
+                            return getInstanceDisplayName(instance!);
                           }).join(', ')}
                         </div>
                       )}
