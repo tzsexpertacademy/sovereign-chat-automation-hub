@@ -16,8 +16,8 @@ interface MessageBatch {
 }
 
 const defaultConfig: BatchConfig = {
-  timeout: 5000, // 5 segundos
-  maxBatchSize: 10,
+  timeout: 3000, // Reduzido para 3 segundos
+  maxBatchSize: 5, // Reduzido para evitar lotes muito grandes
   enabled: true
 };
 
@@ -25,6 +25,7 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
   const [config, setConfig] = useState<BatchConfig>(defaultConfig);
   const batchesRef = useRef<Map<string, MessageBatch>>(new Map());
   const callbackRef = useRef(initialCallback);
+  const processedMessagesRef = useRef<Set<string>>(new Set());
 
   // Atualizar a referência do callback quando necessário
   const updateCallback = useCallback((newCallback: (chatId: string, messages: any[]) => void) => {
@@ -43,8 +44,7 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
       return;
     }
 
-    console.log(`📦 Processando lote de ${batch.messages.length} mensagens para ${chatId}:`, 
-      batch.messages.map(m => `${m.body?.substring(0, 30) || '[mídia]'} (${m.fromMe ? 'nossa' : 'cliente'})`));
+    console.log(`📦 Processando lote de ${batch.messages.length} mensagens para ${chatId}`);
     
     // Marcar como em processamento ANTES de chamar o callback
     batchesRef.current.set(chatId, {
@@ -84,11 +84,20 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
     }
 
     const chatId = message.from || message.chatId;
+    const messageId = message.id || message.key?.id || `msg_${Date.now()}`;
     const now = Date.now();
     
+    // VERIFICAÇÃO ANTI-DUPLICAÇÃO
+    if (processedMessagesRef.current.has(messageId)) {
+      console.log(`🚫 MENSAGEM duplicada ignorada: ${messageId}`);
+      return;
+    }
+    
+    processedMessagesRef.current.add(messageId);
+    
     console.log(`📨 Adicionando mensagem ao lote ${chatId}:`, {
-      id: message.id,
-      content: message.body?.substring(0, 50) || '[mídia]',
+      id: messageId,
+      content: message.body?.substring(0, 30) || '[mídia]',
       fromMe: message.fromMe,
       timestamp: new Date(message.timestamp || now).toLocaleTimeString()
     });
@@ -208,6 +217,18 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
       }
       batchesRef.current.delete(chatId);
     }
+  }, []);
+
+  // Limpeza periódica de mensagens processadas
+  useEffect(() => {
+    const cleanup = setInterval(() => {
+      if (processedMessagesRef.current.size > 1000) {
+        console.log('🧹 Limpando cache de mensagens processadas');
+        processedMessagesRef.current.clear();
+      }
+    }, 60000); // A cada minuto
+
+    return () => clearInterval(cleanup);
   }, []);
 
   return {
