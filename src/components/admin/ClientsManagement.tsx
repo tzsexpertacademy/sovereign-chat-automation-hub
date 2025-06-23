@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,26 +19,17 @@ import {
   Calendar,
   Activity,
   RefreshCw,
-  ExternalLink,
-  Database,
-  AlertTriangle,
-  Smartphone
+  ExternalLink
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData, CreateClientData } from "@/services/clientsService";
-import DataConsistencyChecker from "./DataConsistencyChecker";
 
-interface ClientsManagementProps {
-  onShowInstancesManager?: () => void;
-}
-
-const ClientsManagement = ({ onShowInstancesManager }: ClientsManagementProps) => {
+const ClientsManagement = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [showConsistencyChecker, setShowConsistencyChecker] = useState(false);
   const [newClient, setNewClient] = useState<CreateClientData>({
     name: "",
     email: "",
@@ -56,10 +48,9 @@ const ClientsManagement = ({ onShowInstancesManager }: ClientsManagementProps) =
   const loadClients = async () => {
     try {
       setLoading(true);
-      console.log('🔄 Recarregando lista de clientes...');
       const clientsData = await clientsService.getAllClients();
       setClients(clientsData);
-      console.log('✅ Clientes recarregados:', clientsData);
+      console.log('Clientes carregados do Supabase:', clientsData);
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
       toast({
@@ -70,12 +61,6 @@ const ClientsManagement = ({ onShowInstancesManager }: ClientsManagementProps) =
     } finally {
       setLoading(false);
     }
-  };
-
-  // Callback para quando dados são corrigidos no verificador de consistência
-  const handleDataFixed = async () => {
-    console.log('🔄 Dados foram corrigidos, recarregando lista de clientes...');
-    await loadClients();
   };
 
   const handleCreateClient = async () => {
@@ -217,32 +202,6 @@ const ClientsManagement = ({ onShowInstancesManager }: ClientsManagementProps) =
           <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
         </div>
         <div className="flex space-x-2">
-          {onShowInstancesManager && (
-            <Button 
-              onClick={onShowInstancesManager}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              <Smartphone className="w-4 h-4 mr-2" />
-              Gerenciar Instâncias
-            </Button>
-          )}
-          <Button 
-            onClick={() => setShowConsistencyChecker(!showConsistencyChecker)} 
-            variant={showConsistencyChecker ? "default" : "outline"}
-            className={showConsistencyChecker ? "bg-amber-600 hover:bg-amber-700" : "border-amber-300 text-amber-700 hover:bg-amber-50"}
-          >
-            {showConsistencyChecker ? (
-              <>
-                <AlertTriangle className="w-4 h-4 mr-2" />
-                Ocultar Verificador
-              </>
-            ) : (
-              <>
-                <Database className="w-4 h-4 mr-2" />
-                Verificar Consistência
-              </>
-            )}
-          </Button>
           <Button onClick={loadClients} variant="outline" disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
@@ -253,38 +212,6 @@ const ClientsManagement = ({ onShowInstancesManager }: ClientsManagementProps) =
           </Button>
         </div>
       </div>
-
-      {/* Data Consistency Checker - Pass callback */}
-      {showConsistencyChecker && (
-        <div className="border-2 border-amber-200 rounded-lg p-1 bg-amber-50/50">
-          <DataConsistencyChecker onDataFixed={handleDataFixed} />
-        </div>
-      )}
-
-      {/* Inconsistency Alert */}
-      {!showConsistencyChecker && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center space-x-3">
-              <AlertTriangle className="w-6 h-6 text-amber-600" />
-              <div className="flex-1">
-                <h3 className="font-medium text-amber-900">Problema de Inconsistência Detectado</h3>
-                <p className="text-sm text-amber-700 mt-1">
-                  Se você está vendo instâncias ativas aqui mas não consegue visualizá-las na página de instâncias, 
-                  ou não consegue criar novas instâncias para alguns clientes, use o verificador de consistência.
-                </p>
-              </div>
-              <Button 
-                onClick={() => setShowConsistencyChecker(true)}
-                className="bg-amber-600 hover:bg-amber-700"
-              >
-                <Database className="w-4 h-4 mr-2" />
-                Verificar Agora
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -487,6 +414,7 @@ const ClientsManagement = ({ onShowInstancesManager }: ClientsManagementProps) =
                   </div>
 
                   <div className="flex items-center space-x-4">
+                    {/* Plan and Instance Info */}
                     <div className="text-center">
                       <div className="flex items-center space-x-2 mb-1">
                         <Badge className={getPlanColor(client.plan)}>
@@ -501,6 +429,7 @@ const ClientsManagement = ({ onShowInstancesManager }: ClientsManagementProps) =
                       </p>
                     </div>
 
+                    {/* Action Buttons */}
                     <div className="flex space-x-2">
                       <Button
                         size="sm"
@@ -534,6 +463,7 @@ const ClientsManagement = ({ onShowInstancesManager }: ClientsManagementProps) =
                   </div>
                 </div>
 
+                {/* Additional Info */}
                 <div className="mt-4 pt-4 border-t flex justify-between items-center text-sm text-gray-500">
                   <div className="flex items-center">
                     <Calendar className="w-4 h-4 mr-1" />

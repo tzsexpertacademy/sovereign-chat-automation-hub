@@ -1,20 +1,14 @@
 
 import React from 'react';
-import { Check, CheckCheck, Clock, XCircle } from 'lucide-react';
+import { Check, CheckCheck, Clock, XCircle, Send } from 'lucide-react';
 
 interface MessageStatusProps {
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   timestamp: string;
   fromMe: boolean;
-  isAiMessage?: boolean;
 }
 
-const MessageStatus: React.FC<MessageStatusProps> = ({ 
-  status, 
-  timestamp, 
-  fromMe, 
-  isAiMessage = false 
-}) => {
+const MessageStatus: React.FC<MessageStatusProps> = ({ status, timestamp, fromMe }) => {
   if (!fromMe) return null;
 
   const getStatusIcon = () => {
@@ -43,7 +37,7 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
       case 'delivered':
         return 'Entregue';
       case 'read':
-        return isAiMessage ? 'Lida pela IA ✓✓' : 'Lida ✓✓';
+        return 'Lida ✓✓';
       case 'failed':
         return 'Falha no envio';
       default:
@@ -68,9 +62,6 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
         {formatTime(timestamp)}
       </span>
       {getStatusIcon()}
-      {isAiMessage && status === 'read' && (
-        <span className="text-xs text-blue-400 ml-1">🤖</span>
-      )}
     </div>
   );
 };

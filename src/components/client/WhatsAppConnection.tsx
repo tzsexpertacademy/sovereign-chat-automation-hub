@@ -17,9 +17,7 @@ import {
   Edit,
   Users,
   MessageSquare,
-  Trash2,
-  Power,
-  RotateCcw
+  Trash2
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -37,13 +35,10 @@ const WhatsAppConnection = () => {
   const [queues, setQueues] = useState<QueueWithAssistant[]>([]);
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [reconnecting, setReconnecting] = useState<string>("");
   const [selectedQueueId, setSelectedQueueId] = useState<string>("");
   const [editingInstance, setEditingInstance] = useState<WhatsAppInstanceData | null>(null);
   const [editName, setEditName] = useState("");
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showQrDialog, setShowQrDialog] = useState(false);
-  const [qrCodeData, setQrCodeData] = useState<{instanceId: string, qrCode: string} | null>(null);
 
   useEffect(() => {
     if (clientId) {
@@ -171,16 +166,15 @@ const WhatsAppConnection = () => {
       // Gerar um instanceId único
       const newInstanceId = `${clientId}_${Date.now()}`;
       
-      // Criar instância no Supabase PRIMEIRO
+      const result = await whatsappService.connectClient(newInstanceId);
+      console.log('✅ Instância criada:', result);
+      
+      // Criar instância no Supabase
       await whatsappInstancesService.createInstance({
         client_id: clientId,
         instance_id: newInstanceId,
         status: 'connecting'
       });
-
-      // Depois conectar no servidor WhatsApp
-      const result = await whatsappService.connectClient(newInstanceId);
-      console.log('✅ Instância criada:', result);
 
       // Atualizar cliente se for a primeira instância
       if (instances.length === 0) {
@@ -206,75 +200,6 @@ const WhatsAppConnection = () => {
       });
     } finally {
       setConnecting(false);
-    }
-  };
-
-  const handleReconnectInstance = async (instanceId: string) => {
-    try {
-      setReconnecting(instanceId);
-      console.log('🔄 Reconectando instância:', instanceId);
-      
-      // Atualizar status no banco para "connecting"
-      const instance = instances.find(i => i.instance_id === instanceId);
-      if (instance) {
-        await whatsappInstancesService.updateInstanceById(instance.id, {
-          status: 'connecting'
-        });
-      }
-
-      // Conectar no servidor WhatsApp
-      const result = await whatsappService.connectClient(instanceId);
-      console.log('✅ Instância reconectada:', result);
-      
-      toast({
-        title: "Reconectando",
-        description: "Instância sendo reconectada! Aguarde o QR Code...",
-      });
-
-      // Recarregar dados
-      setTimeout(() => {
-        loadData();
-      }, 2000);
-
-    } catch (error: any) {
-      console.error('❌ Erro ao reconectar instância:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Falha ao reconectar instância",
-        variant: "destructive",
-      });
-    } finally {
-      setReconnecting("");
-    }
-  };
-
-  const handleViewQrCode = async (instanceId: string) => {
-    try {
-      console.log('👁️ Buscando QR Code para instância:', instanceId);
-      
-      const clientStatus = await whatsappService.getClientStatus(instanceId);
-      console.log('📱 Status da instância:', clientStatus);
-      
-      if (clientStatus && clientStatus.qrCode) {
-        setQrCodeData({
-          instanceId,
-          qrCode: clientStatus.qrCode
-        });
-        setShowQrDialog(true);
-      } else {
-        toast({
-          title: "QR Code Indisponível",
-          description: "QR Code não está disponível para esta instância. Tente reconectar primeiro.",
-          variant: "destructive",
-        });
-      }
-    } catch (error: any) {
-      console.error('❌ Erro ao buscar QR Code:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Falha ao buscar QR Code",
-        variant: "destructive",
-      });
     }
   };
 
@@ -362,6 +287,7 @@ const WhatsAppConnection = () => {
       setLoading(true);
       console.log('💾 Salvando nome da instância:', { instanceId: editingInstance.instance_id, newName: editName.trim() });
       
+      // Usar o ID da instância (UUID) para atualizar
       await whatsappInstancesService.updateInstanceById(editingInstance.id, {
         custom_name: editName.trim()
       });
@@ -392,11 +318,7 @@ const WhatsAppConnection = () => {
       setLoading(true);
       
       // Desconectar do WhatsApp
-      try {
-        await whatsappService.disconnectClient(instanceId);
-      } catch (error) {
-        console.log('⚠️ Instância pode não estar conectada no servidor:', error);
-      }
+      await whatsappService.disconnectClient(instanceId);
       
       // Remover do Supabase
       await whatsappInstancesService.deleteInstance(instanceId);
@@ -574,7 +496,7 @@ const WhatsAppConnection = () => {
                 <div className="text-2xl font-bold text-red-600">
                   {instances.filter(i => ['error', 'disconnected'].includes(i.status)).length}
                 </div>
-                <p className="text-sm text-gray-600">Desconectadas</p>
+                <p className="text-sm text-gray-600">Com Problemas</p>
               </div>
             </div>
           </CardContent>
@@ -602,7 +524,6 @@ const WhatsAppConnection = () => {
       {instances.map((instance) => {
         const connections = getInstanceConnections(instance);
         const displayName = getInstanceDisplayName(instance);
-        const isReconnecting = reconnecting === instance.instance_id;
         
         return (
           <Card key={instance.id} className="hover:shadow-lg transition-shadow">
@@ -639,62 +560,16 @@ const WhatsAppConnection = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               
-              {/* Connection Actions for Disconnected Instances */}
-              {['disconnected', 'error'].includes(instance.status) && (
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-yellow-800">Instância Desconectada</h4>
-                      <p className="text-sm text-yellow-700">
-                        Esta instância foi criada mas está desconectada. Clique em "Reconectar" para gerar um novo QR Code.
-                      </p>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button
-                        size="sm"
-                        onClick={() => handleReconnectInstance(instance.instance_id)}
-                        disabled={isReconnecting}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        {isReconnecting ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                            Reconectando...
-                          </>
-                        ) : (
-                          <>
-                            <Power className="w-4 h-4 mr-1" />
-                            Reconectar
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
+              {/* Progress Bar */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Progresso da Conexão</span>
+                  <span>100%</span>
                 </div>
-              )}
-
-              {/* QR Code Actions */}
-              {instance.status === 'qr_ready' && (
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-blue-800">QR Code Pronto</h4>
-                      <p className="text-sm text-blue-700">
-                        📱 QR Code disponível! Escaneie com seu WhatsApp para conectar.
-                      </p>
-                    </div>
-                    <Button 
-                      onClick={() => handleViewQrCode(instance.instance_id)}
-                      size="sm"
-                      variant="outline"
-                      className="border-blue-300"
-                    >
-                      <QrCode className="w-4 h-4 mr-1" />
-                      Ver QR Code
-                    </Button>
-                  </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="bg-blue-600 h-2 rounded-full w-full"></div>
                 </div>
-              )}
+              </div>
 
               {/* Queue Configuration */}
               <div className="space-y-3">
@@ -738,42 +613,40 @@ const WhatsAppConnection = () => {
                   </div>
                 )}
 
-                {/* Connect to Queue - Only show for connected instances */}
-                {instance.status === 'connected' && (
-                  <div className="flex space-x-2">
-                    <Select value={selectedQueueId} onValueChange={setSelectedQueueId}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Selecionar fila..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="human">
+                {/* Connect to Queue */}
+                <div className="flex space-x-2">
+                  <Select value={selectedQueueId} onValueChange={setSelectedQueueId}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Selecionar fila..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="human">
+                        <div className="flex items-center space-x-2">
+                          <MessageSquare className="w-4 h-4" />
+                          <span>Interação Humana (Sem Fila)</span>
+                        </div>
+                      </SelectItem>
+                      {queues.map((queue) => (
+                        <SelectItem key={queue.id} value={queue.id}>
                           <div className="flex items-center space-x-2">
-                            <MessageSquare className="w-4 h-4" />
-                            <span>Interação Humana (Sem Fila)</span>
+                            <Users className="w-4 h-4" />
+                            <span>{queue.name}</span>
+                            {queue.assistants && (
+                              <span className="text-xs text-gray-500">({queue.assistants.name})</span>
+                            )}
                           </div>
                         </SelectItem>
-                        {queues.map((queue) => (
-                          <SelectItem key={queue.id} value={queue.id}>
-                            <div className="flex items-center space-x-2">
-                              <Users className="w-4 h-4" />
-                              <span>{queue.name}</span>
-                              {queue.assistants && (
-                                <span className="text-xs text-gray-500">({queue.assistants.name})</span>
-                              )}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button 
-                      onClick={() => handleConnectToQueue(instance.instance_id)}
-                      disabled={loading || !selectedQueueId}
-                    >
-                      <Settings className="w-4 h-4 mr-2" />
-                      Conectar
-                    </Button>
-                  </div>
-                )}
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    onClick={() => handleConnectToQueue(instance.instance_id)}
+                    disabled={loading || !selectedQueueId}
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Conectar
+                  </Button>
+                </div>
               </div>
 
               {/* WhatsApp Status */}
@@ -798,21 +671,8 @@ const WhatsAppConnection = () => {
                   className="text-red-600 hover:text-red-700"
                 >
                   <Trash2 className="w-4 h-4 mr-1" />
-                  Remover Permanentemente
+                  Desconectar
                 </Button>
-                
-                {instance.status === 'connected' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => whatsappService.disconnectClient(instance.instance_id)}
-                    disabled={loading}
-                    className="text-orange-600 hover:text-orange-700"
-                  >
-                    <Power className="w-4 h-4 mr-1" />
-                    Desconectar
-                  </Button>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -845,48 +705,6 @@ const WhatsAppConnection = () => {
             </Button>
             <Button onClick={handleSaveEdit} disabled={loading}>
               {loading ? "Salvando..." : "Salvar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* QR Code Dialog */}
-      <Dialog open={showQrDialog} onOpenChange={setShowQrDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>QR Code WhatsApp</DialogTitle>
-            <DialogDescription>
-              Escaneie este código com seu WhatsApp para conectar
-            </DialogDescription>
-          </DialogHeader>
-          <div className="text-center space-y-4">
-            {qrCodeData?.qrCode ? (
-              <div className="space-y-4">
-                <img 
-                  src={qrCodeData.qrCode} 
-                  alt="QR Code WhatsApp"
-                  className="mx-auto border rounded max-w-full"
-                />
-                <p className="text-sm text-gray-600">
-                  Abra o WhatsApp no seu celular, vá em "Dispositivos conectados" e escaneie este código.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <QrCode className="w-16 h-16 text-gray-400 mx-auto" />
-                <p className="text-sm text-gray-600">
-                  QR Code não disponível
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button 
-              onClick={() => setShowQrDialog(false)}
-              variant="outline"
-              className="w-full"
-            >
-              Fechar
             </Button>
           </DialogFooter>
         </DialogContent>

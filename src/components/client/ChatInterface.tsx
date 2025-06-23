@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag, Zap } from "lucide-react";
+import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import TicketChatInterface from './TicketChatInterface';
@@ -24,12 +25,11 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const { toast } = useToast();
   const { chatId } = useParams();
 
-  // Hook para tempo real - INCLUINDO NOVOS ESTADOS
+  // Hook para tempo real
   const {
     tickets,
     isLoading: ticketsLoading,
     isTyping: assistantTyping,
-    isRecording: assistantRecording,
     isOnline: assistentOnline,
     reloadTickets
   } = useTicketRealtime(clientId);
@@ -111,22 +111,26 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     return 'Contato sem nome';
   }, []);
 
-  // Renderizar badges do ticket - MELHORADO
+  // Renderizar badges do ticket
   const renderTicketBadges = (ticket: ConversationTicket) => {
     const badges = [];
 
-    // Status da conexão SEMPRE ONLINE
-    badges.push(
-      <Badge key="connection" variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-        <Zap className="w-3 h-3 mr-1" />
-        Online
-      </Badge>
-    );
+    // Status da conexão
+    if (ticket.instance_id) {
+      badges.push(
+        <Badge key="connection" variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+          <Wifi className="w-3 h-3 mr-1" />
+          Conectado
+        </Badge>
+      );
+    }
 
+    // Status do atendimento
     const isHumanAssigned = ticket.status === 'pending' || 
                            ticket.status === 'resolved' ||
                            ticket.status === 'closed';
 
+    // Mostrar fila ativa
     if (ticket.assigned_queue_id && !isHumanAssigned) {
       const queueName = ticket.assigned_queue_name || 'Fila Ativa';
       badges.push(
@@ -137,6 +141,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
+    // Atendimento humano
     if (isHumanAssigned) {
       badges.push(
         <Badge key="human" variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
@@ -146,6 +151,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       );
     }
 
+    // Tags se houver
     if (ticket.tags && ticket.tags.length > 0) {
       badges.push(
         <Badge key="tags" variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-200">
@@ -162,15 +168,16 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     <div className="flex h-[calc(100vh-120px)] bg-white">
       {/* Lista de Chats */}
       <div className="w-1/3 border-r border-gray-200 flex flex-col h-full">
-        <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-green-50 flex-shrink-0">
+        <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900">Conversas</h2>
             <div className="flex items-center space-x-2">
-              {/* STATUS SEMPRE ONLINE */}
-              <div className="flex items-center space-x-1 text-green-600 bg-green-100 px-2 py-1 rounded-full">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-xs font-bold">ONLINE</span>
-              </div>
+              {assistentOnline && (
+                <div className="flex items-center space-x-1 text-green-600">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-xs font-medium">Online</span>
+                </div>
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -259,7 +266,9 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                           minute: '2-digit' 
                         })}
                       </span>
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      {chat.status === 'open' && (
+                        <div className="w-2 h-2 bg-green-500 rounded-full" />
+                      )}
                     </div>
                   </div>
                 </li>
@@ -273,8 +282,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       <div className="flex-1 flex flex-col h-full min-w-0">
         {currentChatId ? (
           <>
-            {/* Cabeçalho do Chat - MELHORADO */}
-            <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-blue-50 flex-shrink-0">
+            {/* Cabeçalho do Chat */}
+            <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3 min-w-0 flex-1">
                   <Avatar className="w-10 h-10 flex-shrink-0">
@@ -289,11 +298,15 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                     </h3>
                     <div className="flex items-center space-x-2 text-sm text-gray-500">
                       <span className="truncate">{selectedChat?.customer?.phone}</span>
-                      <span>•</span>
-                      <div className="flex items-center space-x-1 text-green-600 font-medium">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                        <span className="whitespace-nowrap">🤖 Assistente ONLINE</span>
-                      </div>
+                      {assistentOnline && (
+                        <>
+                          <span>•</span>
+                          <div className="flex items-center space-x-1 text-green-600">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                            <span className="whitespace-nowrap">Assistente Online</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                     
                     {selectedChat && (
@@ -322,16 +335,15 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                 ticketId={currentChatId} 
               />
               
-              {/* INDICADOR VISUAL SEMPRE PRESENTE */}
-              <div className="flex-shrink-0">
-                <TypingIndicator 
-                  isTyping={assistantTyping}
-                  isRecording={assistantRecording}
-                  isOnline={true}
-                  userName="🤖 Assistente IA"
-                  showOnlineStatus={true}
-                />
-              </div>
+              {assistantTyping && (
+                <div className="px-4 py-2 bg-gray-50 border-t flex-shrink-0">
+                  <TypingIndicator 
+                    isTyping={true}
+                    isRecording={false}
+                    userName="🤖 Assistente IA"
+                  />
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -342,10 +354,12 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               <p className="text-gray-600 mb-4">
                 Escolha uma conversa da lista para começar a responder mensagens
               </p>
-              <div className="mt-4 flex items-center justify-center space-x-2 text-green-600 bg-green-100 px-4 py-2 rounded-full">
-                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-sm font-bold">🤖 ASSISTENTE SEMPRE ONLINE - PRONTO PARA ATENDER</span>
-              </div>
+              {assistentOnline && (
+                <div className="mt-4 flex items-center justify-center space-x-2 text-green-600">
+                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-sm font-medium">🤖 Assistente Online - Pronto para Atender</span>
+                </div>
+              )}
             </div>
           </div>
         )}

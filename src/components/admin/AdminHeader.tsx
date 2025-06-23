@@ -1,46 +1,40 @@
 
-import { Bell, User } from "lucide-react";
+import { Bell, Search, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Badge } from "@/components/ui/badge";
 
 const AdminHeader = () => {
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <h1 className="text-xl font-semibold text-gray-900">Dashboard Administrativo</h1>
+    <header className="h-16 border-b bg-white flex items-center justify-between px-6">
+      <div className="flex items-center space-x-4">
+        <SidebarTrigger />
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input 
+            placeholder="Buscar clientes, instâncias..." 
+            className="pl-10 w-80"
+          />
         </div>
+      </div>
+
+      <div className="flex items-center space-x-4">
+        <Button variant="ghost" size="sm" className="relative">
+          <Bell className="w-5 h-5" />
+          <Badge className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+            3
+          </Badge>
+        </Button>
         
-        <div className="flex items-center space-x-4">
-          <Button variant="ghost" size="sm">
-            <Bell className="w-4 h-4" />
+        <div className="flex items-center space-x-3">
+          <div className="text-right">
+            <p className="text-sm font-medium text-gray-900">Admin</p>
+            <p className="text-xs text-gray-500">Administrador</p>
+          </div>
+          <Button variant="ghost" size="sm" className="rounded-full p-2">
+            <User className="w-5 h-5" />
           </Button>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="relative h-8 w-8 rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src="/avatars/admin.png" alt="Admin" />
-                  <AvatarFallback>AD</AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="end" forceMount>
-              <DropdownMenuItem>
-                <User className="mr-2 h-4 w-4" />
-                <span>Perfil</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <span>Sair</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
     </header>

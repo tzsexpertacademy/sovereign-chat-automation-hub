@@ -1,61 +1,75 @@
 
-import { 
-  LayoutDashboard, 
-  Users, 
-  Smartphone, 
-  Activity, 
-  FileText, 
-  Settings,
-  Database
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BarChart3, Users, Activity, FileText, Settings, Shield } from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
-interface AdminSidebarProps {
-  currentView: string;
-  onViewChange: (view: string) => void;
-}
+const adminItems = [
+  { title: "Overview", url: "overview", icon: BarChart3 },
+  { title: "Clientes", url: "clients", icon: Users },
+  { title: "Instâncias", url: "instances", icon: Activity },
+  { title: "Logs", url: "logs", icon: FileText },
+];
 
-const AdminSidebar = ({ currentView, onViewChange }: AdminSidebarProps) => {
-  const menuItems = [
-    { id: "overview", label: "Visão Geral", icon: LayoutDashboard },
-    { id: "clients", label: "Clientes", icon: Users },
-    { id: "client-instances", label: "Instâncias por Cliente", icon: Database },
-    { id: "instances", label: "Monitor Instâncias", icon: Smartphone },
-    { id: "status", label: "Status Sistema", icon: Activity },
-    { id: "logs", label: "Logs", icon: FileText },
-  ];
+const AdminSidebar = () => {
+  const { state } = useSidebar();
+  const location = useLocation();
+  const currentPath = location.pathname;
+  const collapsed = state === "collapsed";
+
+  const isActive = (path: string) => currentPath.endsWith(path);
+  const getNavCls = ({ isActive }: { isActive: boolean }) =>
+    isActive ? "bg-green-100 text-green-700 font-medium" : "hover:bg-gray-100";
 
   return (
-    <div className="w-64 bg-white shadow-lg">
-      <div className="p-6">
-        <h2 className="text-xl font-bold text-gray-900">Admin Panel</h2>
-        <p className="text-sm text-gray-600">Sistema de Gerenciamento</p>
-      </div>
-      
-      <nav className="px-4 pb-4">
-        <ul className="space-y-2">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <li key={item.id}>
-                <Button
-                  variant={currentView === item.id ? "default" : "ghost"}
-                  className={`w-full justify-start ${
-                    currentView === item.id 
-                      ? "bg-blue-600 text-white hover:bg-blue-700" 
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                  onClick={() => onViewChange(item.id)}
-                >
-                  <Icon className="w-4 h-4 mr-3" />
-                  {item.label}
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
-    </div>
+    <Sidebar className={collapsed ? "w-14" : "w-64"} collapsible="icon">
+      <SidebarContent className="bg-white border-r">
+        {/* Logo/Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
+              <Shield className="w-5 h-5 text-white" />
+            </div>
+            {!collapsed && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Admin Panel</h2>
+                <p className="text-sm text-gray-500">Sistema WhatsApp SaaS</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Administração</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {adminItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    <NavLink to={item.url} className={({ isActive }) => 
+                      isActive ? "bg-green-100 text-green-700 font-medium" : "hover:bg-gray-100"
+                    }>
+                      <item.icon className="mr-3 h-5 w-5" />
+                      {!collapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
   );
 };
 
