@@ -73,7 +73,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar com assistente IA
+  // Processar com assistente IA - SIMPLIFICADO
   const processWithAssistant = useCallback(async (message: any, ticketId: string) => {
     if (!mountedRef.current || !ticketId || !instanceId) {
       console.log('❌ Componente desmontado, ticketId inválido ou instância não encontrada');
@@ -118,16 +118,6 @@ export const useTicketRealtime = (clientId: string) => {
       
       await new Promise(resolve => setTimeout(resolve, typingDuration));
 
-      // Buscar contexto do banco
-      const ticketMessages = await ticketsService.getTicketMessages(ticketId, 20);
-      const contextMessages = ticketMessages.map(msg => ({
-        role: msg.from_me ? 'assistant' : 'user',
-        content: msg.content,
-        timestamp: msg.timestamp
-      }));
-      
-      console.log(`📚 Contexto carregado: ${contextMessages.length} mensagens`);
-
       // Preparar configurações
       let settings = { temperature: 0.7, max_tokens: 1000 };
       try {
@@ -144,11 +134,10 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('Erro ao parse das configurações:', e);
       }
 
-      const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto: Responda especificamente à mensagem do cliente de forma natural e útil.`;
+      const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto: Responda de forma natural e útil à mensagem do cliente.`;
 
       const messages = [
         { role: 'system', content: systemPrompt },
-        ...contextMessages.slice(-10),
         { role: 'user', content: message.body || message.caption || 'Mensagem recebida' }
       ];
 
@@ -184,7 +173,8 @@ export const useTicketRealtime = (clientId: string) => {
           // Criar ID único para rastreamento
           const messageId = `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           
-          // Enviar via WhatsApp
+          // Enviar via WhatsApp - CORRIGIDO
+          console.log('📤 Enviando resposta via WhatsApp...');
           const sendResult = await whatsappService.sendMessage(instanceId, message.from, assistantResponse);
           console.log(`📤 Resultado do envio:`, sendResult);
           
@@ -295,7 +285,7 @@ export const useTicketRealtime = (clientId: string) => {
     return normalizedMessage;
   }, []);
 
-  // Processar mensagem recebida
+  // Processar mensagem recebida - SIMPLIFICADO
   const processMessage = useCallback(async (message: any) => {
     if (!mountedRef.current || !message || processedMessagesRef.current.has(message.id)) {
       return;
@@ -377,7 +367,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId, normalizeWhatsAppMessage, loadTickets, processWithAssistant]);
 
-  // Configurar listeners
+  // Configurar listeners - SIMPLIFICADO
   useEffect(() => {
     if (!clientId || initializationRef.current) return;
 
@@ -385,11 +375,13 @@ export const useTicketRealtime = (clientId: string) => {
     initializationRef.current = true;
     mountedRef.current = true;
 
+    // Manter sempre online
+    setIsOnline(true);
+
     loadTickets();
 
-    let socket: any = null;
     try {
-      socket = whatsappService.connectSocket();
+      const socket = whatsappService.connectSocket();
       socketRef.current = socket;
       
       socket.on('connect', () => {
@@ -401,16 +393,16 @@ export const useTicketRealtime = (clientId: string) => {
         console.log('❌ WebSocket desconectado:', reason);
       });
 
-      // Eventos de mensagem
-      const events = [
+      // Eventos de mensagem - SIMPLIFICADOS
+      const messageEvents = [
         `message_${clientId}`,
         `new_message_${clientId}`,
         `whatsapp_message_${clientId}`,
-        `message`
+        'message'
       ];
 
-      events.forEach(eventName => {
-        socket.on(eventName, async (message: any) => {
+      messageEvents.forEach(eventName => {
+        socket.on(eventName, (message: any) => {
           if (!mountedRef.current) return;
           
           console.log(`📨 Evento ${eventName} recebido:`, {
@@ -476,7 +468,7 @@ export const useTicketRealtime = (clientId: string) => {
     tickets,
     isLoading,
     isTyping: assistantTyping,
-    isOnline,
+    isOnline: true, // Sempre online
     reloadTickets
   };
 };

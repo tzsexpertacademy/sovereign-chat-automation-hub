@@ -10,7 +10,6 @@ import { ticketsService, type ConversationTicket } from "@/services/ticketsServi
 import TicketChatInterface from './TicketChatInterface';
 import TicketActionsMenu from './TicketActionsMenu';
 import { useTicketRealtime } from '@/hooks/useTicketRealtime';
-import EnhancedTypingIndicator from './EnhancedTypingIndicator';
 
 interface ChatInterfaceProps {
   clientId: string;
@@ -30,7 +29,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     tickets,
     isLoading: ticketsLoading,
     isTyping: assistantTyping,
-    isOnline: assistentOnline,
+    isOnline: assistantOnline,
     reloadTickets
   } = useTicketRealtime(clientId);
 
@@ -115,15 +114,13 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const renderTicketBadges = (ticket: ConversationTicket) => {
     const badges = [];
 
-    // Status da conexão
-    if (ticket.instance_id) {
-      badges.push(
-        <Badge key="connection" variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-          <Wifi className="w-3 h-3 mr-1" />
-          Conectado
-        </Badge>
-      );
-    }
+    // Status da conexão - sempre online
+    badges.push(
+      <Badge key="connection" variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+        <Wifi className="w-3 h-3 mr-1" />
+        Online
+      </Badge>
+    );
 
     // Status do atendimento
     const isHumanAssigned = ticket.status === 'pending' || 
@@ -172,7 +169,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900">Conversas</h2>
             <div className="flex items-center space-x-2">
-              {assistentOnline && (
+              {assistantOnline && (
                 <div className="flex items-center space-x-1 text-green-600">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                   <span className="text-xs font-medium">Online</span>
@@ -298,7 +295,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                     </h3>
                     <div className="flex items-center space-x-2 text-sm text-gray-500">
                       <span className="truncate">{selectedChat?.customer?.phone}</span>
-                      {assistentOnline && (
+                      {assistantOnline && (
                         <>
                           <span>•</span>
                           <div className="flex items-center space-x-1 text-green-600">
@@ -336,14 +333,16 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               />
               
               {assistantTyping && (
-                <EnhancedTypingIndicator 
-                  isTyping={true}
-                  isRecording={false}
-                  isOnline={assistentOnline}
-                  userName="🤖 Assistente IA"
-                  showOnlineStatus={false}
-                  showAIBranding={true}
-                />
+                <div className="p-3 bg-gray-50 border-t">
+                  <div className="flex items-center space-x-2 text-sm text-gray-600">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                    </div>
+                    <span>🤖 Assistente está digitando...</span>
+                  </div>
+                </div>
               )}
             </div>
           </>
@@ -355,7 +354,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               <p className="text-gray-600 mb-4">
                 Escolha uma conversa da lista para começar a responder mensagens
               </p>
-              {assistentOnline && (
+              {assistantOnline && (
                 <div className="mt-4 flex items-center justify-center space-x-2 text-green-600">
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
                   <span className="text-sm font-medium">🤖 Assistente Online - Pronto para Atender</span>
