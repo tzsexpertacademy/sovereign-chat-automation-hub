@@ -9,6 +9,7 @@ import { useAutoReactions } from './useAutoReactions';
 import { useOnlineStatus } from './useOnlineStatus';
 import { useSmartMessageSplit } from './useSmartMessageSplit';
 import { useMessageBatch } from './useMessageBatch';
+import { useMessageStatus } from './useMessageStatus';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -24,11 +25,12 @@ export const useTicketRealtime = (clientId: string) => {
   const processingRef = useRef<Set<string>>(new Set());
   const conversationContextRef = useRef<Map<string, any[]>>(new Map());
 
-  // Hooks humanizados
-  const { simulateHumanTyping, markAsRead } = useHumanizedTyping(clientId);
+  // Hooks humanizados aprimorados
+  const { simulateHumanTyping, markAsRead, isTyping, isRecording } = useHumanizedTyping(clientId);
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
-  const { splitMessage, sendMessagesInSequence } = useSmartMessageSplit();
+  const { splitMessage } = useSmartMessageSplit();
+  const { simulateMessageProgression } = useMessageStatus();
 
   // Função para normalizar dados da mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
@@ -156,7 +158,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Processar mensagem com assistente - VERSÃO MELHORADA COM TRATAMENTO DE ERRO
+  // Processar mensagem com assistente - VERSÃO MELHORADA COM STATUS APRIMORADO
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     if (!mountedRef.current || !ticketId) {
       console.log('❌ Componente desmontado ou ticketId inválido, cancelando processamento IA');
@@ -170,6 +172,9 @@ export const useTicketRealtime = (clientId: string) => {
     try {
       setAssistantTyping(true);
       console.log('🤖 Assistente iniciou digitação');
+      
+      // Marcar atividade online
+      markActivity();
       
       // Buscar configurações necessárias
       console.log('🔍 Buscando configurações de IA e filas...');
@@ -338,7 +343,7 @@ export const useTicketRealtime = (clientId: string) => {
         const messageBlocks = splitMessage(assistantResponse);
         console.log(`📝 Resposta dividida em ${messageBlocks.length} blocos`);
         
-        // Simular digitação apenas uma vez antes do primeiro bloco
+        // Simular digitação realística
         try {
           await simulateHumanTyping(message.from, assistantResponse);
         } catch (typingError) {
@@ -364,6 +369,10 @@ export const useTicketRealtime = (clientId: string) => {
             
             // Registrar no ticket
             const aiMessageId = `ai_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            // Simular status da mensagem da IA
+            simulateMessageProgression(aiMessageId, true);
+            
             await ticketsService.addTicketMessage({
               ticket_id: ticketId,
               message_id: aiMessageId,
@@ -409,7 +418,7 @@ export const useTicketRealtime = (clientId: string) => {
       processingRef.current.delete(ticketId);
       console.log('✅ Processamento finalizado para ticket:', ticketId);
     }
-  }, [clientId, simulateHumanTyping, markAsRead, splitMessage]);
+  }, [clientId, simulateHumanTyping, markAsRead, splitMessage, markActivity, simulateMessageProgression]);
 
   // Hook para agrupamento de mensagens - COM CORREÇÃO PARA CONTINUIDADE
   const { addMessage, getBatchInfo, markBatchAsCompleted, updateCallback } = useMessageBatch(async (chatId: string, messages: any[]) => {
@@ -659,6 +668,9 @@ export const useTicketRealtime = (clientId: string) => {
     isTyping: assistantTyping,
     isOnline,
     reloadTickets,
-    getBatchInfo
+    getBatchInfo,
+    // Expor estados dos indicadores
+    isAssistantTyping: (chatId: string) => isTyping(chatId),
+    isAssistantRecording: (chatId: string) => isRecording(chatId)
   };
 };
