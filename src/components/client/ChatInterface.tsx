@@ -10,7 +10,7 @@ import { ticketsService, type ConversationTicket } from "@/services/ticketsServi
 import TicketChatInterface from './TicketChatInterface';
 import TicketActionsMenu from './TicketActionsMenu';
 import { useTicketRealtime } from '@/hooks/useTicketRealtime';
-import TypingIndicator from './TypingIndicator';
+import EnhancedTypingIndicator from './EnhancedTypingIndicator';
 
 interface ChatInterfaceProps {
   clientId: string;
@@ -336,13 +336,14 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               />
               
               {assistantTyping && (
-                <div className="px-4 py-2 bg-gray-50 border-t flex-shrink-0">
-                  <TypingIndicator 
-                    isTyping={true}
-                    isRecording={false}
-                    userName="🤖 Assistente IA"
-                  />
-                </div>
+                <EnhancedTypingIndicator 
+                  isTyping={true}
+                  isRecording={false}
+                  isOnline={assistentOnline}
+                  userName="🤖 Assistente IA"
+                  showOnlineStatus={false}
+                  showAIBranding={true}
+                />
               )}
             </div>
           </>
