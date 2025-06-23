@@ -33,8 +33,16 @@ import { useMessageStatus } from '@/hooks/useMessageStatus';
 import whatsappService from '@/services/whatsappMultiClient';
 import { whatsappInstancesService, type WhatsAppInstanceData } from '@/services/whatsappInstancesService';
 
-const TicketChatInterface = () => {
-  const { clientId, ticketId } = useParams();
+interface TicketChatInterfaceProps {
+  clientId?: string;
+  ticketId?: string;
+}
+
+const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) => {
+  const params = useParams();
+  const finalClientId = clientId || params.clientId;
+  const finalTicketId = ticketId || params.ticketId;
+  
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -48,18 +56,18 @@ const TicketChatInterface = () => {
   const [showFilePreview, setShowFilePreview] = useState(false);
 
   // Hooks para funcionalidades avançadas
-  const { messages, isLoading: messagesLoading, reloadMessages } = useTicketMessages(ticketId!);
-  const { updatePresence, startTyping, stopTyping } = usePresenceManager(clientId!);
+  const { messages, isLoading: messagesLoading, reloadMessages } = useTicketMessages(finalTicketId!);
+  const { updatePresence, startTyping, stopTyping } = usePresenceManager(finalClientId!);
   const { showTypingIndicator, simulateTyping } = useHumanizedTyping();
   const { trackMessageStatus, getMessageStatus } = useMessageStatus();
 
   // Carregar dados do ticket e instâncias
   useEffect(() => {
-    if (ticketId && clientId) {
+    if (finalTicketId && finalClientId) {
       loadTicketData();
       loadInstances();
     }
-  }, [ticketId, clientId]);
+  }, [finalTicketId, finalClientId]);
 
   // Auto-scroll para última mensagem
   useEffect(() => {
@@ -71,8 +79,17 @@ const TicketChatInterface = () => {
   const loadTicketData = async () => {
     try {
       setLoading(true);
-      const ticketData = await ticketsService.getTicketById(ticketId!);
+      console.log('📋 Carregando dados do ticket:', finalTicketId);
+      
+      const ticketData = await ticketsService.getTicketById(finalTicketId!);
       setTicket(ticketData);
+      
+      console.log('✅ Ticket carregado:', {
+        id: ticketData.id,
+        chatId: ticketData.chat_id,
+        instanceId: ticketData.instance_id,
+        customerPhone: ticketData.customer?.phone
+      });
     } catch (error) {
       console.error('❌ Erro ao carregar ticket:', error);
       toast({
@@ -87,28 +104,40 @@ const TicketChatInterface = () => {
 
   const loadInstances = async () => {
     try {
-      const instancesData = await whatsappInstancesService.getInstancesByClientId(clientId!);
+      console.log('🔍 Carregando instâncias para cliente:', finalClientId);
+      const instancesData = await whatsappInstancesService.getInstancesByClientId(finalClientId!);
       setInstances(instancesData);
+      
+      console.log('✅ Instâncias carregadas:', {
+        total: instancesData.length,
+        connected: instancesData.filter(i => i.status === 'connected').length,
+        instances: instancesData.map(i => ({
+          id: i.instance_id,
+          status: i.status,
+          phone: i.phone_number
+        }))
+      });
     } catch (error) {
       console.error('❌ Erro ao carregar instâncias:', error);
     }
   };
 
-  // Função para extrair número do telefone de forma segura
+  // Função para extrair número do telefone de forma mais robusta
   const extractPhoneNumber = useCallback((chatId: string, customerPhone?: string): string => {
     console.log('📱 Extraindo número do telefone:', { chatId, customerPhone });
     
-    // Priorizar customerPhone se disponível
+    // Priorizar customerPhone se disponível e válido
     if (customerPhone) {
       const cleanPhone = customerPhone.replace(/[^\d]/g, '');
       if (cleanPhone.length >= 10) {
-        console.log('✅ Usando customerPhone:', cleanPhone);
+        console.log('✅ Usando customerPhone limpo:', cleanPhone);
         return cleanPhone;
       }
     }
     
     // Extrair do chatId como fallback
     if (chatId) {
+      // Remover sufixos do WhatsApp
       const cleanChatId = chatId.replace(/@c\.us|@g\.us/g, '');
       const numbersOnly = cleanChatId.replace(/[^\d]/g, '');
       
@@ -119,7 +148,7 @@ const TicketChatInterface = () => {
     }
     
     console.warn('⚠️ Não foi possível extrair número válido');
-    return '';
+    throw new Error('Número de telefone inválido');
   }, []);
 
   const handleSendMessage = async () => {
@@ -130,29 +159,37 @@ const TicketChatInterface = () => {
     try {
       setSending(true);
       
-      // Extrair número do telefone de forma segura
-      const phoneNumber = extractPhoneNumber(ticket.chat_id, ticket.customer?.phone);
-      
-      if (!phoneNumber) {
-        throw new Error('Não foi possível identificar o número do cliente. Verifique os dados do ticket.');
-      }
-
-      console.log('📤 Enviando mensagem:', {
+      console.log('📤 Iniciando envio de mensagem:', {
         ticketId: ticket.id,
         chatId: ticket.chat_id,
-        phoneNumber,
-        message: newMessage.substring(0, 50),
+        instanceId: ticket.instance_id,
+        customerPhone: ticket.customer?.phone,
+        messageLength: newMessage.length,
         hasFile: !!selectedFile
       });
 
-      // Buscar instância conectada
-      const connectedInstance = instances.find(inst => 
+      // Extrair número do telefone de forma segura
+      const phoneNumber = extractPhoneNumber(ticket.chat_id, ticket.customer?.phone);
+      
+      // Buscar instância conectada específica do ticket
+      let connectedInstance = instances.find(inst => 
         inst.status === 'connected' && inst.instance_id === ticket.instance_id
       );
+
+      // Se não encontrar a instância específica, buscar qualquer conectada
+      if (!connectedInstance) {
+        connectedInstance = instances.find(inst => inst.status === 'connected');
+      }
 
       if (!connectedInstance) {
         throw new Error('Nenhuma instância WhatsApp conectada encontrada. Conecte uma instância primeiro.');
       }
+
+      console.log('📡 Usando instância:', {
+        instanceId: connectedInstance.instance_id,
+        status: connectedInstance.status,
+        phone: connectedInstance.phone_number
+      });
 
       // Mostrar indicador de digitação
       if (newMessage.trim()) {
@@ -163,6 +200,12 @@ const TicketChatInterface = () => {
       
       if (selectedFile) {
         // Enviar arquivo
+        console.log('📎 Enviando arquivo:', {
+          fileName: selectedFile.name,
+          fileSize: selectedFile.size,
+          fileType: selectedFile.type
+        });
+        
         response = await whatsappService.sendMessage(
           connectedInstance.instance_id,
           phoneNumber,
@@ -172,6 +215,8 @@ const TicketChatInterface = () => {
         );
       } else {
         // Enviar mensagem de texto
+        console.log('💬 Enviando mensagem de texto:', newMessage.substring(0, 100));
+        
         response = await whatsappService.sendMessage(
           connectedInstance.instance_id,
           phoneNumber,
@@ -179,16 +224,22 @@ const TicketChatInterface = () => {
         );
       }
 
+      console.log('📤 Resposta do envio:', response);
+
       if (response.success) {
         // Salvar mensagem no banco
-        await ticketsService.addMessageToTicket(ticket.id, {
+        const messageData = {
           message_id: response.messageId || `msg_${Date.now()}`,
           content: newMessage.trim(),
           from_me: true,
           timestamp: new Date().toISOString(),
           message_type: selectedFile ? 'media' : 'text',
           media_url: selectedFile ? response.mediaUrl : null
-        });
+        };
+
+        console.log('💾 Salvando mensagem no banco:', messageData);
+
+        await ticketsService.addMessageToTicket(ticket.id, messageData);
 
         // Rastrear status da mensagem
         if (response.messageId) {
@@ -212,6 +263,8 @@ const TicketChatInterface = () => {
         if (textareaRef.current) {
           textareaRef.current.focus();
         }
+      } else {
+        throw new Error(response.error || 'Falha no envio da mensagem');
       }
     } catch (error: any) {
       console.error('❌ Erro ao enviar mensagem:', error);
@@ -224,6 +277,8 @@ const TicketChatInterface = () => {
         errorMessage = 'WhatsApp não está conectado. Verifique a conexão na aba "Conexão".';
       } else if (error.message.includes('timeout')) {
         errorMessage = 'Timeout ao enviar mensagem. Tente novamente.';
+      } else if (error.message.includes('Nenhuma instância')) {
+        errorMessage = 'Nenhuma instância WhatsApp conectada. Conecte uma instância primeiro.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -242,7 +297,6 @@ const TicketChatInterface = () => {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Verificar tamanho do arquivo (limite de 16MB)
       if (file.size > 16 * 1024 * 1024) {
         toast({
           title: "Arquivo muito grande",
