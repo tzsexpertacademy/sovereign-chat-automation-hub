@@ -160,11 +160,8 @@ const RealInstancesManager = () => {
       return;
     }
 
-    // Special logic for special client (allow multiple instances)
-    const isSpecialClient = clientData.email === 'thalisportal@gmail.com';
-    
-    // Check if client already has an instance (only for non-special clients)
-    if (!isSpecialClient && clientData.instance_id) {
+    // Check if client already has an instance
+    if (clientData.instance_id) {
       toast({
         title: "Erro",
         description: "Este cliente já possui uma instância",
@@ -173,22 +170,8 @@ const RealInstancesManager = () => {
       return;
     }
 
-    // For special client, create a unique instance ID
-    let instanceId;
-    if (isSpecialClient) {
-      // Check how many instances this client already has
-      const existingInstances = clients.filter(c => {
-        const linkedClient = getClientByInstanceId(c.clientId);
-        return linkedClient && linkedClient.id === clientData.id;
-      });
-      
-      // Create unique instance ID for multiple instances
-      instanceId = `${clientData.id}_${Date.now()}`;
-      console.log(`🚀 Criando instância adicional para cliente especial: ${clientData.name} (${instanceId})`);
-    } else {
-      // Use client ID as instance ID for regular clients
-      instanceId = clientData.id;
-    }
+    // Use client ID as instance ID
+    const instanceId = clientData.id;
 
     // Verificar se já existe uma instância com esse ID
     const existingClient = clients.find(c => c.clientId === instanceId);
@@ -212,14 +195,11 @@ const RealInstancesManager = () => {
       await whatsappInstancesService.createInstance({
         client_id: clientData.id,
         instance_id: instanceId,
-        status: 'connecting',
-        custom_name: isSpecialClient ? `Instância ${Date.now().toString().slice(-4)}` : undefined
+        status: 'connecting'
       });
       
-      // Update client with instance info (only for first instance)
-      if (!isSpecialClient || !clientData.instance_id) {
-        await updateClientInstance(clientData.id, instanceId, 'connecting');
-      }
+      // Update client with instance info
+      await updateClientInstance(clientData.id, instanceId, 'connecting');
       
       // Ouvir status deste cliente específico
       whatsappService.joinClientRoom(instanceId);
@@ -402,15 +382,8 @@ const RealInstancesManager = () => {
     }
   };
 
-  // Updated logic for clients available for instances
-  const clientsAvailableForInstances = availableClients.filter(client => {
-    // Special client can always create more instances
-    if (client.email === 'thalisportal@gmail.com') {
-      return true;
-    }
-    // Regular clients only if they don't have an instance yet
-    return !client.instance_id;
-  });
+  // Get clients without instances
+  const clientsWithoutInstances = availableClients.filter(client => !client.instance_id);
 
   // Loading inicial
   if (initialLoading) {
@@ -520,9 +493,6 @@ const RealInstancesManager = () => {
           <CardTitle>🚀 Criar Instância WhatsApp para Cliente</CardTitle>
           <CardDescription>
             Selecione um cliente cadastrado para criar uma nova instância WhatsApp.
-            {availableClients.some(c => c.email === 'thalisportal@gmail.com') && (
-              <span className="text-blue-600 font-medium"> Cliente especial pode ter múltiplas instâncias.</span>
-            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -532,19 +502,16 @@ const RealInstancesManager = () => {
                 <SelectValue placeholder="Selecione um cliente..." />
               </SelectTrigger>
               <SelectContent>
-                {clientsAvailableForInstances.length === 0 ? (
+                {clientsWithoutInstances.length === 0 ? (
                   <SelectItem value="no-clients-available" disabled>
-                    Nenhum cliente disponível para nova instância
+                    Todos os clientes já possuem instâncias
                   </SelectItem>
                 ) : (
-                  clientsAvailableForInstances.map((client) => (
+                  clientsWithoutInstances.map((client) => (
                     <SelectItem key={client.id} value={client.id}>
                       <div className="flex items-center space-x-2">
                         <User className="w-4 h-4" />
                         <span>{client.name} ({client.email})</span>
-                        {client.email === 'thalisportal@gmail.com' && (
-                          <Badge variant="secondary" className="ml-2">Especial</Badge>
-                        )}
                       </div>
                     </SelectItem>
                   ))
@@ -569,9 +536,9 @@ const RealInstancesManager = () => {
               )}
             </Button>
           </div>
-          {clientsAvailableForInstances.length === 0 && availableClients.length > 0 && (
+          {clientsWithoutInstances.length === 0 && availableClients.length > 0 && (
             <p className="text-sm text-gray-500 mt-2">
-              💡 Todos os clientes regulares já possuem instâncias. Apenas clientes especiais podem ter múltiplas instâncias.
+              💡 Todos os clientes já possuem instâncias. Crie novos clientes na seção "Clientes"
             </p>
           )}
           {availableClients.length === 0 && (
