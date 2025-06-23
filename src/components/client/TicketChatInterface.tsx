@@ -11,6 +11,11 @@ import { ticketsService } from '@/services/ticketsService';
 import { queuesService } from '@/services/queuesService';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
+import { useMessageStatus } from '@/hooks/useMessageStatus';
+import MessageStatus from './MessageStatus';
+import TypingIndicator from './TypingIndicator';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -27,6 +32,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { messages, isLoading } = useTicketMessages(ticketId);
   const { toast } = useToast();
+  const { markActivity, isOnline } = useOnlineStatus(clientId, true);
+  const { simulateHumanTyping, isTyping, isRecording } = useHumanizedTyping(clientId);
+  const { simulateMessageProgression, getMessageStatus } = useMessageStatus();
 
   // Carregar dados do ticket e verificar instância conectada
   useEffect(() => {
@@ -165,12 +173,20 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
     try {
       setIsSending(true);
+      const messageId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Simular status da mensagem
+      simulateMessageProgression(messageId, false);
+      
       console.log('📤 Enviando mensagem:', {
         instanceId: connectedInstance,
         chatId: ticket.chat_id,
         message: newMessage.substring(0, 50) + '...',
         customerPhone: ticket.customer?.phone
       });
+
+      // Marcar atividade
+      markActivity();
 
       // Enviar mensagem via WhatsApp
       const response = await whatsappService.sendMessage(
@@ -192,7 +208,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
-          message_id: `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          message_id: messageId,
           from_me: true,
           sender_name: 'Atendente',
           content: newMessage,
@@ -313,7 +329,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         </div>
       )}
 
-      {/* Status da conexão */}
+      {/* Status da conexão aprimorado */}
       {!connectedInstance && (
         <div className="p-3 bg-yellow-50 border-b border-yellow-200 flex items-center gap-2 text-yellow-800">
           <AlertCircle className="w-4 h-4" />
@@ -325,6 +341,12 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         <div className="p-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-green-800">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <span className="text-xs">Conectado via: {connectedInstance}</span>
+          {isOnline && (
+            <>
+              <span className="text-xs">•</span>
+              <span className="text-xs font-medium">🤖 IA Online</span>
+            </>
+          )}
         </div>
       )}
 
@@ -376,15 +398,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
                     </div>
                   </div>
                   
-                  <div
-                    className={`text-xs text-gray-500 mt-1 ${
-                      message.from_me ? 'text-right' : 'text-left'
-                    }`}
-                  >
-                    {formatTime(message.timestamp)}
-                    {message.is_ai_response && (
-                      <span className="ml-1 text-green-600">• IA</span>
-                    )}
+                  <div className="mt-1">
+                    <MessageStatus 
+                      status={getMessageStatus(message.message_id)}
+                      timestamp={message.timestamp}
+                      fromMe={message.from_me}
+                      isAiResponse={message.is_ai_response}
+                    />
                   </div>
                 </div>
                 
@@ -400,6 +420,16 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           )}
         </div>
       </ScrollArea>
+
+      {/* Indicadores de digitação/gravação */}
+      {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (
+        <TypingIndicator 
+          isTyping={isTyping(ticket?.chat_id || '')}
+          isRecording={isRecording(ticket?.chat_id || '')}
+          userName="🤖 Assistente IA"
+          isAI={true}
+        />
+      )}
 
       {/* Campo de entrada */}
       <div className="p-4 border-t bg-white">

@@ -28,9 +28,16 @@ serve(async (req) => {
       isAudioMessage = false 
     } = await req.json();
 
-    console.log('🔍 Processando mensagem para assistente:', assistantId);
+    console.log('🔍 ===== PROCESSAMENTO EDGE FUNCTION =====');
+    console.log('📨 Dados recebidos:', {
+      assistantId,
+      chatId,
+      instanceId,
+      messageLength: messageText?.length,
+      isAudio: isAudioMessage
+    });
 
-    // Buscar configurações do assistente
+    // BUSCAR ASSISTENTE
     const { data: assistant, error: assistantError } = await supabase
       .from('assistants')
       .select('*, advanced_settings')
@@ -38,29 +45,29 @@ serve(async (req) => {
       .single();
 
     if (assistantError || !assistant) {
+      console.error('❌ ASSISTENTE não encontrado:', assistantError);
       throw new Error('Assistente não encontrado');
     }
 
-    console.log('✅ Assistente encontrado:', assistant.name);
+    console.log('✅ ASSISTENTE encontrado:', assistant.name);
 
-    // Parse das configurações avançadas
+    // PARSE CONFIGURAÇÕES AVANÇADAS
     let settings: any = {};
     try {
       settings = assistant.advanced_settings ? 
         (typeof assistant.advanced_settings === 'string' ? 
           JSON.parse(assistant.advanced_settings) : assistant.advanced_settings) : {};
     } catch (error) {
-      console.error('❌ Erro ao fazer parse das configurações avançadas:', error);
+      console.error('❌ ERRO ao fazer parse das configurações:', error);
       settings = {};
     }
 
-    // Configurações padrão se não estiverem definidas
     const temperature = settings.temperature ?? 0.7;
     const maxTokens = settings.max_tokens ?? 1000;
     
-    console.log('🎛️ Configurações de IA:', { temperature, maxTokens });
+    console.log('🎛️ CONFIGURAÇÕES IA:', { temperature, maxTokens });
     
-    // Buscar configuração de API do cliente
+    // BUSCAR CONFIG AI DO CLIENTE
     const { data: aiConfig, error: configError } = await supabase
       .from('client_ai_configs')
       .select('*')
@@ -68,16 +75,17 @@ serve(async (req) => {
       .single();
 
     if (configError || !aiConfig) {
+      console.error('❌ CONFIG IA não encontrada:', configError);
       throw new Error('Configuração de IA não encontrada para este cliente');
     }
 
-    console.log('🔑 Configuração de API encontrada');
+    console.log('🔑 CONFIG API encontrada');
 
     let processedText = messageText;
 
-    // Se for mensagem de áudio e processamento de áudio estiver habilitado
+    // PROCESSAMENTO DE ÁUDIO SE HABILITADO
     if (isAudioMessage && settings.audio_processing_enabled) {
-      console.log('🎵 Processando mensagem de áudio...');
+      console.log('🎵 PROCESSANDO mensagem de áudio...');
       
       const speechResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/speech-to-text`, {
         method: 'POST',
@@ -85,7 +93,7 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          audio: messageText, // base64 audio
+          audio: messageText,
           openaiApiKey: aiConfig.openai_api_key
         })
       });
@@ -95,27 +103,29 @@ serve(async (req) => {
         throw new Error(`Erro na transcrição: ${speechResult.error}`);
       }
       processedText = speechResult.text;
-      console.log('🎵 Áudio transcrito:', processedText);
+      console.log('🎵 ÁUDIO transcrito:', processedText);
     }
 
-    // Marcar início do processamento
-    await supabase
-      .from('whatsapp_messages')
-      .update({
-        processing_started_at: new Date().toISOString(),
-        is_processed: false
-      })
-      .eq('message_id', messageId);
+    // MARCAR INÍCIO DO PROCESSAMENTO
+    if (messageId) {
+      await supabase
+        .from('whatsapp_messages')
+        .update({
+          processing_started_at: new Date().toISOString(),
+          is_processed: false
+        })
+        .eq('message_id', messageId);
+    }
 
-    // Simular delay de processamento
+    // DELAY DE RESPOSTA SE CONFIGURADO
     if (settings.response_delay_seconds > 0) {
-      console.log(`⏳ Aguardando ${settings.response_delay_seconds}s antes de processar...`);
+      console.log(`⏳ AGUARDANDO ${settings.response_delay_seconds}s...`);
       await new Promise(resolve => setTimeout(resolve, settings.response_delay_seconds * 1000));
     }
 
-    // Mostrar indicador de digitação se habilitado
-    if (settings.typing_indicator_enabled) {
-      console.log('⌨️ Mostrando indicador de digitação...');
+    // INDICADOR DE DIGITAÇÃO
+    if (settings.typing_indicator_enabled && chatId && instanceId) {
+      console.log('⌨️ MOSTRANDO indicador de digitação...');
       await supabase
         .from('whatsapp_chats')
         .update({
@@ -126,20 +136,22 @@ serve(async (req) => {
         .eq('instance_id', instanceId);
     }
 
-    // Construir mensagem do sistema
+    // CONSTRUIR PROMPT DO SISTEMA
     let systemMessage = assistant.prompt;
     if (settings.custom_files?.length > 0) {
       systemMessage += `\n\nArquivos de referência disponíveis: ${settings.custom_files.map((f: any) => f.name).join(', ')}`;
     }
 
-    console.log('🤖 Processando com OpenAI...');
-    console.log('📊 Parâmetros:', {
+    console.log('🤖 PROCESSANDO com OpenAI...');
+    console.log('📊 PARÂMETROS:', {
       model: assistant.model || aiConfig.default_model || 'gpt-4o-mini',
       temperature,
-      max_tokens: maxTokens
+      max_tokens: maxTokens,
+      promptLength: systemMessage.length,
+      messageLength: processedText.length
     });
 
-    // Processar com OpenAI
+    // CHAMAR OPENAI
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -162,17 +174,17 @@ serve(async (req) => {
 
     const aiResult = await openaiResponse.json();
     if (aiResult.error) {
-      console.error('❌ Erro da OpenAI:', aiResult.error);
+      console.error('❌ ERRO da OpenAI:', aiResult.error);
       throw new Error(`Erro da OpenAI: ${aiResult.error.message}`);
     }
 
-    console.log('✅ Resposta da OpenAI recebida');
+    console.log('✅ RESPOSTA da OpenAI recebida');
 
     const responseText = aiResult.choices[0].message.content;
 
-    // Remover indicador de digitação
-    if (settings.typing_indicator_enabled) {
-      console.log('⌨️ Removendo indicador de digitação...');
+    // REMOVER INDICADOR DE DIGITAÇÃO
+    if (settings.typing_indicator_enabled && chatId && instanceId) {
+      console.log('⌨️ REMOVENDO indicador de digitação...');
       await supabase
         .from('whatsapp_chats')
         .update({
@@ -186,12 +198,11 @@ serve(async (req) => {
     let finalResponse = responseText;
     let isAudioResponse = false;
 
-    // Se voz clonada estiver habilitada
+    // VOZ CLONADA SE HABILITADA
     if (settings.voice_cloning_enabled && settings.eleven_labs_api_key && settings.eleven_labs_voice_id) {
-      console.log('🎤 Gerando resposta em áudio...');
+      console.log('🎤 GERANDO resposta em áudio...');
       
-      // Mostrar indicador de gravação se habilitado
-      if (settings.recording_indicator_enabled) {
+      if (settings.recording_indicator_enabled && chatId && instanceId) {
         await supabase
           .from('whatsapp_chats')
           .update({
@@ -217,13 +228,12 @@ serve(async (req) => {
       if (!ttsResult.error) {
         finalResponse = ttsResult.audioBase64;
         isAudioResponse = true;
-        console.log('🎤 Áudio gerado com sucesso');
+        console.log('🎤 ÁUDIO gerado com sucesso');
       } else {
-        console.error('❌ Erro ao gerar áudio:', ttsResult.error);
+        console.error('❌ ERRO ao gerar áudio:', ttsResult.error);
       }
 
-      // Remover indicador de gravação
-      if (settings.recording_indicator_enabled) {
+      if (settings.recording_indicator_enabled && chatId && instanceId) {
         await supabase
           .from('whatsapp_chats')
           .update({
@@ -234,15 +244,22 @@ serve(async (req) => {
       }
     }
 
-    // Marcar mensagem como processada
-    await supabase
-      .from('whatsapp_messages')
-      .update({
-        is_processed: true
-      })
-      .eq('message_id', messageId);
+    // MARCAR MENSAGEM COMO PROCESSADA
+    if (messageId) {
+      await supabase
+        .from('whatsapp_messages')
+        .update({
+          is_processed: true
+        })
+        .eq('message_id', messageId);
+    }
 
-    console.log('✅ Processamento concluído com sucesso');
+    console.log('✅ PROCESSAMENTO concluído com sucesso');
+    console.log('📤 RESPOSTA final:', {
+      length: finalResponse.length,
+      isAudio: isAudioResponse,
+      preview: isAudioResponse ? '[AUDIO]' : finalResponse.substring(0, 100)
+    });
 
     return new Response(JSON.stringify({ 
       response: finalResponse,
@@ -258,7 +275,7 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('❌ Error in ai-assistant-process function:', error);
+    console.error('❌ ERRO CRÍTICO na função edge:', error);
     return new Response(JSON.stringify({ 
       error: error.message,
       timestamp: new Date().toISOString()
