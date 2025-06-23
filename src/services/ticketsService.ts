@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -67,6 +68,85 @@ export class TicketsService {
       console.error('❌ Erro ao salvar mensagem no banco:', error);
       throw error;
     }
+  }
+
+  async assumeTicketManually(ticketId: string): Promise<void> {
+    console.log('👤 Assumindo ticket manualmente:', ticketId);
+    
+    const { error } = await supabase
+      .from("conversation_tickets")
+      .update({
+        status: 'pending',
+        assigned_queue_id: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", ticketId);
+
+    if (error) {
+      console.error('❌ Erro ao assumir ticket:', error);
+      throw error;
+    }
+
+    console.log('✅ Ticket assumido manualmente');
+  }
+
+  async removeTicketFromQueue(ticketId: string): Promise<void> {
+    console.log('🚫 Removendo ticket da fila:', ticketId);
+    
+    const { error } = await supabase
+      .from("conversation_tickets")
+      .update({
+        assigned_queue_id: null,
+        status: 'open',
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", ticketId);
+
+    if (error) {
+      console.error('❌ Erro ao remover ticket da fila:', error);
+      throw error;
+    }
+
+    console.log('✅ Ticket removido da fila');
+  }
+
+  async transferTicket(ticketId: string, queueId: string): Promise<void> {
+    console.log('🔄 Transferindo ticket para fila:', { ticketId, queueId });
+    
+    const { error } = await supabase
+      .from("conversation_tickets")
+      .update({
+        assigned_queue_id: queueId,
+        status: 'open',
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", ticketId);
+
+    if (error) {
+      console.error('❌ Erro ao transferir ticket:', error);
+      throw error;
+    }
+
+    console.log('✅ Ticket transferido para fila');
+  }
+
+  async updateTicketTags(ticketId: string, tags: string[]): Promise<void> {
+    console.log('🏷️ Atualizando tags do ticket:', { ticketId, tags });
+    
+    const { error } = await supabase
+      .from("conversation_tickets")
+      .update({
+        tags: tags,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", ticketId);
+
+    if (error) {
+      console.error('❌ Erro ao atualizar tags:', error);
+      throw error;
+    }
+
+    console.log('✅ Tags atualizadas');
   }
 
   async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
