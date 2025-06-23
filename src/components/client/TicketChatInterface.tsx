@@ -11,11 +11,11 @@ import { ticketsService } from '@/services/ticketsService';
 import { queuesService } from '@/services/queuesService';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useOnlineStatus } from '@/hooks/use-online-status';
-import { useHumanizedTyping } from '@/hooks/use-humanized-typing';
-import { useMessageStatus } from '@/hooks/use-message-status';
-import { MessageStatus } from '@/components/ui/message-status';
-import { TypingIndicator } from '@/components/ui/typing-indicator';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
+import { useMessageStatus } from '@/hooks/useMessageStatus';
+import MessageStatus from './MessageStatus';
+import TypingIndicator from './TypingIndicator';
 
 interface TicketChatInterfaceProps {
   clientId: string;
