@@ -11,7 +11,7 @@ export const useTicketRealtime = (clientId: string) => {
   const [isLoading, setIsLoading] = useState(false);
   const [assistantTyping, setAssistantTyping] = useState(false);
   const [instanceId, setInstanceId] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(true); // Sempre online para simplificar
+  const [isOnline, setIsOnline] = useState(true);
   
   const channelRef = useRef<any>(null);
   const socketRef = useRef<any>(null);
@@ -46,98 +46,6 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // Normalizar mensagem do WhatsApp
-  const normalizeWhatsAppMessage = useCallback((message: any) => {
-    console.log('📨 Normalizando mensagem WhatsApp:', {
-      id: message.id,
-      from: message.from,
-      body: message.body?.substring(0, 50),
-      fromMe: message.fromMe,
-      timestamp: message.timestamp
-    });
-    
-    let chatId = message.from || message.chatId || message.key?.remoteJid || message.chat?.id;
-    let phoneNumber = chatId;
-    
-    if (chatId?.includes('@')) {
-      phoneNumber = chatId.split('@')[0];
-    }
-    
-    let customerName = message.notifyName || 
-                      message.pushName || 
-                      message.participant || 
-                      message.author ||
-                      message.senderName ||
-                      phoneNumber;
-    
-    if (chatId?.includes('@g.us')) {
-      customerName = message.chat?.name || customerName;
-    }
-    
-    let content = message.body || 
-                  message.caption || 
-                  message.text || 
-                  message.content ||
-                  '';
-    
-    let messageType = message.type || 'text';
-    
-    if (message.type === 'image' || message.hasMedia) {
-      content = `[Imagem] ${message.caption || 'Imagem enviada'}`;
-      messageType = 'image';
-    } else if (message.type === 'audio' || message.type === 'ptt') {
-      content = `[Áudio] Mensagem de áudio`;
-      messageType = 'audio';
-    } else if (message.type === 'video') {
-      content = `[Vídeo] ${message.caption || 'Vídeo enviado'}`;
-      messageType = 'video';
-    } else if (message.type === 'document') {
-      content = `[Documento] ${message.filename || 'Documento enviado'}`;
-      messageType = 'document';
-    } else if (message.type === 'sticker') {
-      content = `[Figurinha] Figurinha enviada`;
-      messageType = 'sticker';
-    } else if (message.type === 'location') {
-      content = `[Localização] Localização compartilhada`;
-      messageType = 'location';
-    }
-    
-    if (message.quotedMessage || message.quotedMsg) {
-      const quoted = message.quotedMessage || message.quotedMsg;
-      const quotedContent = quoted.body || quoted.caption || '[Mídia citada]';
-      content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
-    }
-
-    const timestamp = ticketsService.validateAndFixTimestamp(message.timestamp || message.t || Date.now());
-
-    const normalizedMessage = {
-      id: message.id || message.key?.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      from: chatId,
-      fromMe: message.fromMe || false,
-      body: content,
-      type: messageType,
-      timestamp: timestamp,
-      author: message.author || customerName,
-      notifyName: customerName,
-      pushName: customerName,
-      mediaUrl: message.mediaUrl || null,
-      phoneNumber,
-      customerName
-    };
-
-    console.log('✅ Mensagem normalizada:', {
-      id: normalizedMessage.id,
-      from: normalizedMessage.from,
-      customerName: normalizedMessage.customerName,
-      phoneNumber: normalizedMessage.phoneNumber,
-      body: normalizedMessage.body.substring(0, 50),
-      fromMe: normalizedMessage.fromMe,
-      timestamp: normalizedMessage.timestamp
-    });
-    
-    return normalizedMessage;
-  }, []);
-
   // Carregar tickets
   const loadTickets = useCallback(async () => {
     const now = Date.now();
@@ -166,7 +74,7 @@ export const useTicketRealtime = (clientId: string) => {
   }, [clientId]);
 
   // Processar com assistente IA
-  const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
+  const processWithAssistant = useCallback(async (message: any, ticketId: string) => {
     if (!mountedRef.current || !ticketId || !instanceId) {
       console.log('❌ Componente desmontado, ticketId inválido ou instância não encontrada');
       processingRef.current.delete(ticketId);
@@ -179,15 +87,6 @@ export const useTicketRealtime = (clientId: string) => {
       setAssistantTyping(true);
       console.log('🤖 Assistente iniciou digitação');
       
-      // Simular indicador de digitação por tempo realístico
-      const messageLength = allMessages
-        .filter(msg => !msg.fromMe)
-        .map(msg => msg.body || '')
-        .join(' ').length;
-      
-      const typingDuration = Math.max(2000, Math.min(8000, messageLength * 50));
-      console.log(`⌨️ Duração de digitação simulada: ${typingDuration}ms`);
-      
       // Buscar configurações
       const [queues, aiConfig] = await Promise.all([
         queuesService.getClientQueues(clientId),
@@ -197,6 +96,7 @@ export const useTicketRealtime = (clientId: string) => {
       if (!aiConfig?.openai_api_key) {
         console.log('⚠️ Configuração de IA não encontrada');
         setAssistantTyping(false);
+        processingRef.current.delete(ticketId);
         return;
       }
 
@@ -204,46 +104,29 @@ export const useTicketRealtime = (clientId: string) => {
       if (!activeQueue?.assistants) {
         console.log('⚠️ Nenhuma fila ativa com assistente encontrada');
         setAssistantTyping(false);
+        processingRef.current.delete(ticketId);
         return;
       }
 
       const assistant = activeQueue.assistants;
       console.log(`🤖 Usando assistente: ${assistant.name}`);
 
-      // Atualizar ticket
-      await supabase
-        .from('conversation_tickets')
-        .update({
-          assigned_queue_id: activeQueue.id,
-          assigned_assistant_id: assistant.id,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', ticketId);
+      // Simular tempo de digitação realístico
+      const messageLength = (message.body || '').length;
+      const typingDuration = Math.max(2000, Math.min(8000, messageLength * 50));
+      console.log(`⌨️ Duração de digitação simulada: ${typingDuration}ms`);
+      
+      await new Promise(resolve => setTimeout(resolve, typingDuration));
 
       // Buscar contexto do banco
-      const ticketMessages = await ticketsService.getTicketMessages(ticketId, 100);
+      const ticketMessages = await ticketsService.getTicketMessages(ticketId, 20);
       const contextMessages = ticketMessages.map(msg => ({
         role: msg.from_me ? 'assistant' : 'user',
         content: msg.content,
-        timestamp: msg.timestamp,
-        messageId: msg.message_id
+        timestamp: msg.timestamp
       }));
       
       console.log(`📚 Contexto carregado: ${contextMessages.length} mensagens`);
-
-      const currentBatchContent = allMessages
-        .filter(msg => !msg.fromMe)
-        .map(msg => msg.body || msg.caption || '[Mídia]')
-        .join('\n');
-      
-      if (!currentBatchContent.trim()) {
-        console.log('⚠️ Nenhuma mensagem nova do cliente para processar');
-        setAssistantTyping(false);
-        return;
-      }
-
-      // Aguardar tempo de digitação realístico
-      await new Promise(resolve => setTimeout(resolve, typingDuration));
 
       // Preparar configurações
       let settings = { temperature: 0.7, max_tokens: 1000 };
@@ -261,29 +144,12 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('Erro ao parse das configurações:', e);
       }
 
-      // Prompt aprimorado
-      const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto importante: 
-- Você está respondendo mensagens do WhatsApp em tempo real
-- Você tem acesso ao histórico COMPLETO de ${contextMessages.length} mensagens desta conversa
-- O cliente enviou novas mensagens que você deve responder especificamente
-- ANALISE TODO o contexto anterior para manter coerência na conversa
-- NÃO repita informações já fornecidas anteriormente
-- Responda de forma específica e relevante às NOVAS mensagens do cliente
-- Mantenha a conversa natural e fluida
-- Seja conciso mas completo`;
+      const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nContexto: Responda especificamente à mensagem do cliente de forma natural e útil.`;
 
-      const recentContext = contextMessages.slice(-50).filter(msg => msg.content && msg.content.trim());
-      
       const messages = [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        ...recentContext,
-        {
-          role: 'user',
-          content: `NOVA(S) MENSAGEM(S): ${currentBatchContent}`
-        }
+        { role: 'system', content: systemPrompt },
+        ...contextMessages.slice(-10),
+        { role: 'user', content: message.body || message.caption || 'Mensagem recebida' }
       ];
 
       console.log('🚀 Enviando para OpenAI...');
@@ -305,7 +171,7 @@ export const useTicketRealtime = (clientId: string) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Erro da OpenAI:', response.status, errorText);
-        throw new Error(`Erro da OpenAI: ${response.status} - ${errorText}`);
+        throw new Error(`Erro da OpenAI: ${response.status}`);
       }
 
       const data = await response.json();
@@ -314,71 +180,41 @@ export const useTicketRealtime = (clientId: string) => {
       if (assistantResponse?.trim() && mountedRef.current) {
         console.log(`🤖 Resposta recebida (${assistantResponse.length} caracteres):`, assistantResponse.substring(0, 200));
         
-        // Quebrar resposta em blocos se muito grande
-        const maxLength = 1000;
-        const messageBlocks = [];
-        
-        if (assistantResponse.length > maxLength) {
-          let remaining = assistantResponse;
-          while (remaining.length > 0) {
-            let chunk = remaining.substring(0, maxLength);
-            const lastPeriod = chunk.lastIndexOf('.');
-            const lastSpace = chunk.lastIndexOf(' ');
-            
-            if (lastPeriod > maxLength * 0.7) {
-              chunk = remaining.substring(0, lastPeriod + 1);
-            } else if (lastSpace > maxLength * 0.7) {
-              chunk = remaining.substring(0, lastSpace);
-            }
-            
-            messageBlocks.push(chunk.trim());
-            remaining = remaining.substring(chunk.length).trim();
-          }
-        } else {
-          messageBlocks.push(assistantResponse);
-        }
-        
-        console.log(`📝 Resposta dividida em ${messageBlocks.length} blocos`);
-        
-        // Enviar blocos em sequência
-        for (let i = 0; i < messageBlocks.length; i++) {
-          if (!mountedRef.current) break;
+        try {
+          // Criar ID único para rastreamento
+          const messageId = `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           
-          const blockContent = messageBlocks[i];
-          console.log(`📤 Enviando bloco ${i + 1}/${messageBlocks.length}`);
+          // Enviar via WhatsApp
+          const sendResult = await whatsappService.sendMessage(instanceId, message.from, assistantResponse);
+          console.log(`📤 Resultado do envio:`, sendResult);
           
-          if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-          }
-          
-          try {
-            // Criar ID único para rastreamento
-            const messageId = `ai_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
-            
-            // Enviar via WhatsApp
-            const sendResult = await whatsappService.sendMessage(instanceId, message.from, blockContent);
-            console.log(`📤 Resultado do envio bloco ${i + 1}:`, sendResult);
-            
-            // Registrar no ticket
-            await ticketsService.addTicketMessage({
-              ticket_id: ticketId,
-              message_id: messageId,
-              from_me: true,
-              sender_name: `🤖 ${assistant.name}`,
-              content: blockContent,
-              message_type: 'text',
-              is_internal_note: false,
-              is_ai_response: true,
-              ai_confidence_score: 0.9,
-              processing_status: 'completed',
-              timestamp: new Date().toISOString()
-            });
-          } catch (sendError) {
-            console.error(`❌ Erro ao enviar bloco ${i + 1}:`, sendError);
-          }
-        }
+          // Registrar no ticket
+          await ticketsService.addTicketMessage({
+            ticket_id: ticketId,
+            message_id: messageId,
+            from_me: true,
+            sender_name: `🤖 ${assistant.name}`,
+            content: assistantResponse,
+            message_type: 'text',
+            is_internal_note: false,
+            is_ai_response: true,
+            ai_confidence_score: 0.9,
+            processing_status: 'completed',
+            timestamp: new Date().toISOString()
+          });
 
-        console.log('✅ Resposta completa enviada');
+          console.log('✅ Resposta enviada e registrada');
+
+          // Recarregar tickets após envio
+          setTimeout(() => {
+            if (mountedRef.current) {
+              loadTickets();
+            }
+          }, 1500);
+
+        } catch (sendError) {
+          console.error(`❌ Erro ao enviar resposta:`, sendError);
+        }
       }
 
     } catch (error) {
@@ -390,7 +226,74 @@ export const useTicketRealtime = (clientId: string) => {
       }
       processingRef.current.delete(ticketId);
     }
-  }, [clientId, instanceId]);
+  }, [clientId, instanceId, loadTickets]);
+
+  // Normalizar mensagem do WhatsApp
+  const normalizeWhatsAppMessage = useCallback((message: any) => {
+    console.log('📨 Normalizando mensagem WhatsApp:', {
+      id: message.id,
+      from: message.from,
+      body: message.body?.substring(0, 50),
+      fromMe: message.fromMe,
+      timestamp: message.timestamp
+    });
+    
+    let chatId = message.from || message.chatId || message.key?.remoteJid || message.chat?.id;
+    let phoneNumber = chatId;
+    
+    if (chatId?.includes('@')) {
+      phoneNumber = chatId.split('@')[0];
+    }
+    
+    let customerName = message.notifyName || 
+                      message.pushName || 
+                      message.participant || 
+                      message.author ||
+                      message.senderName ||
+                      phoneNumber;
+    
+    let content = message.body || 
+                  message.caption || 
+                  message.text || 
+                  message.content ||
+                  '';
+    
+    // Processar tipos de mídia
+    if (message.type === 'image' || message.hasMedia) {
+      content = `[Imagem] ${message.caption || 'Imagem enviada'}`;
+    } else if (message.type === 'audio' || message.type === 'ptt') {
+      content = `[Áudio] Mensagem de áudio`;
+    } else if (message.type === 'video') {
+      content = `[Vídeo] ${message.caption || 'Vídeo enviado'}`;
+    } else if (message.type === 'document') {
+      content = `[Documento] ${message.filename || 'Documento enviado'}`;
+    }
+
+    const timestamp = ticketsService.validateAndFixTimestamp(message.timestamp || message.t || Date.now());
+
+    const normalizedMessage = {
+      id: message.id || message.key?.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      from: chatId,
+      fromMe: message.fromMe || false,
+      body: content,
+      type: message.type || 'text',
+      timestamp: timestamp,
+      author: message.author || customerName,
+      notifyName: customerName,
+      phoneNumber,
+      customerName
+    };
+
+    console.log('✅ Mensagem normalizada:', {
+      id: normalizedMessage.id,
+      from: normalizedMessage.from,
+      customerName: normalizedMessage.customerName,
+      body: normalizedMessage.body.substring(0, 50),
+      fromMe: normalizedMessage.fromMe
+    });
+    
+    return normalizedMessage;
+  }, []);
 
   // Processar mensagem recebida
   const processMessage = useCallback(async (message: any) => {
@@ -432,6 +335,8 @@ export const useTicketRealtime = (clientId: string) => {
         normalizedMessage.timestamp
       );
 
+      console.log('🎫 Ticket criado/atualizado:', ticketId);
+
       // Salvar mensagem
       await ticketsService.addTicketMessage({
         ticket_id: ticketId,
@@ -443,9 +348,10 @@ export const useTicketRealtime = (clientId: string) => {
         is_internal_note: false,
         is_ai_response: false,
         processing_status: 'received',
-        timestamp: normalizedMessage.timestamp,
-        media_url: normalizedMessage.mediaUrl
+        timestamp: normalizedMessage.timestamp
       });
+
+      console.log('💾 Mensagem salva no ticket');
 
       // Atualizar tickets
       setTimeout(() => {
@@ -461,9 +367,9 @@ export const useTicketRealtime = (clientId: string) => {
         
         setTimeout(() => {
           if (mountedRef.current && processingRef.current.has(ticketId)) {
-            processWithAssistant(normalizedMessage, ticketId, [message]);
+            processWithAssistant(normalizedMessage, ticketId);
           }
-        }, 800);
+        }, 1500);
       }
       
     } catch (error) {
@@ -495,12 +401,12 @@ export const useTicketRealtime = (clientId: string) => {
         console.log('❌ WebSocket desconectado:', reason);
       });
 
+      // Eventos de mensagem
       const events = [
         `message_${clientId}`,
         `new_message_${clientId}`,
         `whatsapp_message_${clientId}`,
-        `message`,
-        `message_${clientId}_instance_1750600195961`
+        `message`
       ];
 
       events.forEach(eventName => {
@@ -518,6 +424,7 @@ export const useTicketRealtime = (clientId: string) => {
         });
       });
 
+      // Canal do Supabase para mudanças nos tickets
       const channel = supabase
         .channel(`tickets-${clientId}`)
         .on(
@@ -569,7 +476,7 @@ export const useTicketRealtime = (clientId: string) => {
     tickets,
     isLoading,
     isTyping: assistantTyping,
-    isOnline, // Sempre true para simplificar
+    isOnline,
     reloadTickets
   };
 };
