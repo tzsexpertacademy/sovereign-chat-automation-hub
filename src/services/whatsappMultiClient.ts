@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL } from '@/config/environment';
 
@@ -439,53 +438,103 @@ class WhatsAppMultiClientService {
     }
   }
 
+  // Validar e formatar Chat ID corretamente
+  private formatChatId(chatId: string): string {
+    console.log('📋 Formatando Chat ID:', chatId);
+    
+    // Remove espaços e caracteres especiais
+    let formattedId = chatId.trim();
+    
+    // Se já tem @c.us ou @g.us, remove para reformatar
+    formattedId = formattedId.replace(/@c\.us|@g\.us/g, '');
+    
+    // Remove caracteres não numéricos (exceto + no início)
+    formattedId = formattedId.replace(/[^\d+]/g, '');
+    
+    // Remove + do início se existir
+    if (formattedId.startsWith('+')) {
+      formattedId = formattedId.substring(1);
+    }
+    
+    // Validar se é um número válido
+    if (!/^\d+$/.test(formattedId)) {
+      throw new Error(`ID do chat inválido: ${chatId}. Deve conter apenas números.`);
+    }
+    
+    // Adicionar sufixo @c.us para chat individual
+    const finalId = `${formattedId}@c.us`;
+    
+    console.log(`✅ Chat ID formatado: ${chatId} -> ${finalId}`);
+    return finalId;
+  }
+
+  // Validar se o cliente está conectado
+  private async validateClientConnection(clientId: string): Promise<void> {
+    try {
+      console.log(`🔍 Validando conexão do cliente: ${clientId}`);
+      
+      const status = await this.getClientStatus(clientId);
+      
+      if (status.status !== 'connected') {
+        throw new Error(`WhatsApp não está conectado (status: ${status.status}). Reconecte na aba "Conexão".`);
+      }
+      
+      console.log(`✅ Cliente ${clientId} está conectado`);
+    } catch (error) {
+      console.error(`❌ Erro na validação de conexão:`, error);
+      throw error;
+    }
+  }
+
   async sendMessage(clientId: string, to: string, message: string, mediaUrl?: string, file?: File): Promise<any> {
     try {
-      console.log('📤 Enviando mensagem:', { 
+      console.log('📤 Iniciando envio de mensagem:', { 
         clientId, 
         to, 
         message: message.substring(0, 50), 
         hasFile: !!file,
-        hasMediaUrl: !!mediaUrl,
-        fileType: file?.type,
-        fileSize: file?.size 
+        hasMediaUrl: !!mediaUrl 
       });
       
-      // Verificar se o cliente está conectado antes de enviar
-      try {
-        const status = await this.getClientStatus(clientId);
-        if (status.status !== 'connected') {
-          throw new Error(`WhatsApp não está conectado (status: ${status.status}). Conecte-se primeiro na aba "Conexão".`);
-        }
-      } catch (statusError) {
-        console.warn('⚠️ Não foi possível verificar status, tentando enviar mesmo assim:', statusError);
+      // 1. Validar conexão do cliente PRIMEIRO
+      await this.validateClientConnection(clientId);
+      
+      // 2. Formatar e validar o Chat ID
+      const formattedChatId = this.formatChatId(to);
+      
+      // 3. Validar mensagem
+      if (!message?.trim() && !file && !mediaUrl) {
+        throw new Error('Mensagem, arquivo ou URL de mídia é obrigatório');
       }
       
       if (file) {
-        // Envio de arquivo com timeout
+        // Envio de arquivo
+        console.log('📎 Enviando arquivo:', { 
+          type: file.type, 
+          size: file.size, 
+          name: file.name 
+        });
+        
         const formData = new FormData();
-        formData.append('to', to);
+        formData.append('to', formattedChatId.replace('@c.us', '')); // Servidor espera sem @c.us
         formData.append('file', file);
         
         if (message && message.trim()) {
-          formData.append('caption', message);
+          formData.append('caption', message.trim());
         }
 
         // Determinar endpoint baseado no tipo de arquivo
-        let endpoint = 'send-media';
+        let endpoint = 'send-document';
         if (file.type.startsWith('image/')) {
           endpoint = 'send-image';
         } else if (file.type.startsWith('video/')) {
           endpoint = 'send-video';
         } else if (file.type.startsWith('audio/')) {
           endpoint = 'send-audio';
-        } else {
-          endpoint = 'send-document';
         }
 
-        // Implementar timeout usando AbortController
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 segundos para arquivos
 
         const response = await fetch(`${API_BASE_URL}/clients/${clientId}/${endpoint}`, {
           method: 'POST',
@@ -497,6 +546,8 @@ class WhatsAppMultiClientService {
         
         if (!response.ok) {
           const errorText = await response.text();
+          console.error(`❌ Erro do servidor (${response.status}):`, errorText);
+          
           let errorData;
           try {
             errorData = JSON.parse(errorText);
@@ -512,18 +563,26 @@ class WhatsAppMultiClientService {
           throw new Error(data.error || 'Erro ao enviar arquivo');
         }
         
-        console.log('✅ Arquivo enviado com sucesso:', data);
+        console.log('✅ Arquivo enviado com sucesso');
         return data;
         
       } else if (mediaUrl) {
-        // Envio com URL de mídia com timeout
+        // Envio com URL de mídia
+        console.log('🌐 Enviando mídia por URL:', mediaUrl);
+        
+        const payload = {
+          to: formattedChatId.replace('@c.us', ''), // Servidor espera sem @c.us
+          message: message?.trim() || '',
+          mediaUrl: mediaUrl.trim()
+        };
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
 
         const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-media-url`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to, message, mediaUrl }),
+          body: JSON.stringify(payload),
           signal: controller.signal
         });
         
@@ -531,6 +590,8 @@ class WhatsAppMultiClientService {
         
         if (!response.ok) {
           const errorText = await response.text();
+          console.error(`❌ Erro do servidor (${response.status}):`, errorText);
+          
           let errorData;
           try {
             errorData = JSON.parse(errorText);
@@ -551,12 +612,17 @@ class WhatsAppMultiClientService {
         
       } else {
         // Envio de mensagem de texto
+        console.log('💬 Enviando mensagem de texto');
+        
         const payload = { 
-          to: to.replace('@c.us', ''), // Remover sufixo se existir
+          to: formattedChatId.replace('@c.us', ''), // Servidor espera sem @c.us
           message: message.trim()
         };
 
         console.log('📤 Payload da mensagem:', payload);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 segundos para texto
 
         const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-message`, {
           method: 'POST',
@@ -564,14 +630,17 @@ class WhatsAppMultiClientService {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         console.log(`📡 Resposta do servidor: ${response.status} ${response.statusText}`);
         
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`❌ Erro do servidor: ${errorText}`);
+          console.error(`❌ Erro do servidor (${response.status}):`, errorText);
           
           let errorData;
           try {
@@ -579,6 +648,12 @@ class WhatsAppMultiClientService {
           } catch {
             throw new Error(`Erro ${response.status}: ${errorText || response.statusText}`);
           }
+          
+          // Tratar erros específicos do WhatsApp
+          if (errorData.error?.includes('wid error: invalid wid')) {
+            throw new Error(`Número de telefone inválido: ${to}. Verifique o formato.`);
+          }
+          
           throw new Error(errorData.error || `Erro ${response.status}: ${response.statusText}`);
         }
         
@@ -586,22 +661,32 @@ class WhatsAppMultiClientService {
         
         if (!data.success) {
           console.error('❌ API retornou erro:', data.error);
+          
+          // Tratar erros específicos do WhatsApp
+          if (data.error?.includes('wid error: invalid wid')) {
+            throw new Error(`Número de telefone inválido: ${to}. Verifique se está no formato correto (ex: 5511999999999).`);
+          }
+          
           throw new Error(data.error || 'Erro ao enviar mensagem');
         }
         
-        console.log('✅ Mensagem enviada com sucesso:', data);
+        console.log('✅ Mensagem enviada com sucesso');
         return data;
       }
     } catch (error: any) {
       console.error('❌ Erro ao enviar mensagem:', error);
       
-      // Melhorar mensagens de erro
-      if (error.message.includes('getChat')) {
+      // Melhorar mensagens de erro específicas
+      if (error.message.includes('wid error: invalid wid')) {
+        throw new Error(`Número de telefone inválido: ${to}. Verifique se está no formato correto (ex: 5511999999999).`);
+      } else if (error.message.includes('getChat')) {
         throw new Error('Erro interno do WhatsApp. Tente reconectar a instância.');
       } else if (error.message.includes('timeout') || error.name === 'AbortError') {
         throw new Error('Timeout ao enviar mensagem. Verifique a conexão.');
       } else if (error.message.includes('Failed to fetch')) {
         throw new Error('Erro de conexão com o servidor WhatsApp.');
+      } else if (error.message.includes('não está conectado')) {
+        throw error; // Re-throw validation errors as-is
       }
       
       throw error;
