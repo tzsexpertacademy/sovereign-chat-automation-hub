@@ -80,6 +80,30 @@ export class ClientsService {
     return data;
   }
 
+  async updateClientInstance(clientId: string, instanceId: string, status: string): Promise<ClientData> {
+    console.log('🔄 Atualizando instância do cliente:', { clientId, instanceId, status });
+    
+    const { data, error } = await supabase
+      .from("clients")
+      .update({
+        instance_id: instanceId,
+        instance_status: status,
+        last_activity: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", clientId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Erro ao atualizar instância do cliente:', error);
+      throw error;
+    }
+
+    console.log('✅ Instância do cliente atualizada:', data);
+    return data;
+  }
+
   async deleteClient(id: string): Promise<void> {
     console.log('🗑️ Removendo cliente:', id);
     
