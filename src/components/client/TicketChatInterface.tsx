@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Send, Bot, User, AlertCircle, Users, Trash2 } from 'lucide-react';
+import { Send, Bot, User, AlertCircle, Users, Trash2, Mic } from 'lucide-react';
 import { useTicketMessages } from '@/hooks/useTicketMessages';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { ticketsService } from '@/services/ticketsService';
@@ -16,6 +17,7 @@ import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
 import MessageStatus from './MessageStatus';
 import TypingIndicator from './TypingIndicator';
+import AudioPlayer from './AudioPlayer';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -42,7 +44,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       try {
         console.log('🎫 Carregando dados do ticket:', ticketId);
         
-        // Carregar dados do ticket
         const ticketData = await ticketsService.getTicketById(ticketId);
         setTicket(ticketData);
         
@@ -55,7 +56,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           assignedQueueId: ticketData.assigned_queue_id
         });
 
-        // Carregar informações da fila se estiver atribuída
         if (ticketData.assigned_queue_id) {
           try {
             const queues = await queuesService.getClientQueues(clientId);
@@ -69,7 +69,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           }
         }
 
-        // Verificar instâncias conectadas do cliente
         const { data: instances, error } = await supabase
           .from('whatsapp_instances')
           .select('instance_id, phone_number, status')
@@ -84,7 +83,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         console.log('📱 Instâncias encontradas:', instances);
 
         if (instances && instances.length > 0) {
-          // Preferir a instância específica do ticket, ou usar a primeira conectada
           const preferredInstance = instances.find(i => i.instance_id === ticketData.instance_id) || instances[0];
           setConnectedInstance(preferredInstance.instance_id);
           
@@ -129,7 +127,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       setIsClearing(true);
       console.log('🗑️ Limpando histórico do ticket:', ticketId);
 
-      // Deletar todas as mensagens do ticket
       const { error } = await supabase
         .from('ticket_messages')
         .delete()
@@ -175,7 +172,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       setIsSending(true);
       const messageId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // Simular status da mensagem
       simulateMessageProgression(messageId, false);
       
       console.log('📤 Enviando mensagem:', {
@@ -185,10 +181,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         customerPhone: ticket.customer?.phone
       });
 
-      // Marcar atividade
       markActivity();
 
-      // Enviar mensagem via WhatsApp
       const response = await whatsappService.sendMessage(
         connectedInstance,
         ticket.chat_id,
@@ -200,7 +194,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       if (response.success) {
         console.log('✅ Mensagem enviada com sucesso via WhatsApp');
 
-        // Registrar mensagem no ticket
         console.log('💾 Salvando mensagem manual no ticket:', {
           ticketId,
           content: newMessage.substring(0, 50)
@@ -261,6 +254,38 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   };
 
   const renderMessageContent = (message: any) => {
+    // Se é uma mensagem de áudio e tem dados de áudio
+    if (message.message_type === 'audio' && message.audio_base64) {
+      return (
+        <div className="space-y-2">
+          <AudioPlayer 
+            audioUrl=""
+            audioData={message.audio_base64}
+            fileName={`audio_${message.id}.wav`}
+          />
+          {message.media_transcription && (
+            <div className="text-xs opacity-75 bg-black/5 rounded p-2">
+              <strong>Transcrição:</strong> {message.media_transcription}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Se é uma mensagem de áudio mas sem dados base64
+    if (message.message_type === 'audio') {
+      return (
+        <div className="flex items-center gap-2 p-2 bg-gray-100 rounded">
+          <Mic className="w-4 h-4" />
+          <span className="text-sm">Mensagem de áudio</span>
+          {message.media_transcription && (
+            <span className="text-xs opacity-75">- {message.media_transcription}</span>
+          )}
+        </div>
+      );
+    }
+
+    // Mensagem de texto normal
     let content = message.content;
     
     // Detectar links e torná-los clicáveis
@@ -311,7 +336,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             )}
           </div>
           
-          {/* Botão para limpar histórico */}
           <Button
             variant="outline"
             size="sm"
@@ -329,7 +353,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         </div>
       )}
 
-      {/* Status da conexão aprimorado */}
+      {/* Status da conexão */}
       {!connectedInstance && (
         <div className="p-3 bg-yellow-50 border-b border-yellow-200 flex items-center gap-2 text-yellow-800">
           <AlertCircle className="w-4 h-4" />
@@ -361,7 +385,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           ) : (
             messages.map((message) => (
               <div
-                key={message.id}
+                key={`${message.id}-${message.timestamp}`}
                 className={`flex gap-3 ${message.from_me ? 'justify-end' : 'justify-start'}`}
               >
                 {!message.from_me && (

@@ -45,20 +45,33 @@ serve(async (req) => {
   try {
     const { audio, openaiApiKey } = await req.json();
     
+    console.log('🎵 Recebendo requisição de transcrição:', {
+      hasAudio: !!audio,
+      hasApiKey: !!openaiApiKey,
+      audioLength: audio?.length || 0
+    });
+    
     if (!audio || !openaiApiKey) {
       throw new Error('Audio data and OpenAI API key are required');
     }
 
-    // Process audio in chunks
+    // Process audio in chunks to prevent memory issues
+    console.log('🔄 Processando áudio em chunks...');
     const binaryAudio = processBase64Chunks(audio);
+    console.log('✅ Áudio processado:', binaryAudio.length, 'bytes');
     
-    // Prepare form data
+    // Prepare form data for OpenAI Whisper
     const formData = new FormData();
     const blob = new Blob([binaryAudio], { type: 'audio/webm' });
     formData.append('file', blob, 'audio.webm');
     formData.append('model', 'whisper-1');
+    formData.append('language', 'pt'); // Português
+    formData.append('temperature', '0');
+    formData.append('response_format', 'json');
 
-    // Send to OpenAI
+    console.log('🚀 Enviando para OpenAI Whisper...');
+
+    // Send to OpenAI Whisper API
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
@@ -68,20 +81,35 @@ serve(async (req) => {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${await response.text()}`);
+      const errorText = await response.text();
+      console.error('❌ Erro da OpenAI:', response.status, errorText);
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
     const result = await response.json();
+    
+    console.log('✅ Transcrição concluída:', {
+      hasText: !!result.text,
+      textLength: result.text?.length || 0,
+      preview: result.text?.substring(0, 100) || 'N/A'
+    });
 
     return new Response(
-      JSON.stringify({ text: result.text }),
+      JSON.stringify({ 
+        text: result.text || '',
+        language: result.language || 'pt',
+        duration: result.duration || null
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error in speech-to-text function:', error);
+    console.error('❌ Erro na função speech-to-text:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
