@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -150,7 +149,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // PROCESSAMENTO COM ASSISTENTE - INCLUINDO ÁUDIO
+  // PROCESSAMENTO COM ASSISTENTE - INCLUINDO ÁUDIO MELHORADO
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     const processingKey = `${ticketId}_${Date.now()}`;
     
@@ -229,7 +228,7 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('ERRO ao parse das configurações:', e);
       }
 
-      // PROCESSAR MENSAGENS COM ÁUDIO
+      // PROCESSAR MENSAGENS COM ÁUDIO - MELHORADO
       let processedContent = '';
       
       for (const msg of allMessages.filter(m => !m.fromMe)) {
@@ -239,12 +238,12 @@ export const useTicketRealtime = (clientId: string) => {
             const audioResult = await audioService.processWhatsAppAudio(msg.originalMessage, clientId);
             processedContent += `[Áudio transcrito]: ${audioResult.transcription}\n`;
             
-            // Salvar transcrição no banco - usando raw query para evitar problemas de tipo
+            // Salvar transcrição no banco
             await supabase
               .from('ticket_messages')
               .update({
                 content: `${msg.body} - Transcrição: ${audioResult.transcription}`,
-                // Adicionar campos condicionalmente se existirem
+                // Usar casting para evitar problemas de tipo
                 ...(audioResult.transcription && { media_transcription: audioResult.transcription }),
                 ...(audioResult.audioBase64 && { audio_base64: audioResult.audioBase64 })
               } as any)
@@ -252,8 +251,9 @@ export const useTicketRealtime = (clientId: string) => {
               
             console.log('✅ Áudio transcrito e salvo:', audioResult.transcription.substring(0, 100));
           } catch (audioError) {
-            console.error('❌ ERRO ao processar áudio:', audioError);
-            processedContent += `[Áudio]: ${msg.body}\n`;
+            console.error('❌ ERRO CRÍTICO ao processar áudio:', audioError);
+            // Tentar continuar mesmo com erro de áudio
+            processedContent += `[Áudio não processado]: ${msg.body || 'Mensagem de áudio'}\n`;
           }
         } else {
           processedContent += `${msg.body || msg.caption || '[Mídia]'}\n`;
