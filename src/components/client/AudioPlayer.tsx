@@ -28,14 +28,17 @@ const AudioPlayer = ({
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Processar dados de áudio
+  // Processar dados de áudio com melhor detecção de formato
   useEffect(() => {
     if (audioData) {
       try {
-        console.log('🎵 Processando dados de áudio para player:', {
+        console.log('🎵 ===== PROCESSANDO ÁUDIO PARA PLAYER =====');
+        console.log('📊 Dados de entrada:', {
           hasData: !!audioData,
           length: audioData.length,
-          hasComma: audioData.includes(',')
+          hasComma: audioData.includes(','),
+          hasDataPrefix: audioData.startsWith('data:'),
+          firstChars: audioData.substring(0, 50)
         });
 
         let processedData = audioData;
@@ -45,19 +48,37 @@ const AudioPlayer = ({
           setAudioSrc(audioData);
           console.log('✅ Usando dados com prefixo data: existente');
         } else {
-          // Adicionar prefixo data: apropriado
-          // Tentar diferentes formatos para compatibilidade
-          const formats = [
-            'data:audio/ogg;base64,',
-            'data:audio/wav;base64,',
-            'data:audio/mpeg;base64,',
-            'data:audio/webm;base64,'
-          ];
+          // Detectar formato baseado nos primeiros bytes
+          let detectedFormat = 'ogg'; // padrão WhatsApp
+          let detectedMime = 'audio/ogg';
           
-          // Usar OGG como padrão (formato comum do WhatsApp)
-          const audioSrcWithPrefix = `${formats[0]}${processedData}`;
+          try {
+            const firstBytes = atob(audioData.substring(0, 20));
+            const header = firstBytes.substring(0, 4);
+            
+            if (header.includes('OggS')) {
+              detectedFormat = 'ogg';
+              detectedMime = 'audio/ogg';
+            } else if (header.includes('RIFF')) {
+              detectedFormat = 'wav';
+              detectedMime = 'audio/wav';
+            } else if (header.includes('ID3') || firstBytes.charCodeAt(0) === 0xFF) {
+              detectedFormat = 'mp3';
+              detectedMime = 'audio/mpeg';
+            } else if (header.includes('ftyp')) {
+              detectedFormat = 'm4a';
+              detectedMime = 'audio/m4a';
+            }
+            
+            console.log('🎵 Formato detectado:', { detectedFormat, detectedMime });
+          } catch (e) {
+            console.log('⚠️ Erro na detecção, usando OGG padrão');
+          }
+          
+          // Criar data URL com formato detectado
+          const audioSrcWithPrefix = `data:${detectedMime};base64,${processedData}`;
           setAudioSrc(audioSrcWithPrefix);
-          console.log('✅ Adicionado prefixo OGG aos dados de áudio');
+          console.log('✅ Criado data URL com formato:', detectedFormat);
         }
       } catch (error) {
         console.error('❌ Erro ao processar dados de áudio:', error);
@@ -73,16 +94,24 @@ const AudioPlayer = ({
     }
   }, [audioData, audioUrl]);
 
-  // Configurar listeners do elemento de áudio
+  // Configurar listeners do elemento de áudio com logs detalhados
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !audioSrc) return;
 
-    const updateTime = () => setCurrentTime(audio.currentTime);
+    console.log('🔧 Configurando listeners para áudio:', {
+      hasAudio: !!audio,
+      src: audioSrc.substring(0, 50) + '...'
+    });
+
+    const updateTime = () => {
+      setCurrentTime(audio.currentTime);
+    };
+    
     const updateDuration = () => {
       if (audio.duration && !isNaN(audio.duration)) {
         setTotalDuration(audio.duration);
-        console.log('🕒 Duração do áudio detectada:', audio.duration);
+        console.log('🕒 Duração detectada:', audio.duration);
       }
     };
     
@@ -99,21 +128,23 @@ const AudioPlayer = ({
     };
     
     const handleError = (e: any) => {
-      console.error('❌ Erro no player de áudio:', e);
-      console.error('❌ Detalhes do erro:', {
+      console.error('❌ ERRO CRÍTICO no player de áudio:', e);
+      console.error('📊 Detalhes do erro:', {
         error: e.target?.error,
         networkState: e.target?.networkState,
         readyState: e.target?.readyState,
-        src: e.target?.src?.substring(0, 100)
+        src: e.target?.src?.substring(0, 100),
+        errorCode: e.target?.error?.code,
+        errorMessage: e.target?.error?.message
       });
       
       setIsLoading(false);
-      setError('Erro ao carregar áudio');
+      setError('Erro ao carregar áudio - tente um formato diferente');
       setIsPlaying(false);
     };
     
     const handleEnded = () => {
-      console.log('✅ Reprodução de áudio finalizada');
+      console.log('✅ Reprodução finalizada');
       setIsPlaying(false);
       onPause?.();
     };
@@ -121,10 +152,23 @@ const AudioPlayer = ({
     const handleLoadedData = () => {
       console.log('📊 Dados do áudio carregados:', {
         duration: audio.duration,
-        readyState: audio.readyState
+        readyState: audio.readyState,
+        networkState: audio.networkState
       });
     };
 
+    const handleProgress = () => {
+      if (audio.buffered.length > 0) {
+        const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
+        const duration = audio.duration;
+        if (duration > 0) {
+          const percent = (bufferedEnd / duration) * 100;
+          console.log('📶 Progresso do buffer:', percent.toFixed(1) + '%');
+        }
+      }
+    };
+
+    // Adicionar todos os listeners
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
     audio.addEventListener('loadeddata', handleLoadedData);
@@ -132,6 +176,7 @@ const AudioPlayer = ({
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('error', handleError);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('progress', handleProgress);
 
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
@@ -141,6 +186,7 @@ const AudioPlayer = ({
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('progress', handleProgress);
     };
   }, [onPause, audioSrc]);
 
@@ -155,7 +201,15 @@ const AudioPlayer = ({
         setIsPlaying(false);
         onPause?.();
       } else {
-        console.log('▶️ Iniciando reprodução de áudio');
+        console.log('▶️ Iniciando reprodução');
+        console.log('📊 Estado do áudio antes do play:', {
+          readyState: audio.readyState,
+          networkState: audio.networkState,
+          paused: audio.paused,
+          currentTime: audio.currentTime,
+          duration: audio.duration
+        });
+        
         setIsLoading(true);
         setError(null);
         
@@ -164,10 +218,16 @@ const AudioPlayer = ({
         setIsLoading(false);
         onPlay?.();
         
-        console.log('✅ Áudio reproduzindo');
+        console.log('✅ Áudio reproduzindo com sucesso');
       }
     } catch (error) {
-      console.error('❌ Erro ao reproduzir áudio:', error);
+      console.error('❌ ERRO ao reproduzir áudio:', error);
+      console.error('📊 Estado do áudio no erro:', {
+        readyState: audio.readyState,
+        networkState: audio.networkState,
+        error: audio.error
+      });
+      
       setError('Erro ao reproduzir áudio');
       setIsLoading(false);
       setIsPlaying(false);
@@ -200,9 +260,9 @@ const AudioPlayer = ({
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      console.log('📥 Download do áudio iniciado');
+      console.log('📥 Download iniciado');
     } catch (error) {
-      console.error('❌ Erro ao baixar áudio:', error);
+      console.error('❌ Erro no download:', error);
     }
   };
 
