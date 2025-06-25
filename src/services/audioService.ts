@@ -45,19 +45,21 @@ export const audioService = {
     return data.audioBase64;
   },
 
-  // Processar mensagem de áudio do WhatsApp
+  // Processar mensagem de áudio do WhatsApp - VERSÃO MELHORADA
   async processWhatsAppAudio(message: any, clientId: string): Promise<{
     transcription: string;
     audioUrl?: string;
     audioBase64?: string;
   }> {
     try {
-      console.log('🎵 Processando áudio do WhatsApp:', {
+      console.log('🎵 ===== PROCESSANDO ÁUDIO DO WHATSAPP =====');
+      console.log('📱 Dados da mensagem:', {
         messageId: message.id,
         hasMedia: !!message.hasMedia,
         type: message.type,
         hasMediaData: !!message.mediaData,
-        hasMediaUrl: !!message.mediaUrl
+        hasMediaUrl: !!message.mediaUrl,
+        mediaDataLength: message.mediaData?.length || 0
       });
 
       // Buscar configuração de IA do cliente
@@ -75,30 +77,55 @@ export const audioService = {
       let audioBase64 = '';
       let audioUrl = '';
 
-      // Extrair dados de áudio da mensagem
+      // Extrair dados de áudio da mensagem - MELHORADO
       if (message.hasMedia || message.type === 'audio' || message.type === 'ptt') {
         if (message.mediaData) {
-          // Dados de mídia já em base64
+          console.log('📱 Usando dados de mídia diretos');
           audioBase64 = message.mediaData;
-          console.log('✅ Dados de áudio encontrados (base64):', audioBase64.length, 'chars');
+          
+          // Validar se é base64 válido
+          if (!audioBase64 || audioBase64.length < 100) {
+            throw new Error('Dados de áudio muito pequenos ou inválidos');
+          }
+          
+          console.log('✅ Dados de áudio encontrados:', {
+            length: audioBase64.length,
+            hasPrefix: audioBase64.includes('data:'),
+            preview: audioBase64.substring(0, 50)
+          });
+          
         } else if (message.mediaUrl) {
-          // URL da mídia - fazer download
+          console.log('🔄 Baixando áudio da URL:', message.mediaUrl);
           try {
-            console.log('🔄 Baixando áudio da URL:', message.mediaUrl);
-            const response = await fetch(message.mediaUrl);
+            const response = await fetch(message.mediaUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            });
+            
             if (!response.ok) {
               throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
+            
+            const contentType = response.headers.get('content-type');
+            console.log('📁 Tipo de conteúdo:', contentType);
+            
             const arrayBuffer = await response.arrayBuffer();
             audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
             audioUrl = message.mediaUrl;
-            console.log('✅ Áudio baixado com sucesso:', audioBase64.length, 'chars');
+            
+            console.log('✅ Áudio baixado com sucesso:', {
+              size: arrayBuffer.byteLength,
+              base64Length: audioBase64.length
+            });
+            
           } catch (error) {
             console.error('❌ Erro ao baixar áudio:', error);
             throw new Error(`Erro ao processar áudio: ${error.message}`);
           }
         } else {
           console.error('❌ Nenhum dado de áudio encontrado na mensagem');
+          console.log('🔍 Estrutura da mensagem:', JSON.stringify(message, null, 2));
           throw new Error('Dados de áudio não encontrados na mensagem');
         }
       } else {
@@ -111,19 +138,28 @@ export const audioService = {
         throw new Error('Falha ao extrair dados de áudio');
       }
 
-      // Transcrever áudio
-      console.log('🚀 Iniciando transcrição com OpenAI...');
+      // Transcrever áudio - COM LOGS DETALHADOS
+      console.log('🚀 ===== INICIANDO TRANSCRIÇÃO =====');
+      console.log('🔑 Usando chave OpenAI:', aiConfig.openai_api_key.substring(0, 20) + '...');
+      console.log('📊 Tamanho do áudio:', audioBase64.length, 'caracteres');
+      
       const transcription = await this.convertSpeechToText(audioBase64, aiConfig.openai_api_key);
       
       if (!transcription || transcription.trim() === '') {
         console.warn('⚠️ Transcrição vazia recebida');
-        throw new Error('Transcrição vazia recebida');
+        return {
+          transcription: '[Áudio não pôde ser transcrito]',
+          audioUrl,
+          audioBase64
+        };
       }
 
-      console.log('✅ Áudio processado com sucesso:', {
+      console.log('✅ ===== ÁUDIO PROCESSADO COM SUCESSO =====');
+      console.log('📝 Transcrição:', transcription);
+      console.log('📊 Estatísticas:', {
         transcriptionLength: transcription.length,
         hasAudioData: !!audioBase64,
-        preview: transcription.substring(0, 100)
+        hasAudioUrl: !!audioUrl
       });
 
       return {
@@ -133,7 +169,10 @@ export const audioService = {
       };
       
     } catch (error) {
-      console.error('❌ Erro ao processar áudio do WhatsApp:', error);
+      console.error('❌ ===== ERRO NO PROCESSAMENTO DE ÁUDIO =====');
+      console.error('💥 Erro:', error);
+      console.error('🔍 Stack:', error.stack);
+      
       // Re-throw com contexto adicional
       throw new Error(`Falha no processamento de áudio: ${error.message}`);
     }

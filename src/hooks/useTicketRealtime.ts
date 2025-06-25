@@ -149,7 +149,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // PROCESSAMENTO COM ASSISTENTE - INCLUINDO ÁUDIO MELHORADO
+  // PROCESSAMENTO COM ASSISTENTE - ÁUDIO MELHORADO
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     const processingKey = `${ticketId}_${Date.now()}`;
     
@@ -228,31 +228,55 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('ERRO ao parse das configurações:', e);
       }
 
-      // PROCESSAR MENSAGENS COM ÁUDIO - MELHORADO
+      // PROCESSAR MENSAGENS COM ÁUDIO - VERSÃO MELHORADA
       let processedContent = '';
       
+      console.log('🎵 ===== PROCESSANDO MENSAGENS PARA IA =====');
+      
       for (const msg of allMessages.filter(m => !m.fromMe)) {
+        console.log(`📨 Processando mensagem: ${msg.id}, tipo: ${msg.type}`);
+        
         if (msg.type === 'audio' || msg.type === 'ptt') {
-          console.log('🎵 PROCESSANDO mensagem de áudio...');
+          console.log('🎵 DETECTADO áudio - iniciando transcrição...');
           try {
             const audioResult = await audioService.processWhatsAppAudio(msg.originalMessage, clientId);
-            processedContent += `[Áudio transcrito]: ${audioResult.transcription}\n`;
             
-            // Salvar transcrição no banco
-            await supabase
-              .from('ticket_messages')
-              .update({
-                content: `${msg.body} - Transcrição: ${audioResult.transcription}`,
-                // Usar casting para evitar problemas de tipo
-                ...(audioResult.transcription && { media_transcription: audioResult.transcription }),
-                ...(audioResult.audioBase64 && { audio_base64: audioResult.audioBase64 })
-              } as any)
-              .eq('message_id', msg.id);
+            const transcriptionText = audioResult.transcription || '[Áudio não transcrito]';
+            processedContent += `[Mensagem de áudio transcrita]: "${transcriptionText}"\n`;
+            
+            console.log('✅ Transcrição de áudio concluída:', {
+              original: msg.body?.substring(0, 50),
+              transcription: transcriptionText.substring(0, 100),
+              success: !!audioResult.transcription
+            });
+            
+            // Salvar transcrição no banco - VERSÃO MELHORADA
+            try {
+              const updateData: any = {
+                content: `${msg.body} - Transcrição: ${transcriptionText}`,
+                media_transcription: transcriptionText,
+                processing_status: 'completed'
+              };
+
+              if (audioResult.audioBase64) {
+                updateData.audio_base64 = audioResult.audioBase64;
+              }
+
+              await supabase
+                .from('ticket_messages')
+                .update(updateData)
+                .eq('message_id', msg.id);
+                
+              console.log('💾 Transcrição salva no banco de dados');
               
-            console.log('✅ Áudio transcrito e salvo:', audioResult.transcription.substring(0, 100));
+            } catch (saveError) {
+              console.error('⚠️ Erro ao salvar transcrição no banco:', saveError);
+              // Continuar mesmo com erro de salvamento
+            }
+              
           } catch (audioError) {
-            console.error('❌ ERRO CRÍTICO ao processar áudio:', audioError);
-            // Tentar continuar mesmo com erro de áudio
+            console.error('❌ ERRO ao processar áudio:', audioError);
+            // Continuar com fallback
             processedContent += `[Áudio não processado]: ${msg.body || 'Mensagem de áudio'}\n`;
           }
         } else {
@@ -265,6 +289,9 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
 
+      console.log('🧠 ===== PREPARANDO CONTEXTO PARA IA =====');
+      console.log('📝 Conteúdo processado:', processedContent.substring(0, 200) + '...');
+
       // CONTEXTO PARA IA - usar verificação segura para campos de áudio
       const contextMessages = ticketMessages.map(msg => {
         const messageContent = (msg as any).media_transcription || msg.content;
@@ -274,7 +301,7 @@ export const useTicketRealtime = (clientId: string) => {
         };
       });
 
-      const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nVocê está respondendo mensagens do WhatsApp. Responda de forma específica às novas mensagens do cliente considerando o contexto da conversa. Se o cliente enviou áudio, a transcrição será fornecida.`;
+      const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nVocê está respondendo mensagens do WhatsApp. Responda de forma específica às novas mensagens do cliente considerando o contexto da conversa. Quando o cliente envia áudio, você receberá a transcrição do que foi falado.`;
 
       const messages = [
         { role: 'system', content: systemPrompt },
@@ -282,7 +309,7 @@ export const useTicketRealtime = (clientId: string) => {
         { role: 'user', content: `NOVA MENSAGEM: ${processedContent}` }
       ];
 
-      console.log(`🚀 ENVIANDO para OpenAI`);
+      console.log(`🚀 ENVIANDO para OpenAI com ${messages.length} mensagens`);
 
       // CHAMAR OPENAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
