@@ -7,7 +7,32 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Função para processar base64 em chunks - otimizada
+// Função para detectar e processar diferentes formatos de áudio
+function detectAudioFormat(base64Data: string): { format: string; mimeType: string } {
+  const firstBytes = base64Data.substring(0, 20);
+  
+  // Decodificar primeira parte para verificar header
+  try {
+    const decoded = atob(firstBytes);
+    const header = decoded.substring(0, 4);
+    
+    if (header.includes('OggS')) {
+      return { format: 'ogg', mimeType: 'audio/ogg' };
+    } else if (header.includes('RIFF')) {
+      return { format: 'wav', mimeType: 'audio/wav' };
+    } else if (header.includes('ID3') || decoded.charCodeAt(0) === 0xFF) {
+      return { format: 'mp3', mimeType: 'audio/mpeg' };
+    } else if (header.includes('ftyp')) {
+      return { format: 'm4a', mimeType: 'audio/m4a' };
+    }
+  } catch (error) {
+    console.log('Erro ao detectar formato, usando fallback');
+  }
+  
+  // Fallback para OGG (formato comum do WhatsApp)
+  return { format: 'ogg', mimeType: 'audio/ogg' };
+}
+
 function processBase64Audio(base64String: string) {
   try {
     console.log('🔄 Processando áudio base64, tamanho:', base64String.length);
@@ -24,6 +49,10 @@ function processBase64Audio(base64String: string) {
       throw new Error('Base64 inválido');
     }
     
+    // Detectar formato do áudio
+    const audioInfo = detectAudioFormat(cleanBase64);
+    console.log('🎵 Formato detectado:', audioInfo);
+    
     // Converter para binary
     const binaryString = atob(cleanBase64);
     const bytes = new Uint8Array(binaryString.length);
@@ -33,7 +62,7 @@ function processBase64Audio(base64String: string) {
     }
     
     console.log('✅ Áudio convertido para bytes:', bytes.length, 'bytes');
-    return bytes;
+    return { bytes, audioInfo };
     
   } catch (error) {
     console.error('❌ Erro ao processar base64:', error);
@@ -61,25 +90,35 @@ serve(async (req) => {
 
     // Processar áudio
     console.log('🔄 Processando dados de áudio...');
-    const audioBytes = processBase64Audio(audio);
+    const { bytes: audioBytes, audioInfo } = processBase64Audio(audio);
     
     if (audioBytes.length === 0) {
       throw new Error('Dados de áudio vazios após processamento');
     }
 
+    console.log('📊 Informações do áudio:', {
+      tamanho: audioBytes.length,
+      formato: audioInfo.format,
+      mimeType: audioInfo.mimeType
+    });
+
     // Criar FormData para OpenAI Whisper
     const formData = new FormData();
     
-    // Testar diferentes tipos MIME para melhor compatibilidade
-    const audioBlob = new Blob([audioBytes], { type: 'audio/ogg' });
-    formData.append('file', audioBlob, 'audio.ogg');
+    // Usar formato detectado
+    const audioBlob = new Blob([audioBytes], { type: audioInfo.mimeType });
+    const fileName = `audio.${audioInfo.format}`;
+    formData.append('file', audioBlob, fileName);
     formData.append('model', 'whisper-1');
     formData.append('language', 'pt');
     formData.append('response_format', 'verbose_json');
     formData.append('temperature', '0.0');
 
-    console.log('🚀 Enviando para OpenAI Whisper...');
-    console.log('📊 Tamanho do arquivo:', audioBytes.length, 'bytes');
+    console.log('🚀 Enviando para OpenAI Whisper...', {
+      fileName,
+      mimeType: audioInfo.mimeType,
+      tamanho: audioBytes.length
+    });
 
     // Chamar API OpenAI Whisper
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -94,46 +133,47 @@ serve(async (req) => {
       const errorText = await response.text();
       console.error('❌ Erro da OpenAI:', response.status, errorText);
       
-      // Tentar novamente com formato diferente
-      console.log('🔄 Tentando novamente com formato WAV...');
-      const formData2 = new FormData();
-      const audioBlob2 = new Blob([audioBytes], { type: 'audio/wav' });
-      formData2.append('file', audioBlob2, 'audio.wav');
-      formData2.append('model', 'whisper-1');
-      formData2.append('language', 'pt');
-      formData2.append('response_format', 'verbose_json');
-      formData2.append('temperature', '0.0');
-      
-      const response2 = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-        },
-        body: formData2,
-      });
-      
-      if (!response2.ok) {
-        const errorText2 = await response2.text();
-        console.error('❌ Erro da OpenAI (2ª tentativa):', response2.status, errorText2);
-        throw new Error(`Erro da API OpenAI: ${response2.status} - ${errorText2}`);
+      // Tentar com formato WAV como fallback
+      if (audioInfo.format !== 'wav') {
+        console.log('🔄 Tentando novamente com formato WAV...');
+        const formData2 = new FormData();
+        const audioBlob2 = new Blob([audioBytes], { type: 'audio/wav' });
+        formData2.append('file', audioBlob2, 'audio.wav');
+        formData2.append('model', 'whisper-1');
+        formData2.append('language', 'pt');
+        formData2.append('response_format', 'verbose_json');
+        formData2.append('temperature', '0.0');
+        
+        const response2 = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+          },
+          body: formData2,
+        });
+        
+        if (!response2.ok) {
+          const errorText2 = await response2.text();
+          console.error('❌ Erro da OpenAI (2ª tentativa):', response2.status, errorText2);
+          throw new Error(`Erro da API OpenAI após 2 tentativas: ${response2.status} - ${errorText2}`);
+        }
+        
+        const result2 = await response2.json();
+        console.log('✅ Transcrição bem-sucedida (2ª tentativa):', result2.text?.substring(0, 100));
+        
+        return new Response(
+          JSON.stringify({ 
+            text: result2.text || '',
+            language: result2.language || 'pt',
+            duration: result2.duration || null,
+            segments: result2.segments || [],
+            audioFormat: 'wav'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
       
-      const result2 = await response2.json();
-      console.log('✅ Transcrição bem-sucedida (2ª tentativa):', {
-        text: result2.text?.substring(0, 100),
-        language: result2.language,
-        duration: result2.duration
-      });
-      
-      return new Response(
-        JSON.stringify({ 
-          text: result2.text || '',
-          language: result2.language || 'pt',
-          duration: result2.duration || null,
-          segments: result2.segments || []
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      throw new Error(`Erro da API OpenAI: ${response.status} - ${errorText}`);
     }
 
     const result = await response.json();
@@ -150,10 +190,11 @@ serve(async (req) => {
       console.warn('⚠️ Transcrição vazia recebida da OpenAI');
       return new Response(
         JSON.stringify({ 
-          text: '[Áudio não pôde ser transcrito]',
+          text: '[Áudio não pôde ser transcrito - sem conteúdo detectado]',
           language: 'pt',
           duration: null,
-          error: 'Transcrição vazia'
+          error: 'Transcrição vazia',
+          audioFormat: audioInfo.format
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -164,7 +205,8 @@ serve(async (req) => {
         text: result.text.trim(),
         language: result.language || 'pt',
         duration: result.duration || null,
-        segments: result.segments || []
+        segments: result.segments || [],
+        audioFormat: audioInfo.format
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -175,7 +217,7 @@ serve(async (req) => {
       JSON.stringify({ 
         error: error.message,
         timestamp: new Date().toISOString(),
-        details: 'Erro no processamento de áudio'
+        details: 'Erro no processamento de áudio para transcrição'
       }),
       {
         status: 500,

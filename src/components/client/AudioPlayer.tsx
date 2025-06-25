@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, Volume2, Download } from 'lucide-react';
+import { Play, Pause, Volume2, Download, AlertCircle } from 'lucide-react';
 
 interface AudioPlayerProps {
   audioUrl?: string;
@@ -16,7 +16,7 @@ const AudioPlayer = ({
   audioUrl, 
   audioData, 
   duration, 
-  fileName = 'audio.wav',
+  fileName = 'audio.ogg',
   onPlay,
   onPause 
 }: AudioPlayerProps) => {
@@ -25,29 +25,55 @@ const AudioPlayer = ({
   const [totalDuration, setTotalDuration] = useState(duration || 0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Criar URL do áudio
-  const audioSrc = React.useMemo(() => {
+  // Processar dados de áudio
+  useEffect(() => {
     if (audioData) {
       try {
-        // Verificar se é base64 válido
-        if (audioData.includes(',')) {
-          // Já tem o prefixo data:
-          return audioData;
+        console.log('🎵 Processando dados de áudio para player:', {
+          hasData: !!audioData,
+          length: audioData.length,
+          hasComma: audioData.includes(',')
+        });
+
+        let processedData = audioData;
+        
+        // Se já tem prefixo data:, usar direto
+        if (audioData.startsWith('data:')) {
+          setAudioSrc(audioData);
+          console.log('✅ Usando dados com prefixo data: existente');
         } else {
-          // Adicionar prefixo data:
-          return `data:audio/wav;base64,${audioData}`;
+          // Adicionar prefixo data: apropriado
+          // Tentar diferentes formatos para compatibilidade
+          const formats = [
+            'data:audio/ogg;base64,',
+            'data:audio/wav;base64,',
+            'data:audio/mpeg;base64,',
+            'data:audio/webm;base64,'
+          ];
+          
+          // Usar OGG como padrão (formato comum do WhatsApp)
+          const audioSrcWithPrefix = `${formats[0]}${processedData}`;
+          setAudioSrc(audioSrcWithPrefix);
+          console.log('✅ Adicionado prefixo OGG aos dados de áudio');
         }
       } catch (error) {
-        console.error('Erro ao processar dados de áudio:', error);
+        console.error('❌ Erro ao processar dados de áudio:', error);
         setError('Erro ao processar dados de áudio');
-        return null;
+        setAudioSrc(null);
       }
+    } else if (audioUrl) {
+      setAudioSrc(audioUrl);
+      console.log('✅ Usando URL de áudio:', audioUrl);
+    } else {
+      setAudioSrc(null);
+      console.log('⚠️ Nenhum dado de áudio disponível');
     }
-    return audioUrl || null;
   }, [audioData, audioUrl]);
 
+  // Configurar listeners do elemento de áudio
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !audioSrc) return;
@@ -56,33 +82,52 @@ const AudioPlayer = ({
     const updateDuration = () => {
       if (audio.duration && !isNaN(audio.duration)) {
         setTotalDuration(audio.duration);
+        console.log('🕒 Duração do áudio detectada:', audio.duration);
       }
     };
     
     const handleLoadStart = () => {
+      console.log('🔄 Iniciando carregamento do áudio');
       setIsLoading(true);
       setError(null);
     };
     
     const handleCanPlay = () => {
+      console.log('✅ Áudio pronto para reprodução');
       setIsLoading(false);
       setError(null);
     };
     
     const handleError = (e: any) => {
-      console.error('Erro no player de áudio:', e);
+      console.error('❌ Erro no player de áudio:', e);
+      console.error('❌ Detalhes do erro:', {
+        error: e.target?.error,
+        networkState: e.target?.networkState,
+        readyState: e.target?.readyState,
+        src: e.target?.src?.substring(0, 100)
+      });
+      
       setIsLoading(false);
       setError('Erro ao carregar áudio');
       setIsPlaying(false);
     };
     
     const handleEnded = () => {
+      console.log('✅ Reprodução de áudio finalizada');
       setIsPlaying(false);
       onPause?.();
     };
 
+    const handleLoadedData = () => {
+      console.log('📊 Dados do áudio carregados:', {
+        duration: audio.duration,
+        readyState: audio.readyState
+      });
+    };
+
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
+    audio.addEventListener('loadeddata', handleLoadedData);
     audio.addEventListener('loadstart', handleLoadStart);
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('error', handleError);
@@ -91,6 +136,7 @@ const AudioPlayer = ({
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
       audio.removeEventListener('loadedmetadata', updateDuration);
+      audio.removeEventListener('loadeddata', handleLoadedData);
       audio.removeEventListener('loadstart', handleLoadStart);
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('error', handleError);
@@ -104,18 +150,24 @@ const AudioPlayer = ({
 
     try {
       if (isPlaying) {
+        console.log('⏸️ Pausando áudio');
         audio.pause();
         setIsPlaying(false);
         onPause?.();
       } else {
+        console.log('▶️ Iniciando reprodução de áudio');
         setIsLoading(true);
+        setError(null);
+        
         await audio.play();
         setIsPlaying(true);
         setIsLoading(false);
         onPlay?.();
+        
+        console.log('✅ Áudio reproduzindo');
       }
     } catch (error) {
-      console.error('Erro ao reproduzir áudio:', error);
+      console.error('❌ Erro ao reproduzir áudio:', error);
       setError('Erro ao reproduzir áudio');
       setIsLoading(false);
       setIsPlaying(false);
@@ -139,30 +191,25 @@ const AudioPlayer = ({
   };
 
   const downloadAudio = () => {
-    if (audioData) {
-      try {
-        const link = document.createElement('a');
-        link.href = audioSrc || '';
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (error) {
-        console.error('Erro ao baixar áudio:', error);
-      }
-    } else if (audioUrl) {
+    if (!audioSrc) return;
+    
+    try {
       const link = document.createElement('a');
-      link.href = audioUrl;
+      link.href = audioSrc;
       link.download = fileName;
-      link.target = '_blank';
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
+      console.log('📥 Download do áudio iniciado');
+    } catch (error) {
+      console.error('❌ Erro ao baixar áudio:', error);
     }
   };
 
   if (!audioSrc) {
     return (
       <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border">
-        <Volume2 className="w-4 h-4 text-gray-400" />
+        <AlertCircle className="w-4 h-4 text-gray-400" />
         <span className="text-sm text-gray-500">Áudio não disponível</span>
       </div>
     );
@@ -174,10 +221,8 @@ const AudioPlayer = ({
         ref={audioRef} 
         preload="metadata"
         crossOrigin="anonymous"
+        src={audioSrc}
       >
-        <source src={audioSrc} type="audio/wav" />
-        <source src={audioSrc} type="audio/mpeg" />
-        <source src={audioSrc} type="audio/ogg" />
         Seu navegador não suporta o elemento de áudio.
       </audio>
       
@@ -201,7 +246,10 @@ const AudioPlayer = ({
 
       <div className="flex-1 mx-2">
         {error ? (
-          <div className="text-xs text-red-500">{error}</div>
+          <div className="text-xs text-red-500 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            {error}
+          </div>
         ) : (
           <>
             <input

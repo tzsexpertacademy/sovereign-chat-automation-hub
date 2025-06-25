@@ -3,7 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 
 export const audioService = {
   async convertSpeechToText(audioBase64: string, openaiApiKey: string): Promise<string> {
-    console.log('🎵 Iniciando transcrição de áudio...');
+    console.log('🎵 Iniciando transcrição de áudio...', {
+      hasAudio: !!audioBase64,
+      audioLength: audioBase64.length,
+      hasApiKey: !!openaiApiKey
+    });
     
     try {
       const { data, error } = await supabase.functions.invoke('speech-to-text', {
@@ -14,16 +18,25 @@ export const audioService = {
       });
 
       if (error) {
-        console.error('❌ Erro na transcrição:', error);
+        console.error('❌ Erro na transcrição (Supabase):', error);
         throw error;
       }
+      
       if (data.error) {
         console.error('❌ Erro retornado pela API:', data.error);
         throw new Error(data.error);
       }
 
-      console.log('✅ Áudio transcrito com sucesso:', data.text);
-      return data.text;
+      const transcriptionText = data.text || '';
+      console.log('✅ Áudio transcrito com sucesso:', {
+        text: transcriptionText.substring(0, 100),
+        length: transcriptionText.length,
+        language: data.language,
+        duration: data.duration,
+        audioFormat: data.audioFormat
+      });
+      
+      return transcriptionText;
     } catch (error) {
       console.error('❌ Erro crítico na transcrição:', error);
       throw new Error(`Falha na transcrição: ${error.message}`);
@@ -45,7 +58,7 @@ export const audioService = {
     return data.audioBase64;
   },
 
-  // Processar mensagem de áudio do WhatsApp - VERSÃO MELHORADA
+  // Processar mensagem de áudio do WhatsApp - VERSÃO OTIMIZADA
   async processWhatsAppAudio(message: any, clientId: string): Promise<{
     transcription: string;
     audioUrl?: string;
@@ -59,7 +72,8 @@ export const audioService = {
         type: message.type,
         hasMediaData: !!message.mediaData,
         hasMediaUrl: !!message.mediaUrl,
-        mediaDataLength: message.mediaData?.length || 0
+        mediaDataLength: message.mediaData?.length || 0,
+        bodyPreview: message.body?.substring(0, 50)
       });
 
       // Buscar configuração de IA do cliente
@@ -77,60 +91,55 @@ export const audioService = {
       let audioBase64 = '';
       let audioUrl = '';
 
-      // Extrair dados de áudio da mensagem - MELHORADO
-      if (message.hasMedia || message.type === 'audio' || message.type === 'ptt') {
-        if (message.mediaData) {
-          console.log('📱 Usando dados de mídia diretos');
-          audioBase64 = message.mediaData;
-          
-          // Validar se é base64 válido
-          if (!audioBase64 || audioBase64.length < 100) {
-            throw new Error('Dados de áudio muito pequenos ou inválidos');
-          }
-          
-          console.log('✅ Dados de áudio encontrados:', {
-            length: audioBase64.length,
-            hasPrefix: audioBase64.includes('data:'),
-            preview: audioBase64.substring(0, 50)
+      // Extrair dados de áudio da mensagem - VERSÃO MELHORADA
+      if (message.mediaData) {
+        console.log('📱 Usando dados de mídia diretos');
+        audioBase64 = message.mediaData;
+        
+        // Validar se é base64 válido
+        if (!audioBase64 || audioBase64.length < 100) {
+          throw new Error('Dados de áudio muito pequenos ou inválidos');
+        }
+        
+        console.log('✅ Dados de áudio encontrados:', {
+          length: audioBase64.length,
+          hasPrefix: audioBase64.includes('data:'),
+          preview: audioBase64.substring(0, 50)
+        });
+        
+      } else if (message.mediaUrl) {
+        console.log('🔄 Baixando áudio da URL:', message.mediaUrl);
+        try {
+          const response = await fetch(message.mediaUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
           });
           
-        } else if (message.mediaUrl) {
-          console.log('🔄 Baixando áudio da URL:', message.mediaUrl);
-          try {
-            const response = await fetch(message.mediaUrl, {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-              }
-            });
-            
-            if (!response.ok) {
-              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const contentType = response.headers.get('content-type');
-            console.log('📁 Tipo de conteúdo:', contentType);
-            
-            const arrayBuffer = await response.arrayBuffer();
-            audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-            audioUrl = message.mediaUrl;
-            
-            console.log('✅ Áudio baixado com sucesso:', {
-              size: arrayBuffer.byteLength,
-              base64Length: audioBase64.length
-            });
-            
-          } catch (error) {
-            console.error('❌ Erro ao baixar áudio:', error);
-            throw new Error(`Erro ao processar áudio: ${error.message}`);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
-        } else {
-          console.error('❌ Nenhum dado de áudio encontrado na mensagem');
-          console.log('🔍 Estrutura da mensagem:', JSON.stringify(message, null, 2));
-          throw new Error('Dados de áudio não encontrados na mensagem');
+          
+          const contentType = response.headers.get('content-type');
+          console.log('📁 Tipo de conteúdo:', contentType);
+          
+          const arrayBuffer = await response.arrayBuffer();
+          audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+          audioUrl = message.mediaUrl;
+          
+          console.log('✅ Áudio baixado com sucesso:', {
+            size: arrayBuffer.byteLength,
+            base64Length: audioBase64.length
+          });
+          
+        } catch (error) {
+          console.error('❌ Erro ao baixar áudio:', error);
+          throw new Error(`Erro ao processar áudio: ${error.message}`);
         }
       } else {
-        console.error('❌ Mensagem não contém áudio');
-        throw new Error('Mensagem não contém áudio');
+        console.error('❌ Nenhum dado de áudio encontrado na mensagem');
+        console.log('🔍 Estrutura da mensagem:', JSON.stringify(message, null, 2));
+        throw new Error('Dados de áudio não encontrados na mensagem');
       }
 
       // Validar se temos dados de áudio
@@ -138,19 +147,26 @@ export const audioService = {
         throw new Error('Falha ao extrair dados de áudio');
       }
 
-      // Transcrever áudio - COM LOGS DETALHADOS
+      // Limpar dados base64 se necessário
+      let cleanAudioBase64 = audioBase64;
+      if (audioBase64.includes(',')) {
+        cleanAudioBase64 = audioBase64.split(',')[1];
+        console.log('✂️ Removido prefixo data: dos dados de áudio');
+      }
+
+      // Transcrever áudio - COM VALIDAÇÃO APRIMORADA
       console.log('🚀 ===== INICIANDO TRANSCRIÇÃO =====');
       console.log('🔑 Usando chave OpenAI:', aiConfig.openai_api_key.substring(0, 20) + '...');
-      console.log('📊 Tamanho do áudio:', audioBase64.length, 'caracteres');
+      console.log('📊 Tamanho do áudio limpo:', cleanAudioBase64.length, 'caracteres');
       
-      const transcription = await this.convertSpeechToText(audioBase64, aiConfig.openai_api_key);
+      const transcription = await this.convertSpeechToText(cleanAudioBase64, aiConfig.openai_api_key);
       
-      if (!transcription || transcription.trim() === '') {
-        console.warn('⚠️ Transcrição vazia recebida');
+      if (!transcription || transcription.trim() === '' || transcription.includes('[Áudio não pôde ser transcrito]')) {
+        console.warn('⚠️ Transcrição vazia ou falhou');
         return {
-          transcription: '[Áudio não pôde ser transcrito]',
+          transcription: '[Áudio não pôde ser transcrito - tente novamente]',
           audioUrl,
-          audioBase64
+          audioBase64: cleanAudioBase64
         };
       }
 
@@ -158,14 +174,14 @@ export const audioService = {
       console.log('📝 Transcrição:', transcription);
       console.log('📊 Estatísticas:', {
         transcriptionLength: transcription.length,
-        hasAudioData: !!audioBase64,
+        hasAudioData: !!cleanAudioBase64,
         hasAudioUrl: !!audioUrl
       });
 
       return {
         transcription: transcription.trim(),
         audioUrl,
-        audioBase64
+        audioBase64: cleanAudioBase64
       };
       
     } catch (error) {
