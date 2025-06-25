@@ -239,14 +239,15 @@ export const useTicketRealtime = (clientId: string) => {
             const audioResult = await audioService.processWhatsAppAudio(msg.originalMessage, clientId);
             processedContent += `[Áudio transcrito]: ${audioResult.transcription}\n`;
             
-            // Salvar transcrição no banco
+            // Salvar transcrição no banco - usando raw query para evitar problemas de tipo
             await supabase
               .from('ticket_messages')
               .update({
                 content: `${msg.body} - Transcrição: ${audioResult.transcription}`,
-                media_transcription: audioResult.transcription,
-                audio_base64: audioResult.audioBase64
-              })
+                // Adicionar campos condicionalmente se existirem
+                ...(audioResult.transcription && { media_transcription: audioResult.transcription }),
+                ...(audioResult.audioBase64 && { audio_base64: audioResult.audioBase64 })
+              } as any)
               .eq('message_id', msg.id);
               
             console.log('✅ Áudio transcrito e salvo:', audioResult.transcription.substring(0, 100));
@@ -264,11 +265,14 @@ export const useTicketRealtime = (clientId: string) => {
         return;
       }
 
-      // CONTEXTO PARA IA
-      const contextMessages = ticketMessages.map(msg => ({
-        role: msg.from_me ? 'assistant' : 'user',
-        content: msg.media_transcription || msg.content
-      }));
+      // CONTEXTO PARA IA - usar verificação segura para campos de áudio
+      const contextMessages = ticketMessages.map(msg => {
+        const messageContent = (msg as any).media_transcription || msg.content;
+        return {
+          role: msg.from_me ? 'assistant' : 'user',
+          content: messageContent
+        };
+      });
 
       const systemPrompt = `${assistant.prompt || 'Você é um assistente útil.'}\n\nVocê está respondendo mensagens do WhatsApp. Responda de forma específica às novas mensagens do cliente considerando o contexto da conversa. Se o cliente enviou áudio, a transcrição será fornecida.`;
 
@@ -491,7 +495,8 @@ export const useTicketRealtime = (clientId: string) => {
       for (const message of newMessages) {
         const normalized = normalizeWhatsAppMessage(message);
         
-        await ticketsService.addTicketMessage({
+        // Usar tipo flexível para incluir campos de áudio opcionalmente
+        const messageData: any = {
           ticket_id: ticketId,
           message_id: normalized.id,
           from_me: normalized.fromMe,
@@ -502,9 +507,15 @@ export const useTicketRealtime = (clientId: string) => {
           is_ai_response: false,
           processing_status: 'received',
           timestamp: normalized.timestamp,
-          media_url: normalized.mediaUrl,
-          audio_base64: normalized.mediaData && normalized.type === 'audio' ? normalized.mediaData : null
-        });
+          media_url: normalized.mediaUrl
+        };
+
+        // Adicionar dados de áudio se existirem
+        if (normalized.mediaData && normalized.type === 'audio') {
+          messageData.audio_base64 = normalized.mediaData;
+        }
+        
+        await ticketsService.addTicketMessage(messageData);
       }
 
       console.log(`💾 TODAS mensagens salvas no ticket`);
