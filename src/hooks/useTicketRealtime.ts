@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -228,7 +229,7 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('ERRO ao parse das configurações:', e);
       }
 
-      // PROCESSAR MENSAGENS COM ÁUDIO - VERSÃO MELHORADA
+      // PROCESSAR MENSAGENS COM ÁUDIO - VERSÃO MELHORADA E CORRIGIDA
       let processedContent = '';
       
       console.log('🎵 ===== PROCESSANDO MENSAGENS PARA IA =====');
@@ -239,7 +240,25 @@ export const useTicketRealtime = (clientId: string) => {
         if (msg.type === 'audio' || msg.type === 'ptt') {
           console.log('🎵 DETECTADO áudio - iniciando transcrição...');
           try {
-            const audioResult = await audioService.processWhatsAppAudio(msg.originalMessage, clientId);
+            // CORREÇÃO CRÍTICA: Passar a mensagem completa, não apenas originalMessage
+            const messageToProcess = msg.originalMessage || msg;
+            
+            // VALIDAÇÃO adicional antes de processar
+            if (!messageToProcess) {
+              console.error('❌ ERRO: Nenhuma mensagem válida para processar áudio');
+              processedContent += `[Áudio não processado]: ${msg.body || 'Mensagem de áudio'}\n`;
+              continue;
+            }
+            
+            console.log('🔍 PROCESSANDO áudio com dados:', {
+              hasOriginalMessage: !!msg.originalMessage,
+              messageId: messageToProcess.id || 'N/A',
+              hasMediaData: !!messageToProcess.mediaData,
+              hasMediaUrl: !!messageToProcess.mediaUrl,
+              messageType: messageToProcess.type
+            });
+            
+            const audioResult = await audioService.processWhatsAppAudio(messageToProcess, clientId);
             
             const transcriptionText = audioResult.transcription || '[Áudio não transcrito]';
             processedContent += `[Mensagem de áudio transcrita]: "${transcriptionText}"\n`;

@@ -72,7 +72,7 @@ export const audioService = {
     return data.audioBase64;
   },
 
-  // Processar mensagem de áudio do WhatsApp - VERSÃO SUPER ROBUSTA
+  // Processar mensagem de áudio do WhatsApp - VERSÃO CORRIGIDA
   async processWhatsAppAudio(message: any, clientId: string): Promise<{
     transcription: string;
     audioUrl?: string;
@@ -80,16 +80,23 @@ export const audioService = {
   }> {
     try {
       console.log('🎵 ===== PROCESSANDO ÁUDIO WHATSAPP =====');
+      
+      // VALIDAÇÃO CRÍTICA: Verificar se message existe
+      if (!message) {
+        console.error('❌ ERRO CRÍTICO: Mensagem é undefined');
+        throw new Error('Mensagem não fornecida para processamento de áudio');
+      }
+
       console.log('📱 Estrutura da mensagem:', {
-        messageId: message.id,
+        messageExists: !!message,
+        messageId: message.id || 'N/A',
         hasMedia: !!message.hasMedia,
         type: message.type,
         hasMediaData: !!message.mediaData,
         hasMediaUrl: !!message.mediaUrl,
         mediaDataLength: message.mediaData?.length || 0,
-        bodyPreview: message.body?.substring(0, 50),
-        // Log da estrutura completa para debug
-        messageKeys: Object.keys(message),
+        bodyPreview: message.body?.substring(0, 50) || 'N/A',
+        messageKeys: message ? Object.keys(message) : [],
         originalMessage: message.originalMessage ? Object.keys(message.originalMessage) : 'N/A'
       });
 
@@ -117,24 +124,9 @@ export const audioService = {
       if (message.mediaData) {
         console.log('📱 ESTRATÉGIA 1: Usando mediaData direto');
         audioBase64 = message.mediaData;
-        
-        // Validar dados
-        if (!audioBase64 || audioBase64.length < 100) {
-          console.warn('⚠️ MediaData muito pequeno, tentando originalMessage...');
-          
-          // ESTRATÉGIA 2: Tentar originalMessage.mediaData
-          if (message.originalMessage?.mediaData) {
-            console.log('📱 ESTRATÉGIA 2: Usando originalMessage.mediaData');
-            audioBase64 = message.originalMessage.mediaData;
-          }
-        }
-        
-        console.log('✅ Dados de áudio encontrados via mediaData:', {
-          length: audioBase64.length,
-          hasPrefix: audioBase64.includes('data:'),
-          firstChars: audioBase64.substring(0, 50)
-        });
-        
+      } else if (message.originalMessage?.mediaData) {
+        console.log('📱 ESTRATÉGIA 2: Usando originalMessage.mediaData');
+        audioBase64 = message.originalMessage.mediaData;
       } else if (message.mediaUrl) {
         console.log('🔄 ESTRATÉGIA 3: Baixando áudio da URL:', message.mediaUrl);
         try {
