@@ -94,5 +94,37 @@ export const elevenLabsService = {
       console.error('❌ Error in testVoice:', error);
       throw error;
     }
+  },
+
+  async convertTextToSpeech(text: string, voiceId: string, apiKey: string, model: string = 'eleven_multilingual_v2', voiceSettings?: any): Promise<string> {
+    try {
+      console.log('🎤 Converting text to speech via Edge Function...');
+      
+      const { data, error } = await supabase.functions.invoke('text-to-speech', {
+        body: { 
+          text, 
+          voiceId, 
+          apiKey, 
+          model,
+          voiceSettings
+        }
+      });
+
+      if (error) {
+        console.error('❌ Error calling text-to-speech function:', error);
+        throw new Error(error.message || 'Failed to convert text to speech');
+      }
+
+      if (!data.success) {
+        console.error('❌ Text-to-speech conversion failed:', data.error);
+        throw new Error(data.error || 'Failed to convert text to speech');
+      }
+
+      console.log('✅ Text-to-speech conversion successful');
+      return data.audioBase64;
+    } catch (error) {
+      console.error('❌ Error in convertTextToSpeech:', error);
+      throw error;
+    }
   }
 };

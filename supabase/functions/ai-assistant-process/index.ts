@@ -93,6 +93,61 @@ function processAudioPatterns(text: string, audioLibrary: any[] = []) {
   };
 }
 
+// Função para enviar áudio via WhatsApp
+async function sendAudioToWhatsApp(clientId: string, chatId: string, audioBase64: string, audioText: string) {
+  try {
+    console.log('📤 ===== ENVIANDO ÁUDIO PARA WHATSAPP =====');
+    console.log('📱 Parâmetros:', {
+      clientId: clientId.substring(0, 8) + '...',
+      chatId: chatId.substring(0, 20) + '...',
+      audioSize: audioBase64.length,
+      textPreview: audioText.substring(0, 50)
+    });
+
+    // Converter base64 para blob
+    const byteCharacters = atob(audioBase64);
+    const byteNumbers = Array.from(byteCharacters, char => char.charCodeAt(0));
+    const byteArray = new Uint8Array(byteNumbers);
+    const audioBlob = new Blob([byteArray], { type: 'audio/mpeg' });
+
+    // Criar FormData para envio
+    const formData = new FormData();
+    formData.append('to', chatId);
+    formData.append('file', audioBlob, 'audio.mp3');
+    
+    // Adicionar caption se houver texto
+    if (audioText && audioText.trim()) {
+      formData.append('caption', audioText);
+    }
+
+    // Enviar via API do WhatsApp Multi-Client
+    const whatsappApiUrl = `http://localhost:3333/clients/${clientId}/send-audio`;
+    console.log('🌐 URL da API WhatsApp:', whatsappApiUrl);
+
+    const response = await fetch(whatsappApiUrl, {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      console.error('❌ Erro ao enviar áudio via WhatsApp API:', result);
+      throw new Error(result.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    console.log('✅ Áudio enviado com sucesso via WhatsApp:', {
+      messageId: result.messageId,
+      status: result.status
+    });
+
+    return result;
+  } catch (error) {
+    console.error('❌ ERRO CRÍTICO ao enviar áudio para WhatsApp:', error);
+    throw error;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -305,18 +360,44 @@ serve(async (req) => {
                 text: instruction.text,
                 voiceId: settings.eleven_labs_voice_id,
                 apiKey: settings.eleven_labs_api_key,
-                model: settings.eleven_labs_model || 'eleven_multilingual_v2'
+                model: settings.eleven_labs_model || 'eleven_multilingual_v2',
+                voiceSettings: settings.voice_settings
               })
             });
 
             const ttsResult = await ttsResponse.json();
-            if (!ttsResult.error) {
-              audioResponses.push({
-                type: 'elevenlabs',
-                audioBase64: ttsResult.audioBase64,
-                text: instruction.text
-              });
-              console.log('✅ Áudio ElevenLabs gerado com sucesso');
+            if (!ttsResult.error && ttsResult.success) {
+              console.log('✅ Áudio ElevenLabs gerado, enviando para WhatsApp...');
+              
+              // ENVIAR ÁUDIO PARA WHATSAPP
+              try {
+                await sendAudioToWhatsApp(
+                  assistant.client_id, 
+                  chatId, 
+                  ttsResult.audioBase64, 
+                  instruction.text
+                );
+                
+                audioResponses.push({
+                  type: 'elevenlabs',
+                  text: instruction.text,
+                  sent: true,
+                  sentAt: new Date().toISOString()
+                });
+                
+                console.log('✅ Áudio enviado com sucesso para WhatsApp');
+              } catch (whatsappError) {
+                console.error('❌ Erro ao enviar áudio para WhatsApp:', whatsappError);
+                
+                // Fallback: adicionar como resposta de áudio base64
+                audioResponses.push({
+                  type: 'elevenlabs',
+                  audioBase64: ttsResult.audioBase64,
+                  text: instruction.text,
+                  sent: false,
+                  error: whatsappError.message
+                });
+              }
             } else {
               console.error('❌ Erro ao gerar áudio ElevenLabs:', ttsResult.error);
             }
@@ -364,7 +445,8 @@ serve(async (req) => {
       textLength: finalResponse.length,
       audioCount: audioResponses.length,
       hasText: !!finalResponse.trim(),
-      hasAudio: audioResponses.length > 0
+      hasAudio: audioResponses.length > 0,
+      audiosSentToWhatsApp: audioResponses.filter(a => a.sent).length
     });
 
     return new Response(JSON.stringify({ 
