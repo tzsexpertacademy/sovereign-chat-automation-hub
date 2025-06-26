@@ -164,10 +164,63 @@ class WhatsAppClientManager {
             this.updateStatus('connected');
         });
 
-        this.client.on('message', (msg) => {
-            console.log(`📨 Mensagem recebida em ${this.clientId}:`, msg.body?.substring(0, 50));
+        this.client.on('message', async (msg) => {
+            console.log(`📨 ===== MENSAGEM RECEBIDA (${this.clientId}) =====`);
+            console.log(`📱 Tipo: ${msg.type}`);
+            console.log(`📝 Corpo: ${msg.body?.substring(0, 50)}`);
+            console.log(`🎥 Tem mídia: ${msg.hasMedia}`);
+            console.log(`👤 De mim: ${msg.fromMe}`);
+            console.log(`📞 De: ${msg.from}`);
+            console.log(`🔢 ID: ${msg.id.id}`);
+            
             this.lastActivity = Date.now();
             
+            // PROCESSAMENTO ESPECIAL PARA MENSAGENS COM MÍDIA
+            let mediaData = null;
+            let mimetype = null;
+            let filename = null;
+            
+            if (msg.hasMedia) {
+                console.log(`🎵 ===== DETECTADA MENSAGEM COM MÍDIA =====`);
+                console.log(`📋 Tipo de mídia: ${msg.type}`);
+                
+                try {
+                    console.log(`⬇️ INICIANDO download da mídia...`);
+                    const startTime = Date.now();
+                    
+                    const media = await msg.downloadMedia();
+                    
+                    const downloadTime = Date.now() - startTime;
+                    console.log(`✅ MÍDIA BAIXADA COM SUCESSO em ${downloadTime}ms`);
+                    console.log(`📊 Dados da mídia:`, {
+                        mimetype: media.mimetype,
+                        filename: media.filename,
+                        dataLength: media.data?.length || 0,
+                        hasData: !!media.data
+                    });
+                    
+                    if (media && media.data) {
+                        mediaData = media.data;
+                        mimetype = media.mimetype;
+                        filename = media.filename || `media_${Date.now()}`;
+                        
+                        console.log(`💾 DADOS DE MÍDIA PREPARADOS:`, {
+                            mediaDataLength: mediaData.length,
+                            mimetype,
+                            filename,
+                            isAudio: msg.type === 'audio' || msg.type === 'ptt'
+                        });
+                    } else {
+                        console.error(`❌ DADOS DE MÍDIA VAZIOS OU INVÁLIDOS`);
+                    }
+                    
+                } catch (mediaError) {
+                    console.error(`❌ ERRO CRÍTICO ao baixar mídia:`, mediaError);
+                    console.error(`💥 Stack trace:`, mediaError.stack);
+                }
+            }
+            
+            // CRIAR DADOS DA MENSAGEM COM MÍDIA
             const messageData = {
                 id: msg.id.id,
                 body: msg.body,
@@ -176,10 +229,46 @@ class WhatsAppClientManager {
                 fromMe: msg.fromMe,
                 author: msg.author,
                 from: msg.from,
-                to: msg.to
+                to: msg.to,
+                // NOVOS CAMPOS DE MÍDIA
+                hasMedia: msg.hasMedia,
+                mediaData: mediaData,
+                mimetype: mimetype,
+                filename: filename,
+                // PRESERVAR MENSAGEM ORIGINAL COMPLETA
+                originalMessage: {
+                    id: msg.id.id,
+                    body: msg.body,
+                    type: msg.type,
+                    timestamp: msg.timestamp,
+                    fromMe: msg.fromMe,
+                    author: msg.author,
+                    from: msg.from,
+                    to: msg.to,
+                    hasMedia: msg.hasMedia,
+                    mediaData: mediaData,
+                    mimetype: mimetype,
+                    filename: filename,
+                    notifyName: msg.notifyName,
+                    pushName: msg.pushName
+                }
             };
             
+            console.log(`📤 ===== ENVIANDO MENSAGEM PARA FRONTEND =====`);
+            console.log(`📊 Resumo da mensagem:`, {
+                id: messageData.id,
+                type: messageData.type,
+                hasMedia: messageData.hasMedia,
+                hasMediaData: !!messageData.mediaData,
+                mediaDataLength: messageData.mediaData?.length || 0,
+                fromMe: messageData.fromMe
+            });
+            
+            // EMITIR PARA O FRONTEND
             io.emit(`message_${this.clientId}`, messageData);
+            
+            console.log(`✅ MENSAGEM ENVIADA PARA FRONTEND`);
+            console.log(`================================================`);
         });
 
         this.client.on('disconnected', (reason) => {
