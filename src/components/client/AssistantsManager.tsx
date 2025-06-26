@@ -15,6 +15,7 @@ import QueueForm from "./QueueForm";
 import AssistantsList from "./AssistantsList";
 import QueuesList from "./QueuesList";
 import AssistantChat from "./AssistantChat";
+import AssistantAdvancedSettings from "./AssistantAdvancedSettings";
 
 const AssistantsManager = () => {
   const { clientId } = useParams();
@@ -27,8 +28,10 @@ const AssistantsManager = () => {
   const [showConfigForm, setShowConfigForm] = useState(false);
   const [showAssistantForm, setShowAssistantForm] = useState(false);
   const [showQueueForm, setShowQueueForm] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [editingAssistant, setEditingAssistant] = useState(null);
   const [editingQueue, setEditingQueue] = useState(null);
+  const [selectedAssistantForSettings, setSelectedAssistantForSettings] = useState<AssistantWithQueues | null>(null);
 
   useEffect(() => {
     if (clientId) {
@@ -98,6 +101,16 @@ const AssistantsManager = () => {
     });
   };
 
+  const handleAdvancedSettings = (assistant: AssistantWithQueues) => {
+    setSelectedAssistantForSettings(assistant);
+    setShowAdvancedSettings(true);
+  };
+
+  const handleCloseAdvancedSettings = () => {
+    setShowAdvancedSettings(false);
+    setSelectedAssistantForSettings(null);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -129,6 +142,18 @@ const AssistantsManager = () => {
             </Button>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // Se estiver mostrando configurações avançadas, renderizar apenas esse componente
+  if (showAdvancedSettings && selectedAssistantForSettings) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-6">
+        <AssistantAdvancedSettings
+          assistantId={selectedAssistantForSettings.id}
+          onClose={handleCloseAdvancedSettings}
+        />
       </div>
     );
   }
@@ -239,6 +264,7 @@ const AssistantsManager = () => {
                 await assistantsService.toggleAssistantStatus(id, isActive);
                 loadData();
               }}
+              onAdvancedSettings={handleAdvancedSettings}
             />
 
             <QueuesList
@@ -287,6 +313,7 @@ const AssistantsManager = () => {
               await assistantsService.toggleAssistantStatus(id, isActive);
               loadData();
             }}
+            onAdvancedSettings={handleAdvancedSettings}
           />
         </TabsContent>
 

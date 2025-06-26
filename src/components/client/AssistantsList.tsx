@@ -1,9 +1,8 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Bot, Edit, Trash2, Zap } from "lucide-react";
+import { Bot, Edit, Trash2, Zap, Settings } from "lucide-react";
 import { type AssistantWithQueues } from "@/services/assistantsService";
 
 interface AssistantsListProps {
@@ -11,6 +10,7 @@ interface AssistantsListProps {
   onEdit: (assistant: AssistantWithQueues) => void;
   onDelete: (id: string) => void;
   onToggleStatus: (id: string, isActive: boolean) => void;
+  onAdvancedSettings: (assistant: AssistantWithQueues) => void;
 }
 
 // Função helper para converter Json para string[]
@@ -21,7 +21,7 @@ const jsonToStringArray = (json: any): string[] => {
   return [];
 };
 
-const AssistantsList = ({ assistants, onEdit, onDelete, onToggleStatus }: AssistantsListProps) => {
+const AssistantsList = ({ assistants, onEdit, onDelete, onToggleStatus, onAdvancedSettings }: AssistantsListProps) => {
   if (assistants.length === 0) {
     return (
       <Card>
@@ -101,6 +101,15 @@ const AssistantsList = ({ assistants, onEdit, onDelete, onToggleStatus }: Assist
                 >
                   <Edit className="h-3 w-3 mr-1" />
                   Editar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onAdvancedSettings(assistant)}
+                  className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                >
+                  <Settings className="h-3 w-3 mr-1" />
+                  Configurações
                 </Button>
                 <Button
                   size="sm"
