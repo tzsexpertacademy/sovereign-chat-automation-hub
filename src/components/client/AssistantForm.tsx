@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { X, Plus, Settings, Zap, Brain } from "lucide-react";
+import { X, Plus, Settings, Zap, Brain, Volume2 } from "lucide-react";
 import { assistantsService, type Assistant } from "@/services/assistantsService";
 
 interface AssistantFormProps {
@@ -94,6 +94,23 @@ const SimpleAdvancedSettings = ({
           </p>
         </div>
 
+        <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+          <h4 className="font-medium text-green-900 mb-2">🎵 Sistema de Áudio</h4>
+          <p className="text-sm text-green-800 mb-2">
+            Para configurar respostas em áudio do assistente:
+          </p>
+          <ol className="text-sm text-green-800 space-y-1 list-decimal list-inside">
+            <li>Salve este assistente primeiro</li>
+            <li>Vá para "Configurações Avançadas"</li>
+            <li>Configure o ElevenLabs na aba "Sistema de Áudio"</li>
+            <li>Use os padrões no prompt:</li>
+          </ol>
+          <div className="mt-2 space-y-1 text-sm">
+            <p><code className="bg-green-100 px-1 rounded">audio: texto aqui</code> - Para gerar com IA</p>
+            <p><code className="bg-green-100 px-1 rounded">audiogeonomedoaudio: trigger</code> - Para áudio gravado</p>
+          </div>
+        </div>
+
         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
           <h4 className="font-medium text-blue-900 mb-2">💡 Arquivos de Referência</h4>
           <p className="text-sm text-blue-800 mb-2">
@@ -132,6 +149,12 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
     voice_cloning_enabled: false,
     eleven_labs_voice_id: "",
     eleven_labs_api_key: "",
+    eleven_labs_model: "eleven_multilingual_v2",
+    voice_settings: {
+      stability: 0.5,
+      similarity_boost: 0.5,
+      style: 0.5
+    },
     response_delay_seconds: 3,
     message_processing_delay_seconds: 10,
     message_batch_timeout_seconds: 10,
@@ -146,7 +169,20 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
       type: 'image' | 'pdf' | 'video';
       url: string;
       description?: string;
-    }>
+    }>,
+    audio_library: [] as Array<{
+      id: string;
+      name: string;
+      trigger: string;
+      url: string;
+      duration: number;
+      category: string;
+    }>,
+    recording_settings: {
+      max_duration: 60,
+      quality: 'medium' as 'low' | 'medium' | 'high',
+      auto_transcribe: true
+    }
   });
 
   useEffect(() => {
@@ -241,7 +277,7 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="basic" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 Básicas
@@ -253,6 +289,10 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
               <TabsTrigger value="advanced" className="flex items-center gap-2">
                 <Zap className="h-4 w-4" />
                 Humanização
+              </TabsTrigger>
+              <TabsTrigger value="audio" className="flex items-center gap-2">
+                <Volume2 className="h-4 w-4" />
+                Áudio
               </TabsTrigger>
             </TabsList>
             
@@ -420,6 +460,48 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
                 settings={advancedSettings}
                 onChange={setAdvancedSettings}
               />
+            </TabsContent>
+
+            <TabsContent value="audio" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Volume2 className="h-5 w-5" />
+                    Configuração Rápida de Áudio
+                  </CardTitle>
+                  <CardDescription>
+                    Configurações básicas de áudio. Para configurações avançadas, use "Configurações Avançadas" após salvar.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <h4 className="font-medium text-amber-900 mb-2">⚠️ Configuração Completa</h4>
+                    <p className="text-sm text-amber-800 mb-3">
+                      Para configurar completamente o sistema de áudio:
+                    </p>
+                    <ol className="text-sm text-amber-800 space-y-1 list-decimal list-inside">
+                      <li>Salve este assistente primeiro</li>
+                      <li>Vá para "Configurações Avançadas"</li>
+                      <li>Configure ElevenLabs e biblioteca de áudios</li>
+                      <li>Use os padrões de áudio no prompt</li>
+                    </ol>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <h5 className="font-medium">Padrões de Áudio para o Prompt:</h5>
+                    <div className="space-y-2 text-sm">
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+                        <code className="font-mono text-blue-800">audio: Olá! Como posso ajudar você hoje?</code>
+                        <p className="text-blue-700 mt-1">Gera áudio com ElevenLabs</p>
+                      </div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded">
+                        <code className="font-mono text-green-800">audiogeobemvindo:</code>
+                        <p className="text-green-700 mt-1">Reproduz áudio da biblioteca</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
 

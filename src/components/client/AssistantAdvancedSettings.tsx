@@ -9,9 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, FileText, Image, Video, Trash2, Download, Eye, Settings, Mic, Clock, MessageSquare } from "lucide-react";
+import { Upload, FileText, Image, Video, Trash2, Download, Eye, Settings, Mic, Clock, MessageSquare, Volume2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { assistantsService, AdvancedSettings } from "@/services/assistantsService";
+import AssistantAudioSettings from "./AssistantAudioSettings";
 
 interface AssistantAdvancedSettingsProps {
   assistantId: string;
@@ -24,6 +25,12 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
     voice_cloning_enabled: false,
     eleven_labs_voice_id: "",
     eleven_labs_api_key: "",
+    eleven_labs_model: "eleven_multilingual_v2",
+    voice_settings: {
+      stability: 0.5,
+      similarity_boost: 0.5,
+      style: 0.5
+    },
     response_delay_seconds: 3,
     message_processing_delay_seconds: 10,
     message_batch_timeout_seconds: 10,
@@ -32,7 +39,13 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
     humanization_level: 'advanced',
     temperature: 0.7,
     max_tokens: 1000,
-    custom_files: []
+    custom_files: [],
+    audio_library: [],
+    recording_settings: {
+      max_duration: 60,
+      quality: 'medium',
+      auto_transcribe: true
+    }
   });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -167,10 +180,13 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
       </div>
 
       <Tabs defaultValue="ai" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="ai">IA & Criatividade</TabsTrigger>
           <TabsTrigger value="files">Arquivos de Referência</TabsTrigger>
-          <TabsTrigger value="audio">Áudio & Voz</TabsTrigger>
+          <TabsTrigger value="audio">
+            <Volume2 className="w-4 h-4 mr-1" />
+            Sistema de Áudio
+          </TabsTrigger>
           <TabsTrigger value="behavior">Comportamento</TabsTrigger>
         </TabsList>
 
@@ -356,86 +372,11 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
         </TabsContent>
 
         <TabsContent value="audio" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Mic className="w-5 h-5" />
-                <span>Configurações de Áudio</span>
-              </CardTitle>
-              <CardDescription>
-                Habilite o processamento de áudio e a clonagem de voz
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="audio_processing_enabled">
-                    Processamento de Áudio
-                  </Label>
-                  <Switch
-                    id="audio_processing_enabled"
-                    checked={settings.audio_processing_enabled}
-                    onCheckedChange={(checked) =>
-                      setSettings(prev => ({ ...prev, audio_processing_enabled: checked }))
-                    }
-                  />
-                </div>
-                <p className="text-sm text-gray-500">
-                  Permite que o assistente transcreva mensagens de áudio
-                </p>
-
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="voice_cloning_enabled">
-                    Clonagem de Voz (ElevenLabs)
-                  </Label>
-                  <Switch
-                    id="voice_cloning_enabled"
-                    checked={settings.voice_cloning_enabled}
-                    onCheckedChange={(checked) =>
-                      setSettings(prev => ({ ...prev, voice_cloning_enabled: checked }))
-                    }
-                  />
-                </div>
-                <p className="text-sm text-gray-500">
-                  Gera respostas de áudio usando a voz clonada do ElevenLabs
-                </p>
-
-                {settings.voice_cloning_enabled && (
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="eleven_labs_voice_id">
-                        ElevenLabs Voice ID
-                      </Label>
-                      <Input
-                        id="eleven_labs_voice_id"
-                        type="text"
-                        value={settings.eleven_labs_voice_id}
-                        onChange={(e) =>
-                          setSettings(prev => ({ ...prev, eleven_labs_voice_id: e.target.value }))
-                        }
-                        placeholder="ID da voz do ElevenLabs"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="eleven_labs_api_key">
-                        ElevenLabs API Key
-                      </Label>
-                      <Input
-                        id="eleven_labs_api_key"
-                        type="text"
-                        value={settings.eleven_labs_api_key}
-                        onChange={(e) =>
-                          setSettings(prev => ({ ...prev, eleven_labs_api_key: e.target.value }))
-                        }
-                        placeholder="Chave da API do ElevenLabs"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <AssistantAudioSettings
+            assistantId={assistantId}
+            settings={settings}
+            onSettingsChange={setSettings}
+          />
         </TabsContent>
 
         <TabsContent value="behavior" className="space-y-6">
