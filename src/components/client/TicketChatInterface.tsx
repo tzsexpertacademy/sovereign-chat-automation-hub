@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +17,7 @@ import { useMessageStatus } from '@/hooks/useMessageStatus';
 import MessageStatus from './MessageStatus';
 import TypingIndicator from './TypingIndicator';
 import AudioPlayer from './AudioPlayer';
+import AudioRecorder from '../chat/AudioRecorder';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -239,6 +239,97 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
   };
 
+  // NOVA FUNÇÃO: Lidar com áudio gravado manualmente
+  const handleAudioReady = async (audioBlob: Blob, duration: number) => {
+    if (!ticket || !connectedInstance) {
+      toast({
+        title: "Erro",
+        description: "Nenhuma instância WhatsApp conectada",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log('🎤 ===== PROCESSANDO ÁUDIO MANUAL =====');
+      console.log('📊 Detalhes do áudio:', {
+        size: audioBlob.size,
+        type: audioBlob.type,
+        duration: duration,
+        chatId: ticket.chat_id
+      });
+
+      const messageId = `audio_manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      simulateMessageProgression(messageId, true);
+      markActivity();
+
+      // Converter blob para base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      let binaryString = '';
+      for (let i = 0; i < uint8Array.length; i++) {
+        binaryString += String.fromCharCode(uint8Array[i]);
+      }
+      const base64Audio = btoa(binaryString);
+
+      console.log('✅ Áudio convertido para base64:', {
+        originalSize: audioBlob.size,
+        base64Length: base64Audio.length
+      });
+
+      // Enviar diretamente para o WhatsApp
+      const audioFile = new File([audioBlob], 'audio_manual.wav', { type: 'audio/wav' });
+      
+      const response = await whatsappService.sendMessage(
+        connectedInstance,
+        ticket.chat_id,
+        '', // sem texto
+        undefined,
+        audioFile
+      );
+
+      if (response.success) {
+        console.log('✅ Áudio manual enviado com sucesso via WhatsApp');
+        
+        // Registrar no ticket
+        await ticketsService.addTicketMessage({
+          ticket_id: ticketId,
+          message_id: messageId,
+          from_me: true,
+          sender_name: 'Atendente',
+          content: '🎤 Mensagem de áudio',
+          message_type: 'audio',
+          audio_base64: base64Audio,
+          is_internal_note: false,
+          is_ai_response: false,
+          processing_status: 'completed',
+          timestamp: new Date().toISOString()
+        });
+
+        console.log('💾 Áudio manual registrado no ticket');
+        
+        toast({
+          title: "Sucesso",
+          description: "Áudio enviado com sucesso"
+        });
+      } else {
+        console.error('❌ Erro ao enviar áudio manual via WhatsApp:', response.error);
+        toast({
+          title: "Erro",
+          description: response.error || "Erro ao enviar áudio",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('❌ Erro ao processar áudio manual:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao processar áudio gravado",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -455,9 +546,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         />
       )}
 
-      {/* Campo de entrada */}
+      {/* CAMPO DE ENTRADA ATUALIZADO COM BOTÃO DE ÁUDIO */}
       <div className="p-4 border-t bg-white">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-end">
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
@@ -470,10 +561,19 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             disabled={!connectedInstance || isSending}
             className="flex-1"
           />
+          
+          {/* BOTÃO DE GRAVAÇÃO DE ÁUDIO */}
+          <AudioRecorder 
+            onAudioReady={handleAudioReady}
+            maxDuration={60}
+            className="flex-shrink-0"
+          />
+          
           <Button
             onClick={handleSendMessage}
             disabled={!newMessage.trim() || !connectedInstance || isSending}
             size="sm"
+            className="flex-shrink-0"
           >
             {isSending ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

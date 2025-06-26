@@ -43,8 +43,8 @@ function processAudioPatterns(text: string, audioLibrary: any[] = []) {
       originalMatch: fullMatch
     });
     
-    // Remover o padrão do texto
-    processedText = processedText.replace(fullMatch, `[Áudio: ${audioText.substring(0, 50)}${audioText.length > 50 ? '...' : ''}]`);
+    // Remover o padrão do texto - NÃO substituir por placeholder
+    processedText = processedText.replace(fullMatch, '');
   }
   
   // Detectar padrão biblioteca (audiogeonomedoaudio:)
@@ -72,7 +72,7 @@ function processAudioPatterns(text: string, audioLibrary: any[] = []) {
         originalMatch: fullMatch
       });
       
-      processedText = processedText.replace(fullMatch, `[Áudio da biblioteca: ${audioItem.name}]`);
+      processedText = processedText.replace(fullMatch, '');
     } else {
       console.log('❌ Áudio não encontrado na biblioteca para trigger:', trigger);
       processedText = processedText.replace(fullMatch, `[Áudio não encontrado: ${trigger}]`);
@@ -87,25 +87,57 @@ function processAudioPatterns(text: string, audioLibrary: any[] = []) {
   });
   
   return {
-    processedText,
+    processedText: processedText.trim(),
     audioInstructions,
     hasAudio: audioInstructions.length > 0
   };
 }
 
-// Função para detectar URL do servidor WhatsApp baseado no ambiente
-function getWhatsAppServerUrl(): string {
-  // Usar IP fixo de produção detectado nas imagens
-  return 'http://146.59.227.248:4000';
+// FUNÇÃO COMPLETAMENTE REESCRITA PARA DETECÇÃO INTELIGENTE DO SERVIDOR
+async function getWhatsAppServerUrl(): Promise<string> {
+  console.log('🌐 ===== DETECÇÃO INTELIGENTE DO SERVIDOR WHATSAPP =====');
+  
+  const candidates = [
+    'http://localhost:4000',    // Ambiente local
+    'http://127.0.0.1:4000',   // Alternativa local
+    'http://146.59.227.248:4000' // Servidor de produção
+  ];
+  
+  for (const url of candidates) {
+    try {
+      console.log(`🔍 Testando conectividade: ${url}`);
+      
+      const healthResponse = await fetch(`${url}/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000) // 5s timeout
+      });
+      
+      if (healthResponse.ok) {
+        const healthData = await healthResponse.json();
+        console.log(`✅ Servidor encontrado em: ${url}`, healthData);
+        return url;
+      }
+      
+      console.log(`❌ Servidor ${url} não respondeu: HTTP ${healthResponse.status}`);
+    } catch (error) {
+      console.log(`❌ Falha ao conectar ${url}:`, error.message);
+    }
+  }
+  
+  // Fallback para produção se nenhum servidor responder
+  const fallbackUrl = 'http://146.59.227.248:4000';
+  console.log(`⚠️ Usando fallback: ${fallbackUrl}`);
+  return fallbackUrl;
 }
 
 // FUNÇÃO COMPLETAMENTE REESCRITA PARA CORRIGIR O PROBLEMA DE FORMATO DE ÁUDIO
 async function sendAudioToWhatsApp(clientId: string, chatId: string, audioBase64: string, audioText: string) {
   try {
-    console.log('🎵 ===== ENVIANDO ÁUDIO MP3 PARA WHATSAPP (VERSÃO CORRIGIDA) =====');
+    console.log('🎵 ===== ENVIANDO ÁUDIO MP3 PARA WHATSAPP (VERSÃO INTELIGENTE) =====');
     
-    const serverUrl = getWhatsAppServerUrl();
-    console.log('🌐 URL do servidor WhatsApp:', serverUrl);
+    const serverUrl = await getWhatsAppServerUrl();
+    console.log('🌐 URL do servidor WhatsApp detectado:', serverUrl);
     
     console.log('📊 Parâmetros de envio:', {
       clientId: clientId.substring(0, 8) + '...',
@@ -200,7 +232,6 @@ async function sendAudioToWhatsApp(clientId: string, chatId: string, audioBase64
     console.log('🔍 FASE 4: Criando FormData para MP3...');
     const formData = new FormData();
     formData.append('to', chatId);
-    // CORREÇÃO CRÍTICA: Nome do arquivo com extensão .mp3
     formData.append('file', audioBlob, 'voice_message.mp3');
     
     // Adicionar caption se houver
@@ -218,99 +249,112 @@ async function sendAudioToWhatsApp(clientId: string, chatId: string, audioBase64
       hasCaption: !!(audioText && audioText.trim())
     });
 
-    // FASE 5: ENVIO COM TRATAMENTO ROBUSTO DE ERROS
-    console.log('🔍 FASE 5: Enviando para WhatsApp...');
+    // FASE 5: ENVIO COM TRATAMENTO ROBUSTO DE ERROS E RETRY
+    console.log('🔍 FASE 5: Enviando para WhatsApp com retry...');
     
     const audioEndpointUrl = `${serverUrl}/api/clients/${clientId}/send-audio`;
     console.log('🎯 Endpoint completo:', audioEndpointUrl);
 
-    // Timeout aumentado para áudios maiores
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutos
-
-    const response = await fetch(audioEndpointUrl, {
-      method: 'POST',
-      body: formData, // FormData com MP3
-      signal: controller.signal,
-      // NÃO definir Content-Type - deixar browser definir para FormData
-    });
-
-    clearTimeout(timeoutId);
-
-    console.log('📡 Resposta do servidor:', {
-      status: response.status,
-      statusText: response.statusText,
-      contentType: response.headers.get('content-type'),
-      contentLength: response.headers.get('content-length')
-    });
-
-    // TRATAMENTO DETALHADO DE ERROS HTTP
-    if (!response.ok) {
-      let errorDetails;
-      const contentType = response.headers.get('content-type') || '';
-      
+    let lastError: Error | null = null;
+    const maxRetries = 3;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        if (contentType.includes('application/json')) {
-          errorDetails = await response.json();
-        } else {
-          errorDetails = await response.text();
+        console.log(`🚀 Tentativa ${attempt}/${maxRetries} de envio...`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutos
+
+        const response = await fetch(audioEndpointUrl, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        console.log('📡 Resposta do servidor:', {
+          status: response.status,
+          statusText: response.statusText,
+          contentType: response.headers.get('content-type'),
+          attempt: attempt
+        });
+
+        if (!response.ok) {
+          let errorDetails;
+          const contentType = response.headers.get('content-type') || '';
+          
+          try {
+            if (contentType.includes('application/json')) {
+              errorDetails = await response.json();
+            } else {
+              errorDetails = await response.text();
+            }
+          } catch {
+            errorDetails = 'Erro desconhecido do servidor';
+          }
+          
+          const errorMessage = `HTTP ${response.status}: ${JSON.stringify(errorDetails)}`;
+          console.error(`❌ Tentativa ${attempt} falhou:`, errorMessage);
+          
+          if (attempt === maxRetries) {
+            throw new Error(errorMessage);
+          }
+          
+          // Aguardar antes de tentar novamente
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
         }
-      } catch {
-        errorDetails = 'Erro desconhecido do servidor';
+
+        // PROCESSAMENTO DA RESPOSTA DE SUCESSO
+        let result;
+        try {
+          result = await response.json();
+          console.log('📨 Resposta JSON do servidor:', result);
+        } catch (jsonError) {
+          console.error('❌ Erro ao processar JSON da resposta:', jsonError);
+          throw new Error('Resposta do servidor não é JSON válido');
+        }
+
+        if (!result.success) {
+          console.error('❌ API WhatsApp retornou falha:', result);
+          throw new Error(result.error || result.message || 'Falha na API do WhatsApp');
+        }
+
+        console.log('✅ ===== ÁUDIO MP3 ENVIADO COM SUCESSO =====');
+        console.log('🎉 Detalhes do sucesso:', {
+          messageId: result.messageId || result.id || result.data?.id,
+          status: result.status,
+          success: result.success,
+          timestamp: new Date().toISOString(),
+          audioFormat: 'MP3',
+          audioSize: audioBlob.size,
+          attempt: attempt
+        });
+
+        return {
+          success: true,
+          messageId: result.messageId || result.id || result.data?.id,
+          status: result.status,
+          audioFormat: 'MP3',
+          audioSize: audioBlob.size,
+          attempt: attempt,
+          ...result
+        };
+        
+      } catch (error) {
+        lastError = error as Error;
+        console.error(`❌ Tentativa ${attempt} falhou:`, error.message);
+        
+        if (attempt < maxRetries) {
+          console.log(`🔄 Aguardando ${attempt}s antes da próxima tentativa...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
       }
-      
-      console.error('❌ Erro HTTP detalhado:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorDetails,
-        url: audioEndpointUrl
-      });
-      
-      // Mensagens de erro específicas baseadas no status
-      if (response.status === 400) {
-        throw new Error(`Dados inválidos: ${JSON.stringify(errorDetails)}`);
-      } else if (response.status === 404) {
-        throw new Error('Endpoint send-audio não encontrado no servidor');
-      } else if (response.status === 500) {
-        throw new Error(`Erro interno do servidor: ${JSON.stringify(errorDetails)}`);
-      } else {
-        throw new Error(`HTTP ${response.status}: ${JSON.stringify(errorDetails)}`);
-      }
     }
-
-    // PROCESSAMENTO DA RESPOSTA DE SUCESSO
-    let result;
-    try {
-      result = await response.json();
-      console.log('📨 Resposta JSON do servidor:', result);
-    } catch (jsonError) {
-      console.error('❌ Erro ao processar JSON da resposta:', jsonError);
-      throw new Error('Resposta do servidor não é JSON válido');
-    }
-
-    if (!result.success) {
-      console.error('❌ API WhatsApp retornou falha:', result);
-      throw new Error(result.error || result.message || 'Falha na API do WhatsApp');
-    }
-
-    console.log('✅ ===== ÁUDIO MP3 ENVIADO COM SUCESSO =====');
-    console.log('🎉 Detalhes do sucesso:', {
-      messageId: result.messageId || result.id || result.data?.id,
-      status: result.status,
-      success: result.success,
-      timestamp: new Date().toISOString(),
-      audioFormat: 'MP3',
-      audioSize: audioBlob.size
-    });
-
-    return {
-      success: true,
-      messageId: result.messageId || result.id || result.data?.id,
-      status: result.status,
-      audioFormat: 'MP3',
-      audioSize: audioBlob.size,
-      ...result
-    };
+    
+    // Se chegou aqui, todas as tentativas falharam
+    throw lastError || new Error('Todas as tentativas de envio falharam');
     
   } catch (error) {
     console.error('❌ ===== ERRO CRÍTICO NO ENVIO DE ÁUDIO MP3 =====');
@@ -596,7 +640,7 @@ serve(async (req) => {
                   audioFormat: 'MP3'
                 });
                 
-                // Salvar erro para análise
+                // NÃO adicionar erro ao texto final se é especificamente para áudio
                 audioResponses.push({
                   type: 'elevenlabs',
                   text: instruction.text,
@@ -606,13 +650,16 @@ serve(async (req) => {
                   audioFormat: 'MP3',
                   audioSizeBytes: ttsResult.audioSizeBytes
                 });
-                
-                // Adicionar mensagem de erro ao texto final
-                finalResponse += `\n\n⚠️ Erro ao enviar áudio MP3: ${whatsappError.message}`;
               }
             } else {
               console.error('❌ Erro ao gerar áudio ElevenLabs:', ttsResult.error);
-              finalResponse += `\n\n⚠️ Erro ao gerar áudio: ${ttsResult.error}`;
+              audioResponses.push({
+                type: 'elevenlabs',
+                text: instruction.text,
+                sent: false,
+                error: ttsResult.error,
+                sentAt: new Date().toISOString()
+              });
             }
             
           } else if (instruction.type === 'library' && instruction.audioItem) {
@@ -627,7 +674,11 @@ serve(async (req) => {
           }
         } catch (audioError) {
           console.error('❌ Erro no processamento de áudio:', audioError);
-          finalResponse += `\n\n⚠️ Erro no processamento de áudio: ${audioError.message}`;
+          audioResponses.push({
+            type: 'error',
+            error: audioError.message,
+            sentAt: new Date().toISOString()
+          });
         }
       }
     }
@@ -666,8 +717,11 @@ serve(async (req) => {
       audioFormat: 'MP3'
     });
 
+    // Se há instruções de áudio mas o texto está vazio, não enviar texto
+    const shouldSendText = finalResponse.trim().length > 0;
+
     return new Response(JSON.stringify({ 
-      response: finalResponse,
+      response: shouldSendText ? finalResponse : '',
       audioResponses: audioResponses,
       hasAudio: audioResponses.length > 0,
       processed: true,
