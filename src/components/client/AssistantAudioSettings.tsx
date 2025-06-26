@@ -1,4 +1,3 @@
-
 import { useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,9 +8,11 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Play, Pause, Trash2, Volume2, Mic, TestTube, Plus } from "lucide-react";
+import { Upload, Play, Pause, Trash2, Volume2, Mic, TestTube, Plus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { assistantsService, ELEVENLABS_VOICES, ELEVENLABS_MODELS, type AdvancedSettings, type AudioLibraryItem } from "@/services/assistantsService";
+import { assistantsService, ELEVENLABS_MODELS, type AdvancedSettings, type AudioLibraryItem } from "@/services/assistantsService";
+import { elevenLabsService } from "@/services/elevenLabsService";
+import ElevenLabsVoiceSelector from "./ElevenLabsVoiceSelector";
 
 interface AssistantAudioSettingsProps {
   assistantId: string;
@@ -21,11 +22,9 @@ interface AssistantAudioSettingsProps {
 
 const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: AssistantAudioSettingsProps) => {
   const [testingVoice, setTestingVoice] = useState(false);
-  const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   const [validatingApi, setValidatingApi] = useState(false);
   const [newAudioTrigger, setNewAudioTrigger] = useState("");
   const [newAudioCategory, setNewAudioCategory] = useState("geral");
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
@@ -41,34 +40,33 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
 
     setTestingVoice(true);
     try {
-      const response = await fetch('/api/test-voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: "Olá! Esta é uma demonstração da minha voz. Como você acha que ficou?",
-          voiceId: settings.eleven_labs_voice_id,
-          apiKey: settings.eleven_labs_api_key,
-          model: settings.eleven_labs_model
-        })
-      });
+      const testText = "Olá! Esta é uma demonstração da minha voz. Como você acha que ficou?";
+      const audioBase64 = await elevenLabsService.testVoice(
+        settings.eleven_labs_api_key,
+        settings.eleven_labs_voice_id,
+        testText,
+        settings.eleven_labs_model
+      );
 
-      if (response.ok) {
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        audio.play();
-        
-        toast({
-          title: "Teste de Voz",
-          description: "Reproduzindo amostra da voz selecionada",
-        });
-      } else {
-        throw new Error('Falha no teste de voz');
-      }
-    } catch (error) {
+      // Converter base64 para blob e reproduzir
+      const byteCharacters = atob(audioBase64);
+      const byteNumbers = Array.from(byteCharacters, char => char.charCodeAt(0));
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(blob);
+      
+      const audio = new Audio(audioUrl);
+      audio.onended = () => URL.revokeObjectURL(audioUrl);
+      audio.play();
+      
+      toast({
+        title: "Teste de Voz",
+        description: "Reproduzindo amostra da voz selecionada",
+      });
+    } catch (error: any) {
       toast({
         title: "Erro no Teste",
-        description: "Não foi possível testar a voz. Verifique suas configurações.",
+        description: error.message || "Não foi possível testar a voz. Verifique suas configurações.",
         variant: "destructive",
       });
     } finally {
@@ -88,10 +86,7 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
 
     setValidatingApi(true);
     try {
-      const isValid = await assistantsService.validateElevenLabsConnection(
-        settings.eleven_labs_api_key,
-        settings.eleven_labs_voice_id || ELEVENLABS_VOICES[0].id
-      );
+      const isValid = await elevenLabsService.validateApiKey(settings.eleven_labs_api_key);
 
       if (isValid) {
         toast({
@@ -113,31 +108,6 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
       });
     } finally {
       setValidatingApi(false);
-    }
-  };
-
-  const playVoicePreview = (voiceId: string) => {
-    const voice = ELEVENLABS_VOICES.find(v => v.id === voiceId);
-    if (voice?.preview) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      
-      const audio = new Audio(voice.preview);
-      audioRef.current = audio;
-      
-      audio.onplay = () => setPlayingPreview(voiceId);
-      audio.onended = () => setPlayingPreview(null);
-      audio.onerror = () => setPlayingPreview(null);
-      
-      audio.play();
-    }
-  };
-
-  const stopPreview = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      setPlayingPreview(null);
     }
   };
 
@@ -187,8 +157,6 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
         description: `Áudio "${file.name}" foi adicionado à biblioteca`,
       });
       setNewAudioTrigger("");
-      // Atualizar configurações
-      // onSettingsChange seria chamado automaticamente pelo serviço
     }).catch((error) => {
       toast({
         title: "Erro no Upload",
@@ -258,14 +226,18 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
                       onChange={(e) =>
                         onSettingsChange({ ...settings, eleven_labs_api_key: e.target.value })
                       }
-                      placeholder="sk-..."
+                      placeholder="sk_..."
                     />
                     <Button 
                       variant="outline" 
                       onClick={handleApiValidation}
                       disabled={validatingApi}
                     >
-                      {validatingApi ? "Validando..." : "Validar"}
+                      {validatingApi ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        "Validar"
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -294,53 +266,16 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
                   </Select>
                 </div>
 
-                <div className="space-y-3">
-                  <Label>Seleção de Voz</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {ELEVENLABS_VOICES.map((voice) => (
-                      <Card 
-                        key={voice.id}
-                        className={`cursor-pointer transition-colors ${
-                          settings.eleven_labs_voice_id === voice.id 
-                            ? 'border-primary bg-primary/5' 
-                            : 'hover:border-primary/50'
-                        }`}
-                        onClick={() => 
-                          onSettingsChange({ ...settings, eleven_labs_voice_id: voice.id })
-                        }
-                      >
-                        <CardContent className="p-3">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-medium text-sm">{voice.name}</div>
-                              <Badge variant="secondary" className="text-xs mt-1">
-                                {voice.language}
-                              </Badge>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (playingPreview === voice.id) {
-                                  stopPreview();
-                                } else {
-                                  playVoicePreview(voice.id);
-                                }
-                              }}
-                            >
-                              {playingPreview === voice.id ? (
-                                <Pause className="w-3 h-3" />
-                              ) : (
-                                <Play className="w-3 h-3" />
-                              )}
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
+                {settings.eleven_labs_api_key && (
+                  <ElevenLabsVoiceSelector
+                    apiKey={settings.eleven_labs_api_key}
+                    selectedVoiceId={settings.eleven_labs_voice_id}
+                    onVoiceChange={(voiceId) => 
+                      onSettingsChange({ ...settings, eleven_labs_voice_id: voiceId })
+                    }
+                    model={settings.eleven_labs_model}
+                  />
+                )}
 
                 <div className="space-y-4">
                   <Label>Configurações de Voz</Label>
@@ -399,7 +334,11 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
                     onClick={handleVoiceTest} 
                     disabled={testingVoice || !settings.eleven_labs_api_key || !settings.eleven_labs_voice_id}
                   >
-                    <TestTube className="w-4 h-4 mr-2" />
+                    {testingVoice ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <TestTube className="w-4 h-4 mr-2" />
+                    )}
                     {testingVoice ? "Testando..." : "Testar Voz"}
                   </Button>
                 </div>

@@ -1,8 +1,9 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
 export type Assistant = Tables<"assistants"> & {
-  advanced_settings?: string | any; // JSON string or parsed object
+  advanced_settings?: string | any;
 };
 export type AssistantInsert = TablesInsert<"assistants"> & {
   advanced_settings?: string;
@@ -62,20 +63,6 @@ export interface AdvancedSettings {
   audio_library: AudioLibraryItem[];
   recording_settings: RecordingSettings;
 }
-
-// Vozes disponíveis do ElevenLabs
-export const ELEVENLABS_VOICES = [
-  { id: '9BWtsMINqrJLrRacOk9x', name: 'Aria', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/9BWtsMINqrJLrRacOk9x/df6788f9-5c96-470d-8312-aab3b3d8f50a.mp3' },
-  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/CwhRBWXzGAHq8TQ4Fs17/81911b5b-6c80-4f36-b4bf-29b9db5e0072.mp3' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/6d0b7668-bf60-4f48-a9a0-d15048129c04.mp3' },
-  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/FGY2WhTYpPnrIDTdsKH5/b86ba105-9a7d-4843-b1a3-f2cf7d139fce.mp3' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/IKne3meq5aSn9XLyUdCD/7b1f86e5-a4bf-4565-8101-6489f7f6d7f2.mp3' },
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/JBFqnCBsd6RMkjVDRZzb/7b1f86e5-a4bf-4565-8101-6489f7f6d7f2.mp3' },
-  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/N2lVS1w4EtoT3dr4eOWO/7b1f86e5-a4bf-4565-8101-6489f7f6d7f2.mp3' },
-  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/TX3LPaxmHKxFdv7VOQHJ/7b1f86e5-a4bf-4565-8101-6489f7f6d7f2.mp3' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/XB0fDUnXU5powFXDhCwa/7b1f86e5-a4bf-4565-8101-6489f7f6d7f2.mp3' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', language: 'en', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/f7c55b5e-7a5b-4ef0-9c30-1e7e4b7f1e7e.mp3' }
-];
 
 export const ELEVENLABS_MODELS = [
   { id: 'eleven_multilingual_v2', name: 'Multilingual v2', description: 'Most life-like, emotionally rich in 29 languages' },
@@ -162,45 +149,6 @@ export const assistantsService = {
       .eq("id", id);
 
     if (error) throw error;
-  },
-
-  async validateOpenAIConnection(apiKey: string, model: string = 'gpt-4o-mini'): Promise<boolean> {
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [{ role: 'user', content: 'Test connection' }],
-          max_tokens: 5,
-          temperature: 0.1
-        }),
-      });
-
-      return response.ok;
-    } catch (error) {
-      console.error('Erro ao validar conexão OpenAI:', error);
-      return false;
-    }
-  },
-
-  async validateElevenLabsConnection(apiKey: string, voiceId: string): Promise<boolean> {
-    try {
-      const response = await fetch(`https://api.elevenlabs.io/v1/voices/${voiceId}`, {
-        method: 'GET',
-        headers: {
-          'xi-api-key': apiKey,
-        },
-      });
-
-      return response.ok;
-    } catch (error) {
-      console.error('Erro ao validar conexão ElevenLabs:', error);
-      return false;
-    }
   },
 
   async uploadAudioToLibrary(
