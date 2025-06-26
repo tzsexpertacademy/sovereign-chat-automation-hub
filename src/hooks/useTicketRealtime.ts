@@ -32,8 +32,11 @@ export const useTicketRealtime = (clientId: string) => {
   const { splitMessage } = useSmartMessageSplit();
   const { simulateMessageProgression } = useMessageStatus();
 
-  // Função para normalizar dados da mensagem do WhatsApp
+  // Função para normalizar dados da mensagem do WhatsApp - COM LOGS DETALHADOS
   const normalizeWhatsAppMessage = useCallback((message: any) => {
+    console.log('🔧 ===== NORMALIZANDO MENSAGEM WHATSAPP =====');
+    console.log('📱 MENSAGEM ORIGINAL RECEBIDA:', JSON.stringify(message, null, 2));
+    
     let chatId = message.from || message.chatId || message.key?.remoteJid || message.chat?.id;
     let phoneNumber = chatId;
     
@@ -62,41 +65,89 @@ export const useTicketRealtime = (clientId: string) => {
     let mediaUrl = null;
     let mediaData = null;
 
-    // Processar diferentes tipos de mídia
-    if (message.type === 'image' || message.hasMedia) {
+    console.log('📊 DADOS BÁSICOS EXTRAÍDOS:', {
+      chatId,
+      phoneNumber,
+      customerName,
+      messageType,
+      hasContent: !!content
+    });
+
+    // Processar diferentes tipos de mídia - COM LOGS DETALHADOS
+    if (message.type === 'image' || (message.hasMedia && message.type !== 'audio' && message.type !== 'ptt')) {
       content = `[Imagem] ${message.caption || 'Imagem enviada'}`;
       messageType = 'image';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
+      console.log('🖼️ PROCESSANDO IMAGEM:', { mediaUrl: !!mediaUrl, mediaData: !!mediaData });
     } else if (message.type === 'audio' || message.type === 'ptt') {
       content = `[Áudio] Mensagem de áudio`;
       messageType = 'audio';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
+      
+      console.log('🎵 ===== PROCESSANDO MENSAGEM DE ÁUDIO =====');
+      console.log('📊 DADOS DE ÁUDIO DETECTADOS:', {
+        messageType,
+        hasMediaUrl: !!mediaUrl,
+        hasMediaData: !!mediaData,
+        mediaUrlValue: mediaUrl,
+        mediaDataLength: mediaData?.length || 0,
+        hasMedia: message.hasMedia,
+        allAudioKeys: Object.keys(message).filter(key => 
+          key.toLowerCase().includes('audio') || 
+          key.toLowerCase().includes('media') || 
+          key.toLowerCase().includes('data')
+        )
+      });
+      
+      // VERIFICAR TODAS AS POSSÍVEIS PROPRIEDADES DE ÁUDIO
+      const possibleAudioProps = [
+        'mediaData', 'audioData', 'data', 'base64', 'buffer', 'content',
+        'fileData', 'attachment', 'media', 'audioBase64', 'mediaBase64'
+      ];
+      
+      console.log('🔍 VERIFICANDO PROPRIEDADES DE ÁUDIO NA MENSAGEM:');
+      for (const prop of possibleAudioProps) {
+        if (message[prop]) {
+          console.log(`✅ ENCONTRADO ${prop}:`, {
+            type: typeof message[prop],
+            length: message[prop]?.length,
+            isString: typeof message[prop] === 'string',
+            preview: typeof message[prop] === 'string' ? message[prop].substring(0, 50) : 'not string'
+          });
+        }
+      }
+      
     } else if (message.type === 'video') {
       content = `[Vídeo] ${message.caption || 'Vídeo enviado'}`;
       messageType = 'video';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
+      console.log('🎬 PROCESSANDO VÍDEO:', { mediaUrl: !!mediaUrl, mediaData: !!mediaData });
     } else if (message.type === 'document') {
       content = `[Documento] ${message.filename || 'Documento enviado'}`;
       messageType = 'document';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
+      console.log('📄 PROCESSANDO DOCUMENTO:', { mediaUrl: !!mediaUrl, mediaData: !!mediaData });
     } else if (message.type === 'sticker') {
       content = `[Figurinha] Figurinha enviada`;
       messageType = 'sticker';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
+      console.log('🎭 PROCESSANDO FIGURINHA:', { mediaUrl: !!mediaUrl, mediaData: !!mediaData });
     } else if (message.type === 'location') {
       content = `[Localização] Localização compartilhada`;
       messageType = 'location';
+      console.log('📍 PROCESSANDO LOCALIZAÇÃO');
     }
     
     if (message.quotedMessage || message.quotedMsg) {
       const quoted = message.quotedMessage || message.quotedMsg;
       const quotedContent = quoted.body || quoted.caption || '[Mídia citada]';
       content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
+      console.log('💬 MENSAGEM COM CITAÇÃO DETECTADA');
     }
 
     const timestamp = ticketsService.validateAndFixTimestamp(message.timestamp || message.t || Date.now());
@@ -115,9 +166,18 @@ export const useTicketRealtime = (clientId: string) => {
       mediaData,
       phoneNumber,
       customerName,
-      // Dados originais para processamento
+      hasMedia: message.hasMedia,
+      // PRESERVAR MENSAGEM ORIGINAL COMPLETA PARA PROCESSAMENTO DE ÁUDIO
       originalMessage: message
     };
+    
+    console.log('✅ MENSAGEM NORMALIZADA:', {
+      id: normalizedMessage.id,
+      type: normalizedMessage.type,
+      hasMediaData: !!normalizedMessage.mediaData,
+      hasOriginalMessage: !!normalizedMessage.originalMessage,
+      fromMe: normalizedMessage.fromMe
+    });
     
     return normalizedMessage;
   }, []);
@@ -149,7 +209,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // PROCESSAMENTO COM ASSISTENTE - ÁUDIO SUPER ROBUSTO
+  // PROCESSAMENTO COM ASSISTENTE - VERSÃO COM LOGS SUPER DETALHADOS PARA ÁUDIO
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     const processingKey = `${ticketId}_${Date.now()}`;
     
@@ -160,6 +220,19 @@ export const useTicketRealtime = (clientId: string) => {
     
     processingRef.current.add(ticketId);
     console.log(`🤖 ===== INICIANDO PROCESSAMENTO IA (${processingKey}) =====`);
+    console.log(`📨 MENSAGENS PARA PROCESSAR: ${allMessages.length}`);
+    
+    // LOG DETALHADO DAS MENSAGENS
+    allMessages.forEach((msg, index) => {
+      console.log(`📨 MENSAGEM ${index + 1}:`, {
+        id: msg.id,
+        type: msg.type,
+        fromMe: msg.fromMe,
+        hasOriginalMessage: !!msg.originalMessage,
+        hasMediaData: !!msg.mediaData,
+        body: msg.body?.substring(0, 50)
+      });
+    });
     
     try {
       setAssistantTyping(true);
@@ -228,18 +301,29 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('ERRO ao parse das configurações:', e);
       }
 
-      // PROCESSAR MENSAGENS COM ÁUDIO - VERSÃO SUPER ROBUSTA
+      // PROCESSAR MENSAGENS COM ÁUDIO - VERSÃO COM LOGS SUPER DETALHADOS
       let processedContent = '';
       
-      console.log('🎵 ===== PROCESSANDO MENSAGENS PARA IA =====');
+      console.log('🎵 ===== PROCESSANDO MENSAGENS PARA IA (LOGS DETALHADOS) =====');
       
-      for (const msg of allMessages.filter(m => !m.fromMe)) {
-        console.log(`📨 Processando mensagem: ${msg.id}, tipo: ${msg.type}`);
+      const clientMessages = allMessages.filter(m => !m.fromMe);
+      console.log(`👤 MENSAGENS DO CLIENTE PARA PROCESSAR: ${clientMessages.length}`);
+      
+      for (let i = 0; i < clientMessages.length; i++) {
+        const msg = clientMessages[i];
+        console.log(`📨 PROCESSANDO MENSAGEM ${i + 1}/${clientMessages.length}:`, {
+          id: msg.id,
+          type: msg.type,
+          hasOriginalMessage: !!msg.originalMessage,
+          hasMediaData: !!msg.mediaData
+        });
         
         if (msg.type === 'audio' || msg.type === 'ptt') {
-          console.log('🎵 DETECTADO áudio - iniciando transcrição...');
+          console.log('🎵 ===== DETECTADO ÁUDIO - INICIANDO TRANSCRIÇÃO DETALHADA =====');
+          console.log('📱 DADOS COMPLETOS DA MENSAGEM DE ÁUDIO:', JSON.stringify(msg, null, 2));
+          
           try {
-            // USAR A MENSAGEM COMPLETA (com todas as propriedades)
+            // USAR A MENSAGEM COMPLETA (com todas as propriedades) + LOGS DETALHADOS
             const fullMessage = {
               ...msg,
               ...msg.originalMessage,
@@ -249,24 +333,31 @@ export const useTicketRealtime = (clientId: string) => {
               hasMedia: msg.hasMedia || msg.originalMessage?.hasMedia
             };
             
-            console.log('🔍 MENSAGEM COMPLETA para processamento:', {
+            console.log('🔍 ===== MENSAGEM COMPLETA PARA PROCESSAMENTO =====');
+            console.log('📊 ESTRUTURA FINAL:', JSON.stringify(fullMessage, null, 2));
+            console.log('📊 VERIFICAÇÕES FINAIS:', {
               hasFullMessage: !!fullMessage,
               messageId: fullMessage.id || 'N/A',
               hasMediaData: !!fullMessage.mediaData,
+              mediaDataLength: fullMessage.mediaData?.length || 0,
               hasMediaUrl: !!fullMessage.mediaUrl,
+              mediaUrl: fullMessage.mediaUrl,
               messageType: fullMessage.type,
+              hasMedia: fullMessage.hasMedia,
               allProps: Object.keys(fullMessage)
             });
             
+            console.log('🚀 CHAMANDO audioService.processWhatsAppAudio...');
             const audioResult = await audioService.processWhatsAppAudio(fullMessage, clientId);
             
             const transcriptionText = audioResult.transcription || '[Áudio não transcrito]';
             processedContent += `[Mensagem de áudio transcrita]: "${transcriptionText}"\n`;
             
-            console.log('✅ Transcrição de áudio concluída:', {
-              original: msg.body?.substring(0, 50),
+            console.log('✅ TRANSCRIÇÃO DE ÁUDIO CONCLUÍDA:', {
+              originalBody: msg.body?.substring(0, 50),
               transcription: transcriptionText.substring(0, 100),
-              success: !!audioResult.transcription
+              transcriptionLength: transcriptionText.length,
+              success: !!audioResult.transcription && !audioResult.transcription.includes('[Áudio não')
             });
             
             // Salvar transcrição no banco
@@ -279,6 +370,7 @@ export const useTicketRealtime = (clientId: string) => {
 
               if (audioResult.audioBase64) {
                 updateData.audio_base64 = audioResult.audioBase64;
+                console.log('💾 SALVANDO dados de áudio base64 no banco (tamanho:', audioResult.audioBase64.length, ')');
               }
 
               await supabase
@@ -286,28 +378,30 @@ export const useTicketRealtime = (clientId: string) => {
                 .update(updateData)
                 .eq('message_id', msg.id);
                 
-              console.log('💾 Transcrição salva no banco de dados');
+              console.log('💾 TRANSCRIÇÃO SALVA NO BANCO DE DADOS COM SUCESSO');
               
             } catch (saveError) {
-              console.error('⚠️ Erro ao salvar transcrição:', saveError);
+              console.error('⚠️ ERRO ao salvar transcrição no banco:', saveError);
             }
               
           } catch (audioError) {
-            console.error('❌ ERRO ao processar áudio:', audioError);
-            processedContent += `[Áudio não processado]: ${msg.body || 'Mensagem de áudio'}\n`;
+            console.error('❌ ERRO CRÍTICO ao processar áudio:', audioError);
+            console.error('💥 Stack trace:', audioError.stack);
+            processedContent += `[Áudio não processado - ${audioError.message}]: ${msg.body || 'Mensagem de áudio'}\n`;
           }
         } else {
           processedContent += `${msg.body || msg.caption || '[Mídia]'}\n`;
+          console.log(`📝 MENSAGEM TEXTO ADICIONADA: ${(msg.body || msg.caption || '[Mídia]').substring(0, 50)}`);
         }
       }
 
       if (!processedContent.trim()) {
-        console.log('⚠️ NENHUMA mensagem nova do cliente');
+        console.log('⚠️ NENHUMA mensagem nova do cliente para processar');
         return;
       }
 
       console.log('🧠 ===== PREPARANDO CONTEXTO PARA IA =====');
-      console.log('📝 Conteúdo processado:', processedContent.substring(0, 200) + '...');
+      console.log('📝 Conteúdo processado final:', processedContent.substring(0, 200) + '...');
 
       // CONTEXTO PARA IA - usar verificação segura para campos de áudio
       const contextMessages = ticketMessages.map(msg => {
@@ -328,7 +422,6 @@ export const useTicketRealtime = (clientId: string) => {
 
       console.log(`🚀 ENVIANDO para OpenAI com ${messages.length} mensagens`);
 
-      // CHAMAR OPENAI
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -535,11 +628,10 @@ export const useTicketRealtime = (clientId: string) => {
 
       console.log(`📋 TICKET criado/atualizado: ${ticketId}`);
 
-      // SALVAR TODAS AS MENSAGENS COM DADOS DE MÍDIA
+      // SALVAR TODAS AS MENSAGENS COM DADOS DE MÍDIA E ÁUDIO
       for (const message of newMessages) {
         const normalized = normalizeWhatsAppMessage(message);
         
-        // Usar tipo flexível para incluir campos de áudio opcionalmente
         const messageData: any = {
           ticket_id: ticketId,
           message_id: normalized.id,
@@ -554,12 +646,22 @@ export const useTicketRealtime = (clientId: string) => {
           media_url: normalized.mediaUrl
         };
 
-        // Adicionar dados de áudio se existirem
-        if (normalized.mediaData && normalized.type === 'audio') {
-          messageData.audio_base64 = normalized.mediaData;
+        // ADICIONAR DADOS DE ÁUDIO SE EXISTIREM - COM LOGS
+        if (normalized.type === 'audio' || normalized.type === 'ptt') {
+          console.log('🎵 SALVANDO mensagem de áudio no banco:', {
+            hasMediaData: !!normalized.mediaData,
+            mediaDataLength: normalized.mediaData?.length || 0,
+            hasOriginalMessage: !!normalized.originalMessage
+          });
+          
+          if (normalized.mediaData) {
+            messageData.audio_base64 = normalized.mediaData;
+            console.log('💾 ADICIONANDO audio_base64 ao messageData');
+          }
         }
         
         await ticketsService.addTicketMessage(messageData);
+        console.log(`💾 MENSAGEM salva no banco: ${normalized.type}`);
       }
 
       console.log(`💾 TODAS mensagens salvas no ticket`);
@@ -633,14 +735,7 @@ export const useTicketRealtime = (clientId: string) => {
         
         console.log(`📨 ===== EVENTO RECEBIDO =====`);
         console.log(`🏷️ Evento: ${mainEventName}`);
-        console.log(`📨 Mensagem:`, {
-          id: message.id,
-          from: message.from,
-          body: message.body?.substring(0, 50),
-          fromMe: message.fromMe,
-          type: message.type,
-          hasMedia: message.hasMedia
-        });
+        console.log(`📨 MENSAGEM COMPLETA RECEBIDA:`, JSON.stringify(message, null, 2));
         
         const messageKey = `socket_${message.id || message.key?.id}`;
         if (processedMessagesRef.current.has(messageKey)) {

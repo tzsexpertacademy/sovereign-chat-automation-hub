@@ -73,52 +73,63 @@ export const audioService = {
     return data.audioBase64;
   },
 
-  // NOVA VERSÃO: Extração robusta de dados de áudio do WhatsApp
+  // NOVA VERSÃO SUPER ROBUSTA - EXTRAÇÃO DE DADOS DE ÁUDIO
   extractAudioDataFromMessage(message: any): { audioBase64: string; audioUrl: string } {
-    console.log('🔍 ===== EXTRAINDO DADOS DE ÁUDIO =====');
-    console.log('📱 Estrutura da mensagem completa:', {
-      messageKeys: message ? Object.keys(message) : [],
-      hasMedia: !!message.hasMedia,
-      type: message.type,
-      hasMediaData: !!message.mediaData,
-      hasMediaUrl: !!message.mediaUrl,
-      originalMessageKeys: message.originalMessage ? Object.keys(message.originalMessage) : []
-    });
-
+    console.log('🔍 ===== EXTRAINDO DADOS DE ÁUDIO (DEBUG TOTAL) =====');
+    console.log('📱 ESTRUTURA COMPLETA DA MENSAGEM:', JSON.stringify(message, null, 2));
+    
     let audioBase64 = '';
     let audioUrl = '';
 
-    // ESTRATÉGIA 1: Propriedades diretas da mensagem
-    const directProps = ['mediaData', 'data', 'audioData', 'content', 'media', 'base64', 'body64'];
+    // ESTRATÉGIA 1: Propriedades diretas mais comuns
+    const directProps = [
+      'mediaData', 'data', 'audioData', 'content', 'media', 'base64', 'body64',
+      'audioBase64', 'mediaBase64', 'fileData', 'buffer', 'audioBuffer'
+    ];
+    
+    console.log('🔍 ESTRATÉGIA 1: Verificando propriedades diretas...');
     for (const prop of directProps) {
       if (message[prop] && typeof message[prop] === 'string' && message[prop].length > 100) {
-        console.log(`✅ ENCONTRADO dados em message.${prop}`);
+        console.log(`✅ ENCONTRADO dados em message.${prop} (tamanho: ${message[prop].length})`);
         audioBase64 = message[prop];
         break;
+      } else if (message[prop]) {
+        console.log(`⚠️ Campo message.${prop} existe mas não é válido:`, typeof message[prop], message[prop]?.length);
       }
     }
 
     // ESTRATÉGIA 2: OriginalMessage
     if (!audioBase64 && message.originalMessage) {
+      console.log('🔍 ESTRATÉGIA 2: Verificando originalMessage...');
+      console.log('📱 ESTRUTURA originalMessage:', JSON.stringify(message.originalMessage, null, 2));
+      
       for (const prop of directProps) {
         if (message.originalMessage[prop] && typeof message.originalMessage[prop] === 'string' && message.originalMessage[prop].length > 100) {
-          console.log(`✅ ENCONTRADO dados em originalMessage.${prop}`);
+          console.log(`✅ ENCONTRADO dados em originalMessage.${prop} (tamanho: ${message.originalMessage[prop].length})`);
           audioBase64 = message.originalMessage[prop];
           break;
+        } else if (message.originalMessage[prop]) {
+          console.log(`⚠️ Campo originalMessage.${prop} existe mas não é válido:`, typeof message.originalMessage[prop], message.originalMessage[prop]?.length);
         }
       }
     }
 
-    // ESTRATÉGIA 3: Nested objects
+    // ESTRATÉGIA 3: Nested objects (media, attachment, file, audio, etc)
     if (!audioBase64) {
-      const nestedObjects = ['media', 'attachment', 'file', 'audio'];
+      console.log('🔍 ESTRATÉGIA 3: Verificando objetos aninhados...');
+      const nestedObjects = ['media', 'attachment', 'file', 'audio', '_data', 'quotedMessage'];
+      
       for (const obj of nestedObjects) {
         if (message[obj] && typeof message[obj] === 'object') {
+          console.log(`🔍 Verificando message.${obj}:`, JSON.stringify(message[obj], null, 2));
+          
           for (const prop of directProps) {
             if (message[obj][prop] && typeof message[obj][prop] === 'string' && message[obj][prop].length > 100) {
-              console.log(`✅ ENCONTRADO dados em message.${obj}.${prop}`);
+              console.log(`✅ ENCONTRADO dados em message.${obj}.${prop} (tamanho: ${message[obj][prop].length})`);
               audioBase64 = message[obj][prop];
               break;
+            } else if (message[obj][prop]) {
+              console.log(`⚠️ Campo message.${obj}.${prop} existe mas não é válido:`, typeof message[obj][prop], message[obj][prop]?.length);
             }
           }
           if (audioBase64) break;
@@ -126,38 +137,74 @@ export const audioService = {
       }
     }
 
-    // ESTRATÉGIA 4: URL de mídia
-    const urlProps = ['mediaUrl', 'url', 'audioUrl', 'fileUrl', 'downloadUrl'];
+    // ESTRATÉGIA 4: URL de mídia (múltiplas variações)
+    console.log('🔍 ESTRATÉGIA 4: Verificando URLs de mídia...');
+    const urlProps = [
+      'mediaUrl', 'url', 'audioUrl', 'fileUrl', 'downloadUrl', 'mediaLink',
+      'attachmentUrl', 'src', 'href', 'link', 'path'
+    ];
+    
     for (const prop of urlProps) {
-      if (message[prop] && typeof message[prop] === 'string') {
-        console.log(`✅ ENCONTRADO URL em message.${prop}`);
+      if (message[prop] && typeof message[prop] === 'string' && message[prop].includes('http')) {
+        console.log(`✅ ENCONTRADO URL em message.${prop}: ${message[prop]}`);
         audioUrl = message[prop];
         break;
-      } else if (message.originalMessage?.[prop] && typeof message.originalMessage[prop] === 'string') {
-        console.log(`✅ ENCONTRADO URL em originalMessage.${prop}`);
+      } else if (message.originalMessage?.[prop] && typeof message.originalMessage[prop] === 'string' && message.originalMessage[prop].includes('http')) {
+        console.log(`✅ ENCONTRADO URL em originalMessage.${prop}: ${message.originalMessage[prop]}`);
         audioUrl = message.originalMessage[prop];
         break;
       }
     }
 
+    // ESTRATÉGIA 5: Verificar propriedades com hasMedia ou isMedia
+    if (!audioBase64 && (message.hasMedia || message.type === 'audio' || message.type === 'ptt')) {
+      console.log('🔍 ESTRATÉGIA 5: Mensagem indica ter mídia, procurando em todas as propriedades...');
+      
+      const allProps = Object.keys(message);
+      console.log('📝 TODAS as propriedades da mensagem:', allProps);
+      
+      for (const prop of allProps) {
+        const value = message[prop];
+        if (typeof value === 'string' && value.length > 100 && /^[A-Za-z0-9+/=]+$/.test(value)) {
+          console.log(`🔍 POSSÍVEL base64 encontrado em ${prop} (tamanho: ${value.length})`);
+          // Verificar se parece com base64 de áudio (começar com dados de áudio)
+          try {
+            const firstBytes = atob(value.substring(0, 20));
+            if (firstBytes.includes('OggS') || firstBytes.includes('RIFF') || firstBytes.charCodeAt(0) === 0xFF) {
+              console.log(`✅ CONFIRMADO: ${prop} contém dados de áudio válidos`);
+              audioBase64 = value;
+              break;
+            }
+          } catch (e) {
+            console.log(`⚠️ ${prop} não é base64 válido`);
+          }
+        }
+      }
+    }
+
+    console.log('📊 ===== RESULTADO FINAL DA EXTRAÇÃO =====');
     console.log('📊 RESULTADO da extração:', {
       hasAudioBase64: !!audioBase64,
       audioBase64Length: audioBase64.length,
+      audioBase64Preview: audioBase64.substring(0, 50),
       hasAudioUrl: !!audioUrl,
-      audioUrlPreview: audioUrl.substring(0, 50)
+      audioUrlPreview: audioUrl.substring(0, 100),
+      messageType: message.type,
+      hasMedia: message.hasMedia
     });
 
     return { audioBase64, audioUrl };
   },
 
-  // Processar mensagem de áudio do WhatsApp - VERSÃO SUPER ROBUSTA
+  // Processar mensagem de áudio do WhatsApp - VERSÃO SUPER ROBUSTA COM LOGS
   async processWhatsAppAudio(message: any, clientId: string): Promise<{
     transcription: string;
     audioUrl?: string;
     audioBase64?: string;
   }> {
     try {
-      console.log('🎵 ===== PROCESSANDO ÁUDIO WHATSAPP =====');
+      console.log('🎵 ===== PROCESSANDO ÁUDIO WHATSAPP (DEBUG COMPLETO) =====');
+      console.log('📱 MENSAGEM RECEBIDA PARA PROCESSAMENTO:', JSON.stringify(message, null, 2));
       
       // VALIDAÇÃO CRÍTICA
       if (!message) {
@@ -165,11 +212,28 @@ export const audioService = {
         throw new Error('Mensagem não fornecida para processamento de áudio');
       }
 
+      console.log('📊 INFORMAÇÕES BÁSICAS DA MENSAGEM:', {
+        messageId: message.id,
+        messageType: message.type,
+        fromMe: message.fromMe,
+        hasMedia: message.hasMedia,
+        body: message.body?.substring(0, 50),
+        allKeys: Object.keys(message)
+      });
+
       // EXTRAIR DADOS DE ÁUDIO usando nova função robusta
+      console.log('🔄 INICIANDO EXTRAÇÃO DE DADOS DE ÁUDIO...');
       const { audioBase64: extractedBase64, audioUrl: extractedUrl } = this.extractAudioDataFromMessage(message);
 
       let audioBase64 = extractedBase64;
       let audioUrl = extractedUrl;
+
+      console.log('📊 RESULTADO DA EXTRAÇÃO:', {
+        foundBase64: !!audioBase64,
+        base64Length: audioBase64.length,
+        foundUrl: !!audioUrl,
+        urlValue: audioUrl
+      });
 
       // Se não encontrou base64 mas tem URL, tentar baixar
       if (!audioBase64 && audioUrl) {
@@ -189,7 +253,8 @@ export const audioService = {
           audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
           
           console.log('✅ Áudio baixado da URL:', {
-            size: arrayBuffer.byteLength,
+            originalUrl: audioUrl,
+            downloadedSize: arrayBuffer.byteLength,
             base64Length: audioBase64.length
           });
         } catch (error) {
@@ -197,12 +262,15 @@ export const audioService = {
         }
       }
 
-      // VALIDAÇÃO FINAL
+      // VALIDAÇÃO FINAL ANTES DO PROCESSAMENTO
       if (!audioBase64) {
-        console.error('❌ NENHUM dado de áudio encontrado');
-        console.log('🔍 Estrutura completa da mensagem para debug:', JSON.stringify(message, null, 2));
-        throw new Error('Dados de áudio não encontrados na mensagem');
+        console.error('❌ ===== FALHA TOTAL NA EXTRAÇÃO DE ÁUDIO =====');
+        console.error('📱 DADOS COMPLETOS DA MENSAGEM PARA DEBUG:');
+        console.error(JSON.stringify(message, null, 2));
+        throw new Error('Dados de áudio não encontrados na mensagem - verifique a estrutura da mensagem WhatsApp');
       }
+
+      console.log('✅ DADOS DE ÁUDIO ENCONTRADOS - PROSSEGUINDO COM TRANSCRIÇÃO');
 
       // Buscar configuração de IA do cliente
       const { data: aiConfig, error: configError } = await supabase
@@ -224,14 +292,15 @@ export const audioService = {
       }
 
       // Validação final antes da transcrição
-      console.log('🔍 VALIDAÇÃO FINAL:', {
+      console.log('🔍 VALIDAÇÃO FINAL ANTES DA TRANSCRIÇÃO:', {
         audioLength: cleanAudioBase64.length,
         isValidBase64: /^[A-Za-z0-9+/=]+$/.test(cleanAudioBase64),
-        hasOpenAIKey: !!aiConfig.openai_api_key
+        hasOpenAIKey: !!aiConfig.openai_api_key,
+        firstChars: cleanAudioBase64.substring(0, 50)
       });
 
-      // Transcrever áudio - COM RETRY
-      console.log('🚀 ===== INICIANDO TRANSCRIÇÃO =====');
+      // Transcrever áudio - COM RETRY E LOGS DETALHADOS
+      console.log('🚀 ===== INICIANDO TRANSCRIÇÃO COM EDGE FUNCTION =====');
       
       let transcription = '';
       let lastError = null;
@@ -240,13 +309,15 @@ export const audioService = {
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           console.log(`🔄 TENTATIVA DE TRANSCRIÇÃO ${attempt}/3`);
+          console.log(`📡 CHAMANDO EDGE FUNCTION speech-to-text...`);
+          
           transcription = await this.convertSpeechToText(cleanAudioBase64, aiConfig.openai_api_key);
           
           if (transcription && transcription.trim() !== '' && !transcription.includes('[Áudio não pôde ser transcrito]')) {
             console.log(`✅ TRANSCRIÇÃO SUCESSO na tentativa ${attempt}:`, transcription.substring(0, 100));
             break;
           } else {
-            console.warn(`⚠️ Transcrição vazia na tentativa ${attempt}`);
+            console.warn(`⚠️ Transcrição vazia na tentativa ${attempt}:`, transcription);
             lastError = new Error('Transcrição vazia');
           }
         } catch (error) {
@@ -262,6 +333,7 @@ export const audioService = {
       
       if (!transcription || transcription.trim() === '' || transcription.includes('[Áudio não pôde ser transcrito]')) {
         console.warn('⚠️ TODAS as tentativas de transcrição falharam');
+        console.error('💥 Último erro:', lastError);
         return {
           transcription: '[Áudio não pôde ser transcrito - verifique a qualidade do áudio]',
           audioUrl,
@@ -274,6 +346,7 @@ export const audioService = {
       console.log('📊 Estatísticas finais:', {
         transcriptionLength: transcription.length,
         hasAudioData: !!cleanAudioBase64,
+        audioDataLength: cleanAudioBase64.length,
         hasAudioUrl: !!audioUrl
       });
 
@@ -284,9 +357,10 @@ export const audioService = {
       };
       
     } catch (error) {
-      console.error('❌ ===== ERRO CRÍTICO NO PROCESSAMENTO =====');
+      console.error('❌ ===== ERRO CRÍTICO NO PROCESSAMENTO DE ÁUDIO =====');
       console.error('💥 Erro:', error);
       console.error('🔍 Stack:', error.stack);
+      console.error('📱 Mensagem que causou o erro:', JSON.stringify(message, null, 2));
       
       // Re-throw com contexto adicional
       throw new Error(`Falha crítica no processamento de áudio: ${error.message}`);
