@@ -16,7 +16,7 @@ const AudioPlayer = ({
   audioUrl, 
   audioData, 
   duration, 
-  fileName = 'audio.ogg',
+  fileName = 'audio.wav',
   onPlay,
   onPause 
 }: AudioPlayerProps) => {
@@ -28,58 +28,70 @@ const AudioPlayer = ({
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Processar dados de áudio com melhor detecção de formato
+  // Detectar formato de áudio pelos primeiros bytes
+  const detectAudioFormat = (base64Data: string): string => {
+    try {
+      // Decodificar primeiro pedaço para verificar header
+      const firstBytes = atob(base64Data.substring(0, 20));
+      
+      if (firstBytes.includes('OggS')) return 'ogg';
+      if (firstBytes.includes('RIFF')) return 'wav';
+      if (firstBytes.includes('ID3') || firstBytes.charCodeAt(0) === 0xFF) return 'mp3';
+      if (firstBytes.includes('ftyp')) return 'm4a';
+      
+      // Fallback: tentar todos os formatos
+      return 'auto';
+    } catch (e) {
+      return 'auto';
+    }
+  };
+
+  // Criar múltiplas URLs de áudio para compatibilidade
+  const createAudioSources = (base64Data: string): string[] => {
+    const format = detectAudioFormat(base64Data);
+    const sources: string[] = [];
+    
+    if (format === 'auto') {
+      // Tentar múltiplos formatos
+      sources.push(`data:audio/ogg;base64,${base64Data}`);
+      sources.push(`data:audio/wav;base64,${base64Data}`);
+      sources.push(`data:audio/mpeg;base64,${base64Data}`);
+      sources.push(`data:audio/webm;base64,${base64Data}`);
+    } else {
+      const mimeTypes = {
+        ogg: 'audio/ogg',
+        wav: 'audio/wav',
+        mp3: 'audio/mpeg',
+        m4a: 'audio/mp4'
+      };
+      sources.push(`data:${mimeTypes[format] || 'audio/ogg'};base64,${base64Data}`);
+    }
+    
+    return sources;
+  };
+
+  // Processar dados de áudio
   useEffect(() => {
     if (audioData) {
       try {
-        console.log('🎵 ===== PROCESSANDO ÁUDIO PARA PLAYER =====');
+        console.log('🎵 ===== CONFIGURANDO AUDIO PLAYER =====');
         console.log('📊 Dados de entrada:', {
           hasData: !!audioData,
           length: audioData.length,
-          hasComma: audioData.includes(','),
-          hasDataPrefix: audioData.startsWith('data:'),
           firstChars: audioData.substring(0, 50)
         });
 
-        let processedData = audioData;
-        
-        // Se já tem prefixo data:, usar direto
-        if (audioData.startsWith('data:')) {
-          setAudioSrc(audioData);
-          console.log('✅ Usando dados com prefixo data: existente');
-        } else {
-          // Detectar formato baseado nos primeiros bytes
-          let detectedFormat = 'ogg'; // padrão WhatsApp
-          let detectedMime = 'audio/ogg';
-          
-          try {
-            const firstBytes = atob(audioData.substring(0, 20));
-            const header = firstBytes.substring(0, 4);
-            
-            if (header.includes('OggS')) {
-              detectedFormat = 'ogg';
-              detectedMime = 'audio/ogg';
-            } else if (header.includes('RIFF')) {
-              detectedFormat = 'wav';
-              detectedMime = 'audio/wav';
-            } else if (header.includes('ID3') || firstBytes.charCodeAt(0) === 0xFF) {
-              detectedFormat = 'mp3';
-              detectedMime = 'audio/mpeg';
-            } else if (header.includes('ftyp')) {
-              detectedFormat = 'm4a';
-              detectedMime = 'audio/m4a';
-            }
-            
-            console.log('🎵 Formato detectado:', { detectedFormat, detectedMime });
-          } catch (e) {
-            console.log('⚠️ Erro na detecção, usando OGG padrão');
-          }
-          
-          // Criar data URL com formato detectado
-          const audioSrcWithPrefix = `data:${detectedMime};base64,${processedData}`;
-          setAudioSrc(audioSrcWithPrefix);
-          console.log('✅ Criado data URL com formato:', detectedFormat);
+        let cleanData = audioData;
+        if (audioData.includes('data:') && audioData.includes(',')) {
+          cleanData = audioData.split(',')[1];
         }
+
+        const sources = createAudioSources(cleanData);
+        console.log('🎵 Sources criados:', sources.length);
+        
+        // Usar primeira source como padrão
+        setAudioSrc(sources[0]);
+        
       } catch (error) {
         console.error('❌ Erro ao processar dados de áudio:', error);
         setError('Erro ao processar dados de áudio');
@@ -94,20 +106,14 @@ const AudioPlayer = ({
     }
   }, [audioData, audioUrl]);
 
-  // Configurar listeners do elemento de áudio com logs detalhados
+  // Configurar listeners do áudio
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !audioSrc) return;
 
-    console.log('🔧 Configurando listeners para áudio:', {
-      hasAudio: !!audio,
-      src: audioSrc.substring(0, 50) + '...'
-    });
+    console.log('🔧 Configurando listeners para áudio');
 
-    const updateTime = () => {
-      setCurrentTime(audio.currentTime);
-    };
-    
+    const updateTime = () => setCurrentTime(audio.currentTime);
     const updateDuration = () => {
       if (audio.duration && !isNaN(audio.duration)) {
         setTotalDuration(audio.duration);
@@ -116,7 +122,7 @@ const AudioPlayer = ({
     };
     
     const handleLoadStart = () => {
-      console.log('🔄 Iniciando carregamento do áudio');
+      console.log('🔄 Carregando áudio...');
       setIsLoading(true);
       setError(null);
     };
@@ -128,19 +134,23 @@ const AudioPlayer = ({
     };
     
     const handleError = (e: any) => {
-      console.error('❌ ERRO CRÍTICO no player de áudio:', e);
-      console.error('📊 Detalhes do erro:', {
-        error: e.target?.error,
-        networkState: e.target?.networkState,
-        readyState: e.target?.readyState,
-        src: e.target?.src?.substring(0, 100),
-        errorCode: e.target?.error?.code,
-        errorMessage: e.target?.error?.message
-      });
-      
+      console.error('❌ ERRO no player de áudio:', e);
       setIsLoading(false);
-      setError('Erro ao carregar áudio - tente um formato diferente');
+      setError('Formato de áudio não suportado');
       setIsPlaying(false);
+      
+      // Tentar próximo formato se disponível
+      if (audioData) {
+        const cleanData = audioData.includes(',') ? audioData.split(',')[1] : audioData;
+        const sources = createAudioSources(cleanData);
+        const currentIndex = sources.indexOf(audioSrc || '');
+        
+        if (currentIndex < sources.length - 1) {
+          console.log('🔄 Tentando próximo formato...');
+          setAudioSrc(sources[currentIndex + 1]);
+          setError(null);
+        }
+      }
     };
     
     const handleEnded = () => {
@@ -149,46 +159,23 @@ const AudioPlayer = ({
       onPause?.();
     };
 
-    const handleLoadedData = () => {
-      console.log('📊 Dados do áudio carregados:', {
-        duration: audio.duration,
-        readyState: audio.readyState,
-        networkState: audio.networkState
-      });
-    };
-
-    const handleProgress = () => {
-      if (audio.buffered.length > 0) {
-        const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
-        const duration = audio.duration;
-        if (duration > 0) {
-          const percent = (bufferedEnd / duration) * 100;
-          console.log('📶 Progresso do buffer:', percent.toFixed(1) + '%');
-        }
-      }
-    };
-
-    // Adicionar todos os listeners
+    // Adicionar listeners
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
-    audio.addEventListener('loadeddata', handleLoadedData);
     audio.addEventListener('loadstart', handleLoadStart);
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('error', handleError);
     audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('progress', handleProgress);
 
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
       audio.removeEventListener('loadedmetadata', updateDuration);
-      audio.removeEventListener('loadeddata', handleLoadedData);
       audio.removeEventListener('loadstart', handleLoadStart);
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('progress', handleProgress);
     };
-  }, [onPause, audioSrc]);
+  }, [audioSrc, audioData, onPause]);
 
   const togglePlay = async () => {
     const audio = audioRef.current;
@@ -202,14 +189,6 @@ const AudioPlayer = ({
         onPause?.();
       } else {
         console.log('▶️ Iniciando reprodução');
-        console.log('📊 Estado do áudio antes do play:', {
-          readyState: audio.readyState,
-          networkState: audio.networkState,
-          paused: audio.paused,
-          currentTime: audio.currentTime,
-          duration: audio.duration
-        });
-        
         setIsLoading(true);
         setError(null);
         
@@ -218,16 +197,10 @@ const AudioPlayer = ({
         setIsLoading(false);
         onPlay?.();
         
-        console.log('✅ Áudio reproduzindo com sucesso');
+        console.log('✅ Áudio reproduzindo');
       }
     } catch (error) {
       console.error('❌ ERRO ao reproduzir áudio:', error);
-      console.error('📊 Estado do áudio no erro:', {
-        readyState: audio.readyState,
-        networkState: audio.networkState,
-        error: audio.error
-      });
-      
       setError('Erro ao reproduzir áudio');
       setIsLoading(false);
       setIsPlaying(false);
@@ -280,7 +253,6 @@ const AudioPlayer = ({
       <audio 
         ref={audioRef} 
         preload="metadata"
-        crossOrigin="anonymous"
         src={audioSrc}
       >
         Seu navegador não suporta o elemento de áudio.

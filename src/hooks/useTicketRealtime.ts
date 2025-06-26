@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
@@ -150,7 +149,7 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId]);
 
-  // PROCESSAMENTO COM ASSISTENTE - ÁUDIO MELHORADO
+  // PROCESSAMENTO COM ASSISTENTE - ÁUDIO SUPER ROBUSTO
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
     const processingKey = `${ticketId}_${Date.now()}`;
     
@@ -229,7 +228,7 @@ export const useTicketRealtime = (clientId: string) => {
         console.error('ERRO ao parse das configurações:', e);
       }
 
-      // PROCESSAR MENSAGENS COM ÁUDIO - VERSÃO MELHORADA E CORRIGIDA
+      // PROCESSAR MENSAGENS COM ÁUDIO - VERSÃO SUPER ROBUSTA
       let processedContent = '';
       
       console.log('🎵 ===== PROCESSANDO MENSAGENS PARA IA =====');
@@ -240,25 +239,26 @@ export const useTicketRealtime = (clientId: string) => {
         if (msg.type === 'audio' || msg.type === 'ptt') {
           console.log('🎵 DETECTADO áudio - iniciando transcrição...');
           try {
-            // CORREÇÃO CRÍTICA: Passar a mensagem completa, não apenas originalMessage
-            const messageToProcess = msg.originalMessage || msg;
+            // USAR A MENSAGEM COMPLETA (com todas as propriedades)
+            const fullMessage = {
+              ...msg,
+              ...msg.originalMessage,
+              // Garantir que todas as propriedades estejam disponíveis
+              mediaData: msg.mediaData || msg.originalMessage?.mediaData,
+              mediaUrl: msg.mediaUrl || msg.originalMessage?.mediaUrl,
+              hasMedia: msg.hasMedia || msg.originalMessage?.hasMedia
+            };
             
-            // VALIDAÇÃO adicional antes de processar
-            if (!messageToProcess) {
-              console.error('❌ ERRO: Nenhuma mensagem válida para processar áudio');
-              processedContent += `[Áudio não processado]: ${msg.body || 'Mensagem de áudio'}\n`;
-              continue;
-            }
-            
-            console.log('🔍 PROCESSANDO áudio com dados:', {
-              hasOriginalMessage: !!msg.originalMessage,
-              messageId: messageToProcess.id || 'N/A',
-              hasMediaData: !!messageToProcess.mediaData,
-              hasMediaUrl: !!messageToProcess.mediaUrl,
-              messageType: messageToProcess.type
+            console.log('🔍 MENSAGEM COMPLETA para processamento:', {
+              hasFullMessage: !!fullMessage,
+              messageId: fullMessage.id || 'N/A',
+              hasMediaData: !!fullMessage.mediaData,
+              hasMediaUrl: !!fullMessage.mediaUrl,
+              messageType: fullMessage.type,
+              allProps: Object.keys(fullMessage)
             });
             
-            const audioResult = await audioService.processWhatsAppAudio(messageToProcess, clientId);
+            const audioResult = await audioService.processWhatsAppAudio(fullMessage, clientId);
             
             const transcriptionText = audioResult.transcription || '[Áudio não transcrito]';
             processedContent += `[Mensagem de áudio transcrita]: "${transcriptionText}"\n`;
@@ -269,7 +269,7 @@ export const useTicketRealtime = (clientId: string) => {
               success: !!audioResult.transcription
             });
             
-            // Salvar transcrição no banco - VERSÃO MELHORADA
+            // Salvar transcrição no banco
             try {
               const updateData: any = {
                 content: `${msg.body} - Transcrição: ${transcriptionText}`,
@@ -289,13 +289,11 @@ export const useTicketRealtime = (clientId: string) => {
               console.log('💾 Transcrição salva no banco de dados');
               
             } catch (saveError) {
-              console.error('⚠️ Erro ao salvar transcrição no banco:', saveError);
-              // Continuar mesmo com erro de salvamento
+              console.error('⚠️ Erro ao salvar transcrição:', saveError);
             }
               
           } catch (audioError) {
             console.error('❌ ERRO ao processar áudio:', audioError);
-            // Continuar com fallback
             processedContent += `[Áudio não processado]: ${msg.body || 'Mensagem de áudio'}\n`;
           }
         } else {
