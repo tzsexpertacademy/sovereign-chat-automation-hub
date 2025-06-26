@@ -1114,12 +1114,15 @@ export type Database = {
       ticket_messages: {
         Row: {
           ai_confidence_score: number | null
+          audio_base64: string | null
           content: string
           created_at: string
           from_me: boolean | null
           id: string
           is_ai_response: boolean | null
           is_internal_note: boolean | null
+          media_duration: number | null
+          media_transcription: string | null
           media_url: string | null
           message_id: string
           message_type: string | null
@@ -1130,12 +1133,15 @@ export type Database = {
         }
         Insert: {
           ai_confidence_score?: number | null
+          audio_base64?: string | null
           content: string
           created_at?: string
           from_me?: boolean | null
           id?: string
           is_ai_response?: boolean | null
           is_internal_note?: boolean | null
+          media_duration?: number | null
+          media_transcription?: string | null
           media_url?: string | null
           message_id: string
           message_type?: string | null
@@ -1146,12 +1152,15 @@ export type Database = {
         }
         Update: {
           ai_confidence_score?: number | null
+          audio_base64?: string | null
           content?: string
           created_at?: string
           from_me?: boolean | null
           id?: string
           is_ai_response?: boolean | null
           is_internal_note?: boolean | null
+          media_duration?: number | null
+          media_transcription?: string | null
           media_url?: string | null
           message_id?: string
           message_type?: string | null
