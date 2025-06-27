@@ -4,41 +4,43 @@ const PRODUCTION_IP = '146.59.227.248';
 const PRODUCTION_PORT = '4000';
 
 export const getServerConfig = () => {
-  // Se estivermos no servidor (porta 8080), usar localhost
-  if (typeof window !== 'undefined' && window.location.port === '8080') {
-    // Se o servidor tem HTTPS configurado, usar HTTPS
-    if (window.location.protocol === 'https:') {
-      const serverUrl = `https://localhost/api`;
-      console.log(`🔒 Usando servidor local HTTPS: ${serverUrl}`);
-      return serverUrl.replace('/api', '');
-    } else {
-      const serverUrl = `http://localhost:${PRODUCTION_PORT}`;
-      console.log(`🔗 Usando servidor local HTTP: ${serverUrl}`);
-      return serverUrl;
-    }
-  }
+  // Detectar se estamos em ambiente local ou produção
+  const isLocal = typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
   
-  // Para Lovable e outros ambientes, tentar HTTPS primeiro
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-    const serverUrl = `https://${PRODUCTION_IP}`;
-    console.log(`🔒 Usando servidor HTTPS: ${serverUrl}`);
+  // Detectar se a página atual está em HTTPS
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  
+  if (isLocal) {
+    // Ambiente local - usar HTTP
+    const serverUrl = `http://localhost:${PRODUCTION_PORT}`;
+    console.log(`🔗 [LOCAL] Usando servidor HTTP: ${serverUrl}`);
     return serverUrl;
   }
   
-  // Fallback para HTTP
-  const serverUrl = `http://${PRODUCTION_IP}:${PRODUCTION_PORT}`;
-  console.log(`🔗 Usando servidor HTTP: ${serverUrl}`);
-  return serverUrl;
+  // Ambiente de produção - sempre tentar HTTPS primeiro
+  if (isHttps) {
+    // Se a página está em HTTPS, usar HTTPS para API também
+    const serverUrl = `https://${PRODUCTION_IP}`;
+    console.log(`🔒 [PROD-HTTPS] Usando servidor HTTPS: ${serverUrl}`);
+    return serverUrl;
+  } else {
+    // Fallback para HTTP se não conseguir HTTPS
+    const serverUrl = `http://${PRODUCTION_IP}:${PRODUCTION_PORT}`;
+    console.log(`🔗 [PROD-HTTP] Usando servidor HTTP: ${serverUrl}`);
+    return serverUrl;
+  }
 };
 
 export const SERVER_URL = getServerConfig();
 export const API_BASE_URL = `${SERVER_URL}/api`;
 export const SOCKET_URL = SERVER_URL;
 
-// Logs para debug
-console.log(`🌐 Configuração automática:`);
-console.log(`  • Protocolo: ${typeof window !== 'undefined' ? window.location.protocol : 'N/A'}`);
-console.log(`  • Porta atual: ${typeof window !== 'undefined' ? window.location.port : 'N/A'}`);
-console.log(`  • Servidor: ${SERVER_URL}`);
+// Debug completo
+console.log(`🌐 ===== CONFIGURAÇÃO DE AMBIENTE =====`);
+console.log(`  • URL Base: ${SERVER_URL}`);
 console.log(`  • API: ${API_BASE_URL}`);
 console.log(`  • Socket: ${SOCKET_URL}`);
+console.log(`  • Protocolo da página: ${typeof window !== 'undefined' ? window.location.protocol : 'N/A'}`);
+console.log(`  • Hostname: ${typeof window !== 'undefined' ? window.location.hostname : 'N/A'}`);
+console.log(`==========================================`);

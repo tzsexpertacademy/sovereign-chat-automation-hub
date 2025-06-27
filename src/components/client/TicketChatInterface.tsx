@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
+import { SERVER_URL } from '@/config/environment';
 import MessageStatus from './MessageStatus';
 import TypingIndicator from './TypingIndicator';
 import AudioPlayer from './AudioPlayer';
@@ -250,19 +251,20 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
 
     try {
-      console.log('🎤 ===== PROCESSANDO ÁUDIO MANUAL (NOVO MÉTODO) =====');
+      console.log('🎤 ===== ENVIANDO ÁUDIO MANUAL (VERSÃO CORRIGIDA) =====');
       console.log('📊 Detalhes do áudio:', {
         size: audioBlob.size,
         type: audioBlob.type,
         duration: duration,
-        chatId: ticket.chat_id
+        chatId: ticket.chat_id,
+        instanceId: connectedInstance
       });
 
       const messageId = `audio_manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       simulateMessageProgression(messageId, true);
       markActivity();
 
-      // NOVA ABORDAGEM: Converter blob para base64 e enviar via API atualizada
+      // Converter blob para base64
       const arrayBuffer = await audioBlob.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
       let binaryString = '';
@@ -277,10 +279,10 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         mimeType: audioBlob.type
       });
 
-      // ENVIAR USANDO A NOVA API QUE SUPORTA BASE64
-      console.log('📤 Enviando áudio via nova API base64...');
+      // URL corrigida usando a configuração de ambiente
+      const audioApiUrl = `${SERVER_URL}/api/clients/${connectedInstance}/send-audio`;
       
-      const audioApiUrl = `https://146.59.227.248:4000/api/clients/${connectedInstance}/send-audio`;
+      console.log('📤 Enviando áudio para:', audioApiUrl);
       
       const response = await fetch(audioApiUrl, {
         method: 'POST',
@@ -297,14 +299,15 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       console.log('📡 Resposta da API de áudio:', {
         status: response.status,
         statusText: response.statusText,
-        ok: response.ok
+        ok: response.ok,
+        url: audioApiUrl
       });
 
       const result = await response.json();
       console.log('📄 Dados da resposta:', result);
 
       if (response.ok && result.success) {
-        console.log('✅ Áudio manual enviado com sucesso via nova API');
+        console.log('✅ Áudio manual enviado com sucesso');
         
         // Registrar no ticket
         await ticketsService.addTicketMessage({
@@ -320,7 +323,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: new Date().toISOString()
         });
 
-        // Salvar áudio base64 separadamente
+        // Salvar áudio base64
         await supabase
           .from('ticket_messages')
           .update({ audio_base64: base64Audio })
@@ -330,20 +333,30 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         
         toast({
           title: "Sucesso",
-          description: "Áudio enviado com sucesso via nova API"
+          description: "Áudio enviado com sucesso"
         });
       } else {
-        console.error('❌ Erro na nova API de áudio:', result);
-        throw new Error(result.error || `Erro HTTP ${response.status}`);
+        console.error('❌ Erro na API de áudio:', result);
+        throw new Error(result.error || `Erro HTTP ${response.status}: ${response.statusText}`);
       }
 
     } catch (error) {
-      console.error('❌ Erro ao processar áudio manual:', error);
+      console.error('❌ ERRO CRÍTICO ao processar áudio manual:', error);
       console.error('💥 Stack trace:', error.stack);
+      console.error('🔧 URL usada:', `${SERVER_URL}/api/clients/${connectedInstance}/send-audio`);
+      
+      // Diagnóstico adicional
+      if (error.message.includes('Failed to fetch') || error.message.includes('SSL')) {
+        console.error('🚨 PROBLEMA DE SSL/HTTPS DETECTADO!');
+        console.error('💡 Soluções possíveis:');
+        console.error('   1. Verificar se certificado SSL está válido');
+        console.error('   2. Aceitar certificado autoassinado no navegador');
+        console.error('   3. Verificar se servidor está rodando em HTTPS');
+      }
       
       toast({
-        title: "Erro",
-        description: `Erro ao processar áudio: ${error.message}`,
+        title: "Erro no Áudio",
+        description: `Falha ao enviar áudio: ${error.message}`,
         variant: "destructive"
       });
     }
@@ -459,7 +472,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         </div>
       )}
 
-      {/* Status da conexão */}
+      {/* Status da conexão com diagnóstico */}
       {!connectedInstance && (
         <div className="p-3 bg-yellow-50 border-b border-yellow-200 flex items-center gap-2 text-yellow-800">
           <AlertCircle className="w-4 h-4" />
@@ -471,6 +484,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         <div className="p-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-green-800">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <span className="text-xs">Conectado via: {connectedInstance}</span>
+          <span className="text-xs">• Servidor: {SERVER_URL}</span>
           {isOnline && (
             <>
               <span className="text-xs">•</span>
@@ -561,7 +575,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         />
       )}
 
-      {/* Campo de entrada com botão de áudio */}
+      {/* Campo de entrada com melhor feedback */}
       <div className="p-4 border-t bg-white">
         <div className="flex gap-2 items-end">
           <Input
@@ -596,6 +610,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             )}
           </Button>
         </div>
+        
+        {/* Debug info no desenvolvimento */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-2 text-xs text-gray-500">
+            Debug: {SERVER_URL} | Instância: {connectedInstance || 'Nenhuma'}
+          </div>
+        )}
       </div>
     </div>
   );
