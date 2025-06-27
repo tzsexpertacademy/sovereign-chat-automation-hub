@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, Square, Play, Pause, Trash2, Send, AlertCircle } from "lucide-react";
@@ -111,25 +110,26 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
       streamRef.current = stream;
       chunksRef.current = [];
       
-      // Tentar diferentes formatos, preferindo os mais compatíveis
+      // Preferir OGG (mais compatível com WhatsApp), depois WAV
       const supportedTypes = [
+        'audio/ogg;codecs=opus',
         'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
-        'audio/ogg'
+        'audio/wav',
+        'audio/webm'
       ];
       
-      let selectedType = 'audio/webm';
+      let selectedType = 'audio/wav'; // fallback seguro
       for (const type of supportedTypes) {
         if (MediaRecorder.isTypeSupported(type)) {
           selectedType = type;
-          console.log('✅ Formato selecionado:', type);
+          console.log('✅ Formato de gravação selecionado:', type);
           break;
         }
       }
       
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: selectedType
+        mimeType: selectedType,
+        audioBitsPerSecond: 128000 // qualidade otimizada
       });
       
       mediaRecorderRef.current = mediaRecorder;
@@ -145,7 +145,8 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
         console.log('📦 Áudio gravado:', {
           size: blob.size,
           type: blob.type,
-          sizeInKB: Math.round(blob.size / 1024)
+          sizeInKB: Math.round(blob.size / 1024),
+          duration: currentTime
         });
         
         if (blob.size > 0) {
@@ -161,7 +162,7 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
         cleanup();
       };
       
-      mediaRecorder.start(100);
+      mediaRecorder.start(250); // chunks menores para melhor qualidade
       setIsRecording(true);
       setCurrentTime(0);
       
