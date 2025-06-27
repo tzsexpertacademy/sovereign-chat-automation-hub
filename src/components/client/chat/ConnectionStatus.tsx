@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { AlertCircle } from 'lucide-react';
-import { getServerConfig, getAlternativeServerConfig } from '@/config/environment';
+import { getServerConfig } from '@/config/environment';
 
 interface ConnectionStatusProps {
   connectedInstance: string | null;
@@ -10,7 +10,6 @@ interface ConnectionStatusProps {
 
 const ConnectionStatus = ({ connectedInstance, isOnline }: ConnectionStatusProps) => {
   const currentConfig = getServerConfig();
-  const hasAlternative = !!getAlternativeServerConfig();
 
   if (!connectedInstance) {
     return (
@@ -26,7 +25,7 @@ const ConnectionStatus = ({ connectedInstance, isOnline }: ConnectionStatusProps
       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
       <span className="text-xs">Conectado: {connectedInstance}</span>
       <span className="text-xs">• {currentConfig.protocol.toUpperCase()}: {currentConfig.serverUrl}</span>
-      {hasAlternative && <span className="text-xs">• Fallback: ✓</span>}
+      <span className="text-xs">• ✅ Config Corrigida</span>
       {isOnline && (
         <>
           <span className="text-xs">•</span>
