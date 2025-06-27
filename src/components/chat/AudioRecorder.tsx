@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, Square, Play, Pause, Trash2, Send, AlertCircle } from "lucide-react";
@@ -145,7 +144,7 @@ const AudioRecorder = ({ onAudioReady, maxDuration = 60, className }: AudioRecor
 
   const startRecording = async () => {
     try {
-      console.log('🎤 ===== INICIANDO GRAVAÇÃO =====');
+      console.log('🎤 ===== INICIANDO GRAVAÇÃO COM DEBUG =====');
       
       // Verificar/solicitar permissões primeiro
       if (hasPermission !== true) {
@@ -173,15 +172,16 @@ const AudioRecorder = ({ onAudioReady, maxDuration = 60, className }: AudioRecor
       streamRef.current = stream;
       chunksRef.current = [];
       
-      // Verificar formatos suportados
+      // TESTAR FORMATOS SUPORTADOS COM PRIORIDADE PARA WAV
       const supportedMimeTypes = [
+        'audio/wav',           // PRIORIDADE MÁXIMA - mais compatível
         'audio/webm;codecs=opus',
         'audio/webm',
         'audio/mp4',
-        'audio/wav'
+        'audio/ogg'
       ];
       
-      let selectedMimeType = 'audio/webm';
+      let selectedMimeType = 'audio/wav'; // Default seguro
       for (const mimeType of supportedMimeTypes) {
         if (MediaRecorder.isTypeSupported(mimeType)) {
           selectedMimeType = mimeType;
@@ -190,6 +190,10 @@ const AudioRecorder = ({ onAudioReady, maxDuration = 60, className }: AudioRecor
         }
       }
       
+      console.log('🎵 ===== CONFIGURAÇÃO DO MEDIARECORDER =====');
+      console.log('📋 Formato escolhido:', selectedMimeType);
+      console.log('🔍 Formatos testados:', supportedMimeTypes.map(m => `${m}: ${MediaRecorder.isTypeSupported(m)}`));
+      
       // Criar MediaRecorder
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: selectedMimeType
@@ -197,25 +201,58 @@ const AudioRecorder = ({ onAudioReady, maxDuration = 60, className }: AudioRecor
       
       mediaRecorderRef.current = mediaRecorder;
       
-      // Configurar eventos
+      // Configurar eventos com debug detalhado
       mediaRecorder.ondataavailable = (event) => {
-        console.log('📊 Dados disponíveis:', event.data.size, 'bytes');
+        console.log('📊 Dados disponíveis:', {
+          size: event.data.size,
+          type: event.data.type,
+          timestamp: new Date().toISOString()
+        });
         if (event.data.size > 0) {
           chunksRef.current.push(event.data);
+          console.log('📦 Total de chunks:', chunksRef.current.length);
         }
       };
       
       mediaRecorder.onstop = () => {
-        console.log('🛑 Gravação parada, processando...');
+        console.log('🛑 ===== GRAVAÇÃO PARADA, PROCESSANDO =====');
+        console.log('📊 Chunks coletados:', chunksRef.current.length);
+        console.log('📏 Tamanhos dos chunks:', chunksRef.current.map(c => c.size));
+        
         const blob = new Blob(chunksRef.current, { 
           type: selectedMimeType 
         });
         
-        console.log('📦 Blob criado:', {
+        console.log('📦 ===== BLOB FINAL CRIADO =====');
+        console.log('📊 Blob details:', {
           size: blob.size,
-          type: blob.type
+          type: blob.type,
+          sizeInKB: Math.round(blob.size / 1024),
+          sizeInMB: Math.round(blob.size / 1024 / 1024 * 100) / 100
         });
         
+        // VERIFICAR SE O BLOB É VÁLIDO
+        if (blob.size === 0) {
+          console.error('❌ BLOB VAZIO - algo deu errado na gravação');
+          toast({
+            title: "Erro na Gravação",
+            description: "Áudio gravado está vazio. Tente novamente.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        if (blob.size > 50 * 1024 * 1024) { // 50MB
+          console.error('❌ BLOB MUITO GRANDE:', blob.size);
+          toast({
+            title: "Arquivo Muito Grande",
+            description: "Áudio muito longo. Máximo permitido: 50MB",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        console.log('✅ BLOB VÁLIDO - definindo no estado');
         setRecordedBlob(blob);
         cleanup();
       };
@@ -234,7 +271,7 @@ const AudioRecorder = ({ onAudioReady, maxDuration = 60, className }: AudioRecor
       setIsRecording(true);
       setCurrentTime(0);
       
-      console.log('🔴 Gravação iniciada');
+      console.log('🔴 Gravação iniciada com sucesso');
       
       // Timer para atualizar duração
       timerRef.current = setInterval(() => {
@@ -345,14 +382,31 @@ const AudioRecorder = ({ onAudioReady, maxDuration = 60, className }: AudioRecor
 
   const sendRecording = () => {
     if (recordedBlob) {
-      console.log('📤 Enviando gravação:', {
+      console.log('📤 ===== ENVIANDO GRAVAÇÃO =====');
+      console.log('📊 Blob a ser enviado:', {
         size: recordedBlob.size,
         type: recordedBlob.type,
-        duration: duration
+        duration: duration,
+        sizeInKB: Math.round(recordedBlob.size / 1024),
+        sizeInMB: Math.round(recordedBlob.size / 1024 / 1024 * 100) / 100
       });
       
+      // VERIFICAÇÃO FINAL ANTES DO ENVIO
+      if (recordedBlob.size === 0) {
+        console.error('❌ TENTATIVA DE ENVIO COM BLOB VAZIO');
+        toast({
+          title: "Erro",
+          description: "Áudio está vazio. Grave novamente.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      console.log('✅ BLOB VÁLIDO - enviando para onAudioReady');
       onAudioReady(recordedBlob, duration);
       discardRecording();
+    } else {
+      console.error('❌ TENTATIVA DE ENVIO SEM BLOB');
     }
   };
 
