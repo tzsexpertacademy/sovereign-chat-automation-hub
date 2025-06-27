@@ -197,11 +197,14 @@ export const useAudioHandling = (ticketId: string) => {
       // Tentar enviar com fallback
       const result = await sendAudioWithFallback(audioBlob, ticket, connectedInstance, messageId);
 
-      // Atualizar status para completo
-      await ticketsService.updateTicketMessage(messageId, {
-        processing_status: 'completed',
-        content: `🎵 Áudio enviado via ${result.format} (${duration}s)`
-      });
+      // Atualizar mensagem existente para completada
+      await supabase
+        .from('ticket_messages')
+        .update({ 
+          processing_status: 'completed',
+          content: `🎵 Áudio enviado via ${result.format} (${duration}s)`
+        })
+        .eq('message_id', messageId);
 
       toast({
         title: "Sucesso! 🎵",
