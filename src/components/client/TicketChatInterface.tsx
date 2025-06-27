@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -239,7 +240,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
   };
 
-  // NOVA FUNÇÃO: Lidar com áudio gravado manualmente
   const handleAudioReady = async (audioBlob: Blob, duration: number) => {
     if (!ticket || !connectedInstance) {
       toast({
@@ -291,7 +291,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       if (response.success) {
         console.log('✅ Áudio manual enviado com sucesso via WhatsApp');
         
-        // Registrar no ticket
+        // Registrar no ticket - CORRIGIDO: removendo audio_base64 do Insert
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: messageId,
@@ -299,12 +299,17 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           sender_name: 'Atendente',
           content: '🎤 Mensagem de áudio',
           message_type: 'audio',
-          audio_base64: base64Audio,
           is_internal_note: false,
           is_ai_response: false,
           processing_status: 'completed',
           timestamp: new Date().toISOString()
         });
+
+        // Atualizar o áudio base64 separadamente
+        await supabase
+          .from('ticket_messages')
+          .update({ audio_base64: base64Audio })
+          .eq('message_id', messageId);
 
         console.log('💾 Áudio manual registrado no ticket');
         
@@ -546,7 +551,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         />
       )}
 
-      {/* CAMPO DE ENTRADA ATUALIZADO COM BOTÃO DE ÁUDIO */}
+      {/* Campo de entrada com botão de áudio */}
       <div className="p-4 border-t bg-white">
         <div className="flex gap-2 items-end">
           <Input
@@ -562,7 +567,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             className="flex-1"
           />
           
-          {/* BOTÃO DE GRAVAÇÃO DE ÁUDIO */}
           <AudioRecorder 
             onAudioReady={handleAudioReady}
             maxDuration={60}

@@ -93,198 +93,204 @@ function processAudioPatterns(text: string, audioLibrary: any[] = []) {
   };
 }
 
-// FUNÇÃO COMPLETAMENTE REESCRITA PARA DETECÇÃO INTELIGENTE DO SERVIDOR
+// FUNÇÃO COMPLETAMENTE REESCRITA - DETECÇÃO INTELIGENTE DE AMBIENTE
 async function getWhatsAppServerUrl(): Promise<string> {
   console.log('🌐 ===== DETECÇÃO INTELIGENTE DO SERVIDOR WHATSAPP =====');
   
-  const candidates = [
-    'http://localhost:4000',    // Ambiente local
-    'http://127.0.0.1:4000',   // Alternativa local
-    'http://146.59.227.248:4000' // Servidor de produção
-  ];
+  // Detectar ambiente baseado no hostname da URL atual
+  const isLocalEnvironment = globalThis.location?.hostname === 'localhost' || 
+                            globalThis.location?.hostname === '127.0.0.1' ||
+                            Deno.env.get('ENVIRONMENT') === 'local';
+  
+  console.log('🔍 Ambiente detectado:', {
+    isLocal: isLocalEnvironment,
+    hostname: globalThis.location?.hostname || 'undefined'
+  });
+  
+  const candidates = isLocalEnvironment 
+    ? ['http://localhost:4000', 'http://127.0.0.1:4000', 'http://146.59.227.248:4000']
+    : ['http://146.59.227.248:4000', 'http://localhost:4000', 'http://127.0.0.1:4000'];
   
   for (const url of candidates) {
     try {
-      console.log(`🔍 Testando conectividade: ${url}`);
+      console.log(`🔍 Testando servidor: ${url}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
       
       const healthResponse = await fetch(`${url}/health`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(5000) // 5s timeout
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (healthResponse.ok) {
         const healthData = await healthResponse.json();
-        console.log(`✅ Servidor encontrado em: ${url}`, healthData);
+        console.log(`✅ Servidor encontrado: ${url}`, healthData);
         return url;
       }
       
-      console.log(`❌ Servidor ${url} não respondeu: HTTP ${healthResponse.status}`);
+      console.log(`❌ Servidor ${url} retornou: HTTP ${healthResponse.status}`);
     } catch (error) {
       console.log(`❌ Falha ao conectar ${url}:`, error.message);
     }
   }
   
-  // Fallback para produção se nenhum servidor responder
-  const fallbackUrl = 'http://146.59.227.248:4000';
-  console.log(`⚠️ Usando fallback: ${fallbackUrl}`);
+  // Fallback baseado no ambiente
+  const fallbackUrl = isLocalEnvironment ? 'http://localhost:4000' : 'http://146.59.227.248:4000';
+  console.log(`⚠️ Usando fallback para ambiente ${isLocalEnvironment ? 'local' : 'produção'}: ${fallbackUrl}`);
   return fallbackUrl;
 }
 
-// FUNÇÃO COMPLETAMENTE REESCRITA PARA CORRIGIR O PROBLEMA DE FORMATO DE ÁUDIO
-async function sendAudioToWhatsApp(clientId: string, chatId: string, audioBase64: string, audioText: string) {
+// FUNÇÃO NOVA: Converter base64 para Blob temporário para o WhatsApp
+async function convertBase64ToBlob(base64Audio: string, filename: string): Promise<Blob> {
+  console.log('🔄 Convertendo base64 para Blob...');
+  
   try {
-    console.log('🎵 ===== ENVIANDO ÁUDIO MP3 PARA WHATSAPP (VERSÃO INTELIGENTE) =====');
+    // Decodificar base64
+    const binaryString = atob(base64Audio);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Criar blob com o tipo correto baseado na extensão
+    const mimeType = filename.endsWith('.mp3') ? 'audio/mpeg' : 
+                    filename.endsWith('.wav') ? 'audio/wav' :
+                    filename.endsWith('.ogg') ? 'audio/ogg' : 'audio/mpeg';
+    
+    const blob = new Blob([bytes], { type: mimeType });
+    
+    console.log('✅ Blob criado:', {
+      size: blob.size,
+      type: blob.type,
+      filename: filename
+    });
+    
+    return blob;
+  } catch (error) {
+    console.error('❌ Erro ao converter base64 para blob:', error);
+    throw new Error(`Erro na conversão de áudio: ${error.message}`);
+  }
+}
+
+// FUNÇÃO EXPANDIDA: Enviar áudio para WhatsApp (suporta base64 + arquivos)
+async function sendAudioToWhatsApp(clientId: string, chatId: string, audioData: string | Blob, audioText: string = '', isBase64: boolean = true) {
+  try {
+    console.log('🎵 ===== ENVIANDO ÁUDIO PARA WHATSAPP (VERSÃO EXPANDIDA) =====');
     
     const serverUrl = await getWhatsAppServerUrl();
-    console.log('🌐 URL do servidor WhatsApp detectado:', serverUrl);
+    console.log('🌐 URL do servidor WhatsApp:', serverUrl);
     
     console.log('📊 Parâmetros de envio:', {
       clientId: clientId.substring(0, 8) + '...',
       chatId: chatId.substring(0, 20) + '...',
-      audioSize: audioBase64.length,
+      audioSize: isBase64 ? audioData.length : (audioData as Blob).size,
       textPreview: audioText.substring(0, 50),
+      isBase64,
       serverUrl
     });
 
-    // FASE 1: VALIDAÇÃO COMPLETA DO SERVIDOR WHATSAPP
+    // FASE 1: VALIDAR SERVIDOR
     console.log('🔍 FASE 1: Validando servidor WhatsApp...');
-    try {
-      const healthResponse = await fetch(`${serverUrl}/health`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(10000) // 10s timeout
-      });
-      
-      if (!healthResponse.ok) {
-        throw new Error(`Servidor WhatsApp offline: HTTP ${healthResponse.status}`);
-      }
-      
-      const healthData = await healthResponse.json();
-      console.log('✅ Servidor WhatsApp online:', healthData);
-    } catch (healthError) {
-      console.error('❌ ERRO CRÍTICO: Servidor WhatsApp inacessível:', healthError.message);
-      throw new Error(`Servidor WhatsApp não responde: ${healthError.message}`);
-    }
-
-    // FASE 2: VALIDAÇÃO DO STATUS DO CLIENTE
-    console.log('🔍 FASE 2: Validando cliente WhatsApp...');
-    try {
-      const statusResponse = await fetch(`${serverUrl}/api/clients/${clientId}/status`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(10000)
-      });
-      
-      if (!statusResponse.ok) {
-        const statusError = await statusResponse.text();
-        throw new Error(`Cliente inválido: HTTP ${statusResponse.status} - ${statusError}`);
-      }
-      
-      const statusData = await statusResponse.json();
-      console.log('📊 Status do cliente:', statusData);
-      
-      if (!statusData.success || statusData.status !== 'connected') {
-        throw new Error(`Cliente não conectado. Status atual: ${statusData.status || 'desconhecido'}`);
-      }
-    } catch (statusError) {
-      console.error('❌ ERRO: Cliente WhatsApp não conectado:', statusError.message);
-      throw new Error(`Cliente WhatsApp falhou: ${statusError.message}`);
-    }
-
-    // FASE 3: PREPARAÇÃO CORRETA DO ÁUDIO MP3
-    console.log('🔍 FASE 3: Preparando áudio MP3 corretamente...');
-    
-    // Validar se é base64 válido
-    if (!/^[A-Za-z0-9+/=]+$/.test(audioBase64)) {
-      throw new Error('Dados de áudio base64 inválidos');
-    }
-    
-    // Converter base64 para bytes de forma robusta
-    let audioBytes: Uint8Array;
-    try {
-      const binaryString = atob(audioBase64);
-      audioBytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        audioBytes[i] = binaryString.charCodeAt(i);
-      }
-      console.log('✅ Áudio convertido para bytes:', audioBytes.length, 'bytes');
-    } catch (decodeError) {
-      console.error('❌ Erro ao decodificar base64:', decodeError);
-      throw new Error('Falha ao decodificar dados de áudio base64');
-    }
-    
-    // CORREÇÃO CRÍTICA: Criar blob MP3 com mimetype correto
-    const audioBlob = new Blob([audioBytes], { 
-      type: 'audio/mpeg' // MP3 correto, não OGG
+    const healthResponse = await fetch(`${serverUrl}/health`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000)
     });
-    console.log('🎵 Blob MP3 criado:', {
+    
+    if (!healthResponse.ok) {
+      throw new Error(`Servidor WhatsApp offline: HTTP ${healthResponse.status}`);
+    }
+    
+    const healthData = await healthResponse.json();
+    console.log('✅ Servidor WhatsApp online:', healthData);
+
+    // FASE 2: VALIDAR CLIENTE
+    console.log('🔍 FASE 2: Validando cliente WhatsApp...');
+    const statusResponse = await fetch(`${serverUrl}/api/clients/${clientId}/status`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000)
+    });
+    
+    if (!statusResponse.ok) {
+      const statusError = await statusResponse.text();
+      throw new Error(`Cliente inválido: HTTP ${statusResponse.status} - ${statusError}`);
+    }
+    
+    const statusData = await statusResponse.json();
+    console.log('📊 Status do cliente:', statusData);
+    
+    if (!statusData.success || statusData.status !== 'connected') {
+      throw new Error(`Cliente não conectado. Status: ${statusData.status || 'desconhecido'}`);
+    }
+
+    // FASE 3: PREPARAR ÁUDIO (base64 ou blob)
+    console.log('🔍 FASE 3: Preparando áudio...');
+    
+    let audioBlob: Blob;
+    
+    if (isBase64) {
+      console.log('🔄 Convertendo base64 para blob...');
+      audioBlob = await convertBase64ToBlob(audioData as string, 'audio.mp3');
+    } else {
+      console.log('📁 Usando blob fornecido diretamente...');
+      audioBlob = audioData as Blob;
+    }
+    
+    console.log('🎵 Áudio preparado:', {
       size: audioBlob.size,
       type: audioBlob.type,
-      isValidSize: audioBlob.size > 1000 // Pelo menos 1KB
+      isValidSize: audioBlob.size > 100
     });
 
     if (audioBlob.size < 100) {
       throw new Error('Arquivo de áudio muito pequeno (possível corrupção)');
     }
 
-    // FASE 4: CRIAÇÃO DO FORMDATA COM FORMATO CORRETO
-    console.log('🔍 FASE 4: Criando FormData para MP3...');
+    // FASE 4: CRIAR FORMDATA
+    console.log('🔍 FASE 4: Criando FormData...');
     const formData = new FormData();
     formData.append('to', chatId);
     formData.append('file', audioBlob, 'voice_message.mp3');
     
-    // Adicionar caption se houver
     if (audioText && audioText.trim()) {
       formData.append('caption', audioText.trim());
       console.log('📝 Caption adicionada:', audioText.trim());
     }
 
-    // LOGS DETALHADOS PARA DEBUG
-    console.log('📤 FormData preparado:', {
-      to: chatId,
-      fileName: 'voice_message.mp3',
-      fileSize: audioBlob.size,
-      fileType: audioBlob.type,
-      hasCaption: !!(audioText && audioText.trim())
-    });
-
-    // FASE 5: ENVIO COM TRATAMENTO ROBUSTO DE ERROS E RETRY
-    console.log('🔍 FASE 5: Enviando para WhatsApp com retry...');
+    // FASE 5: ENVIAR COM RETRY
+    console.log('🔍 FASE 5: Enviando para WhatsApp...');
     
     const audioEndpointUrl = `${serverUrl}/api/clients/${clientId}/send-audio`;
-    console.log('🎯 Endpoint completo:', audioEndpointUrl);
+    console.log('🎯 Endpoint:', audioEndpointUrl);
 
+    const maxRetries = 2;
     let lastError: Error | null = null;
-    const maxRetries = 3;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`🚀 Tentativa ${attempt}/${maxRetries} de envio...`);
+        console.log(`🚀 Tentativa ${attempt}/${maxRetries}...`);
         
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutos
-
         const response = await fetch(audioEndpointUrl, {
           method: 'POST',
           body: formData,
-          signal: controller.signal,
+          signal: AbortSignal.timeout(60000) // 1 minuto
         });
-
-        clearTimeout(timeoutId);
 
         console.log('📡 Resposta do servidor:', {
           status: response.status,
           statusText: response.statusText,
-          contentType: response.headers.get('content-type'),
           attempt: attempt
         });
 
         if (!response.ok) {
           let errorDetails;
-          const contentType = response.headers.get('content-type') || '';
-          
           try {
+            const contentType = response.headers.get('content-type') || '';
             if (contentType.includes('application/json')) {
               errorDetails = await response.json();
             } else {
@@ -301,18 +307,17 @@ async function sendAudioToWhatsApp(clientId: string, chatId: string, audioBase64
             throw new Error(errorMessage);
           }
           
-          // Aguardar antes de tentar novamente
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
           continue;
         }
 
-        // PROCESSAMENTO DA RESPOSTA DE SUCESSO
+        // Processar resposta de sucesso
         let result;
         try {
           result = await response.json();
-          console.log('📨 Resposta JSON do servidor:', result);
+          console.log('📨 Resposta JSON:', result);
         } catch (jsonError) {
-          console.error('❌ Erro ao processar JSON da resposta:', jsonError);
+          console.error('❌ Erro ao processar JSON:', jsonError);
           throw new Error('Resposta do servidor não é JSON válido');
         }
 
@@ -321,22 +326,19 @@ async function sendAudioToWhatsApp(clientId: string, chatId: string, audioBase64
           throw new Error(result.error || result.message || 'Falha na API do WhatsApp');
         }
 
-        console.log('✅ ===== ÁUDIO MP3 ENVIADO COM SUCESSO =====');
-        console.log('🎉 Detalhes do sucesso:', {
-          messageId: result.messageId || result.id || result.data?.id,
+        console.log('✅ ===== ÁUDIO ENVIADO COM SUCESSO =====');
+        console.log('🎉 Detalhes:', {
+          messageId: result.messageId || result.id,
           status: result.status,
           success: result.success,
-          timestamp: new Date().toISOString(),
-          audioFormat: 'MP3',
           audioSize: audioBlob.size,
           attempt: attempt
         });
 
         return {
           success: true,
-          messageId: result.messageId || result.id || result.data?.id,
+          messageId: result.messageId || result.id,
           status: result.status,
-          audioFormat: 'MP3',
           audioSize: audioBlob.size,
           attempt: attempt,
           ...result
@@ -353,34 +355,24 @@ async function sendAudioToWhatsApp(clientId: string, chatId: string, audioBase64
       }
     }
     
-    // Se chegou aqui, todas as tentativas falharam
     throw lastError || new Error('Todas as tentativas de envio falharam');
     
   } catch (error) {
-    console.error('❌ ===== ERRO CRÍTICO NO ENVIO DE ÁUDIO MP3 =====');
-    console.error('💥 Detalhes completos do erro:', {
+    console.error('❌ ===== ERRO CRÍTICO NO ENVIO DE ÁUDIO =====');
+    console.error('💥 Detalhes:', {
       message: error.message,
       name: error.name,
-      stack: error.stack,
       timestamp: new Date().toISOString()
     });
     
-    // Categorização detalhada de erros para debugging
     if (error.name === 'AbortError') {
-      console.error('⏰ TIMEOUT: Servidor demorou mais que 2 minutos');
       throw new Error('Timeout: Servidor WhatsApp não respondeu em tempo hábil');
     } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-      console.error('🔌 REDE: Problema de conectividade');
       throw new Error('Erro de rede: Não foi possível conectar ao servidor WhatsApp');
     } else if (error.message.includes('não conectado') || error.message.includes('not connected')) {
-      console.error('📱 CLIENTE: WhatsApp desconectado');
       throw new Error('Cliente WhatsApp não está conectado ou autenticado');
-    } else if (error.message.includes('HTTP') || error.message.includes('servidor')) {
-      console.error('🌐 SERVIDOR: Problema na API WhatsApp');
-      throw new Error(`Erro no servidor WhatsApp: ${error.message}`);
     } else {
-      console.error('❓ ERRO DESCONHECIDO:', error.message);
-      throw new Error(`Erro inesperado: ${error.message}`);
+      throw new Error(`Erro no envio de áudio: ${error.message}`);
     }
   }
 }
@@ -465,21 +457,22 @@ serve(async (req) => {
     if (isAudioMessage && settings.audio_processing_enabled) {
       console.log('🎵 PROCESSANDO mensagem de áudio...');
       
-      const speechResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/speech-to-text`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const speechResponse = await supabase.functions.invoke('speech-to-text', {
+        body: {
           audio: messageText,
           openaiApiKey: aiConfig.openai_api_key
-        })
+        }
       });
 
-      const speechResult = await speechResponse.json();
+      if (speechResponse.error) {
+        throw new Error(`Erro na transcrição: ${speechResponse.error.message}`);
+      }
+
+      const speechResult = speechResponse.data;
       if (speechResult.error) {
         throw new Error(`Erro na transcrição: ${speechResult.error}`);
       }
+      
       processedText = speechResult.text;
       console.log('🎵 ÁUDIO transcrito:', processedText);
     }
@@ -535,13 +528,6 @@ serve(async (req) => {
     }
 
     console.log('🤖 PROCESSANDO com OpenAI...');
-    console.log('📊 PARÂMETROS:', {
-      model: assistant.model || aiConfig.default_model || 'gpt-4o-mini',
-      temperature,
-      max_tokens: maxTokens,
-      promptLength: systemMessage.length,
-      messageLength: processedText.length
-    });
 
     // CHAMAR OPENAI
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -579,87 +565,77 @@ serve(async (req) => {
     let finalResponse = audioProcessing.processedText;
     let audioResponses = [];
 
-    // PROCESSAR INSTRUÇÕES DE ÁUDIO
+    // PROCESSAR INSTRUÇÕES DE ÁUDIO (CORRIGIDO)
     if (audioProcessing.hasAudio) {
       console.log('🎵 ===== PROCESSANDO INSTRUÇÕES DE ÁUDIO =====');
       
       for (const instruction of audioProcessing.audioInstructions) {
         try {
           if (instruction.type === 'elevenlabs' && settings.voice_cloning_enabled) {
-            console.log('🎤 GERANDO áudio MP3 com ElevenLabs:', instruction.text);
+            console.log('🎤 GERANDO áudio com ElevenLabs:', instruction.text);
             
-            const ttsResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/text-to-speech`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
+            const ttsResponse = await supabase.functions.invoke('text-to-speech', {
+              body: {
                 text: instruction.text,
                 voiceId: settings.eleven_labs_voice_id,
                 apiKey: settings.eleven_labs_api_key,
                 model: settings.eleven_labs_model || 'eleven_multilingual_v2',
                 voiceSettings: settings.voice_settings
-              })
+              }
             });
 
-            const ttsResult = await ttsResponse.json();
-            if (!ttsResult.error && ttsResult.success) {
-              console.log('✅ Áudio MP3 ElevenLabs gerado:', {
-                audioSizeBytes: ttsResult.audioSizeBytes,
-                base64Length: ttsResult.audioBase64?.length || 0,
-                format: 'MP3'
+            if (ttsResponse.error) {
+              console.error('❌ Erro na Edge Function TTS:', ttsResponse.error);
+              throw new Error(`Erro TTS: ${ttsResponse.error.message}`);
+            }
+
+            const ttsResult = ttsResponse.data;
+            if (!ttsResult.success) {
+              console.error('❌ Erro no resultado TTS:', ttsResult.error);
+              throw new Error(`Erro TTS: ${ttsResult.error}`);
+            }
+
+            console.log('✅ Áudio ElevenLabs gerado:', {
+              base64Length: ttsResult.audioBase64?.length || 0,
+              format: 'MP3'
+            });
+            
+            // ENVIAR ÁUDIO PARA WHATSAPP (VERSÃO CORRIGIDA)
+            try {
+              console.log('📤 Enviando áudio ElevenLabs para WhatsApp...');
+              const whatsappResult = await sendAudioToWhatsApp(
+                assistant.client_id, 
+                chatId, 
+                ttsResult.audioBase64, 
+                instruction.text,
+                true // é base64
+              );
+              
+              audioResponses.push({
+                type: 'elevenlabs',
+                text: instruction.text,
+                sent: true,
+                sentAt: new Date().toISOString(),
+                audioFormat: 'MP3',
+                whatsappMessageId: whatsappResult.messageId,
+                whatsappResult: whatsappResult
               });
               
-              // ENVIAR ÁUDIO PARA WHATSAPP COM FUNÇÃO CORRIGIDA
-              try {
-                console.log('📤 Enviando áudio MP3 para WhatsApp...');
-                const whatsappResult = await sendAudioToWhatsApp(
-                  assistant.client_id, 
-                  chatId, 
-                  ttsResult.audioBase64, 
-                  instruction.text
-                );
-                
-                audioResponses.push({
-                  type: 'elevenlabs',
-                  text: instruction.text,
-                  sent: true,
-                  sentAt: new Date().toISOString(),
-                  audioSizeBytes: ttsResult.audioSizeBytes,
-                  audioFormat: 'MP3',
-                  whatsappMessageId: whatsappResult.messageId,
-                  whatsappResult: whatsappResult
-                });
-                
-                console.log('✅ Áudio MP3 enviado com sucesso para WhatsApp:', whatsappResult.messageId);
-              } catch (whatsappError) {
-                console.error('❌ Falha ao enviar áudio MP3 para WhatsApp:', {
-                  error: whatsappError.message,
-                  instruction: instruction.text.substring(0, 50),
-                  clientId: assistant.client_id,
-                  audioFormat: 'MP3'
-                });
-                
-                // NÃO adicionar erro ao texto final se é especificamente para áudio
-                audioResponses.push({
-                  type: 'elevenlabs',
-                  text: instruction.text,
-                  sent: false,
-                  error: whatsappError.message,
-                  sentAt: new Date().toISOString(),
-                  audioFormat: 'MP3',
-                  audioSizeBytes: ttsResult.audioSizeBytes
-                });
-              }
-            } else {
-              console.error('❌ Erro ao gerar áudio ElevenLabs:', ttsResult.error);
+              console.log('✅ Áudio ElevenLabs enviado com sucesso:', whatsappResult.messageId);
+            } catch (whatsappError) {
+              console.error('❌ Falha ao enviar áudio ElevenLabs:', whatsappError.message);
+              
               audioResponses.push({
                 type: 'elevenlabs',
                 text: instruction.text,
                 sent: false,
-                error: ttsResult.error,
-                sentAt: new Date().toISOString()
+                error: whatsappError.message,
+                sentAt: new Date().toISOString(),
+                audioFormat: 'MP3'
               });
+              
+              // IMPORTANTE: Se áudio falha, NÃO adicionar ao texto final
+              console.log('⚠️ Áudio falhou - não adicionando ao texto de resposta');
             }
             
           } else if (instruction.type === 'library' && instruction.audioItem) {
@@ -713,17 +689,18 @@ serve(async (req) => {
       hasText: !!finalResponse.trim(),
       hasAudio: audioResponses.length > 0,
       audiosSentToWhatsApp: audioResponses.filter(a => a.sent).length,
-      audiosWithError: audioResponses.filter(a => !a.sent && a.error).length,
-      audioFormat: 'MP3'
+      audiosWithError: audioResponses.filter(a => !a.sent && a.error).length
     });
 
-    // Se há instruções de áudio mas o texto está vazio, não enviar texto
+    // DECISÃO INTELIGENTE: Se há áudio enviado com sucesso, texto é opcional
     const shouldSendText = finalResponse.trim().length > 0;
+    const hasSuccessfulAudio = audioResponses.some(a => a.sent);
 
     return new Response(JSON.stringify({ 
       response: shouldSendText ? finalResponse : '',
       audioResponses: audioResponses,
       hasAudio: audioResponses.length > 0,
+      hasSuccessfulAudio: hasSuccessfulAudio,
       processed: true,
       audioFormat: 'MP3',
       settings: {
