@@ -5,11 +5,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot, User, Mic } from 'lucide-react';
 import MessageStatus from '../MessageStatus';
 import AudioPlayer from '../AudioPlayer';
+import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 
 interface MessagesListProps {
   messages: any[];
   scrollAreaRef: React.RefObject<HTMLDivElement>;
-  getMessageStatus: (messageId: string) => string;
+  getMessageStatus: (messageId: string) => MessageStatusType;
 }
 
 const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesListProps) => {
