@@ -1,10 +1,8 @@
-
 import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Send } from 'lucide-react';
-import AudioRecorder from '../../chat/AudioRecorder';
-import { getServerConfig, getAlternativeServerConfig } from '@/config/environment';
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Send } from "lucide-react";
+import NativeWAVRecorder from '@/components/chat/NativeWAVRecorder';
 
 interface MessageInputProps {
   newMessage: string;
@@ -25,53 +23,41 @@ const MessageInput = ({
   isSending,
   onKeyPress
 }: MessageInputProps) => {
-  const currentConfig = getServerConfig();
-  const hasAlternative = !!getAlternativeServerConfig();
-
   return (
     <div className="p-4 border-t bg-white">
-      <div className="flex gap-2 items-end">
-        <Input
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          onKeyPress={onKeyPress}
-          placeholder={
-            connectedInstance 
-              ? "Digite sua mensagem..." 
-              : "Conecte uma instância WhatsApp para enviar mensagens"
-          }
-          disabled={!connectedInstance || isSending}
-          className="flex-1"
-        />
-        
-        <AudioRecorder 
-          onAudioReady={onAudioReady}
-          maxDuration={60}
-          className="flex-shrink-0"
-        />
-        
-        <Button
-          onClick={onSendMessage}
-          disabled={!newMessage.trim() || !connectedInstance || isSending}
-          size="sm"
-          className="flex-shrink-0"
-        >
-          {isSending ? (
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <Send className="w-4 h-4" />
-          )}
-        </Button>
-      </div>
-      
-      {/* Informações de debug melhoradas */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mt-2 text-xs text-gray-500 space-y-1">
-          <div>🌍 {currentConfig.environment}: {currentConfig.serverUrl}</div>
-          <div>📱 Instância: {connectedInstance || 'Nenhuma'}</div>
-          {hasAlternative && <div>🔄 Fallback disponível</div>}
+      <div className="flex items-end space-x-2">
+        <div className="flex-1">
+          <Textarea
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={onKeyPress}
+            placeholder={connectedInstance ? "Digite sua mensagem..." : "Conecte uma instância para enviar mensagens"}
+            className="min-h-[60px] max-h-[120px] resize-none"
+            disabled={!connectedInstance || isSending}
+          />
         </div>
-      )}
+        
+        <div className="flex items-center space-x-1">
+          <NativeWAVRecorder
+            onAudioReady={onAudioReady}
+            maxDuration={60}
+            className="h-10 w-10"
+          />
+          
+          <Button
+            onClick={onSendMessage}
+            disabled={!newMessage.trim() || !connectedInstance || isSending}
+            size="icon"
+            className="h-10 w-10"
+          >
+            {isSending ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };

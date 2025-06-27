@@ -19,60 +19,84 @@ export const useAudioHandling = (ticketId: string) => {
     }
 
     try {
-      console.log(`🎤 ===== DEBUG DETALHADO DO ÁUDIO =====`);
-      console.log(`📊 Blob original:`, {
+      console.log(`🎵 ===== DEBUG ÁUDIO WAV NATIVO =====`);
+      console.log(`📊 Blob WAV original:`, {
         size: audioBlob.size,
         type: audioBlob.type,
-        duration: duration
+        duration: duration,
+        sizeInKB: Math.round(audioBlob.size / 1024),
+        sizeInMB: Math.round(audioBlob.size / 1024 / 1024 * 100) / 100
       });
 
-      const messageId = `audio_manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // VERIFICAR SE É REALMENTE WAV
+      if (audioBlob.type !== 'audio/wav') {
+        console.warn(`⚠️ Tipo inesperado: ${audioBlob.type}, deveria ser audio/wav`);
+      }
+
+      const messageId = `audio_wav_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       simulateMessageProgression(messageId, true);
       markActivity();
 
-      // CONVERTER PARA BASE64 COM DEBUG DETALHADO
-      console.log(`🔄 INICIANDO conversão para base64...`);
+      // CONVERTER PARA BASE64 (método otimizado)
+      console.log(`🔄 Convertendo WAV para base64...`);
       const arrayBuffer = await audioBlob.arrayBuffer();
-      console.log(`📦 ArrayBuffer criado: ${arrayBuffer.byteLength} bytes`);
+      console.log(`📦 ArrayBuffer: ${arrayBuffer.byteLength} bytes`);
       
-      const uint8Array = new Uint8Array(arrayBuffer);
-      console.log(`🔢 Uint8Array: ${uint8Array.length} elementos`);
-      
-      let binaryString = '';
-      for (let i = 0; i < uint8Array.length; i++) {
-        binaryString += String.fromCharCode(uint8Array[i]);
+      // Usar método nativo do navegador se disponível
+      let base64Audio: string;
+      if (typeof btoa !== 'undefined') {
+        const uint8Array = new Uint8Array(arrayBuffer);
+        let binaryString = '';
+        const chunkSize = 8192;
+        
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          const chunk = uint8Array.slice(i, i + chunkSize);
+          binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+        }
+        
+        base64Audio = btoa(binaryString);
+      } else {
+        // Fallback para ambientes que não têm btoa
+        const base64String = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]);
+          };
+          reader.readAsDataURL(audioBlob);
+        });
+        base64Audio = base64String;
       }
-      console.log(`📝 BinaryString: ${binaryString.length} caracteres`);
-      
-      const base64Audio = btoa(binaryString);
-      console.log(`🔤 Base64 final: ${base64Audio.length} caracteres`);
-      console.log(`🔍 Primeiros 100 chars:`, base64Audio.substring(0, 100));
-      console.log(`🔍 Últimos 100 chars:`, base64Audio.substring(base64Audio.length - 100));
+
+      console.log(`✅ Base64 WAV gerado:`, {
+        length: base64Audio.length,
+        firstChars: base64Audio.substring(0, 50),
+        lastChars: base64Audio.substring(base64Audio.length - 50)
+      });
 
       // PREPARAR DADOS PARA ENVIO
       const audioApiUrl = `${SERVER_URL}/api/clients/${connectedInstance}/send-audio`;
       const requestData = {
         to: ticket.chat_id,
         audioData: base64Audio,
-        fileName: `audio_manual_${Date.now()}.wav`
+        fileName: `audio_wav_${Date.now()}.wav`,
+        mimeType: 'audio/wav'
       };
 
-      console.log(`📤 ===== DADOS DA REQUISIÇÃO =====`);
+      console.log(`📤 ===== ENVIANDO WAV PARA WHATSAPP =====`);
       console.log(`🎯 URL:`, audioApiUrl);
       console.log(`📋 Destinatário:`, ticket.chat_id);
-      console.log(`📁 Nome do arquivo:`, requestData.fileName);
-      console.log(`📊 Tamanho do payload:`, JSON.stringify(requestData).length, 'caracteres');
-      console.log(`🔧 Headers que serão enviados:`, {
-        'Content-Type': 'application/json'
-      });
+      console.log(`📁 Arquivo:`, requestData.fileName);
+      console.log(`🎵 Tipo MIME:`, requestData.mimeType);
+      console.log(`📊 Payload size:`, JSON.stringify(requestData).length, 'chars');
 
-      // ENVIAR REQUISIÇÃO COM TIMEOUT
-      console.log(`🚀 ENVIANDO REQUISIÇÃO...`);
+      // ENVIAR COM TIMEOUT ADEQUADO PARA ÁUDIO
+      console.log(`🚀 Enviando WAV...`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
-        console.error(`⏰ TIMEOUT de 15 segundos atingido`);
+        console.error(`⏰ TIMEOUT de 30 segundos para áudio`);
         controller.abort();
-      }, 15000);
+      }, 30000); // 30s para áudio
 
       const response = await fetch(audioApiUrl, {
         method: 'POST',
@@ -89,38 +113,35 @@ export const useAudioHandling = (ticketId: string) => {
       console.log(`📊 Status:`, response.status);
       console.log(`📋 Status Text:`, response.statusText);
       console.log(`✅ OK:`, response.ok);
-      console.log(`🔗 URL final:`, response.url);
-      console.log(`📄 Headers da resposta:`, [...response.headers.entries()]);
 
-      // PROCESSAR RESPOSTA
       const responseText = await response.text();
-      console.log(`📝 Resposta raw:`, responseText);
+      console.log(`📝 Resposta bruta:`, responseText);
 
       let result;
       try {
         result = JSON.parse(responseText);
         console.log(`📄 Resposta parseada:`, result);
       } catch (parseError) {
-        console.error(`❌ Erro ao parsear JSON:`, parseError);
-        throw new Error(`Resposta inválida do servidor: ${responseText.substring(0, 200)}`);
+        console.error(`❌ Erro ao parsear resposta:`, parseError);
+        throw new Error(`Resposta inválida: ${responseText.substring(0, 200)}`);
       }
 
       if (!response.ok) {
         console.error(`❌ ERRO HTTP ${response.status}:`, result);
-        throw new Error(`HTTP ${response.status}: ${result.error || responseText}`);
+        throw new Error(`HTTP ${response.status}: ${result.error || result.message || responseText}`);
       }
 
       if (result.success) {
-        console.log(`🎉 ===== ÁUDIO ENVIADO COM SUCESSO =====`);
-        console.log(`✅ Resultado:`, result);
+        console.log(`🎉 ===== ÁUDIO WAV ENVIADO COM SUCESSO =====`);
+        console.log(`✅ Resultado completo:`, result);
         
-        // Registrar no ticket
+        // Registrar mensagem no ticket
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: messageId,
           from_me: true,
           sender_name: 'Atendente',
-          content: '🎤 Mensagem de áudio',
+          content: `🎵 Áudio WAV (${duration}s)`,
           message_type: 'audio',
           is_internal_note: false,
           is_ai_response: false,
@@ -128,43 +149,45 @@ export const useAudioHandling = (ticketId: string) => {
           timestamp: new Date().toISOString()
         });
 
-        // Salvar áudio base64 se possível
+        // Tentar salvar base64 no banco
         try {
           await supabase
             .from('ticket_messages')
             .update({ audio_base64: base64Audio })
             .eq('message_id', messageId);
-          console.log(`💾 Base64 salvo no banco de dados`);
-        } catch (base64Error) {
-          console.log('⚠️ Não foi possível salvar áudio base64:', base64Error);
+          console.log(`💾 Base64 WAV salvo no banco`);
+        } catch (dbError) {
+          console.log('⚠️ Não foi possível salvar base64:', dbError);
         }
 
         toast({
-          title: "Sucesso",
-          description: "Áudio enviado com sucesso"
+          title: "Sucesso! 🎵",
+          description: `Áudio WAV enviado com sucesso (${duration}s)`
         });
 
       } else {
-        console.error(`❌ ERRO NA RESPOSTA:`, result);
-        throw new Error(result.error || 'Erro desconhecido na resposta');
+        console.error(`❌ FALHA NA RESPOSTA:`, result);
+        throw new Error(result.error || result.message || 'Erro desconhecido');
       }
 
     } catch (error) {
-      console.error(`💥 ===== ERRO COMPLETO =====`);
-      console.error(`🔍 Nome do erro:`, error.name);
+      console.error(`💥 ===== ERRO COMPLETO NO ÁUDIO WAV =====`);
+      console.error(`🔍 Nome:`, error.name);
       console.error(`📝 Mensagem:`, error.message);
       console.error(`📚 Stack:`, error.stack);
       
-      let errorMessage = 'Falha ao enviar áudio';
+      let errorMessage = 'Falha ao enviar áudio WAV';
       
       if (error.name === 'AbortError') {
-        errorMessage = 'Timeout - servidor demorou muito para responder';
+        errorMessage = 'Timeout - áudio muito longo ou conexão lenta';
       } else if (error.message.includes('Failed to fetch')) {
         errorMessage = 'Erro de conectividade - verifique sua internet';
       } else if (error.message.includes('404')) {
-        errorMessage = 'Rota não encontrada no servidor';
+        errorMessage = 'Endpoint de áudio não encontrado no servidor';
       } else if (error.message.includes('503')) {
         errorMessage = 'Instância WhatsApp desconectada';
+      } else if (error.message.includes('413')) {
+        errorMessage = 'Arquivo de áudio muito grande';
       }
       
       toast({
