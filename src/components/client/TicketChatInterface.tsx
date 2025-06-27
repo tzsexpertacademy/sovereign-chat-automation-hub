@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
-import { SERVER_URL } from '@/config/environment';
+import { SERVER_URL, getServerConfig, getAlternativeServerConfig } from '@/config/environment';
 import MessageStatus from './MessageStatus';
 import TypingIndicator from './TypingIndicator';
 import AudioPlayer from './AudioPlayer';
@@ -39,7 +39,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { simulateHumanTyping, isTyping, isRecording } = useHumanizedTyping(clientId);
   const { simulateMessageProgression, getMessageStatus } = useMessageStatus();
 
-  // Carregar dados do ticket e verificar instância conectada
   useEffect(() => {
     const loadTicketData = async () => {
       try {
@@ -111,7 +110,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
   }, [ticketId, clientId, toast]);
 
-  // Auto-scroll para última mensagem
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
@@ -154,6 +152,232 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       });
     } finally {
       setIsClearing(false);
+    }
+  };
+
+  // Função robusta para enviar áudio com retry automático
+  const sendAudioWithRetry = async (audioBlob: Blob, instanceId: string, chatId: string) => {
+    console.log(`🎤 ===== ENVIANDO ÁUDIO COM SISTEMA DE RETRY =====`);
+    
+    const maxRetries = 2;
+    let currentAttempt = 0;
+    let lastError = null;
+    
+    while (currentAttempt <= maxRetries) {
+      currentAttempt++;
+      
+      try {
+        console.log(`🔄 TENTATIVA ${currentAttempt}/${maxRetries + 1} de envio de áudio`);
+        
+        // Obter configuração do servidor para esta tentativa
+        const serverConfig = currentAttempt === 1 ? getServerConfig() : getAlternativeServerConfig();
+        
+        if (!serverConfig && currentAttempt > 1) {
+          console.log(`⚠️ Não há configuração alternativa disponível`);
+          break;
+        }
+        
+        const baseUrl = serverConfig ? serverConfig.serverUrl : SERVER_URL;
+        const audioApiUrl = `${baseUrl}/api/clients/${instanceId}/send-audio`;
+        
+        console.log(`📤 Tentativa ${currentAttempt} - URL: ${audioApiUrl}`);
+        console.log(`🔧 Protocolo: ${serverConfig?.protocol || 'padrão'}`);
+        
+        // Converter blob para base64
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        let binaryString = '';
+        for (let i = 0; i < uint8Array.length; i++) {
+          binaryString += String.fromCharCode(uint8Array[i]);
+        }
+        const base64Audio = btoa(binaryString);
+        
+        console.log(`📊 Dados do áudio preparados:`, {
+          originalSize: audioBlob.size,
+          base64Length: base64Audio.length,
+          mimeType: audioBlob.type,
+          url: audioApiUrl
+        });
+        
+        // Fazer requisição com timeout personalizado
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos
+        
+        const response = await fetch(audioApiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to: chatId,
+            audioData: base64Audio,
+            fileName: `audio_manual_${Date.now()}.wav`
+          }),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        console.log(`📡 Resposta da tentativa ${currentAttempt}:`, {
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok,
+          url: audioApiUrl
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Erro desconhecido');
+          throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+        }
+        
+        const result = await response.json();
+        console.log(`📄 Dados da resposta:`, result);
+        
+        if (result.success) {
+          console.log(`✅ ÁUDIO ENVIADO COM SUCESSO na tentativa ${currentAttempt}`);
+          return result;
+        } else {
+          throw new Error(result.error || 'Erro desconhecido na resposta');
+        }
+        
+      } catch (error) {
+        console.error(`❌ ERRO na tentativa ${currentAttempt}:`, error);
+        console.error(`💥 Tipo do erro:`, error.name);
+        console.error(`📝 Mensagem:`, error.message);
+        
+        lastError = error;
+        
+        // Verificar se é erro de SSL/HTTPS
+        if (error.message.includes('Failed to fetch') || 
+            error.message.includes('SSL') || 
+            error.message.includes('HTTPS') ||
+            error.name === 'TypeError') {
+          
+          console.error(`🚨 PROBLEMA DE CONECTIVIDADE DETECTADO na tentativa ${currentAttempt}`);
+          
+          if (currentAttempt <= maxRetries) {
+            console.log(`🔄 Tentando configuração alternativa...`);
+            continue;
+          }
+        }
+        
+        // Se não é erro de conectividade ou esgotamos as tentativas
+        if (currentAttempt > maxRetries) {
+          break;
+        }
+        
+        // Aguardar antes da próxima tentativa
+        await new Promise(resolve => setTimeout(resolve, 1000 * currentAttempt));
+      }
+    }
+    
+    // Se chegou aqui, todas as tentativas falharam
+    console.error(`❌ FALHA COMPLETA após ${maxRetries + 1} tentativas`);
+    throw lastError || new Error('Todas as tentativas de envio falharam');
+  };
+
+  const handleAudioReady = async (audioBlob: Blob, duration: number) => {
+    if (!ticket || !connectedInstance) {
+      toast({
+        title: "Erro",
+        description: "Nenhuma instância WhatsApp conectada",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log(`🎤 ===== PROCESSANDO ÁUDIO MANUAL =====`);
+      console.log(`📊 Detalhes:`, {
+        size: audioBlob.size,
+        type: audioBlob.type,
+        duration: duration,
+        chatId: ticket.chat_id,
+        instanceId: connectedInstance
+      });
+
+      const messageId = `audio_manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      simulateMessageProgression(messageId, true);
+      markActivity();
+
+      // Usar sistema de retry robusto
+      const result = await sendAudioWithRetry(audioBlob, connectedInstance, ticket.chat_id);
+      
+      console.log(`✅ ÁUDIO MANUAL ENVIADO COM SUCESSO`);
+      
+      // Registrar no ticket
+      await ticketsService.addTicketMessage({
+        ticket_id: ticketId,
+        message_id: messageId,
+        from_me: true,
+        sender_name: 'Atendente',
+        content: '🎤 Mensagem de áudio',
+        message_type: 'audio',
+        is_internal_note: false,
+        is_ai_response: false,
+        processing_status: 'completed',
+        timestamp: new Date().toISOString()
+      });
+
+      // Salvar áudio base64 se possível
+      try {
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        let binaryString = '';
+        for (let i = 0; i < uint8Array.length; i++) {
+          binaryString += String.fromCharCode(uint8Array[i]);
+        }
+        const base64Audio = btoa(binaryString);
+        
+        await supabase
+          .from('ticket_messages')
+          .update({ audio_base64: base64Audio })
+          .eq('message_id', messageId);
+      } catch (base64Error) {
+        console.log('⚠️ Não foi possível salvar áudio base64:', base64Error);
+      }
+
+      console.log(`💾 Áudio manual registrado no ticket`);
+      
+      toast({
+        title: "Sucesso",
+        description: "Áudio enviado com sucesso"
+      });
+
+    } catch (error) {
+      console.error(`❌ ERRO FINAL ao processar áudio manual:`, error);
+      
+      let errorMessage = 'Falha ao enviar áudio';
+      let suggestions = [];
+      
+      if (error.message.includes('Failed to fetch') || error.message.includes('SSL')) {
+        errorMessage = 'Problema de conectividade';
+        suggestions = [
+          'Verifique sua conexão com a internet',
+          'Se usar HTTPS, aceite o certificado em: https://146.59.227.248',
+          'Recarregue a página e tente novamente'
+        ];
+      } else if (error.message.includes('404') || error.message.includes('Cannot GET')) {
+        errorMessage = 'Servidor não encontrado';
+        suggestions = [
+          'Verifique se o servidor WhatsApp está rodando',
+          'Contate o administrador do sistema'
+        ];
+      } else if (error.message.includes('503') || error.message.includes('não está conectado')) {
+        errorMessage = 'Instância WhatsApp desconectada';
+        suggestions = [
+          'Reconecte a instância WhatsApp',
+          'Verifique o status da conexão'
+        ];
+      }
+      
+      console.error('💡 Sugestões de solução:', suggestions);
+      
+      toast({
+        title: errorMessage,
+        description: suggestions[0] || error.message,
+        variant: "destructive"
+      });
     }
   };
 
@@ -240,128 +464,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
   };
 
-  const handleAudioReady = async (audioBlob: Blob, duration: number) => {
-    if (!ticket || !connectedInstance) {
-      toast({
-        title: "Erro",
-        description: "Nenhuma instância WhatsApp conectada",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      console.log('🎤 ===== ENVIANDO ÁUDIO MANUAL (VERSÃO CORRIGIDA) =====');
-      console.log('📊 Detalhes do áudio:', {
-        size: audioBlob.size,
-        type: audioBlob.type,
-        duration: duration,
-        chatId: ticket.chat_id,
-        instanceId: connectedInstance
-      });
-
-      const messageId = `audio_manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      simulateMessageProgression(messageId, true);
-      markActivity();
-
-      // Converter blob para base64
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      let binaryString = '';
-      for (let i = 0; i < uint8Array.length; i++) {
-        binaryString += String.fromCharCode(uint8Array[i]);
-      }
-      const base64Audio = btoa(binaryString);
-
-      console.log('✅ Áudio convertido para base64:', {
-        originalSize: audioBlob.size,
-        base64Length: base64Audio.length,
-        mimeType: audioBlob.type
-      });
-
-      // URL corrigida usando a configuração de ambiente
-      const audioApiUrl = `${SERVER_URL}/api/clients/${connectedInstance}/send-audio`;
-      
-      console.log('📤 Enviando áudio para:', audioApiUrl);
-      
-      const response = await fetch(audioApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: ticket.chat_id,
-          audioData: base64Audio,
-          fileName: `audio_manual_${Date.now()}.wav`
-        })
-      });
-
-      console.log('📡 Resposta da API de áudio:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        url: audioApiUrl
-      });
-
-      const result = await response.json();
-      console.log('📄 Dados da resposta:', result);
-
-      if (response.ok && result.success) {
-        console.log('✅ Áudio manual enviado com sucesso');
-        
-        // Registrar no ticket
-        await ticketsService.addTicketMessage({
-          ticket_id: ticketId,
-          message_id: messageId,
-          from_me: true,
-          sender_name: 'Atendente',
-          content: '🎤 Mensagem de áudio',
-          message_type: 'audio',
-          is_internal_note: false,
-          is_ai_response: false,
-          processing_status: 'completed',
-          timestamp: new Date().toISOString()
-        });
-
-        // Salvar áudio base64
-        await supabase
-          .from('ticket_messages')
-          .update({ audio_base64: base64Audio })
-          .eq('message_id', messageId);
-
-        console.log('💾 Áudio manual registrado no ticket');
-        
-        toast({
-          title: "Sucesso",
-          description: "Áudio enviado com sucesso"
-        });
-      } else {
-        console.error('❌ Erro na API de áudio:', result);
-        throw new Error(result.error || `Erro HTTP ${response.status}: ${response.statusText}`);
-      }
-
-    } catch (error) {
-      console.error('❌ ERRO CRÍTICO ao processar áudio manual:', error);
-      console.error('💥 Stack trace:', error.stack);
-      console.error('🔧 URL usada:', `${SERVER_URL}/api/clients/${connectedInstance}/send-audio`);
-      
-      // Diagnóstico adicional
-      if (error.message.includes('Failed to fetch') || error.message.includes('SSL')) {
-        console.error('🚨 PROBLEMA DE SSL/HTTPS DETECTADO!');
-        console.error('💡 Soluções possíveis:');
-        console.error('   1. Verificar se certificado SSL está válido');
-        console.error('   2. Aceitar certificado autoassinado no navegador');
-        console.error('   3. Verificar se servidor está rodando em HTTPS');
-      }
-      
-      toast({
-        title: "Erro no Áudio",
-        description: `Falha ao enviar áudio: ${error.message}`,
-        variant: "destructive"
-      });
-    }
-  };
-
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -440,6 +542,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     );
   }
 
+  const currentConfig = getServerConfig();
+  const hasAlternative = !!getAlternativeServerConfig();
+
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Informações da fila ativa */}
@@ -472,7 +577,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         </div>
       )}
 
-      {/* Status da conexão com diagnóstico */}
+      {/* Status da conexão com informações detalhadas */}
       {!connectedInstance && (
         <div className="p-3 bg-yellow-50 border-b border-yellow-200 flex items-center gap-2 text-yellow-800">
           <AlertCircle className="w-4 h-4" />
@@ -483,8 +588,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       {connectedInstance && (
         <div className="p-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-green-800">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-xs">Conectado via: {connectedInstance}</span>
-          <span className="text-xs">• Servidor: {SERVER_URL}</span>
+          <span className="text-xs">Conectado: {connectedInstance}</span>
+          <span className="text-xs">• {currentConfig.protocol.toUpperCase()}: {currentConfig.serverUrl}</span>
+          {hasAlternative && <span className="text-xs">• Fallback: ✓</span>}
           {isOnline && (
             <>
               <span className="text-xs">•</span>
@@ -565,7 +671,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         </div>
       </ScrollArea>
 
-      {/* Indicadores de digitação/gravação */}
       {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (
         <TypingIndicator 
           isTyping={isTyping(ticket?.chat_id || '')}
@@ -611,10 +716,12 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           </Button>
         </div>
         
-        {/* Debug info no desenvolvimento */}
+        {/* Informações de debug melhoradas */}
         {process.env.NODE_ENV === 'development' && (
-          <div className="mt-2 text-xs text-gray-500">
-            Debug: {SERVER_URL} | Instância: {connectedInstance || 'Nenhuma'}
+          <div className="mt-2 text-xs text-gray-500 space-y-1">
+            <div>🌍 {currentConfig.environment}: {currentConfig.serverUrl}</div>
+            <div>📱 Instância: {connectedInstance || 'Nenhuma'}</div>
+            {hasAlternative && <div>🔄 Fallback disponível</div>}
           </div>
         )}
       </div>

@@ -41,12 +41,91 @@ if (!fs.existsSync('./sessions')) {
 
 const clients = new Map();
 
-// Função para gerar um ID único para o cliente
+// ===== FUNÇÕES AUXILIARES DEFINIDAS PRIMEIRO =====
+
+// Função para detectar formato de áudio
+function detectAudioFormat(buffer) {
+    console.log('🔍 Detectando formato de áudio...', {
+        bufferSize: buffer.length,
+        firstBytes: Array.from(buffer.slice(0, 8)).map(b => '0x' + b.toString(16)).join(' ')
+    });
+    
+    const signatures = {
+        'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF
+        'audio/mp3': [0xFF, 0xFB], // MP3 frame sync
+        'audio/mpeg': [0xFF, 0xFB], // MPEG
+        'audio/ogg': [0x4F, 0x67, 0x67, 0x53], // OggS
+        'audio/webm': [0x1A, 0x45, 0xDF, 0xA3], // WebM
+        'audio/m4a': [0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70] // M4A
+    };
+
+    for (const [mimeType, signature] of Object.entries(signatures)) {
+        if (signature.every((byte, index) => buffer[index] === byte)) {
+            console.log(`✅ Formato detectado: ${mimeType}`);
+            return mimeType;
+        }
+    }
+    
+    console.log('⚠️ Formato não detectado, usando audio/wav como fallback');
+    return 'audio/wav'; // fallback padrão
+}
+
+// Função para converter base64 para arquivo temporário
+function base64ToTempFile(base64Data, format = 'wav') {
+    try {
+        console.log(`🔄 INICIANDO conversão base64 para arquivo temporário`);
+        console.log(`📊 Parâmetros:`, {
+            base64Length: base64Data.length,
+            format: format,
+            hasDataPrefix: base64Data.startsWith('data:')
+        });
+        
+        // Remover prefixo data URL se presente
+        const cleanBase64 = base64Data.replace(/^data:audio\/[^;]+;base64,/, '');
+        console.log(`🧹 Base64 limpo: ${cleanBase64.length} caracteres`);
+        
+        // Converter para buffer
+        const buffer = Buffer.from(cleanBase64, 'base64');
+        console.log(`📦 Buffer criado: ${buffer.length} bytes`);
+        
+        // Detectar formato real
+        const detectedFormat = detectAudioFormat(buffer);
+        
+        // Criar arquivo temporário
+        const tempFileName = `temp_audio_${Date.now()}.${format}`;
+        const tempFilePath = path.join('uploads', tempFileName);
+        
+        console.log(`💾 Salvando em: ${tempFilePath}`);
+        fs.writeFileSync(tempFilePath, buffer);
+        
+        const fileStats = fs.statSync(tempFilePath);
+        console.log(`✅ Arquivo temporário criado com sucesso:`, {
+            path: tempFilePath,
+            size: fileStats.size,
+            detectedMimeType: detectedFormat,
+            filename: tempFileName
+        });
+        
+        return {
+            path: tempFilePath,
+            detectedMimeType: detectedFormat,
+            size: fileStats.size,
+            filename: tempFileName
+        };
+        
+    } catch (error) {
+        console.error(`❌ ERRO CRÍTICO ao converter base64 para arquivo:`, error);
+        console.error(`💥 Stack trace:`, error.stack);
+        throw error;
+    }
+}
+
+// ===== CONTINUAR COM O RESTO DO CÓDIGO =====
+
 function generateClientId() {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
-// Função para salvar a sessão
 const saveSession = (clientId, session) => {
     try {
         const sessionPath = `./sessions/whatsapp-session-${clientId}.json`;
@@ -57,7 +136,6 @@ const saveSession = (clientId, session) => {
     }
 };
 
-// Função para carregar a sessão
 const loadSession = (clientId) => {
     try {
         const sessionFile = `./sessions/whatsapp-session-${clientId}.json`;
@@ -71,7 +149,6 @@ const loadSession = (clientId) => {
     return null;
 };
 
-// Classe para gerenciar clientes WhatsApp
 class WhatsAppClientManager {
     constructor(clientId) {
         this.clientId = clientId;
@@ -152,7 +229,6 @@ class WhatsAppClientManager {
             this.isReady = true;
             
             try {
-                // Obter informações do usuário
                 const info = this.client.info;
                 if (info && info.wid) {
                     this.phoneNumber = info.wid.user;
@@ -175,7 +251,6 @@ class WhatsAppClientManager {
             
             this.lastActivity = Date.now();
             
-            // PROCESSAMENTO ESPECIAL PARA MENSAGENS COM MÍDIA
             let mediaData = null;
             let mimetype = null;
             let filename = null;
@@ -220,7 +295,6 @@ class WhatsAppClientManager {
                 }
             }
             
-            // CRIAR DADOS DA MENSAGEM COM MÍDIA
             const messageData = {
                 id: msg.id.id,
                 body: msg.body,
@@ -262,11 +336,8 @@ class WhatsAppClientManager {
                 fromMe: messageData.fromMe
             });
             
-            // EMITIR PARA O FRONTEND
             io.emit(`message_${this.clientId}`, messageData);
-            
             console.log(`✅ MENSAGEM ENVIADA PARA FRONTEND`);
-            console.log(`================================================`);
         });
 
         this.client.on('disconnected', (reason) => {
@@ -275,7 +346,6 @@ class WhatsAppClientManager {
             this.updateStatus('disconnected', reason);
         });
 
-        // Adicionar handler para erros
         this.client.on('error', (error) => {
             console.error(`❌ Erro no cliente ${this.clientId}:`, error);
         });
@@ -303,7 +373,6 @@ class WhatsAppClientManager {
             throw new Error('Cliente não está pronto');
         }
 
-        // Verificar cache
         const cacheKey = 'chats';
         const cached = this.chatCache.get(cacheKey);
         if (cached && (Date.now() - cached.timestamp) < this.chatCacheTimeout) {
@@ -314,13 +383,11 @@ class WhatsAppClientManager {
         console.log(`🔍 Buscando chats para ${this.clientId}...`);
         
         try {
-            // Verificar estado do cliente
             const state = await this.client.getState();
             if (state !== 'CONNECTED') {
                 throw new Error(`Cliente não conectado. Estado: ${state}`);
             }
 
-            // Buscar chats com timeout
             const chatsPromise = this.client.getChats();
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => reject(new Error('Timeout ao buscar chats')), 15000);
@@ -335,9 +402,8 @@ class WhatsAppClientManager {
             console.log(`📱 ${chats.length} chats encontrados para ${this.clientId}`);
             
             const processedChats = [];
-            
-            // Processar chats com limite e timeout
             const maxChats = Math.min(chats.length, 50);
+            
             for (let i = 0; i < maxChats; i++) {
                 try {
                     const chat = chats[i];
@@ -356,7 +422,6 @@ class WhatsAppClientManager {
                         timestamp: Date.now()
                     };
 
-                    // Tentar obter última mensagem com timeout curto
                     try {
                         const messagesPromise = chat.fetchMessages({ limit: 1 });
                         const messageTimeoutPromise = new Promise((_, reject) => {
@@ -376,7 +441,6 @@ class WhatsAppClientManager {
                             chatInfo.timestamp = (lastMessage.timestamp * 1000) || Date.now();
                         }
                     } catch (msgError) {
-                        // Ignorar erros de mensagem e continuar
                         console.log(`⚠️ Erro ao buscar mensagem do chat ${i}: ${msgError.message}`);
                     }
 
@@ -388,10 +452,8 @@ class WhatsAppClientManager {
                 }
             }
 
-            // Ordenar por timestamp
             processedChats.sort((a, b) => b.timestamp - a.timestamp);
             
-            // Cachear resultado
             this.chatCache.set(cacheKey, {
                 data: processedChats,
                 timestamp: Date.now()
@@ -482,7 +544,8 @@ class WhatsAppClientManager {
     }
 }
 
-// WebSocket connection
+// ===== WEBSOCKET E ROTAS =====
+
 io.on('connection', socket => {
     console.log(`🔗 Nova conexão WebSocket: ${socket.id}`);
 
@@ -495,6 +558,8 @@ io.on('connection', socket => {
         console.log(`❌ WebSocket desconectado: ${socket.id}`);
     });
 });
+
+// ===== ROTAS HTTP =====
 
 // Rota para criar um novo cliente
 app.post('/api/clients', async (req, res) => {
@@ -675,12 +740,20 @@ app.post('/api/clients/:clientId/send-message', async (req, res) => {
     const { to, message } = req.body;
     
     try {
+        console.log(`📤 ROTA /send-message chamada:`, {
+            clientId,
+            to: to?.substring(0, 20) + '...',
+            message: message?.substring(0, 50) + '...'
+        });
+        
         const clientManager = clients.get(clientId);
         if (!clientManager) {
+            console.error(`❌ Cliente ${clientId} não encontrado`);
             return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
         }
         
         await clientManager.sendMessage(to, message);
+        console.log(`✅ Mensagem enviada com sucesso via ${clientId}`);
         res.json({ success: true, message: 'Mensagem enviada' });
         
     } catch (error) {
@@ -689,7 +762,216 @@ app.post('/api/clients/:clientId/send-message', async (req, res) => {
     }
 });
 
-// Rotas para envio de mídia
+// ===== ROTA DE ÁUDIO COMPLETAMENTE REESCRITA E CORRIGIDA =====
+app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req, res) => {
+    const { clientId } = req.params;
+    const { to, audioData, fileName } = req.body;
+    
+    console.log(`🎤 ===== ROTA /send-audio CHAMADA =====`);
+    console.log(`📊 Parâmetros recebidos:`, {
+        clientId: clientId,
+        to: to,
+        hasPhysicalFile: !!req.file,
+        hasBase64Data: !!audioData,
+        fileName: fileName,
+        requestMethod: req.method,
+        requestUrl: req.url,
+        contentType: req.headers['content-type']
+    });
+    
+    // VALIDAÇÕES INICIAIS
+    if (!clientId) {
+        console.error(`❌ ClientId não fornecido`);
+        return res.status(400).json({ success: false, error: 'Client ID é obrigatório' });
+    }
+    
+    if (!to) {
+        console.error(`❌ Destinatário não fornecido`);
+        return res.status(400).json({ success: false, error: 'Destinatário é obrigatório' });
+    }
+    
+    try {
+        // VERIFICAR SE CLIENTE EXISTE E ESTÁ CONECTADO
+        const clientManager = clients.get(clientId);
+        if (!clientManager) {
+            console.error(`❌ Cliente ${clientId} não encontrado na lista`);
+            console.log(`📋 Clientes disponíveis:`, Array.from(clients.keys()));
+            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
+        }
+        
+        if (!clientManager.isReady) {
+            console.error(`❌ Cliente ${clientId} não está pronto (status: ${clientManager.status})`);
+            return res.status(503).json({ 
+                success: false, 
+                error: 'Cliente não está conectado',
+                clientStatus: clientManager.status
+            });
+        }
+        
+        console.log(`✅ Cliente ${clientId} está pronto para envio`);
+        
+        let tempFilePath = null;
+        let detectedMimeType = 'audio/wav';
+        let finalFileName = fileName || `audio_${Date.now()}.wav`;
+        
+        try {
+            // PROCESSAMENTO DO ARQUIVO
+            if (req.file) {
+                // CASO 1: Arquivo físico via multer
+                console.log(`📁 PROCESSANDO ARQUIVO FÍSICO ENVIADO`);
+                console.log(`📊 Detalhes do arquivo:`, {
+                    originalName: req.file.originalname,
+                    mimetype: req.file.mimetype,
+                    size: req.file.size,
+                    path: req.file.path
+                });
+                
+                tempFilePath = req.file.path;
+                detectedMimeType = req.file.mimetype || 'audio/wav';
+                finalFileName = req.file.originalname || finalFileName;
+                
+            } else if (audioData) {
+                // CASO 2: Dados base64 (método do frontend)
+                console.log(`💾 PROCESSANDO DADOS BASE64 DO FRONTEND`);
+                console.log(`📊 Tamanho base64: ${audioData.length} caracteres`);
+                
+                if (audioData.length < 100) {
+                    throw new Error(`Base64 muito pequeno: ${audioData.length} caracteres`);
+                }
+                
+                const tempFile = base64ToTempFile(audioData, 'wav');
+                tempFilePath = tempFile.path;
+                detectedMimeType = tempFile.detectedMimeType;
+                finalFileName = tempFile.filename;
+                
+                console.log(`✅ Conversão base64 concluída com sucesso:`, {
+                    path: tempFilePath,
+                    mimeType: detectedMimeType,
+                    size: tempFile.size,
+                    filename: finalFileName
+                });
+                
+            } else {
+                console.error(`❌ Nenhum dado de áudio foi fornecido`);
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Nenhum arquivo ou dados de áudio fornecidos',
+                    receivedData: {
+                        hasFile: !!req.file,
+                        hasAudioData: !!audioData,
+                        bodyKeys: Object.keys(req.body)
+                    }
+                });
+            }
+            
+            // VERIFICAR SE ARQUIVO FOI CRIADO
+            if (!tempFilePath || !fs.existsSync(tempFilePath)) {
+                throw new Error(`Arquivo temporário não foi criado: ${tempFilePath}`);
+            }
+            
+            const fileStats = fs.statSync(tempFilePath);
+            console.log(`📁 Arquivo temporário verificado:`, {
+                path: tempFilePath,
+                exists: true,
+                size: fileStats.size,
+                mimeType: detectedMimeType
+            });
+            
+            // CRIAR MÍDIA PARA WHATSAPP
+            console.log(`🎵 CRIANDO MÍDIA PARA WHATSAPP`);
+            const media = MessageMedia.fromFilePath(tempFilePath);
+            
+            // CONFIGURAR TIPO MIME CORRETO
+            media.mimetype = detectedMimeType;
+            media.filename = finalFileName;
+            
+            console.log(`📊 Mídia configurada:`, {
+                mimetype: media.mimetype,
+                filename: media.filename,
+                hasData: !!media.data,
+                dataLength: media.data?.length || 0
+            });
+            
+            // CONFIGURAÇÕES DE ENVIO OTIMIZADAS
+            const sendOptions = {
+                sendAudioAsVoice: true, // Enviar como nota de voz
+                caption: undefined // Sem legenda para áudio
+            };
+            
+            console.log(`📤 ENVIANDO ÁUDIO VIA WHATSAPP`);
+            console.log(`🎯 Destino: ${to}`);
+            console.log(`⚙️ Opções:`, sendOptions);
+            
+            // ENVIAR ATRAVÉS DO WHATSAPP
+            await clientManager.sendMedia(to, media, sendOptions);
+            
+            console.log(`🎉 ===== ÁUDIO ENVIADO COM SUCESSO =====`);
+            console.log(`✅ Cliente: ${clientId} → ${to}`);
+            console.log(`📊 Arquivo: ${finalFileName} (${fileStats.size} bytes)`);
+            
+            // RESPOSTA DE SUCESSO
+            res.json({ 
+                success: true, 
+                message: 'Áudio enviado com sucesso via WhatsApp',
+                details: {
+                    clientId: clientId,
+                    to: to,
+                    mimeType: detectedMimeType,
+                    filename: finalFileName,
+                    fileSize: fileStats.size,
+                    method: req.file ? 'physical-file' : 'base64-data',
+                    timestamp: new Date().toISOString()
+                }
+            });
+            
+        } catch (processingError) {
+            console.error(`❌ ERRO NO PROCESSAMENTO DE ÁUDIO:`, processingError);
+            console.error(`💥 Stack trace:`, processingError.stack);
+            
+            // RESPOSTA DE ERRO DETALHADA
+            res.status(500).json({ 
+                success: false, 
+                error: `Erro ao processar áudio: ${processingError.message}`,
+                details: {
+                    clientId: clientId,
+                    processingStep: 'audio-processing',
+                    mimeType: detectedMimeType,
+                    filename: finalFileName,
+                    method: req.file ? 'physical-file' : 'base64-data',
+                    timestamp: new Date().toISOString()
+                }
+            });
+            
+        } finally {
+            // LIMPEZA DE ARQUIVO TEMPORÁRIO
+            if (tempFilePath && fs.existsSync(tempFilePath)) {
+                try {
+                    fs.unlinkSync(tempFilePath);
+                    console.log(`🗑️ Arquivo temporário removido: ${tempFilePath}`);
+                } catch (cleanupError) {
+                    console.error(`⚠️ Erro ao remover arquivo temporário:`, cleanupError);
+                }
+            }
+        }
+        
+    } catch (generalError) {
+        console.error(`❌ ERRO GERAL NA ROTA /send-audio:`, generalError);
+        console.error(`💥 Stack trace completo:`, generalError.stack);
+        
+        res.status(500).json({ 
+            success: false, 
+            error: `Erro interno do servidor: ${generalError.message}`,
+            details: {
+                clientId: clientId,
+                timestamp: new Date().toISOString(),
+                errorType: 'general-server-error'
+            }
+        });
+    }
+    
+    console.log(`🏁 ===== PROCESSAMENTO /send-audio FINALIZADO =====`);
+});
+
 app.post('/api/clients/:clientId/send-image', upload.single('file'), async (req, res) => {
     const { clientId } = req.params;
     const { to, caption } = req.body;
@@ -709,7 +991,6 @@ app.post('/api/clients/:clientId/send-image', upload.single('file'), async (req,
         
         await clientManager.sendMedia(to, media, options);
         
-        // Limpar arquivo temporário
         fs.unlinkSync(req.file.path);
         
         res.json({ success: true, message: 'Imagem enviada' });
@@ -740,7 +1021,6 @@ app.post('/api/clients/:clientId/send-video', upload.single('file'), async (req,
         
         await clientManager.sendMedia(to, media, options);
         
-        // Limpar arquivo temporário
         fs.unlinkSync(req.file.path);
         
         res.json({ success: true, message: 'Vídeo enviado' });
@@ -750,153 +1030,6 @@ app.post('/api/clients/:clientId/send-video', upload.single('file'), async (req,
         if (req.file) fs.unlinkSync(req.file.path);
         res.status(500).json({ success: false, error: error.message });
     }
-});
-
-// Rota COMPLETAMENTE REESCRITA para enviar áudio - SUPORTA BASE64 E ARQUIVOS
-app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req, res) => {
-    const { clientId } = req.params;
-    const { to, audioData, fileName } = req.body;
-    
-    console.log(`🎤 ===== NOVA REQUISIÇÃO DE ÁUDIO RECEBIDA =====`);
-    console.log(`📱 Cliente: ${clientId}`);
-    console.log(`📞 Para: ${to}`);
-    console.log(`📁 Arquivo físico: ${!!req.file}`);
-    console.log(`💾 Dados base64: ${!!audioData}`);
-    console.log(`📝 Nome do arquivo: ${fileName || 'não especificado'}`);
-    
-    try {
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            console.error(`❌ Cliente ${clientId} não encontrado`);
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        if (!clientManager.isReady) {
-            console.error(`❌ Cliente ${clientId} não está pronto`);
-            return res.status(503).json({ success: false, error: 'Cliente não está conectado' });
-        }
-        
-        let tempFilePath = null;
-        let detectedMimeType = 'audio/wav';
-        let finalFileName = fileName || `audio_${Date.now()}.wav`;
-        
-        try {
-            // CASO 1: Arquivo físico via multer (método tradicional)
-            if (req.file) {
-                console.log(`📁 PROCESSANDO ARQUIVO FÍSICO`);
-                console.log(`📊 Detalhes do arquivo:`, {
-                    originalName: req.file.originalname,
-                    mimetype: req.file.mimetype,
-                    size: req.file.size,
-                    path: req.file.path
-                });
-                
-                tempFilePath = req.file.path;
-                detectedMimeType = req.file.mimetype || 'audio/wav';
-                finalFileName = req.file.originalname || finalFileName;
-            }
-            // CASO 2: Dados base64 (novo método)
-            else if (audioData) {
-                console.log(`💾 PROCESSANDO DADOS BASE64`);
-                console.log(`📊 Tamanho base64: ${audioData.length} caracteres`);
-                
-                const tempFile = base64ToTempFile(audioData, 'wav');
-                tempFilePath = tempFile.path;
-                detectedMimeType = tempFile.detectedMimeType;
-                finalFileName = tempFile.filename;
-                
-                console.log(`✅ Conversão base64 concluída:`, {
-                    path: tempFilePath,
-                    mimeType: detectedMimeType,
-                    size: tempFile.size,
-                    filename: finalFileName
-                });
-            }
-            else {
-                console.error(`❌ Nenhum dado de áudio fornecido`);
-                return res.status(400).json({ 
-                    success: false, 
-                    error: 'Nenhum arquivo ou dados de áudio fornecidos' 
-                });
-            }
-            
-            // CRIAR MÍDIA PARA WHATSAPP
-            console.log(`🎵 CRIANDO MÍDIA PARA WHATSAPP`);
-            console.log(`📂 Arquivo: ${tempFilePath}`);
-            console.log(`🎭 MIME Type: ${detectedMimeType}`);
-            console.log(`📝 Nome: ${finalFileName}`);
-            
-            const media = MessageMedia.fromFilePath(tempFilePath);
-            
-            // CONFIGURAR MIME TYPE CORRETO (não forçar OGG!)
-            media.mimetype = detectedMimeType;
-            media.filename = finalFileName;
-            
-            console.log(`📤 ENVIANDO ÁUDIO VIA WHATSAPP`);
-            console.log(`🎯 Destino: ${to}`);
-            console.log(`📊 Mídia final:`, {
-                mimetype: media.mimetype,
-                filename: media.filename,
-                hasData: !!media.data
-            });
-            
-            // ENVIAR COM CONFIGURAÇÃO OTIMIZADA
-            const sendOptions = {
-                sendAudioAsVoice: true, // Enviar como nota de voz
-                caption: '' // Sem legenda
-            };
-            
-            await clientManager.sendMedia(to, media, sendOptions);
-            
-            console.log(`✅ ÁUDIO ENVIADO COM SUCESSO VIA WHATSAPP`);
-            console.log(`🎉 Cliente: ${clientId} → ${to}`);
-            
-            res.json({ 
-                success: true, 
-                message: 'Áudio enviado com sucesso',
-                details: {
-                    mimeType: detectedMimeType,
-                    filename: finalFileName,
-                    method: req.file ? 'file' : 'base64'
-                }
-            });
-            
-        } catch (sendError) {
-            console.error(`❌ ERRO AO ENVIAR ÁUDIO VIA WHATSAPP:`, sendError);
-            console.error(`💥 Stack trace:`, sendError.stack);
-            
-            res.status(500).json({ 
-                success: false, 
-                error: `Erro ao enviar áudio: ${sendError.message}`,
-                details: {
-                    mimeType: detectedMimeType,
-                    filename: finalFileName,
-                    method: req.file ? 'file' : 'base64'
-                }
-            });
-        } finally {
-            // LIMPAR ARQUIVO TEMPORÁRIO
-            if (tempFilePath && fs.existsSync(tempFilePath)) {
-                try {
-                    fs.unlinkSync(tempFilePath);
-                    console.log(`🗑️ Arquivo temporário removido: ${tempFilePath}`);
-                } catch (cleanupError) {
-                    console.error(`⚠️ Erro ao remover arquivo temporário:`, cleanupError);
-                }
-            }
-        }
-        
-    } catch (error) {
-        console.error(`❌ ERRO GERAL NO PROCESSAMENTO DE ÁUDIO:`, error);
-        console.error(`💥 Stack trace completo:`, error.stack);
-        
-        res.status(500).json({ 
-            success: false, 
-            error: `Erro interno: ${error.message}` 
-        });
-    }
-    
-    console.log(`🏁 ===== PROCESSAMENTO DE ÁUDIO FINALIZADO =====`);
 });
 
 app.post('/api/clients/:clientId/send-document', upload.single('file'), async (req, res) => {
@@ -920,7 +1053,6 @@ app.post('/api/clients/:clientId/send-document', upload.single('file'), async (r
         
         await clientManager.sendMedia(to, media, options);
         
-        // Limpar arquivo temporário
         fs.unlinkSync(req.file.path);
         
         res.json({ success: true, message: 'Documento enviado' });
@@ -932,348 +1064,12 @@ app.post('/api/clients/:clientId/send-document', upload.single('file'), async (r
     }
 });
 
-// Funcão para detectar e processar mensagens citadas/marcadas
-const processQuotedMessage = async (message, clientConnection) => {
-  try {
-    console.log('🔍 Verificando se mensagem tem citação:', {
-      hasQuotedMsg: !!message.quotedMsg,
-      hasContext: !!message.context,
-      messageType: message.type
-    });
-
-    // Verificar se a mensagem tem citação
-    if (!message.quotedMsg && !message.context?.quotedMsg) {
-      return null;
-    }
-
-    const quotedMsg = message.quotedMsg || message.context.quotedMsg;
-    
-    console.log('📝 Mensagem citada detectada:', {
-      quotedId: quotedMsg.id,
-      quotedBody: quotedMsg.body?.substring(0, 100),
-      quotedFrom: quotedMsg.from,
-      quotedTimestamp: quotedMsg.timestamp
-    });
-
-    // Extrair contexto da mensagem citada
-    const quotedContext = {
-      originalMessage: quotedMsg.body || '',
-      originalSender: quotedMsg.fromMe ? 'Assistente' : (quotedMsg.notifyName || quotedMsg.pushName || 'Cliente'),
-      originalTimestamp: quotedMsg.timestamp,
-      originalMessageId: quotedMsg.id,
-      currentMessage: message.body || '',
-      isReplyToAssistant: quotedMsg.fromMe || false
-    };
-
-    console.log('🎯 Contexto da mensagem citada processado:', quotedContext);
-
-    return quotedContext;
-  } catch (error) {
-    console.error('❌ Erro ao processar mensagem citada:', error);
-    return null;
-  }
-};
-
-// Função para gerar resposta considerando mensagem citada
-const generateQuotedResponse = async (quotedContext, aiConfig, assistant, recentMessages) => {
-  try {
-    console.log('🤖 Gerando resposta para mensagem citada...');
-
-    // Modificar prompt para incluir contexto da citação
-    let systemPrompt = assistant.prompt || 'Você é um assistente útil.';
-    
-    systemPrompt += `\n\nCONTEXTO IMPORTANTE - MENSAGEM CITADA:
-O cliente está respondendo/se referindo a uma mensagem anterior:
-- Mensagem original: "${quotedContext.originalMessage}"
-- Enviada por: ${quotedContext.originalSender}
-- Mensagem atual do cliente: "${quotedContext.currentMessage}"
-
-Responda considerando que o cliente está se referindo especificamente à mensagem citada. 
-${quotedContext.isReplyToAssistant ? 'O cliente está respondendo a uma de suas mensagens anteriores.' : 'O cliente está se referindo a uma mensagem que ele mesmo enviou antes.'}
-
-Seja contextual e relevante à citação.`;
-
-    console.log('📝 Prompt modificado para citação:', systemPrompt.substring(0, 200) + '...');
-
-    // Preparar mensagens para a IA
-    const messages = [
-      {
-        role: 'system',
-        content: systemPrompt
-      },
-      ...recentMessages,
-      {
-        role: 'user', 
-        content: `[REFERINDO-SE A: "${quotedContext.originalMessage}"] ${quotedContext.currentMessage}`
-      }
-    ];
-
-    // Preparar configurações avançadas
-    let advancedSettings = {
-      temperature: 0.7,
-      max_tokens: 1000
-    };
-    
-    try {
-      if (assistant.advanced_settings) {
-        const parsedSettings = typeof assistant.advanced_settings === 'string' 
-          ? JSON.parse(assistant.advanced_settings)
-          : assistant.advanced_settings;
-        
-        advancedSettings = {
-          temperature: Number(parsedSettings.temperature) || 0.7,
-          max_tokens: Number(parsedSettings.max_tokens) || 1000
-        };
-      }
-    } catch (error) {
-      console.error('❌ Erro ao parse das configurações avançadas:', error);
-    }
-
-    // Chamar OpenAI
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: assistant.model || aiConfig.default_model || 'gpt-4o-mini',
-        messages: messages,
-        temperature: advancedSettings.temperature,
-        max_tokens: advancedSettings.max_tokens,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Erro da API OpenAI: ${response.status} - ${errorData.error?.message || 'Erro desconhecido'}`);
-    }
-
-    const data = await response.json();
-    const assistantResponse = data.choices?.[0]?.message?.content;
-
-    if (assistantResponse && assistantResponse.trim()) {
-      console.log('✅ Resposta contextual para citação gerada:', assistantResponse.substring(0, 100) + '...');
-      return {
-        response: assistantResponse,
-        confidence: data.choices?.[0]?.finish_reason === 'stop' ? 0.9 : 0.7,
-        wasQuotedReply: true,
-        quotedContext: quotedContext
-      };
-    }
-
-    return null;
-  } catch (error) {
-    console.error('❌ Erro ao gerar resposta para citação:', error);
-    return null;
-  }
-};
-
-// Modificar a função principal de processamento de mensagens
-const processIncomingMessage = async (message, clientConnection) => {
-  try {
-    console.log('📨 Processando mensagem recebida:', {
-      id: message.id,
-      from: message.from,
-      body: message.body?.substring(0, 50),
-      hasQuoted: !!(message.quotedMsg || message.context?.quotedMsg),
-      timestamp: message.timestamp
-    });
-
-    // Verificar se é mensagem citada
-    const quotedContext = await processQuotedMessage(message, clientConnection);
-    const isQuotedReply = !!quotedContext;
-
-    console.log('🎯 Tipo de mensagem:', isQuotedReply ? 'CITAÇÃO' : 'NORMAL');
-
-    // Buscar configurações do cliente
-    const { rows: aiConfigRows } = await pool.query(
-      'SELECT * FROM client_ai_configs WHERE client_id = $1',
-      [clientConnection.clientId]
-    );
-
-    if (aiConfigRows.length === 0) {
-      console.log('⚠️ Nenhuma configuração de IA encontrada para cliente:', clientConnection.clientId);
-      return;
-    }
-
-    const aiConfig = aiConfigRows[0];
-
-    // Buscar assistente ativo
-    const { rows: assistantRows } = await pool.query(`
-      SELECT a.* FROM assistants a 
-      JOIN queues q ON q.assistant_id = a.id 
-      JOIN instance_queue_connections iqc ON iqc.queue_id = q.id 
-      JOIN whatsapp_instances wi ON wi.id = iqc.instance_id 
-      WHERE wi.client_id = $1 AND q.is_active = true AND a.is_active = true 
-      LIMIT 1
-    `, [clientConnection.clientId]);
-
-    if (assistantRows.length === 0) {
-      console.log('⚠️ Nenhum assistente ativo encontrado');
-      return;
-    }
-
-    const assistant = assistantRows[0];
-    console.log('🤖 Processando com assistente:', assistant.name);
-
-    // Buscar histórico de mensagens recentes
-    const { rows: messageRows } = await pool.query(`
-      SELECT content, from_me, timestamp 
-      FROM ticket_messages tm
-      JOIN conversation_tickets ct ON ct.id = tm.ticket_id
-      WHERE ct.chat_id = $1 AND ct.client_id = $2
-      ORDER BY tm.timestamp DESC 
-      LIMIT 10
-    `, [message.from, clientConnection.clientId]);
-
-    const recentMessages = messageRows
-      .reverse()
-      .map(msg => ({
-        role: msg.from_me ? 'assistant' : 'user',
-        content: msg.content || ''
-      }));
-
-    // Processar reações automáticas se não for citação (evitar conflito)
-    let emotionContext = '';
-    if (!isQuotedReply) {
-      const emotionResult = await processAutomaticReaction(message, clientConnection);
-      if (emotionResult) {
-        emotionContext = emotionResult.contextModifier;
-      }
-    }
-
-    // Gerar resposta
-    let assistantResponse, confidence, responseMetadata = {};
-
-    if (isQuotedReply) {
-      // Resposta específica para mensagem citada
-      const quotedResponse = await generateQuotedResponse(quotedContext, aiConfig, assistant, recentMessages);
-      if (quotedResponse) {
-        assistantResponse = quotedResponse.response;
-        confidence = quotedResponse.confidence;
-        responseMetadata = {
-          wasQuotedReply: true,
-          quotedContext: quotedResponse.quotedContext
-        };
-      }
-    } else {
-      // Resposta normal
-      let systemPrompt = assistant.prompt || 'Você é um assistente útil.';
-      if (emotionContext) {
-        systemPrompt += `\n\nContexto emocional da conversa:${emotionContext}`;
-      }
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: assistant.model || aiConfig.default_model || 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...recentMessages,
-            { role: 'user', content: message.body || '' }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        assistantResponse = data.choices?.[0]?.message?.content;
-        confidence = data.choices?.[0]?.finish_reason === 'stop' ? 0.9 : 0.7;
-      }
-    }
-
-    if (assistantResponse && assistantResponse.trim()) {
-      console.log(`✅ Resposta ${isQuotedReply ? 'contextual' : 'normal'} gerada:`, assistantResponse.substring(0, 100) + '...');
-      
-      // Enviar resposta com delay humanizado
-      await sendTypingIndicator(message.from, clientConnection, true);
-      
-      setTimeout(async () => {
-        try {
-          await clientConnection.sendMessage(message.from, assistantResponse);
-          await sendTypingIndicator(message.from, clientConnection, false);
-          
-          console.log(`📤 Resposta ${isQuotedReply ? 'contextual' : 'automática'} enviada com sucesso`);
-          
-          // Salvar resposta no banco com metadados
-          await pool.query(`
-            INSERT INTO ticket_messages (
-              ticket_id, message_id, from_me, sender_name, content, 
-              message_type, is_ai_response, ai_confidence_score, 
-              processing_status, timestamp
-            ) 
-            SELECT 
-              ct.id, $1, true, $2, $3, 
-              'text', true, $4, 
-              'completed', $5
-            FROM conversation_tickets ct 
-            WHERE ct.chat_id = $6 AND ct.client_id = $7 
-            LIMIT 1
-          `, [
-            `ai_${isQuotedReply ? 'quoted' : 'auto'}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            assistant.name,
-            assistantResponse,
-            confidence,
-            new Date().toISOString(),
-            message.from,
-            clientConnection.clientId
-          ]);
-
-        } catch (error) {
-          console.error('❌ Erro ao enviar resposta:', error);
-        }
-      }, isQuotedReply ? 1500 : 3000); // Delay menor para respostas contextuais
-    }
-
-  } catch (error) {
-    console.error('❌ Erro ao processar mensagem:', error);
-  }
-};
-
-// Rota para enviar mensagem citada manual
-app.post('/api/clients/:clientId/send-quoted-message', async (req, res) => {
-  try {
-    const { clientId } = req.params;
-    const { chatId, message, quotedMessageId, quotedContent } = req.body;
-
-    console.log('📤 Enviando mensagem citada manual:', {
-      clientId,
-      chatId,
-      quotedMessageId,
-      message: message.substring(0, 50)
-    });
-
-    const clientConnection = connectedClients.get(clientId);
-    if (!clientConnection) {
-      return res.status(404).json({ error: 'Cliente não conectado' });
-    }
-
-    // Enviar mensagem citada
-    await clientConnection.sendMessage(chatId, message, {
-      quotedMessageId: quotedMessageId,
-      quotedContent: quotedContent
-    });
-
-    console.log('✅ Mensagem citada enviada com sucesso');
-    res.json({ success: true, message: 'Mensagem citada enviada' });
-
-  } catch (error) {
-    console.error('❌ Erro ao enviar mensagem citada:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
 // Health check
 app.get('/health', (req, res) => {
     const activeClients = clients.size;
     const connectedClients = Array.from(clients.values()).filter(c => c.status === 'connected').length;
+    
+    console.log(`💚 Health check solicitado - ${activeClients} clientes ativos, ${connectedClients} conectados`);
     
     res.status(200).json({ 
         status: 'ok',
@@ -1282,8 +1078,20 @@ app.get('/health', (req, res) => {
         connectedClients: connectedClients,
         uptime: process.uptime(),
         memory: process.memoryUsage(),
-        version: '1.0.0',
-        server: `${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 4000}`
+        version: '2.0.0',
+        server: `${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 4000}`,
+        routes: {
+            '/api/clients': 'GET, POST',
+            '/api/clients/:id/connect': 'POST', 
+            '/api/clients/:id/disconnect': 'POST',
+            '/api/clients/:id/status': 'GET',
+            '/api/clients/:id/chats': 'GET',
+            '/api/clients/:id/send-message': 'POST',
+            '/api/clients/:id/send-audio': 'POST ⭐',
+            '/api/clients/:id/send-image': 'POST',
+            '/api/clients/:id/send-video': 'POST',
+            '/api/clients/:id/send-document': 'POST'
+        }
     });
 });
 
@@ -1306,76 +1114,6 @@ setInterval(() => {
         }
     }
 }, 5 * 60 * 1000); // Executar a cada 5 minutos
-
-const port = process.env.PORT || 4000;
-server.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 Servidor WhatsApp Multi-Client rodando na porta ${port}`);
-    console.log(`📊 Timestamp: ${new Date().toISOString()}`);
-    console.log(`🔧 Node.js: ${process.version}`);
-    console.log(`💾 Memória: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
-});
-
-// Função auxiliar para detectar formato de áudio
-function detectAudioFormat(buffer) {
-    const signatures = {
-        'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF
-        'audio/mp3': [0xFF, 0xFB], // MP3 frame sync
-        'audio/mpeg': [0xFF, 0xFB], // MPEG
-        'audio/ogg': [0x4F, 0x67, 0x67, 0x53], // OggS
-        'audio/webm': [0x1A, 0x45, 0xDF, 0xA3], // WebM
-        'audio/m4a': [0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70] // M4A
-    };
-
-    for (const [mimeType, signature] of Object.entries(signatures)) {
-        if (signature.every((byte, index) => buffer[index] === byte)) {
-            return mimeType;
-        }
-    }
-    
-    return 'audio/wav'; // fallback padrão
-}
-
-// Função para converter base64 para arquivo temporário
-function base64ToTempFile(base64Data, format = 'wav') {
-    try {
-        console.log(`🔄 Convertendo base64 para arquivo temporário (${format})`);
-        
-        // Remover prefixo data URL se presente
-        const cleanBase64 = base64Data.replace(/^data:audio\/[^;]+;base64,/, '');
-        
-        // Converter para buffer
-        const buffer = Buffer.from(cleanBase64, 'base64');
-        
-        console.log(`📊 Buffer criado:`, {
-            size: buffer.length,
-            format: format,
-            firstBytes: Array.from(buffer.slice(0, 8)).map(b => '0x' + b.toString(16)).join(' ')
-        });
-        
-        // Detectar formato real
-        const detectedFormat = detectAudioFormat(buffer);
-        console.log(`🔍 Formato detectado: ${detectedFormat}`);
-        
-        // Criar arquivo temporário
-        const tempFileName = `temp_audio_${Date.now()}.${format}`;
-        const tempFilePath = path.join('uploads', tempFileName);
-        
-        fs.writeFileSync(tempFilePath, buffer);
-        
-        console.log(`✅ Arquivo temporário criado: ${tempFilePath}`);
-        
-        return {
-            path: tempFilePath,
-            detectedMimeType: detectedFormat,
-            size: buffer.length,
-            filename: tempFileName
-        };
-        
-    } catch (error) {
-        console.error(`❌ Erro ao converter base64 para arquivo:`, error);
-        throw error;
-    }
-}
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
@@ -1404,4 +1142,21 @@ process.on('SIGINT', async () => {
     }
     
     process.exit(0);
+});
+
+// INICIALIZAÇÃO DO SERVIDOR
+const port = process.env.PORT || 4000;
+server.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 ===== SERVIDOR WHATSAPP MULTI-CLIENT INICIADO =====`);
+    console.log(`🌐 Servidor rodando na porta: ${port}`);
+    console.log(`📅 Timestamp: ${new Date().toISOString()}`);
+    console.log(`🔧 Node.js: ${process.version}`);
+    console.log(`💾 Memória: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
+    console.log(`📋 Rotas principais:`);
+    console.log(`   • GET  /health - Status do servidor`);
+    console.log(`   • POST /api/clients/:id/send-audio - Envio de áudio ⭐`);
+    console.log(`   • POST /api/clients/:id/send-message - Envio de texto`);
+    console.log(`   • GET  /api/clients - Lista de clientes`);
+    console.log(`🔥 SERVIDOR PRONTO PARA RECEBER REQUISIÇÕES!`);
+    console.log(`====================================================`);
 });
