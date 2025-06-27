@@ -1,8 +1,9 @@
+
 import React from 'react';
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
-import NativeWAVRecorder from '@/components/chat/NativeWAVRecorder';
+import SimpleAudioRecorder from '@/components/chat/SimpleAudioRecorder';
 
 interface MessageInputProps {
   newMessage: string;
@@ -38,7 +39,7 @@ const MessageInput = ({
         </div>
         
         <div className="flex items-center space-x-1">
-          <NativeWAVRecorder
+          <SimpleAudioRecorder
             onAudioReady={onAudioReady}
             maxDuration={60}
             className="h-10 w-10"
