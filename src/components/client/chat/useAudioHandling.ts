@@ -1,5 +1,4 @@
 
-import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { ticketsService } from '@/services/ticketsService';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,51 +7,15 @@ import { SERVER_URL } from '@/config/environment';
 export const useAudioHandling = (ticketId: string) => {
   const { toast } = useToast();
 
-  const convertWavToMp3 = async (wavBlob: Blob): Promise<Blob> => {
-    try {
-      console.log('🔄 Tentando converter WAV para MP3...');
-      
-      // Criar um elemento audio temporário para converter
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const arrayBuffer = await wavBlob.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
-      // Recriar como MP3 usando MediaRecorder se disponível
-      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/mp4')) {
-        const stream = new MediaStream();
-        const source = audioContext.createMediaStreamSource(stream);
-        
-        // Fallback: retornar o WAV original se conversão falhar
-        console.log('📄 Conversão MP3 não implementada, usando WAV original');
-        return wavBlob;
-      }
-      
-      return wavBlob;
-    } catch (error) {
-      console.error('❌ Erro na conversão:', error);
-      return wavBlob;
-    }
-  };
-
   const sendAudioWithFallback = async (audioBlob: Blob, ticket: any, connectedInstance: string, messageId: string) => {
+    // Definir formatos em ordem de preferência para WhatsApp
     const formats = [
-      { blob: audioBlob, mimeType: 'audio/wav', extension: 'wav', description: 'WAV Original' },
+      { blob: audioBlob, mimeType: audioBlob.type, extension: getExtensionFromMimeType(audioBlob.type), description: 'Original' },
+      // Se não for OGG, tentar converter para OGG (mais compatível com WhatsApp)
+      { blob: audioBlob, mimeType: 'audio/ogg', extension: 'ogg', description: 'OGG' },
+      // Fallback para MP3
+      { blob: audioBlob, mimeType: 'audio/mpeg', extension: 'mp3', description: 'MP3' },
     ];
-
-    // Se o formato original não for WAV, tentar converter
-    if (audioBlob.type !== 'audio/wav') {
-      try {
-        const convertedWav = await convertWavToMp3(audioBlob);
-        formats.unshift({ 
-          blob: convertedWav, 
-          mimeType: 'audio/wav', 
-          extension: 'wav', 
-          description: 'WAV Convertido' 
-        });
-      } catch (error) {
-        console.warn('⚠️ Conversão falhou:', error);
-      }
-    }
 
     for (const format of formats) {
       try {
@@ -64,17 +27,7 @@ export const useAudioHandling = (ticketId: string) => {
         });
 
         // Converter para base64
-        const arrayBuffer = await format.blob.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-        let binaryString = '';
-        const chunkSize = 8192;
-        
-        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-          const chunk = uint8Array.slice(i, i + chunkSize);
-          binaryString += String.fromCharCode.apply(null, Array.from(chunk));
-        }
-        
-        const base64Audio = btoa(binaryString);
+        const base64Audio = await blobToBase64(format.blob);
 
         // Preparar dados para envio
         const audioApiUrl = `${SERVER_URL}/api/clients/${connectedInstance}/send-audio`;
@@ -142,14 +95,18 @@ export const useAudioHandling = (ticketId: string) => {
           return { success: true, format: format.description };
         } else {
           console.error(`❌ ${format.description} falhou:`, result);
-          // Continuar para próximo formato
-          continue;
+          // Continuar para próximo formato se este falhar
+          if (formats.indexOf(format) < formats.length - 1) {
+            continue;
+          }
         }
 
       } catch (error) {
         console.error(`❌ Erro com ${format.description}:`, error);
-        // Continuar para próximo formato
-        continue;
+        // Continuar para próximo formato se este falhar
+        if (formats.indexOf(format) < formats.length - 1) {
+          continue;
+        }
       }
     }
 
@@ -197,7 +154,7 @@ export const useAudioHandling = (ticketId: string) => {
       // Tentar enviar com fallback
       const result = await sendAudioWithFallback(audioBlob, ticket, connectedInstance, messageId);
 
-      // Atualizar mensagem existente para completada
+      // Atualizar mensagem existente para completada usando Supabase diretamente
       await supabase
         .from('ticket_messages')
         .update({ 
@@ -211,7 +168,7 @@ export const useAudioHandling = (ticketId: string) => {
         description: `Áudio enviado com sucesso via ${result.format} (${duration}s)`
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(`💥 ===== ERRO COMPLETO NO ENVIO DE ÁUDIO =====`);
       console.error(`🔍 Nome:`, error.name);
       console.error(`📝 Mensagem:`, error.message);
@@ -238,4 +195,46 @@ export const useAudioHandling = (ticketId: string) => {
   };
 
   return { handleAudioReady };
+};
+
+// Função auxiliar para converter blob para base64
+const blobToBase64 = async (blob: Blob): Promise<string> => {
+  if (typeof btoa !== 'undefined') {
+    const arrayBuffer = await blob.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    let binaryString = '';
+    const chunkSize = 8192;
+    
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.slice(i, i + chunkSize);
+      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    
+    return btoa(binaryString);
+  } else {
+    // Fallback para ambientes que não têm btoa
+    const base64String = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(',')[1]);
+      };
+      reader.readAsDataURL(blob);
+    });
+    return base64String;
+  }
+};
+
+// Função auxiliar para obter extensão do tipo MIME
+const getExtensionFromMimeType = (mimeType: string): string => {
+  const mimeToExt: Record<string, string> = {
+    'audio/webm': 'webm',
+    'audio/ogg': 'ogg',
+    'audio/wav': 'wav',
+    'audio/mp3': 'mp3',
+    'audio/mpeg': 'mp3',
+    'audio/mp4': 'mp4'
+  };
+  
+  return mimeToExt[mimeType] || 'webm';
 };
