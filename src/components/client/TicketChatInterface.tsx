@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -251,7 +250,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
 
     try {
-      console.log('🎤 ===== PROCESSANDO ÁUDIO MANUAL =====');
+      console.log('🎤 ===== PROCESSANDO ÁUDIO MANUAL (NOVO MÉTODO) =====');
       console.log('📊 Detalhes do áudio:', {
         size: audioBlob.size,
         type: audioBlob.type,
@@ -263,7 +262,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       simulateMessageProgression(messageId, true);
       markActivity();
 
-      // Converter blob para base64
+      // NOVA ABORDAGEM: Converter blob para base64 e enviar via API atualizada
       const arrayBuffer = await audioBlob.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
       let binaryString = '';
@@ -274,24 +273,40 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
       console.log('✅ Áudio convertido para base64:', {
         originalSize: audioBlob.size,
-        base64Length: base64Audio.length
+        base64Length: base64Audio.length,
+        mimeType: audioBlob.type
       });
 
-      // Enviar diretamente para o WhatsApp
-      const audioFile = new File([audioBlob], 'audio_manual.wav', { type: 'audio/wav' });
+      // ENVIAR USANDO A NOVA API QUE SUPORTA BASE64
+      console.log('📤 Enviando áudio via nova API base64...');
       
-      const response = await whatsappService.sendMessage(
-        connectedInstance,
-        ticket.chat_id,
-        '', // sem texto
-        undefined,
-        audioFile
-      );
+      const audioApiUrl = `https://146.59.227.248:4000/api/clients/${connectedInstance}/send-audio`;
+      
+      const response = await fetch(audioApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: ticket.chat_id,
+          audioData: base64Audio,
+          fileName: `audio_manual_${Date.now()}.wav`
+        })
+      });
 
-      if (response.success) {
-        console.log('✅ Áudio manual enviado com sucesso via WhatsApp');
+      console.log('📡 Resposta da API de áudio:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
+      const result = await response.json();
+      console.log('📄 Dados da resposta:', result);
+
+      if (response.ok && result.success) {
+        console.log('✅ Áudio manual enviado com sucesso via nova API');
         
-        // Registrar no ticket - CORRIGIDO: removendo audio_base64 do Insert
+        // Registrar no ticket
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: messageId,
@@ -305,7 +320,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: new Date().toISOString()
         });
 
-        // Atualizar o áudio base64 separadamente
+        // Salvar áudio base64 separadamente
         await supabase
           .from('ticket_messages')
           .update({ audio_base64: base64Audio })
@@ -315,21 +330,20 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         
         toast({
           title: "Sucesso",
-          description: "Áudio enviado com sucesso"
+          description: "Áudio enviado com sucesso via nova API"
         });
       } else {
-        console.error('❌ Erro ao enviar áudio manual via WhatsApp:', response.error);
-        toast({
-          title: "Erro",
-          description: response.error || "Erro ao enviar áudio",
-          variant: "destructive"
-        });
+        console.error('❌ Erro na nova API de áudio:', result);
+        throw new Error(result.error || `Erro HTTP ${response.status}`);
       }
+
     } catch (error) {
       console.error('❌ Erro ao processar áudio manual:', error);
+      console.error('💥 Stack trace:', error.stack);
+      
       toast({
         title: "Erro",
-        description: "Erro ao processar áudio gravado",
+        description: `Erro ao processar áudio: ${error.message}`,
         variant: "destructive"
       });
     }
@@ -350,7 +364,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   };
 
   const renderMessageContent = (message: any) => {
-    // Se é uma mensagem de áudio e tem dados de áudio
     if (message.message_type === 'audio' && message.audio_base64) {
       return (
         <div className="space-y-2">
@@ -368,7 +381,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       );
     }
 
-    // Se é uma mensagem de áudio mas sem dados base64
     if (message.message_type === 'audio') {
       return (
         <div className="flex items-center gap-2 p-2 bg-gray-100 rounded">
@@ -381,10 +393,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       );
     }
 
-    // Mensagem de texto normal
     let content = message.content;
     
-    // Detectar links e torná-los clicáveis
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = content.split(urlRegex);
     

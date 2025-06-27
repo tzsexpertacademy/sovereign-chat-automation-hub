@@ -230,12 +230,10 @@ class WhatsAppClientManager {
                 author: msg.author,
                 from: msg.from,
                 to: msg.to,
-                // NOVOS CAMPOS DE MÍDIA
                 hasMedia: msg.hasMedia,
                 mediaData: mediaData,
                 mimetype: mimetype,
                 filename: filename,
-                // PRESERVAR MENSAGEM ORIGINAL COMPLETA
                 originalMessage: {
                     id: msg.id.id,
                     body: msg.body,
@@ -754,35 +752,151 @@ app.post('/api/clients/:clientId/send-video', upload.single('file'), async (req,
     }
 });
 
+// Rota COMPLETAMENTE REESCRITA para enviar áudio - SUPORTA BASE64 E ARQUIVOS
 app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req, res) => {
     const { clientId } = req.params;
-    const { to } = req.body;
+    const { to, audioData, fileName } = req.body;
+    
+    console.log(`🎤 ===== NOVA REQUISIÇÃO DE ÁUDIO RECEBIDA =====`);
+    console.log(`📱 Cliente: ${clientId}`);
+    console.log(`📞 Para: ${to}`);
+    console.log(`📁 Arquivo físico: ${!!req.file}`);
+    console.log(`💾 Dados base64: ${!!audioData}`);
+    console.log(`📝 Nome do arquivo: ${fileName || 'não especificado'}`);
     
     try {
         const clientManager = clients.get(clientId);
         if (!clientManager) {
+            console.error(`❌ Cliente ${clientId} não encontrado`);
             return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
         }
         
-        if (!req.file) {
-            return res.status(400).json({ success: false, error: 'Arquivo não fornecido' });
+        if (!clientManager.isReady) {
+            console.error(`❌ Cliente ${clientId} não está pronto`);
+            return res.status(503).json({ success: false, error: 'Cliente não está conectado' });
         }
         
-        const media = MessageMedia.fromFilePath(req.file.path);
-        media.mimetype = 'audio/ogg; codecs=opus';
+        let tempFilePath = null;
+        let detectedMimeType = 'audio/wav';
+        let finalFileName = fileName || `audio_${Date.now()}.wav`;
         
-        await clientManager.sendMedia(to, media, { sendAudioAsVoice: true });
-        
-        // Limpar arquivo temporário
-        fs.unlinkSync(req.file.path);
-        
-        res.json({ success: true, message: 'Áudio enviado' });
+        try {
+            // CASO 1: Arquivo físico via multer (método tradicional)
+            if (req.file) {
+                console.log(`📁 PROCESSANDO ARQUIVO FÍSICO`);
+                console.log(`📊 Detalhes do arquivo:`, {
+                    originalName: req.file.originalname,
+                    mimetype: req.file.mimetype,
+                    size: req.file.size,
+                    path: req.file.path
+                });
+                
+                tempFilePath = req.file.path;
+                detectedMimeType = req.file.mimetype || 'audio/wav';
+                finalFileName = req.file.originalname || finalFileName;
+            }
+            // CASO 2: Dados base64 (novo método)
+            else if (audioData) {
+                console.log(`💾 PROCESSANDO DADOS BASE64`);
+                console.log(`📊 Tamanho base64: ${audioData.length} caracteres`);
+                
+                const tempFile = base64ToTempFile(audioData, 'wav');
+                tempFilePath = tempFile.path;
+                detectedMimeType = tempFile.detectedMimeType;
+                finalFileName = tempFile.filename;
+                
+                console.log(`✅ Conversão base64 concluída:`, {
+                    path: tempFilePath,
+                    mimeType: detectedMimeType,
+                    size: tempFile.size,
+                    filename: finalFileName
+                });
+            }
+            else {
+                console.error(`❌ Nenhum dado de áudio fornecido`);
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Nenhum arquivo ou dados de áudio fornecidos' 
+                });
+            }
+            
+            // CRIAR MÍDIA PARA WHATSAPP
+            console.log(`🎵 CRIANDO MÍDIA PARA WHATSAPP`);
+            console.log(`📂 Arquivo: ${tempFilePath}`);
+            console.log(`🎭 MIME Type: ${detectedMimeType}`);
+            console.log(`📝 Nome: ${finalFileName}`);
+            
+            const media = MessageMedia.fromFilePath(tempFilePath);
+            
+            // CONFIGURAR MIME TYPE CORRETO (não forçar OGG!)
+            media.mimetype = detectedMimeType;
+            media.filename = finalFileName;
+            
+            console.log(`📤 ENVIANDO ÁUDIO VIA WHATSAPP`);
+            console.log(`🎯 Destino: ${to}`);
+            console.log(`📊 Mídia final:`, {
+                mimetype: media.mimetype,
+                filename: media.filename,
+                hasData: !!media.data
+            });
+            
+            // ENVIAR COM CONFIGURAÇÃO OTIMIZADA
+            const sendOptions = {
+                sendAudioAsVoice: true, // Enviar como nota de voz
+                caption: '' // Sem legenda
+            };
+            
+            await clientManager.sendMedia(to, media, sendOptions);
+            
+            console.log(`✅ ÁUDIO ENVIADO COM SUCESSO VIA WHATSAPP`);
+            console.log(`🎉 Cliente: ${clientId} → ${to}`);
+            
+            res.json({ 
+                success: true, 
+                message: 'Áudio enviado com sucesso',
+                details: {
+                    mimeType: detectedMimeType,
+                    filename: finalFileName,
+                    method: req.file ? 'file' : 'base64'
+                }
+            });
+            
+        } catch (sendError) {
+            console.error(`❌ ERRO AO ENVIAR ÁUDIO VIA WHATSAPP:`, sendError);
+            console.error(`💥 Stack trace:`, sendError.stack);
+            
+            res.status(500).json({ 
+                success: false, 
+                error: `Erro ao enviar áudio: ${sendError.message}`,
+                details: {
+                    mimeType: detectedMimeType,
+                    filename: finalFileName,
+                    method: req.file ? 'file' : 'base64'
+                }
+            });
+        } finally {
+            // LIMPAR ARQUIVO TEMPORÁRIO
+            if (tempFilePath && fs.existsSync(tempFilePath)) {
+                try {
+                    fs.unlinkSync(tempFilePath);
+                    console.log(`🗑️ Arquivo temporário removido: ${tempFilePath}`);
+                } catch (cleanupError) {
+                    console.error(`⚠️ Erro ao remover arquivo temporário:`, cleanupError);
+                }
+            }
+        }
         
     } catch (error) {
-        console.error(`❌ Erro ao enviar áudio:`, error);
-        if (req.file) fs.unlinkSync(req.file.path);
-        res.status(500).json({ success: false, error: error.message });
+        console.error(`❌ ERRO GERAL NO PROCESSAMENTO DE ÁUDIO:`, error);
+        console.error(`💥 Stack trace completo:`, error.stack);
+        
+        res.status(500).json({ 
+            success: false, 
+            error: `Erro interno: ${error.message}` 
+        });
     }
+    
+    console.log(`🏁 ===== PROCESSAMENTO DE ÁUDIO FINALIZADO =====`);
 });
 
 app.post('/api/clients/:clientId/send-document', upload.single('file'), async (req, res) => {
@@ -1200,6 +1314,68 @@ server.listen(port, '0.0.0.0', () => {
     console.log(`🔧 Node.js: ${process.version}`);
     console.log(`💾 Memória: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
 });
+
+// Função auxiliar para detectar formato de áudio
+function detectAudioFormat(buffer) {
+    const signatures = {
+        'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF
+        'audio/mp3': [0xFF, 0xFB], // MP3 frame sync
+        'audio/mpeg': [0xFF, 0xFB], // MPEG
+        'audio/ogg': [0x4F, 0x67, 0x67, 0x53], // OggS
+        'audio/webm': [0x1A, 0x45, 0xDF, 0xA3], // WebM
+        'audio/m4a': [0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70] // M4A
+    };
+
+    for (const [mimeType, signature] of Object.entries(signatures)) {
+        if (signature.every((byte, index) => buffer[index] === byte)) {
+            return mimeType;
+        }
+    }
+    
+    return 'audio/wav'; // fallback padrão
+}
+
+// Função para converter base64 para arquivo temporário
+function base64ToTempFile(base64Data, format = 'wav') {
+    try {
+        console.log(`🔄 Convertendo base64 para arquivo temporário (${format})`);
+        
+        // Remover prefixo data URL se presente
+        const cleanBase64 = base64Data.replace(/^data:audio\/[^;]+;base64,/, '');
+        
+        // Converter para buffer
+        const buffer = Buffer.from(cleanBase64, 'base64');
+        
+        console.log(`📊 Buffer criado:`, {
+            size: buffer.length,
+            format: format,
+            firstBytes: Array.from(buffer.slice(0, 8)).map(b => '0x' + b.toString(16)).join(' ')
+        });
+        
+        // Detectar formato real
+        const detectedFormat = detectAudioFormat(buffer);
+        console.log(`🔍 Formato detectado: ${detectedFormat}`);
+        
+        // Criar arquivo temporário
+        const tempFileName = `temp_audio_${Date.now()}.${format}`;
+        const tempFilePath = path.join('uploads', tempFileName);
+        
+        fs.writeFileSync(tempFilePath, buffer);
+        
+        console.log(`✅ Arquivo temporário criado: ${tempFilePath}`);
+        
+        return {
+            path: tempFilePath,
+            detectedMimeType: detectedFormat,
+            size: buffer.length,
+            filename: tempFileName
+        };
+        
+    } catch (error) {
+        console.error(`❌ Erro ao converter base64 para arquivo:`, error);
+        throw error;
+    }
+}
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
