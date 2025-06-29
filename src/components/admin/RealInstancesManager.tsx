@@ -189,46 +189,51 @@ const RealInstancesManager = () => {
       setLoading(true);
       console.log(`🚀 Criando instância para cliente: ${clientData.name} (${instanceId})`);
       
-      const result = await whatsappService.connectClient(instanceId);
-      console.log("✅ Resultado da criação:", result);
-      
-      // Create instance in Supabase
-      await whatsappInstancesService.createInstance({
+      // Primeiro criar a instância no Supabase
+      const newInstance = await whatsappInstancesService.createInstance({
         client_id: clientData.id,
         instance_id: instanceId,
         status: 'connecting'
       });
+      
+      console.log('✅ Instância criada no Supabase:', newInstance);
+      
+      // Depois conectar no servidor WhatsApp
+      const result = await whatsappService.connectClient(instanceId);
+      console.log("✅ Resultado da conexão WhatsApp:", result);
       
       // Update client with instance info
       await updateClientInstance(clientData.id, instanceId, 'connecting');
       
       // Ouvir status deste cliente específico
       whatsappService.joinClientRoom(instanceId);
-      whatsappService.onClientStatus(instanceId, async (clientData) => {
-        console.log(`📱 Status atualizado para ${instanceId}:`, clientData);
+      whatsappService.onClientStatus(instanceId, async (clientStatus) => {
+        console.log(`📱 Status atualizado para ${instanceId}:`, clientStatus);
+        
+        // Update clients list
         setClients(prev => {
-          const index = prev.findIndex(c => c.clientId === clientData.clientId);
+          const index = prev.findIndex(c => c.clientId === clientStatus.clientId);
           if (index >= 0) {
             const updated = [...prev];
-            updated[index] = clientData;
+            updated[index] = clientStatus;
             return updated;
           } else {
-            return [...prev, clientData];
+            return [...prev, clientStatus];
           }
         });
         
         // Update client status in Supabase
-        const linkedClient = getClientByInstanceId(clientData.clientId);
+        const linkedClient = getClientByInstanceId(clientStatus.clientId);
         if (linkedClient) {
-          await updateClientInstance(linkedClient.id, clientData.clientId, clientData.status);
+          await updateClientInstance(linkedClient.id, clientStatus.clientId, clientStatus.status);
         }
 
-        // Update instance in Supabase
+        // Update instance in Supabase using the correct ID
         try {
-          await whatsappInstancesService.updateInstance(clientData.clientId, {
-            status: clientData.status,
-            phone_number: clientData.phoneNumber,
-            has_qr_code: clientData.hasQrCode
+          await whatsappInstancesService.updateInstanceById(newInstance.id, {
+            status: clientStatus.status,
+            phone_number: clientStatus.phoneNumber,
+            has_qr_code: clientStatus.hasQrCode
           });
         } catch (error) {
           console.error('Erro ao atualizar instância no Supabase:', error);
@@ -262,21 +267,24 @@ const RealInstancesManager = () => {
   const handleDisconnectClient = async (clientId: string) => {
     try {
       setLoading(true);
+      
+      // Primeiro desconectar do servidor WhatsApp
       await whatsappService.disconnectClient(clientId);
+      
+      // Encontrar a instância no Supabase pelo instance_id
+      const instance = await whatsappInstancesService.getInstanceByInstanceId(clientId);
+      
+      if (instance) {
+        // Atualizar status da instância no Supabase
+        await whatsappInstancesService.updateInstanceById(instance.id, {
+          status: 'disconnected'
+        });
+      }
       
       // Update client status
       const linkedClient = getClientByInstanceId(clientId);
       if (linkedClient) {
-        await updateClientInstance(linkedClient.id, clientId, 'disconnected');
-      }
-
-      // Update instance in Supabase
-      try {
-        await whatsappInstancesService.updateInstance(clientId, {
-          status: 'disconnected'
-        });
-      } catch (error) {
-        console.error('Erro ao atualizar instância no Supabase:', error);
+        await updateClientInstance(linkedClient.id, "", 'disconnected');
       }
       
       toast({
@@ -287,6 +295,7 @@ const RealInstancesManager = () => {
       await loadClients();
       await loadAvailableClients();
     } catch (error: any) {
+      console.error("❌ Erro ao desconectar:", error);
       toast({
         title: "Erro",
         description: error.message || "Falha ao desconectar instância",

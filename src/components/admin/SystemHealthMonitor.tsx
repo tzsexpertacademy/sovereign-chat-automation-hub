@@ -16,18 +16,32 @@ import {
 import { SERVER_URL, getConfig } from '@/config/environment';
 import { connectionManager } from '@/services/connectionManager';
 
+interface ConnectionStatus {
+  isConnected: boolean;
+  reconnectAttempts: number;
+  maxReconnectAttempts: number;
+}
+
 const SystemHealthMonitor = () => {
   const [healthData, setHealthData] = useState<any>(null);
-  const [connectionStatus, setConnectionStatus] = useState<any>(null);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     checkSystemHealth();
     
     // Monitor de conexão em tempo real
-    const unsubscribe = connectionManager.onStatusChange((status) => {
+    const handleStatusChange = (status: ConnectionStatus) => {
       setConnectionStatus(status);
-    });
+    };
+
+    let unsubscribe: (() => void) | undefined;
+    
+    try {
+      unsubscribe = connectionManager.onStatusChange(handleStatusChange);
+    } catch (error) {
+      console.warn('ConnectionManager não disponível:', error);
+    }
 
     // Verificar saúde a cada 30 segundos
     const interval = setInterval(checkSystemHealth, 30000);
@@ -36,7 +50,9 @@ const SystemHealthMonitor = () => {
       if (interval) {
         clearInterval(interval);
       }
-      connectionManager.removeListener(unsubscribe);
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, []);
 
