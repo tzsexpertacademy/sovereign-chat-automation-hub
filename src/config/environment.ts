@@ -12,10 +12,10 @@ let API_BASE_URL: string;
 let SOCKET_URL: string;
 
 if (isProduction) {
-  // Production URLs - use the VPS server
-  SERVER_HOST = 'https://146.59.227.248:4000';
-  API_BASE_URL = 'https://146.59.227.248:4000';
-  SOCKET_URL = 'https://146.59.227.248:4000';
+  // Production URLs - use the VPS server with HTTP (not HTTPS for now)
+  SERVER_HOST = 'http://146.59.227.248:4000';
+  API_BASE_URL = 'http://146.59.227.248:4000';
+  SOCKET_URL = 'http://146.59.227.248:4000';
   console.log('🚀 Modo Produção - Usando servidor VPS');
 } else if (isDevelopment) {
   // Development URLs - use localhost
@@ -24,10 +24,10 @@ if (isProduction) {
   SOCKET_URL = 'http://localhost:4000';
   console.log('🛠️ Modo Desenvolvimento - Usando localhost');
 } else {
-  // Fallback - try VPS first
-  SERVER_HOST = 'https://146.59.227.248:4000';
-  API_BASE_URL = 'https://146.59.227.248:4000';
-  SOCKET_URL = 'https://146.59.227.248:4000';
+  // Fallback - try VPS with HTTP
+  SERVER_HOST = 'http://146.59.227.248:4000';
+  API_BASE_URL = 'http://146.59.227.248:4000';
+  SOCKET_URL = 'http://146.59.227.248:4000';
   console.log('🔄 Modo Fallback - Usando servidor VPS');
 }
 
@@ -42,14 +42,14 @@ export const getServerConfig = () => ({
   SOCKET_URL,
   isProduction,
   isDevelopment,
-  protocol: isProduction ? 'https:' : 'http:',
+  protocol: SERVER_HOST.startsWith('https:') ? 'https:' : 'http:',
   serverUrl: SERVER_URL
 });
 
 export const getAlternativeServerConfig = () => ({
-  SERVER_URL: isDevelopment ? 'https://146.59.227.248:4000' : 'http://localhost:4000',
-  API_BASE_URL: isDevelopment ? 'https://146.59.227.248:4000' : 'http://localhost:4000',
-  SOCKET_URL: isDevelopment ? 'https://146.59.227.248:4000' : 'http://localhost:4000'
+  SERVER_URL: isDevelopment ? 'http://146.59.227.248:4000' : 'http://localhost:4000',
+  API_BASE_URL: isDevelopment ? 'http://146.59.227.248:4000' : 'http://localhost:4000',
+  SOCKET_URL: isDevelopment ? 'http://146.59.227.248:4000' : 'http://localhost:4000'
 });
 
 console.log('✅ Configuração de ambiente:', {

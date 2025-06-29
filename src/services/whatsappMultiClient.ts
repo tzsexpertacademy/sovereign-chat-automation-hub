@@ -1,4 +1,3 @@
-
 import io, { Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL } from '@/config/environment';
 
@@ -28,6 +27,7 @@ export interface MessageData {
   body: string;
   timestamp: number;
   type: string;
+  isFromMe?: boolean;
 }
 
 export interface QueuedMessage {
@@ -69,7 +69,8 @@ class WhatsAppMultiClientService {
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectInterval,
-        forceNew: true
+        forceNew: true,
+        withCredentials: false // Disable credentials for CORS
       });
 
       this.socket.on('connect', () => {
@@ -190,7 +191,7 @@ class WhatsAppMultiClientService {
         ...options.headers,
       },
       mode: 'cors',
-      credentials: 'omit'
+      credentials: 'omit' // Changed from 'include' to 'omit' for better CORS compatibility
     };
 
     try {

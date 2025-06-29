@@ -22,6 +22,8 @@ const ConnectionTest = () => {
         headers: {
           'Content-Type': 'application/json',
         },
+        mode: 'cors',
+        credentials: 'omit'
       });
 
       if (response.ok) {
@@ -92,8 +94,9 @@ const ConnectionTest = () => {
               <p><strong>Possíveis soluções:</strong></p>
               <ul className="list-disc list-inside mt-1 space-y-1">
                 <li>Verifique se o servidor WhatsApp está rodando na porta 4000</li>
-                <li>Se estiver no navegador, permita conteúdo não seguro</li>
+                <li>Se estiver no navegador, permita conteúdo não seguro (HTTP mixed content)</li>
                 <li>Verifique se não há firewall bloqueando a conexão</li>
+                <li>Confirme se o CORS está configurado no servidor</li>
               </ul>
             </div>
           </div>
