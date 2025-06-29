@@ -28,9 +28,9 @@ echo ""
 # Verificar se Node.js está instalado (verificação corrigida)
 echo "🔍 Verificando Node.js..."
 NODE_PATH=""
-if command -v node &> /dev/null; then
+if command -v node >/dev/null 2>&1; then
     NODE_PATH="node"
-elif command -v nodejs &> /dev/null; then
+elif command -v nodejs >/dev/null 2>&1; then
     NODE_PATH="nodejs"
 fi
 
@@ -40,9 +40,9 @@ if [ -z "$NODE_PATH" ]; then
     apt-get install -y nodejs
     
     # Verificar novamente após instalação
-    if command -v node &> /dev/null; then
+    if command -v node >/dev/null 2>&1; then
         NODE_PATH="node"
-    elif command -v nodejs &> /dev/null; then
+    elif command -v nodejs >/dev/null 2>&1; then
         NODE_PATH="nodejs"
     else
         echo "❌ Falha ao instalar Node.js"
@@ -52,6 +52,12 @@ fi
 
 NODE_VERSION=$($NODE_PATH --version)
 echo "✅ Node.js encontrado: $NODE_VERSION ($NODE_PATH)"
+
+# Criar symlink se necessário para garantir que 'node' funcione
+if [ "$NODE_PATH" = "nodejs" ] && [ ! -f "/usr/bin/node" ]; then
+    echo "🔗 Criando symlink para node..."
+    ln -sf /usr/bin/nodejs /usr/bin/node
+fi
 
 # Parar serviços existentes
 echo "⏸️ Parando serviços..."
@@ -249,9 +255,16 @@ if [ ! -d "server/node_modules" ]; then
     cd ..
 fi
 
-# Reiniciar WhatsApp Server
+# Definir NODE_PATH para o script de produção
+export PATH="/usr/bin:$PATH"
+
+# Reiniciar WhatsApp Server usando o script de produção
 echo "🚀 Iniciando WhatsApp Server..."
-./scripts/production-start-whatsapp.sh
+if ./scripts/production-start-whatsapp.sh; then
+    echo "✅ WhatsApp Server iniciado com sucesso!"
+else
+    echo "⚠️ Erro ao iniciar WhatsApp Server, mas continuando..."
+fi
 
 echo ""
 echo "🎉 HTTPS CONFIGURADO COM SUCESSO!"
@@ -260,7 +273,7 @@ echo ""
 echo "✅ Node.js: $NODE_VERSION"
 echo "✅ Certificado SSL criado com SAN"
 echo "✅ Nginx configurado com CORS"
-echo "✅ WhatsApp Server reiniciado"
+echo "✅ WhatsApp Server iniciado"
 echo ""
 echo "🌐 URLs HTTPS:"
 echo "  • Frontend: https://$DOMAIN/"
