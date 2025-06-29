@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, XCircle, Loader2, AlertTriangle } from "lucide-react";
-import { SERVER_URL, DIRECT_SERVER_URL, getServerConfig } from "@/config/environment";
+import { SERVER_URL, getServerConfig } from "@/config/environment";
 
 const ConnectionTest = () => {
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error' | 'mixed-content'>('idle');
