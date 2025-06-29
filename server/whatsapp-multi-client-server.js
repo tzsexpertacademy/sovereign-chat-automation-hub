@@ -12,12 +12,46 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
+        origin: [
+            "https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com",
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:4000"
+        ],
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
-app.use(cors());
+// ===== CONFIGURAÇÃO CORS CORRIGIDA =====
+app.use(cors({
+    origin: function (origin, callback) {
+        const allowedOrigins = [
+            'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
+            'http://localhost:3000',
+            'http://localhost:5173',
+            'http://localhost:4000'
+        ];
+        
+        // Permitir requisições sem origin (Postman, curl, etc)
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            console.log(`❌ CORS bloqueado para origem: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With']
+}));
+
+// Middleware adicional para debugging CORS
+app.use((req, res, next) => {
+    console.log(`📡 ${req.method} ${req.url} - Origin: ${req.headers.origin || 'sem origin'}`);
+    next();
+});
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -119,8 +153,6 @@ function base64ToTempFile(base64Data, format = 'wav') {
         throw error;
     }
 }
-
-// ===== CONTINUAR COM O RESTO DO CÓDIGO =====
 
 function generateClientId() {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -529,6 +561,34 @@ class WhatsAppClientManager {
         }
     }
 
+    async sendReaction(chatId, messageId, emoji) {
+        if (!this.isReady || !this.client) {
+            throw new Error('Cliente não está pronto');
+        }
+
+        try {
+            console.log(`🎭 Enviando reação para mensagem ${messageId} no chat ${chatId} via ${this.clientId}`);
+            
+            // Buscar a mensagem pelo ID
+            const chat = await this.client.getChatById(chatId);
+            const messages = await chat.fetchMessages({ limit: 50 });
+            const targetMessage = messages.find(msg => msg.id.id === messageId);
+            
+            if (!targetMessage) {
+                throw new Error('Mensagem não encontrada');
+            }
+            
+            // Enviar reação
+            await targetMessage.react(emoji);
+            console.log(`✅ Reação ${emoji} enviada com sucesso via ${this.clientId}`);
+            
+            return { success: true, message: 'Reação enviada' };
+        } catch (error) {
+            console.error(`❌ Erro ao enviar reação via ${this.clientId}:`, error);
+            throw new Error(`Falha ao enviar reação: ${error.message}`);
+        }
+    }
+
     async disconnect() {
         try {
             if (this.client) {
@@ -544,8 +604,6 @@ class WhatsAppClientManager {
     }
 }
 
-// ===== WEBSOCKET E ROTAS =====
-
 io.on('connection', socket => {
     console.log(`🔗 Nova conexão WebSocket: ${socket.id}`);
 
@@ -558,8 +616,6 @@ io.on('connection', socket => {
         console.log(`❌ WebSocket desconectado: ${socket.id}`);
     });
 });
-
-// ===== ROTAS HTTP =====
 
 // Rota para criar um novo cliente
 app.post('/api/clients', async (req, res) => {
@@ -762,214 +818,33 @@ app.post('/api/clients/:clientId/send-message', async (req, res) => {
     }
 });
 
-// ===== ROTA DE ÁUDIO COMPLETAMENTE REESCRITA E CORRIGIDA =====
-app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req, res) => {
+// ===== ROTA SENDREACTION ADICIONADA =====
+app.post('/api/clients/:clientId/send-reaction', async (req, res) => {
     const { clientId } = req.params;
-    const { to, audioData, fileName } = req.body;
-    
-    console.log(`🎤 ===== ROTA /send-audio CHAMADA =====`);
-    console.log(`📊 Parâmetros recebidos:`, {
-        clientId: clientId,
-        to: to,
-        hasPhysicalFile: !!req.file,
-        hasBase64Data: !!audioData,
-        fileName: fileName,
-        requestMethod: req.method,
-        requestUrl: req.url,
-        contentType: req.headers['content-type']
-    });
-    
-    // VALIDAÇÕES INICIAIS
-    if (!clientId) {
-        console.error(`❌ ClientId não fornecido`);
-        return res.status(400).json({ success: false, error: 'Client ID é obrigatório' });
-    }
-    
-    if (!to) {
-        console.error(`❌ Destinatário não fornecido`);
-        return res.status(400).json({ success: false, error: 'Destinatário é obrigatório' });
-    }
+    const { chatId, messageId, emoji } = req.body;
     
     try {
-        // VERIFICAR SE CLIENTE EXISTE E ESTÁ CONECTADO
+        console.log(`🎭 ROTA /send-reaction chamada:`, {
+            clientId,
+            chatId: chatId?.substring(0, 20) + '...',
+            messageId: messageId?.substring(0, 20) + '...',
+            emoji
+        });
+        
         const clientManager = clients.get(clientId);
         if (!clientManager) {
-            console.error(`❌ Cliente ${clientId} não encontrado na lista`);
-            console.log(`📋 Clientes disponíveis:`, Array.from(clients.keys()));
+            console.error(`❌ Cliente ${clientId} não encontrado`);
             return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
         }
         
-        if (!clientManager.isReady) {
-            console.error(`❌ Cliente ${clientId} não está pronto (status: ${clientManager.status})`);
-            return res.status(503).json({ 
-                success: false, 
-                error: 'Cliente não está conectado',
-                clientStatus: clientManager.status
-            });
-        }
+        const result = await clientManager.sendReaction(chatId, messageId, emoji);
+        console.log(`✅ Reação ${emoji} enviada com sucesso via ${clientId}`);
+        res.json(result);
         
-        console.log(`✅ Cliente ${clientId} está pronto para envio`);
-        
-        let tempFilePath = null;
-        let detectedMimeType = 'audio/wav';
-        let finalFileName = fileName || `audio_${Date.now()}.wav`;
-        
-        try {
-            // PROCESSAMENTO DO ARQUIVO
-            if (req.file) {
-                // CASO 1: Arquivo físico via multer
-                console.log(`📁 PROCESSANDO ARQUIVO FÍSICO ENVIADO`);
-                console.log(`📊 Detalhes do arquivo:`, {
-                    originalName: req.file.originalname,
-                    mimetype: req.file.mimetype,
-                    size: req.file.size,
-                    path: req.file.path
-                });
-                
-                tempFilePath = req.file.path;
-                detectedMimeType = req.file.mimetype || 'audio/wav';
-                finalFileName = req.file.originalname || finalFileName;
-                
-            } else if (audioData) {
-                // CASO 2: Dados base64 (método do frontend)
-                console.log(`💾 PROCESSANDO DADOS BASE64 DO FRONTEND`);
-                console.log(`📊 Tamanho base64: ${audioData.length} caracteres`);
-                
-                if (audioData.length < 100) {
-                    throw new Error(`Base64 muito pequeno: ${audioData.length} caracteres`);
-                }
-                
-                const tempFile = base64ToTempFile(audioData, 'wav');
-                tempFilePath = tempFile.path;
-                detectedMimeType = tempFile.detectedMimeType;
-                finalFileName = tempFile.filename;
-                
-                console.log(`✅ Conversão base64 concluída com sucesso:`, {
-                    path: tempFilePath,
-                    mimeType: detectedMimeType,
-                    size: tempFile.size,
-                    filename: finalFileName
-                });
-                
-            } else {
-                console.error(`❌ Nenhum dado de áudio foi fornecido`);
-                return res.status(400).json({ 
-                    success: false, 
-                    error: 'Nenhum arquivo ou dados de áudio fornecidos',
-                    receivedData: {
-                        hasFile: !!req.file,
-                        hasAudioData: !!audioData,
-                        bodyKeys: Object.keys(req.body)
-                    }
-                });
-            }
-            
-            // VERIFICAR SE ARQUIVO FOI CRIADO
-            if (!tempFilePath || !fs.existsSync(tempFilePath)) {
-                throw new Error(`Arquivo temporário não foi criado: ${tempFilePath}`);
-            }
-            
-            const fileStats = fs.statSync(tempFilePath);
-            console.log(`📁 Arquivo temporário verificado:`, {
-                path: tempFilePath,
-                exists: true,
-                size: fileStats.size,
-                mimeType: detectedMimeType
-            });
-            
-            // CRIAR MÍDIA PARA WHATSAPP
-            console.log(`🎵 CRIANDO MÍDIA PARA WHATSAPP`);
-            const media = MessageMedia.fromFilePath(tempFilePath);
-            
-            // CONFIGURAR TIPO MIME CORRETO
-            media.mimetype = detectedMimeType;
-            media.filename = finalFileName;
-            
-            console.log(`📊 Mídia configurada:`, {
-                mimetype: media.mimetype,
-                filename: media.filename,
-                hasData: !!media.data,
-                dataLength: media.data?.length || 0
-            });
-            
-            // CONFIGURAÇÕES DE ENVIO OTIMIZADAS
-            const sendOptions = {
-                sendAudioAsVoice: true, // Enviar como nota de voz
-                caption: undefined // Sem legenda para áudio
-            };
-            
-            console.log(`📤 ENVIANDO ÁUDIO VIA WHATSAPP`);
-            console.log(`🎯 Destino: ${to}`);
-            console.log(`⚙️ Opções:`, sendOptions);
-            
-            // ENVIAR ATRAVÉS DO WHATSAPP
-            await clientManager.sendMedia(to, media, sendOptions);
-            
-            console.log(`🎉 ===== ÁUDIO ENVIADO COM SUCESSO =====`);
-            console.log(`✅ Cliente: ${clientId} → ${to}`);
-            console.log(`📊 Arquivo: ${finalFileName} (${fileStats.size} bytes)`);
-            
-            // RESPOSTA DE SUCESSO
-            res.json({ 
-                success: true, 
-                message: 'Áudio enviado com sucesso via WhatsApp',
-                details: {
-                    clientId: clientId,
-                    to: to,
-                    mimeType: detectedMimeType,
-                    filename: finalFileName,
-                    fileSize: fileStats.size,
-                    method: req.file ? 'physical-file' : 'base64-data',
-                    timestamp: new Date().toISOString()
-                }
-            });
-            
-        } catch (processingError) {
-            console.error(`❌ ERRO NO PROCESSAMENTO DE ÁUDIO:`, processingError);
-            console.error(`💥 Stack trace:`, processingError.stack);
-            
-            // RESPOSTA DE ERRO DETALHADA
-            res.status(500).json({ 
-                success: false, 
-                error: `Erro ao processar áudio: ${processingError.message}`,
-                details: {
-                    clientId: clientId,
-                    processingStep: 'audio-processing',
-                    mimeType: detectedMimeType,
-                    filename: finalFileName,
-                    method: req.file ? 'physical-file' : 'base64-data',
-                    timestamp: new Date().toISOString()
-                }
-            });
-            
-        } finally {
-            // LIMPEZA DE ARQUIVO TEMPORÁRIO
-            if (tempFilePath && fs.existsSync(tempFilePath)) {
-                try {
-                    fs.unlinkSync(tempFilePath);
-                    console.log(`🗑️ Arquivo temporário removido: ${tempFilePath}`);
-                } catch (cleanupError) {
-                    console.error(`⚠️ Erro ao remover arquivo temporário:`, cleanupError);
-                }
-            }
-        }
-        
-    } catch (generalError) {
-        console.error(`❌ ERRO GERAL NA ROTA /send-audio:`, generalError);
-        console.error(`💥 Stack trace completo:`, generalError.stack);
-        
-        res.status(500).json({ 
-            success: false, 
-            error: `Erro interno do servidor: ${generalError.message}`,
-            details: {
-                clientId: clientId,
-                timestamp: new Date().toISOString(),
-                errorType: 'general-server-error'
-            }
-        });
+    } catch (error) {
+        console.error(`❌ Erro ao enviar reação do cliente ${clientId}:`, error);
+        res.status(500).json({ success: false, error: error.message });
     }
-    
-    console.log(`🏁 ===== PROCESSAMENTO /send-audio FINALIZADO =====`);
 });
 
 app.post('/api/clients/:clientId/send-image', upload.single('file'), async (req, res) => {
@@ -1064,12 +939,19 @@ app.post('/api/clients/:clientId/send-document', upload.single('file'), async (r
     }
 });
 
-// Health check
+// Health check COM DEBUGGING CORS
 app.get('/health', (req, res) => {
     const activeClients = clients.size;
     const connectedClients = Array.from(clients.values()).filter(c => c.status === 'connected').length;
     
-    console.log(`💚 Health check solicitado - ${activeClients} clientes ativos, ${connectedClients} conectados`);
+    console.log(`💚 Health check solicitado de: ${req.headers.origin || 'sem origin'}`);
+    console.log(`📊 Status: ${activeClients} clientes ativos, ${connectedClients} conectados`);
+    
+    // Headers CORS explícitos para garantir compatibilidade
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
     
     res.status(200).json({ 
         status: 'ok',
@@ -1080,6 +962,10 @@ app.get('/health', (req, res) => {
         memory: process.memoryUsage(),
         version: '2.0.0',
         server: `${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 4000}`,
+        cors: {
+            origin: req.headers.origin || 'sem origin',
+            userAgent: req.headers['user-agent']?.substring(0, 50) || 'sem user-agent'
+        },
         routes: {
             '/api/clients': 'GET, POST',
             '/api/clients/:id/connect': 'POST', 
@@ -1087,6 +973,7 @@ app.get('/health', (req, res) => {
             '/api/clients/:id/status': 'GET',
             '/api/clients/:id/chats': 'GET',
             '/api/clients/:id/send-message': 'POST',
+            '/api/clients/:id/send-reaction': 'POST ⭐',
             '/api/clients/:id/send-audio': 'POST ⭐',
             '/api/clients/:id/send-image': 'POST',
             '/api/clients/:id/send-video': 'POST',
@@ -1152,11 +1039,13 @@ server.listen(port, '0.0.0.0', () => {
     console.log(`📅 Timestamp: ${new Date().toISOString()}`);
     console.log(`🔧 Node.js: ${process.version}`);
     console.log(`💾 Memória: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
+    console.log(`🔐 CORS configurado para Lovable: ✅`);
     console.log(`📋 Rotas principais:`);
-    console.log(`   • GET  /health - Status do servidor`);
+    console.log(`   • GET  /health - Status do servidor ✅`);
+    console.log(`   • POST /api/clients/:id/send-reaction - Envio de reações ⭐`);
     console.log(`   • POST /api/clients/:id/send-audio - Envio de áudio ⭐`);
     console.log(`   • POST /api/clients/:id/send-message - Envio de texto`);
     console.log(`   • GET  /api/clients - Lista de clientes`);
-    console.log(`🔥 SERVIDOR PRONTO PARA RECEBER REQUISIÇÕES!`);
+    console.log(`🔥 SERVIDOR PRONTO PARA RECEBER REQUISIÇÕES DO LOVABLE!`);
     console.log(`====================================================`);
 });
