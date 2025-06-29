@@ -14,29 +14,19 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import whatsappService from "@/services/whatsappMultiClient";
-import { SERVER_URL } from "@/config/environment";
+import { getConfig } from "@/config/environment";
 
 const WhatsAppSystemStatus = () => {
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [serverInfo, setServerInfo] = useState<any>(null);
+  const [currentConfig, setCurrentConfig] = useState<any>(null);
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
   const { toast } = useToast();
 
-  // Força o uso do IP de produção se estivermos no Lovable
-  const getProductionServerUrl = () => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('lovableproject.com')) {
-      return 'http://146.59.227.248:4000';
-    }
-    return SERVER_URL;
-  };
-
-  const productionServerUrl = getProductionServerUrl();
-
   useEffect(() => {
     console.log(`🔍 Componente WhatsAppSystemStatus iniciado`);
-    console.log(`🌐 SERVER_URL configurado: ${SERVER_URL}`);
-    console.log(`🎯 URL de produção: ${productionServerUrl}`);
     
+    loadConfig();
     checkServerStatus();
     
     // Verificar status a cada 30 segundos
@@ -45,6 +35,16 @@ const WhatsAppSystemStatus = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const loadConfig = async () => {
+    try {
+      const config = await getConfig();
+      setCurrentConfig(config);
+      console.log(`🌐 Configuração carregada:`, config);
+    } catch (error) {
+      console.error('❌ Erro ao carregar configuração:', error);
+    }
+  };
+
   const checkServerStatus = async () => {
     try {
       setServerStatus('checking');
@@ -52,7 +52,9 @@ const WhatsAppSystemStatus = () => {
       setServerInfo(health);
       setServerStatus('online');
       setLastCheck(new Date());
+      console.log('✅ Servidor online:', health);
     } catch (error) {
+      console.error('❌ Servidor offline:', error);
       setServerStatus('offline');
       setServerInfo(null);
       setLastCheck(new Date());
@@ -98,7 +100,7 @@ const WhatsAppSystemStatus = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Server className="w-5 h-5" />
-            <CardTitle>Sistema WhatsApp Multi-Cliente</CardTitle>
+            <CardTitle>Status do Servidor WhatsApp</CardTitle>
           </div>
           <Button 
             size="sm" 
@@ -111,7 +113,7 @@ const WhatsAppSystemStatus = () => {
           </Button>
         </div>
         <CardDescription>
-          Status do servidor backend e APIs disponíveis
+          Status em tempo real do servidor backend
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -123,7 +125,7 @@ const WhatsAppSystemStatus = () => {
             <div>
               <p className="font-medium">Status do Servidor</p>
               <p className="text-sm text-gray-600">
-                {productionServerUrl} • {lastCheck ? `Última verificação: ${lastCheck.toLocaleTimeString()}` : 'Não verificado'}
+                {currentConfig?.serverUrl || 'Carregando...'} • {lastCheck ? `${lastCheck.toLocaleTimeString()}` : 'Não verificado'}
               </p>
             </div>
           </div>
@@ -137,35 +139,52 @@ const WhatsAppSystemStatus = () => {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <p className="text-sm font-medium text-gray-600">Clientes Ativos</p>
-              <p className="text-lg font-bold">{serverInfo.activeClients || 0}</p>
+              <p className="text-lg font-bold text-green-600">{serverInfo.activeClients || 0}</p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-600">Timestamp</p>
-              <p className="text-sm">{new Date(serverInfo.timestamp).toLocaleString()}</p>
+              <p className="text-sm font-medium text-gray-600">Versão</p>
+              <p className="text-sm text-gray-900">{serverInfo.version || 'N/A'}</p>
             </div>
           </div>
         )}
 
         {/* Links Úteis */}
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-600">Links Úteis</p>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" asChild>
-              <a href={`${productionServerUrl}/health`} target="_blank" rel="noopener noreferrer">
-                <Wifi className="w-4 h-4 mr-1" />
-                Health Check
-                <ExternalLink className="w-3 h-3 ml-1" />
-              </a>
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href={`${productionServerUrl}/api-docs`} target="_blank" rel="noopener noreferrer">
-                <Server className="w-4 h-4 mr-1" />
-                API Swagger
-                <ExternalLink className="w-3 h-3 ml-1" />
-              </a>
-            </Button>
+        {currentConfig && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-600">Links Úteis</p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" asChild>
+                <a href={`${currentConfig.serverUrl}/health`} target="_blank" rel="noopener noreferrer">
+                  <Wifi className="w-4 h-4 mr-1" />
+                  Health Check
+                  <ExternalLink className="w-3 h-3 ml-1" />
+                </a>
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <a href={`${currentConfig.serverUrl}/api-docs`} target="_blank" rel="noopener noreferrer">
+                  <Server className="w-4 h-4 mr-1" />
+                  API Docs
+                  <ExternalLink className="w-3 h-3 ml-1" />
+                </a>
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Status Online */}
+        {serverStatus === 'online' && (
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-start space-x-2">
+              <CheckCircle className="w-5 h-5 text-green-500 mt-0.5" />
+              <div>
+                <p className="font-medium text-green-900">Sistema Funcionando</p>
+                <p className="text-sm text-green-700">
+                  WhatsApp Multi-Cliente está online e operacional
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Status Offline */}
         {serverStatus === 'offline' && (
@@ -175,35 +194,12 @@ const WhatsAppSystemStatus = () => {
               <div>
                 <p className="font-medium text-red-900">Servidor Offline</p>
                 <p className="text-sm text-red-700">
-                  O servidor WhatsApp Multi-Cliente não está respondendo em {productionServerUrl}.
+                  Não foi possível conectar ao servidor WhatsApp Multi-Cliente
                 </p>
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-red-600">Comandos úteis:</p>
-                  <code className="text-xs bg-red-100 px-2 py-1 rounded">
-                    ./scripts/production-start-whatsapp.sh
-                  </code>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Status Online com informações detalhadas */}
-        {serverStatus === 'online' && (
-          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-start space-x-2">
-              <CheckCircle className="w-5 h-5 text-green-500 mt-0.5" />
-              <div>
-                <p className="font-medium text-green-900">Servidor Online</p>
-                <p className="text-sm text-green-700">
-                  WhatsApp Multi-Cliente funcionando corretamente
-                </p>
-                <div className="mt-2 text-xs text-green-600">
-                  <p>URL do Servidor: <code className="bg-green-100 px-1 rounded">{productionServerUrl}</code></p>
-                  <p className="mt-1">Hostname Frontend: <code className="bg-green-100 px-1 rounded">{window.location.hostname}</code></p>
-                  {import.meta.env.VITE_SERVER_URL && (
-                    <p className="mt-1">Configurado via: <code className="bg-green-100 px-1 rounded">VITE_SERVER_URL = {import.meta.env.VITE_SERVER_URL}</code></p>
-                  )}
+                <div className="mt-2">
+                  <p className="text-xs text-red-600">
+                    Verifique se o servidor está rodando: ./scripts/production-start-whatsapp.sh
+                  </p>
                 </div>
               </div>
             </div>

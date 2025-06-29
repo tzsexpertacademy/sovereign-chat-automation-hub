@@ -1,242 +1,181 @@
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { 
   Activity, 
-  Wifi, 
-  WifiOff, 
-  RefreshCw, 
   AlertTriangle, 
-  CheckCircle,
-  Clock,
-  TrendingUp,
-  TrendingDown
-} from 'lucide-react';
-import { connectionManager, ConnectionStatus } from '@/services/connectionManager';
-import { audioFallbackService } from '@/services/audioFallbackService';
+  CheckCircle, 
+  RefreshCw, 
+  Wifi,
+  WifiOff,
+  Server,
+  Globe
+} from "lucide-react";
+import { SERVER_URL, getConfig } from '@/config/environment';
+import { connectionManager } from '@/services/connectionManager';
 
 const SystemHealthMonitor = () => {
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
-  const [audioStats, setAudioStats] = useState({
-    failedCount: 0,
-    successRate: 95, // Mock data
-    avgResponseTime: 2.3 // Mock data
-  });
+  const [healthData, setHealthData] = useState<any>(null);
+  const [connectionStatus, setConnectionStatus] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Listen to connection status changes
-    const handleStatusChange = (status: ConnectionStatus) => {
+    checkSystemHealth();
+    
+    // Monitor de conexão em tempo real
+    const unsubscribe = connectionManager.onStatusChange((status) => {
       setConnectionStatus(status);
-    };
+    });
 
-    connectionManager.onStatusChange(handleStatusChange);
-
-    // Update audio stats
-    const updateAudioStats = () => {
-      const failedCount = audioFallbackService.getFailedAudiosCount();
-      setAudioStats(prev => ({
-        ...prev,
-        failedCount
-      }));
-    };
-
-    updateAudioStats();
-    const statsInterval = setInterval(updateAudioStats, 5000);
-
+    // Verificar saúde a cada 30 segundos
+    const interval = setInterval(checkSystemHealth, 30000);
+    
     return () => {
-      connectionManager.removeListener(handleStatusChange);
-      clearInterval(statsInterval);
+      interval && clearInterval(interval);
+      unsubscribe && connectionManager.removeListener(unsubscribe);
     };
   }, []);
 
-  const handleForceReconnect = async () => {
-    await connectionManager.forceReconnect();
-  };
-
-  const getConnectionBadge = () => {
-    if (!connectionStatus) {
-      return <Badge variant="secondary"><RefreshCw className="w-3 h-3 mr-1 animate-spin" />Carregando</Badge>;
-    }
-
-    if (connectionStatus.isConnected) {
-      return <Badge className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />Online</Badge>;
-    } else {
-      return <Badge variant="destructive"><WifiOff className="w-3 h-3 mr-1" />Offline</Badge>;
-    }
-  };
-
-  const getLastHeartbeatText = () => {
-    if (!connectionStatus || !connectionStatus.lastHeartbeat) {
-      return 'Nunca';
-    }
-
-    const timeDiff = Date.now() - connectionStatus.lastHeartbeat;
-    const seconds = Math.floor(timeDiff / 1000);
-    
-    if (seconds < 60) {
-      return `${seconds}s atrás`;
-    } else if (seconds < 3600) {
-      return `${Math.floor(seconds / 60)}min atrás`;
-    } else {
-      return `${Math.floor(seconds / 3600)}h atrás`;
+  const checkSystemHealth = async () => {
+    setLoading(true);
+    try {
+      const config = await getConfig();
+      const response = await fetch(`${config.serverUrl}/health`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setHealthData(data);
+        console.log('✅ Sistema saudável:', data);
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error('❌ Falha no health check:', error);
+      setHealthData(null);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getHealthScore = () => {
-    if (!connectionStatus) return 0;
-    
-    let score = 0;
-    
-    // Connection status (40 points)
-    if (connectionStatus.isConnected) score += 40;
-    
-    // Reconnect attempts (30 points)
-    const reconnectPenalty = Math.min(connectionStatus.reconnectAttempts * 10, 30);
-    score += 30 - reconnectPenalty;
-    
-    // Audio success rate (30 points)
-    score += Math.round(audioStats.successRate * 0.3);
-    
-    return Math.max(0, Math.min(100, score));
+  const getConnectionStatusColor = () => {
+    if (!connectionStatus) return 'bg-gray-500';
+    return connectionStatus.isConnected ? 'bg-green-500' : 'bg-red-500';
   };
 
-  const healthScore = getHealthScore();
+  const getServerStatusColor = () => {
+    if (!healthData) return 'bg-red-500';
+    return healthData.status === 'ok' ? 'bg-green-500' : 'bg-red-500';
+  };
 
   return (
-    <Card className="mb-6">
+    <Card>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Activity className="w-5 h-5 text-blue-500" />
-            <span>Monitor de Saúde do Sistema</span>
+            <Activity className="w-5 h-5" />
+            <CardTitle>Monitor de Saúde do Sistema</CardTitle>
           </div>
-          {getConnectionBadge()}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        
-        {/* Health Score */}
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium">Saúde Geral do Sistema</span>
-            <span className="text-2xl font-bold text-blue-600">{healthScore}%</span>
-          </div>
-          <Progress value={healthScore} className="h-3" />
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>Crítico</span>
-            <span>Excelente</span>
-          </div>
-        </div>
-
-        {/* Connection Details */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              {connectionStatus?.isConnected ? (
-                <Wifi className="w-4 h-4 text-green-500" />
-              ) : (
-                <WifiOff className="w-4 h-4 text-red-500" />
-              )}
-              <span className="text-sm font-medium">Conectividade</span>
-            </div>
-            <div className="text-xs text-gray-600">
-              <p>Servidor: {connectionStatus?.serverUrl || 'N/A'}</p>
-              <p>Protocolo: {connectionStatus?.protocol?.toUpperCase() || 'N/A'}</p>
-              <p>Último heartbeat: {getLastHeartbeatText()}</p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Clock className="w-4 h-4 text-blue-500" />
-              <span className="text-sm font-medium">Performance</span>
-            </div>
-            <div className="text-xs text-gray-600">
-              <p>Tempo resposta: {audioStats.avgResponseTime}s</p>
-              <p>Taxa de sucesso: {audioStats.successRate}%</p>
-              <p>Tentativas reconexão: {connectionStatus?.reconnectAttempts || 0}</p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              {audioStats.failedCount > 0 ? (
-                <AlertTriangle className="w-4 h-4 text-yellow-500" />
-              ) : (
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              )}
-              <span className="text-sm font-medium">Áudio</span>
-            </div>
-            <div className="text-xs text-gray-600">
-              <p>Falhas pendentes: {audioStats.failedCount}</p>
-              <p>Sistema fallback: Ativo</p>
-              <p>Conversão texto: Disponível</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Alerts */}
-        {!connectionStatus?.isConnected && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded">
-            <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-red-500" />
-              <span className="text-sm font-medium text-red-800">Sistema Offline</span>
-            </div>
-            <p className="text-xs text-red-600 mt-1">
-              O servidor WhatsApp não está respondendo. Tentativas de reconexão em andamento.
-            </p>
-          </div>
-        )}
-
-        {audioStats.failedCount > 0 && (
-          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
-            <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-yellow-500" />
-              <span className="text-sm font-medium text-yellow-800">Áudios Pendentes</span>
-            </div>
-            <p className="text-xs text-yellow-600 mt-1">
-              {audioStats.failedCount} áudio(s) aguardando reenvio manual.
-            </p>
-          </div>
-        )}
-
-        {connectionStatus?.reconnectAttempts > 0 && (
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-            <div className="flex items-center space-x-2">
-              <RefreshCw className="w-4 h-4 text-blue-500" />
-              <span className="text-sm font-medium text-blue-800">Reconectando</span>
-            </div>
-            <p className="text-xs text-blue-600 mt-1">
-              Tentativa {connectionStatus.reconnectAttempts} de {connectionStatus.maxReconnectAttempts} em andamento.
-            </p>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex space-x-2">
           <Button 
             size="sm" 
             variant="outline" 
-            onClick={handleForceReconnect}
-            disabled={connectionStatus?.isConnected}
+            onClick={checkSystemHealth}
+            disabled={loading}
           >
-            <RefreshCw className="w-4 h-4 mr-1" />
-            Forçar Reconexão
+            <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
+            Verificar
           </Button>
-          
-          {audioStats.failedCount > 0 && (
-            <Button 
-              size="sm" 
-              variant="outline"
-              onClick={() => audioFallbackService.clearFailedAudios()}
-            >
-              Limpar Falhas
-            </Button>
-          )}
         </div>
+        <CardDescription>
+          Monitoramento em tempo real da conectividade e saúde do sistema
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        
+        {/* Status da Conexão */}
+        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center space-x-3">
+            <div className={`w-3 h-3 rounded-full ${getConnectionStatusColor()}`} />
+            <div>
+              <p className="font-medium">Status da Conexão</p>
+              <p className="text-sm text-gray-600">
+                {connectionStatus ? 
+                  (connectionStatus.isConnected ? 'Conectado' : 'Desconectado') : 
+                  'Verificando...'
+                }
+              </p>
+            </div>
+          </div>
+          {connectionStatus?.isConnected ? 
+            <CheckCircle className="w-5 h-5 text-green-500" /> : 
+            <WifiOff className="w-5 h-5 text-red-500" />
+          }
+        </div>
+
+        {/* Status do Servidor */}
+        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center space-x-3">
+            <div className={`w-3 h-3 rounded-full ${getServerStatusColor()}`} />
+            <div>
+              <p className="font-medium">Servidor WhatsApp</p>
+              <p className="text-sm text-gray-600">
+                {healthData ? 
+                  `${healthData.status.toUpperCase()} - ${SERVER_URL}` : 
+                  'Offline ou inacessível'
+                }
+              </p>
+            </div>
+          </div>
+          {healthData ? 
+            <Server className="w-5 h-5 text-green-500" /> : 
+            <AlertTriangle className="w-5 h-5 text-red-500" />
+          }
+        </div>
+
+        {/* Informações do Sistema */}
+        {healthData && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-600">Clientes Ativos</p>
+              <p className="text-lg font-bold text-blue-600">
+                {healthData.activeClients || 0}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-600">Uptime</p>
+              <p className="text-sm text-gray-900">
+                {healthData.uptime ? `${Math.floor(healthData.uptime / 60)}min` : 'N/A'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Informações de Reconexão */}
+        {connectionStatus && !connectionStatus.isConnected && connectionStatus.reconnectAttempts > 0 && (
+          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <div className="flex items-center space-x-2">
+              <RefreshCw className="w-4 h-4 text-yellow-600 animate-spin" />
+              <span className="text-sm text-yellow-800">
+                Tentando reconectar... ({connectionStatus.reconnectAttempts}/{connectionStatus.maxReconnectAttempts})
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Status dos Endpoints */}
+        {healthData && healthData.routes && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-600">Endpoints Disponíveis</p>
+            <div className="flex flex-wrap gap-1">
+              {Object.keys(healthData.routes).slice(0, 6).map((route) => (
+                <Badge key={route} variant="outline" className="text-xs">
+                  {route.split('/').pop()}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
