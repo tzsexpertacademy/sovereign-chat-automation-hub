@@ -1,37 +1,36 @@
 
 #!/bin/bash
 
-# Script para atualizar URLs do frontend após configurar HTTPS
+# Script para atualizar URLs do frontend para HTTPS
 # Arquivo: scripts/update-frontend-urls.sh
 
-echo "🔧 ATUALIZANDO URLs DO FRONTEND PARA HTTPS"
-echo "========================================="
+echo "🔧 ATUALIZANDO FRONTEND PARA HTTPS"
+echo "=================================="
 
 DOMAIN="146.59.227.248"
-HTTPS_PORT="443"
 
-echo "📋 Configurações:"
-echo "  • Domínio: $DOMAIN"
+echo "📋 Atualizando configuração para:"
+echo "  • Servidor: https://$DOMAIN"
 echo "  • Protocolo: HTTPS"
-echo "  • Porta: $HTTPS_PORT"
 echo ""
 
-# Verificar se o arquivo de configuração existe
+# Verificar se o arquivo existe
 CONFIG_FILE="src/config/environment.ts"
 
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo "❌ Arquivo de configuração não encontrado: $CONFIG_FILE"
+    echo "❌ Arquivo não encontrado: $CONFIG_FILE"
+    echo "💡 Execute este script no diretório raiz do projeto"
     exit 1
 fi
 
-echo "📝 Criando backup do arquivo de configuração..."
+# Fazer backup
+echo "💾 Criando backup..."
 cp "$CONFIG_FILE" "$CONFIG_FILE.backup.$(date +%Y%m%d_%H%M%S)"
 
-echo "🔄 Atualizando configurações para HTTPS..."
-
 # Criar nova configuração
+echo "🔄 Atualizando configuração..."
 cat > "$CONFIG_FILE" << 'EOF'
-// Environment configuration for WhatsApp Multi-Client - HTTPS Enabled
+// Environment configuration for WhatsApp Multi-Client - HTTPS
 console.log('🌍 Configurando ambiente HTTPS...');
 
 // Detect environment
@@ -64,48 +63,41 @@ if (isDevelopment) {
 export const SERVER_URL = SERVER_HOST;
 export { API_BASE_URL, SOCKET_URL };
 
-// Export additional config functions
+// Export additional config
 export const getServerConfig = () => ({
   SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
   isProduction,
   isDevelopment,
-  isHttps: true,
-  protocol: 'https:',
+  isHttps: !isDevelopment,
+  protocol: isDevelopment ? 'http:' : 'https:',
   serverUrl: SERVER_URL
 });
 
-console.log('✅ Configuração HTTPS:', {
+console.log('✅ Configuração HTTPS carregada:', {
   SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
-  isHttps: true,
-  environment: isProduction ? 'production' : isDevelopment ? 'development' : 'fallback'
+  isHttps: !isDevelopment,
+  environment: isProduction ? 'production' : isDevelopment ? 'development' : 'https'
 });
 EOF
 
-echo "✅ Configuração atualizada para HTTPS!"
+echo "✅ Frontend atualizado para HTTPS!"
 echo ""
-echo "📋 Mudanças realizadas:"
+echo "📋 Mudanças aplicadas:"
 echo "  • Protocolo: HTTP → HTTPS"
 echo "  • WebSocket: WS → WSS"
-echo "  • Removido sistema de proxy CORS"
-echo ""
-echo "🔄 Para aplicar as mudanças:"
-echo "  1. Faça commit das alterações"
-echo "  2. Faça push para o repositório"
-echo "  3. Recompile o frontend se necessário"
+echo "  • Removido proxy CORS"
 echo ""
 echo "🌐 Novas URLs:"
-echo "  • API Base: https://$DOMAIN"
+echo "  • API: https://$DOMAIN"
 echo "  • WebSocket: wss://$DOMAIN"
 echo ""
-
-# Verificar se existe arquivo de backup
-if [ -f "$CONFIG_FILE.backup."* ]; then
-    echo "💾 Backup salvo em: $CONFIG_FILE.backup.*"
-fi
-
-echo "✅ Atualização concluída!"
+echo "🔄 Para aplicar:"
+echo "  1. Faça commit das mudanças"
+echo "  2. A configuração será aplicada automaticamente"
+echo ""
+echo "✅ Configuração concluída!"
 EOF
