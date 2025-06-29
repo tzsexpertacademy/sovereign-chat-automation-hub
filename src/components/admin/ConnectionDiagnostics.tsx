@@ -127,32 +127,21 @@ const ConnectionDiagnostics = () => {
         });
       }
 
-      // Test 5: API endpoints - CORRIGIDO: testando rota correta
+      // Test 5: API endpoints
       try {
         const clients = await whatsappService.getAllClients();
         results.push({
           test: "Endpoints da API",
           status: 'success',
-          message: `API funcionando (${clients.length} clientes)`,
-          details: "Rota /clients respondendo corretamente"
+          message: `API funcionando (${clients.length} clientes)`
         });
       } catch (error: any) {
-        // Testar se é erro 404 ou outro problema
-        if (error.message.includes('404')) {
-          results.push({
-            test: "Endpoints da API",
-            status: 'error',
-            message: "Rota não encontrada (404)",
-            details: "Verificar se servidor está usando rotas corretas: /clients em vez de /api/clients"
-          });
-        } else {
-          results.push({
-            test: "Endpoints da API",
-            status: 'error',
-            message: "API não responde",
-            details: error.message
-          });
-        }
+        results.push({
+          test: "Endpoints da API",
+          status: 'error',
+          message: "API não responde",
+          details: error.message
+        });
       }
 
       setDiagnostics(results);

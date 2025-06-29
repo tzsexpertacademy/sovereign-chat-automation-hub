@@ -1,4 +1,3 @@
-
 import io, { Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL } from '@/config/environment';
 
@@ -71,7 +70,7 @@ class WhatsAppMultiClientService {
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectInterval,
         forceNew: true,
-        withCredentials: false
+        withCredentials: false // Disable credentials for CORS
       });
 
       this.socket.on('connect', () => {
@@ -192,7 +191,7 @@ class WhatsAppMultiClientService {
         ...options.headers,
       },
       mode: 'cors',
-      credentials: 'omit'
+      credentials: 'omit' // Changed from 'include' to 'omit' for better CORS compatibility
     };
 
     try {
@@ -215,11 +214,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Get all clients - CORRIGIDO: removido /api/
+  // Get all clients
   async getAllClients(): Promise<WhatsAppClient[]> {
     try {
       console.log('📋 Buscando todos os clientes...');
-      const response = await this.makeRequest('/clients');
+      const response = await this.makeRequest('/api/clients');
       
       if (response.success && Array.isArray(response.clients)) {
         console.log(`✅ Clientes encontrados: ${response.clients.length}`);
@@ -234,11 +233,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Connect client - CORRIGIDO: removido /api/
+  // Connect client
   async connectClient(clientId: string): Promise<any> {
     try {
       console.log(`🔗 Conectando cliente: ${clientId}`);
-      return await this.makeRequest(`/clients/${clientId}/connect`, {
+      return await this.makeRequest(`/api/clients/${clientId}/connect`, {
         method: 'POST'
       });
     } catch (error) {
@@ -247,11 +246,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Disconnect client - CORRIGIDO: removido /api/
+  // Disconnect client
   async disconnectClient(clientId: string): Promise<any> {
     try {
       console.log(`🔌 Desconectando cliente: ${clientId}`);
-      return await this.makeRequest(`/clients/${clientId}/disconnect`, {
+      return await this.makeRequest(`/api/clients/${clientId}/disconnect`, {
         method: 'POST'
       });
     } catch (error) {
@@ -260,11 +259,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Get client status - CORRIGIDO: removido /api/
+  // Get client status
   async getClientStatus(clientId: string): Promise<WhatsAppClient> {
     try {
       console.log(`📊 Verificando status do cliente: ${clientId}`);
-      const response = await this.makeRequest(`/clients/${clientId}/status`);
+      const response = await this.makeRequest(`/api/clients/${clientId}/status`);
       
       if (response.success) {
         console.log(`✅ Status do cliente ${clientId}:`, response.status);
@@ -284,11 +283,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Send message - CORRIGIDO: removido /api/
+  // Send message
   async sendMessage(clientId: string, to: string, message: string): Promise<any> {
     try {
       console.log(`📤 Enviando mensagem via cliente ${clientId} para ${to}`);
-      return await this.makeRequest(`/clients/${clientId}/send-message`, {
+      return await this.makeRequest(`/api/clients/${clientId}/send-message`, {
         method: 'POST',
         body: JSON.stringify({ to, message })
       });
@@ -298,11 +297,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Get chats - CORRIGIDO: removido /api/
+  // Get chats
   async getChats(clientId: string): Promise<any> {
     try {
       console.log(`💬 Buscando chats do cliente: ${clientId}`);
-      return await this.makeRequest(`/clients/${clientId}/chats`);
+      return await this.makeRequest(`/api/clients/${clientId}/chats`);
     } catch (error) {
       console.error(`❌ Erro ao buscar chats do cliente ${clientId}:`, error);
       throw error;
