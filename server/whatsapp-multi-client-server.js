@@ -7,6 +7,7 @@ const qrcode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const AudioSendService = require('./services/audioSendService');
 
 const app = express();
 const server = http.createServer(app);
@@ -40,6 +41,7 @@ if (!fs.existsSync('./sessions')) {
 }
 
 const clients = new Map();
+const audioSendService = new AudioSendService();
 
 // ===== FUNÇÕES AUXILIARES DEFINIDAS PRIMEIRO =====
 
@@ -66,12 +68,12 @@ function detectAudioFormat(buffer) {
         }
     }
     
-    console.log('⚠️ Formato não detectado, usando audio/wav como fallback');
-    return 'audio/wav'; // fallback padrão
+    console.log('⚠️ Formato não detectado, usando audio/ogg como fallback');
+    return 'audio/ogg'; // fallback padrão mudado para OGG
 }
 
 // Função para converter base64 para arquivo temporário
-function base64ToTempFile(base64Data, format = 'wav') {
+function base64ToTempFile(base64Data, format = 'ogg') {
     try {
         console.log(`🔄 INICIANDO conversão base64 para arquivo temporário`);
         console.log(`📊 Parâmetros:`, {
@@ -160,6 +162,12 @@ class WhatsAppClientManager {
         this.lastActivity = Date.now();
         this.chatCache = new Map();
         this.chatCacheTimeout = 30000; // 30 segundos
+        this.audioStats = {
+            totalAttempts: 0,
+            successfulSends: 0,
+            failedSends: 0,
+            evaluationErrors: 0
+        };
     }
 
     async initialize() {
@@ -180,13 +188,17 @@ class WhatsAppClientManager {
                         '--disable-gpu',
                         '--disable-background-timer-throttling',
                         '--disable-backgrounding-occluded-windows',
-                        '--disable-renderer-backgrounding'
+                        '--disable-renderer-backgrounding',
+                        '--disable-web-security',
+                        '--disable-features=VizDisplayCompositor',
+                        '--disable-ipc-flooding-protection'
                     ],
-                    executablePath: undefined
+                    executablePath: undefined,
+                    timeout: 60000 // Timeout aumentado para 60s
                 },
                 webVersionCache: {
                     type: 'remote',
-                    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+                    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2408.13.html',
                 }
             });
 
@@ -361,11 +373,23 @@ class WhatsAppClientManager {
             phoneNumber: this.phoneNumber,
             hasQrCode: !!this.qrCode,
             qrCode: this.qrCode,
-            error: error
+            error: error,
+            audioStats: this.getAudioStats()
         };
         
         io.emit(`client_status_${this.clientId}`, statusData);
         console.log(`📊 Status atualizado para ${this.clientId}: ${status}`);
+    }
+
+    getAudioStats() {
+        const successRate = this.audioStats.totalAttempts > 0 
+            ? (this.audioStats.successfulSends / this.audioStats.totalAttempts * 100).toFixed(1)
+            : 0;
+            
+        return {
+            ...this.audioStats,
+            successRate: `${successRate}%`
+        };
     }
 
     async getChats() {
@@ -511,6 +535,42 @@ class WhatsAppClientManager {
         } catch (error) {
             console.error(`❌ Erro ao enviar mensagem via ${this.clientId}:`, error);
             throw new Error(`Falha ao enviar mensagem: ${error.message}`);
+        }
+    }
+
+    async sendAudio(to, audioPath, originalFileName = 'audio') {
+        console.log(`🎵 ===== MÉTODO sendAudio CHAMADO =====`);
+        console.log(`📁 Arquivo: ${audioPath}`);
+        console.log(`📞 Para: ${to}`);
+        console.log(`📋 Nome original: ${originalFileName}`);
+        
+        this.audioStats.totalAttempts++;
+        
+        try {
+            const result = await audioSendService.sendAudioWithRetry(
+                this.client, 
+                to, 
+                audioPath, 
+                originalFileName
+            );
+            
+            if (result.success) {
+                this.audioStats.successfulSends++;
+                console.log(`✅ Áudio enviado com sucesso:`, result);
+            } else {
+                this.audioStats.failedSends++;
+                if (result.error && result.error.includes('Evaluation failed')) {
+                    this.audioStats.evaluationErrors++;
+                }
+                console.error(`❌ Falha no envio de áudio:`, result);
+            }
+            
+            return result;
+            
+        } catch (error) {
+            this.audioStats.failedSends++;
+            console.error(`💥 Erro crítico no sendAudio:`, error);
+            throw error;
         }
     }
 
@@ -762,12 +822,12 @@ app.post('/api/clients/:clientId/send-message', async (req, res) => {
     }
 });
 
-// ===== ROTA DE ÁUDIO COMPLETAMENTE REESCRITA E CORRIGIDA =====
+// ===== ROTA DE ÁUDIO COMPLETAMENTE REESCRITA COM RETRY INTELIGENTE =====
 app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req, res) => {
     const { clientId } = req.params;
     const { to, audioData, fileName } = req.body;
     
-    console.log(`🎤 ===== ROTA /send-audio CHAMADA =====`);
+    console.log(`🎤 ===== ROTA /send-audio CHAMADA (VERSÃO CORRIGIDA) =====`);
     console.log(`📊 Parâmetros recebidos:`, {
         clientId: clientId,
         to: to,
@@ -811,8 +871,7 @@ app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req,
         console.log(`✅ Cliente ${clientId} está pronto para envio`);
         
         let tempFilePath = null;
-        let detectedMimeType = 'audio/wav';
-        let finalFileName = fileName || `audio_${Date.now()}.wav`;
+        let finalFileName = fileName || `audio_${Date.now()}.ogg`;
         
         try {
             // PROCESSAMENTO DO ARQUIVO
@@ -827,7 +886,6 @@ app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req,
                 });
                 
                 tempFilePath = req.file.path;
-                detectedMimeType = req.file.mimetype || 'audio/wav';
                 finalFileName = req.file.originalname || finalFileName;
                 
             } else if (audioData) {
@@ -839,14 +897,13 @@ app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req,
                     throw new Error(`Base64 muito pequeno: ${audioData.length} caracteres`);
                 }
                 
-                const tempFile = base64ToTempFile(audioData, 'wav');
+                const tempFile = base64ToTempFile(audioData, 'ogg');
                 tempFilePath = tempFile.path;
-                detectedMimeType = tempFile.detectedMimeType;
                 finalFileName = tempFile.filename;
                 
                 console.log(`✅ Conversão base64 concluída com sucesso:`, {
                     path: tempFilePath,
-                    mimeType: detectedMimeType,
+                    mimeType: tempFile.detectedMimeType,
                     size: tempFile.size,
                     filename: finalFileName
                 });
@@ -873,56 +930,53 @@ app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req,
             console.log(`📁 Arquivo temporário verificado:`, {
                 path: tempFilePath,
                 exists: true,
-                size: fileStats.size,
-                mimeType: detectedMimeType
+                size: fileStats.size
             });
             
-            // CRIAR MÍDIA PARA WHATSAPP
-            console.log(`🎵 CRIANDO MÍDIA PARA WHATSAPP`);
-            const media = MessageMedia.fromFilePath(tempFilePath);
+            // USAR NOVO SERVIÇO DE ÁUDIO COM RETRY INTELIGENTE
+            console.log(`🚀 INICIANDO ENVIO COM RETRY INTELIGENTE`);
             
-            // CONFIGURAR TIPO MIME CORRETO
-            media.mimetype = detectedMimeType;
-            media.filename = finalFileName;
+            const result = await clientManager.sendAudio(to, tempFilePath, finalFileName);
             
-            console.log(`📊 Mídia configurada:`, {
-                mimetype: media.mimetype,
-                filename: media.filename,
-                hasData: !!media.data,
-                dataLength: media.data?.length || 0
-            });
-            
-            // CONFIGURAÇÕES DE ENVIO OTIMIZADAS
-            const sendOptions = {
-                sendAudioAsVoice: true, // Enviar como nota de voz
-                caption: undefined // Sem legenda para áudio
-            };
-            
-            console.log(`📤 ENVIANDO ÁUDIO VIA WHATSAPP`);
-            console.log(`🎯 Destino: ${to}`);
-            console.log(`⚙️ Opções:`, sendOptions);
-            
-            // ENVIAR ATRAVÉS DO WHATSAPP
-            await clientManager.sendMedia(to, media, sendOptions);
-            
-            console.log(`🎉 ===== ÁUDIO ENVIADO COM SUCESSO =====`);
-            console.log(`✅ Cliente: ${clientId} → ${to}`);
-            console.log(`📊 Arquivo: ${finalFileName} (${fileStats.size} bytes)`);
-            
-            // RESPOSTA DE SUCESSO
-            res.json({ 
-                success: true, 
-                message: 'Áudio enviado com sucesso via WhatsApp',
-                details: {
-                    clientId: clientId,
-                    to: to,
-                    mimeType: detectedMimeType,
-                    filename: finalFileName,
-                    fileSize: fileStats.size,
-                    method: req.file ? 'physical-file' : 'base64-data',
-                    timestamp: new Date().toISOString()
-                }
-            });
+            if (result.success) {
+                console.log(`🎉 ===== ÁUDIO ENVIADO COM SUCESSO =====`);
+                console.log(`✅ Cliente: ${clientId} → ${to}`);
+                console.log(`🎯 Resultado:`, result);
+                
+                // RESPOSTA DE SUCESSO
+                res.json({ 
+                    success: true, 
+                    message: result.message || 'Áudio enviado com sucesso',
+                    details: {
+                        clientId: clientId,
+                        to: to,
+                        filename: finalFileName,
+                        fileSize: fileStats.size,
+                        method: req.file ? 'physical-file' : 'base64-data',
+                        attempts: result.attempt || 1,
+                        format: result.format || 'ogg',
+                        isFallback: result.isFallback || false,
+                        timestamp: new Date().toISOString()
+                    }
+                });
+            } else {
+                console.error(`❌ FALHA NO ENVIO DE ÁUDIO:`, result);
+                
+                // RESPOSTA DE ERRO DETALHADA
+                res.status(500).json({ 
+                    success: false, 
+                    error: result.error || 'Erro desconhecido no envio de áudio',
+                    details: {
+                        clientId: clientId,
+                        to: to,
+                        filename: finalFileName,
+                        fileSize: fileStats.size,
+                        method: req.file ? 'physical-file' : 'base64-data',
+                        attempts: result.attempts || 0,
+                        timestamp: new Date().toISOString()
+                    }
+                });
+            }
             
         } catch (processingError) {
             console.error(`❌ ERRO NO PROCESSAMENTO DE ÁUDIO:`, processingError);
@@ -935,7 +989,6 @@ app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req,
                 details: {
                     clientId: clientId,
                     processingStep: 'audio-processing',
-                    mimeType: detectedMimeType,
                     filename: finalFileName,
                     method: req.file ? 'physical-file' : 'base64-data',
                     timestamp: new Date().toISOString()
@@ -972,6 +1025,32 @@ app.post('/api/clients/:clientId/send-audio', upload.single('file'), async (req,
     console.log(`🏁 ===== PROCESSAMENTO /send-audio FINALIZADO =====`);
 });
 
+// Rota para obter estatísticas de áudio
+app.get('/api/clients/:clientId/audio-stats', (req, res) => {
+    const { clientId } = req.params;
+    
+    try {
+        const clientManager = clients.get(clientId);
+        if (!clientManager) {
+            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
+        }
+        
+        const stats = clientManager.getAudioStats();
+        const serviceStats = audioSendService.getStats();
+        
+        res.json({ 
+            success: true, 
+            clientStats: stats,
+            serviceConfig: serviceStats
+        });
+        
+    } catch (error) {
+        console.error(`❌ Erro ao obter estatísticas de áudio:`, error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Rota para enviar imagem
 app.post('/api/clients/:clientId/send-image', upload.single('file'), async (req, res) => {
     const { clientId } = req.params;
     const { to, caption } = req.body;
@@ -1002,6 +1081,7 @@ app.post('/api/clients/:clientId/send-image', upload.single('file'), async (req,
     }
 });
 
+// Rota para enviar vídeo
 app.post('/api/clients/:clientId/send-video', upload.single('file'), async (req, res) => {
     const { clientId } = req.params;
     const { to, caption } = req.body;
@@ -1032,6 +1112,7 @@ app.post('/api/clients/:clientId/send-video', upload.single('file'), async (req,
     }
 });
 
+// Rota para enviar documento
 app.post('/api/clients/:clientId/send-document', upload.single('file'), async (req, res) => {
     const { clientId } = req.params;
     const { to, caption } = req.body;
@@ -1064,10 +1145,26 @@ app.post('/api/clients/:clientId/send-document', upload.single('file'), async (r
     }
 });
 
-// Health check
+// Health check com informações de áudio
 app.get('/health', (req, res) => {
     const activeClients = clients.size;
     const connectedClients = Array.from(clients.values()).filter(c => c.status === 'connected').length;
+    
+    // Calcular estatísticas gerais de áudio
+    let totalAudioAttempts = 0;
+    let totalAudioSuccess = 0;
+    let totalEvaluationErrors = 0;
+    
+    for (const client of clients.values()) {
+        const stats = client.getAudioStats();
+        totalAudioAttempts += stats.totalAttempts;
+        totalAudioSuccess += stats.successfulSends;
+        totalEvaluationErrors += stats.evaluationErrors;
+    }
+    
+    const audioSuccessRate = totalAudioAttempts > 0 
+        ? (totalAudioSuccess / totalAudioAttempts * 100).toFixed(1)
+        : 0;
     
     console.log(`💚 Health check solicitado - ${activeClients} clientes ativos, ${connectedClients} conectados`);
     
@@ -1078,8 +1175,21 @@ app.get('/health', (req, res) => {
         connectedClients: connectedClients,
         uptime: process.uptime(),
         memory: process.memoryUsage(),
-        version: '2.0.0',
+        version: '2.1.0-audio-fixed',
         server: `${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 4000}`,
+        audioStats: {
+            totalAttempts: totalAudioAttempts,
+            successfulSends: totalAudioSuccess,
+            failedSends: totalAudioAttempts - totalAudioSuccess,
+            evaluationErrors: totalEvaluationErrors,
+            successRate: `${audioSuccessRate}%`
+        },
+        fixes: {
+            whatsappWebVersion: '1.21.0',
+            retrySystem: 'enabled',
+            fallbackSystem: 'enabled',
+            evaluationErrorFix: 'implemented'
+        },
         routes: {
             '/api/clients': 'GET, POST',
             '/api/clients/:id/connect': 'POST', 
@@ -1087,7 +1197,8 @@ app.get('/health', (req, res) => {
             '/api/clients/:id/status': 'GET',
             '/api/clients/:id/chats': 'GET',
             '/api/clients/:id/send-message': 'POST',
-            '/api/clients/:id/send-audio': 'POST ⭐',
+            '/api/clients/:id/send-audio': 'POST ⭐ (CORRIGIDO)',
+            '/api/clients/:id/audio-stats': 'GET 📊 (NOVO)',
             '/api/clients/:id/send-image': 'POST',
             '/api/clients/:id/send-video': 'POST',
             '/api/clients/:id/send-document': 'POST'
@@ -1147,16 +1258,22 @@ process.on('SIGINT', async () => {
 // INICIALIZAÇÃO DO SERVIDOR
 const port = process.env.PORT || 4000;
 server.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 ===== SERVIDOR WHATSAPP MULTI-CLIENT INICIADO =====`);
+    console.log(`🚀 ===== SERVIDOR WHATSAPP MULTI-CLIENT INICIADO (VERSÃO CORRIGIDA) =====`);
     console.log(`🌐 Servidor rodando na porta: ${port}`);
     console.log(`📅 Timestamp: ${new Date().toISOString()}`);
     console.log(`🔧 Node.js: ${process.version}`);
     console.log(`💾 Memória: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
+    console.log(`🎵 Sistema de áudio: CORRIGIDO com retry inteligente`);
+    console.log(`📦 whatsapp-web.js: v1.21.0 (versão estável)`);
+    console.log(`🔄 Retry system: 3 tentativas com formatos OGG → WAV → MP3`);
+    console.log(`🛡️ Fallback: Conversão para texto em caso de falha`);
     console.log(`📋 Rotas principais:`);
-    console.log(`   • GET  /health - Status do servidor`);
-    console.log(`   • POST /api/clients/:id/send-audio - Envio de áudio ⭐`);
+    console.log(`   • GET  /health - Status do servidor com stats de áudio`);
+    console.log(`   • POST /api/clients/:id/send-audio - Envio de áudio ⭐ CORRIGIDO`);
+    console.log(`   • GET  /api/clients/:id/audio-stats - Estatísticas de áudio 📊`);
     console.log(`   • POST /api/clients/:id/send-message - Envio de texto`);
     console.log(`   • GET  /api/clients - Lista de clientes`);
     console.log(`🔥 SERVIDOR PRONTO PARA RECEBER REQUISIÇÕES!`);
+    console.log(`🎯 CORREÇÃO "Evaluation Failed" IMPLEMENTADA!`);
     console.log(`====================================================`);
 });
