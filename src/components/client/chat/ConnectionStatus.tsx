@@ -5,10 +5,12 @@ import { getServerConfig } from "@/config/environment";
 
 interface ConnectionStatusProps {
   className?: string;
+  connectedInstance?: string;
+  isOnline?: boolean;
 }
 
-const ConnectionStatus = ({ className }: ConnectionStatusProps) => {
-  const [isOnline, setIsOnline] = useState(true);
+const ConnectionStatus = ({ className, connectedInstance, isOnline: propIsOnline }: ConnectionStatusProps) => {
+  const [isServerOnline, setIsServerOnline] = useState(true);
   const config = getServerConfig();
 
   useEffect(() => {
@@ -19,9 +21,9 @@ const ConnectionStatus = ({ className }: ConnectionStatusProps) => {
           mode: 'no-cors',
           signal: AbortSignal.timeout(5000)
         });
-        setIsOnline(true);
+        setIsServerOnline(true);
       } catch (error) {
-        setIsOnline(false);
+        setIsServerOnline(false);
       }
     };
 
@@ -33,12 +35,20 @@ const ConnectionStatus = ({ className }: ConnectionStatusProps) => {
     return () => clearInterval(interval);
   }, [config.SERVER_URL]);
 
+  // Use prop isOnline if provided, otherwise use server check
+  const isOnline = propIsOnline !== undefined ? propIsOnline : isServerOnline;
+  
+  // Show instance info if available
+  const statusText = connectedInstance 
+    ? `${isOnline ? "🟢" : "🔴"} ${connectedInstance}`
+    : `${isOnline ? "🟢 Online" : "🔴 Offline"}`;
+
   return (
     <Badge 
       variant={isOnline ? "default" : "destructive"}
       className={className}
     >
-      {isOnline ? "🟢 Online" : "🔴 Offline"}
+      {statusText}
     </Badge>
   );
 };
