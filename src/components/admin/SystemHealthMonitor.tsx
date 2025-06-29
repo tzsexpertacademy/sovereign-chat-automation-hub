@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +34,7 @@ const SystemHealthMonitor = () => {
       setConnectionStatus(status);
     };
 
+    // Setup connection manager listener
     let unsubscribe: (() => void) | undefined;
     
     try {
@@ -47,9 +47,7 @@ const SystemHealthMonitor = () => {
     const interval = setInterval(checkSystemHealth, 30000);
     
     return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
+      clearInterval(interval);
       if (unsubscribe) {
         unsubscribe();
       }
