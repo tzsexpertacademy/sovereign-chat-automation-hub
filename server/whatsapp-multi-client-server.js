@@ -49,27 +49,30 @@ const saveClientSessions = () => {
     }
 };
 
-// Configuração CORS melhorada e mais específica
-const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:8080',
-    'https://146.59.227.248',
-    'http://146.59.227.248',
-    'http://146.59.227.248:4000',
-    'http://146.59.227.248:8080',
-    'https://146.59.227.248:4000',
-    'https://146.59.227.248:8080',
-    'https://*.lovableproject.com',
-    'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com'
-];
-
+// CONFIGURAÇÃO CORS CORRIGIDA - DEVE VENCER O ERRO
 app.use(cors({
     origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
+        // Lista de origens permitidas
+        const allowedOrigins = [
+            'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
+            'https://*.lovableproject.com',
+            'http://localhost:3000',
+            'http://localhost:5173',
+            'http://localhost:8080',
+            'https://146.59.227.248',
+            'http://146.59.227.248',
+            'http://146.59.227.248:4000',
+            'http://146.59.227.248:8080',
+            'https://146.59.227.248:4000',
+            'https://146.59.227.248:8080'
+        ];
         
-        // Check if origin is in allowed list or matches pattern
+        // Permitir requisições sem origin (mobile apps, curl, etc)
+        if (!origin) {
+            return callback(null, true);
+        }
+        
+        // Verificar se origin está na lista ou corresponde ao padrão
         const isAllowed = allowedOrigins.some(allowedOrigin => {
             if (allowedOrigin.includes('*')) {
                 const pattern = allowedOrigin.replace(/\*/g, '.*');
@@ -82,17 +85,33 @@ app.use(cors({
             callback(null, true);
         } else {
             console.log('🚫 CORS blocked origin:', origin);
-            callback(null, true); // Still allow for debugging - remove in production
+            // Para debug, vamos permitir temporariamente
+            callback(null, true);
         }
     },
-    credentials: true,
+    credentials: false, // Mudado para false para evitar problemas
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range']
+    allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'X-Requested-With',
+        'Accept',
+        'Origin',
+        'Access-Control-Request-Method',
+        'Access-Control-Request-Headers'
+    ],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    optionsSuccessStatus: 200 // Para suportar browsers antigos
 }));
 
-// Handle preflight requests
-app.options('*', cors());
+// Handle preflight requests explicitamente
+app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin');
+    res.header('Access-Control-Allow-Credentials', 'false');
+    res.sendStatus(200);
+});
 
 const clients = {};
 
@@ -110,6 +129,38 @@ const cleanupOrphanedChromeProcesses = () => {
     });
 };
 
+// Função para emitir atualização de todos os clientes
+const emitClientsUpdate = () => {
+    const clientList = Object.keys(clients).map(clientId => {
+        const client = clients[clientId];
+        const isConnected = client.info?.wid;
+        return {
+            clientId: clientId,
+            status: isConnected ? 'connected' : 'connecting',
+            phoneNumber: isConnected ? phoneNumberFormatter(client.info.wid.user) : null,
+            hasQrCode: false
+        };
+    });
+    
+    io.emit('clients_update', clientList);
+    console.log(`📡 Clientes atualizados enviados via WebSocket: ${clientList.length} clientes`);
+};
+
+const phoneNumberFormatter = function(number) {
+    let formatted = number.replace(/\D/g, '');
+    
+    if (formatted.startsWith('0')) {
+        formatted = '55' + formatted;
+    }
+    
+    if (!formatted.endsWith('@c.us')) {
+        formatted += '@c.us';
+    }
+    
+    return formatted;
+};
+
+// Função para inicializar um novo cliente
 const initClient = (clientId) => {
     if (clients[clientId]) {
         console.log(`⚠️ Cliente ${clientId} já está inicializado.`);
@@ -219,23 +270,6 @@ const initClient = (clientId) => {
     });
     
     console.log(`✅ Cliente ${clientId} inicializado e conectando...`);
-};
-
-// Função para emitir atualização de todos os clientes
-const emitClientsUpdate = () => {
-    const clientList = Object.keys(clients).map(clientId => {
-        const client = clients[clientId];
-        const isConnected = client.info?.wid;
-        return {
-            clientId: clientId,
-            status: isConnected ? 'connected' : 'connecting',
-            phoneNumber: isConnected ? phoneNumberFormatter(client.info.wid.user) : null,
-            hasQrCode: false
-        };
-    });
-    
-    io.emit('clients_update', clientList);
-    console.log(`📡 Clientes atualizados enviados via WebSocket: ${clientList.length} clientes`);
 };
 
 io.on('connection', socket => {
@@ -720,7 +754,9 @@ server.listen(port, () => {
     console.log(`📡 Health Check: http://146.59.227.248:${port}/health`);
     console.log(`📱 API Base: http://146.59.227.248:${port}/clients`);
     console.log(`🔧 Melhorias implementadas:`);
-    console.log(`   - CORS corrigido e melhorado`);
+    console.log(`   - CORS corrigido e melhorado para Lovable`);
+    console.log(`   - Headers CORS configurados corretamente`);
+    console.log(`   - Preflight requests configurados`);
     console.log(`   - Limpeza de processos Chrome órfãos`);
     console.log(`   - WebSocket melhorado`);
     console.log(`   - QR Code debugging aprimorado`);
