@@ -25,6 +25,22 @@ echo "  • Backend: porta $BACKEND_PORT"
 echo "  • Frontend: porta $FRONTEND_PORT"
 echo ""
 
+# Verificar se Node.js está instalado
+echo "🔍 Verificando Node.js..."
+if ! command -v node &> /dev/null; then
+    echo "❌ Node.js não encontrado. Instalando Node.js..."
+    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    apt-get install -y nodejs
+    
+    if ! command -v node &> /dev/null; then
+        echo "❌ Falha ao instalar Node.js"
+        exit 1
+    fi
+fi
+
+NODE_VERSION=$(node --version)
+echo "✅ Node.js encontrado: $NODE_VERSION"
+
 # Parar serviços existentes
 echo "⏸️ Parando serviços..."
 ./production-stop-whatsapp.sh 2>/dev/null || true
@@ -219,15 +235,29 @@ fi
 
 echo "✅ Nginx está rodando!"
 
+# Verificar se estamos no diretório correto antes de iniciar WhatsApp
+if [ ! -d "server" ]; then
+    echo "❌ Diretório server/ não encontrado. Certifique-se de estar na pasta raiz do projeto."
+    exit 1
+fi
+
+# Instalar dependências do servidor se necessário
+if [ ! -d "server/node_modules" ]; then
+    echo "📦 Instalando dependências do servidor..."
+    cd server
+    npm install
+    cd ..
+fi
+
 # Reiniciar WhatsApp Server
 echo "🚀 Iniciando WhatsApp Server..."
-cd "$(dirname "$0")/.."
 ./scripts/production-start-whatsapp.sh
 
 echo ""
 echo "🎉 HTTPS CONFIGURADO COM SUCESSO!"
 echo "================================"
 echo ""
+echo "✅ Node.js: $NODE_VERSION"
 echo "✅ Certificado SSL criado com SAN"
 echo "✅ Nginx configurado com CORS"
 echo "✅ WhatsApp Server reiniciado"
