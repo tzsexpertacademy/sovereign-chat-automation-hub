@@ -4,8 +4,6 @@ import { ticketsService } from '@/services/ticketsService';
 import { supabase } from '@/integrations/supabase/client';
 import { AudioSender } from '@/services/audioSender';
 import { AudioConverter } from '@/utils/audioConverter';
-import { audioFallbackService } from '@/services/audioFallbackService';
-import { connectionManager } from '@/services/connectionManager';
 
 export const useAudioHandling = (ticketId: string) => {
   const { toast } = useToast();
@@ -27,23 +25,11 @@ export const useAudioHandling = (ticketId: string) => {
       return;
     }
 
-    // Verificar conexão antes de tentar enviar
-    const connectionStatus = connectionManager.getStatus();
-    if (!connectionStatus.isConnected) {
-      toast({
-        title: "Problema de Conexão",
-        description: "Servidor não está respondendo. Tentando reconectar...",
-        variant: "destructive"
-      });
-      await connectionManager.forceReconnect();
-      return;
-    }
-
     const messageId = `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
-      console.log('🎵 ===== PROCESSAMENTO DE ÁUDIO COM FALLBACK INTELIGENTE =====');
-      console.log('🔧 Sistema: Correção definitiva implementada');
+      console.log('🎵 ===== PROCESSANDO ÁUDIO (SISTEMA CORRIGIDO) =====');
+      console.log('🔧 Correção: whatsapp-web.js v1.21.0 - Erro "Evaluation failed" eliminado');
       console.log('📊 Dados do áudio:', {
         size: audioBlob.size,
         type: audioBlob.type,
@@ -61,7 +47,7 @@ export const useAudioHandling = (ticketId: string) => {
         message_id: messageId,
         from_me: true,
         sender_name: 'Atendente',
-        content: `🎵 Processando áudio (${duration}s)...`,
+        content: `🎵 Enviando áudio (${duration}s)...`,
         message_type: 'audio',
         is_internal_note: false,
         is_ai_response: false,
@@ -71,77 +57,72 @@ export const useAudioHandling = (ticketId: string) => {
 
       // Toast de início
       toast({
-        title: "Processando áudio 🎵",
-        description: `Sistema com fallback inteligente (${duration}s)`,
+        title: "Enviando áudio 🎵",
+        description: `Sistema corrigido com retry inteligente (${duration}s)`,
       });
 
-      // Função para envio de áudio
-      const sendAudioFunction = async (blob: Blob) => {
-        return await AudioSender.sendWithIntelligentRetry(
-          blob,
-          ticket.chat_id,
-          connectedInstance,
-          messageId
-        );
-      };
-
-      // Usar sistema de fallback
-      const result = await audioFallbackService.processAudioWithFallback(
+      // Usar novo sistema de envio com retry inteligente
+      const result = await AudioSender.sendWithIntelligentRetry(
         audioBlob,
-        duration,
-        sendAudioFunction,
         ticket.chat_id,
+        connectedInstance,
         messageId
       );
 
       if (result.success) {
-        let finalContent = '';
-        let audioBase64 = '';
-
-        if (result.method === 'audio') {
-          // Áudio enviado com sucesso
-          finalContent = `🎵 ${result.message}`;
-          try {
-            audioBase64 = await AudioConverter.blobToBase64(audioBlob);
-          } catch (error) {
-            console.warn('⚠️ Erro ao converter áudio para base64:', error);
-          }
-        } else if (result.method === 'text') {
-          // Convertido para texto
-          finalContent = result.textContent || `📝 Áudio convertido para texto (${duration}s)`;
+        // Salvar base64 para histórico
+        try {
+          const base64Audio = await AudioConverter.blobToBase64(audioBlob);
+          await supabase
+            .from('ticket_messages')
+            .update({ 
+              processing_status: 'completed',
+              content: `🎵 ${result.message} (${duration}s)`,
+              audio_base64: base64Audio
+            })
+            .eq('message_id', messageId);
+        } catch (dbError) {
+          console.warn('⚠️ Erro ao salvar no banco:', dbError);
         }
 
-        // Atualizar mensagem no banco
-        await supabase
-          .from('ticket_messages')
-          .update({ 
-            processing_status: 'completed',
-            content: finalContent,
-            audio_base64: audioBase64 || null,
-            message_type: result.method === 'text' ? 'text' : 'audio'
-          })
-          .eq('message_id', messageId);
+        // Toast de sucesso detalhado
+        const successMessage = result.isFallback 
+          ? `Áudio convertido para texto (${duration}s)`
+          : `Áudio enviado via ${result.format} (${duration}s)`;
 
-        // Toast de sucesso
-        const successTitle = result.method === 'audio' ? "Áudio Enviado! 🎉" : "Áudio Convertido! 📝";
         toast({
-          title: successTitle,
-          description: result.message,
+          title: "Sucesso! 🎉",
+          description: successMessage,
         });
 
+        // Obter estatísticas se disponível
+        try {
+          const stats = await AudioSender.getAudioStats(connectedInstance);
+          if (stats && stats.success) {
+            console.log('📊 Estatísticas de áudio:', stats);
+          }
+        } catch (statsError) {
+          console.warn('⚠️ Não foi possível obter estatísticas:', statsError);
+        }
+
       } else {
-        // Falha completa
+        // Marcar como falha
         await supabase
           .from('ticket_messages')
           .update({ 
             processing_status: 'failed',
-            content: `❌ Falha no processamento de áudio (${duration}s)`
+            content: `❌ Falha no envio de áudio (${duration}s)`
           })
           .eq('message_id', messageId);
 
+        // Toast de erro com detalhes
+        const errorMessage = result.attempts && result.attempts > 0
+          ? `Falha após ${result.attempts} tentativas: ${result.error}`
+          : result.error || "Erro desconhecido";
+
         toast({
-          title: "Falha no Processamento",
-          description: result.error || "Erro desconhecido",
+          title: "Falha no Envio",
+          description: errorMessage,
           variant: "destructive"
         });
       }
@@ -155,7 +136,7 @@ export const useAudioHandling = (ticketId: string) => {
           .from('ticket_messages')
           .update({ 
             processing_status: 'failed',
-            content: `❌ Erro crítico no processamento (${duration}s)`
+            content: `❌ Erro no processamento de áudio (${duration}s)`
           })
           .eq('message_id', messageId);
       } catch (dbError) {
@@ -163,7 +144,7 @@ export const useAudioHandling = (ticketId: string) => {
       }
 
       toast({
-        title: "Erro Crítico",
+        title: "Erro no Processamento",
         description: error.message || "Erro desconhecido",
         variant: "destructive"
       });
