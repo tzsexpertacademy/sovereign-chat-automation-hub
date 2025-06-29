@@ -200,7 +200,7 @@ class WhatsAppMultiClientService {
       },
       mode: 'cors',
       credentials: 'omit',
-      signal: AbortSignal.timeout(30000) // Increased timeout for HTTPS
+      signal: AbortSignal.timeout(15000) // Increased timeout for HTTPS
     };
 
     try {
@@ -226,17 +226,19 @@ class WhatsAppMultiClientService {
       console.error(`❌ Erro na requisição HTTPS para ${fullUrl}:`, error);
       
       // Improved error handling for HTTPS
-      if (error.message === 'Failed to fetch') {
-        // Check if it's a certificate issue
+      if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
         if (fullUrl.startsWith('https://')) {
-          throw new Error('HTTPS_CERT_ERROR: Certificado SSL não aceito pelo navegador. Acesse o servidor diretamente para aceitar o certificado.');
+          // Se chegou até aqui, é provável que seja problema de certificado
+          // Mas vamos tentar verificar se o servidor está realmente online
+          console.log('🔍 Verificando se é problema de certificado ou servidor offline...');
+          throw new Error('HTTPS_CONNECTION_ERROR: Verifique se o certificado foi aceito ou se o servidor está online');
         } else {
           throw new Error('NETWORK_ERROR: Falha na conexão de rede');
         }
       } else if (error.name === 'TimeoutError') {
         throw new Error('TIMEOUT_ERROR: Timeout na requisição HTTPS');
-      } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        throw new Error('HTTPS_CERT_ERROR: Problema com certificado SSL');
+      } else if (error.name === 'AbortError') {
+        throw new Error('REQUEST_ABORTED: Requisição cancelada por timeout');
       }
       
       throw error;
@@ -368,14 +370,17 @@ class WhatsAppMultiClientService {
       if (response && typeof response === 'object') {
         response.httpsConfigured = true;
         response.corsStatus = response.cors?.enabled ? 'enabled' : 'unknown';
+        response.connectionStatus = 'connected';
       }
       
       return response;
     } catch (error: any) {
       console.error('❌ Health check HTTPS falhou:', error.message);
       
-      if (error.message.includes('HTTPS_CERT_ERROR')) {
-        // Return a specific error for certificate issues
+      // Mais específico na detecção de erros
+      if (error.message.includes('HTTPS_CONNECTION_ERROR') || 
+          error.message.includes('Failed to fetch') ||
+          error.name === 'TypeError') {
         throw new Error('CERTIFICADO_SSL_NAO_ACEITO');
       }
       
@@ -383,24 +388,36 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Test connection with certificate guidance
+  // Test connection with better error handling
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
-      await this.checkServerHealth();
-      return {
-        success: true,
-        message: 'Conexão HTTPS funcionando perfeitamente!'
-      };
+      console.log('🧪 Testando conexão com servidor...');
+      const health = await this.checkServerHealth();
+      
+      if (health && health.status === 'ok') {
+        return {
+          success: true,
+          message: `✅ Conexão HTTPS funcionando! Servidor: ${health.server} | Versão: ${health.version}`
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Servidor respondeu mas com status inválido'
+        };
+      }
     } catch (error: any) {
+      console.error('❌ Teste de conexão falhou:', error.message);
+      
       if (error.message === 'CERTIFICADO_SSL_NAO_ACEITO') {
         return {
           success: false,
-          message: 'Certificado SSL: Acesse https://146.59.227.248/health no navegador primeiro'
+          message: 'Certificado SSL: Acesse https://146.59.227.248/health no navegador para aceitar o certificado'
         };
       }
+      
       return {
         success: false,
-        message: `Erro: ${error.message}`
+        message: `Erro de conexão: ${error.message}`
       };
     }
   }
