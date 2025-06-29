@@ -19,56 +19,160 @@ const io = new Server(server, {
 
 const port = process.env.PORT || 4000;
 
-// CONFIGURAÇÃO CORS MELHORADA - DEVE RESOLVER O PROBLEMA
-console.log('🔧 Configurando CORS para resolver bloqueios...');
+// CONFIGURAÇÃO CORS DEFINITIVA - RESOLVENDO PROBLEMA LOVABLE
+console.log('🔧 Configurando CORS DEFINITIVO para Lovable...');
 
-// CORS mais permissivo para resolver o problema
+// CORS ultra-permissivo para resolver de vez
 app.use(cors({
-    origin: true, // Permite qualquer origem
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    origin: function (origin, callback) {
+        // Permite qualquer origem (incluindo Lovable)
+        callback(null, true);
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
     allowedHeaders: [
         'Origin',
-        'X-Requested-With',
+        'X-Requested-With', 
         'Content-Type',
         'Accept',
         'Authorization',
         'Cache-Control',
         'Pragma',
         'Access-Control-Request-Method',
-        'Access-Control-Request-Headers'
+        'Access-Control-Request-Headers',
+        'X-Client-Info'
     ],
     credentials: false,
-    optionsSuccessStatus: 200
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 }));
 
-// Handle preflight para TODAS as rotas
-app.options('*', (req, res) => {
-    console.log('🔧 Preflight request recebido para:', req.url);
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
-    res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma,Access-Control-Request-Method,Access-Control-Request-Headers');
-    res.header('Access-Control-Allow-Credentials', 'false');
-    res.sendStatus(200);
-});
-
-// Middleware adicional para garantir headers CORS em todas as respostas
+// Middleware CORS adicional para garantir headers em TODAS as respostas
 app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin) {
-        res.header('Access-Control-Allow-Origin', origin);
-    } else {
-        res.header('Access-Control-Allow-Origin', '*');
-    }
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
-    res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma');
+    // Permitir qualquer origem
+    const origin = req.headers.origin || req.headers.referer || '*';
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD');
+    res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma,Access-Control-Request-Method,Access-Control-Request-Headers,X-Client-Info');
     res.header('Access-Control-Allow-Credentials', 'false');
+    res.header('Access-Control-Max-Age', '86400');
     
-    console.log(`🌐 ${req.method} ${req.url} - Origin: ${origin || 'none'}`);
+    // Log detalhado para debug
+    console.log(`🌐 ${req.method} ${req.url} - Origin: ${req.headers.origin || 'none'} - User-Agent: ${req.headers['user-agent']?.substring(0, 50) || 'none'}`);
+    
+    // Responder OPTIONS imediatamente
+    if (req.method === 'OPTIONS') {
+        console.log('✅ Respondendo preflight OPTIONS');
+        res.sendStatus(204);
+        return;
+    }
+    
     next();
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Configuração do Swagger UI para HTTPS
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = {
+    openapi: '3.0.0',
+    info: {
+        title: 'WhatsApp Multi-Client API',
+        version: '2.2.0',
+        description: 'API para gerenciar múltiplas instâncias do WhatsApp'
+    },
+    servers: [
+        {
+            url: 'https://146.59.227.248',
+            description: 'Servidor HTTPS de Produção'
+        },
+        {
+            url: 'http://localhost:4000',
+            description: 'Servidor de Desenvolvimento'
+        }
+    ],
+    paths: {
+        '/health': {
+            get: {
+                summary: 'Health Check',
+                responses: {
+                    '200': {
+                        description: 'Status do servidor'
+                    }
+                }
+            }
+        },
+        '/clients': {
+            get: {
+                summary: 'Listar todos os clientes',
+                responses: {
+                    '200': {
+                        description: 'Lista de clientes'
+                    }
+                }
+            }
+        },
+        '/clients/{clientId}/connect': {
+            post: {
+                summary: 'Conectar cliente WhatsApp',
+                parameters: [
+                    {
+                        name: 'clientId',
+                        in: 'path',
+                        required: true,
+                        schema: {
+                            type: 'string'
+                        }
+                    }
+                ],
+                responses: {
+                    '200': {
+                        description: 'Cliente conectando'
+                    }
+                }
+            }
+        },
+        '/clients/{clientId}/status': {
+            get: {
+                summary: 'Status do cliente',
+                parameters: [
+                    {
+                        name: 'clientId',
+                        in: 'path',
+                        required: true,
+                        schema: {
+                            type: 'string'
+                        }
+                    }
+                ],
+                responses: {
+                    '200': {
+                        description: 'Status do cliente com QR Code se disponível'
+                    }
+                }
+            }
+        }
+    }
+};
+
+// Swagger UI com configuração HTTPS
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'WhatsApp Multi-Client API',
+    swaggerOptions: {
+        urls: [
+            {
+                url: 'https://146.59.227.248/api-docs.json',
+                name: 'HTTPS API'
+            }
+        ]
+    }
+}));
+
+// Endpoint para servir o JSON do Swagger
+app.get('/api-docs.json', (req, res) => {
+    res.json(swaggerDocument);
+});
 
 // Load client sessions from file
 const SESSION_FILE_PATH = './whatsapp-sessions.json';
@@ -289,25 +393,33 @@ app.get('/health', (req, res) => {
         connectedClients: Object.keys(clients).filter(id => clients[id].info?.wid).length,
         uptime: process.uptime(),
         memory: process.memoryUsage(),
-        version: '2.2.0-cors-fixed',
+        version: '2.2.0-cors-https-fixed',
         server: '146.59.227.248:4000',
+        protocol: 'HTTPS',
         cors: {
             enabled: true,
             allowedOrigins: '*',
-            allowedMethods: 'GET,POST,PUT,DELETE,OPTIONS,PATCH',
-            status: 'configured'
+            allowedMethods: 'GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD',
+            status: 'configured-definitively',
+            lovableSupport: true
+        },
+        swagger: {
+            enabled: true,
+            url: 'https://146.59.227.248/api-docs',
+            jsonUrl: 'https://146.59.227.248/api-docs.json'
         },
         routes: {
             '/clients': 'GET, POST',
-            '/clients/:id/connect': 'POST ⭐ (CORS CORRIGIDO)',
+            '/clients/:id/connect': 'POST ⭐ (CORS HTTPS CORRIGIDO)',
             '/clients/:id/disconnect': 'POST',
-            '/clients/:id/status': 'GET',
+            '/clients/:id/status': 'GET ⭐ (QR CODE DISPONÍVEL)',
             '/clients/:id/chats': 'GET',
             '/clients/:id/send-message': 'POST',
             '/clients/:id/send-audio': 'POST',
             '/clients/:id/send-image': 'POST',
             '/clients/:id/send-video': 'POST',
-            '/clients/:id/send-document': 'POST'
+            '/clients/:id/send-document': 'POST',
+            '/api-docs': 'GET ⭐ (SWAGGER HTTPS CONFIGURADO)'
         }
     };
     res.json(healthcheck);
@@ -331,7 +443,7 @@ app.get('/clients', (req, res) => {
 
 app.post('/clients/:clientId/connect', (req, res) => {
     const clientId = req.params.clientId;
-    console.log(`🔗 CONECTANDO CLIENTE (CORS OK): ${clientId}`);
+    console.log(`🔗 CONECTANDO CLIENTE (CORS HTTPS OK): ${clientId}`);
     
     try {
         // Clean up any orphaned Chrome processes first
@@ -341,7 +453,7 @@ app.post('/clients/:clientId/connect', (req, res) => {
             initClient(clientId);
         }, 2000); // Wait 2 seconds after cleanup
         
-        console.log(`✅ Cliente ${clientId} iniciando conexão com CORS configurado`);
+        console.log(`✅ Cliente ${clientId} iniciando conexão com CORS HTTPS configurado`);
         res.json({ success: true, message: `Cliente ${clientId} iniciando conexão.` });
     } catch (error) {
         console.error(`❌ Erro ao conectar cliente ${clientId}:`, error);
@@ -726,12 +838,14 @@ cleanupOrphanedChromeProcesses();
 
 server.listen(port, '0.0.0.0', () => {
     console.log(`🚀 WhatsApp Multi-Client Server iniciado na porta ${port}`);
-    console.log(`📡 Health Check: http://146.59.227.248:${port}/health`);
-    console.log(`📱 API Base: http://146.59.227.248:${port}/clients`);
-    console.log(`🔧 CORS CONFIGURADO E FUNCIONANDO!`);
-    console.log(`   - Todas as origens permitidas (*)`);
-    console.log(`   - Métodos: GET,POST,PUT,DELETE,OPTIONS,PATCH`);
-    console.log(`   - Headers configurados corretamente`);
-    console.log(`   - Preflight requests tratados`);
-    console.log(`📱 SERVIDOR PRONTO PARA CONEXÕES LOVABLE!`);
+    console.log(`📡 Health Check HTTPS: https://146.59.227.248:${port}/health`);
+    console.log(`📱 API Base HTTPS: https://146.59.227.248:${port}/clients`);
+    console.log(`📚 Swagger UI HTTPS: https://146.59.227.248:${port}/api-docs`);
+    console.log(`🔧 CORS DEFINITIVAMENTE CONFIGURADO E FUNCIONANDO!`);
+    console.log(`   - Origens: TODAS (*) incluindo Lovable`);
+    console.log(`   - Métodos: GET,POST,PUT,DELETE,OPTIONS,PATCH,HEAD`);
+    console.log(`   - Headers: Todos necessários configurados`);
+    console.log(`   - Preflight: Tratado corretamente`);
+    console.log(`   - HTTPS: Configurado com Swagger UI`);
+    console.log(`📱 SERVIDOR HTTPS PRONTO PARA LOVABLE!`);
 });
