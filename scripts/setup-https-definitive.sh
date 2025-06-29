@@ -25,25 +25,37 @@ echo "  • Backend: porta $BACKEND_PORT"
 echo "  • Frontend: porta $FRONTEND_PORT"
 echo ""
 
-# Verificar se Node.js está instalado
+# Verificar se Node.js está instalado (verificação corrigida)
 echo "🔍 Verificando Node.js..."
-if ! command -v node &> /dev/null; then
+NODE_PATH=""
+if command -v node &> /dev/null; then
+    NODE_PATH="node"
+elif command -v nodejs &> /dev/null; then
+    NODE_PATH="nodejs"
+fi
+
+if [ -z "$NODE_PATH" ]; then
     echo "❌ Node.js não encontrado. Instalando Node.js..."
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
     apt-get install -y nodejs
     
-    if ! command -v node &> /dev/null; then
+    # Verificar novamente após instalação
+    if command -v node &> /dev/null; then
+        NODE_PATH="node"
+    elif command -v nodejs &> /dev/null; then
+        NODE_PATH="nodejs"
+    else
         echo "❌ Falha ao instalar Node.js"
         exit 1
     fi
 fi
 
-NODE_VERSION=$(node --version)
-echo "✅ Node.js encontrado: $NODE_VERSION"
+NODE_VERSION=$($NODE_PATH --version)
+echo "✅ Node.js encontrado: $NODE_VERSION ($NODE_PATH)"
 
 # Parar serviços existentes
 echo "⏸️ Parando serviços..."
-./production-stop-whatsapp.sh 2>/dev/null || true
+./scripts/production-stop-whatsapp.sh 2>/dev/null || true
 systemctl stop nginx 2>/dev/null || true
 
 # Instalar dependências
@@ -140,18 +152,6 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 86400;
-        
-        # Headers de segurança para frontend
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header X-Frame-Options DENY always;
-        add_header X-Content-Type-Options nosniff always;
-        add_header X-XSS-Protection "1; mode=block" always;
-        
-        # CORS Headers para frontend
-        add_header Access-Control-Allow-Origin "*" always;
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
-        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
-        add_header Access-Control-Expose-Headers "Content-Length,Content-Range" always;
     }
     
     # API Backend - TODAS as rotas da API
