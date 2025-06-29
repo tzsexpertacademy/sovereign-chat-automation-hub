@@ -50,14 +50,18 @@ const saveClientSessions = () => {
     }
 };
 
-// Configuração CORS atualizada
+// Configuração CORS melhorada
 app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:8080',
     'https://146.59.227.248',
+    'http://146.59.227.248',
     'http://146.59.227.248:4000',
+    'http://146.59.227.248:8080',
     'https://146.59.227.248:4000',
+    'https://146.59.227.248:8080',
     'https://*.lovableproject.com',
     'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com'
   ],
@@ -150,6 +154,7 @@ app.get('/health', (req, res) => {
     res.send(healthcheck);
 });
 
+// Rotas principais sem /api prefix
 app.get('/clients', (req, res) => {
     const clientList = Object.keys(clients).map(clientId => {
         const client = clients[clientId];
@@ -164,8 +169,15 @@ app.get('/clients', (req, res) => {
 
 app.post('/clients/:clientId/connect', (req, res) => {
     const clientId = req.params.clientId;
-    initClient(clientId);
-    res.json({ success: true, message: `Client ${clientId} connect command executed.` });
+    console.log(`🔗 Tentando conectar cliente: ${clientId}`);
+    
+    try {
+        initClient(clientId);
+        res.json({ success: true, message: `Client ${clientId} connect command executed.` });
+    } catch (error) {
+        console.error(`❌ Erro ao conectar cliente ${clientId}:`, error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 app.post('/clients/:clientId/disconnect', async (req, res) => {
@@ -185,6 +197,68 @@ app.post('/clients/:clientId/disconnect', async (req, res) => {
 });
 
 app.get('/clients/:clientId/status', async (req, res) => {
+    const clientId = req.params.clientId;
+    if (clients[clientId]) {
+        try {
+            let qrCode = null;
+            if (clients[clientId].qr) {
+                qrCode = await qrcode.toDataURL(clients[clientId].qr);
+            }
+            const status = clients[clientId].info?.wid ? 'connected' : 'disconnected';
+            const phoneNumber = clients[clientId].info?.wid?.user ? phoneNumberFormatter(clients[clientId].info.wid.user) : null;
+            res.json({ success: true, clientId: clientId, status: status, phoneNumber: phoneNumber, qrCode: qrCode });
+        } catch (error) {
+            console.error(`Error getting status for client ${clientId}:`, error);
+            res.status(500).json({ success: false, error: `Failed to get status for client ${clientId}.` });
+        }
+    } else {
+        res.status(404).json({ success: false, error: `Client ${clientId} not found.` });
+    }
+});
+
+// Rotas duplicadas com /api prefix para compatibilidade
+app.get('/api/clients', (req, res) => {
+    const clientList = Object.keys(clients).map(clientId => {
+        const client = clients[clientId];
+        return {
+            clientId: clientId,
+            status: client.info?.wid ? 'connected' : 'disconnected',
+            phoneNumber: client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null
+        };
+    });
+    res.json({ success: true, clients: clientList });
+});
+
+app.post('/api/clients/:clientId/connect', (req, res) => {
+    const clientId = req.params.clientId;
+    console.log(`🔗 API: Tentando conectar cliente: ${clientId}`);
+    
+    try {
+        initClient(clientId);
+        res.json({ success: true, message: `Client ${clientId} connect command executed.` });
+    } catch (error) {
+        console.error(`❌ API: Erro ao conectar cliente ${clientId}:`, error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/clients/:clientId/disconnect', async (req, res) => {
+    const clientId = req.params.clientId;
+    if (clients[clientId]) {
+        try {
+            await clients[clientId].logout();
+            delete clients[clientId];
+            res.json({ success: true, message: `Client ${clientId} disconnected.` });
+        } catch (error) {
+            console.error(`Error disconnecting client ${clientId}:`, error);
+            res.status(500).json({ success: false, error: `Failed to disconnect client ${clientId}.` });
+        }
+    } else {
+        res.status(404).json({ success: false, error: `Client ${clientId} not found.` });
+    }
+});
+
+app.get('/api/clients/:clientId/status', async (req, res) => {
     const clientId = req.params.clientId;
     if (clients[clientId]) {
         try {
@@ -511,4 +585,14 @@ app.post('/clients/:clientId/send-reaction', async (req, res) => {
 
 server.listen(port, () => {
     console.log(`Application running on port ${port}`);
+    console.log(`🚀 WhatsApp Multi-Client Server iniciado!`);
+    console.log(`📡 Health Check: http://146.59.227.248:${port}/health`);
+    console.log(`📱 API Base: http://146.59.227.248:${port}/api/clients`);
+    console.log(`🔗 Rotas disponíveis:`);
+    console.log(`   - GET  /clients`);
+    console.log(`   - POST /clients/:id/connect`);
+    console.log(`   - POST /clients/:id/disconnect`);
+    console.log(`   - GET  /clients/:id/status`);
+    console.log(`   - GET  /api/clients (duplicada)`);
+    console.log(`   - POST /api/clients/:id/connect (duplicada)`);
 });
