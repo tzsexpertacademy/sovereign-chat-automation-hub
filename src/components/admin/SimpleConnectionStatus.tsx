@@ -4,37 +4,43 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, XCircle, RefreshCw, Shield, ExternalLink, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, RefreshCw, Shield, ExternalLink, AlertTriangle, Copy } from "lucide-react";
 import { SERVER_URL, API_BASE_URL, HTTPS_SERVER_URL, getServerConfig } from "@/config/environment";
+import { useToast } from "@/hooks/use-toast";
 
 const SimpleConnectionStatus = () => {
   const [status, setStatus] = useState<'checking' | 'connected' | 'error' | 'ssl_error' | 'https_required'>('checking');
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
   const [serverInfo, setServerInfo] = useState<any>(null);
   const [sslAccepted, setSslAccepted] = useState<boolean>(false);
+  const [debugInfo, setDebugInfo] = useState<string>('');
   const config = getServerConfig();
+  const { toast } = useToast();
 
   useEffect(() => {
     checkConnection();
-    const interval = setInterval(checkConnection, 30000);
+    const interval = setInterval(checkConnection, 15000); // Check every 15 seconds
     return () => clearInterval(interval);
   }, []);
 
   const checkConnection = async () => {
     try {
       setStatus('checking');
+      setDebugInfo('🔒 Iniciando teste HTTPS...');
       console.log('🔒 Testando conexão HTTPS OBRIGATÓRIA:', API_BASE_URL);
       
       // Verificar se estamos em produção e exigir HTTPS
       if (!config.isDevelopment && !API_BASE_URL.startsWith('https://')) {
         console.error('❌ HTTPS OBRIGATÓRIO em produção!');
         setStatus('https_required');
+        setDebugInfo('❌ HTTPS obrigatório não configurado');
         setLastCheck(new Date());
         return;
       }
       
+      setDebugInfo('🔄 Testando conectividade HTTPS...');
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // Reduced timeout
       
       const response = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
@@ -43,7 +49,8 @@ const SimpleConnectionStatus = () => {
         signal: controller.signal,
         headers: {
           'Accept': 'application/json',
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-cache',
+          'X-Requested-With': 'XMLHttpRequest'
         }
       });
 
@@ -55,10 +62,12 @@ const SimpleConnectionStatus = () => {
         setStatus('connected');
         setServerInfo(data);
         setSslAccepted(true);
+        setDebugInfo('✅ HTTPS funcionando perfeitamente!');
         setLastCheck(new Date());
         return;
       } else {
         console.log('⚠️ Resposta HTTPS não OK:', response.status);
+        setDebugInfo(`⚠️ HTTP ${response.status}: ${response.statusText}`);
         throw new Error(`HTTPS ${response.status}: ${response.statusText}`);
       }
     } catch (error: any) {
@@ -67,17 +76,21 @@ const SimpleConnectionStatus = () => {
       if (error.name === 'AbortError') {
         console.log('⏰ Timeout na conexão HTTPS');
         setStatus('error');
+        setDebugInfo('⏰ Timeout - Servidor pode estar offline');
       } else if (error.message === 'Failed to fetch' || 
                  error.message.includes('SSL') ||
                  error.message.includes('certificate') ||
                  error.message.includes('TLS') ||
+                 error.message.includes('CERTIFICATE') ||
                  error.name === 'TypeError') {
         console.log('🔒 Problema de SSL/TLS detectado');
         setStatus('ssl_error');
         setSslAccepted(false);
+        setDebugInfo('🔒 Certificado SSL não aceito pelo navegador');
       } else {
         console.log('❌ Erro geral de conexão HTTPS');
         setStatus('error');
+        setDebugInfo(`❌ Erro: ${error.message}`);
       }
     }
     
@@ -104,11 +117,24 @@ const SimpleConnectionStatus = () => {
   };
 
   const acceptSSLCertificate = () => {
+    // Open both URLs to ensure certificate is accepted globally
     window.open(`${HTTPS_SERVER_URL}/health`, '_blank');
+    setTimeout(() => {
+      window.open(`${HTTPS_SERVER_URL}/api-docs`, '_blank');
+    }, 1000);
+  };
+
+  const copyServerUrl = () => {
+    navigator.clipboard.writeText(API_BASE_URL);
+    toast({
+      title: "URL copiada!",
+      description: "Cole no navegador para aceitar o certificado",
+    });
   };
 
   const forceRecheck = async () => {
     console.log('🔄 Forçando nova verificação HTTPS...');
+    setDebugInfo('🔄 Forçando nova verificação...');
     await checkConnection();
   };
 
@@ -118,13 +144,24 @@ const SimpleConnectionStatus = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Shield className="w-5 h-5 text-blue-500" />
-            <CardTitle>Status HTTPS (Obrigatório para Lovable)</CardTitle>
+            <CardTitle>Status HTTPS - Diagnóstico Completo</CardTitle>
           </div>
           {getStatusBadge()}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         
+        {/* Debug Info */}
+        <div className="p-3 bg-gray-50 border rounded text-sm font-mono">
+          <div className="flex items-center justify-between">
+            <span>🔍 Status atual:</span>
+            <Button size="sm" variant="ghost" onClick={() => navigator.clipboard.writeText(debugInfo)}>
+              <Copy className="w-3 h-3" />
+            </Button>
+          </div>
+          <div className="mt-1 text-gray-700">{debugInfo}</div>
+        </div>
+
         {/* HTTPS Required Warning */}
         {status === 'https_required' && (
           <Alert variant="destructive">
@@ -137,44 +174,59 @@ const SimpleConnectionStatus = () => {
                 </p>
                 
                 <div className="bg-red-50 p-3 rounded border text-sm">
-                  <p className="font-medium text-red-900">🔧 Ações necessárias:</p>
-                  <ol className="list-decimal list-inside space-y-1 mt-2 text-red-800">
-                    <li>Execute: sudo ./scripts/setup-https-definitive.sh</li>
-                    <li>Configure certificado SSL válido</li>
-                    <li>Verifique se Nginx está proxy-passando para HTTPS</li>
-                    <li>Aceite o certificado no navegador</li>
-                  </ol>
+                  <p className="font-medium text-red-900">🔧 Execute no servidor:</p>
+                  <code className="block mt-1 p-2 bg-red-100 rounded">sudo ./scripts/setup-https-production-definitive.sh</code>
                 </div>
               </div>
             </AlertDescription>
           </Alert>
         )}
 
-        {/* SSL Error */}
+        {/* SSL Error - CRITICAL FIX */}
         {status === 'ssl_error' && (
           <Alert variant="destructive">
             <Shield className="h-4 w-4" />
             <AlertDescription>
-              <div className="space-y-3">
-                <p className="font-medium">🔒 Erro de Certificado SSL</p>
-                <p className="text-sm">
-                  Certificado SSL não foi aceito pelo navegador ou há problemas de configuração.
+              <div className="space-y-4">
+                <p className="font-medium text-red-900">🔒 PROBLEMA DE CERTIFICADO SSL DETECTADO</p>
+                <p className="text-sm text-red-800">
+                  O certificado SSL não foi aceito pelo navegador. Isso é comum com certificados autoassinados.
                 </p>
                 
-                <div className="bg-red-50 p-3 rounded border text-sm">
-                  <p className="font-medium text-red-900">🔧 Soluções:</p>
-                  <ol className="list-decimal list-inside space-y-1 mt-2 text-red-800">
-                    <li>Clique no botão "Aceitar Certificado SSL" abaixo</li>
-                    <li>No aviso do navegador, clique "Avançado" → "Prosseguir"</li>
-                    <li>Verifique se o certificado SSL está configurado corretamente</li>
-                    <li>Execute: sudo ./scripts/setup-https-definitive.sh</li>
-                  </ol>
+                <div className="bg-red-50 p-4 rounded border text-sm space-y-3">
+                  <p className="font-medium text-red-900">🚨 SOLUÇÃO PASSO A PASSO:</p>
+                  
+                  <div className="space-y-2">
+                    <p className="font-medium text-red-800">1️⃣ Copie a URL do servidor:</p>
+                    <div className="flex items-center space-x-2">
+                      <code className="flex-1 p-2 bg-red-100 rounded text-xs">{API_BASE_URL}</code>
+                      <Button size="sm" variant="outline" onClick={copyServerUrl}>
+                        <Copy className="w-3 h-3 mr-1" />
+                        Copiar
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <p className="font-medium text-red-800">2️⃣ Abra uma NOVA ABA e cole a URL</p>
+                    <p className="text-red-700 text-xs">- O navegador mostrará um aviso de segurança</p>
+                    <p className="text-red-700 text-xs">- Clique em "Avançado" ou "Advanced"</p>
+                    <p className="text-red-700 text-xs">- Clique em "Prosseguir para 146.59.227.248"</p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <p className="font-medium text-red-800">3️⃣ Após aceitar, volte aqui e clique:</p>
+                    <Button onClick={forceRecheck} className="bg-red-600 hover:bg-red-700">
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Testar Novamente
+                    </Button>
+                  </div>
                 </div>
                 
                 <div className="flex space-x-2">
                   <Button onClick={acceptSSLCertificate} variant="outline" className="text-blue-600">
                     <Shield className="w-4 h-4 mr-2" />
-                    Aceitar Certificado SSL
+                    Abrir URLs para Aceitar SSL
                   </Button>
                 </div>
               </div>
@@ -193,14 +245,13 @@ const SimpleConnectionStatus = () => {
                   Conexão HTTPS segura estabelecida - Compatível com Lovable
                 </p>
                 {serverInfo && (
-                  <div className="mt-2 text-sm text-green-600">
+                  <div className="mt-2 text-sm text-green-600 space-y-1">
                     <p><strong>Status:</strong> {serverInfo.status}</p>
                     <p><strong>Protocolo:</strong> {serverInfo.protocol || 'HTTPS'}</p>
-                    {serverInfo.server && <p><strong>Servidor:</strong> {serverInfo.server}</p>}
-                    {serverInfo.version && <p><strong>Versão:</strong> {serverInfo.version}</p>}
-                    {serverInfo.activeClients !== undefined && <p><strong>Clientes ativos:</strong> {serverInfo.activeClients}</p>}
-                    {serverInfo.cors && <p><strong>CORS:</strong> {serverInfo.cors.enabled ? '✅ Habilitado' : '❌ Desabilitado'}</p>}
-                    <p><strong>SSL:</strong> ✅ Certificado aceito</p>
+                    <p><strong>Versão:</strong> {serverInfo.version}</p>
+                    <p><strong>CORS:</strong> {serverInfo.cors?.enabled ? '✅ Habilitado' : '❌ Desabilitado'}</p>
+                    <p><strong>SSL:</strong> ✅ Certificado aceito globalmente</p>
+                    <p><strong>Uptime:</strong> {Math.floor(serverInfo.uptime / 60)} minutos</p>
                   </div>
                 )}
               </div>
@@ -216,14 +267,23 @@ const SimpleConnectionStatus = () => {
               <div>
                 <p className="text-red-800 font-medium">❌ Servidor HTTPS Indisponível</p>
                 <p className="text-red-600 text-sm">
-                  Falha na conexão HTTPS. Verifique se o servidor está configurado corretamente.
+                  {debugInfo.includes('Timeout') ? 
+                    'Servidor não responde - Pode estar offline ou sobrecarregado' : 
+                    'Falha na conexão HTTPS. Verifique se o servidor está rodando.'
+                  }
                 </p>
+                <div className="mt-2 text-xs text-red-600 space-y-1">
+                  <p><strong>Comandos para verificar no servidor:</strong></p>
+                  <code className="block p-1 bg-red-100 rounded">sudo systemctl status nginx</code>
+                  <code className="block p-1 bg-red-100 rounded">curl -k https://146.59.227.248/health</code>
+                  <code className="block p-1 bg-red-100 rounded">sudo ./scripts/production-start-whatsapp.sh</code>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Server Info */}
+        {/* Server Info - Always Show */}
         <div className="text-sm space-y-2 bg-blue-50 p-3 rounded">
           <p><strong>URL HTTPS:</strong> <code className="bg-blue-200 px-2 py-1 rounded text-xs">{API_BASE_URL}</code></p>
           <p><strong>Protocolo:</strong> <code className="bg-blue-200 px-2 py-1 rounded text-xs">{config.isHttps ? 'HTTPS (Obrigatório)' : 'HTTP (Desenvolvimento)'}</code></p>
@@ -234,10 +294,10 @@ const SimpleConnectionStatus = () => {
           )}
         </div>
 
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 flex-wrap">
           <Button onClick={forceRecheck} variant="outline" disabled={status === 'checking'}>
             <RefreshCw className={`w-4 h-4 mr-2 ${status === 'checking' ? 'animate-spin' : ''}`} />
-            Verificar HTTPS
+            {status === 'checking' ? 'Verificando...' : 'Verificar HTTPS'}
           </Button>
           
           <Button onClick={openServerDirectly} variant="outline" size="sm">
@@ -248,9 +308,14 @@ const SimpleConnectionStatus = () => {
           {status === 'ssl_error' && (
             <Button onClick={acceptSSLCertificate} variant="outline" className="text-blue-600">
               <Shield className="w-4 h-4 mr-2" />
-              Aceitar SSL
+              Aceitar SSL (Nova Aba)
             </Button>
           )}
+          
+          <Button onClick={copyServerUrl} variant="outline" size="sm">
+            <Copy className="w-4 h-4 mr-2" />
+            Copiar URL
+          </Button>
         </div>
 
         {/* Success Message */}
@@ -259,18 +324,10 @@ const SimpleConnectionStatus = () => {
             <p className="text-green-800 font-medium">🎉 Perfeito!</p>
             <p className="text-green-600 text-sm">
               Sistema funcionando com HTTPS seguro. Totalmente compatível com Lovable e integração externa.
+              Agora você pode criar instâncias WhatsApp sem problemas!
             </p>
           </div>
         )}
-
-        {/* HTTPS Info */}
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-          <p className="text-blue-800 font-medium">ℹ️ HTTPS Obrigatório</p>
-          <p className="text-blue-700 text-sm">
-            Sistema configurado para HTTPS obrigatório em produção. Isso garante compatibilidade total com Lovable,
-            integrações externas e segurança de dados.
-          </p>
-        </div>
       </CardContent>
     </Card>
   );
