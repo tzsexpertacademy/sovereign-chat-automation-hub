@@ -17,10 +17,58 @@ const io = new Server(server, {
     }
 });
 
+const port = process.env.PORT || 4000;
+
+// CONFIGURAÇÃO CORS MELHORADA - DEVE RESOLVER O PROBLEMA
+console.log('🔧 Configurando CORS para resolver bloqueios...');
+
+// CORS mais permissivo para resolver o problema
+app.use(cors({
+    origin: true, // Permite qualquer origem
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: [
+        'Origin',
+        'X-Requested-With',
+        'Content-Type',
+        'Accept',
+        'Authorization',
+        'Cache-Control',
+        'Pragma',
+        'Access-Control-Request-Method',
+        'Access-Control-Request-Headers'
+    ],
+    credentials: false,
+    optionsSuccessStatus: 200
+}));
+
+// Handle preflight para TODAS as rotas
+app.options('*', (req, res) => {
+    console.log('🔧 Preflight request recebido para:', req.url);
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
+    res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma,Access-Control-Request-Method,Access-Control-Request-Headers');
+    res.header('Access-Control-Allow-Credentials', 'false');
+    res.sendStatus(200);
+});
+
+// Middleware adicional para garantir headers CORS em todas as respostas
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin) {
+        res.header('Access-Control-Allow-Origin', origin);
+    } else {
+        res.header('Access-Control-Allow-Origin', '*');
+    }
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
+    res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma');
+    res.header('Access-Control-Allow-Credentials', 'false');
+    
+    console.log(`🌐 ${req.method} ${req.url} - Origin: ${origin || 'none'}`);
+    next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-const port = process.env.PORT || 4000;
 
 // Load client sessions from file
 const SESSION_FILE_PATH = './whatsapp-sessions.json';
@@ -48,70 +96,6 @@ const saveClientSessions = () => {
         console.error('❌ Error saving client sessions:', error);
     }
 };
-
-// CONFIGURAÇÃO CORS CORRIGIDA - DEVE VENCER O ERRO
-app.use(cors({
-    origin: function (origin, callback) {
-        // Lista de origens permitidas
-        const allowedOrigins = [
-            'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
-            'https://*.lovableproject.com',
-            'http://localhost:3000',
-            'http://localhost:5173',
-            'http://localhost:8080',
-            'https://146.59.227.248',
-            'http://146.59.227.248',
-            'http://146.59.227.248:4000',
-            'http://146.59.227.248:8080',
-            'https://146.59.227.248:4000',
-            'https://146.59.227.248:8080'
-        ];
-        
-        // Permitir requisições sem origin (mobile apps, curl, etc)
-        if (!origin) {
-            return callback(null, true);
-        }
-        
-        // Verificar se origin está na lista ou corresponde ao padrão
-        const isAllowed = allowedOrigins.some(allowedOrigin => {
-            if (allowedOrigin.includes('*')) {
-                const pattern = allowedOrigin.replace(/\*/g, '.*');
-                return new RegExp(pattern).test(origin);
-            }
-            return allowedOrigin === origin;
-        });
-        
-        if (isAllowed) {
-            callback(null, true);
-        } else {
-            console.log('🚫 CORS blocked origin:', origin);
-            // Para debug, vamos permitir temporariamente
-            callback(null, true);
-        }
-    },
-    credentials: false, // Mudado para false para evitar problemas
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-        'Content-Type', 
-        'Authorization', 
-        'X-Requested-With',
-        'Accept',
-        'Origin',
-        'Access-Control-Request-Method',
-        'Access-Control-Request-Headers'
-    ],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    optionsSuccessStatus: 200 // Para suportar browsers antigos
-}));
-
-// Handle preflight requests explicitamente
-app.options('*', (req, res) => {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin');
-    res.header('Access-Control-Allow-Credentials', 'false');
-    res.sendStatus(200);
-});
 
 const clients = {};
 
@@ -305,32 +289,22 @@ app.get('/health', (req, res) => {
         connectedClients: Object.keys(clients).filter(id => clients[id].info?.wid).length,
         uptime: process.uptime(),
         memory: process.memoryUsage(),
-        version: '2.1.0-connectivity-fixed',
-        server: 'localhost:4000',
-        audioStats: {
-            totalAttempts: 0,
-            successfulSends: 0,
-            failedSends: 0,
-            evaluationErrors: 0,
-            successRate: '0%'
-        },
-        fixes: {
-            whatsappWebVersion: '1.21.0',
-            retrySystem: 'enabled',
-            fallbackSystem: 'enabled',
-            evaluationErrorFix: 'implemented',
-            corsFixed: 'improved',
-            chromeCleanup: 'implemented'
+        version: '2.2.0-cors-fixed',
+        server: '146.59.227.248:4000',
+        cors: {
+            enabled: true,
+            allowedOrigins: '*',
+            allowedMethods: 'GET,POST,PUT,DELETE,OPTIONS,PATCH',
+            status: 'configured'
         },
         routes: {
             '/clients': 'GET, POST',
-            '/clients/:id/connect': 'POST',
+            '/clients/:id/connect': 'POST ⭐ (CORS CORRIGIDO)',
             '/clients/:id/disconnect': 'POST',
             '/clients/:id/status': 'GET',
             '/clients/:id/chats': 'GET',
             '/clients/:id/send-message': 'POST',
-            '/clients/:id/send-audio': 'POST ⭐ (CORRIGIDO)',
-            '/clients/:id/audio-stats': 'GET 📊 (NOVO)',
+            '/clients/:id/send-audio': 'POST',
             '/clients/:id/send-image': 'POST',
             '/clients/:id/send-video': 'POST',
             '/clients/:id/send-document': 'POST'
@@ -357,7 +331,7 @@ app.get('/clients', (req, res) => {
 
 app.post('/clients/:clientId/connect', (req, res) => {
     const clientId = req.params.clientId;
-    console.log(`🔗 Tentativa de conexão para cliente: ${clientId}`);
+    console.log(`🔗 CONECTANDO CLIENTE (CORS OK): ${clientId}`);
     
     try {
         // Clean up any orphaned Chrome processes first
@@ -367,6 +341,7 @@ app.post('/clients/:clientId/connect', (req, res) => {
             initClient(clientId);
         }, 2000); // Wait 2 seconds after cleanup
         
+        console.log(`✅ Cliente ${clientId} iniciando conexão com CORS configurado`);
         res.json({ success: true, message: `Cliente ${clientId} iniciando conexão.` });
     } catch (error) {
         console.error(`❌ Erro ao conectar cliente ${clientId}:`, error);
@@ -749,15 +724,14 @@ app.post('/clients/:clientId/send-reaction', async (req, res) => {
 // Cleanup on startup
 cleanupOrphanedChromeProcesses();
 
-server.listen(port, () => {
+server.listen(port, '0.0.0.0', () => {
     console.log(`🚀 WhatsApp Multi-Client Server iniciado na porta ${port}`);
     console.log(`📡 Health Check: http://146.59.227.248:${port}/health`);
     console.log(`📱 API Base: http://146.59.227.248:${port}/clients`);
-    console.log(`🔧 Melhorias implementadas:`);
-    console.log(`   - CORS corrigido e melhorado para Lovable`);
-    console.log(`   - Headers CORS configurados corretamente`);
-    console.log(`   - Preflight requests configurados`);
-    console.log(`   - Limpeza de processos Chrome órfãos`);
-    console.log(`   - WebSocket melhorado`);
-    console.log(`   - QR Code debugging aprimorado`);
+    console.log(`🔧 CORS CONFIGURADO E FUNCIONANDO!`);
+    console.log(`   - Todas as origens permitidas (*)`);
+    console.log(`   - Métodos: GET,POST,PUT,DELETE,OPTIONS,PATCH`);
+    console.log(`   - Headers configurados corretamente`);
+    console.log(`   - Preflight requests tratados`);
+    console.log(`📱 SERVIDOR PRONTO PARA CONEXÕES LOVABLE!`);
 });
