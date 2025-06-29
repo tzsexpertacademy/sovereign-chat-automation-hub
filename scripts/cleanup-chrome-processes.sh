@@ -2,7 +2,7 @@
 #!/bin/bash
 
 # Script para limpar processos Chrome órfãos do WhatsApp Multi-Cliente
-# Arquivo: scripts/cleanup-chrome-processes.sh
+# Execute da pasta raiz: ./scripts/cleanup-chrome-processes.sh
 
 echo "🧹 LIMPEZA DE PROCESSOS CHROME - WHATSAPP MULTI-CLIENTE"
 echo "====================================================="

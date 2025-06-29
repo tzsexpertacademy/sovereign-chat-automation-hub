@@ -21,6 +21,23 @@ export interface ServerHealth {
   server: string;
 }
 
+export interface MessageData {
+  id: string;
+  from: string;
+  to: string;
+  body: string;
+  timestamp: number;
+  type: string;
+}
+
+export interface QueuedMessage {
+  id: string;
+  from: string;
+  to: string;
+  body: string;
+  timestamp: number;
+}
+
 class WhatsAppMultiClientService {
   private socket: Socket | null = null;
   private reconnectAttempts = 0;
@@ -83,6 +100,15 @@ class WhatsAppMultiClientService {
   // Get socket instance
   getSocket(): Socket | null {
     return this.socket;
+  }
+
+  // Disconnect WebSocket
+  disconnect(): void {
+    if (this.socket) {
+      console.log('🔌 Desconectando WebSocket...');
+      this.socket.disconnect();
+      this.socket = null;
+    }
   }
 
   // Join client room
@@ -310,17 +336,11 @@ class WhatsAppMultiClientService {
       return false;
     }
   }
-
-  // Disconnect WebSocket
-  disconnect(): void {
-    if (this.socket) {
-      console.log('🔌 Desconectando WebSocket...');
-      this.socket.disconnect();
-      this.socket = null;
-    }
-  }
 }
 
 // Export singleton instance
 const whatsappService = new WhatsAppMultiClientService();
 export default whatsappService;
+
+// Also export as named export for compatibility
+export { whatsappService };

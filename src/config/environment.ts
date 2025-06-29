@@ -41,7 +41,9 @@ export const getServerConfig = () => ({
   API_BASE_URL,
   SOCKET_URL,
   isProduction,
-  isDevelopment
+  isDevelopment,
+  protocol: isProduction ? 'https:' : 'http:',
+  serverUrl: SERVER_URL
 });
 
 export const getAlternativeServerConfig = () => ({

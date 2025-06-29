@@ -2,7 +2,7 @@
 #!/bin/bash
 
 # Script de produção para WhatsApp Multi-Cliente
-# Arquivo: scripts/production-start-whatsapp.sh
+# Execute da pasta raiz: ./scripts/production-start-whatsapp.sh
 
 echo "🚀 INICIANDO WHATSAPP MULTI-CLIENTE - PRODUÇÃO"
 echo "=============================================="
@@ -13,9 +13,9 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
-# Verificar se estamos no diretório correto
+# Verificar se estamos no diretório correto (raiz do projeto)
 if [ ! -f "package.json" ]; then
-    echo "❌ Execute do diretório raiz do projeto"
+    echo "❌ Execute este script da pasta raiz do projeto"
     exit 1
 fi
 
@@ -49,14 +49,11 @@ if [ ! -f "server/whatsapp-multi-client-server.js" ]; then
     exit 1
 fi
 
-# Ir para diretório do servidor
-cd server
-
 # Configurar variáveis de ambiente para produção
 export NODE_ENV=production
 export WHATSAPP_PORT=4000
-export SESSIONS_PATH=../whatsapp-sessions
-export LOGS_PATH=../logs
+export SESSIONS_PATH=./whatsapp-sessions
+export LOGS_PATH=./logs
 export PUPPETEER_HEADLESS=true
 export PUPPETEER_NO_SANDBOX=true
 export NODE_OPTIONS="--max-old-space-size=2048"
@@ -69,9 +66,9 @@ echo "📅 Data/Hora: $(date)"
 if command -v pm2 &> /dev/null; then
     echo "🔧 Usando PM2 para gerenciar o processo..."
     pm2 delete whatsapp-multi-client 2>/dev/null || true
-    pm2 start whatsapp-multi-client-server.js --name "whatsapp-multi-client" \
-        --log ../logs/whatsapp-multi-client.log \
-        --error ../logs/whatsapp-error.log \
+    pm2 start server/whatsapp-multi-client-server.js --name "whatsapp-multi-client" \
+        --log logs/whatsapp-multi-client.log \
+        --error logs/whatsapp-error.log \
         --max-memory-restart 1G \
         --restart-delay 5000 \
         --time
@@ -80,18 +77,17 @@ if command -v pm2 &> /dev/null; then
     SERVER_PID=$(pm2 jlist | jq -r '.[] | select(.name=="whatsapp-multi-client") | .pid' 2>/dev/null || echo "")
 else
     echo "🔧 Usando nohup para gerenciar o processo..."
+    cd server
     nohup node whatsapp-multi-client-server.js > ../logs/whatsapp-multi-client.log 2>&1 &
     SERVER_PID=$!
+    cd ..
     sleep 3
 fi
 
 # Salvar PID se disponível
 if [ -n "$SERVER_PID" ]; then
-    echo $SERVER_PID > ../logs/whatsapp-server.pid
+    echo $SERVER_PID > logs/whatsapp-server.pid
 fi
-
-# Voltar para diretório raiz
-cd ..
 
 echo "⏳ Aguardando servidor inicializar..."
 sleep 8
