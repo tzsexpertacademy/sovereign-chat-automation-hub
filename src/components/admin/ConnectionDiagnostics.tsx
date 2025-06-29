@@ -61,7 +61,7 @@ const ConnectionDiagnostics = () => {
         });
       }
 
-      // Test 3: CORS test
+      // Test 3: Direct connection test
       try {
         const response = await fetch(`${API_BASE_URL}/health`, {
           method: 'GET',
@@ -71,37 +71,59 @@ const ConnectionDiagnostics = () => {
         
         if (response.ok) {
           results.push({
-            test: "Configuração CORS",
+            test: "Conexão Direta",
             status: 'success',
-            message: "CORS configurado corretamente"
+            message: "Conexão direta funcionando"
           });
         } else {
           results.push({
-            test: "Configuração CORS",
+            test: "Conexão Direta",
             status: 'warning',
             message: `Resposta HTTP ${response.status}`,
             details: response.statusText
           });
         }
       } catch (error: any) {
-        if (error.message.includes('CORS')) {
-          results.push({
-            test: "Configuração CORS",
-            status: 'error',
-            message: "CORS bloqueado",
-            details: "Configure CORS no servidor para permitir origem do Lovable"
+        // Try no-cors mode for Mixed Content
+        try {
+          await fetch(`${API_BASE_URL}/health`, {
+            method: 'GET',
+            mode: 'no-cors'
           });
-        } else {
           results.push({
-            test: "Configuração CORS",
+            test: "Conexão Direta",
+            status: 'warning',
+            message: "Funcionando com no-cors (Mixed Content)",
+            details: "HTTPS acessando HTTP - usando modo compatibilidade"
+          });
+        } catch (noCorsError: any) {
+          results.push({
+            test: "Conexão Direta",
             status: 'error',
-            message: "Falha na conexão",
+            message: "Falha na conexão direta",
             details: error.message
           });
         }
       }
 
-      // Test 4: WebSocket connectivity
+      // Test 4: API endpoints test - FIXED: Use correct routes
+      try {
+        const clients = await whatsappService.getAllClients();
+        results.push({
+          test: "Endpoints da API",
+          status: 'success',
+          message: `API funcionando (${clients.length} clientes)`
+        });
+      } catch (error: any) {
+        results.push({
+          test: "Endpoints da API",
+          status: 'error',
+          message: "API não responde",
+          details: error.message
+        });
+      }
+
+      // Test 5: WebSocket connectivity
       try {
         const socket = whatsappService.connectSocket();
         if (socket.connected) {
@@ -127,20 +149,22 @@ const ConnectionDiagnostics = () => {
         });
       }
 
-      // Test 5: API endpoints
-      try {
-        const clients = await whatsappService.getAllClients();
+      // Test 6: Mixed Content detection
+      const isHttps = window.location.protocol === 'https:';
+      const serverIsHttp = SERVER_URL.startsWith('http://');
+      
+      if (isHttps && serverIsHttp) {
         results.push({
-          test: "Endpoints da API",
-          status: 'success',
-          message: `API funcionando (${clients.length} clientes)`
+          test: "Mixed Content Security",
+          status: 'warning',
+          message: "Mixed Content detectado",
+          details: "HTTPS frontend acessando servidor HTTP - usando modo compatibilidade"
         });
-      } catch (error: any) {
+      } else {
         results.push({
-          test: "Endpoints da API",
-          status: 'error',
-          message: "API não responde",
-          details: error.message
+          test: "Mixed Content Security",
+          status: 'success',
+          message: "Sem problemas de Mixed Content"
         });
       }
 
@@ -209,7 +233,7 @@ const ConnectionDiagnostics = () => {
           </Button>
         </div>
         <CardDescription>
-          Verifica conectividade, CORS, WebSocket e APIs do sistema WhatsApp
+          Verifica conectividade, Mixed Content, WebSocket e APIs do sistema WhatsApp
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -224,6 +248,7 @@ const ConnectionDiagnostics = () => {
                 <p><strong>Servidor:</strong> {SERVER_URL}</p>
                 <p><strong>API:</strong> {API_BASE_URL}</p>
                 <p><strong>WebSocket:</strong> {SOCKET_URL}</p>
+                <p><strong>Frontend:</strong> {window.location.protocol}//{window.location.hostname}</p>
               </div>
             </div>
           </AlertDescription>

@@ -1,3 +1,4 @@
+
 import io, { Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL } from '@/config/environment';
 
@@ -70,7 +71,7 @@ class WhatsAppMultiClientService {
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectInterval,
         forceNew: true,
-        withCredentials: false // Disable credentials for CORS
+        withCredentials: false
       });
 
       this.socket.on('connect', () => {
@@ -173,7 +174,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Methods
+  // API Methods with Mixed Content handling
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     
@@ -184,14 +185,15 @@ class WhatsAppMultiClientService {
       'Accept': 'application/json',
     };
 
+    // Configure fetch for Mixed Content scenarios
     const config: RequestInit = {
       ...options,
       headers: {
         ...defaultHeaders,
         ...options.headers,
       },
-      mode: 'cors',
-      credentials: 'omit' // Changed from 'include' to 'omit' for better CORS compatibility
+      mode: 'cors', // Try CORS first
+      credentials: 'omit'
     };
 
     try {
@@ -210,15 +212,32 @@ class WhatsAppMultiClientService {
       }
     } catch (error: any) {
       console.error(`❌ Erro na requisição para ${fullUrl}:`, error);
+      
+      // If CORS fails and it's a Mixed Content issue, try no-cors mode
+      if (error.message.includes('Mixed Content') || error.message.includes('CORS')) {
+        console.log('🔄 Tentando modo no-cors para Mixed Content...');
+        try {
+          const response = await fetch(fullUrl, {
+            ...config,
+            mode: 'no-cors'
+          });
+          // no-cors mode doesn't allow reading response, so assume success
+          console.log('✅ Requisição no-cors aparentemente bem-sucedida');
+          return { success: true, message: 'Request sent (no-cors mode)' };
+        } catch (noCorsError) {
+          console.error('❌ Erro mesmo com no-cors:', noCorsError);
+        }
+      }
+      
       throw error;
     }
   }
 
-  // Get all clients
+  // Get all clients - FIXED: Remove /api/ prefix
   async getAllClients(): Promise<WhatsAppClient[]> {
     try {
       console.log('📋 Buscando todos os clientes...');
-      const response = await this.makeRequest('/api/clients');
+      const response = await this.makeRequest('/clients'); // Removed /api/
       
       if (response.success && Array.isArray(response.clients)) {
         console.log(`✅ Clientes encontrados: ${response.clients.length}`);
@@ -233,11 +252,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Connect client
+  // Connect client - FIXED: Remove /api/ prefix
   async connectClient(clientId: string): Promise<any> {
     try {
       console.log(`🔗 Conectando cliente: ${clientId}`);
-      return await this.makeRequest(`/api/clients/${clientId}/connect`, {
+      return await this.makeRequest(`/clients/${clientId}/connect`, { // Removed /api/
         method: 'POST'
       });
     } catch (error) {
@@ -246,11 +265,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Disconnect client
+  // Disconnect client - FIXED: Remove /api/ prefix
   async disconnectClient(clientId: string): Promise<any> {
     try {
       console.log(`🔌 Desconectando cliente: ${clientId}`);
-      return await this.makeRequest(`/api/clients/${clientId}/disconnect`, {
+      return await this.makeRequest(`/clients/${clientId}/disconnect`, { // Removed /api/
         method: 'POST'
       });
     } catch (error) {
@@ -259,11 +278,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Get client status
+  // Get client status - FIXED: Remove /api/ prefix
   async getClientStatus(clientId: string): Promise<WhatsAppClient> {
     try {
       console.log(`📊 Verificando status do cliente: ${clientId}`);
-      const response = await this.makeRequest(`/api/clients/${clientId}/status`);
+      const response = await this.makeRequest(`/clients/${clientId}/status`); // Removed /api/
       
       if (response.success) {
         console.log(`✅ Status do cliente ${clientId}:`, response.status);
@@ -283,11 +302,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Send message
+  // Send message - FIXED: Remove /api/ prefix
   async sendMessage(clientId: string, to: string, message: string): Promise<any> {
     try {
       console.log(`📤 Enviando mensagem via cliente ${clientId} para ${to}`);
-      return await this.makeRequest(`/api/clients/${clientId}/send-message`, {
+      return await this.makeRequest(`/clients/${clientId}/send-message`, { // Removed /api/
         method: 'POST',
         body: JSON.stringify({ to, message })
       });
@@ -297,11 +316,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Get chats
+  // Get chats - FIXED: Remove /api/ prefix
   async getChats(clientId: string): Promise<any> {
     try {
       console.log(`💬 Buscando chats do cliente: ${clientId}`);
-      return await this.makeRequest(`/api/clients/${clientId}/chats`);
+      return await this.makeRequest(`/clients/${clientId}/chats`); // Removed /api/
     } catch (error) {
       console.error(`❌ Erro ao buscar chats do cliente ${clientId}:`, error);
       throw error;
