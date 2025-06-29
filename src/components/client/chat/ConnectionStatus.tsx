@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AlertCircle } from 'lucide-react';
-import { getServerConfig, getAlternativeServerConfig } from '@/config/environment';
+import { getServerConfig } from '@/config/environment';
 
 interface ConnectionStatusProps {
   connectedInstance: string | null;
@@ -10,16 +10,17 @@ interface ConnectionStatusProps {
 
 const ConnectionStatus = ({ connectedInstance, isOnline }: ConnectionStatusProps) => {
   const [serverConfig, setServerConfig] = useState<any>(null);
-  const [hasAlternative, setHasAlternative] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadConfig = async () => {
       try {
         const config = await getServerConfig();
         setServerConfig(config);
-        setHasAlternative(!!getAlternativeServerConfig());
       } catch (error) {
         console.error('Erro ao carregar configuração:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -35,7 +36,7 @@ const ConnectionStatus = ({ connectedInstance, isOnline }: ConnectionStatusProps
     );
   }
 
-  if (!serverConfig) {
+  if (loading || !serverConfig) {
     return (
       <div className="p-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2 text-gray-600">
         <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
@@ -49,7 +50,6 @@ const ConnectionStatus = ({ connectedInstance, isOnline }: ConnectionStatusProps
       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
       <span className="text-xs">Conectado: {connectedInstance}</span>
       <span className="text-xs">• {serverConfig.protocol.toUpperCase()}: {serverConfig.serverUrl}</span>
-      {hasAlternative && <span className="text-xs">• Fallback: ✓</span>}
       {isOnline && (
         <>
           <span className="text-xs">•</span>

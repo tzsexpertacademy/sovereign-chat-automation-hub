@@ -1,6 +1,5 @@
 
-// ===== CONFIGURAÇÃO DE AMBIENTE COM FALLBACK INTELIGENTE =====
-// Detecção automática e fallback HTTP/HTTPS
+// ===== CONFIGURAÇÃO SIMPLIFICADA COM HTTP DIRETO =====
 
 const PRODUCTION_IP = '146.59.227.248';
 const PRODUCTION_PORT = '4000';
@@ -15,13 +14,7 @@ const isLocalEnvironment = () => {
   return isLocalhost;
 };
 
-// Função para verificar se a página atual está em HTTPS
-const isHttpsPage = () => {
-  if (typeof window === 'undefined') return false;
-  return window.location.protocol === 'https:';
-};
-
-// Cache para evitar múltiplas tentativas
+// Cache simples para evitar múltiplas detecções
 let connectionCache: { protocol: string; serverUrl: string } | null = null;
 
 // Função para testar conectividade
@@ -30,16 +23,16 @@ const testConnection = async (url: string): Promise<boolean> => {
     const response = await fetch(`${url}/health`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(5000) // 5 segundos timeout
+      signal: AbortSignal.timeout(5000)
     });
     return response.ok;
   } catch (error) {
-    console.log(`❌ Falha ao conectar: ${url}`, error.message);
+    console.log(`❌ Falha ao conectar: ${url}`);
     return false;
   }
 };
 
-// Função principal para obter configuração do servidor com fallback
+// Função principal para obter configuração do servidor
 export const getServerConfig = async () => {
   // Se já testamos e temos cache, usar
   if (connectionCache) {
@@ -48,11 +41,9 @@ export const getServerConfig = async () => {
   }
 
   const isLocal = isLocalEnvironment();
-  const isHttps = isHttpsPage();
   
-  console.log(`🌐 ===== CONFIGURAÇÃO COM FALLBACK INTELIGENTE =====`);
+  console.log(`🌐 ===== CONFIGURAÇÃO SIMPLIFICADA =====`);
   console.log(`📍 Ambiente: ${isLocal ? 'LOCAL' : 'PRODUÇÃO'}`);
-  console.log(`🔒 Protocolo da página: ${isHttps ? 'HTTPS' : 'HTTP'}`);
   
   if (isLocal) {
     // ===== AMBIENTE LOCAL =====
@@ -63,29 +54,12 @@ export const getServerConfig = async () => {
     return config;
   }
   
-  // ===== AMBIENTE DE PRODUÇÃO COM FALLBACK =====
-  const httpsUrl = `https://${PRODUCTION_IP}`;
+  // ===== AMBIENTE DE PRODUÇÃO - HTTP DIRETO =====
   const httpUrl = `http://${PRODUCTION_IP}:${PRODUCTION_PORT}`;
   
-  console.log(`🔍 Testando conectividade...`);
+  console.log(`🔗 [PRODUÇÃO] Usando HTTP direto: ${httpUrl}`);
   
-  // Tentar HTTPS primeiro se a página é HTTPS
-  if (isHttps) {
-    console.log(`🔒 Testando HTTPS: ${httpsUrl}`);
-    const httpsWorks = await testConnection(httpsUrl);
-    
-    if (httpsWorks) {
-      const config = { serverUrl: httpsUrl, protocol: 'https', environment: 'production' };
-      connectionCache = config;
-      console.log(`✅ HTTPS funcionando: ${httpsUrl}`);
-      return config;
-    }
-    
-    console.log(`⚠️ HTTPS falhou, tentando HTTP: ${httpUrl}`);
-  }
-  
-  // Testar HTTP
-  console.log(`🔗 Testando HTTP: ${httpUrl}`);
+  // Testar se o servidor está respondendo
   const httpWorks = await testConnection(httpUrl);
   
   if (httpWorks) {
@@ -95,14 +69,14 @@ export const getServerConfig = async () => {
     return config;
   }
   
-  // Se nada funcionar, usar HTTP como padrão
-  console.log(`❌ Ambos falharam, usando HTTP como padrão`);
+  // Se não funcionar, usar mesmo assim (servidor pode estar iniciando)
+  console.log(`⚠️ Servidor não respondeu, mas usando HTTP: ${httpUrl}`);
   const config = { serverUrl: httpUrl, protocol: 'http', environment: 'production-fallback' };
   connectionCache = config;
   return config;
 };
 
-// Função síncrona para uso imediato (sem teste)
+// Função síncrona para uso imediato
 export const getServerConfigSync = () => {
   const isLocal = isLocalEnvironment();
   
@@ -114,7 +88,7 @@ export const getServerConfigSync = () => {
     };
   }
   
-  // Em produção, preferir HTTP por estar funcionando
+  // Em produção, usar HTTP direto
   return {
     serverUrl: `http://${PRODUCTION_IP}:${PRODUCTION_PORT}`,
     protocol: 'http',
@@ -128,7 +102,7 @@ export const resetConnectionCache = () => {
   console.log('🔄 Cache de conexão resetado');
 };
 
-// Exportações principais (síncronas para compatibilidade)
+// Exportações principais
 const defaultConfig = getServerConfigSync();
 export const SERVER_URL = defaultConfig.serverUrl;
 export const API_BASE_URL = `${defaultConfig.serverUrl}/api`;
@@ -147,27 +121,8 @@ if (typeof window !== 'undefined') {
 }
 console.log(`=====================================`);
 
-// Função para obter configuração alternativa em caso de erro
+// Função para obter configuração alternativa (mantida para compatibilidade)
 export const getAlternativeServerConfig = () => {
-  const currentConfig = getServerConfigSync();
-  const isLocal = isLocalEnvironment();
-  
-  if (isLocal) {
-    return null; // Sem alternativa em local
-  }
-  
-  // Alternar entre HTTP e HTTPS
-  if (currentConfig.protocol === 'https') {
-    return {
-      serverUrl: `http://${PRODUCTION_IP}:${PRODUCTION_PORT}`,
-      protocol: 'http',
-      environment: 'production-fallback'
-    };
-  } else {
-    return {
-      serverUrl: `https://${PRODUCTION_IP}`,
-      protocol: 'https',
-      environment: 'production-fallback'
-    };
-  }
+  // Em produção, não há alternativa - sempre HTTP
+  return null;
 };

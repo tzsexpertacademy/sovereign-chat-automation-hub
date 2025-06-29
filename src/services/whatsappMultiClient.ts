@@ -1,6 +1,6 @@
 
 import { io, Socket } from 'socket.io-client';
-import { getServerConfig, getAlternativeServerConfig, resetConnectionCache, getServerConfigSync, API_BASE_URL } from '@/config/environment';
+import { getServerConfig, getAlternativeServerConfig, resetConnectionCache, getServerConfigSync } from '@/config/environment';
 
 console.log(`🔗 WhatsApp Service - Iniciando com detecção inteligente`);
 
@@ -401,6 +401,34 @@ class WhatsAppMultiClientService {
       }
     } catch (error: any) {
       console.error('❌ Erro ao enviar mensagem:', error);
+      throw error;
+    }
+  }
+
+  // MÉTODO SENDREACTION ADICIONADO
+  async sendReaction(clientId: string, chatId: string, messageId: string, emoji: string): Promise<any> {
+    try {
+      console.log('🎭 Enviando reação:', { clientId, chatId, messageId, emoji });
+      
+      const response = await this.makeRequest(`/api/clients/${clientId}/send-reaction`, {
+        method: 'POST',
+        body: JSON.stringify({ 
+          chatId, 
+          messageId, 
+          emoji 
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao enviar reação');
+      }
+      
+      console.log('✅ Reação enviada com sucesso');
+      return data;
+    } catch (error: any) {
+      console.error('❌ Erro ao enviar reação:', error);
       throw error;
     }
   }
