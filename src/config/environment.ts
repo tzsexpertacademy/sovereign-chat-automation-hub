@@ -30,6 +30,7 @@ if (isDevelopment) {
 
 // Export the configured URLs
 export const SERVER_URL = SERVER_HOST;
+export const DIRECT_SERVER_URL = SERVER_HOST; // For compatibility
 export { API_BASE_URL, SOCKET_URL };
 
 // Export additional config
@@ -41,7 +42,10 @@ export const getServerConfig = () => ({
   isDevelopment,
   isHttps: !isDevelopment,
   protocol: isDevelopment ? 'http:' : 'https:',
-  serverUrl: SERVER_URL
+  serverUrl: SERVER_URL,
+  usingProxy: false, // No longer using CORS proxy
+  hasMixedContent: false, // HTTPS setup resolves this
+  corsEnabled: true // Direct HTTPS connection
 });
 
 console.log('✅ Configuração HTTPS carregada:', {

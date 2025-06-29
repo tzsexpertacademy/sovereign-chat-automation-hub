@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +20,7 @@ import { getServerConfig } from "@/config/environment";
 
 interface SystemHealth {
   serverOnline: boolean;
+  corsEnabled: boolean;
   httpsEnabled: boolean;
   lastCheck: Date;
   issues: string[];
@@ -31,6 +31,7 @@ const InstancesManager = () => {
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth>({
     serverOnline: false,
+    corsEnabled: true, // HTTPS setup enables direct connection
     httpsEnabled: false,
     lastCheck: new Date(),
     issues: []
@@ -86,6 +87,7 @@ const InstancesManager = () => {
   const checkSystemHealth = async () => {
     const health: SystemHealth = {
       serverOnline: false,
+      corsEnabled: true, // Direct HTTPS connection
       httpsEnabled: false,
       lastCheck: new Date(),
       issues: []
@@ -97,10 +99,12 @@ const InstancesManager = () => {
       const serverHealth = await whatsappService.checkServerHealth();
       health.serverOnline = true;
       health.httpsEnabled = config.isHttps;
+      health.corsEnabled = true; // Direct connection via HTTPS
       console.log('✅ Servidor online:', serverHealth);
       
     } catch (error: any) {
       health.serverOnline = false;
+      health.corsEnabled = false;
       health.issues.push('Servidor WhatsApp offline ou inacessível');
     }
 
@@ -115,6 +119,21 @@ const InstancesManager = () => {
       const serverInstances = await whatsappService.getAllClients();
       const dbInstances = instances;
       
+      // Sync instances status
+      for (const serverInstance of serverInstances) {
+        const dbInstance = dbInstances.find(db => db.instance_id === serverInstance.clientId);
+        if (dbInstance && dbInstance.status !== serverInstance.status) {
+          console.log(`📱 Atualizando status: ${dbInstance.instance_id} -> ${serverInstance.status}`);
+          await whatsappInstancesService.updateInstanceById(dbInstance.id, {
+            status: serverInstance.status,
+            phone_number: serverInstance.phoneNumber,
+            has_qr_code: serverInstance.hasQrCode,
+            qr_code: serverInstance.qrCode
+          });
+        }
+      }
+      
+      // Clean orphaned instances
       const orphanedInstances = dbInstances.filter(dbInstance => 
         !serverInstances.some(serverInstance => 
           serverInstance.clientId === dbInstance.instance_id
@@ -128,22 +147,11 @@ const InstancesManager = () => {
         });
       }
       
-      for (const serverInstance of serverInstances) {
-        const dbInstance = dbInstances.find(db => db.instance_id === serverInstance.clientId);
-        if (dbInstance && dbInstance.status !== serverInstance.status) {
-          console.log(`📱 Atualizando status: ${dbInstance.instance_id} -> ${serverInstance.status}`);
-          await whatsappInstancesService.updateInstanceById(dbInstance.id, {
-            status: serverInstance.status,
-            phone_number: serverInstance.phoneNumber
-          });
-        }
-      }
-      
       await loadInstances();
       
       toast({
         title: "Sincronização Concluída",
-        description: `${orphanedInstances.length} instâncias órfãs limpas`,
+        description: `${serverInstances.length} instâncias sincronizadas`,
       });
       
     } catch (error) {
@@ -226,7 +234,7 @@ const InstancesManager = () => {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="flex items-center space-x-2">
               {systemHealth.serverOnline ? (
                 <CheckCircle className="w-4 h-4 text-green-500" />
@@ -245,6 +253,16 @@ const InstancesManager = () => {
               )}
               <span className="text-sm">
                 HTTPS: {systemHealth.httpsEnabled ? 'Ativo' : 'HTTP'}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              {systemHealth.corsEnabled ? (
+                <CheckCircle className="w-4 h-4 text-green-500" />
+              ) : (
+                <XCircle className="w-4 h-4 text-red-500" />
+              )}
+              <span className="text-sm">
+                Conexão: {systemHealth.corsEnabled ? 'Direta' : 'Bloqueada'}
               </span>
             </div>
           </div>
