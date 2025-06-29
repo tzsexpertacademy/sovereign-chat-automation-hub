@@ -23,7 +23,7 @@ const io = new Server(server, {
     }
 });
 
-// ===== CONFIGURAÇÃO CORS CORRIGIDA =====
+// ===== CONFIGURAÇÃO CORS CORRIGIDA PARA LOVABLE =====
 app.use(cors({
     origin: function (origin, callback) {
         const allowedOrigins = [
@@ -33,11 +33,14 @@ app.use(cors({
             'http://localhost:4000'
         ];
         
-        // Permitir requisições sem origin (Postman, curl, etc)
+        console.log(`🔍 CORS: Verificando origem: ${origin || 'sem origin'}`);
+        
+        // Permitir requisições sem origin (Postman, curl, etc) E origens permitidas
         if (!origin || allowedOrigins.includes(origin)) {
+            console.log(`✅ CORS: Origem permitida: ${origin || 'sem origin'}`);
             callback(null, true);
         } else {
-            console.log(`❌ CORS bloqueado para origem: ${origin}`);
+            console.log(`❌ CORS BLOQUEADO para origem: ${origin}`);
             callback(new Error('Not allowed by CORS'));
         }
     },
@@ -49,6 +52,7 @@ app.use(cors({
 // Middleware adicional para debugging CORS
 app.use((req, res, next) => {
     console.log(`📡 ${req.method} ${req.url} - Origin: ${req.headers.origin || 'sem origin'}`);
+    console.log(`🔧 User-Agent: ${req.headers['user-agent']?.substring(0, 50) || 'sem user-agent'}`);
     next();
 });
 
@@ -939,32 +943,36 @@ app.post('/api/clients/:clientId/send-document', upload.single('file'), async (r
     }
 });
 
-// Health check COM DEBUGGING CORS
+// Health check COM DEBUGGING CORS MELHORADO
 app.get('/health', (req, res) => {
     const activeClients = clients.size;
     const connectedClients = Array.from(clients.values()).filter(c => c.status === 'connected').length;
     
-    console.log(`💚 Health check solicitado de: ${req.headers.origin || 'sem origin'}`);
+    console.log(`💚 ===== HEALTH CHECK SOLICITADO =====`);
+    console.log(`🌍 Origin: ${req.headers.origin || 'sem origin'}`);
+    console.log(`🔧 User-Agent: ${req.headers['user-agent']?.substring(0, 100) || 'sem user-agent'}`);
     console.log(`📊 Status: ${activeClients} clientes ativos, ${connectedClients} conectados`);
+    console.log(`🕐 Timestamp: ${new Date().toISOString()}`);
     
-    // Headers CORS explícitos para garantir compatibilidade
+    // Headers CORS explícitos para máxima compatibilidade 
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
     
-    res.status(200).json({ 
+    const healthData = { 
         status: 'ok',
         timestamp: new Date().toISOString(),
         activeClients: activeClients,
         connectedClients: connectedClients,
         uptime: process.uptime(),
         memory: process.memoryUsage(),
-        version: '2.0.0',
+        version: '2.1.0',
         server: `${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 4000}`,
         cors: {
             origin: req.headers.origin || 'sem origin',
-            userAgent: req.headers['user-agent']?.substring(0, 50) || 'sem user-agent'
+            userAgent: req.headers['user-agent']?.substring(0, 50) || 'sem user-agent',
+            lovableDetected: (req.headers.origin || '').includes('lovableproject.com')
         },
         routes: {
             '/api/clients': 'GET, POST',
@@ -979,7 +987,10 @@ app.get('/health', (req, res) => {
             '/api/clients/:id/send-video': 'POST',
             '/api/clients/:id/send-document': 'POST'
         }
-    });
+    };
+    
+    console.log(`✅ HEALTH CHECK RESPONSE:`, JSON.stringify(healthData, null, 2));
+    res.status(200).json(healthData);
 });
 
 // Middleware para limpeza periódica
@@ -1039,13 +1050,14 @@ server.listen(port, '0.0.0.0', () => {
     console.log(`📅 Timestamp: ${new Date().toISOString()}`);
     console.log(`🔧 Node.js: ${process.version}`);
     console.log(`💾 Memória: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
-    console.log(`🔐 CORS configurado para Lovable: ✅`);
+    console.log(`🔐 CORS configurado especificamente para Lovable: ✅`);
+    console.log(`🎯 Domínio Lovable permitido: https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com`);
     console.log(`📋 Rotas principais:`);
     console.log(`   • GET  /health - Status do servidor ✅`);
     console.log(`   • POST /api/clients/:id/send-reaction - Envio de reações ⭐`);
     console.log(`   • POST /api/clients/:id/send-audio - Envio de áudio ⭐`);
     console.log(`   • POST /api/clients/:id/send-message - Envio de texto`);
     console.log(`   • GET  /api/clients - Lista de clientes`);
-    console.log(`🔥 SERVIDOR PRONTO PARA RECEBER REQUISIÇÕES DO LOVABLE!`);
+    console.log(`🔥 SERVIDOR PRONTO PARA REQUISIÇÕES DO LOVABLE!`);
     console.log(`====================================================`);
 });
