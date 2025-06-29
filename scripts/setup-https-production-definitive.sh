@@ -94,10 +94,16 @@ chmod 644 /etc/ssl/whatsapp-multi-client/certificate.crt
 
 echo "✅ Certificado SSL robusto criado!"
 
-# Configurar Nginx HTTPS DEFINITIVO
-echo "⚙️ Configurando Nginx HTTPS definitivo..."
+# Remover TODAS as configurações nginx existentes
+echo "🧹 Limpando configurações nginx antigas..."
+rm -f /etc/nginx/sites-enabled/*
+rm -f /etc/nginx/sites-available/whatsapp-multi-client*
+rm -f /etc/nginx/sites-available/default
+
+# Configurar Nginx HTTPS LIMPO - SEM CORS DUPLICADO
+echo "⚙️ Configurando Nginx HTTPS definitivo SEM CORS duplicado..."
 cat > /etc/nginx/sites-available/whatsapp-multi-client-https << 'EOF'
-# Configuração HTTPS DEFINITIVA - WhatsApp Multi-Client
+# Configuração HTTPS DEFINITIVA - WhatsApp Multi-Client - SEM CORS DUPLICADO
 
 # Redirecionar HTTP para HTTPS
 server {
@@ -106,7 +112,7 @@ server {
     return 301 https://$server_name$request_uri;
 }
 
-# Servidor HTTPS Principal
+# Servidor HTTPS Principal - CORS LIMPO
 server {
     listen 443 ssl;
     server_name DOMAIN_PLACEHOLDER;
@@ -121,21 +127,13 @@ server {
     ssl_prefer_server_ciphers off;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
-    ssl_stapling on;
-    ssl_stapling_verify on;
     
-    # Headers de segurança
+    # Headers de segurança (SEM CORS aqui - apenas no API)
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
     add_header X-Frame-Options DENY always;
     add_header X-Content-Type-Options nosniff always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    
-    # Configuração de CORS para Lovable
-    add_header Access-Control-Allow-Origin "*" always;
-    add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
-    add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
-    add_header Access-Control-Expose-Headers "Content-Length,Content-Range" always;
     
     # Frontend (React app)
     location / {
@@ -151,9 +149,9 @@ server {
         proxy_read_timeout 86400;
     }
     
-    # API Backend - TODAS as rotas
+    # API Backend - CORS LIMPO E ÚNICO
     location ~ ^/(clients|health|api-docs) {
-        # Handle preflight requests
+        # Tratar OPTIONS explicitamente PRIMEIRO
         if ($request_method = 'OPTIONS') {
             add_header Access-Control-Allow-Origin "*" always;
             add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
@@ -164,6 +162,7 @@ server {
             return 204;
         }
         
+        # Proxy para backend
         proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -175,7 +174,7 @@ server {
         proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 86400;
         
-        # CORS para API responses
+        # CORS ÚNICO - NÃO DUPLICAR
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
@@ -202,9 +201,7 @@ sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" /etc/nginx/sites-available/whatsapp-mult
 sed -i "s/BACKEND_PORT_PLACEHOLDER/$BACKEND_PORT/g" /etc/nginx/sites-available/whatsapp-multi-client-https
 sed -i "s/FRONTEND_PORT_PLACEHOLDER/$FRONTEND_PORT/g" /etc/nginx/sites-available/whatsapp-multi-client-https
 
-# Ativar site HTTPS
-rm -f /etc/nginx/sites-enabled/default
-rm -f /etc/nginx/sites-enabled/whatsapp-multi-client
+# Ativar APENAS a nova configuração
 ln -sf /etc/nginx/sites-available/whatsapp-multi-client-https /etc/nginx/sites-enabled/
 
 # Testar configuração
@@ -260,8 +257,8 @@ echo "🎉 HTTPS CONFIGURADO COM SUCESSO!"
 echo "================================="
 echo ""
 echo "✅ Certificado SSL robusto criado"
-echo "✅ Nginx configurado para HTTPS"
-echo "✅ CORS habilitado para Lovable"
+echo "✅ Nginx configurado para HTTPS SEM CORS duplicado"
+echo "✅ CORS habilitado ÚNICO para Lovable"
 echo "✅ WhatsApp Server iniciado"
 echo ""
 echo "🌐 URLs HTTPS:"
@@ -289,5 +286,5 @@ echo ""
 echo "🎯 Próximo passo:"
 echo "  • Acesse https://$DOMAIN/ e aceite o certificado"
 echo "  • No Lovable, clique 'Verificar Conexão'"
-echo "  • Sistema estará 100% HTTPS!"
+echo "  • Sistema estará 100% HTTPS SEM CORS duplicado!"
 echo ""
