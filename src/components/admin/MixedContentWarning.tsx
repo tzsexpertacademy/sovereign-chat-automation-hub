@@ -15,7 +15,11 @@ const MixedContentWarning = () => {
     window.open(`${DIRECT_SERVER_URL}/health`, '_blank');
   };
 
-  if (!config.usingProxy) {
+  // Show warning if we're on HTTPS trying to access HTTP
+  const isHttps = window.location.protocol === 'https:';
+  const serverIsHttp = config.SERVER_URL.startsWith('http://');
+  
+  if (!isHttps || !serverIsHttp) {
     return null;
   }
 
@@ -28,7 +32,7 @@ const MixedContentWarning = () => {
             <p className="font-medium text-orange-900">🔒 Mixed Content Security</p>
             <p className="text-sm text-orange-800 mt-1">
               O Lovable (HTTPS) não pode acessar diretamente o servidor HTTP do VPS.
-              Estamos usando um proxy CORS para resolver isso.
+              Estamos usando conexão direta com tratamento de Mixed Content.
             </p>
           </div>
           
