@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle, XCircle, RefreshCw, Shield, ExternalLink } from "lucide-react";
 import { SERVER_URL, API_BASE_URL } from "@/config/environment";
-import whatsappService from "@/services/whatsappMultiClient";
 
 const SimpleConnectionStatus = () => {
   const [status, setStatus] = useState<'checking' | 'connected' | 'cert_error' | 'error'>('checking');
@@ -24,64 +23,37 @@ const SimpleConnectionStatus = () => {
       setStatus('checking');
       console.log('🔍 Verificando conexão HTTPS...');
       
-      // Tentar uma abordagem mais direta - fazer uma requisição simples primeiro
-      const testResponse = await fetch(`${API_BASE_URL}/health`, {
+      // Primeira tentativa: requisição direta
+      const response = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
         mode: 'cors',
         credentials: 'omit',
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(8000) // Timeout mais curto
       });
 
-      if (testResponse.ok) {
-        const data = await testResponse.json();
+      if (response.ok) {
+        const data = await response.json();
         console.log('✅ Conexão HTTPS funcionando!', data);
         setStatus('connected');
         setServerInfo(data);
         setLastCheck(new Date());
         return;
+      } else {
+        console.log('⚠️ Resposta não OK:', response.status);
+        throw new Error(`HTTP ${response.status}`);
       }
     } catch (error: any) {
-      console.log('🔍 Primeira tentativa falhou, tentando método alternativo...');
+      console.log('❌ Primeira tentativa falhou:', error.message);
       
-      // Tentar com o serviço
-      try {
-        const result = await whatsappService.testConnection();
-        
-        if (result.success) {
-          console.log('✅ Conexão via serviço funcionando!');
-          setStatus('connected');
-          
-          // Tentar pegar informações do servidor
-          try {
-            const health = await whatsappService.checkServerHealth();
-            setServerInfo(health);
-          } catch (e) {
-            console.log('Informações do servidor não disponíveis, mas conexão OK');
-            setServerInfo({ status: 'ok', server: 'HTTPS Server', version: 'unknown' });
-          }
-        } else {
-          // Verificar tipo de erro
-          if (result.message.includes('Certificado') || 
-              result.message.includes('SSL') ||
-              result.message.includes('certificado')) {
-            console.log('🔒 Problema de certificado SSL detectado');
-            setStatus('cert_error');
-          } else {
-            console.log('❌ Erro de conexão:', result.message);
-            setStatus('error');
-          }
-        }
-      } catch (serviceError: any) {
-        console.error('❌ Erro no serviço:', serviceError);
-        
-        // Se chegou até aqui, provavelmente é problema de certificado
-        if (serviceError.message.includes('Failed to fetch') ||
-            serviceError.message.includes('CERTIFICADO_SSL') ||
-            serviceError.name === 'TypeError') {
-          setStatus('cert_error');
-        } else {
-          setStatus('error');
-        }
+      // Se for erro de fetch, é muito provável que seja certificado SSL
+      if (error.message === 'Failed to fetch' || 
+          error.name === 'TypeError' ||
+          error.name === 'TimeoutError') {
+        console.log('🔒 Detectado problema de certificado SSL');
+        setStatus('cert_error');
+      } else {
+        console.log('❌ Erro de conexão geral');
+        setStatus('error');
       }
     }
     
