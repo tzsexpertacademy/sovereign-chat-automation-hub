@@ -36,9 +36,7 @@ const SystemHealthMonitor = () => {
       if (interval) {
         clearInterval(interval);
       }
-      if (unsubscribe) {
-        connectionManager.removeListener(unsubscribe);
-      }
+      connectionManager.removeListener(unsubscribe);
     };
   }, []);
 
@@ -137,6 +135,20 @@ const SystemHealthMonitor = () => {
           }
         </div>
 
+        {/* Aviso sobre Limitações do Lovable */}
+        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-start space-x-2">
+            <Globe className="w-5 h-5 text-yellow-600 mt-0.5" />
+            <div>
+              <p className="font-medium text-yellow-900">Limitação do Ambiente Lovable</p>
+              <p className="text-sm text-yellow-700">
+                O Lovable pode ter restrições CORS para conectar com servidores externos. 
+                Para teste completo, publique o app ou use um ambiente local.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Informações do Sistema */}
         {healthData && (
           <div className="grid grid-cols-2 gap-4">
@@ -180,6 +192,21 @@ const SystemHealthMonitor = () => {
             </div>
           </div>
         )}
+
+        {/* Sugestões para Resolução */}
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start space-x-2">
+            <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+            <div>
+              <p className="font-medium text-blue-900">Soluções Recomendadas</p>
+              <ul className="text-sm text-blue-700 mt-1 space-y-1">
+                <li>• Publique o app no Lovable para ter acesso completo</li>
+                <li>• Use um ambiente local para desenvolvimento</li>
+                <li>• Configure HTTPS no servidor para melhor compatibilidade</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
