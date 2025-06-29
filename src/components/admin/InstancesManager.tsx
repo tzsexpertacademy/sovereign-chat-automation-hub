@@ -20,8 +20,9 @@ import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import ConnectionTest from "./ConnectionTest";
 import InstanceCreationForm from "./InstanceCreationForm";
 import InstancesList from "./InstancesList";
-import { SERVER_URL } from "@/config/environment";
+import MixedContentWarning from "./MixedContentWarning";
 import ConnectionDiagnostics from "./ConnectionDiagnostics";
+import { SERVER_URL } from "@/config/environment";
 
 interface SystemHealth {
   serverOnline: boolean;
@@ -102,9 +103,10 @@ const InstancesManager = () => {
     };
 
     try {
-      // Test server connection
+      // Test server connection with better error handling
       const serverHealth = await whatsappService.checkServerHealth();
       health.serverOnline = true;
+      console.log('✅ Servidor online:', serverHealth);
       
       // Check if HTTPS is available
       health.httpsEnabled = window.location.protocol === 'https:';
@@ -113,22 +115,35 @@ const InstancesManager = () => {
       try {
         await fetch(`${SERVER_URL}/health`, {
           method: 'GET',
-          mode: 'cors'
+          mode: 'cors',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
         });
         health.corsEnabled = true;
-      } catch (corsError) {
+      } catch (corsError: any) {
         health.corsEnabled = false;
-        health.issues.push('CORS não configurado - necessário configurar no servidor');
+        if (corsError.message.includes('Mixed Content')) {
+          health.issues.push('Mixed Content Security - HTTPS não pode acessar HTTP');
+        } else if (corsError.message.includes('CORS')) {
+          health.issues.push('CORS não configurado no servidor');
+        } else {
+          health.issues.push('Erro de conectividade - verifique proxy CORS');
+        }
       }
       
-    } catch (error) {
+    } catch (error: any) {
       health.serverOnline = false;
-      health.issues.push('Servidor WhatsApp offline ou inacessível');
+      if (error.message.includes('Failed to fetch')) {
+        health.issues.push('Mixed Content Security ou servidor offline');
+      } else {
+        health.issues.push('Servidor WhatsApp offline ou inacessível');
+      }
     }
 
-    // Additional checks
-    if (!health.httpsEnabled && window.location.hostname.includes('lovableproject.com')) {
-      health.issues.push('HTTPS recomendado para produção');
+    // Additional checks for mixed content
+    if (health.httpsEnabled && SERVER_URL.startsWith('http://')) {
+      health.issues.push('Mixed Content: HTTPS tentando acessar HTTP');
     }
 
     setSystemHealth(health);
@@ -227,7 +242,7 @@ const InstancesManager = () => {
         <div>
           <h1 className="text-3xl font-bold">Gerenciador de Instâncias WhatsApp</h1>
           <p className="text-muted-foreground">
-            Sistema corrigido - conectividade, CORS e QR Code funcionando
+            Sistema com proxy CORS para resolver Mixed Content Security
           </p>
         </div>
         <div className="flex space-x-2">
@@ -241,6 +256,9 @@ const InstancesManager = () => {
           </Button>
         </div>
       </div>
+
+      {/* Mixed Content Warning */}
+      <MixedContentWarning />
 
       {/* Connection Diagnostics */}
       <ConnectionDiagnostics />
@@ -314,22 +332,21 @@ const InstancesManager = () => {
         </CardContent>
       </Card>
 
-      {/* CORS Alert */}
-      {!systemHealth.corsEnabled && systemHealth.serverOnline && (
+      {/* Mixed Content Security Alert */}
+      {systemHealth.issues.some(issue => issue.includes('Mixed Content')) && (
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             <div className="space-y-2">
-              <p className="font-medium">⚠️ CORS não configurado no servidor</p>
+              <p className="font-medium">🔒 Problema de Mixed Content Security</p>
               <p className="text-sm">
-                Para resolver este problema, execute no servidor:
+                O Lovable (HTTPS) não pode acessar diretamente servidores HTTP. 
+                Configuramos um proxy CORS para resolver isso.
               </p>
               <div className="bg-gray-100 p-2 rounded text-xs font-mono">
-                <p># Adicionar ao arquivo do servidor WhatsApp:</p>
-                <p>app.use(cors({`{`}</p>
-                <p>&nbsp;&nbsp;origin: ['https://*.lovableproject.com', 'http://localhost:*'],</p>
-                <p>&nbsp;&nbsp;credentials: true</p>
-                <p>{`}`}));</p>
+                <p>Frontend: HTTPS (Lovable)</p>
+                <p>Servidor: HTTP (VPS)</p>
+                <p>Solução: Proxy CORS habilitado</p>
               </div>
             </div>
           </AlertDescription>
