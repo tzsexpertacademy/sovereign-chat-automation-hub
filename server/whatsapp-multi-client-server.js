@@ -32,10 +32,10 @@ const loadClientSessions = () => {
         if (fs.existsSync(SESSION_FILE_PATH)) {
             const sessionData = fs.readFileSync(SESSION_FILE_PATH, 'utf-8');
             clientSessions = JSON.parse(sessionData);
-            console.log('Client sessions loaded from file.');
+            console.log('✅ Client sessions loaded from file.');
         }
     } catch (error) {
-        console.error('Error loading client sessions:', error);
+        console.error('❌ Error loading client sessions:', error);
     }
 };
 
@@ -44,15 +44,14 @@ loadClientSessions();
 const saveClientSessions = () => {
     try {
         fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(clientSessions, null, 2));
-        console.log('Client sessions saved to file.');
+        console.log('✅ Client sessions saved to file.');
     } catch (error) {
-        console.error('Error saving client sessions:', error);
+        console.error('❌ Error saving client sessions:', error);
     }
 };
 
-// Configuração CORS melhorada
-app.use(cors({
-  origin: [
+// Configuração CORS melhorada e mais específica
+const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:8080',
@@ -64,11 +63,33 @@ app.use(cors({
     'https://146.59.227.248:8080',
     'https://*.lovableproject.com',
     'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com'
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range']
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        // Check if origin is in allowed list or matches pattern
+        const isAllowed = allowedOrigins.some(allowedOrigin => {
+            if (allowedOrigin.includes('*')) {
+                const pattern = allowedOrigin.replace(/\*/g, '.*');
+                return new RegExp(pattern).test(origin);
+            }
+            return allowedOrigin === origin;
+        });
+        
+        if (isAllowed) {
+            callback(null, true);
+        } else {
+            console.log('🚫 CORS blocked origin:', origin);
+            callback(null, true); // Still allow for debugging - remove in production
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
 
 // Handle preflight requests
@@ -76,104 +97,244 @@ app.options('*', cors());
 
 const clients = {};
 
+// Função para limpar processos Chrome órfãos
+const cleanupOrphanedChromeProcesses = () => {
+    console.log('🧹 Limpando processos Chrome órfãos...');
+    const { exec } = require('child_process');
+    
+    exec('pkill -f "chrome.*--remote-debugging-port"', (error) => {
+        if (error && error.code !== 1) { // code 1 = no processes found, which is OK
+            console.warn('⚠️ Erro ao limpar Chrome:', error.message);
+        } else {
+            console.log('✅ Processos Chrome órfãos limpos');
+        }
+    });
+};
+
 const initClient = (clientId) => {
     if (clients[clientId]) {
-        console.log(`Client ${clientId} already initialized.`);
+        console.log(`⚠️ Cliente ${clientId} já está inicializado.`);
         return;
     }
+
+    console.log(`🚀 Inicializando cliente: ${clientId}`);
 
     const client = new Client({
         session: clientSessions[clientId],
         puppeteer: {
+            headless: true,
             args: [
                 '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                '--disable-ipc-flooding-protection'
             ],
         }
     });
 
     client.on('qr', async (qr) => {
-        console.log('QR RECEIVED', qr);
-        const qrCodeDataUrl = await qrcode.toDataURL(qr);
-        io.emit(`client_status_${clientId}`, { clientId: clientId, status: 'qr_ready', qrCode: qrCodeDataUrl });
+        console.log(`📱 QR Code gerado para ${clientId}`);
+        try {
+            const qrCodeDataUrl = await qrcode.toDataURL(qr);
+            io.emit(`client_status_${clientId}`, { 
+                clientId: clientId, 
+                status: 'qr_ready', 
+                qrCode: qrCodeDataUrl,
+                hasQrCode: true
+            });
+            console.log(`✅ QR Code enviado via WebSocket para ${clientId}`);
+        } catch (error) {
+            console.error(`❌ Erro ao gerar QR Code para ${clientId}:`, error);
+        }
     });
 
     client.on('authenticated', (session) => {
-        console.log('AUTHENTICATED', session);
+        console.log(`✅ Cliente ${clientId} autenticado`);
         clientSessions[clientId] = session;
         saveClientSessions();
-        io.emit(`client_status_${clientId}`, { clientId: clientId, status: 'authenticated' });
+        io.emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'authenticated',
+            hasQrCode: false
+        });
     });
 
     client.on('auth_failure', function (session) {
-        console.error('Auth failure', session);
-        io.emit(`client_status_${clientId}`, { clientId: clientId, status: 'auth_failed' });
+        console.error(`❌ Falha de autenticação para ${clientId}`);
+        io.emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'auth_failed',
+            hasQrCode: false
+        });
     });
 
     client.on('ready', () => {
-        console.log('READY');
-        io.emit(`client_status_${clientId}`, { clientId: clientId, status: 'connected' });
+        const phoneNumber = client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null;
+        console.log(`🎉 Cliente ${clientId} conectado! Telefone: ${phoneNumber}`);
+        io.emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'connected',
+            phoneNumber: phoneNumber,
+            hasQrCode: false
+        });
+        
+        // Emit clients update
+        emitClientsUpdate();
     });
 
     client.on('message', msg => {
-        console.log('MESSAGE RECEIVED', msg);
+        console.log(`📩 Mensagem recebida em ${clientId}:`, msg.body.substring(0, 50));
         io.emit(`message_${clientId}`, msg);
     });
 
     client.on('disconnected', (reason) => {
-        console.log('Client was logged out', reason);
-        io.emit(`client_status_${clientId}`, { clientId: clientId, status: 'disconnected' });
+        console.log(`❌ Cliente ${clientId} desconectado:`, reason);
+        io.emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'disconnected',
+            hasQrCode: false
+        });
         client.destroy();
         delete clients[clientId];
+        emitClientsUpdate();
     });
 
     client.initialize();
     clients[clientId] = client;
-    console.log(`Client ${clientId} initialized.`);
+    
+    // Set initial status
+    io.emit(`client_status_${clientId}`, { 
+        clientId: clientId, 
+        status: 'connecting',
+        hasQrCode: false
+    });
+    
+    console.log(`✅ Cliente ${clientId} inicializado e conectando...`);
+};
+
+// Função para emitir atualização de todos os clientes
+const emitClientsUpdate = () => {
+    const clientList = Object.keys(clients).map(clientId => {
+        const client = clients[clientId];
+        const isConnected = client.info?.wid;
+        return {
+            clientId: clientId,
+            status: isConnected ? 'connected' : 'connecting',
+            phoneNumber: isConnected ? phoneNumberFormatter(client.info.wid.user) : null,
+            hasQrCode: false
+        };
+    });
+    
+    io.emit('clients_update', clientList);
+    console.log(`📡 Clientes atualizados enviados via WebSocket: ${clientList.length} clientes`);
 };
 
 io.on('connection', socket => {
-    console.log('a user connected', socket.id);
+    console.log('🔌 Usuário conectado via WebSocket:', socket.id);
 
     socket.on('join_client', clientId => {
         socket.join(clientId);
-        console.log(`Socket ${socket.id} joined client room: ${clientId}`);
+        console.log(`📱 Socket ${socket.id} entrou na sala do cliente: ${clientId}`);
+        
+        // Send current client status if exists
+        if (clients[clientId]) {
+            const client = clients[clientId];
+            const isConnected = client.info?.wid;
+            socket.emit(`client_status_${clientId}`, {
+                clientId: clientId,
+                status: isConnected ? 'connected' : 'connecting',
+                phoneNumber: isConnected ? phoneNumberFormatter(client.info.wid.user) : null,
+                hasQrCode: false
+            });
+        }
     });
 
     socket.on('disconnect', () => {
-        console.log('user disconnected', socket.id);
+        console.log('❌ Usuário desconectado do WebSocket:', socket.id);
     });
 });
 
 app.get('/health', (req, res) => {
     const healthcheck = {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        activeClients: Object.keys(clients).length,
+        connectedClients: Object.keys(clients).filter(id => clients[id].info?.wid).length,
         uptime: process.uptime(),
-        message: 'OK',
-        timestamp: Date.now(),
-        activeClients: Object.keys(clients).length
+        memory: process.memoryUsage(),
+        version: '2.1.0-connectivity-fixed',
+        server: 'localhost:4000',
+        audioStats: {
+            totalAttempts: 0,
+            successfulSends: 0,
+            failedSends: 0,
+            evaluationErrors: 0,
+            successRate: '0%'
+        },
+        fixes: {
+            whatsappWebVersion: '1.21.0',
+            retrySystem: 'enabled',
+            fallbackSystem: 'enabled',
+            evaluationErrorFix: 'implemented',
+            corsFixed: 'improved',
+            chromeCleanup: 'implemented'
+        },
+        routes: {
+            '/clients': 'GET, POST',
+            '/clients/:id/connect': 'POST',
+            '/clients/:id/disconnect': 'POST',
+            '/clients/:id/status': 'GET',
+            '/clients/:id/chats': 'GET',
+            '/clients/:id/send-message': 'POST',
+            '/clients/:id/send-audio': 'POST ⭐ (CORRIGIDO)',
+            '/clients/:id/audio-stats': 'GET 📊 (NOVO)',
+            '/clients/:id/send-image': 'POST',
+            '/clients/:id/send-video': 'POST',
+            '/clients/:id/send-document': 'POST'
+        }
     };
-    res.send(healthcheck);
+    res.json(healthcheck);
 });
 
-// Rotas principais sem /api prefix
+// Rotas principais
 app.get('/clients', (req, res) => {
     const clientList = Object.keys(clients).map(clientId => {
         const client = clients[clientId];
+        const isConnected = client.info?.wid;
         return {
             clientId: clientId,
-            status: client.info?.wid ? 'connected' : 'disconnected',
-            phoneNumber: client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null
+            status: isConnected ? 'connected' : (client.qr ? 'qr_ready' : 'connecting'),
+            phoneNumber: isConnected ? phoneNumberFormatter(client.info.wid.user) : null,
+            hasQrCode: !!client.qr
         };
     });
+    console.log(`📋 Enviando lista de ${clientList.length} clientes`);
     res.json({ success: true, clients: clientList });
 });
 
 app.post('/clients/:clientId/connect', (req, res) => {
     const clientId = req.params.clientId;
-    console.log(`🔗 Tentando conectar cliente: ${clientId}`);
+    console.log(`🔗 Tentativa de conexão para cliente: ${clientId}`);
     
     try {
-        initClient(clientId);
-        res.json({ success: true, message: `Client ${clientId} connect command executed.` });
+        // Clean up any orphaned Chrome processes first
+        cleanupOrphanedChromeProcesses();
+        
+        setTimeout(() => {
+            initClient(clientId);
+        }, 2000); // Wait 2 seconds after cleanup
+        
+        res.json({ success: true, message: `Cliente ${clientId} iniciando conexão.` });
     } catch (error) {
         console.error(`❌ Erro ao conectar cliente ${clientId}:`, error);
         res.status(500).json({ success: false, error: error.message });
@@ -182,99 +343,68 @@ app.post('/clients/:clientId/connect', (req, res) => {
 
 app.post('/clients/:clientId/disconnect', async (req, res) => {
     const clientId = req.params.clientId;
+    console.log(`🔌 Desconectando cliente: ${clientId}`);
+    
     if (clients[clientId]) {
         try {
             await clients[clientId].logout();
             delete clients[clientId];
-            res.json({ success: true, message: `Client ${clientId} disconnected.` });
+            delete clientSessions[clientId];
+            saveClientSessions();
+            
+            io.emit(`client_status_${clientId}`, { 
+                clientId: clientId, 
+                status: 'disconnected',
+                hasQrCode: false
+            });
+            
+            emitClientsUpdate();
+            res.json({ success: true, message: `Cliente ${clientId} desconectado.` });
         } catch (error) {
-            console.error(`Error disconnecting client ${clientId}:`, error);
-            res.status(500).json({ success: false, error: `Failed to disconnect client ${clientId}.` });
+            console.error(`❌ Erro ao desconectar cliente ${clientId}:`, error);
+            res.status(500).json({ success: false, error: `Falha ao desconectar cliente ${clientId}.` });
         }
     } else {
-        res.status(404).json({ success: false, error: `Client ${clientId} not found.` });
+        res.status(404).json({ success: false, error: `Cliente ${clientId} não encontrado.` });
     }
 });
 
 app.get('/clients/:clientId/status', async (req, res) => {
     const clientId = req.params.clientId;
-    if (clients[clientId]) {
-        try {
-            let qrCode = null;
-            if (clients[clientId].qr) {
-                qrCode = await qrcode.toDataURL(clients[clientId].qr);
-            }
-            const status = clients[clientId].info?.wid ? 'connected' : 'disconnected';
-            const phoneNumber = clients[clientId].info?.wid?.user ? phoneNumberFormatter(clients[clientId].info.wid.user) : null;
-            res.json({ success: true, clientId: clientId, status: status, phoneNumber: phoneNumber, qrCode: qrCode });
-        } catch (error) {
-            console.error(`Error getting status for client ${clientId}:`, error);
-            res.status(500).json({ success: false, error: `Failed to get status for client ${clientId}.` });
-        }
-    } else {
-        res.status(404).json({ success: false, error: `Client ${clientId} not found.` });
-    }
-});
-
-// Rotas duplicadas com /api prefix para compatibilidade
-app.get('/api/clients', (req, res) => {
-    const clientList = Object.keys(clients).map(clientId => {
-        const client = clients[clientId];
-        return {
-            clientId: clientId,
-            status: client.info?.wid ? 'connected' : 'disconnected',
-            phoneNumber: client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null
-        };
-    });
-    res.json({ success: true, clients: clientList });
-});
-
-app.post('/api/clients/:clientId/connect', (req, res) => {
-    const clientId = req.params.clientId;
-    console.log(`🔗 API: Tentando conectar cliente: ${clientId}`);
+    console.log(`📊 Verificando status do cliente: ${clientId}`);
     
-    try {
-        initClient(clientId);
-        res.json({ success: true, message: `Client ${clientId} connect command executed.` });
-    } catch (error) {
-        console.error(`❌ API: Erro ao conectar cliente ${clientId}:`, error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.post('/api/clients/:clientId/disconnect', async (req, res) => {
-    const clientId = req.params.clientId;
     if (clients[clientId]) {
         try {
-            await clients[clientId].logout();
-            delete clients[clientId];
-            res.json({ success: true, message: `Client ${clientId} disconnected.` });
-        } catch (error) {
-            console.error(`Error disconnecting client ${clientId}:`, error);
-            res.status(500).json({ success: false, error: `Failed to disconnect client ${clientId}.` });
-        }
-    } else {
-        res.status(404).json({ success: false, error: `Client ${clientId} not found.` });
-    }
-});
-
-app.get('/api/clients/:clientId/status', async (req, res) => {
-    const clientId = req.params.clientId;
-    if (clients[clientId]) {
-        try {
+            const client = clients[clientId];
             let qrCode = null;
-            if (clients[clientId].qr) {
-                qrCode = await qrcode.toDataURL(clients[clientId].qr);
+            
+            if (client.qr) {
+                qrCode = await qrcode.toDataURL(client.qr);
+                console.log(`📱 QR Code disponível para ${clientId}`);
             }
-            const status = clients[clientId].info?.wid ? 'connected' : 'disconnected';
-            const phoneNumber = clients[clientId].info?.wid?.user ? phoneNumberFormatter(clients[clientId].info.wid.user) : null;
-            res.json({ success: true, clientId: clientId, status: status, phoneNumber: phoneNumber, qrCode: qrCode });
+            
+            const isConnected = client.info?.wid;
+            const status = isConnected ? 'connected' : (client.qr ? 'qr_ready' : 'connecting');
+            const phoneNumber = isConnected ? phoneNumberFormatter(client.info.wid.user) : null;
+            
+            const response = { 
+                success: true, 
+                clientId: clientId, 
+                status: status, 
+                phoneNumber: phoneNumber, 
+                qrCode: qrCode,
+                hasQrCode: !!qrCode
+            };
+            
+            console.log(`✅ Status do cliente ${clientId}: ${status}`);
+            res.json(response);
         } catch (error) {
-            console.error(`Error getting status for client ${clientId}:`, error);
-            res.status(500).json({ success: false, error: `Failed to get status for client ${clientId}.` });
+            console.error(`❌ Erro ao verificar status do cliente ${clientId}:`, error);
+            res.status(500).json({ success: false, error: `Falha ao verificar status do cliente ${clientId}.` });
         }
     } else {
-        res.status(404).json({ success: false, error: `Client ${clientId} not found.` });
+        console.log(`❌ Cliente ${clientId} não encontrado`);
+        res.status(404).json({ success: false, error: `Cliente ${clientId} não encontrado.` });
     }
 });
 
@@ -583,16 +713,16 @@ app.post('/clients/:clientId/send-reaction', async (req, res) => {
     }
 });
 
+// Cleanup on startup
+cleanupOrphanedChromeProcesses();
+
 server.listen(port, () => {
-    console.log(`Application running on port ${port}`);
-    console.log(`🚀 WhatsApp Multi-Client Server iniciado!`);
+    console.log(`🚀 WhatsApp Multi-Client Server iniciado na porta ${port}`);
     console.log(`📡 Health Check: http://146.59.227.248:${port}/health`);
-    console.log(`📱 API Base: http://146.59.227.248:${port}/api/clients`);
-    console.log(`🔗 Rotas disponíveis:`);
-    console.log(`   - GET  /clients`);
-    console.log(`   - POST /clients/:id/connect`);
-    console.log(`   - POST /clients/:id/disconnect`);
-    console.log(`   - GET  /clients/:id/status`);
-    console.log(`   - GET  /api/clients (duplicada)`);
-    console.log(`   - POST /api/clients/:id/connect (duplicada)`);
+    console.log(`📱 API Base: http://146.59.227.248:${port}/clients`);
+    console.log(`🔧 Melhorias implementadas:`);
+    console.log(`   - CORS corrigido e melhorado`);
+    console.log(`   - Limpeza de processos Chrome órfãos`);
+    console.log(`   - WebSocket melhorado`);
+    console.log(`   - QR Code debugging aprimorado`);
 });

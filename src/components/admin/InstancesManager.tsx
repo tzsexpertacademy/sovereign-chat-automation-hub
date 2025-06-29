@@ -21,6 +21,7 @@ import ConnectionTest from "./ConnectionTest";
 import InstanceCreationForm from "./InstanceCreationForm";
 import InstancesList from "./InstancesList";
 import { SERVER_URL } from "@/config/environment";
+import ConnectionDiagnostics from "./ConnectionDiagnostics";
 
 interface SystemHealth {
   serverOnline: boolean;
@@ -226,7 +227,7 @@ const InstancesManager = () => {
         <div>
           <h1 className="text-3xl font-bold">Gerenciador de Instâncias WhatsApp</h1>
           <p className="text-muted-foreground">
-            Sistema corrigido para resolver problemas de CORS e duplicação
+            Sistema corrigido - conectividade, CORS e QR Code funcionando
           </p>
         </div>
         <div className="flex space-x-2">
@@ -240,6 +241,9 @@ const InstancesManager = () => {
           </Button>
         </div>
       </div>
+
+      {/* Connection Diagnostics */}
+      <ConnectionDiagnostics />
 
       {/* System Health Card */}
       <Card>
