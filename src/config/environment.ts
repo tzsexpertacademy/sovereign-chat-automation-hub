@@ -1,63 +1,57 @@
 
-// Configuração de ambiente para WhatsApp Multi-Client
+// Environment configuration for WhatsApp Multi-Client - HTTPS
+console.log('🌍 Configurando ambiente HTTPS...');
 
-// URLs base para o servidor
-export const SERVER_IP = "146.59.227.248";
-export const SERVER_HTTP_PORT = "4000";
-export const SERVER_HTTPS_PORT = "4000";
+// Detect environment
+const isProduction = window.location.hostname.includes('lovableproject.com');
+const isDevelopment = window.location.hostname === 'localhost';
 
-// URLs HTTP (para APIs que funcionam)
-export const HTTP_BASE_URL = `http://${SERVER_IP}:${SERVER_HTTP_PORT}`;
-export const HTTP_SOCKET_URL = `http://${SERVER_IP}:${SERVER_HTTP_PORT}`;
+// HTTPS Server configuration
+const HTTPS_SERVER = '146.59.227.248';
 
-// URLs HTTPS (apenas para health check e detecção)
-export const HTTPS_BASE_URL = `https://${SERVER_IP}:${SERVER_HTTPS_PORT}`;
-export const HTTPS_SOCKET_URL = `https://${SERVER_IP}:${SERVER_HTTPS_PORT}`;
+// Configure URLs for HTTPS
+let SERVER_HOST: string;
+let API_BASE_URL: string;
+let SOCKET_URL: string;
 
-// URLs principais (HTTP por padrão para funcionar no Lovable)
-export const SERVER_URL = HTTP_BASE_URL;
-export const API_BASE_URL = HTTP_BASE_URL;
-export const SOCKET_URL = HTTP_SOCKET_URL;
+if (isDevelopment) {
+  // Development - use localhost
+  SERVER_HOST = 'http://localhost:4000';
+  API_BASE_URL = 'http://localhost:4000';
+  SOCKET_URL = 'ws://localhost:4000';
+  console.log('🛠️ Modo Desenvolvimento - Usando localhost');
+} else {
+  // Production - use HTTPS
+  SERVER_HOST = `https://${HTTPS_SERVER}`;
+  API_BASE_URL = `https://${HTTPS_SERVER}`;
+  SOCKET_URL = `wss://${HTTPS_SERVER}`;
+  console.log('🔒 Modo Produção - Usando HTTPS');
+}
 
-// URL para health check (HTTPS para detectar servidor)
-export const HEALTH_CHECK_URL = HTTPS_BASE_URL;
+// Export the configured URLs
+export const SERVER_URL = SERVER_HOST;
+export const DIRECT_SERVER_URL = SERVER_HOST; // For compatibility
+export { API_BASE_URL, SOCKET_URL };
 
-// Configuração do servidor
-export const getServerConfig = () => {
-  return {
-    serverIp: SERVER_IP,
-    httpPort: SERVER_HTTP_PORT,
-    httpsPort: SERVER_HTTPS_PORT,
-    isHttps: false, // Usar HTTP por padrão
-    corsEnabled: true,
-    healthCheckHttps: true // Health check ainda usa HTTPS
-  };
-};
-
-// URLs para diferentes contextos
-export const getUrls = () => {
-  const config = getServerConfig();
-  
-  return {
-    // APIs funcionais (HTTP)
-    api: HTTP_BASE_URL,
-    socket: HTTP_SOCKET_URL,
-    
-    // Health check (HTTPS para detectar servidor)
-    healthCheck: HTTPS_BASE_URL,
-    
-    // URLs específicas
-    healthEndpoint: `${HTTP_BASE_URL}/health`,
-    healthCheckEndpoint: `${HTTPS_BASE_URL}/health`,
-    apiDocs: `${HTTP_BASE_URL}/api-docs`,
-    apiDocsHttps: `${HTTPS_BASE_URL}/api-docs`
-  };
-};
-
-console.log('🔧 Configuração de ambiente carregada:', {
-  HTTP_BASE_URL,
-  HTTPS_BASE_URL,
+// Export additional config
+export const getServerConfig = () => ({
+  SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
-  HEALTH_CHECK_URL
+  isProduction,
+  isDevelopment,
+  isHttps: !isDevelopment,
+  protocol: isDevelopment ? 'http:' : 'https:',
+  serverUrl: SERVER_URL,
+  usingProxy: false, // No longer using CORS proxy
+  hasMixedContent: false, // HTTPS setup resolves this
+  corsEnabled: true // Direct HTTPS connection
+});
+
+console.log('✅ Configuração HTTPS carregada:', {
+  SERVER_URL,
+  API_BASE_URL,
+  SOCKET_URL,
+  isHttps: !isDevelopment,
+  environment: isProduction ? 'production' : isDevelopment ? 'development' : 'https'
 });
