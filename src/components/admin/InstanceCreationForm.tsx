@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, AlertCircle, User, RefreshCw } from "lucide-react";
+import { Plus, AlertCircle, User, RefreshCw, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import whatsappService from "@/services/whatsappMultiClient";
 import { whatsappInstancesService } from "@/services/whatsappInstancesService";
@@ -75,16 +75,21 @@ const InstanceCreationForm = ({ clients, onInstanceCreated, systemHealth }: Inst
             title: "Instância Reativada",
             description: `Reconectando instância existente para ${selectedClient.name}`,
           });
-        } catch (serverError) {
-          console.warn('⚠️ Servidor não acessível, mas instância existe no BD');
-          await whatsappInstancesService.updateInstanceById(activeInstance.id, {
-            status: 'connecting'
-          });
-          
-          toast({
-            title: "Instância Preparada",
-            description: "Instância preparada no banco de dados. Conectará quando servidor estiver disponível.",
-          });
+        } catch (serverError: any) {
+          if (serverError.message.includes('CORS')) {
+            console.warn('⚠️ CORS Error - Instância salva no BD mas servidor precisa de configuração CORS');
+            await whatsappInstancesService.updateInstanceById(activeInstance.id, {
+              status: 'connecting'
+            });
+            
+            toast({
+              title: "⚠️ CORS Error Detectado",
+              description: "Instância preparada. Configure CORS no servidor HTTPS para ativar conexão.",
+              variant: "destructive",
+            });
+          } else {
+            throw serverError;
+          }
         }
       } else {
         // Create new instance
@@ -100,22 +105,39 @@ const InstanceCreationForm = ({ clients, onInstanceCreated, systemHealth }: Inst
           custom_name: `Instância ${selectedClient.name}`
         });
 
-        // Try to create on server (if available)
-        if (systemHealth.serverOnline && systemHealth.corsEnabled) {
+        console.log('✅ Instância criada no BD:', newInstance);
+
+        // Try to create on server (with CORS handling)
+        if (systemHealth.serverOnline) {
           try {
             await whatsappService.connectClient(instanceId);
-            console.log('✅ Instância criada no servidor');
-          } catch (serverError) {
-            console.warn('⚠️ Erro no servidor, mas instância salva no BD:', serverError);
+            console.log('✅ Instância conectada no servidor');
+            
             toast({
-              title: "Instância Preparada",
-              description: "Instância criada no banco. Conectará quando servidor estiver disponível.",
+              title: "Instância Criada",
+              description: `Instância ${selectedClient.name} criada e conectando...`,
             });
+          } catch (serverError: any) {
+            if (serverError.message.includes('CORS')) {
+              console.warn('⚠️ CORS Error - Instância salva no BD mas servidor precisa de configuração CORS');
+              
+              toast({
+                title: "⚠️ CORS Error Detectado",
+                description: "Instância criada no banco. Configure CORS no servidor HTTPS para ativar.",
+                variant: "destructive",
+              });
+            } else {
+              console.warn('⚠️ Erro no servidor, mas instância salva no BD:', serverError.message);
+              toast({
+                title: "Instância Preparada",
+                description: "Instância criada no banco. Conectará quando servidor estiver disponível.",
+              });
+            }
           }
         } else {
           toast({
             title: "Instância Preparada",
-            description: "Instância criada no banco. Configure CORS no servidor para ativar.",
+            description: "Instância criada no banco. Servidor está offline.",
           });
         }
 
@@ -129,34 +151,15 @@ const InstanceCreationForm = ({ clients, onInstanceCreated, systemHealth }: Inst
     } catch (error: any) {
       console.error('❌ Erro ao criar instância:', error);
       
-      // Even if there's an error, try to create a database record
-      try {
-        const fallbackInstanceId = selectedClient.id;
-        await whatsappInstancesService.createInstance({
-          client_id: selectedClient.id,
-          instance_id: fallbackInstanceId,
-          status: 'error',
-          custom_name: `Instância ${selectedClient.name} (Erro)`
-        });
-        
-        toast({
-          title: "Instância Criada com Problemas",
-          description: "Instância salva no banco, mas com problemas de conexão. Verifique CORS no servidor.",
-          variant: "destructive",
-        });
-      } catch (dbError) {
-        toast({
-          title: "Erro Crítico",
-          description: error.message || "Falha ao criar instância",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Erro Crítico",
+        description: error.message || "Falha ao criar instância",
+        variant: "destructive",
+      });
     } finally {
       setCreating(false);
     }
   };
-
-  const canCreateInstance = systemHealth.serverOnline || true; // Always allow creation (fallback to DB)
 
   return (
     <Card>
@@ -166,36 +169,41 @@ const InstanceCreationForm = ({ clients, onInstanceCreated, systemHealth }: Inst
           <span>Criar Nova Instância WhatsApp</span>
         </CardTitle>
         <CardDescription>
-          Sistema robusto - cria instância mesmo com problemas de servidor
+          Sistema detecta automaticamente problemas de CORS
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         
-        {/* System Status Warning */}
-        {!systemHealth.serverOnline && (
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
+        {/* CORS Error Warning */}
+        {systemHealth.serverOnline && !systemHealth.corsEnabled && (
+          <Alert variant="destructive">
+            <Shield className="h-4 w-4" />
             <AlertDescription>
-              <div className="space-y-1">
-                <p className="font-medium">⚠️ Servidor WhatsApp Offline</p>
+              <div className="space-y-2">
+                <p className="font-medium">🚫 CORS Error Detectado</p>
                 <p className="text-sm">
-                  A instância será criada no banco de dados e conectará automaticamente quando o servidor estiver online.
+                  O servidor HTTPS está online mas não está configurado para aceitar requisições do Lovable.
                 </p>
+                <div className="text-xs bg-red-50 p-2 rounded border">
+                  <p><strong>Solução:</strong> Configure CORS no servidor Node.js:</p>
+                  <code className="text-xs">
+                    app.use(cors(&#123; origin: '*', credentials: false &#125;))
+                  </code>
+                </div>
               </div>
             </AlertDescription>
           </Alert>
         )}
 
-        {!systemHealth.corsEnabled && systemHealth.serverOnline && (
+        {/* Server Offline Warning */}
+        {!systemHealth.serverOnline && (
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              <div className="space-y-1">
-                <p className="font-medium">⚠️ CORS não configurado</p>
-                <p className="text-sm">
-                  Configure CORS no servidor para permitir conexões do Lovable.
-                </p>
-              </div>
+              <p className="font-medium">⚠️ Servidor WhatsApp Offline</p>
+              <p className="text-sm">
+                A instância será criada no banco de dados e conectará automaticamente quando o servidor estiver online.
+              </p>
             </AlertDescription>
           </Alert>
         )}
@@ -251,8 +259,8 @@ const InstanceCreationForm = ({ clients, onInstanceCreated, systemHealth }: Inst
         {/* Status Info */}
         <div className="text-xs text-gray-500 space-y-1">
           <p>• Instâncias são criadas no banco de dados primeiro</p>
-          <p>• Conexão com servidor é tentada automaticamente</p>
-          <p>• Sistema funciona mesmo com problemas de CORS</p>
+          <p>• Sistema detecta automaticamente problemas de CORS</p>
+          <p>• Funciona mesmo com servidor offline ou mal configurado</p>
         </div>
       </CardContent>
     </Card>

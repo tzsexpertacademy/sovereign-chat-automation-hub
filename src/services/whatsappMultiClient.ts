@@ -176,7 +176,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Methods with direct HTTPS connection
+  // API Methods with CORS detection
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     const config = getServerConfig();
@@ -214,17 +214,15 @@ class WhatsAppMultiClientService {
         return await response.text();
       }
     } catch (error: any) {
-      console.error(`❌ Erro na requisição para ${fullUrl}:`, error);
+      console.error(`❌ Erro na requisição para ${fullUrl}:`, error.message);
       
-      // Handle different error types
-      if (error.name === 'TimeoutError') {
-        throw new Error('Timeout: Servidor não respondeu em 15 segundos');
+      // Handle CORS errors specifically
+      if (error.message === 'Failed to fetch' || error.message.includes('CORS')) {
+        throw new Error('CORS_ERROR');
+      } else if (error.name === 'TimeoutError') {
+        throw new Error('TIMEOUT_ERROR');
       } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-        throw new Error('Servidor offline ou inacessível - verifique HTTPS');
-      } else if (error.message.includes('Mixed Content')) {
-        throw new Error('Mixed Content Security: Configure HTTPS no servidor');
-      } else if (error.message.includes('CORS')) {
-        throw new Error('CORS Error: Verifique configuração HTTPS');
+        throw new Error('CORS_ERROR');
       }
       
       throw error;
@@ -250,15 +248,20 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Connect client
+  // Connect client with CORS handling
   async connectClient(clientId: string): Promise<any> {
     try {
       console.log(`🔗 Conectando cliente: ${clientId}`);
       return await this.makeRequest(`/clients/${clientId}/connect`, {
         method: 'POST'
       });
-    } catch (error) {
-      console.error(`❌ Erro ao conectar cliente ${clientId}:`, error);
+    } catch (error: any) {
+      console.error(`❌ Erro ao conectar cliente ${clientId}:`, error.message);
+      
+      if (error.message === 'CORS_ERROR') {
+        throw new Error('CORS: Servidor não configurado para aceitar requisições HTTPS do Lovable');
+      }
+      
       throw error;
     }
   }
@@ -325,7 +328,20 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Check server health with direct HTTPS
+  // Check if CORS is working
+  async checkCorsStatus(): Promise<boolean> {
+    try {
+      await this.checkServerHealth();
+      return true;
+    } catch (error: any) {
+      if (error.message === 'CORS_ERROR') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  // Check server health with CORS detection
   async checkServerHealth(): Promise<ServerHealth> {
     try {
       const config = getServerConfig();
@@ -335,14 +351,7 @@ class WhatsAppMultiClientService {
       console.log('✅ Health check bem-sucedido:', response);
       return response;
     } catch (error: any) {
-      console.error('❌ Health check falhou:', {
-        _type: 'Error',
-        value: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        }
-      });
+      console.error('❌ Health check falhou:', error.message);
       throw error;
     }
   }

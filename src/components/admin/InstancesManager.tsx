@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   RefreshCw, 
   CheckCircle,
-  XCircle
+  XCircle,
+  Shield
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import whatsappService from "@/services/whatsappMultiClient";
@@ -31,7 +33,7 @@ const InstancesManager = () => {
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth>({
     serverOnline: false,
-    corsEnabled: true, // HTTPS setup enables direct connection
+    corsEnabled: false, // Will be detected automatically
     httpsEnabled: false,
     lastCheck: new Date(),
     issues: []
@@ -87,25 +89,33 @@ const InstancesManager = () => {
   const checkSystemHealth = async () => {
     const health: SystemHealth = {
       serverOnline: false,
-      corsEnabled: true, // Direct HTTPS connection
+      corsEnabled: false,
       httpsEnabled: false,
       lastCheck: new Date(),
       issues: []
     };
 
     const config = getServerConfig();
+    health.httpsEnabled = config.isHttps;
 
     try {
       const serverHealth = await whatsappService.checkServerHealth();
       health.serverOnline = true;
-      health.httpsEnabled = config.isHttps;
-      health.corsEnabled = true; // Direct connection via HTTPS
-      console.log('✅ Servidor online:', serverHealth);
+      health.corsEnabled = true; // If health check passes, CORS is working
+      console.log('✅ Servidor online e CORS funcionando:', serverHealth);
       
     } catch (error: any) {
       health.serverOnline = false;
-      health.corsEnabled = false;
-      health.issues.push('Servidor WhatsApp offline ou inacessível');
+      
+      if (error.message === 'CORS_ERROR') {
+        health.corsEnabled = false;
+        health.issues.push('CORS Error: Servidor não configurado para aceitar requisições HTTPS do Lovable');
+        console.error('❌ CORS Error detectado');
+      } else {
+        health.corsEnabled = false;
+        health.issues.push('Servidor WhatsApp offline ou inacessível via HTTPS');
+        console.error('❌ Servidor offline:', error.message);
+      }
     }
 
     setSystemHealth(health);
@@ -168,18 +178,20 @@ const InstancesManager = () => {
 
   const getHealthIcon = () => {
     if (!systemHealth.serverOnline) return <XCircle className="w-5 h-5 text-red-500" />;
+    if (!systemHealth.corsEnabled) return <Shield className="w-5 h-5 text-red-500" />;
     if (systemHealth.issues.length > 0) return <XCircle className="w-5 h-5 text-yellow-500" />;
     return <CheckCircle className="w-5 h-5 text-green-500" />;
   };
 
   const getHealthStatus = () => {
-    if (!systemHealth.serverOnline) return "Offline";
+    if (!systemHealth.serverOnline) return "Servidor Offline";
+    if (!systemHealth.corsEnabled) return "CORS Error";
     if (systemHealth.issues.length > 0) return "Com Problemas";
-    return "Saudável";
+    return "Funcionando";
   };
 
   const getHealthColor = () => {
-    if (!systemHealth.serverOnline) return "destructive";
+    if (!systemHealth.serverOnline || !systemHealth.corsEnabled) return "destructive";
     if (systemHealth.issues.length > 0) return "secondary";
     return "default";
   };
@@ -202,7 +214,7 @@ const InstancesManager = () => {
         <div>
           <h1 className="text-3xl font-bold">Gerenciador de Instâncias WhatsApp</h1>
           <p className="text-muted-foreground">
-            Sistema HTTPS configurado e funcionando
+            Sistema HTTPS com detecção automática de CORS
           </p>
         </div>
         <div className="flex space-x-2">
@@ -259,25 +271,31 @@ const InstancesManager = () => {
               {systemHealth.corsEnabled ? (
                 <CheckCircle className="w-4 h-4 text-green-500" />
               ) : (
-                <XCircle className="w-4 h-4 text-red-500" />
+                <Shield className="w-4 h-4 text-red-500" />
               )}
               <span className="text-sm">
-                Conexão: {systemHealth.corsEnabled ? 'Direta' : 'Bloqueada'}
+                CORS: {systemHealth.corsEnabled ? 'OK' : 'Error'}
               </span>
             </div>
           </div>
           
           {systemHealth.issues.length > 0 && (
-            <Alert>
-              <XCircle className="h-4 w-4" />
+            <Alert variant="destructive">
+              <Shield className="h-4 w-4" />
               <AlertDescription>
                 <div className="space-y-1">
-                  <p className="font-medium">Problemas encontrados:</p>
+                  <p className="font-medium">Problemas detectados:</p>
                   <ul className="list-disc list-inside space-y-1">
                     {systemHealth.issues.map((issue, index) => (
                       <li key={index} className="text-sm">{issue}</li>
                     ))}
                   </ul>
+                  {!systemHealth.corsEnabled && systemHealth.serverOnline && (
+                    <div className="mt-2 p-2 bg-red-50 rounded border text-xs">
+                      <p><strong>Solução CORS:</strong> Adicione no servidor Node.js:</p>
+                      <code>app.use(cors(&#123; origin: '*', credentials: false &#125;))</code>
+                    </div>
+                  )}
                 </div>
               </AlertDescription>
             </Alert>
