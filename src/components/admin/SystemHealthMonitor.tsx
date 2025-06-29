@@ -35,10 +35,13 @@ const SystemHealthMonitor = () => {
     };
 
     // Setup connection manager listener
-    let unsubscribe: (() => void) | undefined;
+    let unsubscribe: (() => void) | null = null;
     
     try {
-      unsubscribe = connectionManager.onStatusChange(handleStatusChange);
+      const result = connectionManager.onStatusChange(handleStatusChange);
+      if (typeof result === 'function') {
+        unsubscribe = result;
+      }
     } catch (error) {
       console.warn('ConnectionManager não disponível:', error);
     }
