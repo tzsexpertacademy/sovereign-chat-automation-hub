@@ -25,6 +25,7 @@ import { useNavigate } from "react-router-dom";
 import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
 import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import ConnectionTest from "./ConnectionTest";
+import SystemHealthMonitor from "./SystemHealthMonitor";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService } from "@/services/whatsappInstancesService";
 
@@ -403,14 +404,17 @@ const RealInstancesManager = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">WhatsApp Multi-Cliente Real</h1>
-          <p className="text-gray-600">Gerencie conexões WhatsApp reais para múltiplos clientes</p>
+          <h1 className="text-3xl font-bold text-gray-900">WhatsApp Multi-Cliente</h1>
+          <p className="text-gray-600">Sistema robusto com fallback inteligente e monitoramento em tempo real</p>
         </div>
         <Button onClick={loadClients} variant="outline" disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
           Atualizar
         </Button>
       </div>
+
+      {/* System Health Monitor - NEW */}
+      <SystemHealthMonitor />
 
       {/* Connection Test */}
       <ConnectionTest />
