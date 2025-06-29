@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { AlertCircle } from 'lucide-react';
-import { getConfig } from '@/config/environment';
+import { getServerConfig, getAlternativeServerConfig } from '@/config/environment';
 
 interface ConnectionStatusProps {
   connectedInstance: string | null;
@@ -9,25 +9,8 @@ interface ConnectionStatusProps {
 }
 
 const ConnectionStatus = ({ connectedInstance, isOnline }: ConnectionStatusProps) => {
-  const [currentConfig, setCurrentConfig] = useState<{
-    serverUrl: string;
-    protocol: string;
-    environment: string;
-    fallbackUrl: string | null;
-  } | null>(null);
-
-  useEffect(() => {
-    const loadConfig = async () => {
-      try {
-        const config = await getConfig();
-        setCurrentConfig(config);
-      } catch (error) {
-        console.error('Error loading config:', error);
-      }
-    };
-
-    loadConfig();
-  }, []);
+  const currentConfig = getServerConfig();
+  const hasAlternative = !!getAlternativeServerConfig();
 
   if (!connectedInstance) {
     return (
@@ -42,12 +25,8 @@ const ConnectionStatus = ({ connectedInstance, isOnline }: ConnectionStatusProps
     <div className="p-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-green-800">
       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
       <span className="text-xs">Conectado: {connectedInstance}</span>
-      {currentConfig && (
-        <>
-          <span className="text-xs">• {currentConfig.protocol.toUpperCase()}: {currentConfig.serverUrl}</span>
-          {currentConfig.fallbackUrl && <span className="text-xs">• Fallback: ✓</span>}
-        </>
-      )}
+      <span className="text-xs">• {currentConfig.protocol.toUpperCase()}: {currentConfig.serverUrl}</span>
+      {hasAlternative && <span className="text-xs">• Fallback: ✓</span>}
       {isOnline && (
         <>
           <span className="text-xs">•</span>
