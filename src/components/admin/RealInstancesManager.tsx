@@ -178,119 +178,139 @@ const RealInstancesManager = () => {
       setLoading(true);
       console.log(`🚀 Criando instância para cliente: ${clientData.name} (${instanceId})`);
       
-      // Primeiro verificar se já existe uma instância com esse ID no Supabase
-      const existingInstance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
-      
-      if (existingInstance) {
-        console.log('⚠️ Instância já existe no Supabase, atualizando status...');
-        
-        // Se já existe, apenas atualizar o status
-        await whatsappInstancesService.updateInstanceById(existingInstance.id, {
-          status: 'connecting',
-          updated_at: new Date().toISOString()
-        });
-        
-        // Update client with instance info
-        await updateClientInstance(clientData.id, instanceId, 'connecting');
-        
-        toast({
-          title: "Instância Reativada",
-          description: `Instância existente para ${clientData.name} foi reativada!`,
-        });
-      } else {
-        // Se não existe, criar nova instância no Supabase
-        const newInstance = await whatsappInstancesService.createInstance({
-          client_id: clientData.id,
-          instance_id: instanceId,
-          status: 'connecting'
-        });
-        
-        console.log('✅ Nova instância criada no Supabase:', newInstance);
-        
-        // Update client with instance info
-        await updateClientInstance(clientData.id, instanceId, 'connecting');
-        
-        toast({
-          title: "Sucesso",
-          description: `Nova instância criada para ${clientData.name}!`,
-        });
-      }
-      
-      // Agora tentar conectar no servidor WhatsApp
+      // Primeiro, limpar qualquer instância existente no banco
       try {
+        const existingInstance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
+        if (existingInstance) {
+          console.log('⚠️ Removendo instância existente antes de criar nova...');
+          await whatsappInstancesService.deleteInstance(instanceId);
+          // Aguardar um pouco para garantir que foi removida
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.log('ℹ️ Nenhuma instância existente encontrada, prosseguindo...');
+      }
+
+      // Criar nova instância no Supabase
+      console.log('📝 Criando nova instância no banco de dados...');
+      const newInstance = await whatsappInstancesService.createInstance({
+        client_id: clientData.id,
+        instance_id: instanceId,
+        status: 'connecting'
+      });
+      
+      console.log('✅ Nova instância criada no Supabase:', newInstance);
+      
+      // Update client with instance info
+      await updateClientInstance(clientData.id, instanceId, 'connecting');
+      
+      toast({
+        title: "Instância Criada",
+        description: `Instância criada para ${clientData.name}! Conectando ao WhatsApp...`,
+      });
+
+      // Aguardar um pouco antes de tentar conectar
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Agora tentar conectar no servidor WhatsApp (com tratamento de erro robusto)
+      try {
+        console.log('🔗 Tentando conectar ao servidor WhatsApp...');
         const result = await whatsappService.connectClient(instanceId);
         console.log("✅ Resultado da conexão WhatsApp:", result);
-      } catch (whatsappError) {
-        console.warn("⚠️ Erro ao conectar no WhatsApp (mas instância foi criada):", whatsappError);
-        // Não falhar completamente, apenas avisar
+        
         toast({
-          title: "Instância criada",
-          description: "Instância criada no banco, mas houve problema na conexão WhatsApp. Tente reconectar.",
+          title: "Conectando",
+          description: "Conectando ao WhatsApp. Aguarde o QR Code aparecer...",
+        });
+      } catch (whatsappError: any) {
+        console.warn("⚠️ Erro ao conectar no WhatsApp:", whatsappError);
+        
+        // Atualizar status no banco para 'disconnected' mas manter a instância
+        await whatsappInstancesService.updateInstanceById(newInstance.id, {
+          status: 'disconnected'
+        });
+        
+        await updateClientInstance(clientData.id, instanceId, 'disconnected');
+        
+        // Mostrar erro específico baseado no tipo
+        let errorMessage = "Instância criada, mas houve problema na conexão WhatsApp.";
+        
+        if (whatsappError.message?.includes('CORS')) {
+          errorMessage = "Problema de CORS detectado. A instância foi criada, mas não conseguiu conectar ao servidor WhatsApp.";
+        } else if (whatsappError.message?.includes('Failed to fetch')) {
+          errorMessage = "Problema de rede. A instância foi criada, mas o servidor WhatsApp pode estar offline.";
+        }
+        
+        toast({
+          title: "Instância Criada com Limitações",
+          description: errorMessage + " Tente usar o botão 'Conectar' depois.",
           variant: "default",
         });
       }
       
-      // Ouvir status deste cliente específico
-      whatsappService.joinClientRoom(instanceId);
-      whatsappService.onClientStatus(instanceId, async (clientStatus) => {
-        console.log(`📱 Status atualizado para ${instanceId}:`, clientStatus);
-        
-        // Update clients list
-        setClients(prev => {
-          const index = prev.findIndex(c => c.clientId === clientStatus.clientId);
-          if (index >= 0) {
-            const updated = [...prev];
-            updated[index] = clientStatus;
-            return updated;
-          } else {
-            return [...prev, clientStatus];
+      // Ouvir status deste cliente específico (independentemente do erro anterior)
+      try {
+        whatsappService.joinClientRoom(instanceId);
+        whatsappService.onClientStatus(instanceId, async (clientStatus) => {
+          console.log(`📱 Status atualizado para ${instanceId}:`, clientStatus);
+          
+          // Update clients list
+          setClients(prev => {
+            const index = prev.findIndex(c => c.clientId === clientStatus.clientId);
+            if (index >= 0) {
+              const updated = [...prev];
+              updated[index] = clientStatus;
+              return updated;
+            } else {
+              return [...prev, clientStatus];
+            }
+          });
+          
+          // Update client status in Supabase
+          const linkedClient = getClientByInstanceId(clientStatus.clientId);
+          if (linkedClient) {
+            await updateClientInstance(linkedClient.id, clientStatus.clientId, clientStatus.status);
           }
-        });
-        
-        // Update client status in Supabase
-        const linkedClient = getClientByInstanceId(clientStatus.clientId);
-        if (linkedClient) {
-          await updateClientInstance(linkedClient.id, clientStatus.clientId, clientStatus.status);
-        }
 
-        // Update instance in Supabase using the existing instance
-        try {
-          const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
-          if (instance) {
-            await whatsappInstancesService.updateInstanceById(instance.id, {
+          // Update instance in Supabase
+          try {
+            await whatsappInstancesService.updateInstanceById(newInstance.id, {
               status: clientStatus.status,
               phone_number: clientStatus.phoneNumber,
               has_qr_code: clientStatus.hasQrCode
             });
+          } catch (error) {
+            console.error('Erro ao atualizar instância no Supabase:', error);
           }
-        } catch (error) {
-          console.error('Erro ao atualizar instância no Supabase:', error);
-        }
-      });
+        });
+      } catch (socketError) {
+        console.warn('⚠️ Erro ao configurar WebSocket, mas instância foi criada:', socketError);
+      }
 
       setSelectedClientForInstance("");
 
-      // Recarregar a lista de clientes após 2 segundos
+      // Recarregar a lista após um tempo
       setTimeout(() => {
         loadClients();
         loadAvailableClients();
-      }, 2000);
+      }, 3000);
 
     } catch (error: any) {
       console.error("❌ Erro ao criar instância:", error);
       
-      // Mensagem de erro mais específica
-      let errorMessage = "Falha ao criar instância. Verifique se o servidor está rodando.";
+      let errorMessage = "Falha ao criar instância.";
       
-      if (error.code === '23505') {
-        errorMessage = "Instância já existe. Tente recarregar a página e verificar se ela já está listada.";
-      } else if (error.message?.includes('duplicate key')) {
-        errorMessage = "Instância duplicada detectada. Recarregando dados...";
-        // Tentar recarregar os dados
+      if (error.code === '23505' || error.message?.includes('duplicate key')) {
+        errorMessage = "Instância já existe. Recarregando dados...";
+        // Tentar recarregar os dados em caso de duplicação
         setTimeout(() => {
           loadClients();
           loadAvailableClients();
         }, 1000);
+      } else if (error.message?.includes('CORS')) {
+        errorMessage = "Problema de CORS. Tente publicar o app ou usar ambiente local.";
+      } else if (error.message?.includes('Failed to fetch')) {
+        errorMessage = "Problema de conexão com o servidor. Verifique se está rodando.";
       }
       
       toast({
@@ -307,23 +327,35 @@ const RealInstancesManager = () => {
     try {
       setLoading(true);
       
-      // Primeiro desconectar do servidor WhatsApp
-      await whatsappService.disconnectClient(clientId);
+      console.log(`🔌 Desconectando cliente: ${clientId}`);
       
-      // Encontrar a instância no Supabase pelo instance_id
-      const instance = await whatsappInstancesService.getInstanceByInstanceId(clientId);
+      // Primeiro tentar desconectar do servidor WhatsApp (mas não falhar se der erro)
+      try {
+        await whatsappService.disconnectClient(clientId);
+        console.log('✅ Cliente desconectado do WhatsApp server');
+      } catch (whatsappError) {
+        console.warn('⚠️ Erro ao desconectar do WhatsApp server (continuando):', whatsappError);
+      }
       
-      if (instance) {
-        // Atualizar status da instância no Supabase
-        await whatsappInstancesService.updateInstanceById(instance.id, {
-          status: 'disconnected'
-        });
+      // Encontrar e atualizar a instância no Supabase
+      try {
+        const instance = await whatsappInstancesService.getInstanceByInstanceId(clientId);
+        
+        if (instance) {
+          await whatsappInstancesService.updateInstanceById(instance.id, {
+            status: 'disconnected'
+          });
+          console.log('✅ Status da instância atualizado no Supabase');
+        }
+      } catch (supabaseError) {
+        console.warn('⚠️ Erro ao atualizar Supabase (continuando):', supabaseError);
       }
       
       // Update client status
       const linkedClient = getClientByInstanceId(clientId);
       if (linkedClient) {
         await updateClientInstance(linkedClient.id, "", 'disconnected');
+        console.log('✅ Status do cliente atualizado');
       }
       
       toast({
@@ -331,8 +363,10 @@ const RealInstancesManager = () => {
         description: `Instância ${clientId} desconectada`,
       });
       
+      // Recarregar dados
       await loadClients();
       await loadAvailableClients();
+      
     } catch (error: any) {
       console.error("❌ Erro ao desconectar:", error);
       toast({
