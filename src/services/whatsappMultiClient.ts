@@ -179,7 +179,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Methods with simplified HTTPS support
+  // API Methods with improved HTTPS handling
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     
@@ -188,9 +188,10 @@ class WhatsAppMultiClientService {
     const defaultHeaders = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'Cache-Control': 'no-cache'
     };
 
-    // Configuração simplificada para HTTPS
+    // Configuração otimizada para HTTPS com certificado autoassinado
     const fetchConfig: RequestInit = {
       ...options,
       headers: {
@@ -199,7 +200,7 @@ class WhatsAppMultiClientService {
       },
       mode: 'cors',
       credentials: 'omit',
-      signal: AbortSignal.timeout(8000) // Timeout reduzido
+      signal: options.signal || AbortSignal.timeout(10000)
     };
 
     try {
@@ -214,21 +215,25 @@ class WhatsAppMultiClientService {
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        console.log('✅ Dados JSON recebidos:', data);
+        console.log('✅ Dados JSON recebidos via HTTPS:', data);
         return data;
       } else {
         const text = await response.text();
-        console.log('✅ Texto recebido:', text);
+        console.log('✅ Texto recebido via HTTPS:', text);
         return text;
       }
     } catch (error: any) {
       console.error(`❌ Erro na requisição HTTPS para ${fullUrl}:`, error);
       
-      // Detecção simples de problemas de certificado
-      if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
-        throw new Error('CERTIFICADO_SSL_NECESSARIO');
-      } else if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+      // Classificação melhorada de erros
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
         throw new Error('TIMEOUT_ERROR');
+      } else if (error.message === 'Failed to fetch' || 
+                 error.name === 'TypeError' ||
+                 error.message.includes('net::') ||
+                 error.message.includes('SSL') ||
+                 error.message.includes('certificate')) {
+        throw new Error('CERTIFICADO_SSL_NECESSARIO');
       }
       
       throw error;
@@ -347,7 +352,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Check server health with simplified HTTPS support
+  // Check server health with improved error handling
   async checkServerHealth(): Promise<ServerHealth> {
     try {
       console.log('🔍 Health check HTTPS:', `${API_BASE_URL}/health`);
@@ -361,22 +366,24 @@ class WhatsAppMultiClientService {
       
       if (error.message === 'CERTIFICADO_SSL_NECESSARIO') {
         throw new Error('CERTIFICADO_SSL_NAO_ACEITO');
+      } else if (error.message === 'TIMEOUT_ERROR') {
+        throw new Error('SERVIDOR_TIMEOUT');
       }
       
       throw error;
     }
   }
 
-  // Test connection with simpler logic
+  // Test connection with improved logic
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
-      console.log('🧪 Testando conexão com servidor...');
+      console.log('🧪 Testando conexão HTTPS com servidor...');
       const health = await this.checkServerHealth();
       
       if (health && health.status === 'ok') {
         return {
           success: true,
-          message: `✅ Conexão HTTPS funcionando! Servidor: ${health.server || 'HTTPS'} | Versão: ${health.version || 'unknown'}`
+          message: `✅ HTTPS funcionando! Servidor: ${health.server || 'HTTPS'} | Versão: ${health.version || 'unknown'}`
         };
       } else {
         return {
@@ -385,18 +392,23 @@ class WhatsAppMultiClientService {
         };
       }
     } catch (error: any) {
-      console.error('❌ Teste de conexão falhou:', error.message);
+      console.error('❌ Teste de conexão HTTPS falhou:', error.message);
       
       if (error.message === 'CERTIFICADO_SSL_NAO_ACEITO') {
         return {
           success: false,
-          message: 'Certificado SSL: Acesse https://146.59.227.248/health no navegador para aceitar o certificado'
+          message: 'Certificado SSL: Aceite o certificado abrindo https://146.59.227.248/health no navegador'
+        };
+      } else if (error.message === 'SERVIDOR_TIMEOUT') {
+        return {
+          success: false,
+          message: 'Timeout: Servidor não respondeu em 10 segundos'
         };
       }
       
       return {
         success: false,
-        message: `Erro de conexão: ${error.message}`
+        message: `Erro de conexão HTTPS: ${error.message}`
       };
     }
   }
