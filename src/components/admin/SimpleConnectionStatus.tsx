@@ -24,59 +24,68 @@ const SimpleConnectionStatus = () => {
       setStatus('checking');
       console.log('🔍 Verificando conexão HTTPS...');
       
-      // Primeiro tenta conectar diretamente
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      // Tentar uma abordagem mais direta - fazer uma requisição simples primeiro
+      const testResponse = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
         mode: 'cors',
         credentials: 'omit',
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(10000)
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Servidor respondeu:', data);
+      if (testResponse.ok) {
+        const data = await testResponse.json();
+        console.log('✅ Conexão HTTPS funcionando!', data);
         setStatus('connected');
         setServerInfo(data);
+        setLastCheck(new Date());
         return;
       }
+    } catch (error: any) {
+      console.log('🔍 Primeira tentativa falhou, tentando método alternativo...');
       
-      // Se não conseguir, tenta com o serviço
-      const result = await whatsappService.testConnection();
-      
-      if (result.success) {
-        setStatus('connected');
-        try {
-          const health = await whatsappService.checkServerHealth();
-          setServerInfo(health);
-        } catch (e) {
-          console.log('Could not get detailed server info');
+      // Tentar com o serviço
+      try {
+        const result = await whatsappService.testConnection();
+        
+        if (result.success) {
+          console.log('✅ Conexão via serviço funcionando!');
+          setStatus('connected');
+          
+          // Tentar pegar informações do servidor
+          try {
+            const health = await whatsappService.checkServerHealth();
+            setServerInfo(health);
+          } catch (e) {
+            console.log('Informações do servidor não disponíveis, mas conexão OK');
+            setServerInfo({ status: 'ok', server: 'HTTPS Server', version: 'unknown' });
+          }
+        } else {
+          // Verificar tipo de erro
+          if (result.message.includes('Certificado') || 
+              result.message.includes('SSL') ||
+              result.message.includes('certificado')) {
+            console.log('🔒 Problema de certificado SSL detectado');
+            setStatus('cert_error');
+          } else {
+            console.log('❌ Erro de conexão:', result.message);
+            setStatus('error');
+          }
         }
-      } else {
-        if (result.message.includes('Certificado SSL') || result.message.includes('CERTIFICADO_SSL')) {
+      } catch (serviceError: any) {
+        console.error('❌ Erro no serviço:', serviceError);
+        
+        // Se chegou até aqui, provavelmente é problema de certificado
+        if (serviceError.message.includes('Failed to fetch') ||
+            serviceError.message.includes('CERTIFICADO_SSL') ||
+            serviceError.name === 'TypeError') {
           setStatus('cert_error');
         } else {
           setStatus('error');
         }
       }
-    } catch (error: any) {
-      console.error('❌ Connection check failed:', error);
-      
-      // Verifica se é erro de certificado
-      if (error.message === 'CERTIFICADO_SSL_NAO_ACEITO' || 
-          error.message.includes('HTTPS_CERT_ERROR') ||
-          error.message.includes('Failed to fetch') ||
-          error.name === 'TypeError') {
-        setStatus('cert_error');
-      } else {
-        setStatus('error');
-      }
-    } finally {
-      setLastCheck(new Date());
     }
+    
+    setLastCheck(new Date());
   };
 
   const getStatusBadge = () => {
@@ -94,6 +103,11 @@ const SimpleConnectionStatus = () => {
 
   const openServerDirectly = () => {
     window.open(`${API_BASE_URL}/health`, '_blank');
+  };
+
+  const forceRecheck = async () => {
+    console.log('🔄 Forçando nova verificação...');
+    await checkConnection();
   };
 
   return (
@@ -121,11 +135,12 @@ const SimpleConnectionStatus = () => {
                 </p>
                 {serverInfo && (
                   <div className="mt-2 text-sm text-green-600">
-                    <p><strong>Servidor:</strong> {serverInfo.server}</p>
-                    <p><strong>Versão:</strong> {serverInfo.version}</p>
-                    <p><strong>Protocolo:</strong> {serverInfo.protocol}</p>
-                    <p><strong>Clientes ativos:</strong> {serverInfo.activeClients}</p>
-                    <p><strong>CORS:</strong> {serverInfo.cors?.enabled ? '✅ Habilitado' : '❌ Desabilitado'}</p>
+                    <p><strong>Status:</strong> {serverInfo.status}</p>
+                    {serverInfo.server && <p><strong>Servidor:</strong> {serverInfo.server}</p>}
+                    {serverInfo.version && <p><strong>Versão:</strong> {serverInfo.version}</p>}
+                    {serverInfo.protocol && <p><strong>Protocolo:</strong> {serverInfo.protocol}</p>}
+                    {serverInfo.activeClients !== undefined && <p><strong>Clientes ativos:</strong> {serverInfo.activeClients}</p>}
+                    {serverInfo.cors && <p><strong>CORS:</strong> {serverInfo.cors.enabled ? '✅ Habilitado' : '❌ Desabilitado'}</p>}
                   </div>
                 )}
               </div>
@@ -183,7 +198,7 @@ const SimpleConnectionStatus = () => {
         </div>
 
         <div className="flex space-x-2">
-          <Button onClick={checkConnection} variant="outline" disabled={status === 'checking'}>
+          <Button onClick={forceRecheck} variant="outline" disabled={status === 'checking'}>
             <RefreshCw className={`w-4 h-4 mr-2 ${status === 'checking' ? 'animate-spin' : ''}`} />
             Verificar Conexão
           </Button>

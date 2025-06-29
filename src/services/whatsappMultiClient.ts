@@ -191,7 +191,7 @@ class WhatsAppMultiClientService {
       'Accept': 'application/json',
     };
 
-    // Configure fetch with better HTTPS handling
+    // Configure fetch com melhor tratamento HTTPS
     const fetchConfig: RequestInit = {
       ...options,
       headers: {
@@ -200,7 +200,7 @@ class WhatsAppMultiClientService {
       },
       mode: 'cors',
       credentials: 'omit',
-      signal: AbortSignal.timeout(15000) // Increased timeout for HTTPS
+      signal: AbortSignal.timeout(10000) // Timeout reduzido para resposta mais rápida
     };
 
     try {
@@ -225,20 +225,15 @@ class WhatsAppMultiClientService {
     } catch (error: any) {
       console.error(`❌ Erro na requisição HTTPS para ${fullUrl}:`, error);
       
-      // Improved error handling for HTTPS
+      // Melhor detecção de erros HTTPS
       if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
         if (fullUrl.startsWith('https://')) {
-          // Se chegou até aqui, é provável que seja problema de certificado
-          // Mas vamos tentar verificar se o servidor está realmente online
-          console.log('🔍 Verificando se é problema de certificado ou servidor offline...');
-          throw new Error('HTTPS_CONNECTION_ERROR: Verifique se o certificado foi aceito ou se o servidor está online');
+          throw new Error('CERTIFICADO_SSL_NECESSARIO');
         } else {
           throw new Error('NETWORK_ERROR: Falha na conexão de rede');
         }
-      } else if (error.name === 'TimeoutError') {
+      } else if (error.name === 'TimeoutError' || error.name === 'AbortError') {
         throw new Error('TIMEOUT_ERROR: Timeout na requisição HTTPS');
-      } else if (error.name === 'AbortError') {
-        throw new Error('REQUEST_ABORTED: Requisição cancelada por timeout');
       }
       
       throw error;
@@ -377,8 +372,8 @@ class WhatsAppMultiClientService {
     } catch (error: any) {
       console.error('❌ Health check HTTPS falhou:', error.message);
       
-      // Mais específico na detecção de erros
-      if (error.message.includes('HTTPS_CONNECTION_ERROR') || 
+      // Detecção mais específica de erros
+      if (error.message === 'CERTIFICADO_SSL_NECESSARIO' || 
           error.message.includes('Failed to fetch') ||
           error.name === 'TypeError') {
         throw new Error('CERTIFICADO_SSL_NAO_ACEITO');
@@ -397,7 +392,7 @@ class WhatsAppMultiClientService {
       if (health && health.status === 'ok') {
         return {
           success: true,
-          message: `✅ Conexão HTTPS funcionando! Servidor: ${health.server} | Versão: ${health.version}`
+          message: `✅ Conexão HTTPS funcionando! Servidor: ${health.server || 'HTTPS'} | Versão: ${health.version || 'unknown'}`
         };
       } else {
         return {
