@@ -2,7 +2,7 @@
 #!/bin/bash
 
 # Script para verificar saúde do sistema WhatsApp Multi-Cliente
-# Execute da pasta raiz: ./scripts/check-whatsapp-health.sh
+# Arquivo: scripts/check-whatsapp-health.sh
 
 echo "🔍 Verificando saúde do sistema WhatsApp Multi-Cliente..."
 echo "================================================="

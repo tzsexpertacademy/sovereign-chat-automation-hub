@@ -1,8 +1,8 @@
 
-import InstancesManager from "./InstancesManager";
+import RealInstancesManager from "./RealInstancesManager";
 
 const InstancesMonitor = () => {
-  return <InstancesManager />;
+  return <RealInstancesManager />;
 };
 
 export default InstancesMonitor;

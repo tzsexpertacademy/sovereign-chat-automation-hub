@@ -2,7 +2,7 @@
 #!/bin/bash
 
 # Script para correção sistemática das dependências
-# Execute da pasta raiz: ./scripts/fix-dependencies.sh
+# Arquivo: scripts/fix-dependencies.sh
 
 echo "🔧 CORREÇÃO SISTEMÁTICA DAS DEPENDÊNCIAS"
 echo "========================================"
@@ -30,18 +30,14 @@ cp package.json package.json.backup
 echo "🧹 Limpando instalação anterior..."
 rm -rf node_modules package-lock.json
 
-# Limpar cache do npm
-echo "🧹 Limpando cache do npm..."
-npm cache clean --force
-
-# Instalar dependências
-echo "📦 Instalando dependências do servidor..."
+# Instalar dependências atualizadas
+echo "📦 Instalando dependências atualizadas..."
 npm install
 
 if [ $? -eq 0 ]; then
-    echo "✅ Dependências do servidor instaladas com sucesso"
+    echo "✅ Dependências do servidor atualizadas com sucesso"
 else
-    echo "❌ Erro ao instalar dependências do servidor"
+    echo "❌ Erro ao atualizar dependências do servidor"
     echo "🔄 Restaurando backup..."
     cp package.json.backup package.json
     exit 1
@@ -69,7 +65,7 @@ else
     npm install --force
     
     if [ $? -eq 0 ]; then
-        echo "✅ Dependências instaladas com --force"
+        echo "✅ Dependências instal adas com --force"
     else
         echo "❌ Erro crítico na instalação do frontend"
         echo "🔄 Restaurando backup..."
@@ -77,6 +73,64 @@ else
         exit 1
     fi
 fi
+
+# Etapa 3: Verificar instalações
+echo ""
+echo "🔍 ETAPA 3: Verificando instalações..."
+echo "===================================="
+
+# Verificar servidor
+echo "🖥️ Verificando servidor..."
+cd server
+if node -e "require('whatsapp-web.js'); console.log('✅ whatsapp-web.js carregado')"; then
+    echo "✅ Servidor: whatsapp-web.js OK"
+else
+    echo "❌ Servidor: whatsapp-web.js com problemas"
+fi
+
+if node -e "require('express'); console.log('✅ Express carregado')"; then
+    echo "✅ Servidor: Express OK"
+else
+    echo "❌ Servidor: Express com problemas"
+fi
+
+cd ..
+
+# Verificar frontend
+echo "🎨 Verificando frontend..."
+if node -e "require('react'); console.log('✅ React carregado')"; then
+    echo "✅ Frontend: React OK"
+else
+    echo "❌ Frontend: React com problemas"
+fi
+
+if node -e "require('react-router-dom'); console.log('✅ React Router carregado')"; then
+    echo "✅ Frontend: React Router OK"
+else
+    echo "❌ Frontend: React Router com problemas"
+fi
+
+# Etapa 4: Teste básico de conectividade
+echo ""
+echo "🔗 ETAPA 4: Teste de conectividade..."
+echo "==================================="
+
+echo "🚀 Iniciando servidor para teste..."
+cd server
+timeout 30s node whatsapp-multi-client-server.js &
+SERVER_PID=$!
+sleep 10
+
+# Testar se servidor responde
+if curl -s --max-time 5 http://localhost:4000/health > /dev/null; then
+    echo "✅ Servidor respondeu corretamente"
+    kill $SERVER_PID 2>/dev/null
+else
+    echo "⚠️ Servidor não respondeu (normal se já está rodando)"
+    kill $SERVER_PID 2>/dev/null
+fi
+
+cd ..
 
 # Limpeza final
 echo ""
@@ -90,22 +144,22 @@ rm -f package.json.backup server/package.json.backup
 rm -rf /tmp/.com.google.Chrome.* 2>/dev/null || true
 rm -rf /tmp/puppeteer_dev_chrome_profile-* 2>/dev/null || true
 
-# Limpar sessões antigas do WhatsApp
-echo "🧹 Limpando sessões antigas do WhatsApp..."
-rm -rf server/sessions/* 2>/dev/null || true
-rm -rf server/.wwebjs_auth/* 2>/dev/null || true
-rm -rf server/.wwebjs_cache/* 2>/dev/null || true
-
 echo ""
-echo "🎉 CORREÇÃO CONCLUÍDA COM SUCESSO!"
-echo "================================="
+echo "🎉 CORREÇÃO CONCLUÍDA!"
+echo "====================="
+echo ""
+echo "📊 Resumo das atualizações:"
+echo "• whatsapp-web.js: atualizado para v1.25.0"
+echo "• Frontend: conflitos resolvidos com legacy-peer-deps"
+echo "• Dependências: limpas e reinstaladas"
 echo ""
 echo "🚀 Próximos passos:"
 echo "1. Reinicie o servidor: ./scripts/production-start-whatsapp.sh"
-echo "2. Conecte um cliente WhatsApp"
-echo "3. Teste o envio de áudio"
+echo "2. Teste o sistema de áudio"
+echo "3. Monitore os logs: tail -f logs/whatsapp-multi-client.log"
 echo ""
 echo "🔧 Se houver problemas:"
-echo "• Logs detalhados: tail -f logs/whatsapp-multi-client.log"
-echo "• Status de áudio: curl http://localhost:4000/health"
-echo "• Reiniciar: ./scripts/production-stop-whatsapp.sh && ./scripts/production-start-whatsapp.sh"
+echo "• Verifique logs: cat logs/whatsapp-multi-client.log"
+echo "• Reinicie: ./scripts/production-stop-whatsapp.sh && ./scripts/production-start-whatsapp.sh"
+echo "• Monitore status: ./scripts/check-whatsapp-health.sh"
+

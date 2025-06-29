@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { whatsappService } from '@/services/whatsappMultiClient';
 
 interface AutoReactionConfig {
@@ -66,10 +66,8 @@ export const useAutoReactions = (clientId: string, enabled = true) => {
       const delay = Math.random() * (config.delay.max - config.delay.min) + config.delay.min;
       await new Promise(resolve => setTimeout(resolve, delay));
       
-      // Para demonstrar reação, vamos apenas enviar uma mensagem com emoji
-      // Já que o método sendReaction não está disponível no serviço
-      const reactionMessage = `${reactionEmojis[emotion]}`;
-      await whatsappService.sendMessage(clientId, chatId, reactionMessage);
+      // Enviar reação
+      await whatsappService.sendReaction(clientId, chatId, messageId, reactionEmojis[emotion]);
       
       console.log(`🎭 Reação automática enviada: ${reactionEmojis[emotion]} para mensagem ${messageId}`);
       
@@ -85,7 +83,7 @@ export const useAutoReactions = (clientId: string, enabled = true) => {
   }, [enabled, config, clientId, processingReactions]);
 
   const processMessage = useCallback(async (message: any) => {
-    if (!message.body || message.isFromMe) return;
+    if (!message.body || message.fromMe) return;
     
     const emotion = detectEmotion(message.body);
     if (emotion) {

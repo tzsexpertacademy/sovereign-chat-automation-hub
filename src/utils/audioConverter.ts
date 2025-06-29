@@ -1,39 +1,5 @@
 
 export class AudioConverter {
-  static async convertToOGG(audioBlob: Blob): Promise<Blob> {
-    try {
-      console.log('🔄 Convertendo áudio para OGG (formato otimizado)...');
-      
-      // Se já é OGG, retornar diretamente
-      if (audioBlob.type === 'audio/ogg' || audioBlob.type.includes('ogg')) {
-        console.log('✅ Áudio já está em formato OGG');
-        return audioBlob;
-      }
-
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
-      // Para OGG, vamos usar uma abordagem simplificada
-      // Convertendo para WAV primeiro (mais compatível) e depois marcar como OGG
-      const wavBuffer = this.audioBufferToWav(audioBuffer);
-      const oggBlob = new Blob([wavBuffer], { type: 'audio/ogg' });
-      
-      console.log('✅ Áudio convertido para OGG:', {
-        originalSize: audioBlob.size,
-        newSize: oggBlob.size,
-        originalType: audioBlob.type,
-        newType: oggBlob.type
-      });
-      
-      return oggBlob;
-    } catch (error) {
-      console.error('❌ Erro na conversão para OGG:', error);
-      // Fallback: retornar original com tipo OGG
-      return new Blob([audioBlob], { type: 'audio/ogg' });
-    }
-  }
-
   static async convertToWAV(audioBlob: Blob): Promise<Blob> {
     try {
       console.log('🔄 Convertendo áudio para WAV...');
@@ -125,21 +91,5 @@ export class AudioConverter {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
-  }
-
-  // Método para detectar melhor formato suportado
-  static detectOptimalFormat(audioBlob: Blob): string {
-    console.log('🔍 Detectando formato ótimo para:', audioBlob.type);
-    
-    // Prioridade: OGG > WAV > MP3
-    const formatPriority = ['audio/ogg', 'audio/wav', 'audio/mpeg'];
-    
-    if (formatPriority.includes(audioBlob.type)) {
-      console.log(`✅ Formato ${audioBlob.type} é otimizado`);
-      return audioBlob.type;
-    }
-    
-    console.log('⚠️ Formato não otimizado, recomendando OGG');
-    return 'audio/ogg';
   }
 }

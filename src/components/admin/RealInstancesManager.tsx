@@ -46,7 +46,7 @@ const RealInstancesManager = () => {
     loadClients();
 
     return () => {
-      whatsappService.disconnect();
+      whatsappService.disconnectSocket();
     };
   }, []);
 

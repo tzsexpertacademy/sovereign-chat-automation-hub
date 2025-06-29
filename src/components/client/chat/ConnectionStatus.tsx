@@ -1,55 +1,39 @@
 
-import { useState, useEffect } from "react";
-import { Badge } from "@/components/ui/badge";
-import { getServerConfig } from "@/config/environment";
+import React from 'react';
+import { AlertCircle } from 'lucide-react';
+import { getServerConfig, getAlternativeServerConfig } from '@/config/environment';
 
 interface ConnectionStatusProps {
-  className?: string;
-  connectedInstance?: string;
-  isOnline?: boolean;
+  connectedInstance: string | null;
+  isOnline: boolean;
 }
 
-const ConnectionStatus = ({ className, connectedInstance, isOnline: propIsOnline }: ConnectionStatusProps) => {
-  const [isServerOnline, setIsServerOnline] = useState(true);
-  const config = getServerConfig();
+const ConnectionStatus = ({ connectedInstance, isOnline }: ConnectionStatusProps) => {
+  const currentConfig = getServerConfig();
+  const hasAlternative = !!getAlternativeServerConfig();
 
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const response = await fetch(`${config.SERVER_URL}/health`, {
-          method: 'GET',
-          mode: 'no-cors',
-          signal: AbortSignal.timeout(5000)
-        });
-        setIsServerOnline(true);
-      } catch (error) {
-        setIsServerOnline(false);
-      }
-    };
-
-    checkConnection();
-    
-    // Check connection every 30 seconds
-    const interval = setInterval(checkConnection, 30000);
-    
-    return () => clearInterval(interval);
-  }, [config.SERVER_URL]);
-
-  // Use prop isOnline if provided, otherwise use server check
-  const isOnline = propIsOnline !== undefined ? propIsOnline : isServerOnline;
-  
-  // Show instance info if available
-  const statusText = connectedInstance 
-    ? `${isOnline ? "🟢" : "🔴"} ${connectedInstance}`
-    : `${isOnline ? "🟢 Online" : "🔴 Offline"}`;
+  if (!connectedInstance) {
+    return (
+      <div className="p-3 bg-yellow-50 border-b border-yellow-200 flex items-center gap-2 text-yellow-800">
+        <AlertCircle className="w-4 h-4" />
+        <span className="text-sm">Nenhuma instância WhatsApp conectada. As mensagens não poderão ser enviadas.</span>
+      </div>
+    );
+  }
 
   return (
-    <Badge 
-      variant={isOnline ? "default" : "destructive"}
-      className={className}
-    >
-      {statusText}
-    </Badge>
+    <div className="p-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-green-800">
+      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+      <span className="text-xs">Conectado: {connectedInstance}</span>
+      <span className="text-xs">• {currentConfig.protocol.toUpperCase()}: {currentConfig.serverUrl}</span>
+      {hasAlternative && <span className="text-xs">• Fallback: ✓</span>}
+      {isOnline && (
+        <>
+          <span className="text-xs">•</span>
+          <span className="text-xs font-medium">🤖 IA Online</span>
+        </>
+      )}
+    </div>
   );
 };
 

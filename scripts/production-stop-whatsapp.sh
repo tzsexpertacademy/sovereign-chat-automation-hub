@@ -2,7 +2,7 @@
 #!/bin/bash
 
 # Script para parar WhatsApp Multi-Cliente em produção
-# Execute da pasta raiz: ./scripts/production-stop-whatsapp.sh
+# Arquivo: scripts/production-stop-whatsapp.sh
 
 echo "🛑 PARANDO WHATSAPP MULTI-CLIENTE - PRODUÇÃO"
 echo "=========================================="

@@ -69,7 +69,7 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
       ...message,
       queueId: queueId || instanceQueueConnection?.id,
       assistantId: assistantId || instanceQueueConnection?.assistants?.id,
-      priority: message.from === clientId ? 'low' : 'medium', // Verificar se é mensagem do próprio cliente
+      priority: message.fromMe ? 'low' : 'medium',
       status: isHumanHandled ? 'human' : 'pending',
       isHumanHandled
     };
@@ -94,7 +94,7 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
       queueId: queuedMessage.queueId,
       assistantId: queuedMessage.assistantId
     });
-  }, [instanceQueueConnection, clientId]);
+  }, [instanceQueueConnection]);
 
   // Processar fila de mensagens automaticamente
   const processQueue = useCallback(async () => {
@@ -248,6 +248,24 @@ export const useMessageQueue = (clientId: string, instanceId?: string) => {
       })
     );
   }, []);
+
+  // Configurar listener para novas mensagens
+  useEffect(() => {
+    if (!clientId || !instanceId) return;
+
+    const handleNewMessage = (message: MessageData) => {
+      // Não processar mensagens próprias por padrão
+      if (!message.fromMe) {
+        enqueueMessage(message);
+      }
+    };
+
+    whatsappService.onClientMessage(instanceId, handleNewMessage);
+
+    return () => {
+      whatsappService.removeListener(`message_${instanceId}`, handleNewMessage);
+    };
+  }, [clientId, instanceId, enqueueMessage]);
 
   // Processar fila automaticamente
   useEffect(() => {
