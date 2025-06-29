@@ -1,15 +1,16 @@
 
-// Environment configuration for WhatsApp Multi-Client - HTTPS
-console.log('🌍 Configurando ambiente HTTPS...');
+// Environment configuration for WhatsApp Multi-Client - HTTP SIMPLES
+console.log('🌍 Configurando ambiente HTTP SIMPLES...');
 
 // Detect environment
 const isProduction = window.location.hostname.includes('lovableproject.com');
 const isDevelopment = window.location.hostname === 'localhost';
 
-// HTTPS Server configuration
-const HTTPS_SERVER = '146.59.227.248';
+// HTTP Server configuration (sem HTTPS para evitar problemas)
+const HTTP_SERVER = '146.59.227.248';
+const SERVER_PORT = '4000';
 
-// Configure URLs for HTTPS
+// Configure URLs for HTTP DIRETO
 let SERVER_HOST: string;
 let API_BASE_URL: string;
 let SOCKET_URL: string;
@@ -21,16 +22,16 @@ if (isDevelopment) {
   SOCKET_URL = 'ws://localhost:4000';
   console.log('🛠️ Modo Desenvolvimento - Usando localhost');
 } else {
-  // Production - use HTTPS
-  SERVER_HOST = `https://${HTTPS_SERVER}`;
-  API_BASE_URL = `https://${HTTPS_SERVER}`;
-  SOCKET_URL = `wss://${HTTPS_SERVER}`;
-  console.log('🔒 Modo Produção - Usando HTTPS');
+  // Production - use HTTP DIRETO (sem nginx proxy)
+  SERVER_HOST = `http://${HTTP_SERVER}:${SERVER_PORT}`;
+  API_BASE_URL = `http://${HTTP_SERVER}:${SERVER_PORT}`;
+  SOCKET_URL = `ws://${HTTP_SERVER}:${SERVER_PORT}`;
+  console.log('🔗 Modo Produção - Usando HTTP DIRETO');
 }
 
 // Export the configured URLs
 export const SERVER_URL = SERVER_HOST;
-export const DIRECT_SERVER_URL = SERVER_HOST; // For compatibility
+export const DIRECT_SERVER_URL = SERVER_HOST;
 export { API_BASE_URL, SOCKET_URL };
 
 // Export additional config
@@ -40,18 +41,20 @@ export const getServerConfig = () => ({
   SOCKET_URL,
   isProduction,
   isDevelopment,
-  isHttps: !isDevelopment,
-  protocol: isDevelopment ? 'http:' : 'https:',
+  isHttps: false, // Forçando HTTP
+  protocol: 'http:',
   serverUrl: SERVER_URL,
-  usingProxy: false, // No longer using CORS proxy
-  hasMixedContent: false, // HTTPS setup resolves this
-  corsEnabled: true // Direct HTTPS connection
+  usingProxy: false,
+  hasMixedContent: false,
+  corsEnabled: true,
+  directConnection: true // Nova flag
 });
 
-console.log('✅ Configuração HTTPS carregada:', {
+console.log('✅ Configuração HTTP DIRETO carregada:', {
   SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
-  isHttps: !isDevelopment,
-  environment: isProduction ? 'production' : isDevelopment ? 'development' : 'https'
+  protocol: 'HTTP',
+  directConnection: true,
+  port: SERVER_PORT
 });

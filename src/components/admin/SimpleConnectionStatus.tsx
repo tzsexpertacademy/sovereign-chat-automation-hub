@@ -4,13 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, XCircle, RefreshCw, Shield, ExternalLink } from "lucide-react";
-import { SERVER_URL, API_BASE_URL } from "@/config/environment";
+import { CheckCircle, XCircle, RefreshCw, Wifi, ExternalLink } from "lucide-react";
+import { SERVER_URL, API_BASE_URL, getServerConfig } from "@/config/environment";
 
 const SimpleConnectionStatus = () => {
-  const [status, setStatus] = useState<'checking' | 'connected' | 'cert_error' | 'error'>('checking');
+  const [status, setStatus] = useState<'checking' | 'connected' | 'error' | 'cors_error'>('checking');
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
   const [serverInfo, setServerInfo] = useState<any>(null);
+  const config = getServerConfig();
 
   useEffect(() => {
     checkConnection();
@@ -21,9 +22,8 @@ const SimpleConnectionStatus = () => {
   const checkConnection = async () => {
     try {
       setStatus('checking');
-      console.log('🔍 Testando conexão HTTPS com certificado...');
+      console.log('🔍 Testando conexão HTTP DIRETA:', API_BASE_URL);
       
-      // Tentar requisição HTTPS com configuração otimizada para certificados autoassinados
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
@@ -42,29 +42,26 @@ const SimpleConnectionStatus = () => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ HTTPS conectado com sucesso!', data);
+        console.log('✅ Conexão HTTP DIRETA funcionando!', data);
         setStatus('connected');
         setServerInfo(data);
         setLastCheck(new Date());
         return;
       } else {
-        console.log('⚠️ Resposta HTTP não OK:', response.status, response.statusText);
+        console.log('⚠️ Resposta HTTP não OK:', response.status);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (error: any) {
-      console.log('❌ Erro na conexão HTTPS:', error.message);
+      console.log('❌ Erro na conexão HTTP DIRETA:', error.message);
       
-      // Análise mais detalhada do erro
       if (error.name === 'AbortError') {
         console.log('⏰ Timeout na conexão');
         setStatus('error');
       } else if (error.message === 'Failed to fetch' || 
-                 error.message.includes('net::') ||
-                 error.message.includes('SSL') ||
-                 error.message.includes('certificate') ||
+                 error.message.includes('CORS') ||
                  error.name === 'TypeError') {
-        console.log('🔒 Problema de certificado SSL detectado');
-        setStatus('cert_error');
+        console.log('🚫 Problema de CORS ou rede detectado');
+        setStatus('cors_error');
       } else {
         console.log('❌ Erro geral de conexão');
         setStatus('error');
@@ -77,9 +74,9 @@ const SimpleConnectionStatus = () => {
   const getStatusBadge = () => {
     switch (status) {
       case 'connected':
-        return <Badge className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />✅ Online HTTPS</Badge>;
-      case 'cert_error':
-        return <Badge variant="destructive"><Shield className="w-3 h-3 mr-1" />🔒 Certificado SSL</Badge>;
+        return <Badge className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />🟢 HTTP Online</Badge>;
+      case 'cors_error':
+        return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />🚫 CORS Error</Badge>;
       case 'error':
         return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />❌ Offline</Badge>;
       case 'checking':
@@ -88,16 +85,11 @@ const SimpleConnectionStatus = () => {
   };
 
   const openServerDirectly = () => {
-    // Abrir em nova aba com instruções específicas
-    const newWindow = window.open(`${API_BASE_URL}/health`, '_blank');
-    if (newWindow) {
-      // Tentar focar na nova janela
-      newWindow.focus();
-    }
+    window.open(`${API_BASE_URL}/health`, '_blank');
   };
 
   const forceRecheck = async () => {
-    console.log('🔄 Forçando nova verificação de conexão...');
+    console.log('🔄 Forçando nova verificação...');
     await checkConnection();
   };
 
@@ -106,8 +98,8 @@ const SimpleConnectionStatus = () => {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Shield className="w-5 h-5 text-green-500" />
-            <CardTitle>Status de Conexão HTTPS</CardTitle>
+            <Wifi className="w-5 h-5 text-blue-500" />
+            <CardTitle>Status de Conexão HTTP Direta</CardTitle>
           </div>
           {getStatusBadge()}
         </div>
@@ -120,9 +112,9 @@ const SimpleConnectionStatus = () => {
             <div className="flex items-center space-x-2">
               <CheckCircle className="w-5 h-5 text-green-500" />
               <div>
-                <p className="font-medium text-green-900">✅ Sistema HTTPS Online!</p>
+                <p className="font-medium text-green-900">🎉 Sistema Online!</p>
                 <p className="text-sm text-green-700">
-                  Conexão HTTPS estabelecida com sucesso
+                  Conexão HTTP direta estabelecida com sucesso
                 </p>
                 {serverInfo && (
                   <div className="mt-2 text-sm text-green-600">
@@ -139,37 +131,26 @@ const SimpleConnectionStatus = () => {
           </div>
         )}
 
-        {/* Certificate Error - Instruções específicas para Lovable */}
-        {status === 'cert_error' && (
+        {/* CORS Error */}
+        {status === 'cors_error' && (
           <Alert variant="destructive">
-            <Shield className="h-4 w-4" />
+            <XCircle className="h-4 w-4" />
             <AlertDescription>
               <div className="space-y-3">
-                <p className="font-medium">🔒 Certificado SSL - Ação Necessária</p>
+                <p className="font-medium">🚫 Erro de CORS ou Conectividade</p>
                 <p className="text-sm">
-                  O certificado precisa ser aceito no contexto da Lovable.
+                  O servidor não está respondendo ou há problemas de CORS.
                 </p>
                 
-                <div className="bg-blue-50 p-3 rounded border text-sm">
-                  <p className="font-medium text-blue-900">📋 Instruções Específicas:</p>
-                  <ol className="list-decimal list-inside space-y-1 mt-2 text-blue-800">
-                    <li>Clique no botão "Aceitar Certificado" abaixo</li>
-                    <li>Uma nova aba abrirá com aviso de "Não seguro"</li>
-                    <li>Clique em <strong>"Avançado"</strong></li>
-                    <li>Clique em <strong>"Prosseguir para 146.59.227.248"</strong></li>
-                    <li>Aguarde a página carregar o JSON</li>
-                    <li>Volte aqui e clique em "Verificar Conexão"</li>
+                <div className="bg-red-50 p-3 rounded border text-sm">
+                  <p className="font-medium text-red-900">🔧 Possíveis soluções:</p>
+                  <ol className="list-decimal list-inside space-y-1 mt-2 text-red-800">
+                    <li>Verificar se o servidor está rodando na porta 4000</li>
+                    <li>Executar: sudo ./scripts/fix-direct-connection.sh</li>
+                    <li>Verificar firewall/iptables</li>
+                    <li>Reiniciar o servidor WhatsApp</li>
                   </ol>
                 </div>
-                
-                <Button 
-                  size="sm" 
-                  onClick={openServerDirectly}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Aceitar Certificado
-                </Button>
               </div>
             </AlertDescription>
           </Alert>
@@ -183,7 +164,7 @@ const SimpleConnectionStatus = () => {
               <div>
                 <p className="text-red-800 font-medium">❌ Servidor Indisponível</p>
                 <p className="text-red-600 text-sm">
-                  Falha na conexão com o servidor WhatsApp. Verifique se o servidor está rodando.
+                  Falha na conexão HTTP direta. Verifique se o servidor está rodando.
                 </p>
               </div>
             </div>
@@ -193,7 +174,8 @@ const SimpleConnectionStatus = () => {
         {/* Server Info */}
         <div className="text-sm space-y-2 bg-gray-50 p-3 rounded">
           <p><strong>URL do Servidor:</strong> <code className="bg-gray-200 px-2 py-1 rounded text-xs">{API_BASE_URL}</code></p>
-          <p><strong>Protocolo:</strong> <code className="bg-gray-200 px-2 py-1 rounded text-xs">HTTPS (Certificado Autoassinado)</code></p>
+          <p><strong>Protocolo:</strong> <code className="bg-gray-200 px-2 py-1 rounded text-xs">HTTP Direto (Porta {API_BASE_URL.split(':').pop()})</code></p>
+          <p><strong>Tipo de Conexão:</strong> <code className="bg-gray-200 px-2 py-1 rounded text-xs">{config.directConnection ? 'Direta' : 'Proxy'}</code></p>
           {lastCheck && (
             <p><strong>Última verificação:</strong> {lastCheck.toLocaleTimeString()}</p>
           )}
@@ -216,20 +198,19 @@ const SimpleConnectionStatus = () => {
           <div className="p-3 bg-blue-50 border border-blue-200 rounded">
             <p className="text-blue-800 font-medium">🎉 Perfeito!</p>
             <p className="text-blue-600 text-sm">
-              O sistema está funcionando corretamente. Você pode criar instâncias WhatsApp agora.
+              Sistema funcionando com conexão HTTP direta. Você pode criar instâncias WhatsApp agora.
             </p>
           </div>
         )}
 
-        {/* Help for certificate issues */}
-        {status === 'cert_error' && (
-          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
-            <p className="text-yellow-800 font-medium">💡 Importante</p>
-            <p className="text-yellow-700 text-sm">
-              Este é um certificado autoassinado para testes. Em produção, use um certificado válido de uma CA reconhecida.
-            </p>
-          </div>
-        )}
+        {/* Direct Connection Info */}
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+          <p className="text-blue-800 font-medium">ℹ️ Conexão HTTP Direta</p>
+          <p className="text-blue-700 text-sm">
+            Sistema configurado para conectar diretamente na porta 4000, sem proxy Nginx.
+            Isso elimina problemas de SSL e Mixed Content.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
