@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +20,7 @@ import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import ConnectionTest from "./ConnectionTest";
 import InstanceCreationForm from "./InstanceCreationForm";
 import InstancesList from "./InstancesList";
+import { SERVER_URL } from "@/config/environment";
 
 interface SystemHealth {
   serverOnline: boolean;
@@ -108,7 +108,7 @@ const InstancesManager = () => {
       
       // Test CORS by attempting a simple request
       try {
-        await fetch(`${whatsappService.getServerUrl()}/health`, {
+        await fetch(`${SERVER_URL}/health`, {
           method: 'GET',
           mode: 'cors'
         });
