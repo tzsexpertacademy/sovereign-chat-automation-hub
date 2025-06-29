@@ -1,6 +1,5 @@
-
 import io, { Socket } from 'socket.io-client';
-import { SERVER_URL, API_BASE_URL, SOCKET_URL } from '@/config/environment';
+import { SERVER_URL, API_BASE_URL, SOCKET_URL, getServerConfig } from '@/config/environment';
 
 export interface WhatsAppClient {
   clientId: string;
@@ -47,10 +46,13 @@ class WhatsAppMultiClientService {
 
   constructor() {
     console.log('🔧 WhatsApp Multi-Client Service inicializando...');
+    const config = getServerConfig();
     console.log('📡 URLs configuradas:', {
       SERVER_URL,
       API_BASE_URL,
-      SOCKET_URL
+      SOCKET_URL,
+      usingProxy: config.usingProxy,
+      hasMixedContent: config.hasMixedContent
     });
   }
 
@@ -174,9 +176,10 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Methods with improved error handling for server offline
+  // API Methods with CORS proxy support
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+    const config = getServerConfig();
     
     console.log(`🌐 Fazendo requisição: ${options.method || 'GET'} ${fullUrl}`);
     
@@ -185,20 +188,25 @@ class WhatsAppMultiClientService {
       'Accept': 'application/json',
     };
 
+    // Add CORS proxy headers if using proxy
+    if (config.usingProxy) {
+      defaultHeaders['X-Requested-With'] = 'XMLHttpRequest';
+    }
+
     // Configure fetch with timeout and proper error handling
-    const config: RequestInit = {
+    const fetchConfig: RequestInit = {
       ...options,
       headers: {
         ...defaultHeaders,
         ...options.headers,
       },
-      mode: 'cors',
+      mode: config.usingProxy ? 'cors' : 'cors',
       credentials: 'omit',
-      signal: AbortSignal.timeout(10000) // 10 second timeout
+      signal: AbortSignal.timeout(15000) // 15 second timeout for proxy
     };
 
     try {
-      const response = await fetch(fullUrl, config);
+      const response = await fetch(fullUrl, fetchConfig);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -215,13 +223,17 @@ class WhatsAppMultiClientService {
       
       // Handle different error types
       if (error.name === 'TimeoutError') {
-        throw new Error('Timeout: Servidor não respondeu em 10 segundos');
+        throw new Error('Timeout: Servidor não respondeu em 15 segundos');
       } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-        throw new Error('Servidor offline ou inacessível (Mixed Content/CORS)');
+        if (config.usingProxy) {
+          throw new Error('Proxy CORS não está acessível. Ative o proxy em: https://cors-anywhere.herokuapp.com/corsdemo');
+        } else {
+          throw new Error('Servidor offline ou inacessível');
+        }
       } else if (error.message.includes('Mixed Content')) {
-        throw new Error('Mixed Content Security: HTTPS não pode acessar HTTP');
+        throw new Error('Mixed Content Security: Configure proxy CORS');
       } else if (error.message.includes('CORS')) {
-        throw new Error('CORS não configurado no servidor');
+        throw new Error('CORS Error: Verifique configuração do proxy');
       }
       
       throw error;
@@ -322,10 +334,12 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Check server health
+  // Check server health with proxy support
   async checkServerHealth(): Promise<ServerHealth> {
     try {
-      console.log('🔍 Health check:', `${API_BASE_URL}/health`);
+      const config = getServerConfig();
+      console.log('🔍 Health check:', `${API_BASE_URL}/health`, config.usingProxy ? '(via proxy)' : '(direto)');
+      
       const response = await this.makeRequest('/health');
       console.log('✅ Health check bem-sucedido:', response);
       return response;

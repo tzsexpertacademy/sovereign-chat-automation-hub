@@ -22,7 +22,8 @@ import InstanceCreationForm from "./InstanceCreationForm";
 import InstancesList from "./InstancesList";
 import MixedContentWarning from "./MixedContentWarning";
 import ConnectionDiagnostics from "./ConnectionDiagnostics";
-import { SERVER_URL } from "@/config/environment";
+import CorsProxySetup from "./CorsProxySetup";
+import { getServerConfig } from "@/config/environment";
 
 interface SystemHealth {
   serverOnline: boolean;
@@ -102,8 +103,10 @@ const InstancesManager = () => {
       issues: []
     };
 
+    const config = getServerConfig();
+
     try {
-      // Test server connection with better error handling
+      // Test server connection
       const serverHealth = await whatsappService.checkServerHealth();
       health.serverOnline = true;
       console.log('✅ Servidor online:', serverHealth);
@@ -111,39 +114,45 @@ const InstancesManager = () => {
       // Check if HTTPS is available
       health.httpsEnabled = window.location.protocol === 'https:';
       
-      // Test CORS by attempting a simple request
-      try {
-        await fetch(`${SERVER_URL}/health`, {
-          method: 'GET',
-          mode: 'cors',
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-          }
-        });
+      // If using proxy, CORS is automatically enabled
+      if (config.usingProxy) {
         health.corsEnabled = true;
-      } catch (corsError: any) {
-        health.corsEnabled = false;
-        if (corsError.message.includes('Mixed Content')) {
-          health.issues.push('Mixed Content Security - HTTPS não pode acessar HTTP');
-        } else if (corsError.message.includes('CORS')) {
-          health.issues.push('CORS não configurado no servidor');
-        } else {
-          health.issues.push('Erro de conectividade - verifique proxy CORS');
+        console.log('✅ CORS habilitado via proxy');
+      } else {
+        // Test CORS by attempting a simple request
+        try {
+          await fetch(`${config.SERVER_URL}/health`, {
+            method: 'GET',
+            mode: 'cors',
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest'
+            }
+          });
+          health.corsEnabled = true;
+        } catch (corsError: any) {
+          health.corsEnabled = false;
+          health.issues.push('CORS não configurado - usando proxy automático');
         }
       }
       
     } catch (error: any) {
       health.serverOnline = false;
-      if (error.message.includes('Failed to fetch')) {
-        health.issues.push('Mixed Content Security ou servidor offline');
+      if (error.message.includes('Proxy CORS não está acessível')) {
+        health.issues.push('Proxy CORS precisa ser habilitado');
+      } else if (error.message.includes('Failed to fetch')) {
+        health.issues.push('Servidor offline ou proxy CORS desabilitado');
       } else {
         health.issues.push('Servidor WhatsApp offline ou inacessível');
       }
     }
 
-    // Additional checks for mixed content
-    if (health.httpsEnabled && SERVER_URL.startsWith('http://')) {
-      health.issues.push('Mixed Content: HTTPS tentando acessar HTTP');
+    // Mixed content detection
+    if (config.hasMixedContent) {
+      if (config.usingProxy) {
+        health.issues.push('Mixed Content resolvido via proxy CORS');
+      } else {
+        health.issues.push('Mixed Content: Necessário proxy CORS');
+      }
     }
 
     setSystemHealth(health);
@@ -242,7 +251,7 @@ const InstancesManager = () => {
         <div>
           <h1 className="text-3xl font-bold">Gerenciador de Instâncias WhatsApp</h1>
           <p className="text-muted-foreground">
-            Sistema com proxy CORS para resolver Mixed Content Security
+            Sistema com proxy CORS automático para resolver Mixed Content Security
           </p>
         </div>
         <div className="flex space-x-2">
@@ -256,6 +265,9 @@ const InstancesManager = () => {
           </Button>
         </div>
       </div>
+
+      {/* CORS Proxy Setup */}
+      <CorsProxySetup />
 
       {/* Mixed Content Warning */}
       <MixedContentWarning />
@@ -315,7 +327,7 @@ const InstancesManager = () => {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 <div className="space-y-1">
-                  <p className="font-medium">Problemas Detectados:</p>
+                  <p className="font-medium">Status do Sistema:</p>
                   <ul className="list-disc list-inside space-y-1">
                     {systemHealth.issues.map((issue, index) => (
                       <li key={index} className="text-sm">{issue}</li>
@@ -331,27 +343,6 @@ const InstancesManager = () => {
           </p>
         </CardContent>
       </Card>
-
-      {/* Mixed Content Security Alert */}
-      {systemHealth.issues.some(issue => issue.includes('Mixed Content')) && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="space-y-2">
-              <p className="font-medium">🔒 Problema de Mixed Content Security</p>
-              <p className="text-sm">
-                O Lovable (HTTPS) não pode acessar diretamente servidores HTTP. 
-                Configuramos um proxy CORS para resolver isso.
-              </p>
-              <div className="bg-gray-100 p-2 rounded text-xs font-mono">
-                <p>Frontend: HTTPS (Lovable)</p>
-                <p>Servidor: HTTP (VPS)</p>
-                <p>Solução: Proxy CORS habilitado</p>
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* System Status Components */}
       <WhatsAppSystemStatus />
