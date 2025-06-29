@@ -43,6 +43,8 @@ const InstancesManager = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  // Git reset test comment - can be removed
+
   useEffect(() => {
     loadData();
     const interval = setInterval(checkSystemHealth, 30000); // Check every 30s
