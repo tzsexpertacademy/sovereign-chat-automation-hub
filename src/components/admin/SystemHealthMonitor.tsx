@@ -33,8 +33,12 @@ const SystemHealthMonitor = () => {
     const interval = setInterval(checkSystemHealth, 30000);
     
     return () => {
-      interval && clearInterval(interval);
-      unsubscribe && connectionManager.removeListener(unsubscribe);
+      if (interval) {
+        clearInterval(interval);
+      }
+      if (unsubscribe) {
+        connectionManager.removeListener(unsubscribe);
+      }
     };
   }, []);
 
