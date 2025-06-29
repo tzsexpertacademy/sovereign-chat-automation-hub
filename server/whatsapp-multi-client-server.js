@@ -6,7 +6,6 @@ const { Client, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
-const { phoneNumberFormatter } = require('./helpers/formatter');
 const mime = require('mime-types');
 
 const app = express();

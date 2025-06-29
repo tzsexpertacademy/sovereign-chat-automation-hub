@@ -35,6 +35,21 @@ if (isProduction) {
 export const SERVER_URL = SERVER_HOST;
 export { API_BASE_URL, SOCKET_URL };
 
+// Export additional config functions
+export const getServerConfig = () => ({
+  SERVER_URL,
+  API_BASE_URL,
+  SOCKET_URL,
+  isProduction,
+  isDevelopment
+});
+
+export const getAlternativeServerConfig = () => ({
+  SERVER_URL: isDevelopment ? 'https://146.59.227.248:4000' : 'http://localhost:4000',
+  API_BASE_URL: isDevelopment ? 'https://146.59.227.248:4000' : 'http://localhost:4000',
+  SOCKET_URL: isDevelopment ? 'https://146.59.227.248:4000' : 'http://localhost:4000'
+});
+
 console.log('✅ Configuração de ambiente:', {
   SERVER_URL,
   API_BASE_URL,
