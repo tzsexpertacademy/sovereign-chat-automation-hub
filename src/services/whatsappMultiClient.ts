@@ -1,5 +1,5 @@
 import io, { Socket } from 'socket.io-client';
-import { SERVER_URL, API_BASE_URL, SOCKET_URL, getServerConfig } from '@/config/environment';
+import { SERVER_URL, API_BASE_URL, SOCKET_URL, HTTPS_SERVER_URL, getServerConfig } from '@/config/environment';
 
 export interface WhatsAppClient {
   clientId: string;
@@ -47,14 +47,16 @@ class WhatsAppMultiClientService {
   private reconnectInterval = 5000; // 5 seconds
 
   constructor() {
-    console.log('🔧 WhatsApp Multi-Client Service inicializando...');
+    console.log('🔒 WhatsApp Multi-Client Service inicializando com HTTPS...');
     const config = getServerConfig();
-    console.log('📡 URLs configuradas:', {
+    console.log('📡 URLs HTTPS configuradas:', {
       SERVER_URL,
       API_BASE_URL,
       SOCKET_URL,
+      HTTPS_SERVER_URL,
       isHttps: config.isHttps,
-      corsEnabled: config.corsEnabled
+      requiresHttps: config.requiresHttps,
+      lovableCompatible: config.lovableCompatible
     });
   }
 
@@ -65,41 +67,42 @@ class WhatsAppMultiClientService {
       return this.socket;
     }
 
-    console.log('🔌 Conectando ao WebSocket:', SOCKET_URL);
+    console.log('🔌 Conectando ao WebSocket HTTPS:', SOCKET_URL);
 
     try {
       this.socket = io(SOCKET_URL, {
         transports: ['websocket', 'polling'],
-        timeout: 10000,
+        timeout: 15000,
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectInterval,
         forceNew: true,
         withCredentials: false,
-        rejectUnauthorized: false // Accept self-signed certificates
+        rejectUnauthorized: false, // Accept self-signed certificates
+        secure: SOCKET_URL.startsWith('wss://') // Enable secure mode for WSS
       });
 
       this.socket.on('connect', () => {
-        console.log('✅ WebSocket conectado com sucesso');
+        console.log('✅ WebSocket HTTPS conectado com sucesso');
         this.reconnectAttempts = 0;
       });
 
       this.socket.on('disconnect', (reason) => {
-        console.log('❌ WebSocket desconectado:', reason);
+        console.log('❌ WebSocket HTTPS desconectado:', reason);
       });
 
       this.socket.on('connect_error', (error) => {
-        console.error('❌ Erro WebSocket:', error.message);
+        console.error('❌ Erro WebSocket HTTPS:', error.message);
         this.reconnectAttempts++;
         
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-          console.error('❌ Máximo de tentativas de reconexão atingido');
+          console.error('❌ Máximo de tentativas de reconexão HTTPS atingido');
         }
       });
 
       return this.socket;
     } catch (error) {
-      console.error('❌ Erro ao inicializar WebSocket:', error);
+      console.error('❌ Erro ao inicializar WebSocket HTTPS:', error);
       throw error;
     }
   }
@@ -179,11 +182,17 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Methods with improved HTTPS handling
+  // API Methods with HTTPS ONLY
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     
-    console.log(`🌐 Fazendo requisição HTTPS: ${options.method || 'GET'} ${fullUrl}`);
+    console.log(`🔒 Fazendo requisição HTTPS: ${options.method || 'GET'} ${fullUrl}`);
+    
+    // Verificar se a URL é HTTPS em produção
+    const config = getServerConfig();
+    if (!config.isDevelopment && !fullUrl.startsWith('https://')) {
+      throw new Error('HTTPS_REQUIRED: HTTPS é obrigatório em produção');
+    }
     
     const defaultHeaders = {
       'Content-Type': 'application/json',
@@ -191,7 +200,7 @@ class WhatsAppMultiClientService {
       'Cache-Control': 'no-cache'
     };
 
-    // Configuração otimizada para HTTPS com certificado autoassinado
+    // Configuração otimizada para HTTPS obrigatório
     const fetchConfig: RequestInit = {
       ...options,
       headers: {
@@ -200,7 +209,7 @@ class WhatsAppMultiClientService {
       },
       mode: 'cors',
       credentials: 'omit',
-      signal: options.signal || AbortSignal.timeout(10000)
+      signal: options.signal || AbortSignal.timeout(15000)
     };
 
     try {
@@ -209,7 +218,7 @@ class WhatsAppMultiClientService {
       console.log(`📡 Resposta HTTPS: ${response.status} ${response.statusText}`);
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTPS ${response.status}: ${response.statusText}`);
       }
 
       const contentType = response.headers.get('content-type');
@@ -225,15 +234,18 @@ class WhatsAppMultiClientService {
     } catch (error: any) {
       console.error(`❌ Erro na requisição HTTPS para ${fullUrl}:`, error);
       
-      // Classificação melhorada de erros
+      // Classificação melhorada de erros HTTPS
       if (error.name === 'AbortError' || error.name === 'TimeoutError') {
         throw new Error('TIMEOUT_ERROR');
       } else if (error.message === 'Failed to fetch' || 
                  error.name === 'TypeError' ||
                  error.message.includes('net::') ||
                  error.message.includes('SSL') ||
-                 error.message.includes('certificate')) {
-        throw new Error('CERTIFICADO_SSL_NECESSARIO');
+                 error.message.includes('certificate') ||
+                 error.message.includes('TLS')) {
+        throw new Error('SSL_CERTIFICATE_ERROR');
+      } else if (error.message.includes('HTTPS_REQUIRED')) {
+        throw new Error('HTTPS_REQUIRED');
       }
       
       throw error;
@@ -352,10 +364,10 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Check server health with improved error handling
+  // Check server health with HTTPS validation
   async checkServerHealth(): Promise<ServerHealth> {
     try {
-      console.log('🔍 Health check HTTPS:', `${API_BASE_URL}/health`);
+      console.log('🔍 Health check HTTPS obrigatório:', `${API_BASE_URL}/health`);
       
       const response = await this.makeRequest('/health');
       console.log('✅ Health check HTTPS bem-sucedido:', response);
@@ -364,26 +376,28 @@ class WhatsAppMultiClientService {
     } catch (error: any) {
       console.error('❌ Health check HTTPS falhou:', error.message);
       
-      if (error.message === 'CERTIFICADO_SSL_NECESSARIO') {
-        throw new Error('CERTIFICADO_SSL_NAO_ACEITO');
+      if (error.message === 'SSL_CERTIFICATE_ERROR') {
+        throw new Error('SSL_CERTIFICATE_NOT_ACCEPTED');
       } else if (error.message === 'TIMEOUT_ERROR') {
-        throw new Error('SERVIDOR_TIMEOUT');
+        throw new Error('SERVER_TIMEOUT');
+      } else if (error.message === 'HTTPS_REQUIRED') {
+        throw new Error('HTTPS_REQUIRED');
       }
       
       throw error;
     }
   }
 
-  // Test connection with improved logic
+  // Test connection with HTTPS validation
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
-      console.log('🧪 Testando conexão HTTPS com servidor...');
+      console.log('🧪 Testando conexão HTTPS obrigatória com servidor...');
       const health = await this.checkServerHealth();
       
       if (health && health.status === 'ok') {
         return {
           success: true,
-          message: `✅ HTTPS funcionando! Servidor: ${health.server || 'HTTPS'} | Versão: ${health.version || 'unknown'}`
+          message: `✅ HTTPS funcionando! Servidor: ${health.server || 'HTTPS'} | Versão: ${health.version || 'unknown'} | SSL: ✅`
         };
       } else {
         return {
@@ -394,15 +408,20 @@ class WhatsAppMultiClientService {
     } catch (error: any) {
       console.error('❌ Teste de conexão HTTPS falhou:', error.message);
       
-      if (error.message === 'CERTIFICADO_SSL_NAO_ACEITO') {
+      if (error.message === 'SSL_CERTIFICATE_NOT_ACCEPTED') {
         return {
           success: false,
           message: 'Certificado SSL: Aceite o certificado abrindo https://146.59.227.248/health no navegador'
         };
-      } else if (error.message === 'SERVIDOR_TIMEOUT') {
+      } else if (error.message === 'SERVER_TIMEOUT') {
         return {
           success: false,
-          message: 'Timeout: Servidor não respondeu em 10 segundos'
+          message: 'Timeout: Servidor não respondeu em 15 segundos'
+        };
+      } else if (error.message === 'HTTPS_REQUIRED') {
+        return {
+          success: false,
+          message: 'HTTPS obrigatório: Configure certificado SSL e reinicie em modo HTTPS'
         };
       }
       
