@@ -84,7 +84,7 @@ chmod 644 /etc/ssl/whatsapp/fullchain.pem
 
 echo "✅ Certificado SSL criado com SAN!"
 
-# Configurar Nginx DEFINITIVO
+# Configurar Nginx CORRIGIDO
 echo "⚙️ Configurando Nginx..."
 cat > /etc/nginx/sites-available/whatsapp-multi-client << 'EOF'
 # Configuração HTTPS Definitiva para WhatsApp Multi-Client
@@ -112,29 +112,6 @@ server {
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
     
-    # Headers de segurança
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options DENY always;
-    add_header X-Content-Type-Options nosniff always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    
-    # CORS Headers para todas as rotas
-    add_header Access-Control-Allow-Origin "*" always;
-    add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
-    add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
-    add_header Access-Control-Expose-Headers "Content-Length,Content-Range" always;
-    
-    # Handle preflight requests
-    if ($request_method = 'OPTIONS') {
-        add_header Access-Control-Allow-Origin "*";
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH";
-        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization";
-        add_header Access-Control-Max-Age 1728000;
-        add_header Content-Type 'text/plain; charset=utf-8';
-        add_header Content-Length 0;
-        return 204;
-    }
-    
     # Frontend (React app)
     location / {
         proxy_pass http://127.0.0.1:FRONTEND_PORT_PLACEHOLDER;
@@ -147,10 +124,33 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 86400;
+        
+        # Headers de segurança para frontend
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Frame-Options DENY always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        
+        # CORS Headers para frontend
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
+        add_header Access-Control-Expose-Headers "Content-Length,Content-Range" always;
     }
     
     # API Backend - TODAS as rotas da API
     location ~ ^/(clients|health|api-docs) {
+        # Handle preflight requests primeiro
+        if ($request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+            add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
+            add_header Access-Control-Max-Age 1728000 always;
+            add_header Content-Type 'text/plain; charset=utf-8' always;
+            add_header Content-Length 0 always;
+            return 204;
+        }
+        
         proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -162,16 +162,11 @@ server {
         proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 86400;
         
-        # CORS específico para API
-        if ($request_method = 'OPTIONS') {
-            add_header Access-Control-Allow-Origin "*";
-            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH";
-            add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization";
-            add_header Access-Control-Max-Age 1728000;
-            add_header Content-Type 'text/plain; charset=utf-8';
-            add_header Content-Length 0;
-            return 204;
-        }
+        # CORS para API responses
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
+        add_header Access-Control-Expose-Headers "Content-Length,Content-Range" always;
     }
     
     # WebSocket para Socket.IO
