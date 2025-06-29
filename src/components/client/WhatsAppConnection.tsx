@@ -110,35 +110,39 @@ const WhatsAppConnection = () => {
     }
   };
 
-  const setupRealtimeUpdates = () => {
+  const setupRealtimeUpdates = async () => {
     if (!clientId) return;
 
-    // Configurar listener para atualizações de status via WebSocket
-    const socket = whatsappService.connectSocket();
-    
-    socket.on('connect', () => {
-      console.log('✅ WebSocket conectado para updates');
-      whatsappService.joinClientRoom(clientId);
-    });
-
-    socket.on(`status_${clientId}`, (statusUpdate: any) => {
-      console.log('📱 Status update recebido:', statusUpdate);
+    try {
+      // Configurar listener para atualizações de status via WebSocket
+      const socket = await whatsappService.connectSocket();
       
-      setInstances(prev => prev.map(instance => {
-        if (instance.instance_id === statusUpdate.instanceId) {
-          return {
-            ...instance,
-            status: statusUpdate.status,
-            phone_number: statusUpdate.phoneNumber || instance.phone_number
-          };
-        }
-        return instance;
-      }));
-    });
+      socket.on('connect', () => {
+        console.log('✅ WebSocket conectado para updates');
+        whatsappService.joinClientRoom(clientId);
+      });
 
-    return () => {
-      socket.disconnect();
-    };
+      socket.on(`status_${clientId}`, (statusUpdate: any) => {
+        console.log('📱 Status update recebido:', statusUpdate);
+        
+        setInstances(prev => prev.map(instance => {
+          if (instance.instance_id === statusUpdate.instanceId) {
+            return {
+              ...instance,
+              status: statusUpdate.status,
+              phone_number: statusUpdate.phoneNumber || instance.phone_number
+            };
+          }
+          return instance;
+        }));
+      });
+
+      return () => {
+        socket.disconnect();
+      };
+    } catch (error) {
+      console.error('❌ Erro ao configurar WebSocket:', error);
+    }
   };
 
   const canCreateNewInstance = () => {

@@ -1,5 +1,6 @@
+
 import { io, Socket } from 'socket.io-client';
-import { getServerConfig, getAlternativeServerConfig, resetConnectionCache, getServerConfigSync } from '@/config/environment';
+import { getServerConfig, getAlternativeServerConfig, resetConnectionCache, getServerConfigSync, API_BASE_URL } from '@/config/environment';
 
 console.log(`🔗 WhatsApp Service - Iniciando com detecção inteligente`);
 
@@ -142,158 +143,6 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Atualizar presença (status online)
-  async updatePresence(clientId: string, presence: 'available' | 'unavailable' | 'composing' | 'recording'): Promise<any> {
-    try {
-      console.log(`👤 Atualizando presença para ${clientId}: ${presence}`);
-      
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/presence`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ presence })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao atualizar presença');
-      }
-      
-      console.log(`✅ Presença atualizada: ${presence}`);
-      return data;
-    } catch (error) {
-      console.error(`❌ Erro ao atualizar presença ${clientId}:`, error);
-      throw error;
-    }
-  }
-
-  // Indicador de digitação
-  async setTyping(clientId: string, chatId: string, isTyping: boolean): Promise<any> {
-    try {
-      console.log(`⌨️ ${isTyping ? 'Iniciando' : 'Parando'} indicador de digitação para ${chatId}`);
-      
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/set-typing`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId, isTyping })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao definir status de digitação');
-      }
-      
-      console.log(`✅ Status de digitação atualizado: ${isTyping}`);
-      return data;
-    } catch (error) {
-      console.error(`❌ Erro ao definir digitação:`, error);
-      // Não fazer throw para não quebrar o fluxo
-      return { success: false, error: error.message };
-    }
-  }
-
-  // Indicador de gravação
-  async setRecording(clientId: string, chatId: string, isRecording: boolean): Promise<any> {
-    try {
-      console.log(`🎤 ${isRecording ? 'Iniciando' : 'Parando'} indicador de gravação para ${chatId}`);
-      
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/set-recording`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId, isRecording })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao definir status de gravação');
-      }
-      
-      console.log(`✅ Status de gravação atualizado: ${isRecording}`);
-      return data;
-    } catch (error) {
-      console.error(`❌ Erro ao definir gravação:`, error);
-      // Não fazer throw para não quebrar o fluxo
-      return { success: false, error: error.message };
-    }
-  }
-
-  // Marcar mensagem como lida
-  async markAsRead(clientId: string, chatId: string, messageId: string): Promise<any> {
-    try {
-      console.log(`✓ Marcando mensagem como lida: ${messageId}`);
-      
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/mark-as-read`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId, messageId })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao marcar como lida');
-      }
-      
-      console.log(`✅ Mensagem marcada como lida`);
-      return data;
-    } catch (error) {
-      console.error(`❌ Erro ao marcar como lida:`, error);
-      // Não fazer throw para não quebrar o fluxo
-      return { success: false, error: error.message };
-    }
-  }
-
-  // Enviar reação a uma mensagem
-  async sendReaction(clientId: string, chatId: string, messageId: string, emoji: string): Promise<any> {
-    try {
-      console.log(`🎭 Enviando reação ${emoji} para mensagem ${messageId} em ${chatId}`);
-      
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-reaction`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          chatId, 
-          messageId, 
-          emoji 
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao enviar reação');
-      }
-      
-      console.log(`✅ Reação ${emoji} enviada com sucesso`);
-      return data;
-    } catch (error) {
-      console.error(`❌ Erro ao enviar reação:`, error);
-      throw error;
-    }
-  }
-
   // Fazer requisição com fallback automático
   private async makeRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
     const config = await this.getCurrentConfig();
@@ -348,272 +197,6 @@ class WhatsAppMultiClientService {
         }
       }
       
-      throw error;
-    }
-  }
-
-  // Testar conexão com o servidor
-  async testServerConnection(): Promise<boolean> {
-    try {
-      console.log('🔍 Testando conexão com servidor WhatsApp...');
-      const response = await fetch(`${API_BASE_URL}/clients`, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      if (!response.ok) {
-        console.error(`❌ Servidor resposta: ${response.status} - ${response.statusText}`);
-        return false;
-      }
-      
-      const data = await response.json();
-      console.log('✅ Servidor respondendo corretamente:', data);
-      return true;
-    } catch (error) {
-      console.error('❌ Erro ao testar servidor:', error);
-      return false;
-    }
-  }
-
-  // Diagnóstico completo do cliente
-  async diagnoseClient(clientId: string): Promise<any> {
-    try {
-      console.log(`🔍 Executando diagnóstico completo para ${clientId}...`);
-      
-      // 1. Testar conexão com servidor
-      const serverOk = await this.testServerConnection();
-      
-      // 2. Verificar status do cliente
-      const clientStatus = await this.getClientStatus(clientId);
-      
-      // 3. Verificar health do servidor
-      const serverHealth = await this.checkServerHealth();
-      
-      return {
-        serverConnected: serverOk,
-        clientStatus,
-        serverHealth,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error('❌ Erro no diagnóstico:', error);
-      return {
-        serverConnected: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      };
-    }
-  }
-
-  async getClientStatus(clientId: string): Promise<WhatsAppClient> {
-    try {
-      const response = await this.makeRequest(`/api/clients/${clientId}/status`);
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar status');
-      }
-      
-      return {
-        clientId: data.clientId,
-        status: data.status,
-        phoneNumber: data.phoneNumber,
-        hasQrCode: !!data.qrCode,
-        qrCode: data.qrCode
-      };
-    } catch (error) {
-      console.error(`❌ Erro status ${clientId}:`, error);
-      throw error;
-    }
-  }
-
-  async sendMessage(clientId: string, to: string, message: string, mediaUrl?: string, file?: File): Promise<any> {
-    try {
-      console.log('📤 Enviando mensagem:', { 
-        clientId, 
-        to, 
-        message: message.substring(0, 50), 
-        hasFile: !!file,
-        hasMediaUrl: !!mediaUrl,
-        fileType: file?.type,
-        fileSize: file?.size 
-      });
-      
-      if (file) {
-        // Envio de arquivo com validação melhorada
-        const formData = new FormData();
-        formData.append('to', to);
-        formData.append('file', file);
-        
-        if (message && message.trim()) {
-          formData.append('caption', message);
-        }
-
-        // Determinar endpoint baseado no tipo de arquivo
-        let endpoint = 'send-media';
-        if (file.type.startsWith('image/')) {
-          endpoint = 'send-image';
-        } else if (file.type.startsWith('video/')) {
-          endpoint = 'send-video';
-        } else if (file.type.startsWith('audio/')) {
-          endpoint = 'send-audio';
-        } else {
-          endpoint = 'send-document';
-        }
-
-        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/${endpoint}`, {
-          method: 'POST',
-          body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao enviar arquivo');
-        }
-        
-        console.log('✅ Arquivo enviado com sucesso:', data);
-        return data;
-        
-      } else if (mediaUrl) {
-        // Envio com URL de mídia
-        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-media-url`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to, message, mediaUrl })
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao enviar mídia');
-        }
-        
-        console.log('✅ Mídia enviada com sucesso');
-        return data;
-        
-      } else {
-        // Envio de mensagem de texto
-        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/send-message`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to, message })
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao enviar mensagem');
-        }
-        
-        console.log('✅ Mensagem enviada com sucesso');
-        return data;
-      }
-    } catch (error: any) {
-      console.error('❌ Erro ao enviar mensagem:', error);
-      throw error;
-    }
-  }
-
-  async getChats(clientId: string, retryCount = 0): Promise<ChatData[]> {
-    try {
-      console.log(`📡 GET ${API_BASE_URL}/clients/${clientId}/chats (tentativa ${retryCount + 1})`);
-      
-      // Verificar estado do cliente antes de buscar chats
-      if (retryCount === 0) {
-        const status = await this.getClientStatus(clientId);
-        console.log('📊 Status do cliente:', status);
-        
-        if (status.status !== 'connected') {
-          throw new Error(`WhatsApp não está conectado (status: ${status.status}). Conecte primeiro na aba "Conexão".`);
-        }
-      }
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000); // Aumentar timeout para 45 segundos
-      
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/chats`, {
-        headers: { 
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache'
-        },
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      console.log(`📡 Resposta do servidor: ${response.status} ${response.statusText}`);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Erro do servidor: ${errorText}`);
-        
-        let errorObj;
-        try {
-          errorObj = JSON.parse(errorText);
-        } catch {
-          throw new Error(`Erro ${response.status}: ${response.statusText}`);
-        }
-        
-        // Se for erro de estado, aguardar um pouco e tentar novamente
-        if (errorObj.error && errorObj.error.includes('Estado atual:') && retryCount < 2) {
-          console.log('🔄 Cliente ainda não está pronto, aguardando...');
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          return this.getChats(clientId, retryCount + 1);
-        }
-        
-        throw new Error(errorObj.error || `Erro ${response.status}: ${errorText || response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        console.error('❌ API retornou erro:', data.error);
-        
-        // Se for erro de serialização, aguardar e tentar novamente
-        if (data.error && data.error.includes('_serialized') && retryCount < 3) {
-          console.log('🔄 Erro de serialização, aguardando e tentando novamente...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          return this.getChats(clientId, retryCount + 1);
-        }
-        
-        throw new Error(data.error || 'Erro ao buscar chats');
-      }
-      
-      console.log(`✅ ${data.chats.length} chats carregados com sucesso`);
-      return data.chats || [];
-      
-    } catch (error: any) {
-      console.error(`❌ Erro ao buscar chats (tentativa ${retryCount + 1}):`, error);
-      
-      // Tentar novamente para erros de rede/timeout
-      if (retryCount < 3 && (
-        error.name === 'TypeError' || 
-        error.name === 'AbortError' || 
-        error.message.includes('timeout') ||
-        error.message.includes('Failed to fetch') ||
-        error.message.includes('_serialized')
-      )) {
-        console.log(`🔄 Tentando novamente em 5 segundos... (${retryCount + 1}/4)`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        return this.getChats(clientId, retryCount + 1);
-      }
-      
-      throw error;
-    }
-  }
-
-  async getChatMessages(clientId: string, chatId: string, limit: number = 50): Promise<MessageData[]> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/chats/${chatId}/messages?limit=${limit}`);
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar mensagens');
-      }
-      
-      return data.messages;
-    } catch (error) {
-      console.error('❌ Erro ao buscar mensagens:', error);
       throw error;
     }
   }
@@ -713,26 +296,119 @@ class WhatsAppMultiClientService {
     }
   }
 
-  async refreshServerConfig() {
-    console.log('🔄 Forçando nova detecção de servidor...');
-    resetConnectionCache();
-    this.currentConfig = null;
-    this.currentConfig = await getServerConfig();
-    console.log(`🎯 Nova configuração: ${this.currentConfig.serverUrl}`);
-  }
-
-  async testConnection(): Promise<boolean> {
+  async getClientStatus(clientId: string): Promise<WhatsAppClient> {
     try {
-      await this.checkServerHealth();
-      return true;
+      const response = await this.makeRequest(`/api/clients/${clientId}/status`);
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao buscar status');
+      }
+      
+      return {
+        clientId: data.clientId,
+        status: data.status,
+        phoneNumber: data.phoneNumber,
+        hasQrCode: !!data.qrCode,
+        qrCode: data.qrCode
+      };
     } catch (error) {
-      return false;
+      console.error(`❌ Erro status ${clientId}:`, error);
+      throw error;
     }
   }
 
-  async getChats(clientId: string, retryCount?: number): Promise<ChatData[]> {
+  async sendMessage(clientId: string, to: string, message: string, mediaUrl?: string, file?: File): Promise<any> {
     try {
-      console.log(`📡 GET ${API_BASE_URL}/clients/${clientId}/chats`);
+      console.log('📤 Enviando mensagem:', { 
+        clientId, 
+        to, 
+        message: message.substring(0, 50), 
+        hasFile: !!file,
+        hasMediaUrl: !!mediaUrl,
+        fileType: file?.type,
+        fileSize: file?.size 
+      });
+      
+      if (file) {
+        // Envio de arquivo com validação melhorada
+        const formData = new FormData();
+        formData.append('to', to);
+        formData.append('file', file);
+        
+        if (message && message.trim()) {
+          formData.append('caption', message);
+        }
+
+        // Determinar endpoint baseado no tipo de arquivo
+        let endpoint = 'send-media';
+        if (file.type.startsWith('image/')) {
+          endpoint = 'send-image';
+        } else if (file.type.startsWith('video/')) {
+          endpoint = 'send-video';
+        } else if (file.type.startsWith('audio/')) {
+          endpoint = 'send-audio';
+        } else {
+          endpoint = 'send-document';
+        }
+
+        const config = await this.getCurrentConfig();
+        const response = await fetch(`${config.serverUrl}/api/clients/${clientId}/${endpoint}`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Erro ao enviar arquivo');
+        }
+        
+        console.log('✅ Arquivo enviado com sucesso:', data);
+        return data;
+        
+      } else if (mediaUrl) {
+        // Envio com URL de mídia
+        const response = await this.makeRequest(`/api/clients/${clientId}/send-media-url`, {
+          method: 'POST',
+          body: JSON.stringify({ to, message, mediaUrl })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Erro ao enviar mídia');
+        }
+        
+        console.log('✅ Mídia enviada com sucesso');
+        return data;
+        
+      } else {
+        // Envio de mensagem de texto
+        const response = await this.makeRequest(`/api/clients/${clientId}/send-message`, {
+          method: 'POST',
+          body: JSON.stringify({ to, message })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Erro ao enviar mensagem');
+        }
+        
+        console.log('✅ Mensagem enviada com sucesso');
+        return data;
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao enviar mensagem:', error);
+      throw error;
+    }
+  }
+
+  async getChats(clientId: string, retryCount = 0): Promise<ChatData[]> {
+    try {
+      console.log(`📡 Buscando chats para ${clientId} (tentativa ${retryCount + 1})`);
+      
       const response = await this.makeRequest(`/api/clients/${clientId}/chats`);
       const data = await response.json();
       
@@ -740,17 +416,17 @@ class WhatsAppMultiClientService {
         throw new Error(data.error || 'Erro ao buscar chats');
       }
       
-      return data.chats;
+      console.log(`✅ ${data.chats.length} chats carregados`);
+      return data.chats || [];
     } catch (error) {
       console.error('❌ Erro ao buscar chats:', error);
       throw error;
     }
   }
 
-  async getChatMessages(clientId: string, chatId: string, limit?: number): Promise<MessageData[]> {
+  async getChatMessages(clientId: string, chatId: string, limit: number = 50): Promise<MessageData[]> {
     try {
-      console.log(`📡 GET ${API_BASE_URL}/clients/${clientId}/chats/${chatId}/messages`);
-      const response = await this.makeRequest(`/api/clients/${clientId}/chats/${chatId}/messages`);
+      const response = await this.makeRequest(`/api/clients/${clientId}/chats/${chatId}/messages?limit=${limit}`);
       const data = await response.json();
       
       if (!data.success) {
@@ -762,6 +438,23 @@ class WhatsAppMultiClientService {
       console.error('❌ Erro ao buscar mensagens:', error);
       throw error;
     }
+  }
+
+  async testConnection(): Promise<boolean> {
+    try {
+      await this.checkServerHealth();
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async refreshServerConfig() {
+    console.log('🔄 Forçando nova detecção de servidor...');
+    resetConnectionCache();
+    this.currentConfig = null;
+    this.currentConfig = await getServerConfig();
+    console.log(`🎯 Nova configuração: ${this.currentConfig.serverUrl}`);
   }
 }
 
