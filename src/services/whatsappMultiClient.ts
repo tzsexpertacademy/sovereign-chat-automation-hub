@@ -18,6 +18,8 @@ export interface ServerHealth {
   memory: any;
   version: string;
   server: string;
+  protocol?: string;
+  cors?: any;
 }
 
 export interface MessageData {
@@ -73,7 +75,8 @@ class WhatsAppMultiClientService {
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectInterval,
         forceNew: true,
-        withCredentials: false
+        withCredentials: false,
+        rejectUnauthorized: false // Accept self-signed certificates
       });
 
       this.socket.on('connect', () => {
@@ -176,7 +179,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Methods with CORS detection
+  // API Methods with improved HTTPS support
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     const config = getServerConfig();
@@ -188,7 +191,7 @@ class WhatsAppMultiClientService {
       'Accept': 'application/json',
     };
 
-    // Configure fetch with timeout and proper error handling
+    // Configure fetch with better HTTPS handling
     const fetchConfig: RequestInit = {
       ...options,
       headers: {
@@ -197,11 +200,13 @@ class WhatsAppMultiClientService {
       },
       mode: 'cors',
       credentials: 'omit',
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(30000) // Increased timeout for HTTPS
     };
 
     try {
       const response = await fetch(fullUrl, fetchConfig);
+      
+      console.log(`📡 Resposta HTTPS: ${response.status} ${response.statusText}`);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -209,20 +214,29 @@ class WhatsAppMultiClientService {
 
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
-        return await response.json();
+        const data = await response.json();
+        console.log('✅ Dados JSON recebidos:', data);
+        return data;
       } else {
-        return await response.text();
+        const text = await response.text();
+        console.log('✅ Texto recebido:', text);
+        return text;
       }
     } catch (error: any) {
-      console.error(`❌ Erro na requisição para ${fullUrl}:`, error.message);
+      console.error(`❌ Erro na requisição HTTPS para ${fullUrl}:`, error);
       
-      // Handle CORS errors specifically
-      if (error.message === 'Failed to fetch' || error.message.includes('CORS')) {
-        throw new Error('CORS_ERROR');
+      // Improved error handling for HTTPS
+      if (error.message === 'Failed to fetch') {
+        // Check if it's a certificate issue
+        if (fullUrl.startsWith('https://')) {
+          throw new Error('HTTPS_CERT_ERROR: Certificado SSL não aceito pelo navegador. Acesse o servidor diretamente para aceitar o certificado.');
+        } else {
+          throw new Error('NETWORK_ERROR: Falha na conexão de rede');
+        }
       } else if (error.name === 'TimeoutError') {
-        throw new Error('TIMEOUT_ERROR');
-      } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-        throw new Error('CORS_ERROR');
+        throw new Error('TIMEOUT_ERROR: Timeout na requisição HTTPS');
+      } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        throw new Error('HTTPS_CERT_ERROR: Problema com certificado SSL');
       }
       
       throw error;
@@ -232,7 +246,7 @@ class WhatsAppMultiClientService {
   // Get all clients
   async getAllClients(): Promise<WhatsAppClient[]> {
     try {
-      console.log('📋 Buscando todos os clientes...');
+      console.log('📋 Buscando todos os clientes via HTTPS...');
       const response = await this.makeRequest('/clients');
       
       if (response.success && Array.isArray(response.clients)) {
@@ -248,18 +262,18 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Connect client with CORS handling
+  // Connect client with improved HTTPS handling
   async connectClient(clientId: string): Promise<any> {
     try {
-      console.log(`🔗 Conectando cliente: ${clientId}`);
+      console.log(`🔗 Conectando cliente via HTTPS: ${clientId}`);
       return await this.makeRequest(`/clients/${clientId}/connect`, {
         method: 'POST'
       });
     } catch (error: any) {
       console.error(`❌ Erro ao conectar cliente ${clientId}:`, error.message);
       
-      if (error.message === 'CORS_ERROR') {
-        throw new Error('CORS: Servidor não configurado para aceitar requisições HTTPS do Lovable');
+      if (error.message.includes('HTTPS_CERT_ERROR')) {
+        throw new Error('CERTIFICADO_SSL: Acesse https://146.59.227.248/health no navegador e aceite o certificado antes de usar o sistema');
       }
       
       throw error;
@@ -341,28 +355,53 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Check server health with CORS detection
+  // Check server health with improved HTTPS support
   async checkServerHealth(): Promise<ServerHealth> {
     try {
       const config = getServerConfig();
       console.log('🔍 Health check HTTPS:', `${API_BASE_URL}/health`);
       
       const response = await this.makeRequest('/health');
-      console.log('✅ Health check bem-sucedido:', response);
+      console.log('✅ Health check HTTPS bem-sucedido:', response);
+      
+      // Add HTTPS status info
+      if (response && typeof response === 'object') {
+        response.httpsConfigured = true;
+        response.corsStatus = response.cors?.enabled ? 'enabled' : 'unknown';
+      }
+      
       return response;
     } catch (error: any) {
-      console.error('❌ Health check falhou:', error.message);
+      console.error('❌ Health check HTTPS falhou:', error.message);
+      
+      if (error.message.includes('HTTPS_CERT_ERROR')) {
+        // Return a specific error for certificate issues
+        throw new Error('CERTIFICADO_SSL_NAO_ACEITO');
+      }
+      
       throw error;
     }
   }
 
-  // Test connection
-  async testConnection(): Promise<boolean> {
+  // Test connection with certificate guidance
+  async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
       await this.checkServerHealth();
-      return true;
-    } catch (error) {
-      return false;
+      return {
+        success: true,
+        message: 'Conexão HTTPS funcionando perfeitamente!'
+      };
+    } catch (error: any) {
+      if (error.message === 'CERTIFICADO_SSL_NAO_ACEITO') {
+        return {
+          success: false,
+          message: 'Certificado SSL: Acesse https://146.59.227.248/health no navegador primeiro'
+        };
+      }
+      return {
+        success: false,
+        message: `Erro: ${error.message}`
+      };
     }
   }
 }
