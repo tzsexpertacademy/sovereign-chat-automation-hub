@@ -35,11 +35,8 @@ if [ ! -f "$SSL_DIR/fullchain.pem" ] || [ ! -f "$SSL_DIR/privkey.pem" ]; then
     echo "🔧 Criando novo certificado SSL..."
     mkdir -p $SSL_DIR
     
-    # Gerar certificado com SAN (Subject Alternative Names) para resolver problemas de API
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout $SSL_DIR/privkey.pem \
-        -out $SSL_DIR/fullchain.pem \
-        -config <(cat <<EOF
+    # Criar arquivo de configuração temporário para o certificado
+    cat > /tmp/ssl_config.conf << EOF
 [req]
 distinguished_name = req_distinguished_name
 req_extensions = v3_req
@@ -62,7 +59,15 @@ subjectAltName = @alt_names
 DNS.1 = $DOMAIN
 IP.1 = $DOMAIN
 EOF
-)
+    
+    # Gerar certificado com o arquivo de configuração
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout $SSL_DIR/privkey.pem \
+        -out $SSL_DIR/fullchain.pem \
+        -config /tmp/ssl_config.conf
+    
+    # Limpar arquivo temporário
+    rm -f /tmp/ssl_config.conf
     
     # Definir permissões
     chmod 600 $SSL_DIR/privkey.pem
@@ -223,7 +228,7 @@ EOF
 
 # Substituir placeholders
 sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" /etc/nginx/sites-available/whatsapp-ssl-fixed
-sed -i "s/SSL_DIR_PLACEHOLDER/$(echo $SSL_DIR | sed 's/\//\\\//g')/g" /etc/nginx/sites-available/whatsapp-ssl-fixed
+sed -i "s|SSL_DIR_PLACEHOLDER|$SSL_DIR|g" /etc/nginx/sites-available/whatsapp-ssl-fixed
 sed -i "s/BACKEND_PORT_PLACEHOLDER/$BACKEND_PORT/g" /etc/nginx/sites-available/whatsapp-ssl-fixed
 sed -i "s/FRONTEND_PORT_PLACEHOLDER/$FRONTEND_PORT/g" /etc/nginx/sites-available/whatsapp-ssl-fixed
 
