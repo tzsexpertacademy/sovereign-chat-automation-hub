@@ -50,7 +50,7 @@ server {
 
 # HTTPS Server - CORREÇÃO CIRÚRGICA NO /api-docs
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     server_name $DOMAIN;
     
     # SSL Configuration - MANTIDA EXATAMENTE IGUAL
@@ -93,27 +93,14 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
     
-    # 4. API Docs - CORRIGIDO (era 301, agora será 200)
+    # 4. API Docs - CORRIGIDO (era 301, agora será 200) - SEM REGEX
     location /api-docs {
         proxy_pass http://127.0.0.1:$BACKEND_PORT/api-docs;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        
-        # Headers específicos para Swagger UI
-        proxy_set_header Accept-Encoding "";
         proxy_redirect off;
-        
-        # Configuração específica para evitar redirect 301
-        location ~ ^/api-docs/?\$ {
-            proxy_pass http://127.0.0.1:$BACKEND_PORT/api-docs;
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
-            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto \$scheme;
-            proxy_redirect off;
-        }
     }
     
     # 5. API Clients - MANTIDO (funcionando)
