@@ -87,26 +87,31 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
             const realStatus = await whatsappService.getClientStatus(instanceId);
             const currentLocalStatus = instances[instanceId]?.status;
             
-            // MAPEAR STATUS CORRETAMENTE - CRITICAL FIX DEFINITIVO
+            // CORREÇÃO CRÍTICA - PRIORIZAR PHONEUMBER E AUTHENTICATED
             let normalizedStatus = realStatus.status;
             
-            // SEMPRE MAPEAR AUTHENTICATED PARA CONNECTED
-            if (realStatus.status === 'authenticated') {
+            // PRIORIDADE 1: Se tem phoneNumber, SEMPRE é 'connected'
+            if (realStatus.phoneNumber && realStatus.phoneNumber.length > 0) {
               normalizedStatus = 'connected';
             }
-            // Se tem phoneNumber, definitivamente é 'connected'
-            else if (realStatus.phoneNumber && realStatus.phoneNumber.length > 0) {
+            // PRIORIDADE 2: Se status é 'authenticated', SEMPRE é 'connected'
+            else if (realStatus.status === 'authenticated') {
               normalizedStatus = 'connected';
             }
-            // Se tem QR Code mas não tem phoneNumber, é 'qr_ready'
+            // PRIORIDADE 3: Se status já é 'connected', manter
+            else if (realStatus.status === 'connected') {
+              normalizedStatus = 'connected';
+            }
+            // APENAS se não tem phone E não está autenticado → verificar QR
             else if (realStatus.hasQrCode && !realStatus.phoneNumber) {
               normalizedStatus = 'qr_ready';
             }
             
-            // FORÇAR ATUALIZAÇÃO PARA STATUS CONNECTED
+            // FORÇAR ATUALIZAÇÃO PARA QUALQUER MUDANÇA REAL
             const shouldUpdate = (
               currentLocalStatus !== normalizedStatus ||
-              (normalizedStatus === 'connected' && !instances[instanceId]?.phoneNumber && realStatus.phoneNumber) ||
+              (realStatus.phoneNumber && !instances[instanceId]?.phoneNumber) ||
+              (normalizedStatus === 'connected' && currentLocalStatus !== 'connected') ||
               (realStatus.status === 'authenticated' && currentLocalStatus !== 'connected')
             );
             
@@ -124,15 +129,13 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
                 }
               }));
 
-              // FORÇAR UPDATE NO BANCO IMEDIATAMENTE
-              if (normalizedStatus === 'connected') {
-                console.log(`💾 [GLOBAL] FORÇANDO update banco: ${instanceId} -> ${normalizedStatus}`);
-                whatsappInstancesService.updateInstanceStatus(
-                  instanceId, 
-                  normalizedStatus,
-                  realStatus.phoneNumber ? { phone_number: realStatus.phoneNumber } : undefined
-                ).catch(console.error);
-              }
+              // FORÇAR UPDATE NO BANCO PARA QUALQUER MUDANÇA
+              console.log(`💾 [GLOBAL] FORÇANDO update banco: ${instanceId} -> ${normalizedStatus}`);
+              whatsappInstancesService.updateInstanceStatus(
+                instanceId, 
+                normalizedStatus,
+                realStatus.phoneNumber ? { phone_number: realStatus.phoneNumber } : undefined
+              ).catch(console.error);
 
               // Toast apenas para conexões importantes
               if (normalizedStatus === 'connected' && currentLocalStatus !== 'connected') {
@@ -184,8 +187,15 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
             timestamp: clientData.timestamp
           });
           
-          // MAPEAR AUTHENTICATED PARA CONNECTED - CORREÇÃO CRÍTICA
-          const normalizedStatus = clientData.status === 'authenticated' ? 'connected' : clientData.status;
+          // MAPEAR STATUS CORRETAMENTE - PRIORIZAR PHONEUMBER E AUTHENTICATED
+          let normalizedStatus = clientData.status;
+          if (clientData.phoneNumber && clientData.phoneNumber.length > 0) {
+            normalizedStatus = 'connected';
+          } else if (clientData.status === 'authenticated') {
+            normalizedStatus = 'connected';
+          } else if (clientData.status === 'connected') {
+            normalizedStatus = 'connected';
+          }
           
           setInstances(prev => ({
             ...prev,

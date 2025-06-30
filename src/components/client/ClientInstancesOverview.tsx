@@ -260,8 +260,10 @@ const ClientInstancesOverview = () => {
               <div>
                 <div className="text-2xl font-bold text-green-600">
                   {instances.filter(i => {
-                    const status = getInstanceStatus ? getInstanceStatus(i.instance_id)?.status : i.status;
-                    return status === 'connected' || status === 'authenticated';
+                    const instanceData = getInstanceStatus ? getInstanceStatus(i.instance_id) : { status: i.status, phoneNumber: undefined };
+                    return instanceData.phoneNumber || 
+                           instanceData.status === 'connected' || 
+                           instanceData.status === 'authenticated';
                   }).length}
                 </div>
                 <p className="text-sm text-gray-600">Conectadas</p>
@@ -276,7 +278,11 @@ const ClientInstancesOverview = () => {
               <QrCode className="w-8 h-8 text-blue-500" />
               <div>
                 <div className="text-2xl font-bold text-blue-600">
-                  {instances.filter(i => i.status === 'qr_ready' && !i.phone_number).length}
+                  {instances.filter(i => {
+                    const instanceData = getInstanceStatus ? getInstanceStatus(i.instance_id) : { status: i.status, phoneNumber: undefined };
+                    return (instanceData.status === 'qr_ready' || i.status === 'qr_ready') && 
+                           !instanceData.phoneNumber && !i.phone_number;
+                  }).length}
                 </div>
                 <p className="text-sm text-gray-600">Aguardando QR</p>
               </div>
