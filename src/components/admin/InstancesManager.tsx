@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ import SimpleConnectionStatus from "./SimpleConnectionStatus";
 import InstanceCreationForm from "./InstanceCreationForm";
 import InstancesList from "./InstancesList";
 import { getServerConfig } from "@/config/environment";
+import QRCodeDebugger from "./QRCodeDebugger";
 
 interface SystemHealth {
   serverOnline: boolean;
@@ -231,6 +231,9 @@ const InstancesManager = () => {
 
       {/* Connection Status */}
       <SimpleConnectionStatus />
+
+      {/* QR Code Debugger - NOVO */}
+      <QRCodeDebugger />
 
       {/* System Health Card */}
       <Card>
