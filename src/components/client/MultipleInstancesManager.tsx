@@ -16,11 +16,14 @@ import {
   Activity,
   Edit,
   Save,
-  X
+  X,
+  Play,
+  Pause
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { clientsService, ClientData } from "@/services/clientsService";
+import { useInstanceManager } from "@/hooks/useInstanceManager";
 
 interface MultipleInstancesManagerProps {
   clientId: string;
@@ -35,6 +38,16 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const { toast } = useToast();
+
+  // Hook unificado para gerenciar instâncias
+  const { 
+    connectInstance, 
+    disconnectInstance,
+    getInstanceStatus,
+    isLoading,
+    websocketConnected,
+    cleanup
+  } = useInstanceManager();
 
   useEffect(() => {
     loadInstances();
@@ -326,7 +339,29 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
                       </div>
                       
                       <div className="flex space-x-2">
-                        {instance.status === 'qr_ready' && (
+                        {instance.status === 'connected' ? (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => disconnectInstance(instance.instance_id)}
+                            disabled={isLoading(instance.instance_id)}
+                          >
+                            <Pause className="w-4 h-4 mr-1" />
+                            Pausar
+                          </Button>
+                        ) : (
+                          <Button 
+                            size="sm"
+                            onClick={() => connectInstance(instance.instance_id)}
+                            disabled={isLoading(instance.instance_id)}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            <Play className="w-4 h-4 mr-1" />
+                            Conectar
+                          </Button>
+                        )}
+                        
+                        {getInstanceStatus(instance.instance_id).hasQrCode && (
                           <Button size="sm" variant="outline">
                             <QrCode className="w-4 h-4 mr-1" />
                             Ver QR

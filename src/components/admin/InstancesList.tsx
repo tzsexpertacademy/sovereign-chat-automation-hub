@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
-import { useQRCodeManager } from "@/hooks/useQRCodeManager";
+import { useInstanceManager } from "@/hooks/useInstanceManager";
 
 interface InstancesListProps {
   instances: WhatsAppInstanceData[];
@@ -33,14 +33,15 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Hook para gerenciar QR Code da instância selecionada
+  // Hook unificado para gerenciar instâncias
   const { 
-    qrCodeData, 
-    websocketConnected, 
-    loading, 
     connectInstance, 
-    disconnectInstance 
-  } = useQRCodeManager(selectedInstanceForQR || undefined);
+    disconnectInstance,
+    getInstanceStatus,
+    isLoading,
+    websocketConnected,
+    cleanup
+  } = useInstanceManager();
 
   const getClientName = (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
@@ -82,18 +83,15 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
 
   const handleConnectInstance = async (instanceId: string) => {
     setSelectedInstanceForQR(instanceId);
-    // O hook useQRCodeManager vai gerenciar a conexão automaticamente
-    setTimeout(() => {
-      connectInstance();
-    }, 100);
+    await connectInstance(instanceId);
+    onInstanceUpdated();
   };
 
   const handleDisconnectInstance = async (instanceId: string) => {
-    setSelectedInstanceForQR(instanceId);
-    setTimeout(() => {
-      disconnectInstance();
-      onInstanceUpdated();
-    }, 100);
+    await disconnectInstance(instanceId);
+    cleanup(instanceId);
+    setSelectedInstanceForQR(null);
+    onInstanceUpdated();
   };
 
   const handleViewQRCode = (instanceId: string) => {
@@ -157,7 +155,7 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
                 <CardContent className="space-y-4">
                   
                   {/* Status específico para instância selecionada */}
-                  {selectedInstanceForQR === instance.instance_id && qrCodeData && (
+                  {selectedInstanceForQR === instance.instance_id && (
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium">Status WebSocket:</span>
@@ -173,21 +171,21 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
                         </div>
                       </div>
                       <p className="text-sm text-blue-800">
-                        Status atual: {qrCodeData.status}
+                        Status atual: {getInstanceStatus(instance.instance_id).status}
                       </p>
                     </div>
                   )}
 
                   {/* QR Code Display */}
                   {selectedInstanceForQR === instance.instance_id && 
-                   qrCodeData?.hasQrCode && 
-                   qrCodeData.qrCode && (
+                   getInstanceStatus(instance.instance_id).hasQrCode && 
+                   getInstanceStatus(instance.instance_id).qrCode && (
                     <div className="space-y-3">
                       <div className="text-center">
                         <h4 className="font-medium mb-2">QR Code Disponível!</h4>
                         <div className="bg-white p-4 rounded border">
                           <img 
-                            src={qrCodeData.qrCode} 
+                            src={getInstanceStatus(instance.instance_id).qrCode} 
                             alt="QR Code WhatsApp"
                             className="mx-auto max-w-[200px]"
                           />
@@ -216,7 +214,7 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
                           size="sm" 
                           variant="outline"
                           onClick={() => handleDisconnectInstance(instance.instance_id)}
-                          disabled={loading || !systemHealth.serverOnline}
+                          disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
                         >
                           <Pause className="w-4 h-4 mr-1" />
                           Pausar
@@ -235,10 +233,10 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
                       <Button 
                         size="sm"
                         onClick={() => handleConnectInstance(instance.instance_id)}
-                        disabled={loading || !systemHealth.serverOnline}
+                        disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
                         className="bg-green-600 hover:bg-green-700"
                       >
-                        {loading && selectedInstanceForQR === instance.instance_id ? (
+                        {isLoading(instance.instance_id) ? (
                           <>
                             <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
                             Conectando...
@@ -255,7 +253,7 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
                       size="sm" 
                       variant="outline"
                       onClick={() => handleViewQRCode(instance.instance_id)}
-                      disabled={loading}
+                      disabled={isLoading(instance.instance_id)}
                     >
                       <Eye className="w-4 h-4 mr-1" />
                       QR Code
