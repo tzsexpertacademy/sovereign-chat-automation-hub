@@ -49,32 +49,40 @@ rm -f /etc/nginx/sites-available/whatsapp-*
 echo "🔐 Criando certificado SSL..."
 mkdir -p $SSL_DIR
 
+# Criar arquivo de configuração SSL temporário
+cat > /tmp/ssl_config.conf << EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C=BR
+ST=State
+L=City
+O=WhatsApp
+OU=MultiClient
+CN=$DOMAIN
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = $DOMAIN
+IP.1 = $DOMAIN
+EOF
+
 # Gerar chave privada e certificado autoassinado COMPATÍVEL
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout $SSL_DIR/privkey.pem \
     -out $SSL_DIR/fullchain.pem \
-    -subj "/C=BR/ST=State/L=City/O=WhatsApp/OU=MultiClient/CN=$DOMAIN" \
-    -extensions v3_req \
-    -config <(
-        echo '[req]'
-        echo 'distinguished_name = req_distinguished_name'
-        echo 'req_extensions = v3_req'
-        echo 'prompt = no'
-        echo '[req_distinguished_name]'
-        echo 'C=BR'
-        echo 'ST=State'
-        echo 'L=City'
-        echo 'O=WhatsApp'
-        echo 'OU=MultiClient'
-        echo "CN=$DOMAIN"
-        echo '[v3_req]'
-        echo 'basicConstraints = CA:FALSE'
-        echo 'keyUsage = nonRepudiation, digitalSignature, keyEncipherment'
-        echo 'subjectAltName = @alt_names'
-        echo '[alt_names]'
-        echo "DNS.1 = $DOMAIN"
-        echo "IP.1 = $DOMAIN"
-    )
+    -config /tmp/ssl_config.conf \
+    -extensions v3_req
+
+# Limpar arquivo temporário
+rm -f /tmp/ssl_config.conf
 
 # Definir permissões
 chmod 600 $SSL_DIR/privkey.pem

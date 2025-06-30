@@ -29,7 +29,7 @@ cp "$CONFIG_FILE" "$CONFIG_FILE.backup.$(date +%Y%m%d_%H%M%S)"
 
 # Criar nova configuração
 echo "🔄 Atualizando configuração..."
-cat > "$CONFIG_FILE" << 'EOF'
+cat > "$CONFIG_FILE" << 'FRONTEND_CONFIG'
 // Environment configuration for WhatsApp Multi-Client - HTTPS
 console.log('🌍 Configurando ambiente HTTPS...');
 
@@ -82,7 +82,7 @@ console.log('✅ Configuração HTTPS carregada:', {
   isHttps: !isDevelopment,
   environment: isProduction ? 'production' : isDevelopment ? 'development' : 'https'
 });
-EOF
+FRONTEND_CONFIG
 
 echo "✅ Frontend atualizado para HTTPS!"
 echo ""
@@ -100,4 +100,3 @@ echo "  1. Faça commit das mudanças"
 echo "  2. A configuração será aplicada automaticamente"
 echo ""
 echo "✅ Configuração concluída!"
-EOF
