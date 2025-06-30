@@ -19,6 +19,7 @@ import InstanceCreationForm from "./InstanceCreationForm";
 import InstancesListFixed from "./InstancesListFixed";
 import { getServerConfig } from "@/config/environment";
 import QRCodeDebugger from "./QRCodeDebugger";
+import { InstanceManagerProvider } from "@/contexts/InstanceManagerContext";
 
 interface SystemHealth {
   serverOnline: boolean;
@@ -208,126 +209,128 @@ const InstancesManager = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Gerenciador de Instâncias WhatsApp</h1>
-          <p className="text-muted-foreground">
-            Sistema HTTPS com detecção automática de CORS
-          </p>
+    <InstanceManagerProvider>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold">Gerenciador de Instâncias WhatsApp</h1>
+            <p className="text-muted-foreground">
+              Sistema HTTPS com sincronização global de instâncias
+            </p>
+          </div>
+          <div className="flex space-x-2">
+            <Button onClick={syncInstancesWithServer} variant="outline" disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Sincronizar
+            </Button>
+            <Button onClick={loadData} variant="outline" disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+          </div>
         </div>
-        <div className="flex space-x-2">
-          <Button onClick={syncInstancesWithServer} variant="outline" disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Sincronizar
-          </Button>
-          <Button onClick={loadData} variant="outline" disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
-        </div>
+
+        {/* Connection Status */}
+        <SimpleConnectionStatus />
+
+        {/* QR Code Debugger - SINCRONIZADO */}
+        <QRCodeDebugger />
+
+        {/* System Health Card */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                {getHealthIcon()}
+                <CardTitle>Saúde do Sistema</CardTitle>
+              </div>
+              <Badge variant={getHealthColor()}>
+                {getHealthStatus()}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="flex items-center space-x-2">
+                {systemHealth.serverOnline ? (
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-500" />
+                )}
+                <span className="text-sm">
+                  Servidor: {systemHealth.serverOnline ? 'Online' : 'Offline'}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                {systemHealth.httpsEnabled ? (
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-yellow-500" />
+                )}
+                <span className="text-sm">
+                  HTTPS: {systemHealth.httpsEnabled ? 'Ativo' : 'HTTP'}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                {systemHealth.corsEnabled ? (
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                ) : (
+                  <Shield className="w-4 h-4 text-red-500" />
+                )}
+                <span className="text-sm">
+                  CORS: {systemHealth.corsEnabled ? 'OK' : 'Error'}
+                </span>
+              </div>
+            </div>
+            
+            {systemHealth.issues.length > 0 && (
+              <Alert variant="destructive">
+                <Shield className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="space-y-1">
+                    <p className="font-medium">Problemas detectados:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      {systemHealth.issues.map((issue, index) => (
+                        <li key={index} className="text-sm">{issue}</li>
+                      ))}
+                    </ul>
+                    {!systemHealth.corsEnabled && systemHealth.serverOnline && (
+                      <div className="mt-2 p-2 bg-red-50 rounded border text-xs">
+                        <p><strong>Solução CORS:</strong> Adicione no servidor Node.js:</p>
+                        <code>app.use(cors(&#123; origin: '*', credentials: false &#125;))</code>
+                      </div>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            <p className="text-xs text-gray-500">
+              Última verificação: {systemHealth.lastCheck.toLocaleTimeString()}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* System Status Components */}
+        <WhatsAppSystemStatus />
+
+        {/* Instance Creation Form */}
+        <InstanceCreationForm 
+          clients={clients}
+          onInstanceCreated={loadData}
+          systemHealth={systemHealth}
+        />
+
+        {/* Instances List - SINCRONIZADO */}
+        <InstancesListFixed 
+          instances={instances}
+          clients={clients}
+          onInstanceUpdated={loadData}
+          systemHealth={systemHealth}
+        />
       </div>
-
-      {/* Connection Status */}
-      <SimpleConnectionStatus />
-
-      {/* QR Code Debugger - NOVO */}
-      <QRCodeDebugger />
-
-      {/* System Health Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              {getHealthIcon()}
-              <CardTitle>Saúde do Sistema</CardTitle>
-            </div>
-            <Badge variant={getHealthColor()}>
-              {getHealthStatus()}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="flex items-center space-x-2">
-              {systemHealth.serverOnline ? (
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              ) : (
-                <XCircle className="w-4 h-4 text-red-500" />
-              )}
-              <span className="text-sm">
-                Servidor: {systemHealth.serverOnline ? 'Online' : 'Offline'}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              {systemHealth.httpsEnabled ? (
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              ) : (
-                <XCircle className="w-4 h-4 text-yellow-500" />
-              )}
-              <span className="text-sm">
-                HTTPS: {systemHealth.httpsEnabled ? 'Ativo' : 'HTTP'}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              {systemHealth.corsEnabled ? (
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              ) : (
-                <Shield className="w-4 h-4 text-red-500" />
-              )}
-              <span className="text-sm">
-                CORS: {systemHealth.corsEnabled ? 'OK' : 'Error'}
-              </span>
-            </div>
-          </div>
-          
-          {systemHealth.issues.length > 0 && (
-            <Alert variant="destructive">
-              <Shield className="h-4 w-4" />
-              <AlertDescription>
-                <div className="space-y-1">
-                  <p className="font-medium">Problemas detectados:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    {systemHealth.issues.map((issue, index) => (
-                      <li key={index} className="text-sm">{issue}</li>
-                    ))}
-                  </ul>
-                  {!systemHealth.corsEnabled && systemHealth.serverOnline && (
-                    <div className="mt-2 p-2 bg-red-50 rounded border text-xs">
-                      <p><strong>Solução CORS:</strong> Adicione no servidor Node.js:</p>
-                      <code>app.use(cors(&#123; origin: '*', credentials: false &#125;))</code>
-                    </div>
-                  )}
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
-          
-          <p className="text-xs text-gray-500">
-            Última verificação: {systemHealth.lastCheck.toLocaleTimeString()}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* System Status Components */}
-      <WhatsAppSystemStatus />
-
-      {/* Instance Creation Form */}
-      <InstanceCreationForm 
-        clients={clients}
-        onInstanceCreated={loadData}
-        systemHealth={systemHealth}
-      />
-
-      {/* Instances List - ATUALIZADO */}
-      <InstancesListFixed 
-        instances={instances}
-        clients={clients}
-        onInstanceUpdated={loadData}
-        systemHealth={systemHealth}
-      />
-    </div>
+    </InstanceManagerProvider>
   );
 };
 

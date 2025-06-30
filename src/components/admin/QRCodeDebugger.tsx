@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import whatsappService from "@/services/whatsappMultiClient";
+import { useGlobalInstanceManager } from "@/contexts/InstanceManagerContext";
 
 const QRCodeDebugger = () => {
   const { toast } = useToast();
@@ -23,113 +23,26 @@ const QRCodeDebugger = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [loading, setLoading] = useState(false);
   const [testInstanceId] = useState("debug-test-instance");
-  const [qrCodeData, setQrCodeData] = useState<string | null>(null);
-  const [websocketConnected, setWebsocketConnected] = useState(false);
-  const [instanceStatus, setInstanceStatus] = useState<string>('disconnected');
-  const [socketConnecting, setSocketConnecting] = useState(false);
-
-  useEffect(() => {
-    console.log('🔍 [DEBUGGER] Iniciando QR Code Debugger - SISTEMA OTIMIZADO');
-    connectToSocket();
-    
-    return () => {
-      console.log('🧹 [DEBUGGER] Limpando QR Code Debugger');
-      if (whatsappService.getSocket()) {
-        whatsappService.offClientStatus(testInstanceId);
-      }
-    };
-  }, [testInstanceId]);
-
-  const connectToSocket = () => {
-    try {
-      setSocketConnecting(true);
-      console.log('🔌 [DEBUGGER] Conectando ao Socket.IO OTIMIZADO...');
-      
-      const socket = whatsappService.connectSocket();
-      
-      if (socket) {
-        socket.on('connect', () => {
-          console.log('✅ [DEBUGGER] Socket.IO conectado com sucesso!');
-          setWebsocketConnected(true);
-          setSocketConnecting(false);
-          
-          toast({
-            title: "Socket.IO Conectado!",
-            description: "WebSocket funcionando perfeitamente",
-          });
-          
-          // Entrar na sala da instância de teste
-          whatsappService.joinClientRoom(testInstanceId);
-        });
-
-        socket.on('disconnect', (reason) => {
-          console.log('❌ [DEBUGGER] Socket.IO desconectado:', reason);
-          setWebsocketConnected(false);
-          // Auto-reconectar após 2 segundos
-          setTimeout(() => {
-            console.log('🔄 [DEBUGGER] Tentando reconectar...');
-            connectToSocket();
-          }, 2000);
-        });
-
-        socket.on('connect_error', (error) => {
-          console.error('❌ [DEBUGGER] Erro de conexão Socket.IO:', error);
-          setWebsocketConnected(false);
-          setSocketConnecting(false);
-          
-          toast({
-            title: "Erro Socket.IO",
-            description: `Falha na conexão: ${error.message}`,
-            variant: "destructive",
-          });
-        });
-
-        // Responder ao heartbeat
-        socket.on('ping', () => {
-          socket.emit('pong');
-        });
-
-        // Escutar status da instância de teste
-        whatsappService.onClientStatus(testInstanceId, (clientData) => {
-          console.log('📱 [DEBUGGER] Status recebido via Socket.IO:', {
-            status: clientData.status,
-            hasQrCode: clientData.hasQrCode,
-            timestamp: clientData.timestamp
-          });
-          setInstanceStatus(clientData.status);
-          
-          if (clientData.hasQrCode && clientData.qrCode) {
-            console.log('🎉 [DEBUGGER] QR Code recebido via Socket.IO!');
-            setQrCodeData(clientData.qrCode);
-            toast({
-              title: "QR Code Gerado!",
-              description: "QR Code recebido via Socket.IO em tempo real",
-            });
-          }
-
-          if (clientData.status === 'connected') {
-            toast({
-              title: "WhatsApp Conectado!",
-              description: `Instância ${testInstanceId} conectada com sucesso`,
-            });
-          }
-        });
-      }
-    } catch (error: any) {
-      console.error('❌ [DEBUGGER] Erro ao configurar Socket.IO:', error);
-      setSocketConnecting(false);
-      toast({
-        title: "Erro Socket.IO",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+  
+  // Usar contexto global para sincronização
+  const { 
+    globalInstanceStatus,
+    connectGlobalInstance,
+    websocketConnected,
+    refreshInstanceStatus
+  } = useGlobalInstanceManager();
+  
+  // Status e QR da instância debug do contexto global
+  const debugStatus = globalInstanceStatus[testInstanceId] || { 
+    status: 'disconnected', 
+    hasQrCode: false, 
+    qrCode: null 
   };
 
   const runDiagnostics = async () => {
     try {
       setLoading(true);
-      console.log('🔍 Executando diagnóstico Socket.IO...');
+      console.log('🔍 [DEBUGGER] Executando diagnóstico...');
       
       const diagnostics = {
         timestamp: new Date().toISOString(),
@@ -200,26 +113,22 @@ const QRCodeDebugger = () => {
         const status = await whatsappService.getClientStatus(testInstanceId);
         diagnostics.instanceStatus = status;
         console.log('📱 Status da instância:', status);
-        
-        if (status.hasQrCode && status.qrCode) {
-          setQrCodeData(status.qrCode);
-          console.log('📱 QR Code encontrado no status!');
-        }
       } catch (error: any) {
         console.error('❌ Erro no status da instância:', error);
         diagnostics.errors.push(`Instance Status: ${error.message}`);
       }
 
       setDebugInfo(diagnostics);
+      refreshInstanceStatus(testInstanceId);
       
       if (diagnostics.errors.length === 0) {
         toast({
-          title: "Diagnóstico Socket.IO Concluído",
-          description: qrCodeData ? "QR Code disponível!" : "Sistema funcionando, teste geração QR...",
+          title: "Diagnóstico Concluído",
+          description: debugStatus.hasQrCode ? "QR Code disponível!" : "Sistema funcionando",
         });
       } else {
         toast({
-          title: "Problemas Socket.IO Encontrados",
+          title: "Problemas Encontrados",
           description: `${diagnostics.errors.length} erro(s) detectado(s)`,
           variant: "destructive",
         });
@@ -240,100 +149,13 @@ const QRCodeDebugger = () => {
   const generateQRCode = async () => {
     try {
       setLoading(true);
-      console.log('🚀 [DEBUGGER] Gerando QR Code OTIMIZADO...');
+      console.log('🚀 [DEBUGGER] Gerando QR Code via contexto global...');
       
-      // Limpar QR anterior
-      setQrCodeData(null);
-      setInstanceStatus('connecting');
-      
-      // Garantir que WebSocket está conectado
-      const socket = whatsappService.getSocket();
-      if (!socket || !socket.connected) {
-        console.log('🔌 [DEBUGGER] WebSocket não conectado, reconectando...');
-        whatsappService.connectSocket();
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-      
-      // Limpar listeners anteriores
-      whatsappService.offClientStatus(testInstanceId);
-      
-      // Configurar listener ANTES de qualquer ação
-      const handleQRStatus = (clientData: any) => {
-        console.log('📱 [DEBUGGER] Status recebido:', {
-          status: clientData.status,
-          hasQrCode: clientData.hasQrCode,
-          timestamp: clientData.timestamp
-        });
-        setInstanceStatus(clientData.status);
-        
-        if (clientData.hasQrCode && clientData.qrCode) {
-          console.log('🎉 [DEBUGGER] QR Code recebido via Socket.IO!');
-          setQrCodeData(clientData.qrCode);
-          toast({
-            title: "QR Code Gerado!",
-            description: "QR Code recebido via Socket.IO em tempo real",
-          });
-        }
-
-        if (clientData.status === 'connected') {
-          toast({
-            title: "WhatsApp Conectado!",
-            description: `Instância ${testInstanceId} conectada com sucesso`,
-          });
-        }
-      };
-      
-      whatsappService.onClientStatus(testInstanceId, handleQRStatus);
-      
-      // Entrar na sala
-      whatsappService.joinClientRoom(testInstanceId);
-      
-      // Aguardar configuração da sala
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Conectar
-      console.log('🔗 [DEBUGGER] Enviando comando de conexão...');
-      await whatsappService.connectClient(testInstanceId);
-      
-      // POLLING BACKUP PARA DEBUGGER
-      let pollCount = 0;
-      const maxPolls = 20; // 20 tentativas = 1 minuto
-      
-      const pollInterval = setInterval(async () => {
-        pollCount++;
-        console.log(`🔄 [DEBUGGER] Polling QR status (tentativa ${pollCount}/${maxPolls})`);
-        
-        try {
-          const status = await whatsappService.getClientStatus(testInstanceId);
-          
-          if (status.hasQrCode && status.qrCode) {
-            console.log('📱 [DEBUGGER] QR Code encontrado via polling!');
-            handleQRStatus(status);
-            clearInterval(pollInterval);
-          } else if (status.status === 'connected') {
-            console.log('✅ [DEBUGGER] Cliente conectado via polling!');
-            handleQRStatus(status);
-            clearInterval(pollInterval);
-          } else if (pollCount >= maxPolls) {
-            console.log('⏰ [DEBUGGER] Polling timeout atingido');
-            clearInterval(pollInterval);
-            toast({
-              title: "Timeout",
-              description: "QR Code não foi gerado no tempo esperado",
-              variant: "destructive",
-            });
-          }
-        } catch (error: any) {
-          console.warn(`⚠️ [DEBUGGER] Erro no polling ${pollCount}:`, error.message);
-          if (pollCount >= maxPolls) {
-            clearInterval(pollInterval);
-          }
-        }
-      }, 3000); // Verificar a cada 3 segundos
+      await connectGlobalInstance(testInstanceId);
       
       toast({
-        title: "Gerando QR Code",
-        description: "Sistema otimizado com WebSocket + Polling backup",
+        title: "Conectando Instância",
+        description: "Gerando QR Code via sistema global sincronizado",
       });
       
     } catch (error: any) {
@@ -379,10 +201,8 @@ const QRCodeDebugger = () => {
         <div className="flex justify-between items-center">
           <CardTitle className="flex items-center">
             <Zap className="w-5 h-5 mr-2 text-blue-500" />
-            Socket.IO QR Code Debugger
-            {socketConnecting ? (
-              <RefreshCw className="w-4 h-4 ml-2 animate-spin text-blue-500" />
-            ) : websocketConnected ? (
+            QR Code Debugger - Sincronizado
+            {websocketConnected ? (
               <Wifi className="w-4 h-4 ml-2 text-green-500" />
             ) : (
               <WifiOff className="w-4 h-4 ml-2 text-red-500" />
@@ -425,53 +245,51 @@ const QRCodeDebugger = () => {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Socket.IO Status */}
+        {/* Status Sincronizado */}
         <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
           <div className="flex items-center space-x-2">
-            {socketConnecting ? (
-              <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
-            ) : websocketConnected ? (
+            {websocketConnected ? (
               <Wifi className="w-4 h-4 text-green-500" />
             ) : (
               <WifiOff className="w-4 h-4 text-red-500" />
             )}
             <span className="text-sm font-medium">
-              Socket.IO: {socketConnecting ? 'Conectando...' : websocketConnected ? 'Conectado' : 'Desconectado'}
+              WebSocket: {websocketConnected ? 'Conectado' : 'Desconectado'}
             </span>
           </div>
-          <Badge className={getStatusColor(instanceStatus)}>
-            Status: {instanceStatus}
+          <Badge className={getStatusColor(debugStatus.status)}>
+            Status: {debugStatus.status}
           </Badge>
         </div>
 
-        {/* QR Code Display */}
-        {qrCodeData && (
+        {/* QR Code Display Global */}
+        {debugStatus.hasQrCode && debugStatus.qrCode && (
           <div className="space-y-3">
             <div className="text-center">
-              <h3 className="text-lg font-semibold mb-2 text-green-600">🎉 QR Code Via Socket.IO!</h3>
+              <h3 className="text-lg font-semibold mb-2 text-green-600">🎉 QR Code Sincronizado!</h3>
               <div className="bg-white p-4 rounded border-2 border-green-300">
                 <img 
-                  src={qrCodeData} 
+                  src={debugStatus.qrCode} 
                   alt="QR Code WhatsApp"
                   className="mx-auto max-w-xs"
                 />
               </div>
               <p className="text-sm text-green-600 mt-2 font-medium">
-                ✅ QR Code recebido via Socket.IO em tempo real - FUNCIONANDO!
+                ✅ QR Code do contexto global - Funcionando em todos os componentes!
               </p>
             </div>
           </div>
         )}
 
-        {!debugInfo && !qrCodeData && (
+        {!debugInfo && !debugStatus.hasQrCode && (
           <div className="text-center py-8">
             <Zap className="w-16 h-16 mx-auto mb-4 text-blue-400" />
-            <h3 className="text-lg font-medium mb-2">Socket.IO QR Code Tester</h3>
+            <h3 className="text-lg font-medium mb-2">QR Code Tester Sincronizado</h3>
             <p className="text-gray-600 mb-4">
-              Teste o sistema Socket.IO corrigido para geração de QR Codes
+              Sistema com sincronização global entre todos os componentes
             </p>
             <p className="text-sm text-gray-500">
-              Clique em "Gerar QR" para testar o fluxo completo via Socket.IO
+              Teste qualquer instância - aparecerá em todos os painéis
             </p>
           </div>
         )}
@@ -485,7 +303,7 @@ const QRCodeDebugger = () => {
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm">Socket.IO:</span>
+                <span className="text-sm">WebSocket:</span>
                 {getStatusBadge(debugInfo.websocket?.connected && websocketConnected)}
               </div>
               
@@ -496,13 +314,13 @@ const QRCodeDebugger = () => {
               
               <div className="flex items-center justify-between">
                 <span className="text-sm">QR Code:</span>
-                {getStatusBadge(!!qrCodeData)}
+                {getStatusBadge(!!debugStatus.hasQrCode)}
               </div>
             </div>
 
             {debugInfo.errors.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded p-3">
-                <h4 className="font-medium text-red-800 mb-2">Erros Socket.IO:</h4>
+                <h4 className="font-medium text-red-800 mb-2">Erros Detectados:</h4>
                 <ul className="text-sm text-red-700 space-y-1">
                   {debugInfo.errors.map((error: string, index: number) => (
                     <li key={index}>• {error}</li>
@@ -513,7 +331,7 @@ const QRCodeDebugger = () => {
 
             {showDebug && (
               <div className="bg-gray-50 border rounded p-3">
-                <h4 className="font-medium mb-2">Debug Socket.IO:</h4>
+                <h4 className="font-medium mb-2">Debug Info:</h4>
                 <pre className="text-xs text-gray-700 overflow-auto max-h-40">
                   {JSON.stringify(debugInfo, null, 2)}
                 </pre>
@@ -523,14 +341,14 @@ const QRCodeDebugger = () => {
         )}
 
         {/* Success Message */}
-        {websocketConnected && qrCodeData && (
+        {websocketConnected && debugStatus.hasQrCode && (
           <div className="bg-green-50 border-2 border-green-200 rounded p-4">
             <div className="flex items-center space-x-2">
               <CheckCircle className="w-5 h-5 text-green-500" />
               <div>
-                <p className="font-medium text-green-800">Socket.IO Funcionando Perfeitamente!</p>
+                <p className="font-medium text-green-800">Sistema Sincronizado Funcionando!</p>
                 <p className="text-sm text-green-700">
-                  WebSocket conectado ✅ | QR Code gerado ✅ | Tempo real ✅
+                  QR aparece em todos os componentes ✅ | Contexto global ativo ✅
                 </p>
               </div>
             </div>
