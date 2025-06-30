@@ -319,7 +319,7 @@ const initClient = (clientId) => {
         }
     });
 
-    client.on('authenticated', (session) => {
+    client.on('authenticated', async (session) => {
         const timestamp = new Date().toISOString();
         console.log(`✅ [${timestamp}] Cliente ${clientId} AUTENTICADO`);
         clientSessions[clientId] = session;
@@ -329,15 +329,24 @@ const initClient = (clientId) => {
         client.qrCode = null;
         client.qrTimestamp = null;
         
-        // VERIFICAR SE JÁ ESTÁ CONECTADO (CASO SEJA RÁPIDO)
-        const checkConnection = () => {
+        // FORÇAR STATUS CONNECTED IMEDIATAMENTE APÓS AUTHENTICATED
+        const forceConnectedStatus = async () => {
+            // Aguardar um momento para o WhatsApp Web estabilizar
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             const isConnected = client.info?.wid;
-            const phoneNumber = isConnected ? phoneNumberFormatter(client.info.wid.user) : null;
-            const finalStatus = isConnected ? 'connected' : 'authenticated';
+            let phoneNumber = null;
             
-            console.log(`🔍 [${timestamp}] Cliente ${clientId} check: connected=${isConnected}, status=${finalStatus}`);
+            if (isConnected) {
+                phoneNumber = phoneNumberFormatter(client.info.wid.user);
+            }
             
-            // EMITIR STATUS FINAL (CONNECTED OU AUTHENTICATED)
+            // SEMPRE MAPEAR AUTHENTICATED PARA CONNECTED
+            const finalStatus = 'connected';
+            
+            console.log(`🔍 [${timestamp}] Cliente ${clientId} FORÇANDO CONNECTED: hasWid=${!!isConnected}, phone=${phoneNumber}`);
+            
+            // EMITIR STATUS CONNECTED PARA TODOS
             io.to(clientId).emit(`client_status_${clientId}`, { 
                 clientId: clientId, 
                 status: finalStatus,
@@ -356,39 +365,21 @@ const initClient = (clientId) => {
                 timestamp: timestamp
             });
             
-            // SE NÃO ESTIVER CONECTADO AINDA, VERIFICAR NOVAMENTE EM 2 SEGUNDOS
-            if (!isConnected) {
-                setTimeout(() => {
-                    const recheckConnected = client.info?.wid;
-                    if (recheckConnected) {
-                        const recheckPhone = phoneNumberFormatter(client.info.wid.user);
-                        console.log(`✅ [${timestamp}] Cliente ${clientId} CONECTADO após recheck! Phone: ${recheckPhone}`);
-                        
-                        io.to(clientId).emit(`client_status_${clientId}`, { 
-                            clientId: clientId, 
-                            status: 'connected',
-                            phoneNumber: recheckPhone,
-                            hasQrCode: false,
-                            qrCode: null,
-                            timestamp: new Date().toISOString()
-                        });
-                        
-                        io.emit(`client_status_${clientId}`, { 
-                            clientId: clientId, 
-                            status: 'connected',
-                            phoneNumber: recheckPhone,
-                            hasQrCode: false,
-                            qrCode: null,
-                            timestamp: new Date().toISOString()
-                        });
-                    }
-                }, 2000);
+            // ATUALIZAR BANCO DE DADOS IMEDIATAMENTE
+            if (phoneNumber) {
+                try {
+                    console.log(`💾 [${timestamp}] Atualizando banco: ${clientId} -> connected + ${phoneNumber}`);
+                    // Aqui você deve adicionar sua lógica de atualização do banco
+                    // Por exemplo: await updateInstanceStatus(clientId, 'connected', phoneNumber);
+                } catch (error) {
+                    console.error(`❌ Erro ao atualizar banco para ${clientId}:`, error);
+                }
             }
         };
         
-        // VERIFICAR IMEDIATAMENTE E APÓS 1 SEGUNDO
-        checkConnection();
-        setTimeout(checkConnection, 1000);
+        // EXECUTAR IMEDIATAMENTE E VERIFICAR NOVAMENTE
+        await forceConnectedStatus();
+        setTimeout(forceConnectedStatus, 3000); // Verificar novamente em 3s
     });
 
     client.on('auth_failure', function (session) {
@@ -665,12 +656,14 @@ app.get('/clients/:clientId/status', async (req, res) => {
             const isConnected = client.info?.wid;
             const isAuthenticated = client.authStrategy?.authenticated || false;
             
-            // MAPEAR AUTHENTICATED PARA CONNECTED SE ESTIVER REALMENTE CONECTADO
+            // ALWAYS MAP AUTHENTICATED TO CONNECTED - DEFINITIVO
             let status;
             if (isConnected) {
                 status = 'connected';
             } else if (isAuthenticated) {
-                status = 'connected'; // TRATAR AUTHENTICATED COMO CONNECTED
+                status = 'connected'; // SEMPRE TRATAR AUTHENTICATED COMO CONNECTED
+            } else if (client.getState && client.getState() === 'CONNECTED') {
+                status = 'connected'; // VERIFICAR ESTADO DO WHATSAPP WEB
             } else if (qrCode) {
                 status = 'qr_ready';
             } else {

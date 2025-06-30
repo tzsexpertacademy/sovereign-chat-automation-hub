@@ -17,12 +17,14 @@ import { useParams, useNavigate } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useToast } from "@/hooks/use-toast";
+import { useInstanceManager } from "@/contexts/InstanceManagerContext";
 import MultipleInstancesManagerFixed from "./MultipleInstancesManagerFixed";
 
 const ClientInstancesOverview = () => {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { getInstanceStatus } = useInstanceManager();
   
   const [client, setClient] = useState<ClientData | null>(null);
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
@@ -257,7 +259,10 @@ const ClientInstancesOverview = () => {
               <CheckCircle className="w-8 h-8 text-green-500" />
               <div>
                 <div className="text-2xl font-bold text-green-600">
-                  {instances.filter(i => i.status === 'connected' || i.status === 'authenticated').length}
+                  {instances.filter(i => {
+                    const status = getInstanceStatus ? getInstanceStatus(i.instance_id)?.status : i.status;
+                    return status === 'connected' || status === 'authenticated';
+                  }).length}
                 </div>
                 <p className="text-sm text-gray-600">Conectadas</p>
               </div>

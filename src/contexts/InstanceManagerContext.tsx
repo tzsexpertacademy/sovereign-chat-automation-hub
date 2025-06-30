@@ -75,24 +75,27 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
       });
     }
 
-      // SISTEMA DE POLLING INTELIGENTE - CORREÇÃO PARA PROBLEMA DE OSCILAÇÃO
+      // SISTEMA DE POLLING CRÍTICO - REDUZIDO PARA 3 SEGUNDOS
       const statusPollingInterval = setInterval(async () => {
         const instanceIds = Object.keys(instances);
         if (instanceIds.length === 0) return;
 
-        console.log('🔄 [GLOBAL] Polling status para todas as instâncias...');
+        console.log('🔄 [GLOBAL] Polling CRÍTICO (3s) para todas as instâncias...');
         
         for (const instanceId of instanceIds) {
           try {
             const realStatus = await whatsappService.getClientStatus(instanceId);
             const currentLocalStatus = instances[instanceId]?.status;
             
-            // MAPEAR STATUS CORRETAMENTE - CRITICAL FIX
+            // MAPEAR STATUS CORRETAMENTE - CRITICAL FIX DEFINITIVO
             let normalizedStatus = realStatus.status;
             
-            // Se está 'authenticated' ou tem phoneNumber, é 'connected'
-            if (realStatus.status === 'authenticated' || 
-                (realStatus.phoneNumber && realStatus.phoneNumber.length > 0)) {
+            // SEMPRE MAPEAR AUTHENTICATED PARA CONNECTED
+            if (realStatus.status === 'authenticated') {
+              normalizedStatus = 'connected';
+            }
+            // Se tem phoneNumber, definitivamente é 'connected'
+            else if (realStatus.phoneNumber && realStatus.phoneNumber.length > 0) {
               normalizedStatus = 'connected';
             }
             // Se tem QR Code mas não tem phoneNumber, é 'qr_ready'
@@ -100,14 +103,15 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
               normalizedStatus = 'qr_ready';
             }
             
-            // PARAR OSCILAÇÃO: Só atualizar se mudança for significativa
+            // FORÇAR ATUALIZAÇÃO PARA STATUS CONNECTED
             const shouldUpdate = (
               currentLocalStatus !== normalizedStatus ||
-              (normalizedStatus === 'connected' && !instances[instanceId]?.phoneNumber && realStatus.phoneNumber)
+              (normalizedStatus === 'connected' && !instances[instanceId]?.phoneNumber && realStatus.phoneNumber) ||
+              (realStatus.status === 'authenticated' && currentLocalStatus !== 'connected')
             );
             
             if (shouldUpdate) {
-              console.log(`🔄 [GLOBAL] Atualizando status ${instanceId}: ${currentLocalStatus} -> ${normalizedStatus}`);
+              console.log(`🔄 [GLOBAL] FORÇANDO atualização ${instanceId}: ${currentLocalStatus} -> ${normalizedStatus}`);
               
               setInstances(prev => ({
                 ...prev,
@@ -120,8 +124,9 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
                 }
               }));
 
-              // Atualizar no banco
-              if (normalizedStatus !== 'connecting') {
+              // FORÇAR UPDATE NO BANCO IMEDIATAMENTE
+              if (normalizedStatus === 'connected') {
+                console.log(`💾 [GLOBAL] FORÇANDO update banco: ${instanceId} -> ${normalizedStatus}`);
                 whatsappInstancesService.updateInstanceStatus(
                   instanceId, 
                   normalizedStatus,
@@ -130,10 +135,10 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
               }
 
               // Toast apenas para conexões importantes
-              if (normalizedStatus === 'connected' && currentLocalStatus !== 'connected' && realStatus.phoneNumber) {
+              if (normalizedStatus === 'connected' && currentLocalStatus !== 'connected') {
                 toast({
                   title: "✅ WhatsApp Conectado!",
-                  description: `Instância conectada: ${realStatus.phoneNumber}`,
+                  description: `Instância conectada: ${realStatus.phoneNumber || 'Conectado'}`,
                 });
               }
             }
@@ -141,7 +146,7 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
             console.warn(`⚠️ [GLOBAL] Erro no polling para ${instanceId}:`, error);
           }
         }
-      }, 8000); // Polling mais devagar para evitar spam: 8 segundos
+      }, 3000); // POLLING CRÍTICO: 3 segundos para capturar mudanças rapidamente
 
     return () => {
       console.log('🧹 [GLOBAL] Limpando Instance Manager Global');
