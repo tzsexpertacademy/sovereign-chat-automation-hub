@@ -230,9 +230,12 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                     </div>
                   )}
 
-                  {/* Action Buttons - ATUALIZADO */}
+                   {/* Action Buttons - OTIMIZADO E ESTÁVEL */}
                    <div className="flex space-x-2 pt-2 flex-wrap">
-                    {(getInstanceStatus(instance.instance_id).status === 'connected' || instance.status === 'connected' || instance.status === 'authenticated') ? (
+                    {/* LÓGICA DEFINITIVA: Mostrar botão Chat se tem phoneNumber OU status connected */}
+                    {(getInstanceStatus(instance.instance_id).phoneNumber || 
+                      getInstanceStatus(instance.instance_id).status === 'connected' || 
+                      instance.phone_number) ? (
                       <>
                         <Button 
                           size="sm" 

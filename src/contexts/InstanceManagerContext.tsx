@@ -9,6 +9,7 @@ interface InstanceStatus {
   qrCode?: string;
   hasQrCode?: boolean;
   phoneNumber?: string;
+  lastUpdated?: number;
 }
 
 interface InstanceManagerContextType {
@@ -75,48 +76,60 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
       });
     }
 
-      // SISTEMA DE POLLING CRÍTICO - REDUZIDO PARA 3 SEGUNDOS
+      // SISTEMA DE POLLING OTIMIZADO E INTELIGENTE
       const statusPollingInterval = setInterval(async () => {
         const instanceIds = Object.keys(instances);
         if (instanceIds.length === 0) return;
 
-        console.log('🔄 [GLOBAL] Polling CRÍTICO (3s) para todas as instâncias...');
+        console.log('🔄 [GLOBAL] Polling INTELIGENTE (5s) para instâncias...');
         
         for (const instanceId of instanceIds) {
           try {
+            // Skip polling para instâncias conectadas há mais de 30 segundos
+            const currentInstance = instances[instanceId];
+            const isStableConnected = currentInstance?.status === 'connected' && 
+                                    currentInstance?.phoneNumber && 
+                                    Date.now() - (currentInstance?.lastUpdated || 0) > 30000;
+            
+            if (isStableConnected) {
+              continue; // Pular polling para conexões estáveis
+            }
+
             const realStatus = await whatsappService.getClientStatus(instanceId);
             const currentLocalStatus = instances[instanceId]?.status;
             
-            // CORREÇÃO CRÍTICA - PRIORIZAR PHONEUMBER E AUTHENTICATED
+            // LÓGICA DEFINITIVA DE STATUS - SEM CONTRADIÇÕES
             let normalizedStatus = realStatus.status;
             
-            // PRIORIDADE 1: Se tem phoneNumber, SEMPRE é 'connected'
-            if (realStatus.phoneNumber && realStatus.phoneNumber.length > 0) {
+            // REGRA ABSOLUTA 1: phoneNumber = connected (SEMPRE)
+            if (realStatus.phoneNumber && realStatus.phoneNumber.trim().length > 0) {
               normalizedStatus = 'connected';
             }
-            // PRIORIDADE 2: Se status é 'authenticated', SEMPRE é 'connected'
+            // REGRA ABSOLUTA 2: authenticated = connected (SEMPRE)
             else if (realStatus.status === 'authenticated') {
               normalizedStatus = 'connected';
             }
-            // PRIORIDADE 3: Se status já é 'connected', manter
-            else if (realStatus.status === 'connected') {
-              normalizedStatus = 'connected';
-            }
-            // APENAS se não tem phone E não está autenticado → verificar QR
-            else if (realStatus.hasQrCode && !realStatus.phoneNumber) {
+            // REGRA ABSOLUTA 3: QR apenas se não conectado E tem QR
+            else if (realStatus.hasQrCode && !realStatus.phoneNumber && realStatus.status !== 'connected') {
               normalizedStatus = 'qr_ready';
             }
+            // REGRA ABSOLUTA 4: Outros status passam direto
+            else {
+              normalizedStatus = realStatus.status;
+            }
             
-            // FORÇAR ATUALIZAÇÃO PARA QUALQUER MUDANÇA REAL
-            const shouldUpdate = (
+            // DEBOUNCE: Só atualizar se houve mudança real significativa
+            const hasSignificantChange = (
               currentLocalStatus !== normalizedStatus ||
               (realStatus.phoneNumber && !instances[instanceId]?.phoneNumber) ||
-              (normalizedStatus === 'connected' && currentLocalStatus !== 'connected') ||
-              (realStatus.status === 'authenticated' && currentLocalStatus !== 'connected')
+              (!instances[instanceId]?.hasQrCode && realStatus.hasQrCode && normalizedStatus === 'qr_ready')
             );
             
-            if (shouldUpdate) {
-              console.log(`🔄 [GLOBAL] FORÇANDO atualização ${instanceId}: ${currentLocalStatus} -> ${normalizedStatus}`);
+            if (hasSignificantChange) {
+              console.log(`✅ [GLOBAL] Atualização DEFINITIVA ${instanceId}: ${currentLocalStatus} -> ${normalizedStatus}`, {
+                phoneNumber: realStatus.phoneNumber,
+                hasQrCode: realStatus.hasQrCode
+              });
               
               setInstances(prev => ({
                 ...prev,
@@ -125,23 +138,25 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
                   status: normalizedStatus,
                   qrCode: normalizedStatus === 'qr_ready' ? realStatus.qrCode : undefined,
                   hasQrCode: normalizedStatus === 'qr_ready' ? realStatus.hasQrCode : false,
-                  phoneNumber: realStatus.phoneNumber
+                  phoneNumber: realStatus.phoneNumber,
+                  lastUpdated: Date.now()
                 }
               }));
 
-              // FORÇAR UPDATE NO BANCO PARA QUALQUER MUDANÇA
-              console.log(`💾 [GLOBAL] FORÇANDO update banco: ${instanceId} -> ${normalizedStatus}`);
-              whatsappInstancesService.updateInstanceStatus(
-                instanceId, 
-                normalizedStatus,
-                realStatus.phoneNumber ? { phone_number: realStatus.phoneNumber } : undefined
-              ).catch(console.error);
+              // Update banco apenas para mudanças permanentes
+              if (normalizedStatus !== 'connecting') {
+                whatsappInstancesService.updateInstanceStatus(
+                  instanceId, 
+                  normalizedStatus,
+                  realStatus.phoneNumber ? { phone_number: realStatus.phoneNumber } : undefined
+                ).catch(console.error);
+              }
 
-              // Toast apenas para conexões importantes
-              if (normalizedStatus === 'connected' && currentLocalStatus !== 'connected') {
+              // Toast apenas para conexões bem-sucedidas
+              if (normalizedStatus === 'connected' && currentLocalStatus !== 'connected' && realStatus.phoneNumber) {
                 toast({
                   title: "✅ WhatsApp Conectado!",
-                  description: `Instância conectada: ${realStatus.phoneNumber || 'Conectado'}`,
+                  description: `Conectado com sucesso: ${realStatus.phoneNumber}`,
                 });
               }
             }
@@ -149,7 +164,7 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
             console.warn(`⚠️ [GLOBAL] Erro no polling para ${instanceId}:`, error);
           }
         }
-      }, 3000); // POLLING CRÍTICO: 3 segundos para capturar mudanças rapidamente
+      }, 5000); // POLLING OTIMIZADO: 5 segundos para reduzir carga
 
     return () => {
       console.log('🧹 [GLOBAL] Limpando Instance Manager Global');
