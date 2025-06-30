@@ -329,23 +329,66 @@ const initClient = (clientId) => {
         client.qrCode = null;
         client.qrTimestamp = null;
         
-        // EMITIR PARA SALA ESPECÍFICA
-        io.to(clientId).emit(`client_status_${clientId}`, { 
-            clientId: clientId, 
-            status: 'authenticated',
-            hasQrCode: false,
-            qrCode: null,
-            timestamp: timestamp
-        });
+        // VERIFICAR SE JÁ ESTÁ CONECTADO (CASO SEJA RÁPIDO)
+        const checkConnection = () => {
+            const isConnected = client.info?.wid;
+            const phoneNumber = isConnected ? phoneNumberFormatter(client.info.wid.user) : null;
+            const finalStatus = isConnected ? 'connected' : 'authenticated';
+            
+            console.log(`🔍 [${timestamp}] Cliente ${clientId} check: connected=${isConnected}, status=${finalStatus}`);
+            
+            // EMITIR STATUS FINAL (CONNECTED OU AUTHENTICATED)
+            io.to(clientId).emit(`client_status_${clientId}`, { 
+                clientId: clientId, 
+                status: finalStatus,
+                phoneNumber: phoneNumber,
+                hasQrCode: false,
+                qrCode: null,
+                timestamp: timestamp
+            });
+            
+            io.emit(`client_status_${clientId}`, { 
+                clientId: clientId, 
+                status: finalStatus,
+                phoneNumber: phoneNumber,
+                hasQrCode: false,
+                qrCode: null,
+                timestamp: timestamp
+            });
+            
+            // SE NÃO ESTIVER CONECTADO AINDA, VERIFICAR NOVAMENTE EM 2 SEGUNDOS
+            if (!isConnected) {
+                setTimeout(() => {
+                    const recheckConnected = client.info?.wid;
+                    if (recheckConnected) {
+                        const recheckPhone = phoneNumberFormatter(client.info.wid.user);
+                        console.log(`✅ [${timestamp}] Cliente ${clientId} CONECTADO após recheck! Phone: ${recheckPhone}`);
+                        
+                        io.to(clientId).emit(`client_status_${clientId}`, { 
+                            clientId: clientId, 
+                            status: 'connected',
+                            phoneNumber: recheckPhone,
+                            hasQrCode: false,
+                            qrCode: null,
+                            timestamp: new Date().toISOString()
+                        });
+                        
+                        io.emit(`client_status_${clientId}`, { 
+                            clientId: clientId, 
+                            status: 'connected',
+                            phoneNumber: recheckPhone,
+                            hasQrCode: false,
+                            qrCode: null,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                }, 2000);
+            }
+        };
         
-        // EMITIR GERAL COMO BACKUP
-        io.emit(`client_status_${clientId}`, { 
-            clientId: clientId, 
-            status: 'authenticated',
-            hasQrCode: false,
-            qrCode: null,
-            timestamp: timestamp
-        });
+        // VERIFICAR IMEDIATAMENTE E APÓS 1 SEGUNDO
+        checkConnection();
+        setTimeout(checkConnection, 1000);
     });
 
     client.on('auth_failure', function (session) {
@@ -620,8 +663,23 @@ app.get('/clients/:clientId/status', async (req, res) => {
             }
             
             const isConnected = client.info?.wid;
-            const status = isConnected ? 'connected' : (qrCode ? 'qr_ready' : 'connecting');
+            const isAuthenticated = client.authStrategy?.authenticated || false;
+            
+            // MAPEAR AUTHENTICATED PARA CONNECTED SE ESTIVER REALMENTE CONECTADO
+            let status;
+            if (isConnected) {
+                status = 'connected';
+            } else if (isAuthenticated) {
+                status = 'connected'; // TRATAR AUTHENTICATED COMO CONNECTED
+            } else if (qrCode) {
+                status = 'qr_ready';
+            } else {
+                status = 'connecting';
+            }
+            
             const phoneNumber = isConnected ? phoneNumberFormatter(client.info.wid.user) : null;
+            
+            console.log(`🔍 [${timestamp}] Status check ${clientId}: connected=${isConnected}, authenticated=${isAuthenticated}, final=${status}`);
             
             const response = { 
                 success: true, 

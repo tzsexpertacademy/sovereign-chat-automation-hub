@@ -403,8 +403,8 @@ const MultipleInstancesManagerFixed = ({ clientId, client, onInstancesUpdate }: 
                         </div>
                       )}
                       
-                       <div className="flex space-x-2 flex-wrap">
-                        {getInstanceStatus(instance.instance_id).status === 'connected' ? (
+                        <div className="flex space-x-2 flex-wrap">
+                        {(getInstanceStatus(instance.instance_id).status === 'connected' || instance.status === 'connected' || instance.status === 'authenticated') ? (
                           <>
                             <Button 
                               size="sm" 

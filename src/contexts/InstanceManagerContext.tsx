@@ -87,8 +87,8 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
           const realStatus = await whatsappService.getClientStatus(instanceId);
           const currentStatus = instances[instanceId]?.status;
           
-          // Mapear 'authenticated' para 'connected'
-          const normalizedStatus = realStatus.status === 'authenticated' ? 'connected' : realStatus.status;
+          // Mapear 'authenticated' para 'connected' - CRÍTICO PARA RESOLVER BUG
+          const normalizedStatus = (realStatus.status === 'authenticated' || realStatus.status === 'qr_ready') ? 'connected' : realStatus.status;
           
           if (currentStatus !== normalizedStatus) {
             console.log(`🔄 [GLOBAL] Status desatualizado para ${instanceId}: ${currentStatus} -> ${normalizedStatus}`);
@@ -125,7 +125,7 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
           console.warn(`⚠️ [GLOBAL] Erro no polling para ${instanceId}:`, error);
         }
       }
-    }, 10000); // Polling a cada 10 segundos
+    }, 5000); // Polling a cada 5 segundos para sincronização mais rápida
 
     return () => {
       console.log('🧹 [GLOBAL] Limpando Instance Manager Global');
@@ -155,30 +155,33 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
       // Limpar listeners anteriores
       whatsappService.offClientStatus(instanceId);
       
-      // Configurar listener ANTES de entrar na sala
-      const handleClientStatus = (clientData: any) => {
-        console.log(`📱 [GLOBAL] Status recebido para ${instanceId}:`, {
-          status: clientData.status,
-          hasQrCode: clientData.hasQrCode,
-          timestamp: clientData.timestamp
-        });
-        
-        setInstances(prev => ({
-          ...prev,
-          [instanceId]: {
-            instanceId: clientData.clientId || instanceId,
+        // Configurar listener ANTES de entrar na sala
+        const handleClientStatus = (clientData: any) => {
+          console.log(`📱 [GLOBAL] Status recebido para ${instanceId}:`, {
             status: clientData.status,
-            qrCode: clientData.qrCode,
-            hasQrCode: clientData.hasQrCode || false,
-            phoneNumber: clientData.phoneNumber
-          }
-        }));
+            hasQrCode: clientData.hasQrCode,
+            timestamp: clientData.timestamp
+          });
+          
+          // MAPEAR AUTHENTICATED PARA CONNECTED - CORREÇÃO CRÍTICA
+          const normalizedStatus = clientData.status === 'authenticated' ? 'connected' : clientData.status;
+          
+          setInstances(prev => ({
+            ...prev,
+            [instanceId]: {
+              instanceId: clientData.clientId || instanceId,
+              status: normalizedStatus,
+              qrCode: clientData.qrCode,
+              hasQrCode: clientData.hasQrCode || false,
+              phoneNumber: clientData.phoneNumber
+            }
+          }));
 
         // Atualizar status no banco se necessário
-        if (clientData.status !== 'connecting') {
+        if (normalizedStatus !== 'connecting') {
           whatsappInstancesService.updateInstanceStatus(
             instanceId, 
-            clientData.status,
+            normalizedStatus,
             clientData.phoneNumber ? { phone_number: clientData.phoneNumber } : undefined
           ).catch(console.error);
         }
@@ -191,7 +194,7 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
           });
         }
 
-        if (clientData.status === 'connected') {
+        if (normalizedStatus === 'connected') {
           toast({
             title: "WhatsApp Conectado!",
             description: `Instância conectada com sucesso`,
