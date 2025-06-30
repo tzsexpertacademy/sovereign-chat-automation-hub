@@ -47,16 +47,16 @@ class WhatsAppMultiClientService {
   private reconnectInterval = 5000;
 
   constructor() {
-    console.log('🔒 WhatsApp Multi-Client Service - HTTPS LOVABLE COMPATÍVEL');
+    console.log('🔒 WhatsApp Multi-Client Service - HTTPS DEFINITIVO');
     const config = getServerConfig();
-    console.log('📡 URLs HTTPS LOVABLE configuradas:', {
+    console.log('📡 URLs HTTPS DEFINITIVO configuradas:', {
       SERVER_URL,
       API_BASE_URL,
       SOCKET_URL,
       HTTPS_SERVER_URL,
       isHttps: config.isHttps,
-      isLovable: config.isLovable,
-      acceptSelfSigned: config.acceptSelfSigned
+      nginxProxy: config.nginxProxy,
+      lovableCompatible: config.lovableCompatible
     });
   }
 
@@ -67,7 +67,7 @@ class WhatsAppMultiClientService {
       return this.socket;
     }
 
-    console.log('🔌 Conectando ao WebSocket HTTPS LOVABLE:', SOCKET_URL);
+    console.log('🔌 Conectando ao WebSocket HTTPS DEFINITIVO:', SOCKET_URL);
 
     try {
       this.socket = io(SOCKET_URL, {
@@ -87,22 +87,22 @@ class WhatsAppMultiClientService {
       });
 
       this.socket.on('connect', () => {
-        console.log('✅ WebSocket HTTPS LOVABLE conectado');
+        console.log('✅ WebSocket HTTPS DEFINITIVO conectado');
         this.reconnectAttempts = 0;
       });
 
       this.socket.on('disconnect', (reason) => {
-        console.log('❌ WebSocket HTTPS LOVABLE desconectado:', reason);
+        console.log('❌ WebSocket HTTPS DEFINITIVO desconectado:', reason);
       });
 
       this.socket.on('connect_error', (error) => {
-        console.error('❌ Erro WebSocket HTTPS LOVABLE:', error.message);
+        console.error('❌ Erro WebSocket HTTPS DEFINITIVO:', error.message);
         this.reconnectAttempts++;
       });
 
       return this.socket;
     } catch (error) {
-      console.error('❌ Erro ao inicializar WebSocket HTTPS LOVABLE:', error);
+      console.error('❌ Erro ao inicializar WebSocket HTTPS DEFINITIVO:', error);
       throw error;
     }
   }
@@ -182,22 +182,23 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Methods with HTTPS LOVABLE COMPATÍVEL
+  // API Methods with HTTPS DEFINITIVO
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     
-    console.log(`🔒 Requisição HTTPS LOVABLE: ${options.method || 'GET'} ${fullUrl}`);
+    console.log(`🔒 Requisição HTTPS DEFINITIVO: ${options.method || 'GET'} ${fullUrl}`);
     
     const config = getServerConfig();
+    if (!config.isDevelopment && !fullUrl.startsWith('https://')) {
+      throw new Error('HTTPS_REQUIRED: HTTPS é obrigatório via Nginx');
+    }
     
-    // Headers otimizados para Lovable + CORS
     const defaultHeaders = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'Cache-Control': 'no-cache',
       'X-Requested-With': 'XMLHttpRequest',
-      'Origin': window.location.origin,
-      'User-Agent': 'Lovable-WhatsApp-Client'
+      'Origin': window.location.origin
     };
 
     const fetchConfig: RequestInit = {
@@ -207,63 +208,43 @@ class WhatsAppMultiClientService {
         ...options.headers,
       },
       mode: 'cors',
-      credentials: 'omit', // Importante para CORS
-      signal: options.signal || AbortSignal.timeout(30000) // Aumentei timeout
+      credentials: 'omit',
+      signal: options.signal || AbortSignal.timeout(20000)
     };
 
     try {
-      console.log('🔄 Fazendo requisição HTTPS com config:', {
-        url: fullUrl,
-        method: fetchConfig.method || 'GET',
-        headers: fetchConfig.headers,
-        mode: fetchConfig.mode,
-        credentials: fetchConfig.credentials
-      });
-
       const response = await fetch(fullUrl, fetchConfig);
       
-      console.log(`📡 Resposta HTTPS LOVABLE: ${response.status} ${response.statusText}`);
-      console.log('📋 Headers da resposta:', Object.fromEntries(response.headers.entries()));
+      console.log(`📡 Resposta HTTPS DEFINITIVO: ${response.status} ${response.statusText}`);
       
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'No error text');
-        console.error(`❌ Resposta HTTP não OK: ${response.status} - ${errorText}`);
-        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+        throw new Error(`HTTPS ${response.status}: ${response.statusText}`);
       }
 
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        console.log('✅ Dados JSON recebidos via HTTPS LOVABLE:', data);
+        console.log('✅ Dados JSON recebidos via HTTPS DEFINITIVO:', data);
         return data;
       } else {
         const text = await response.text();
-        console.log('✅ Texto recebido via HTTPS LOVABLE:', text.substring(0, 200));
+        console.log('✅ Texto recebido via HTTPS DEFINITIVO:', text);
         return text;
       }
     } catch (error: any) {
-      console.error(`❌ Erro HTTPS LOVABLE para ${fullUrl}:`, {
-        name: error.name,
-        message: error.message,
-        stack: error.stack?.substring(0, 500)
-      });
+      console.error(`❌ Erro HTTPS DEFINITIVO para ${fullUrl}:`, error);
       
-      // Melhor detecção de tipos de erro
       if (error.name === 'AbortError' || error.name === 'TimeoutError') {
         throw new Error('TIMEOUT_ERROR');
-      } else if (error.message === 'Failed to fetch') {
-        // Este é o erro mais comum no Lovable
-        if (config.isLovable) {
-          throw new Error('LOVABLE_CORS_ERROR');
-        } else {
-          throw new Error('NETWORK_ERROR');
-        }
-      } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-        throw new Error('CORS_OR_NETWORK_ERROR');
-      } else if (error.message.includes('SSL') || 
+      } else if (error.message === 'Failed to fetch' || 
+                 error.name === 'TypeError' ||
+                 error.message.includes('net::') ||
+                 error.message.includes('SSL') ||
                  error.message.includes('certificate') ||
                  error.message.includes('TLS')) {
         throw new Error('SSL_CERTIFICATE_ERROR');
+      } else if (error.message.includes('HTTPS_REQUIRED')) {
+        throw new Error('HTTPS_REQUIRED');
       }
       
       throw error;
@@ -382,42 +363,40 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Check server health with HTTPS LOVABLE COMPATÍVEL
+  // Check server health with HTTPS DEFINITIVO
   async checkServerHealth(): Promise<ServerHealth> {
     try {
-      console.log('🔍 Health check HTTPS LOVABLE:', `${API_BASE_URL}/health`);
+      console.log('🔍 Health check HTTPS DEFINITIVO:', `${API_BASE_URL}/health`);
       
       const response = await this.makeRequest('/health');
-      console.log('✅ Health check HTTPS LOVABLE bem-sucedido:', response);
+      console.log('✅ Health check HTTPS DEFINITIVO bem-sucedido:', response);
       
       return response;
     } catch (error: any) {
-      console.error('❌ Health check HTTPS LOVABLE falhou:', error.message);
+      console.error('❌ Health check HTTPS DEFINITIVO falhou:', error.message);
       
-      if (error.message === 'LOVABLE_CORS_ERROR') {
-        throw new Error('CORS_ERROR');
-      } else if (error.message === 'SSL_CERTIFICATE_ERROR') {
+      if (error.message === 'SSL_CERTIFICATE_ERROR') {
         throw new Error('SSL_CERTIFICATE_NOT_ACCEPTED');
       } else if (error.message === 'TIMEOUT_ERROR') {
         throw new Error('SERVER_TIMEOUT');
-      } else if (error.message === 'CORS_OR_NETWORK_ERROR') {
-        throw new Error('CORS_ERROR');
+      } else if (error.message === 'HTTPS_REQUIRED') {
+        throw new Error('HTTPS_REQUIRED');
       }
       
       throw error;
     }
   }
 
-  // Test connection with HTTPS LOVABLE COMPATÍVEL
+  // Test connection with HTTPS DEFINITIVO
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
-      console.log('🧪 Testando conexão HTTPS LOVABLE...');
+      console.log('🧪 Testando conexão HTTPS DEFINITIVO...');
       const health = await this.checkServerHealth();
       
       if (health && health.status === 'ok') {
         return {
           success: true,
-          message: `✅ HTTPS LOVABLE funcionando! Servidor: ${health.server || 'HTTPS via Nginx'} | Certificado: Aceito | CORS: OK`
+          message: `✅ HTTPS DEFINITIVO funcionando! Servidor: ${health.server || 'HTTPS via Nginx'} | Versão: ${health.version || 'unknown'} | SSL: ✅`
         };
       } else {
         return {
@@ -426,28 +405,28 @@ class WhatsAppMultiClientService {
         };
       }
     } catch (error: any) {
-      console.error('❌ Teste HTTPS LOVABLE falhou:', error.message);
+      console.error('❌ Teste HTTPS DEFINITIVO falhou:', error.message);
       
-      if (error.message === 'CORS_ERROR') {
+      if (error.message === 'SSL_CERTIFICATE_NOT_ACCEPTED') {
         return {
           success: false,
-          message: 'CORS Error: Verifique se o servidor está configurado corretamente para aceitar requisições do Lovable'
-        };
-      } else if (error.message === 'SSL_CERTIFICATE_NOT_ACCEPTED') {
-        return {
-          success: false,
-          message: 'Certificado SSL: Aceite o certificado abrindo https://146.59.227.248/health em uma nova aba primeiro'
+          message: 'Certificado SSL: Aceite o certificado abrindo https://146.59.227.248/health no navegador primeiro'
         };
       } else if (error.message === 'SERVER_TIMEOUT') {
         return {
           success: false,
-          message: 'Timeout: Servidor não respondeu em 30 segundos'
+          message: 'Timeout: Servidor não respondeu em 20 segundos'
+        };
+      } else if (error.message === 'HTTPS_REQUIRED') {
+        return {
+          success: false,
+          message: 'HTTPS obrigatório: Sistema configurado para HTTPS via Nginx'
         };
       }
       
       return {
         success: false,
-        message: `Erro HTTPS LOVABLE: ${error.message}`
+        message: `Erro HTTPS DEFINITIVO: ${error.message}`
       };
     }
   }

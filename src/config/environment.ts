@@ -1,16 +1,15 @@
 
-// Environment configuration for WhatsApp Multi-Client - HTTPS DEFINITIVO LOVABLE
-console.log('🔒 Configurando ambiente HTTPS DEFINITIVO LOVABLE...');
+// Environment configuration for WhatsApp Multi-Client - HTTPS DEFINITIVO
+console.log('🔒 Configurando ambiente HTTPS DEFINITIVO...');
 
 // Detect environment
 const isProduction = window.location.hostname.includes('lovableproject.com');
 const isDevelopment = window.location.hostname === 'localhost';
-const isLovable = window.location.hostname.includes('lovableproject.com');
 
 // HTTPS Server configuration - DEFINITIVO para Lovable
 const HTTPS_SERVER = '146.59.227.248';
 
-// Configure URLs for HTTPS DEFINITIVO LOVABLE
+// Configure URLs for HTTPS DEFINITIVO
 let SERVER_HOST: string;
 let API_BASE_URL: string;
 let SOCKET_URL: string;
@@ -22,11 +21,11 @@ if (isDevelopment) {
   SOCKET_URL = 'ws://localhost:4000';
   console.log('🛠️ Modo Desenvolvimento - Usando localhost HTTP');
 } else {
-  // Production/Lovable - HTTPS DEFINITIVO via Nginx (porta 443)
+  // Production - HTTPS DEFINITIVO via Nginx (porta 443)
   SERVER_HOST = `https://${HTTPS_SERVER}`;
   API_BASE_URL = `https://${HTTPS_SERVER}`;
   SOCKET_URL = `wss://${HTTPS_SERVER}`;
-  console.log('🔒 Modo Produção/Lovable - HTTPS DEFINITIVO via Nginx');
+  console.log('🔒 Modo Produção - HTTPS DEFINITIVO via Nginx');
 }
 
 // Export the configured URLs
@@ -42,28 +41,24 @@ export const getServerConfig = () => ({
   HTTPS_SERVER_URL,
   isProduction,
   isDevelopment,
-  isLovable,
   isHttps: !isDevelopment,
   protocol: isDevelopment ? 'http:' : 'https:',
   serverUrl: SERVER_URL,
-  requiresHttps: !isDevelopment,
-  lovableCompatible: isLovable,
+  requiresHttps: true,
+  lovableCompatible: !isDevelopment,
   corsEnabled: true,
   sslRequired: !isDevelopment,
-  nginxProxy: !isDevelopment,
-  acceptSelfSigned: !isDevelopment // Para aceitar certificados autoassinados
+  nginxProxy: !isDevelopment // Indica que está usando proxy Nginx
 });
 
-console.log('✅ Configuração HTTPS DEFINITIVO LOVABLE carregada:', {
+console.log('✅ Configuração HTTPS DEFINITIVO carregada:', {
   SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
   HTTPS_SERVER_URL,
   isHttps: !isDevelopment,
-  isLovable,
-  requiresHttps: !isDevelopment,
-  lovableCompatible: isLovable,
+  requiresHttps: true,
+  lovableCompatible: !isDevelopment,
   nginxProxy: !isDevelopment,
-  acceptSelfSigned: !isDevelopment,
-  environment: isProduction ? 'production' : isDevelopment ? 'development' : 'lovable-https'
+  environment: isProduction ? 'production' : isDevelopment ? 'development' : 'https-production'
 });
