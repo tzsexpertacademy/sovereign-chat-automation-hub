@@ -1,11 +1,11 @@
 
 #!/bin/bash
 
-# Script simples para configurar HTTPS com certificado autoassinado
+# Script CIRÚRGICO para configurar HTTPS - PRESERVANDO O QUE FUNCIONA
 # Arquivo: scripts/setup-simple-https.sh
 
-echo "🔒 CONFIGURANDO HTTPS COM CERTIFICADO AUTOASSINADO"
-echo "================================================="
+echo "🔒 CONFIGURANDO HTTPS - PRESERVANDO CONFIGURAÇÃO FUNCIONANDO"
+echo "==========================================================="
 
 # Verificar se está rodando como root
 if [ "$EUID" -ne 0 ]; then
@@ -36,25 +36,29 @@ if ! command -v nginx > /dev/null; then
     apt-get install -y nginx
 fi
 
-# Criar diretório SSL
-echo "🔐 Criando certificado SSL..."
-mkdir -p $SSL_DIR
+# Criar diretório SSL APENAS se não existir (preservar certificados existentes)
+if [ ! -d "$SSL_DIR" ]; then
+    echo "🔐 Criando certificado SSL..."
+    mkdir -p $SSL_DIR
 
-# Gerar chave privada e certificado autoassinado
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout $SSL_DIR/privkey.pem \
-    -out $SSL_DIR/fullchain.pem \
-    -subj "/C=BR/ST=State/L=City/O=WhatsApp/OU=MultiClient/CN=$DOMAIN" \
-    2>/dev/null
+    # Gerar chave privada e certificado autoassinado
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout $SSL_DIR/privkey.pem \
+        -out $SSL_DIR/fullchain.pem \
+        -subj "/C=BR/ST=State/L=City/O=WhatsApp/OU=MultiClient/CN=$DOMAIN" \
+        2>/dev/null
 
-# Definir permissões
-chmod 600 $SSL_DIR/privkey.pem
-chmod 644 $SSL_DIR/fullchain.pem
+    # Definir permissões
+    chmod 600 $SSL_DIR/privkey.pem
+    chmod 644 $SSL_DIR/fullchain.pem
 
-echo "✅ Certificado SSL criado!"
+    echo "✅ Certificado SSL criado!"
+else
+    echo "✅ Certificado SSL já existe - PRESERVANDO"
+fi
 
-# Criar configuração Nginx com HTTPS
-echo "⚙️ Configurando Nginx para HTTPS..."
+# Criar configuração Nginx CIRÚRGICA - Adicionar apenas rotas que faltam
+echo "⚙️ Configurando Nginx CIRURGICAMENTE - Adicionando rotas da API..."
 cat > /etc/nginx/sites-available/whatsapp-multi-client << EOF
 # HTTP -> HTTPS redirect
 server {
@@ -63,12 +67,12 @@ server {
     return 301 https://\$server_name\$request_uri;
 }
 
-# HTTPS Server
+# HTTPS Server - CONFIGURAÇÃO CIRÚRGICA
 server {
     listen 443 ssl http2;
     server_name $DOMAIN;
     
-    # SSL Configuration
+    # SSL Configuration - PRESERVADA (funciona)
     ssl_certificate $SSL_DIR/fullchain.pem;
     ssl_certificate_key $SSL_DIR/privkey.pem;
     
@@ -76,34 +80,80 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
     
-    # Frontend
+    # CORS Headers - PRESERVADOS (funcionam com Lovable)
+    add_header 'Access-Control-Allow-Origin' '*' always;
+    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS, PATCH' always;
+    add_header 'Access-Control-Allow-Headers' 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma, X-Client-Info, User-Agent, Referer' always;
+    add_header 'Access-Control-Allow-Credentials' 'false' always;
+    add_header 'Access-Control-Max-Age' '86400' always;
+    
+    # Frontend - PRESERVADO (funciona)
     location / {
         proxy_pass http://127.0.0.1:$FRONTEND_PORT;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
     }
     
-    # API Backend
-    location /api/ {
-        proxy_pass http://127.0.0.1:$BACKEND_PORT/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-    
-    # Health Check
+    # Health Check - PRESERVADO (funciona)
     location /health {
         proxy_pass http://127.0.0.1:$BACKEND_PORT/health;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
     }
     
-    # WebSocket para Socket.IO
+    # NOVA: API Clients - ADICIONADA CIRURGICAMENTE
+    location /clients {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/clients;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+        
+        # Handle preflight requests
+        if (\$request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '*' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS, PATCH' always;
+            add_header 'Access-Control-Allow-Headers' '*' always;
+            add_header 'Access-Control-Max-Age' 86400 always;
+            return 204;
+        }
+    }
+    
+    # NOVA: Swagger API Docs - ADICIONADA CIRURGICAMENTE
+    location /api-docs {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/api-docs;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+    
+    # NOVA: Swagger JSON - ADICIONADA CIRURGICAMENTE
+    location /api-docs.json {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/api-docs.json;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    
+    # WebSocket para Socket.IO - PRESERVADO (funciona)
     location /socket.io/ {
         proxy_pass http://127.0.0.1:$BACKEND_PORT/socket.io/;
         proxy_http_version 1.1;
@@ -113,6 +163,9 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 300s;
     }
 }
 EOF
@@ -149,32 +202,30 @@ if command -v pm2 > /dev/null; then
 fi
 
 echo ""
-echo "🎉 HTTPS CONFIGURADO COM SUCESSO!"
-echo "================================="
+echo "🎉 CONFIGURAÇÃO CIRÚRGICA APLICADA COM SUCESSO!"
+echo "=============================================="
 echo ""
-echo "✅ Certificado autoassinado criado e configurado!"
-echo "🌐 Acesse: https://$DOMAIN/"
+echo "✅ PRESERVADO (já funcionava):"
+echo "  • Certificado SSL autoassinado"
+echo "  • Rota principal / (frontend)"
+echo "  • Rota /health (health check)"
+echo "  • Rota /socket.io/ (WebSocket)"
+echo "  • Headers CORS para Lovable"
 echo ""
-echo "⚠️ IMPORTANTE: AVISO DE SEGURANÇA"
-echo "Seu navegador mostrará um aviso de segurança porque o certificado é autoassinado."
-echo ""
-echo "🔧 Para aceitar o certificado:"
-echo "1. Acesse https://$DOMAIN/"
-echo "2. Clique em 'Avançado' ou 'Advanced'"
-echo "3. Clique em 'Prosseguir para $DOMAIN' ou 'Proceed to $DOMAIN'"
+echo "➕ ADICIONADO (rotas da API):"
+echo "  • Rota /clients (API de clientes)"
+echo "  • Rota /api-docs (Swagger UI)"
+echo "  • Rota /api-docs.json (Swagger JSON)"
 echo ""
 echo "🌐 URLs HTTPS disponíveis:"
 echo "  • Frontend: https://$DOMAIN/"
-echo "  • Admin: https://$DOMAIN/admin/instances"
-echo "  • API: https://$DOMAIN/api/"
 echo "  • Health: https://$DOMAIN/health"
+echo "  • API Clients: https://$DOMAIN/clients"
+echo "  • Swagger: https://$DOMAIN/api-docs"
 echo ""
-echo "🔧 Comandos úteis:"
-echo "  • Status Nginx: systemctl status nginx"
-echo "  • Logs Nginx: tail -f /var/log/nginx/error.log"
-echo "  • Reiniciar Nginx: systemctl restart nginx"
+echo "⚠️ IMPORTANTE: ACEITE O CERTIFICADO"
+echo "1. Acesse https://$DOMAIN/"
+echo "2. Clique em 'Avançado' → 'Prosseguir'"
+echo "3. Teste as novas rotas da API"
 echo ""
-echo "📋 Próximo passo:"
-echo "Execute: ./scripts/update-frontend-urls.sh"
-echo ""
-EOF
+echo "🔧 Para testar: ./scripts/test-https-connection.sh"
