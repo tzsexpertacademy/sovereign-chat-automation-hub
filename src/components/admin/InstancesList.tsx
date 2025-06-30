@@ -1,65 +1,60 @@
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
-  Smartphone, 
-  Trash2, 
-  RefreshCw, 
-  Eye, 
+  Play, 
+  Pause, 
   QrCode, 
-  CheckCircle, 
-  AlertCircle, 
-  Clock,
-  User,
+  Smartphone, 
   Wifi,
-  WifiOff
+  WifiOff,
+  Eye,
+  MessageSquare,
+  RefreshCw,
+  Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import whatsappService from "@/services/whatsappMultiClient";
-import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
-import { clientsService, ClientData } from "@/services/clientsService";
+import { useNavigate } from "react-router-dom";
+import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
+import { ClientData } from "@/services/clientsService";
+import { useQRCodeManager } from "@/hooks/useQRCodeManager";
 
 interface InstancesListProps {
   instances: WhatsAppInstanceData[];
   clients: ClientData[];
   onInstanceUpdated: () => void;
-  systemHealth: {
-    serverOnline: boolean;
-    corsEnabled: boolean;
-    httpsEnabled: boolean;
-    issues: string[];
-  };
+  systemHealth: any;
 }
 
 const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: InstancesListProps) => {
+  const [selectedInstanceForQR, setSelectedInstanceForQR] = useState<string | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  const getClientByInstanceId = (instanceId: string) => {
-    return clients.find(client => client.instance_id === instanceId);
-  };
+  // Hook para gerenciar QR Code da instância selecionada
+  const { 
+    qrCodeData, 
+    websocketConnected, 
+    loading, 
+    connectInstance, 
+    disconnectInstance 
+  } = useQRCodeManager(selectedInstanceForQR || undefined);
 
-  const getClientById = (clientId: string) => {
-    return clients.find(client => client.id === clientId);
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'connected': return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'qr_ready': return <QrCode className="w-4 h-4 text-blue-500" />;
-      case 'connecting': return <Clock className="w-4 h-4 text-yellow-500" />;
-      case 'error': return <AlertCircle className="w-4 h-4 text-red-500" />;
-      default: return <WifiOff className="w-4 h-4 text-gray-500" />;
-    }
+  const getClientName = (clientId: string) => {
+    const client = clients.find(c => c.id === clientId);
+    return client?.name || 'Cliente Desconhecido';
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'connected': return 'default';
-      case 'qr_ready': return 'secondary';
-      case 'connecting': return 'secondary';
-      case 'error': return 'destructive';
-      default: return 'outline';
+      case 'connected': return 'bg-green-500';
+      case 'qr_ready': return 'bg-blue-500';
+      case 'connecting': return 'bg-yellow-500';
+      case 'authenticated': return 'bg-cyan-500';
+      case 'disconnected': return 'bg-gray-500';
+      default: return 'bg-gray-500';
     }
   };
 
@@ -68,135 +63,45 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
       case 'connected': return 'Conectado';
       case 'qr_ready': return 'QR Pronto';
       case 'connecting': return 'Conectando';
-      case 'error': return 'Erro';
+      case 'authenticated': return 'Autenticado';
       case 'disconnected': return 'Desconectado';
-      default: return status;
+      default: return 'Desconhecido';
     }
   };
 
-  const handleReconnectInstance = async (instance: WhatsAppInstanceData) => {
-    try {
-      console.log('🔄 Reconectando instância:', instance.instance_id);
-      
-      // Update status to connecting
-      await whatsappInstancesService.updateInstanceById(instance.id, {
-        status: 'connecting'
-      });
-      
-      // Try to connect to server if available
-      if (systemHealth.serverOnline && systemHealth.corsEnabled) {
-        try {
-          await whatsappService.connectClient(instance.instance_id);
-          toast({
-            title: "Reconectando",
-            description: `Instância ${instance.custom_name || instance.instance_id} está reconectando`,
-          });
-        } catch (serverError) {
-          console.warn('⚠️ Erro no servidor, mas status atualizado no BD');
-          toast({
-            title: "Status Atualizado",
-            description: "Status atualizado. Conectará quando servidor estiver disponível.",
-          });
-        }
-      } else {
-        toast({
-          title: "Status Atualizado",
-          description: "Instância marcada para reconexão. Verifique conexão do servidor.",
-        });
-      }
-      
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'connected': return <Wifi className="w-4 h-4" />;
+      case 'qr_ready': return <QrCode className="w-4 h-4" />;
+      case 'connecting': return <RefreshCw className="w-4 h-4 animate-spin" />;
+      case 'authenticated': return <Smartphone className="w-4 h-4" />;
+      case 'disconnected': return <WifiOff className="w-4 h-4" />;
+      default: return <WifiOff className="w-4 h-4" />;
+    }
+  };
+
+  const handleConnectInstance = async (instanceId: string) => {
+    setSelectedInstanceForQR(instanceId);
+    // O hook useQRCodeManager vai gerenciar a conexão automaticamente
+    setTimeout(() => {
+      connectInstance();
+    }, 100);
+  };
+
+  const handleDisconnectInstance = async (instanceId: string) => {
+    setSelectedInstanceForQR(instanceId);
+    setTimeout(() => {
+      disconnectInstance();
       onInstanceUpdated();
-      
-    } catch (error: any) {
-      console.error('❌ Erro ao reconectar:', error);
-      toast({
-        title: "Erro na Reconexão",
-        description: error.message || "Falha ao reconectar instância",
-        variant: "destructive",
-      });
-    }
+    }, 100);
   };
 
-  const handleDeleteInstance = async (instance: WhatsAppInstanceData) => {
-    try {
-      console.log('🗑️ Removendo instância:', instance.instance_id);
-      
-      // Try to disconnect from server first
-      if (systemHealth.serverOnline && systemHealth.corsEnabled) {
-        try {
-          await whatsappService.disconnectClient(instance.instance_id);
-        } catch (serverError) {
-          console.warn('⚠️ Erro ao desconectar do servidor, mas removendo do BD');
-        }
-      }
-      
-      // Remove from database
-      await whatsappInstancesService.deleteInstance(instance.instance_id);
-      
-      // Update client status
-      const client = getClientById(instance.client_id);
-      if (client) {
-        await clientsService.updateClientInstance(client.id, "", "disconnected");
-      }
-      
-      toast({
-        title: "Instância Removida",
-        description: `Instância ${instance.custom_name || instance.instance_id} foi removida`,
-      });
-      
-      onInstanceUpdated();
-      
-    } catch (error: any) {
-      console.error('❌ Erro ao remover instância:', error);
-      toast({
-        title: "Erro na Remoção",
-        description: error.message || "Falha ao remover instância",
-        variant: "destructive",
-      });
-    }
+  const handleViewQRCode = (instanceId: string) => {
+    setSelectedInstanceForQR(instanceId);
   };
 
-  const handleViewQRCode = async (instance: WhatsAppInstanceData) => {
-    try {
-      if (systemHealth.serverOnline && systemHealth.corsEnabled) {
-        const status = await whatsappService.getClientStatus(instance.instance_id);
-        if (status.qrCode) {
-          // Show QR code in a modal or new window
-          const qrWindow = window.open('', '_blank', 'width=400,height=400');
-          qrWindow?.document.write(`
-            <html>
-              <head><title>QR Code - ${instance.custom_name}</title></head>
-              <body style="display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;">
-                <div style="text-align: center;">
-                  <h3>QR Code - ${instance.custom_name}</h3>
-                  <img src="${status.qrCode}" alt="QR Code" style="max-width: 100%;" />
-                  <p>Escaneie com seu WhatsApp</p>
-                </div>
-              </body>
-            </html>
-          `);
-        } else {
-          toast({
-            title: "QR Code Indisponível",
-            description: "QR Code não está disponível para esta instância",
-            variant: "destructive",
-          });
-        }
-      } else {
-        toast({
-          title: "Servidor Indisponível",
-          description: "Não é possível obter QR Code - servidor offline ou CORS não configurado",
-          variant: "destructive",
-        });
-      }
-    } catch (error: any) {
-      console.error('❌ Erro ao obter QR Code:', error);
-      toast({
-        title: "Erro",
-        description: "Falha ao obter QR Code",
-        variant: "destructive",
-      });
-    }
+  const handleOpenChat = (instance: WhatsAppInstanceData) => {
+    navigate(`/client/${instance.client_id}/chat`);
   };
 
   if (instances.length === 0) {
@@ -207,7 +112,7 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
             <Smartphone className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma instância encontrada</h3>
             <p className="text-gray-600">
-              Crie sua primeira instância WhatsApp usando o formulário acima
+              Crie uma nova instância para começar a usar o WhatsApp
             </p>
           </div>
         </CardContent>
@@ -216,140 +121,152 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Instâncias Ativas ({instances.length})</h2>
-      
-      <div className="grid gap-4">
-        {instances.map((instance) => {
-          const client = getClientById(instance.client_id);
-          const displayName = instance.custom_name || `Instância ${instance.instance_id}`;
-          
-          return (
-            <Card key={instance.id} className="hover:shadow-md transition-shadow">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center space-x-3">
-                    <Smartphone className="w-6 h-6 text-blue-500" />
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Instâncias WhatsApp ({instances.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid lg:grid-cols-2 gap-6">
+            {instances.map((instance) => (
+              <Card key={instance.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
                     <div>
-                      <CardTitle className="text-lg">{displayName}</CardTitle>
-                      <CardDescription className="flex items-center space-x-2">
-                        <span>ID: {instance.instance_id}</span>
-                        {client && (
-                          <>
-                            <span>•</span>
-                            <User className="w-3 h-3" />
-                            <span>{client.name}</span>
-                          </>
-                        )}
-                      </CardDescription>
+                      <CardTitle className="text-lg">
+                        {instance.custom_name || instance.instance_id}
+                      </CardTitle>
+                      <p className="text-sm text-gray-600">
+                        Cliente: {getClientName(instance.client_id)}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {instance.phone_number || 'Não conectado'}
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
+                      <Badge variant={instance.status === 'connected' ? 'default' : 'secondary'}>
+                        <div className="flex items-center space-x-1">
+                          {getStatusIcon(instance.status)}
+                          <span>{getStatusText(instance.status)}</span>
+                        </div>
+                      </Badge>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge variant={getStatusColor(instance.status)}>
-                      <div className="flex items-center space-x-1">
-                        {getStatusIcon(instance.status)}
-                        <span>{getStatusText(instance.status)}</span>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  
+                  {/* Status específico para instância selecionada */}
+                  {selectedInstanceForQR === instance.instance_id && qrCodeData && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Status WebSocket:</span>
+                        <div className="flex items-center space-x-1">
+                          {websocketConnected ? (
+                            <Wifi className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <WifiOff className="w-4 h-4 text-red-500" />
+                          )}
+                          <span className="text-xs">
+                            {websocketConnected ? 'Conectado' : 'Desconectado'}
+                          </span>
+                        </div>
                       </div>
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                
-                {/* Instance Details */}
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-500">Telefone</p>
-                    <p className="font-medium">{instance.phone_number || 'Não conectado'}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Última atualização</p>
-                    <p className="font-medium">{new Date(instance.updated_at).toLocaleString()}</p>
-                  </div>
-                </div>
-
-                {/* Connection Status */}
-                <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded">
-                  {systemHealth.serverOnline ? (
-                    <Wifi className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <WifiOff className="w-4 h-4 text-red-500" />
+                      <p className="text-sm text-blue-800">
+                        Status atual: {qrCodeData.status}
+                      </p>
+                    </div>
                   )}
-                  <span className="text-sm">
-                    Servidor: {systemHealth.serverOnline ? 'Online' : 'Offline'}
-                  </span>
-                  {systemHealth.corsEnabled ? (
-                    <span className="text-xs text-green-600">• CORS OK</span>
-                  ) : (
-                    <span className="text-xs text-red-600">• CORS Erro</span>
+
+                  {/* QR Code Display */}
+                  {selectedInstanceForQR === instance.instance_id && 
+                   qrCodeData?.hasQrCode && 
+                   qrCodeData.qrCode && (
+                    <div className="space-y-3">
+                      <div className="text-center">
+                        <h4 className="font-medium mb-2">QR Code Disponível!</h4>
+                        <div className="bg-white p-4 rounded border">
+                          <img 
+                            src={qrCodeData.qrCode} 
+                            alt="QR Code WhatsApp"
+                            className="mx-auto max-w-[200px]"
+                          />
+                        </div>
+                        <p className="text-xs text-green-600 mt-2">
+                          ✅ Escaneie com seu WhatsApp para conectar
+                        </p>
+                      </div>
+                    </div>
                   )}
-                </div>
 
-                {/* Status-specific information */}
-                {instance.status === 'qr_ready' && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-                    <p className="text-sm text-blue-800">
-                      📱 QR Code disponível - escaneie com seu WhatsApp
-                    </p>
-                  </div>
-                )}
+                  {/* Connected Info */}
+                  {instance.status === 'connected' && (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded">
+                      <p className="text-sm text-green-800">
+                        ✅ WhatsApp conectado e funcionando
+                      </p>
+                    </div>
+                  )}
 
-                {instance.status === 'connected' && (
-                  <div className="p-3 bg-green-50 border border-green-200 rounded">
-                    <p className="text-sm text-green-800">
-                      ✅ WhatsApp conectado e funcionando
-                    </p>
-                  </div>
-                )}
-
-                {instance.status === 'error' && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded">
-                    <p className="text-sm text-red-800">
-                      ❌ Erro na conexão - tente reconectar
-                    </p>
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex space-x-2 pt-2">
-                  {instance.status === 'qr_ready' && (
+                  {/* Action Buttons */}
+                  <div className="flex space-x-2 pt-2">
+                    {instance.status === 'connected' ? (
+                      <>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleDisconnectInstance(instance.instance_id)}
+                          disabled={loading || !systemHealth.serverOnline}
+                        >
+                          <Pause className="w-4 h-4 mr-1" />
+                          Pausar
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleOpenChat(instance)}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <MessageSquare className="w-4 h-4 mr-1" />
+                          Chat
+                        </Button>
+                      </>
+                    ) : (
+                      <Button 
+                        size="sm"
+                        onClick={() => handleConnectInstance(instance.instance_id)}
+                        disabled={loading || !systemHealth.serverOnline}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        {loading && selectedInstanceForQR === instance.instance_id ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                            Conectando...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4 mr-1" />
+                            Conectar
+                          </>
+                        )}
+                      </Button>
+                    )}
                     <Button 
                       size="sm" 
                       variant="outline"
-                      onClick={() => handleViewQRCode(instance)}
-                      disabled={!systemHealth.serverOnline || !systemHealth.corsEnabled}
+                      onClick={() => handleViewQRCode(instance.instance_id)}
+                      disabled={loading}
                     >
                       <Eye className="w-4 h-4 mr-1" />
-                      Ver QR Code
+                      QR Code
                     </Button>
-                  )}
-                  
-                  {['disconnected', 'error'].includes(instance.status) && (
-                    <Button 
-                      size="sm"
-                      onClick={() => handleReconnectInstance(instance)}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <RefreshCw className="w-4 h-4 mr-1" />
-                      Reconectar
-                    </Button>
-                  )}
-                  
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => handleDeleteInstance(instance)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4 mr-1" />
-                    Remover
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
