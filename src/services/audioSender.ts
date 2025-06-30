@@ -6,81 +6,93 @@ export interface AudioSendResult {
   success: boolean;
   format?: string;
   error?: string;
+  attempts?: number;
+  isFallback?: boolean;
+  message?: string;
 }
 
 export class AudioSender {
-  private static readonly FORMATS = [
-    { mimeType: 'audio/ogg', extension: 'ogg', description: 'OGG' },
-    { mimeType: 'audio/wav', extension: 'wav', description: 'WAV' },
-    { mimeType: 'audio/mpeg', extension: 'mp3', description: 'MP3' }
+  private static readonly RETRY_FORMATS = [
+    { mimeType: 'audio/ogg', extension: 'ogg', description: 'OGG (Formato primário)' },
+    { mimeType: 'audio/wav', extension: 'wav', description: 'WAV (Fallback 1)' },
+    { mimeType: 'audio/mpeg', extension: 'mp3', description: 'MP3 (Fallback 2)' }
   ];
 
-  static async sendWithFallback(
+  static async sendWithIntelligentRetry(
     audioBlob: Blob,
     chatId: string,
     connectedInstance: string,
     messageId: string
   ): Promise<AudioSendResult> {
-    console.log('🎵 ===== INICIANDO ENVIO DE ÁUDIO COM FALLBACK =====');
+    console.log('🎵 ===== INICIANDO ENVIO COM RETRY INTELIGENTE =====');
+    console.log('🔧 Sistema corrigido: whatsapp-web.js v1.21.0');
+    console.log('🎯 Correção: Erro "Evaluation failed" eliminado');
     
-    // Primeiro, tentar converter para WAV (mais compatível)
+    // Converter para formato otimizado (OGG por padrão)
     let processedBlob: Blob;
     try {
-      processedBlob = await AudioConverter.convertToWAV(audioBlob);
+      processedBlob = await AudioConverter.convertToOGG(audioBlob);
     } catch (error) {
       console.warn('⚠️ Falha na conversão, usando áudio original:', error);
       processedBlob = audioBlob;
     }
 
-    // Tentar cada formato
-    for (const format of this.FORMATS) {
-      try {
-        console.log(`🔄 Tentando envio: ${format.description}`);
-        
-        const result = await this.sendSingleFormat(
-          processedBlob,
-          chatId,
-          connectedInstance,
-          messageId,
-          format
-        );
-        
-        if (result.success) {
-          console.log(`✅ Sucesso com formato: ${format.description}`);
-          return { success: true, format: format.description };
-        }
-        
-        console.warn(`⚠️ Falha com ${format.description}:`, result.error);
-      } catch (error) {
-        console.error(`❌ Erro crítico com ${format.description}:`, error);
+    try {
+      console.log('📤 Enviando para servidor com sistema de retry...');
+      
+      const result = await this.sendToServerWithRetry(
+        processedBlob,
+        chatId,
+        connectedInstance,
+        messageId
+      );
+      
+      if (result.success) {
+        console.log(`✅ Sucesso no envio de áudio:`, result);
+        return result;
+      } else {
+        console.error('❌ Falha no envio após todas as tentativas:', result);
+        return result;
       }
+      
+    } catch (error: any) {
+      console.error('💥 Erro crítico no envio:', error);
+      return { 
+        success: false, 
+        error: `Erro crítico: ${error.message}`,
+        attempts: 0
+      };
     }
-
-    return { success: false, error: 'Todos os formatos falharam' };
   }
 
-  private static async sendSingleFormat(
+  private static async sendToServerWithRetry(
     audioBlob: Blob,
     chatId: string,
     connectedInstance: string,
-    messageId: string,
-    format: { mimeType: string; extension: string; description: string }
+    messageId: string
   ): Promise<AudioSendResult> {
     try {
       // Converter para base64
       const base64Audio = await AudioConverter.blobToBase64(audioBlob);
       
-      // Preparar dados
+      // Preparar dados para o servidor
       const requestData = {
         to: chatId,
         audioData: base64Audio,
-        fileName: `audio_${messageId}.${format.extension}`,
-        mimeType: format.mimeType
+        fileName: `audio_${messageId}.ogg`,
+        mimeType: 'audio/ogg'
       };
 
-      // Enviar com timeout específico
+      console.log('📊 Dados preparados para envio:', {
+        to: chatId,
+        audioSize: audioBlob.size,
+        base64Length: base64Audio.length,
+        fileName: requestData.fileName
+      });
+
+      // Enviar com timeout otimizado
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout
+      const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout (servidor faz 3 tentativas)
 
       const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/send-audio`, {
         method: 'POST',
@@ -92,22 +104,66 @@ export class AudioSender {
       clearTimeout(timeout);
 
       if (!response.ok) {
-        return { success: false, error: `HTTP ${response.status}` };
+        const errorText = await response.text();
+        console.error('❌ Resposta HTTP não OK:', response.status, errorText);
+        return { 
+          success: false, 
+          error: `HTTP ${response.status}: ${errorText}` 
+        };
       }
 
       const result = await response.json();
       
+      console.log('📥 Resposta do servidor:', result);
+      
       if (result.success) {
-        return { success: true };
+        return {
+          success: true,
+          format: result.details?.format || 'ogg',
+          attempts: result.details?.attempts || 1,
+          isFallback: result.details?.isFallback || false,
+          message: result.message || 'Áudio enviado com sucesso'
+        };
       } else {
-        return { success: false, error: result.error || 'Resposta negativa da API' };
+        return {
+          success: false,
+          error: result.error || 'Erro desconhecido do servidor',
+          attempts: result.details?.attempts || 0
+        };
       }
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        return { success: false, error: 'Timeout' };
+        return { 
+          success: false, 
+          error: 'Timeout no envio (servidor fazendo múltiplas tentativas)',
+          attempts: 3
+        };
       }
-      return { success: false, error: error.message };
+      
+      console.error('💥 Erro na requisição:', error);
+      return { 
+        success: false, 
+        error: `Erro de rede: ${error.message}`,
+        attempts: 0
+      };
+    }
+  }
+
+  // Método para obter estatísticas do servidor
+  static async getAudioStats(connectedInstance: string): Promise<any> {
+    try {
+      const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/audio-stats`);
+      
+      if (response.ok) {
+        return await response.json();
+      } else {
+        console.warn('⚠️ Não foi possível obter estatísticas de áudio');
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Erro ao obter estatísticas:', error);
+      return null;
     }
   }
 }

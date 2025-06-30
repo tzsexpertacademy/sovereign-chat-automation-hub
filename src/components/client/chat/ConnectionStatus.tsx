@@ -1,62 +1,55 @@
 
-import React, { useState, useEffect } from 'react';
-import { AlertCircle } from 'lucide-react';
-import { getServerConfig } from '@/config/environment';
+import { useState, useEffect } from "react";
+import { Badge } from "@/components/ui/badge";
+import { getServerConfig } from "@/config/environment";
 
 interface ConnectionStatusProps {
-  connectedInstance: string | null;
-  isOnline: boolean;
+  className?: string;
+  connectedInstance?: string;
+  isOnline?: boolean;
 }
 
-const ConnectionStatus = ({ connectedInstance, isOnline }: ConnectionStatusProps) => {
-  const [serverConfig, setServerConfig] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+const ConnectionStatus = ({ className, connectedInstance, isOnline: propIsOnline }: ConnectionStatusProps) => {
+  const [isServerOnline, setIsServerOnline] = useState(true);
+  const config = getServerConfig();
 
   useEffect(() => {
-    const loadConfig = async () => {
+    const checkConnection = async () => {
       try {
-        const config = await getServerConfig();
-        setServerConfig(config);
+        const response = await fetch(`${config.SERVER_URL}/health`, {
+          method: 'GET',
+          mode: 'no-cors',
+          signal: AbortSignal.timeout(5000)
+        });
+        setIsServerOnline(true);
       } catch (error) {
-        console.error('Erro ao carregar configuração:', error);
-      } finally {
-        setLoading(false);
+        setIsServerOnline(false);
       }
     };
 
-    loadConfig();
-  }, []);
+    checkConnection();
+    
+    // Check connection every 30 seconds
+    const interval = setInterval(checkConnection, 30000);
+    
+    return () => clearInterval(interval);
+  }, [config.SERVER_URL]);
 
-  if (!connectedInstance) {
-    return (
-      <div className="p-3 bg-yellow-50 border-b border-yellow-200 flex items-center gap-2 text-yellow-800">
-        <AlertCircle className="w-4 h-4" />
-        <span className="text-sm">Nenhuma instância WhatsApp conectada. As mensagens não poderão ser enviadas.</span>
-      </div>
-    );
-  }
-
-  if (loading || !serverConfig) {
-    return (
-      <div className="p-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2 text-gray-600">
-        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-        <span className="text-xs">Carregando configuração...</span>
-      </div>
-    );
-  }
+  // Use prop isOnline if provided, otherwise use server check
+  const isOnline = propIsOnline !== undefined ? propIsOnline : isServerOnline;
+  
+  // Show instance info if available
+  const statusText = connectedInstance 
+    ? `${isOnline ? "🟢" : "🔴"} ${connectedInstance}`
+    : `${isOnline ? "🟢 Online" : "🔴 Offline"}`;
 
   return (
-    <div className="p-2 bg-green-50 border-b border-green-200 flex items-center gap-2 text-green-800">
-      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-      <span className="text-xs">Conectado: {connectedInstance}</span>
-      <span className="text-xs">• {serverConfig.protocol.toUpperCase()}: {serverConfig.serverUrl}</span>
-      {isOnline && (
-        <>
-          <span className="text-xs">•</span>
-          <span className="text-xs font-medium">🤖 IA Online</span>
-        </>
-      )}
-    </div>
+    <Badge 
+      variant={isOnline ? "default" : "destructive"}
+      className={className}
+    >
+      {statusText}
+    </Badge>
   );
 };
 

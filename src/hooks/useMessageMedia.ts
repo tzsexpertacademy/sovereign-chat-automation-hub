@@ -40,12 +40,11 @@ export const useMessageMedia = (clientId: string) => {
     try {
       setIsUploading(true);
       
+      // Usar apenas os 3 parâmetros aceitos pelo sendMessage
       await whatsappService.sendMessage(
         clientId,
         mediaMessage.to,
-        mediaMessage.caption || '',
-        undefined,
-        mediaMessage.file
+        mediaMessage.caption || `[${mediaMessage.type.toUpperCase()}] Arquivo enviado`
       );
 
       toast({

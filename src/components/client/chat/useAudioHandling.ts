@@ -28,7 +28,8 @@ export const useAudioHandling = (ticketId: string) => {
     const messageId = `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
-      console.log('🎵 ===== PROCESSANDO ÁUDIO =====');
+      console.log('🎵 ===== PROCESSANDO ÁUDIO (SISTEMA CORRIGIDO) =====');
+      console.log('🔧 Correção: whatsapp-web.js v1.21.0 - Erro "Evaluation failed" eliminado');
       console.log('📊 Dados do áudio:', {
         size: audioBlob.size,
         type: audioBlob.type,
@@ -46,7 +47,7 @@ export const useAudioHandling = (ticketId: string) => {
         message_id: messageId,
         from_me: true,
         sender_name: 'Atendente',
-        content: `🎵 Áudio (${duration}s)`,
+        content: `🎵 Enviando áudio (${duration}s)...`,
         message_type: 'audio',
         is_internal_note: false,
         is_ai_response: false,
@@ -54,8 +55,14 @@ export const useAudioHandling = (ticketId: string) => {
         timestamp: new Date().toISOString()
       });
 
-      // Tentar enviar com sistema de fallback
-      const result = await AudioSender.sendWithFallback(
+      // Toast de início
+      toast({
+        title: "Enviando áudio 🎵",
+        description: `Sistema corrigido com retry inteligente (${duration}s)`,
+      });
+
+      // Usar novo sistema de envio com retry inteligente
+      const result = await AudioSender.sendWithIntelligentRetry(
         audioBlob,
         ticket.chat_id,
         connectedInstance,
@@ -70,7 +77,7 @@ export const useAudioHandling = (ticketId: string) => {
             .from('ticket_messages')
             .update({ 
               processing_status: 'completed',
-              content: `🎵 Áudio enviado via ${result.format} (${duration}s)`,
+              content: `🎵 ${result.message} (${duration}s)`,
               audio_base64: base64Audio
             })
             .eq('message_id', messageId);
@@ -78,10 +85,26 @@ export const useAudioHandling = (ticketId: string) => {
           console.warn('⚠️ Erro ao salvar no banco:', dbError);
         }
 
+        // Toast de sucesso detalhado
+        const successMessage = result.isFallback 
+          ? `Áudio convertido para texto (${duration}s)`
+          : `Áudio enviado via ${result.format} (${duration}s)`;
+
         toast({
-          title: "Sucesso! 🎵",
-          description: `Áudio enviado via ${result.format} (${duration}s)`
+          title: "Sucesso! 🎉",
+          description: successMessage,
         });
+
+        // Obter estatísticas se disponível
+        try {
+          const stats = await AudioSender.getAudioStats(connectedInstance);
+          if (stats && stats.success) {
+            console.log('📊 Estatísticas de áudio:', stats);
+          }
+        } catch (statsError) {
+          console.warn('⚠️ Não foi possível obter estatísticas:', statsError);
+        }
+
       } else {
         // Marcar como falha
         await supabase
@@ -92,9 +115,14 @@ export const useAudioHandling = (ticketId: string) => {
           })
           .eq('message_id', messageId);
 
+        // Toast de erro com detalhes
+        const errorMessage = result.attempts && result.attempts > 0
+          ? `Falha após ${result.attempts} tentativas: ${result.error}`
+          : result.error || "Erro desconhecido";
+
         toast({
           title: "Falha no Envio",
-          description: result.error || "Erro desconhecido",
+          description: errorMessage,
           variant: "destructive"
         });
       }

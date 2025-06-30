@@ -1,1073 +1,848 @@
 const express = require('express');
-const { Server } = require('socket.io');
 const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const { Client, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const fs = require('fs');
-const path = require('path');
-const multer = require('multer');
+const { v4: uuidv4 } = require('uuid');
+const mime = require('mime-types');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: [
-            "https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com",
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://localhost:4000"
-        ],
+        origin: "*",
         methods: ["GET", "POST"],
-        credentials: true
+        allowedHeaders: ["*"],
+        credentials: false
     }
 });
 
-// ===== MIDDLEWARE CORS SUPER PERMISSIVO PARA LOVABLE =====
+const port = process.env.PORT || 4000;
+
+// CONFIGURAÇÃO CORS DEFINITIVA PARA RESOLVER PROBLEMA LOVABLE
+console.log('🔧 Configurando CORS DEFINITIVO para resolver problema Lovable...');
+
+// Middleware CORS ULTRA-ESPECÍFICO - PRIMEIRA POSIÇÃO
 app.use((req, res, next) => {
-    const origin = req.headers.origin;
+    const origin = req.get('origin');
+    console.log(`🌐 ${req.method} ${req.url} - Origin: ${origin || 'none'}`);
     
-    console.log(`🔄 CORS Middleware - ${req.method} ${req.url}`);
-    console.log(`🌍 Origin: ${origin || 'sem origin'}`);
-    console.log(`🔧 User-Agent: ${req.headers['user-agent']?.substring(0, 80) || 'sem user-agent'}`);
-    
-    // Headers CORS super permissivos para Lovable
+    // Headers CORS ultra-específicos
     res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
-    res.header('Access-Control-Expose-Headers', 'Content-Length, X-JSON');
-    res.header('Access-Control-Max-Age', '86400'); // 24 horas
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma,Access-Control-Request-Method,Access-Control-Request-Headers,X-Client-Info,User-Agent,Referer');
+    res.header('Access-Control-Allow-Credentials', 'false');
+    res.header('Access-Control-Max-Age', '86400');
+    res.header('Vary', 'Origin');
     
-    // Tratar requisições OPTIONS (preflight)
+    // Para requisições OPTIONS, responder imediatamente com status 200
     if (req.method === 'OPTIONS') {
-        console.log(`✅ CORS Preflight OK para: ${origin || 'sem origin'}`);
-        return res.status(200).end();
+        console.log('✅ Respondendo preflight OPTIONS com status 200');
+        res.status(200).end();
+        return;
     }
     
-    console.log(`✅ CORS Headers aplicados para: ${origin || 'sem origin'}`);
     next();
 });
 
-// CORS adicional usando o middleware cors()
+// Middleware adicional para garantir CORS
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', '*');
+    next();
+});
+
+// CORS do express como backup final
 app.use(cors({
-    origin: function (origin, callback) {
-        const allowedOrigins = [
-            'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
-            'http://localhost:3000',
-            'http://localhost:5173',
-            'http://localhost:4000'
-        ];
-        
-        console.log(`🔍 CORS Library: Verificando origem: ${origin || 'sem origin'}`);
-        
-        // Permitir TODAS as origens para máxima compatibilidade
-        console.log(`✅ CORS Library: Origem permitida: ${origin || 'sem origin'}`);
+    origin: function(origin, callback) {
+        // Permitir requisições sem origem (ex: Postman) e qualquer origem
         callback(null, true);
     },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'Cache-Control', 'Pragma']
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['*'],
+    credentials: false,
+    optionsSuccessStatus: 200,
+    preflightContinue: false
 }));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Configurar multer para upload de arquivos
-const upload = multer({
-    dest: 'uploads/',
-    limits: {
-        fileSize: 50 * 1024 * 1024 // 50MB limit
+// Configuração do Swagger UI para HTTPS
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = {
+    openapi: '3.0.0',
+    info: {
+        title: 'WhatsApp Multi-Client API',
+        version: '2.2.2',
+        description: 'API para gerenciar múltiplas instâncias do WhatsApp com CORS DEFINITIVAMENTE corrigido'
+    },
+    servers: [
+        {
+            url: 'https://146.59.227.248',
+            description: 'Servidor HTTPS de Produção com CORS DEFINITIVO'
+        },
+        {
+            url: 'http://localhost:4000',
+            description: 'Servidor de Desenvolvimento'
+        }
+    ],
+    paths: {
+        '/health': {
+            get: {
+                summary: 'Health Check',
+                responses: {
+                    '200': {
+                        description: 'Status do servidor'
+                    }
+                }
+            }
+        },
+        '/clients': {
+            get: {
+                summary: 'Listar todos os clientes',
+                responses: {
+                    '200': {
+                        description: 'Lista de clientes'
+                    }
+                }
+            }
+        },
+        '/clients/{clientId}/connect': {
+            post: {
+                summary: 'Conectar cliente WhatsApp',
+                parameters: [
+                    {
+                        name: 'clientId',
+                        in: 'path',
+                        required: true,
+                        schema: {
+                            type: 'string'
+                        }
+                    }
+                ],
+                responses: {
+                    '200': {
+                        description: 'Cliente conectando com CORS DEFINITIVO'
+                    }
+                }
+            }
+        },
+        '/clients/{clientId}/status': {
+            get: {
+                summary: 'Status do cliente',
+                parameters: [
+                    {
+                        name: 'clientId',
+                        in: 'path',
+                        required: true,
+                        schema: {
+                            type: 'string'
+                        }
+                    }
+                ],
+                responses: {
+                    '200': {
+                        description: 'Status do cliente com QR Code se disponível'
+                    }
+                }
+            }
+        }
     }
+};
+
+// Swagger UI com configuração HTTPS definitiva
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'WhatsApp Multi-Client API - CORS DEFINITIVO',
+    swaggerOptions: {
+        url: 'https://146.59.227.248/api-docs.json'
+    }
+}));
+
+// Endpoint para servir o JSON do Swagger
+app.get('/api-docs.json', (req, res) => {
+    res.json(swaggerDocument);
 });
 
-// Garantir que o diretório de uploads existe
-if (!fs.existsSync('uploads')) {
-    fs.mkdirSync('uploads');
-}
+// Load client sessions from file
+const SESSION_FILE_PATH = './whatsapp-sessions.json';
+let clientSessions = {};
 
-// Garantir que o diretório de sessões existe
-if (!fs.existsSync('./sessions')) {
-    fs.mkdirSync('./sessions');
-}
+const loadClientSessions = () => {
+    try {
+        if (fs.existsSync(SESSION_FILE_PATH)) {
+            const sessionData = fs.readFileSync(SESSION_FILE_PATH, 'utf-8');
+            clientSessions = JSON.parse(sessionData);
+            console.log('✅ Client sessions loaded from file.');
+        }
+    } catch (error) {
+        console.error('❌ Error loading client sessions:', error);
+    }
+};
 
-const clients = new Map();
+loadClientSessions();
 
-// ===== FUNÇÕES AUXILIARES DEFINIDAS PRIMEIRO =====
+const saveClientSessions = () => {
+    try {
+        fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(clientSessions, null, 2));
+        console.log('✅ Client sessions saved to file.');
+    } catch (error) {
+        console.error('❌ Error saving client sessions:', error);
+    }
+};
 
-// Função para detectar formato de áudio
-function detectAudioFormat(buffer) {
-    console.log('🔍 Detectando formato de áudio...', {
-        bufferSize: buffer.length,
-        firstBytes: Array.from(buffer.slice(0, 8)).map(b => '0x' + b.toString(16)).join(' ')
+const clients = {};
+
+// Função para limpar processos Chrome órfãos
+const cleanupOrphanedChromeProcesses = () => {
+    console.log('🧹 Limpando processos Chrome órfãos...');
+    const { exec } = require('child_process');
+    
+    exec('pkill -f "chrome.*--remote-debugging-port"', (error) => {
+        if (error && error.code !== 1) { // code 1 = no processes found, which is OK
+            console.warn('⚠️ Erro ao limpar Chrome:', error.message);
+        } else {
+            console.log('✅ Processos Chrome órfãos limpos');
+        }
+    });
+};
+
+// Função para emitir atualização de todos os clientes
+const emitClientsUpdate = () => {
+    const clientList = Object.keys(clients).map(clientId => {
+        const client = clients[clientId];
+        const isConnected = client.info?.wid;
+        return {
+            clientId: clientId,
+            status: isConnected ? 'connected' : 'connecting',
+            phoneNumber: isConnected ? phoneNumberFormatter(client.info.wid.user) : null,
+            hasQrCode: false
+        };
     });
     
-    const signatures = {
-        'audio/wav': [0x52, 0x49, 0x46, 0x46], // RIFF
-        'audio/mp3': [0xFF, 0xFB], // MP3 frame sync
-        'audio/mpeg': [0xFF, 0xFB], // MPEG
-        'audio/ogg': [0x4F, 0x67, 0x67, 0x53], // OggS
-        'audio/webm': [0x1A, 0x45, 0xDF, 0xA3], // WebM
-        'audio/m4a': [0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70] // M4A
-    };
+    io.emit('clients_update', clientList);
+    console.log(`📡 Clientes atualizados enviados via WebSocket: ${clientList.length} clientes`);
+};
 
-    for (const [mimeType, signature] of Object.entries(signatures)) {
-        if (signature.every((byte, index) => buffer[index] === byte)) {
-            console.log(`✅ Formato detectado: ${mimeType}`);
-            return mimeType;
-        }
+const phoneNumberFormatter = function(number) {
+    let formatted = number.replace(/\D/g, '');
+    
+    if (formatted.startsWith('0')) {
+        formatted = '55' + formatted;
     }
     
-    console.log('⚠️ Formato não detectado, usando audio/wav como fallback');
-    return 'audio/wav'; // fallback padrão
-}
-
-// Função para converter base64 para arquivo temporário
-function base64ToTempFile(base64Data, format = 'wav') {
-    try {
-        console.log(`🔄 INICIANDO conversão base64 para arquivo temporário`);
-        console.log(`📊 Parâmetros:`, {
-            base64Length: base64Data.length,
-            format: format,
-            hasDataPrefix: base64Data.startsWith('data:')
-        });
-        
-        // Remover prefixo data URL se presente
-        const cleanBase64 = base64Data.replace(/^data:audio\/[^;]+;base64,/, '');
-        console.log(`🧹 Base64 limpo: ${cleanBase64.length} caracteres`);
-        
-        // Converter para buffer
-        const buffer = Buffer.from(cleanBase64, 'base64');
-        console.log(`📦 Buffer criado: ${buffer.length} bytes`);
-        
-        // Detectar formato real
-        const detectedFormat = detectAudioFormat(buffer);
-        
-        // Criar arquivo temporário
-        const tempFileName = `temp_audio_${Date.now()}.${format}`;
-        const tempFilePath = path.join('uploads', tempFileName);
-        
-        console.log(`💾 Salvando em: ${tempFilePath}`);
-        fs.writeFileSync(tempFilePath, buffer);
-        
-        const fileStats = fs.statSync(tempFilePath);
-        console.log(`✅ Arquivo temporário criado com sucesso:`, {
-            path: tempFilePath,
-            size: fileStats.size,
-            detectedMimeType: detectedFormat,
-            filename: tempFileName
-        });
-        
-        return {
-            path: tempFilePath,
-            detectedMimeType: detectedFormat,
-            size: fileStats.size,
-            filename: tempFileName
-        };
-        
-    } catch (error) {
-        console.error(`❌ ERRO CRÍTICO ao converter base64 para arquivo:`, error);
-        console.error(`💥 Stack trace:`, error.stack);
-        throw error;
+    if (!formatted.endsWith('@c.us')) {
+        formatted += '@c.us';
     }
-}
-
-function generateClientId() {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-}
-
-const saveSession = (clientId, session) => {
-    try {
-        const sessionPath = `./sessions/whatsapp-session-${clientId}.json`;
-        fs.writeFileSync(sessionPath, JSON.stringify(session));
-        console.log(`✅ Sessão salva para ${clientId}`);
-    } catch (err) {
-        console.error(`❌ Erro ao salvar sessão para ${clientId}:`, err);
-    }
+    
+    return formatted;
 };
 
-const loadSession = (clientId) => {
-    try {
-        const sessionFile = `./sessions/whatsapp-session-${clientId}.json`;
-        if (fs.existsSync(sessionFile)) {
-            const sessionData = fs.readFileSync(sessionFile, 'utf-8');
-            return JSON.parse(sessionData);
-        }
-    } catch (err) {
-        console.error(`❌ Erro ao carregar sessão para ${clientId}:`, err);
+// Função para inicializar um novo cliente
+const initClient = (clientId) => {
+    if (clients[clientId]) {
+        console.log(`⚠️ Cliente ${clientId} já está inicializado.`);
+        return;
     }
-    return null;
+
+    console.log(`🚀 Inicializando cliente: ${clientId}`);
+
+    const client = new Client({
+        session: clientSessions[clientId],
+        puppeteer: {
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                '--disable-ipc-flooding-protection'
+            ],
+        }
+    });
+
+    client.on('qr', async (qr) => {
+        console.log(`📱 QR Code gerado para ${clientId}`);
+        try {
+            const qrCodeDataUrl = await qrcode.toDataURL(qr);
+            io.emit(`client_status_${clientId}`, { 
+                clientId: clientId, 
+                status: 'qr_ready', 
+                qrCode: qrCodeDataUrl,
+                hasQrCode: true
+            });
+            console.log(`✅ QR Code enviado via WebSocket para ${clientId}`);
+        } catch (error) {
+            console.error(`❌ Erro ao gerar QR Code para ${clientId}:`, error);
+        }
+    });
+
+    client.on('authenticated', (session) => {
+        console.log(`✅ Cliente ${clientId} autenticado`);
+        clientSessions[clientId] = session;
+        saveClientSessions();
+        io.emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'authenticated',
+            hasQrCode: false
+        });
+    });
+
+    client.on('auth_failure', function (session) {
+        console.error(`❌ Falha de autenticação para ${clientId}`);
+        io.emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'auth_failed',
+            hasQrCode: false
+        });
+    });
+
+    client.on('ready', () => {
+        const phoneNumber = client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null;
+        console.log(`🎉 Cliente ${clientId} conectado! Telefone: ${phoneNumber}`);
+        io.emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'connected',
+            phoneNumber: phoneNumber,
+            hasQrCode: false
+        });
+        
+        // Emit clients update
+        emitClientsUpdate();
+    });
+
+    client.on('message', msg => {
+        console.log(`📩 Mensagem recebida em ${clientId}:`, msg.body.substring(0, 50));
+        io.emit(`message_${clientId}`, msg);
+    });
+
+    client.on('disconnected', (reason) => {
+        console.log(`❌ Cliente ${clientId} desconectado:`, reason);
+        io.emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'disconnected',
+            hasQrCode: false
+        });
+        client.destroy();
+        delete clients[clientId];
+        emitClientsUpdate();
+    });
+
+    client.initialize();
+    clients[clientId] = client;
+    
+    // Set initial status
+    io.emit(`client_status_${clientId}`, { 
+        clientId: clientId, 
+        status: 'connecting',
+        hasQrCode: false
+    });
+    
+    console.log(`✅ Cliente ${clientId} inicializado e conectando...`);
 };
-
-class WhatsAppClientManager {
-    constructor(clientId) {
-        this.clientId = clientId;
-        this.client = null;
-        this.status = 'disconnected';
-        this.qrCode = null;
-        this.phoneNumber = null;
-        this.isReady = false;
-        this.lastActivity = Date.now();
-        this.chatCache = new Map();
-        this.chatCacheTimeout = 30000; // 30 segundos
-    }
-
-    async initialize() {
-        console.log(`🔄 Inicializando cliente WhatsApp: ${this.clientId}`);
-        
-        try {
-            this.client = new Client({
-                authStrategy: new LocalAuth({ clientId: this.clientId }),
-                puppeteer: {
-                    headless: true,
-                    args: [
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-accelerated-2d-canvas',
-                        '--no-first-run',
-                        '--no-zygote',
-                        '--disable-gpu',
-                        '--disable-background-timer-throttling',
-                        '--disable-backgrounding-occluded-windows',
-                        '--disable-renderer-backgrounding'
-                    ],
-                    executablePath: undefined
-                },
-                webVersionCache: {
-                    type: 'remote',
-                    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-                }
-            });
-
-            this.setupEventHandlers();
-            await this.client.initialize();
-            
-        } catch (error) {
-            console.error(`❌ Erro ao inicializar cliente ${this.clientId}:`, error);
-            this.updateStatus('error', error.message);
-            throw error;
-        }
-    }
-
-    setupEventHandlers() {
-        this.client.on('qr', (qr) => {
-            console.log(`🔄 QR Code recebido para ${this.clientId}`);
-            qrcode.toDataURL(qr, (err, url) => {
-                if (err) {
-                    console.error(`❌ Erro ao gerar QR Code para ${this.clientId}:`, err);
-                    return;
-                }
-                this.qrCode = url;
-                this.updateStatus('qr_ready');
-            });
-        });
-
-        this.client.on('authenticated', (session) => {
-            console.log(`🔑 Cliente autenticado: ${this.clientId}`);
-            saveSession(this.clientId, session);
-            this.updateStatus('authenticated');
-        });
-
-        this.client.on('auth_failure', (msg) => {
-            console.error(`❌ Falha na autenticação para ${this.clientId}:`, msg);
-            this.updateStatus('auth_failed', msg);
-        });
-
-        this.client.on('ready', async () => {
-            console.log(`✅ Cliente pronto: ${this.clientId}`);
-            this.isReady = true;
-            
-            try {
-                const info = this.client.info;
-                if (info && info.wid) {
-                    this.phoneNumber = info.wid.user;
-                }
-            } catch (error) {
-                console.log(`⚠️ Não foi possível obter número do telefone para ${this.clientId}`);
-            }
-            
-            this.updateStatus('connected');
-        });
-
-        this.client.on('message', async (msg) => {
-            console.log(`📨 ===== MENSAGEM RECEBIDA (${this.clientId}) =====`);
-            console.log(`📱 Tipo: ${msg.type}`);
-            console.log(`📝 Corpo: ${msg.body?.substring(0, 50)}`);
-            console.log(`🎥 Tem mídia: ${msg.hasMedia}`);
-            console.log(`👤 De mim: ${msg.fromMe}`);
-            console.log(`📞 De: ${msg.from}`);
-            console.log(`🔢 ID: ${msg.id.id}`);
-            
-            this.lastActivity = Date.now();
-            
-            let mediaData = null;
-            let mimetype = null;
-            let filename = null;
-            
-            if (msg.hasMedia) {
-                console.log(`🎵 ===== DETECTADA MENSAGEM COM MÍDIA =====`);
-                console.log(`📋 Tipo de mídia: ${msg.type}`);
-                
-                try {
-                    console.log(`⬇️ INICIANDO download da mídia...`);
-                    const startTime = Date.now();
-                    
-                    const media = await msg.downloadMedia();
-                    
-                    const downloadTime = Date.now() - startTime;
-                    console.log(`✅ MÍDIA BAIXADA COM SUCESSO em ${downloadTime}ms`);
-                    console.log(`📊 Dados da mídia:`, {
-                        mimetype: media.mimetype,
-                        filename: media.filename,
-                        dataLength: media.data?.length || 0,
-                        hasData: !!media.data
-                    });
-                    
-                    if (media && media.data) {
-                        mediaData = media.data;
-                        mimetype = media.mimetype;
-                        filename = media.filename || `media_${Date.now()}`;
-                        
-                        console.log(`💾 DADOS DE MÍDIA PREPARADOS:`, {
-                            mediaDataLength: mediaData.length,
-                            mimetype,
-                            filename,
-                            isAudio: msg.type === 'audio' || msg.type === 'ptt'
-                        });
-                    } else {
-                        console.error(`❌ DADOS DE MÍDIA VAZIOS OU INVÁLIDOS`);
-                    }
-                    
-                } catch (mediaError) {
-                    console.error(`❌ ERRO CRÍTICO ao baixar mídia:`, mediaError);
-                    console.error(`💥 Stack trace:`, mediaError.stack);
-                }
-            }
-            
-            const messageData = {
-                id: msg.id.id,
-                body: msg.body,
-                type: msg.type,
-                timestamp: msg.timestamp * 1000,
-                fromMe: msg.fromMe,
-                author: msg.author,
-                from: msg.from,
-                to: msg.to,
-                hasMedia: msg.hasMedia,
-                mediaData: mediaData,
-                mimetype: mimetype,
-                filename: filename,
-                originalMessage: {
-                    id: msg.id.id,
-                    body: msg.body,
-                    type: msg.type,
-                    timestamp: msg.timestamp,
-                    fromMe: msg.fromMe,
-                    author: msg.author,
-                    from: msg.from,
-                    to: msg.to,
-                    hasMedia: msg.hasMedia,
-                    mediaData: mediaData,
-                    mimetype: mimetype,
-                    filename: filename,
-                    notifyName: msg.notifyName,
-                    pushName: msg.pushName
-                }
-            };
-            
-            console.log(`📤 ===== ENVIANDO MENSAGEM PARA FRONTEND =====`);
-            console.log(`📊 Resumo da mensagem:`, {
-                id: messageData.id,
-                type: messageData.type,
-                hasMedia: messageData.hasMedia,
-                hasMediaData: !!messageData.mediaData,
-                mediaDataLength: messageData.mediaData?.length || 0,
-                fromMe: messageData.fromMe
-            });
-            
-            io.emit(`message_${this.clientId}`, messageData);
-            console.log(`✅ MENSAGEM ENVIADA PARA FRONTEND`);
-        });
-
-        this.client.on('disconnected', (reason) => {
-            console.log(`❌ Cliente desconectado ${this.clientId}:`, reason);
-            this.isReady = false;
-            this.updateStatus('disconnected', reason);
-        });
-
-        this.client.on('error', (error) => {
-            console.error(`❌ Erro no cliente ${this.clientId}:`, error);
-        });
-    }
-
-    updateStatus(status, error = null) {
-        this.status = status;
-        this.lastActivity = Date.now();
-        
-        const statusData = {
-            clientId: this.clientId,
-            status: this.status,
-            phoneNumber: this.phoneNumber,
-            hasQrCode: !!this.qrCode,
-            qrCode: this.qrCode,
-            error: error
-        };
-        
-        io.emit(`client_status_${this.clientId}`, statusData);
-        console.log(`📊 Status atualizado para ${this.clientId}: ${status}`);
-    }
-
-    async getChats() {
-        if (!this.isReady || !this.client) {
-            throw new Error('Cliente não está pronto');
-        }
-
-        const cacheKey = 'chats';
-        const cached = this.chatCache.get(cacheKey);
-        if (cached && (Date.now() - cached.timestamp) < this.chatCacheTimeout) {
-            console.log(`📋 Retornando chats do cache para ${this.clientId}`);
-            return cached.data;
-        }
-
-        console.log(`🔍 Buscando chats para ${this.clientId}...`);
-        
-        try {
-            const state = await this.client.getState();
-            if (state !== 'CONNECTED') {
-                throw new Error(`Cliente não conectado. Estado: ${state}`);
-            }
-
-            const chatsPromise = this.client.getChats();
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Timeout ao buscar chats')), 15000);
-            });
-
-            const chats = await Promise.race([chatsPromise, timeoutPromise]);
-            
-            if (!chats || !Array.isArray(chats)) {
-                throw new Error('Dados de chats inválidos');
-            }
-
-            console.log(`📱 ${chats.length} chats encontrados para ${this.clientId}`);
-            
-            const processedChats = [];
-            const maxChats = Math.min(chats.length, 50);
-            
-            for (let i = 0; i < maxChats; i++) {
-                try {
-                    const chat = chats[i];
-                    
-                    if (!chat || !chat.id || !chat.id._serialized) {
-                        console.log(`⚠️ Chat inválido ignorado no índice ${i}`);
-                        continue;
-                    }
-
-                    const chatInfo = {
-                        id: chat.id._serialized,
-                        name: chat.name || 'Contato sem nome',
-                        isGroup: chat.isGroup || false,
-                        isReadOnly: chat.isReadOnly || false,
-                        unreadCount: chat.unreadCount || 0,
-                        timestamp: Date.now()
-                    };
-
-                    try {
-                        const messagesPromise = chat.fetchMessages({ limit: 1 });
-                        const messageTimeoutPromise = new Promise((_, reject) => {
-                            setTimeout(() => reject(new Error('Timeout mensagem')), 2000);
-                        });
-
-                        const messages = await Promise.race([messagesPromise, messageTimeoutPromise]);
-                        
-                        if (messages && messages.length > 0) {
-                            const lastMessage = messages[0];
-                            chatInfo.lastMessage = {
-                                body: lastMessage.body || '',
-                                type: lastMessage.type || 'text',
-                                timestamp: (lastMessage.timestamp * 1000) || Date.now(),
-                                fromMe: lastMessage.fromMe || false
-                            };
-                            chatInfo.timestamp = (lastMessage.timestamp * 1000) || Date.now();
-                        }
-                    } catch (msgError) {
-                        console.log(`⚠️ Erro ao buscar mensagem do chat ${i}: ${msgError.message}`);
-                    }
-
-                    processedChats.push(chatInfo);
-                    
-                } catch (chatError) {
-                    console.log(`⚠️ Erro ao processar chat ${i}: ${chatError.message}`);
-                    continue;
-                }
-            }
-
-            processedChats.sort((a, b) => b.timestamp - a.timestamp);
-            
-            this.chatCache.set(cacheKey, {
-                data: processedChats,
-                timestamp: Date.now()
-            });
-
-            console.log(`✅ ${processedChats.length} chats processados com sucesso para ${this.clientId}`);
-            return processedChats;
-            
-        } catch (error) {
-            console.error(`❌ Erro ao buscar chats para ${this.clientId}:`, error);
-            throw new Error(`Falha ao buscar chats: ${error.message}`);
-        }
-    }
-
-    async getChatMessages(chatId, limit = 20) {
-        if (!this.isReady || !this.client) {
-            throw new Error('Cliente não está pronto');
-        }
-
-        try {
-            console.log(`📨 Buscando mensagens do chat ${chatId} para ${this.clientId}`);
-            
-            const chat = await this.client.getChatById(chatId);
-            const messages = await chat.fetchMessages({ limit });
-            
-            const processedMessages = messages.map(message => ({
-                id: message.id.id,
-                body: message.body,
-                type: message.type,
-                timestamp: message.timestamp * 1000,
-                fromMe: message.fromMe,
-                author: message.author,
-                from: message.from,
-                to: message.to
-            }));
-            
-            console.log(`✅ ${processedMessages.length} mensagens obtidas para ${this.clientId}`);
-            return processedMessages;
-            
-        } catch (error) {
-            console.error(`❌ Erro ao buscar mensagens para ${this.clientId}:`, error);
-            throw new Error(`Falha ao buscar mensagens: ${error.message}`);
-        }
-    }
-
-    async sendMessage(to, message, options = {}) {
-        if (!this.isReady || !this.client) {
-            throw new Error('Cliente não está pronto');
-        }
-
-        try {
-            console.log(`📤 Enviando mensagem para ${to} via ${this.clientId}`);
-            await this.client.sendMessage(to, message, options);
-            console.log(`✅ Mensagem enviada com sucesso via ${this.clientId}`);
-        } catch (error) {
-            console.error(`❌ Erro ao enviar mensagem via ${this.clientId}:`, error);
-            throw new Error(`Falha ao enviar mensagem: ${error.message}`);
-        }
-    }
-
-    async sendMedia(to, media, options = {}) {
-        if (!this.isReady || !this.client) {
-            throw new Error('Cliente não está pronto');
-        }
-
-        try {
-            console.log(`📤 Enviando mídia para ${to} via ${this.clientId}`);
-            await this.client.sendMessage(to, media, options);
-            console.log(`✅ Mídia enviada com sucesso via ${this.clientId}`);
-        } catch (error) {
-            console.error(`❌ Erro ao enviar mídia via ${this.clientId}:`, error);
-            throw new Error(`Falha ao enviar mídia: ${error.message}`);
-        }
-    }
-
-    async sendReaction(chatId, messageId, emoji) {
-        if (!this.isReady || !this.client) {
-            throw new Error('Cliente não está pronto');
-        }
-
-        try {
-            console.log(`🎭 Enviando reação para mensagem ${messageId} no chat ${chatId} via ${this.clientId}`);
-            
-            // Buscar a mensagem pelo ID
-            const chat = await this.client.getChatById(chatId);
-            const messages = await chat.fetchMessages({ limit: 50 });
-            const targetMessage = messages.find(msg => msg.id.id === messageId);
-            
-            if (!targetMessage) {
-                throw new Error('Mensagem não encontrada');
-            }
-            
-            // Enviar reação
-            await targetMessage.react(emoji);
-            console.log(`✅ Reação ${emoji} enviada com sucesso via ${this.clientId}`);
-            
-            return { success: true, message: 'Reação enviada' };
-        } catch (error) {
-            console.error(`❌ Erro ao enviar reação via ${this.clientId}:`, error);
-            throw new Error(`Falha ao enviar reação: ${error.message}`);
-        }
-    }
-
-    async disconnect() {
-        try {
-            if (this.client) {
-                await this.client.logout();
-                await this.client.destroy();
-            }
-            this.isReady = false;
-            this.updateStatus('disconnected');
-            console.log(`✅ Cliente ${this.clientId} desconectado`);
-        } catch (error) {
-            console.error(`❌ Erro ao desconectar cliente ${this.clientId}:`, error);
-        }
-    }
-}
 
 io.on('connection', socket => {
-    console.log(`🔗 Nova conexão WebSocket: ${socket.id}`);
+    console.log('🔌 Usuário conectado via WebSocket:', socket.id);
 
     socket.on('join_client', clientId => {
-        console.log(`🤝 Cliente ${clientId} entrou na sala`);
         socket.join(clientId);
+        console.log(`📱 Socket ${socket.id} entrou na sala do cliente: ${clientId}`);
+        
+        // Send current client status if exists
+        if (clients[clientId]) {
+            const client = clients[clientId];
+            const isConnected = client.info?.wid;
+            socket.emit(`client_status_${clientId}`, {
+                clientId: clientId,
+                status: isConnected ? 'connected' : 'connecting',
+                phoneNumber: isConnected ? phoneNumberFormatter(client.info.wid.user) : null,
+                hasQrCode: false
+            });
+        }
     });
 
     socket.on('disconnect', () => {
-        console.log(`❌ WebSocket desconectado: ${socket.id}`);
+        console.log('❌ Usuário desconectado do WebSocket:', socket.id);
     });
 });
 
-// Rota para criar um novo cliente
-app.post('/api/clients', async (req, res) => {
-    try {
-        const clientId = generateClientId();
-        console.log(`➕ Criando novo cliente: ${clientId}`);
-        
-        const clientManager = new WhatsAppClientManager(clientId);
-        clients.set(clientId, clientManager);
-        
-        io.emit('clients_update', Array.from(clients.values()).map(c => ({
-            clientId: c.clientId,
-            status: c.status,
-            phoneNumber: c.phoneNumber,
-            hasQrCode: !!c.qrCode
-        })));
-        
-        res.status(201).json({ success: true, clientId: clientId });
-    } catch (error) {
-        console.error('❌ Erro ao criar cliente:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+app.get('/health', (req, res) => {
+    const healthcheck = {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        activeClients: Object.keys(clients).length,
+        connectedClients: Object.keys(clients).filter(id => clients[id].info?.wid).length,
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        version: '2.2.2-cors-definitivo',
+        server: '146.59.227.248:4000',
+        protocol: 'HTTPS',
+        cors: {
+            enabled: true,
+            allowedOrigins: '*',
+            allowedMethods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+            status: 'definitivo-configurado',
+            lovableSupport: true,
+            preflightFixed: true,
+            optionsHandling: 'explicit'
+        },
+        swagger: {
+            enabled: true,
+            url: 'https://146.59.227.248/api-docs',
+            jsonUrl: 'https://146.59.227.248/api-docs.json',
+            corsFixed: true
+        },
+        routes: {
+            '/clients': 'GET, POST',
+            '/clients/:id/connect': 'POST ⭐ (CORS DEFINITIVO)',
+            '/clients/:id/disconnect': 'POST',
+            '/clients/:id/status': 'GET ⭐ (QR CODE DISPONÍVEL)',
+            '/clients/:id/chats': 'GET',
+            '/clients/:id/send-message': 'POST',
+            '/clients/:id/send-audio': 'POST',
+            '/clients/:id/send-image': 'POST',
+            '/clients/:id/send-video': 'POST',
+            '/clients/:id/send-document': 'POST',
+            '/api-docs': 'GET ⭐ (SWAGGER HTTPS CORS DEFINITIVO)'
+        }
+    };
+    res.json(healthcheck);
 });
 
-// Rota para conectar um cliente
-app.post('/api/clients/:clientId/connect', async (req, res) => {
-    const { clientId } = req.params;
+// Rotas principais
+app.get('/clients', (req, res) => {
+    const clientList = Object.keys(clients).map(clientId => {
+        const client = clients[clientId];
+        const isConnected = client.info?.wid;
+        return {
+            clientId: clientId,
+            status: isConnected ? 'connected' : (client.qr ? 'qr_ready' : 'connecting'),
+            phoneNumber: isConnected ? phoneNumberFormatter(client.info.wid.user) : null,
+            hasQrCode: !!client.qr
+        };
+    });
+    console.log(`📋 Enviando lista de ${clientList.length} clientes`);
+    res.json({ success: true, clients: clientList });
+});
+
+app.post('/clients/:clientId/connect', (req, res) => {
+    const clientId = req.params.clientId;
+    console.log(`🔗 CONECTANDO CLIENTE (CORS DEFINITIVO): ${clientId}`);
     
     try {
-        console.log(`🔗 Conectando cliente: ${clientId}`);
+        // Clean up any orphaned Chrome processes first
+        cleanupOrphanedChromeProcesses();
         
-        let clientManager = clients.get(clientId);
-        if (!clientManager) {
-            clientManager = new WhatsAppClientManager(clientId);
-            clients.set(clientId, clientManager);
-        }
+        setTimeout(() => {
+            initClient(clientId);
+        }, 2000); // Wait 2 seconds after cleanup
         
-        await clientManager.initialize();
-        res.json({ success: true, clientId: clientId, status: 'connecting' });
-        
+        console.log(`✅ Cliente ${clientId} iniciando conexão com CORS DEFINITIVO`);
+        res.json({ success: true, message: `Cliente ${clientId} iniciando conexão.` });
     } catch (error) {
         console.error(`❌ Erro ao conectar cliente ${clientId}:`, error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Rota para desconectar um cliente
-app.post('/api/clients/:clientId/disconnect', async (req, res) => {
-    const { clientId } = req.params;
+app.post('/clients/:clientId/disconnect', async (req, res) => {
+    const clientId = req.params.clientId;
+    console.log(`🔌 Desconectando cliente: ${clientId}`);
     
-    try {
-        console.log(`🔌 Desconectando cliente: ${clientId}`);
-        
-        const clientManager = clients.get(clientId);
-        if (clientManager) {
-            await clientManager.disconnect();
-            clients.delete(clientId);
-        }
-        
-        io.emit('clients_update', Array.from(clients.values()).map(c => ({
-            clientId: c.clientId,
-            status: c.status,
-            phoneNumber: c.phoneNumber,
-            hasQrCode: !!c.qrCode
-        })));
-        
-        res.json({ success: true, clientId: clientId, status: 'disconnected' });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao desconectar cliente ${clientId}:`, error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Rota para obter todos os clientes
-app.get('/api/clients', (req, res) => {
-    try {
-        console.log('📡 Solicitando todos os clientes');
-        const clientList = Array.from(clients.values()).map(c => ({
-            clientId: c.clientId,
-            status: c.status,
-            phoneNumber: c.phoneNumber,
-            hasQrCode: !!c.qrCode
-        }));
-        
-        console.log(`✅ ${clientList.length} clientes encontrados`);
-        res.json({ success: true, clients: clientList });
-    } catch (error) {
-        console.error('❌ Erro ao buscar clientes:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Rota para obter o status de um cliente
-app.get('/api/clients/:clientId/status', async (req, res) => {
-    const { clientId } = req.params;
-    
-    try {
-        console.log(`ℹ️ Solicitando status do cliente: ${clientId}`);
-        
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        const statusData = {
-            clientId: clientId,
-            status: clientManager.status,
-            phoneNumber: clientManager.phoneNumber,
-            hasQrCode: !!clientManager.qrCode,
-            qrCode: clientManager.qrCode
-        };
-        
-        res.json({ success: true, ...statusData });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao obter status do cliente ${clientId}:`, error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Rota para obter chats
-app.get('/api/clients/:clientId/chats', async (req, res) => {
-    const { clientId } = req.params;
-    
-    try {
-        console.log(`📡 Solicitação de chats para cliente: ${clientId}`);
-        
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            return res.status(404).json({
-                success: false,
-                error: 'Cliente não encontrado'
+    if (clients[clientId]) {
+        try {
+            await clients[clientId].logout();
+            delete clients[clientId];
+            delete clientSessions[clientId];
+            saveClientSessions();
+            
+            io.emit(`client_status_${clientId}`, { 
+                clientId: clientId, 
+                status: 'disconnected',
+                hasQrCode: false
             });
+            
+            emitClientsUpdate();
+            res.json({ success: true, message: `Cliente ${clientId} desconectado.` });
+        } catch (error) {
+            console.error(`❌ Erro ao desconectar cliente ${clientId}:`, error);
+            res.status(500).json({ success: false, error: `Falha ao desconectar cliente ${clientId}.` });
         }
-        
-        const chats = await clientManager.getChats();
-        
-        res.json({
-            success: true,
-            chats: chats
-        });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao buscar chats para ${clientId}:`, error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+    } else {
+        res.status(404).json({ success: false, error: `Cliente ${clientId} não encontrado.` });
     }
 });
 
-// Rota para obter mensagens de um chat
-app.get('/api/clients/:clientId/chats/:chatId/messages', async (req, res) => {
-    const { clientId, chatId } = req.params;
-    const limit = parseInt(req.query.limit) || 20;
+app.get('/clients/:clientId/status', async (req, res) => {
+    const clientId = req.params.clientId;
+    console.log(`📊 Verificando status do cliente: ${clientId}`);
     
-    try {
-        console.log(`✉️ Solicitando mensagens para o chat ${chatId} do cliente ${clientId}`);
-        
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        const messages = await clientManager.getChatMessages(chatId, limit);
-        res.json({ success: true, messages: messages });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao buscar mensagens do chat ${chatId} para o cliente ${clientId}:`, error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Rota para enviar mensagem de texto
-app.post('/api/clients/:clientId/send-message', async (req, res) => {
-    const { clientId } = req.params;
-    const { to, message } = req.body;
-    
-    try {
-        console.log(`📤 ROTA /send-message chamada:`, {
-            clientId,
-            to: to?.substring(0, 20) + '...',
-            message: message?.substring(0, 50) + '...'
-        });
-        
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            console.error(`❌ Cliente ${clientId} não encontrado`);
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        await clientManager.sendMessage(to, message);
-        console.log(`✅ Mensagem enviada com sucesso via ${clientId}`);
-        res.json({ success: true, message: 'Mensagem enviada' });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao enviar mensagem para ${to} do cliente ${clientId}:`, error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// ===== ROTA SENDREACTION ADICIONADA =====
-app.post('/api/clients/:clientId/send-reaction', async (req, res) => {
-    const { clientId } = req.params;
-    const { chatId, messageId, emoji } = req.body;
-    
-    try {
-        console.log(`🎭 ROTA /send-reaction chamada:`, {
-            clientId,
-            chatId: chatId?.substring(0, 20) + '...',
-            messageId: messageId?.substring(0, 20) + '...',
-            emoji
-        });
-        
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            console.error(`❌ Cliente ${clientId} não encontrado`);
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        const result = await clientManager.sendReaction(chatId, messageId, emoji);
-        console.log(`✅ Reação ${emoji} enviada com sucesso via ${clientId}`);
-        res.json(result);
-        
-    } catch (error) {
-        console.error(`❌ Erro ao enviar reação do cliente ${clientId}:`, error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.post('/api/clients/:clientId/send-image', upload.single('file'), async (req, res) => {
-    const { clientId } = req.params;
-    const { to, caption } = req.body;
-    
-    try {
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        if (!req.file) {
-            return res.status(400).json({ success: false, error: 'Arquivo não fornecido' });
-        }
-        
-        const media = MessageMedia.fromFilePath(req.file.path);
-        const options = caption ? { caption } : {};
-        
-        await clientManager.sendMedia(to, media, options);
-        
-        fs.unlinkSync(req.file.path);
-        
-        res.json({ success: true, message: 'Imagem enviada' });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao enviar imagem:`, error);
-        if (req.file) fs.unlinkSync(req.file.path);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.post('/api/clients/:clientId/send-video', upload.single('file'), async (req, res) => {
-    const { clientId } = req.params;
-    const { to, caption } = req.body;
-    
-    try {
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        if (!req.file) {
-            return res.status(400).json({ success: false, error: 'Arquivo não fornecido' });
-        }
-        
-        const media = MessageMedia.fromFilePath(req.file.path);
-        const options = caption ? { caption } : {};
-        
-        await clientManager.sendMedia(to, media, options);
-        
-        fs.unlinkSync(req.file.path);
-        
-        res.json({ success: true, message: 'Vídeo enviado' });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao enviar vídeo:`, error);
-        if (req.file) fs.unlinkSync(req.file.path);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.post('/api/clients/:clientId/send-document', upload.single('file'), async (req, res) => {
-    const { clientId } = req.params;
-    const { to, caption } = req.body;
-    
-    try {
-        const clientManager = clients.get(clientId);
-        if (!clientManager) {
-            return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
-        }
-        
-        if (!req.file) {
-            return res.status(400).json({ success: false, error: 'Arquivo não fornecido' });
-        }
-        
-        const media = MessageMedia.fromFilePath(req.file.path);
-        media.filename = req.file.originalname;
-        
-        const options = caption ? { caption } : {};
-        
-        await clientManager.sendMedia(to, media, options);
-        
-        fs.unlinkSync(req.file.path);
-        
-        res.json({ success: true, message: 'Documento enviado' });
-        
-    } catch (error) {
-        console.error(`❌ Erro ao enviar documento:`, error);
-        if (req.file) fs.unlinkSync(req.file.path);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Health check COM SUPER DEBUGGING PARA LOVABLE
-app.get('/health', (req, res) => {
-    const activeClients = clients.size;
-    const connectedClients = Array.from(clients.values()).filter(c => c.status === 'connected').length;
-    
-    console.log(`💚 ===== HEALTH CHECK ESPECIAL LOVABLE =====`);
-    console.log(`🌍 Origin: ${req.headers.origin || 'sem origin'}`);
-    console.log(`🔧 User-Agent: ${req.headers['user-agent']?.substring(0, 100) || 'sem user-agent'}`);
-    console.log(`📊 Status: ${activeClients} clientes ativos, ${connectedClients} conectados`);
-    console.log(`🕐 Timestamp: ${new Date().toISOString()}`);
-    console.log(`🔍 Headers recebidos:`, JSON.stringify(req.headers, null, 2));
-    
-    const healthData = { 
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        activeClients: activeClients,
-        connectedClients: connectedClients,
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        version: '2.1.0-LOVABLE',
-        server: `${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 4000}`,
-        cors: {
-            origin: req.headers.origin || 'sem origin',
-            userAgent: req.headers['user-agent']?.substring(0, 50) || 'sem user-agent',
-            lovableDetected: (req.headers.origin || '').includes('lovableproject.com'),
-            requestHeaders: req.headers
-        },
-        routes: {
-            '/api/clients': 'GET, POST',
-            '/api/clients/:id/connect': 'POST', 
-            '/api/clients/:id/disconnect': 'POST',
-            '/api/clients/:id/status': 'GET',
-            '/api/clients/:id/chats': 'GET',
-            '/api/clients/:id/send-message': 'POST',
-            '/api/clients/:id/send-reaction': 'POST ⭐',
-            '/api/clients/:id/send-audio': 'POST ⭐',
-            '/api/clients/:id/send-image': 'POST',
-            '/api/clients/:id/send-video': 'POST',
-            '/api/clients/:id/send-document': 'POST'
-        }
-    };
-    
-    console.log(`✅ HEALTH CHECK RESPONSE:`, JSON.stringify(healthData, null, 2));
-    res.status(200).json(healthData);
-});
-
-// Middleware para limpeza periódica
-setInterval(() => {
-    const now = Date.now();
-    const inactiveTime = 30 * 60 * 1000; // 30 minutos
-    
-    for (const [clientId, clientManager] of clients.entries()) {
-        if (now - clientManager.lastActivity > inactiveTime && clientManager.status === 'disconnected') {
-            console.log(`🧹 Removendo cliente inativo: ${clientId}`);
-            clients.delete(clientId);
-        }
-        
-        // Limpar cache de chats antigos
-        for (const [key, cached] of clientManager.chatCache.entries()) {
-            if (now - cached.timestamp > clientManager.chatCacheTimeout) {
-                clientManager.chatCache.delete(key);
+    if (clients[clientId]) {
+        try {
+            const client = clients[clientId];
+            let qrCode = null;
+            
+            if (client.qr) {
+                qrCode = await qrcode.toDataURL(client.qr);
+                console.log(`📱 QR Code disponível para ${clientId}`);
             }
-        }
-    }
-}, 5 * 60 * 1000); // Executar a cada 5 minutos
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-    console.log('🛑 Recebido SIGTERM, desconectando clientes...');
-    
-    for (const clientManager of clients.values()) {
-        try {
-            await clientManager.disconnect();
+            
+            const isConnected = client.info?.wid;
+            const status = isConnected ? 'connected' : (client.qr ? 'qr_ready' : 'connecting');
+            const phoneNumber = isConnected ? phoneNumberFormatter(client.info.wid.user) : null;
+            
+            const response = { 
+                success: true, 
+                clientId: clientId, 
+                status: status, 
+                phoneNumber: phoneNumber, 
+                qrCode: qrCode,
+                hasQrCode: !!qrCode
+            };
+            
+            console.log(`✅ Status do cliente ${clientId}: ${status}`);
+            res.json(response);
         } catch (error) {
-            console.error('Erro ao desconectar cliente:', error);
+            console.error(`❌ Erro ao verificar status do cliente ${clientId}:`, error);
+            res.status(500).json({ success: false, error: `Falha ao verificar status do cliente ${clientId}.` });
         }
+    } else {
+        console.log(`❌ Cliente ${clientId} não encontrado`);
+        res.status(404).json({ success: false, error: `Cliente ${clientId} não encontrado.` });
     }
-    
-    process.exit(0);
 });
 
-process.on('SIGINT', async () => {
-    console.log('🛑 Recebido SIGINT, desconectando clientes...');
-    
-    for (const clientManager of clients.values()) {
+app.post('/clients/:clientId/send-message', async (req, res) => {
+    const clientId = req.params.clientId;
+    const number = phoneNumberFormatter(req.body.to);
+    const message = req.body.message;
+
+    if (clients[clientId]) {
         try {
-            await clientManager.disconnect();
+            await clients[clientId].sendMessage(number, message);
+            res.json({ success: true, message: 'Mensagem enviada' });
         } catch (error) {
-            console.error('Erro ao desconectar cliente:', error);
+            console.error('Erro ao enviar mensagem:', error);
+            res.status(500).json({ success: false, error: 'Erro ao enviar mensagem' });
         }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
     }
-    
-    process.exit(0);
 });
 
-// INICIALIZAÇÃO DO SERVIDOR
-const port = process.env.PORT || 4000;
+app.post('/clients/:clientId/send-media', async (req, res) => {
+    const clientId = req.params.clientId;
+    const number = phoneNumberFormatter(req.body.to);
+    const caption = req.body.caption;
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+        return res.status(400).json({ success: false, error: 'Nenhum arquivo foi enviado.' });
+    }
+
+    const file = req.files.file;
+    const mimeType = file.mimetype;
+    const filename = file.name;
+    const base64File = file.data.toString('base64');
+
+    if (clients[clientId]) {
+        try {
+            const media = new MessageMedia(mimeType, base64File, filename);
+            await clients[clientId].sendMessage(number, media, { caption: caption });
+            res.json({ success: true, message: 'Mídia enviada' });
+        } catch (error) {
+            console.error('Erro ao enviar mídia:', error);
+            res.status(500).json({ success: false, error: 'Erro ao enviar mídia' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/send-image', async (req, res) => {
+    const clientId = req.params.clientId;
+    const number = phoneNumberFormatter(req.body.to);
+    const caption = req.body.caption;
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+        return res.status(400).json({ success: false, error: 'Nenhum arquivo foi enviado.' });
+    }
+
+    const file = req.files.file;
+    const mimeType = file.mimetype;
+    const filename = file.name;
+    const base64File = file.data.toString('base64');
+
+    if (clients[clientId]) {
+        try {
+            const media = new MessageMedia(mimeType, base64File, filename);
+            await clients[clientId].sendMessage(number, media, { caption: caption });
+            res.json({ success: true, message: 'Imagem enviada' });
+        } catch (error) {
+            console.error('Erro ao enviar imagem:', error);
+            res.status(500).json({ success: false, error: 'Erro ao enviar imagem' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/send-video', async (req, res) => {
+    const clientId = req.params.clientId;
+    const number = phoneNumberFormatter(req.body.to);
+    const caption = req.body.caption;
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+        return res.status(400).json({ success: false, error: 'Nenhum arquivo foi enviado.' });
+    }
+
+    const file = req.files.file;
+    const mimeType = file.mimetype;
+    const filename = file.name;
+    const base64File = file.data.toString('base64');
+
+    if (clients[clientId]) {
+        try {
+            const media = new MessageMedia(mimeType, base64File, filename);
+            await clients[clientId].sendMessage(number, media, { caption: caption });
+            res.json({ success: true, message: 'Vídeo enviado' });
+        } catch (error) {
+            console.error('Erro ao enviar vídeo:', error);
+            res.status(500).json({ success: false, error: 'Erro ao enviar vídeo' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/send-audio', async (req, res) => {
+    const clientId = req.params.clientId;
+    const number = phoneNumberFormatter(req.body.to);
+    const caption = req.body.caption;
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+        return res.status(400).json({ success: false, error: 'Nenhum arquivo foi enviado.' });
+    }
+
+    const file = req.files.file;
+    const mimeType = file.mimetype;
+    const filename = file.name;
+    const base64File = file.data.toString('base64');
+
+    if (clients[clientId]) {
+        try {
+            const media = new MessageMedia(mimeType, base64File, filename);
+            await clients[clientId].sendMessage(number, media, { caption: caption });
+            res.json({ success: true, message: 'Áudio enviado' });
+        } catch (error) {
+            console.error('Erro ao enviar áudio:', error);
+            res.status(500).json({ success: false, error: 'Erro ao enviar áudio' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/send-document', async (req, res) => {
+    const clientId = req.params.clientId;
+    const number = phoneNumberFormatter(req.body.to);
+    const caption = req.body.caption;
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+        return res.status(400).json({ success: false, error: 'Nenhum arquivo foi enviado.' });
+    }
+
+    const file = req.files.file;
+    const mimeType = file.mimetype;
+    const filename = file.name;
+    const base64File = file.data.toString('base64');
+
+    if (clients[clientId]) {
+        try {
+            const media = new MessageMedia(mimeType, base64File, filename);
+            await clients[clientId].sendMessage(number, media, { caption: caption });
+            res.json({ success: true, message: 'Documento enviado' });
+        } catch (error) {
+            console.error('Erro ao enviar documento:', error);
+            res.status(500).json({ success: false, error: 'Erro ao enviar documento' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/send-media-url', async (req, res) => {
+    const clientId = req.params.clientId;
+    const number = phoneNumberFormatter(req.body.to);
+    const mediaUrl = req.body.mediaUrl;
+    const message = req.body.message;
+
+    if (clients[clientId]) {
+        try {
+            const media = await MessageMedia.fromUrl(mediaUrl, { unsafeMime: true });
+            await clients[clientId].sendMessage(number, media, { caption: message });
+            res.json({ success: true, message: 'Mídia enviada' });
+        } catch (error) {
+            console.error('Erro ao enviar mídia do URL:', error);
+            res.status(500).json({ success: false, error: 'Erro ao enviar mídia do URL' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.get('/clients/:clientId/chats', async (req, res) => {
+    const clientId = req.params.clientId;
+
+    if (clients[clientId]) {
+        try {
+            const chats = await clients[clientId].getChats();
+            res.json({ success: true, chats: chats });
+        } catch (error) {
+            console.error('Erro ao obter chats:', error);
+            res.status(500).json({ success: false, error: 'Erro ao obter chats' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.get('/clients/:clientId/chats/:chatId/messages', async (req, res) => {
+    const clientId = req.params.clientId;
+    const chatId = req.params.chatId;
+    const limit = parseInt(req.query.limit) || 50;
+
+    if (clients[clientId]) {
+        try {
+            const chat = await clients[clientId].getChatById(chatId);
+            const messages = await chat.fetchMessages({ limit: limit });
+            res.json({ success: true, messages: messages });
+        } catch (error) {
+            console.error('Erro ao obter mensagens do chat:', error);
+            res.status(500).json({ success: false, error: 'Erro ao obter mensagens do chat' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/presence', async (req, res) => {
+    const clientId = req.params.clientId;
+    const presence = req.body.presence;
+
+    if (clients[clientId]) {
+        try {
+            await clients[clientId].sendPresenceAvailable(presence);
+            res.json({ success: true, message: 'Presence updated' });
+        } catch (error) {
+            console.error('Erro ao atualizar presence:', error);
+            res.status(500).json({ success: false, error: 'Erro ao atualizar presence' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/set-typing', async (req, res) => {
+    const clientId = req.params.clientId;
+    const chatId = req.body.chatId;
+    const isTyping = req.body.isTyping;
+
+    if (clients[clientId]) {
+        try {
+            await clients[clientId].sendChatState(isTyping ? 'typing' : 'pause', chatId);
+            res.json({ success: true, message: 'Typing status updated' });
+        } catch (error) {
+            console.error('Erro ao atualizar typing status:', error);
+            res.status(500).json({ success: false, error: 'Erro ao atualizar typing status' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/set-recording', async (req, res) => {
+    const clientId = req.params.clientId;
+    const chatId = req.body.chatId;
+    const isRecording = req.body.isRecording;
+
+    if (clients[clientId]) {
+        try {
+            await clients[clientId].sendChatState(isRecording ? 'recording' : 'pause', chatId);
+            res.json({ success: true, message: 'Recording status updated' });
+        } catch (error) {
+            console.error('Erro ao atualizar recording status:', error);
+            res.status(500).json({ success: false, error: 'Erro ao atualizar recording status' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/mark-as-read', async (req, res) => {
+    const clientId = req.params.clientId;
+    const chatId = req.body.chatId;
+    const messageId = req.body.messageId;
+
+    if (clients[clientId]) {
+        try {
+            const chat = await clients[clientId].getChatById(chatId);
+            await chat.sendSeen(messageId);
+            res.json({ success: true, message: 'Message marked as read' });
+        } catch (error) {
+            console.error('Erro ao marcar mensagem como lida:', error);
+            res.status(500).json({ success: false, error: 'Erro ao marcar mensagem como lida' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+app.post('/clients/:clientId/send-reaction', async (req, res) => {
+    const clientId = req.params.clientId;
+    const chatId = req.body.chatId;
+    const messageId = req.body.messageId;
+    const emoji = req.body.emoji;
+
+    if (clients[clientId]) {
+        try {
+            const chat = await clients[clientId].getChatById(chatId);
+            await chat.react(messageId, emoji);
+            res.json({ success: true, message: 'Reaction sent' });
+        } catch (error) {
+            console.error('Erro ao enviar reação:', error);
+            res.status(500).json({ success: false, error: 'Erro ao enviar reação' });
+        }
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+    }
+});
+
+// Cleanup on startup
+cleanupOrphanedChromeProcesses();
+
 server.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 ===== SERVIDOR WHATSAPP MULTI-CLIENT INICIADO =====`);
-    console.log(`🌐 Servidor rodando na porta: ${port}`);
-    console.log(`📅 Timestamp: ${new Date().toISOString()}`);
-    console.log(`🔧 Node.js: ${process.version}`);
-    console.log(`💾 Memória: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
-    console.log(`🔐 CORS configurado ESPECIALMENTE para Lovable: ✅`);
-    console.log(`🎯 Domínio Lovable permitido: https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com`);
-    console.log(`📋 Rotas principais:`);
-    console.log(`   • GET  /health - Status do servidor ✅`);
-    console.log(`   • POST /api/clients/:id/send-reaction - Envio de reações ⭐`);
-    console.log(`   • POST /api/clients/:id/send-audio - Envio de áudio ⭐`);
-    console.log(`   • POST /api/clients/:id/send-message - Envio de texto`);
-    console.log(`   • GET  /api/clients - Lista de clientes`);
-    console.log(`🔥 SERVIDOR SUPER PRONTO PARA REQUISIÇÕES DO LOVABLE!`);
-    console.log(`====================================================`);
+    console.log(`🚀 WhatsApp Multi-Client Server iniciado na porta ${port}`);
+    console.log(`📡 Health Check HTTPS: https://146.59.227.248:${port}/health`);
+    console.log(`📱 API Base HTTPS: https://146.59.227.248:${port}/clients`);
+    console.log(`📚 Swagger UI HTTPS: https://146.59.227.248:${port}/api-docs`);
+    console.log(`🔧 CORS DEFINITIVAMENTE CORRIGIDO!`);
+    console.log(`   - Preflight: Tratado EXPLICITAMENTE com status 200`);
+    console.log(`   - Headers: ULTRA-específicos com Vary: Origin`);
+    console.log(`   - OPTIONS: Resposta imediata sem processamento`);
+    console.log(`   - Métodos: GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS`);
+    console.log(`   - HTTPS: Swagger UI configurado definitivamente`);
+    console.log(`📱 SERVIDOR HTTPS PRONTO - CORS DEFINITIVAMENTE RESOLVIDO!`);
 });

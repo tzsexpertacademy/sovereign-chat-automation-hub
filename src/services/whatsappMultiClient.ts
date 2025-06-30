@@ -1,491 +1,441 @@
-
-import { io, Socket } from 'socket.io-client';
-import { getServerConfig, getAlternativeServerConfig, resetConnectionCache, getServerConfigSync } from '@/config/environment';
-
-console.log(`🔗 WhatsApp Service - Iniciando com detecção inteligente`);
+import io, { Socket } from 'socket.io-client';
+import { SERVER_URL, API_BASE_URL, SOCKET_URL, HTTPS_SERVER_URL, getServerConfig } from '@/config/environment';
 
 export interface WhatsAppClient {
   clientId: string;
-  status: 'disconnected' | 'connecting' | 'qr_ready' | 'authenticated' | 'connected' | 'error' | 'auth_failed';
+  status: 'connecting' | 'qr_ready' | 'authenticated' | 'connected' | 'disconnected' | 'auth_failed';
   phoneNumber?: string;
-  hasQrCode: boolean;
+  hasQrCode?: boolean;
   qrCode?: string;
 }
 
-export interface ChatData {
-  id: string;
-  name: string;
-  isGroup: boolean;
-  isReadOnly: boolean;
-  unreadCount: number;
-  timestamp: number;
-  lastMessage?: {
-    body: string;
-    type: string;
-    timestamp: number;
-    fromMe: boolean;
-  };
+export interface ServerHealth {
+  status: string;
+  timestamp: string;
+  activeClients: number;
+  connectedClients: number;
+  uptime: number;
+  memory: any;
+  version: string;
+  server: string;
+  protocol?: string;
+  cors?: any;
 }
 
 export interface MessageData {
   id: string;
-  body: string;
-  type: string;
-  timestamp: number;
-  fromMe: boolean;
-  author?: string;
   from: string;
   to: string;
+  body: string;
+  timestamp: number;
+  type: string;
+  isFromMe?: boolean;
+}
+
+export interface QueuedMessage {
+  id: string;
+  from: string;
+  to: string;
+  body: string;
+  timestamp: number;
 }
 
 class WhatsAppMultiClientService {
   private socket: Socket | null = null;
-  private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
-  private currentConfig: any = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectInterval = 5000; // 5 seconds
 
   constructor() {
-    console.log('🚀 Inicializando WhatsApp Multi-Client Service com fallback inteligente');
-    this.currentConfig = getServerConfigSync();
-    console.log(`🎯 Configuração inicial: ${this.currentConfig.serverUrl}`);
+    console.log('🔒 WhatsApp Multi-Client Service inicializando com HTTPS...');
+    const config = getServerConfig();
+    console.log('📡 URLs HTTPS configuradas:', {
+      SERVER_URL,
+      API_BASE_URL,
+      SOCKET_URL,
+      HTTPS_SERVER_URL,
+      isHttps: config.isHttps,
+      requiresHttps: config.requiresHttps,
+      lovableCompatible: config.lovableCompatible
+    });
   }
 
-  // Função para obter configuração atual
-  private async getCurrentConfig() {
-    if (!this.currentConfig) {
-      this.currentConfig = await getServerConfig();
+  // Connect to WebSocket
+  connectSocket(): Socket {
+    if (this.socket?.connected) {
+      console.log('🔌 WebSocket já conectado');
+      return this.socket;
     }
-    return this.currentConfig;
-  }
 
-  // Conectar ao WebSocket com fallback
-  async connectSocket(): Promise<Socket> {
-    if (!this.socket) {
-      const config = await this.getCurrentConfig();
-      console.log(`🔌 Conectando ao WebSocket: ${config.serverUrl}`);
-      
-      this.socket = io(config.serverUrl, {
+    console.log('🔌 Conectando ao WebSocket HTTPS:', SOCKET_URL);
+
+    try {
+      this.socket = io(SOCKET_URL, {
         transports: ['websocket', 'polling'],
-        timeout: 20000,
-        forceNew: true,
+        timeout: 15000,
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
-        reconnectionDelay: 2000
+        reconnectionDelay: this.reconnectInterval,
+        forceNew: true,
+        withCredentials: false,
+        rejectUnauthorized: false, // Accept self-signed certificates
+        secure: SOCKET_URL.startsWith('wss://') // Enable secure mode for WSS
       });
 
       this.socket.on('connect', () => {
-        console.log(`✅ WebSocket conectado: ${config.serverUrl}`);
+        console.log('✅ WebSocket HTTPS conectado com sucesso');
         this.reconnectAttempts = 0;
       });
 
       this.socket.on('disconnect', (reason) => {
-        console.log('❌ WebSocket desconectado:', reason);
+        console.log('❌ WebSocket HTTPS desconectado:', reason);
       });
 
       this.socket.on('connect_error', (error) => {
-        console.error('❌ Erro WebSocket:', error);
+        console.error('❌ Erro WebSocket HTTPS:', error.message);
         this.reconnectAttempts++;
+        
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          console.error('❌ Máximo de tentativas de reconexão HTTPS atingido');
+        }
       });
-    }
 
+      return this.socket;
+    } catch (error) {
+      console.error('❌ Erro ao inicializar WebSocket HTTPS:', error);
+      throw error;
+    }
+  }
+
+  // Get socket instance
+  getSocket(): Socket | null {
     return this.socket;
   }
 
-  // Reconectar
-  reconnect() {
+  // Disconnect WebSocket
+  disconnect(): void {
     if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-    }
-    setTimeout(() => {
-      this.connectSocket();
-    }, 1000);
-  }
-
-  // Desconectar
-  disconnectSocket() {
-    if (this.socket) {
+      console.log('🔌 Desconectando WebSocket...');
       this.socket.disconnect();
       this.socket = null;
     }
   }
 
-  // Entrar no room de um cliente
-  joinClientRoom(clientId: string) {
-    if (this.socket) {
+  // Join client room
+  joinClientRoom(clientId: string): void {
+    if (this.socket?.connected) {
+      console.log(`📱 Entrando na sala do cliente: ${clientId}`);
       this.socket.emit('join_client', clientId);
-      console.log(`📱 Room do cliente: ${clientId}`);
-    }
-  }
-
-  // Listeners
-  onClientStatus(clientId: string, callback: (data: WhatsAppClient) => void) {
-    if (this.socket) {
-      this.socket.on(`client_status_${clientId}`, callback);
-    }
-  }
-
-  onClientMessage(clientId: string, callback: (message: MessageData) => void) {
-    if (this.socket) {
-      this.socket.on(`message_${clientId}`, callback);
-    }
-  }
-
-  onClientsUpdate(callback: (clients: WhatsAppClient[]) => void) {
-    if (this.socket) {
-      this.socket.on('clients_update', callback);
-    }
-  }
-
-  removeListener(event: string, callback?: (...args: any[]) => void) {
-    if (this.socket) {
-      this.socket.off(event, callback);
-    }
-  }
-
-  // Fazer requisição com fallback automático
-  private async makeRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
-    const config = await this.getCurrentConfig();
-    const url = `${config.serverUrl}${endpoint}`;
-    
-    console.log(`📡 ${options.method || 'GET'} ${url}`);
-    
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers
-        },
-        signal: AbortSignal.timeout(15000) // 15 segundos timeout
-      });
-      
-      console.log(`📡 Resposta: ${response.status} ${response.statusText}`);
-      return response;
-      
-    } catch (error: any) {
-      console.error(`❌ Erro na requisição para ${url}:`, error);
-      
-      // Se erro SSL/HTTPS, tentar configuração alternativa
-      if (error.message.includes('SSL') || error.message.includes('certificate') || error.message.includes('ERR_SSL')) {
-        console.log('🔄 Erro SSL detectado, tentando configuração alternativa...');
-        
-        const altConfig = getAlternativeServerConfig();
-        if (altConfig) {
-          const altUrl = `${altConfig.serverUrl}${endpoint}`;
-          console.log(`🔄 Tentando URL alternativa: ${altUrl}`);
-          
-          try {
-            const altResponse = await fetch(altUrl, {
-              ...options,
-              headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-              },
-              signal: AbortSignal.timeout(15000)
-            });
-            
-            if (altResponse.ok) {
-              console.log(`✅ URL alternativa funcionou: ${altUrl}`);
-              // Atualizar configuração atual
-              this.currentConfig = altConfig;
-              return altResponse;
-            }
-          } catch (altError) {
-            console.error(`❌ URL alternativa também falhou:`, altError);
-          }
+    } else {
+      console.warn('⚠️ WebSocket não conectado para entrar na sala');
+      this.connectSocket();
+      // Retry after connection
+      setTimeout(() => {
+        if (this.socket?.connected) {
+          this.socket.emit('join_client', clientId);
         }
-      }
-      
-      throw error;
+      }, 2000);
     }
   }
 
-  async checkServerHealth(): Promise<any> {
+  // Listen to client status updates
+  onClientStatus(clientId: string, callback: (data: WhatsAppClient) => void): void {
+    if (!this.socket) {
+      this.connectSocket();
+    }
+    
+    const eventName = `client_status_${clientId}`;
+    console.log(`👂 Ouvindo status do cliente: ${eventName}`);
+    this.socket?.on(eventName, callback);
+  }
+
+  // Remove client status listener
+  offClientStatus(clientId: string, callback?: (data: WhatsAppClient) => void): void {
+    const eventName = `client_status_${clientId}`;
+    console.log(`🔇 Removendo listener: ${eventName}`);
+    
+    if (callback) {
+      this.socket?.off(eventName, callback);
+    } else {
+      this.socket?.removeAllListeners(eventName);
+    }
+  }
+
+  // Listen to all clients updates
+  onClientsUpdate(callback: (clients: WhatsAppClient[]) => void): void {
+    if (!this.socket) {
+      this.connectSocket();
+    }
+    
+    console.log('👂 Ouvindo atualizações de todos os clientes');
+    this.socket?.on('clients_update', callback);
+  }
+
+  // Remove clients update listener
+  offClientsUpdate(callback?: (clients: WhatsAppClient[]) => void): void {
+    console.log('🔇 Removendo listener de clientes');
+    
+    if (callback) {
+      this.socket?.off('clients_update', callback);
+    } else {
+      this.socket?.removeAllListeners('clients_update');
+    }
+  }
+
+  // API Methods with HTTPS ONLY
+  private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
+    const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+    
+    console.log(`🔒 Fazendo requisição HTTPS: ${options.method || 'GET'} ${fullUrl}`);
+    
+    // Verificar se a URL é HTTPS em produção
+    const config = getServerConfig();
+    if (!config.isDevelopment && !fullUrl.startsWith('https://')) {
+      throw new Error('HTTPS_REQUIRED: HTTPS é obrigatório em produção');
+    }
+    
+    const defaultHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Cache-Control': 'no-cache'
+    };
+
+    // Configuração otimizada para HTTPS obrigatório
+    const fetchConfig: RequestInit = {
+      ...options,
+      headers: {
+        ...defaultHeaders,
+        ...options.headers,
+      },
+      mode: 'cors',
+      credentials: 'omit',
+      signal: options.signal || AbortSignal.timeout(15000)
+    };
+
     try {
-      console.log('🔍 Verificando saúde do servidor...');
+      const response = await fetch(fullUrl, fetchConfig);
       
-      const response = await this.makeRequest('/health');
+      console.log(`📡 Resposta HTTPS: ${response.status} ${response.statusText}`);
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTPS ${response.status}: ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        console.log('✅ Dados JSON recebidos via HTTPS:', data);
+        return data;
+      } else {
+        const text = await response.text();
+        console.log('✅ Texto recebido via HTTPS:', text);
+        return text;
+      }
+    } catch (error: any) {
+      console.error(`❌ Erro na requisição HTTPS para ${fullUrl}:`, error);
+      
+      // Classificação melhorada de erros HTTPS
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        throw new Error('TIMEOUT_ERROR');
+      } else if (error.message === 'Failed to fetch' || 
+                 error.name === 'TypeError' ||
+                 error.message.includes('net::') ||
+                 error.message.includes('SSL') ||
+                 error.message.includes('certificate') ||
+                 error.message.includes('TLS')) {
+        throw new Error('SSL_CERTIFICATE_ERROR');
+      } else if (error.message.includes('HTTPS_REQUIRED')) {
+        throw new Error('HTTPS_REQUIRED');
       }
       
-      const data = await response.json();
-      console.log('✅ Servidor saudável:', data);
-      return data;
-    } catch (error) {
-      console.error('❌ Health check falhou:', error);
       throw error;
     }
   }
 
+  // Get all clients
   async getAllClients(): Promise<WhatsAppClient[]> {
     try {
-      console.log('📡 Buscando todos os clientes...');
+      console.log('📋 Buscando todos os clientes via HTTPS...');
+      const response = await this.makeRequest('/clients');
       
-      const response = await this.makeRequest('/api/clients');
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (response.success && Array.isArray(response.clients)) {
+        console.log(`✅ Clientes encontrados: ${response.clients.length}`);
+        return response.clients;
+      } else {
+        console.warn('⚠️ Resposta inválida da API de clientes:', response);
+        return [];
       }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar clientes');
-      }
-      
-      console.log(`✅ ${data.clients.length} clientes encontrados`);
-      return data.clients;
     } catch (error) {
       console.error('❌ Erro ao buscar clientes:', error);
       throw error;
     }
   }
 
+  // Connect client with improved HTTPS handling
   async connectClient(clientId: string): Promise<any> {
     try {
-      console.log(`🔗 Conectando cliente: ${clientId}`);
-      
-      const response = await this.makeRequest(`/api/clients/${clientId}/connect`, {
+      console.log(`🔗 Conectando cliente via HTTPS: ${clientId}`);
+      return await this.makeRequest(`/clients/${clientId}/connect`, {
         method: 'POST'
       });
+    } catch (error: any) {
+      console.error(`❌ Erro ao conectar cliente ${clientId}:`, error.message);
       
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (error.message.includes('HTTPS_CERT_ERROR')) {
+        throw new Error('CERTIFICADO_SSL: Acesse https://146.59.227.248/health no navegador e aceite o certificado antes de usar o sistema');
       }
       
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao conectar cliente');
-      }
-      
-      console.log(`✅ Cliente ${clientId} conectado`);
-      return data;
-    } catch (error) {
-      console.error(`❌ Erro ao conectar ${clientId}:`, error);
       throw error;
     }
   }
 
+  // Disconnect client
   async disconnectClient(clientId: string): Promise<any> {
     try {
       console.log(`🔌 Desconectando cliente: ${clientId}`);
-      
-      const response = await this.makeRequest(`/api/clients/${clientId}/disconnect`, {
+      return await this.makeRequest(`/clients/${clientId}/disconnect`, {
         method: 'POST'
       });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao desconectar cliente');
-      }
-      
-      console.log(`✅ Cliente ${clientId} desconectado`);
-      return data;
     } catch (error) {
-      console.error(`❌ Erro ao desconectar ${clientId}:`, error);
+      console.error(`❌ Erro ao desconectar cliente ${clientId}:`, error);
       throw error;
     }
   }
 
+  // Get client status
   async getClientStatus(clientId: string): Promise<WhatsAppClient> {
     try {
-      const response = await this.makeRequest(`/api/clients/${clientId}/status`);
-      const data = await response.json();
+      console.log(`📊 Verificando status do cliente: ${clientId}`);
+      const response = await this.makeRequest(`/clients/${clientId}/status`);
       
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar status');
-      }
-      
-      return {
-        clientId: data.clientId,
-        status: data.status,
-        phoneNumber: data.phoneNumber,
-        hasQrCode: !!data.qrCode,
-        qrCode: data.qrCode
-      };
-    } catch (error) {
-      console.error(`❌ Erro status ${clientId}:`, error);
-      throw error;
-    }
-  }
-
-  async sendMessage(clientId: string, to: string, message: string, mediaUrl?: string, file?: File): Promise<any> {
-    try {
-      console.log('📤 Enviando mensagem:', { 
-        clientId, 
-        to, 
-        message: message.substring(0, 50), 
-        hasFile: !!file,
-        hasMediaUrl: !!mediaUrl,
-        fileType: file?.type,
-        fileSize: file?.size 
-      });
-      
-      if (file) {
-        // Envio de arquivo com validação melhorada
-        const formData = new FormData();
-        formData.append('to', to);
-        formData.append('file', file);
-        
-        if (message && message.trim()) {
-          formData.append('caption', message);
-        }
-
-        // Determinar endpoint baseado no tipo de arquivo
-        let endpoint = 'send-media';
-        if (file.type.startsWith('image/')) {
-          endpoint = 'send-image';
-        } else if (file.type.startsWith('video/')) {
-          endpoint = 'send-video';
-        } else if (file.type.startsWith('audio/')) {
-          endpoint = 'send-audio';
-        } else {
-          endpoint = 'send-document';
-        }
-
-        const config = await this.getCurrentConfig();
-        const response = await fetch(`${config.serverUrl}/api/clients/${clientId}/${endpoint}`, {
-          method: 'POST',
-          body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao enviar arquivo');
-        }
-        
-        console.log('✅ Arquivo enviado com sucesso:', data);
-        return data;
-        
-      } else if (mediaUrl) {
-        // Envio com URL de mídia
-        const response = await this.makeRequest(`/api/clients/${clientId}/send-media-url`, {
-          method: 'POST',
-          body: JSON.stringify({ to, message, mediaUrl })
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao enviar mídia');
-        }
-        
-        console.log('✅ Mídia enviada com sucesso');
-        return data;
-        
+      if (response.success) {
+        console.log(`✅ Status do cliente ${clientId}:`, response.status);
+        return {
+          clientId: response.clientId,
+          status: response.status,
+          phoneNumber: response.phoneNumber,
+          hasQrCode: response.hasQrCode,
+          qrCode: response.qrCode
+        };
       } else {
-        // Envio de mensagem de texto
-        const response = await this.makeRequest(`/api/clients/${clientId}/send-message`, {
-          method: 'POST',
-          body: JSON.stringify({ to, message })
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao enviar mensagem');
-        }
-        
-        console.log('✅ Mensagem enviada com sucesso');
-        return data;
+        throw new Error(response.error || 'Erro desconhecido');
       }
-    } catch (error: any) {
-      console.error('❌ Erro ao enviar mensagem:', error);
+    } catch (error) {
+      console.error(`❌ Erro ao verificar status do cliente ${clientId}:`, error);
       throw error;
     }
   }
 
-  // MÉTODO SENDREACTION ADICIONADO
-  async sendReaction(clientId: string, chatId: string, messageId: string, emoji: string): Promise<any> {
+  // Send message
+  async sendMessage(clientId: string, to: string, message: string): Promise<any> {
     try {
-      console.log('🎭 Enviando reação:', { clientId, chatId, messageId, emoji });
-      
-      const response = await this.makeRequest(`/api/clients/${clientId}/send-reaction`, {
+      console.log(`📤 Enviando mensagem via cliente ${clientId} para ${to}`);
+      return await this.makeRequest(`/clients/${clientId}/send-message`, {
         method: 'POST',
-        body: JSON.stringify({ 
-          chatId, 
-          messageId, 
-          emoji 
-        })
+        body: JSON.stringify({ to, message })
       });
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao enviar reação');
-      }
-      
-      console.log('✅ Reação enviada com sucesso');
-      return data;
-    } catch (error: any) {
-      console.error('❌ Erro ao enviar reação:', error);
-      throw error;
-    }
-  }
-
-  async getChats(clientId: string, retryCount = 0): Promise<ChatData[]> {
-    try {
-      console.log(`📡 Buscando chats para ${clientId} (tentativa ${retryCount + 1})`);
-      
-      const response = await this.makeRequest(`/api/clients/${clientId}/chats`);
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar chats');
-      }
-      
-      console.log(`✅ ${data.chats.length} chats carregados`);
-      return data.chats || [];
     } catch (error) {
-      console.error('❌ Erro ao buscar chats:', error);
+      console.error(`❌ Erro ao enviar mensagem via cliente ${clientId}:`, error);
       throw error;
     }
   }
 
-  async getChatMessages(clientId: string, chatId: string, limit: number = 50): Promise<MessageData[]> {
+  // Get chats
+  async getChats(clientId: string): Promise<any> {
     try {
-      const response = await this.makeRequest(`/api/clients/${clientId}/chats/${chatId}/messages?limit=${limit}`);
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar mensagens');
-      }
-      
-      return data.messages;
+      console.log(`💬 Buscando chats do cliente: ${clientId}`);
+      return await this.makeRequest(`/clients/${clientId}/chats`);
     } catch (error) {
-      console.error('❌ Erro ao buscar mensagens:', error);
+      console.error(`❌ Erro ao buscar chats do cliente ${clientId}:`, error);
       throw error;
     }
   }
 
-  async testConnection(): Promise<boolean> {
+  // Check if CORS is working
+  async checkCorsStatus(): Promise<boolean> {
     try {
       await this.checkServerHealth();
       return true;
-    } catch (error) {
-      return false;
+    } catch (error: any) {
+      if (error.message === 'CORS_ERROR') {
+        return false;
+      }
+      throw error;
     }
   }
 
-  async refreshServerConfig() {
-    console.log('🔄 Forçando nova detecção de servidor...');
-    resetConnectionCache();
-    this.currentConfig = null;
-    this.currentConfig = await getServerConfig();
-    console.log(`🎯 Nova configuração: ${this.currentConfig.serverUrl}`);
+  // Check server health with HTTPS validation
+  async checkServerHealth(): Promise<ServerHealth> {
+    try {
+      console.log('🔍 Health check HTTPS obrigatório:', `${API_BASE_URL}/health`);
+      
+      const response = await this.makeRequest('/health');
+      console.log('✅ Health check HTTPS bem-sucedido:', response);
+      
+      return response;
+    } catch (error: any) {
+      console.error('❌ Health check HTTPS falhou:', error.message);
+      
+      if (error.message === 'SSL_CERTIFICATE_ERROR') {
+        throw new Error('SSL_CERTIFICATE_NOT_ACCEPTED');
+      } else if (error.message === 'TIMEOUT_ERROR') {
+        throw new Error('SERVER_TIMEOUT');
+      } else if (error.message === 'HTTPS_REQUIRED') {
+        throw new Error('HTTPS_REQUIRED');
+      }
+      
+      throw error;
+    }
+  }
+
+  // Test connection with HTTPS validation
+  async testConnection(): Promise<{ success: boolean; message: string }> {
+    try {
+      console.log('🧪 Testando conexão HTTPS obrigatória com servidor...');
+      const health = await this.checkServerHealth();
+      
+      if (health && health.status === 'ok') {
+        return {
+          success: true,
+          message: `✅ HTTPS funcionando! Servidor: ${health.server || 'HTTPS'} | Versão: ${health.version || 'unknown'} | SSL: ✅`
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Servidor respondeu mas com status inválido'
+        };
+      }
+    } catch (error: any) {
+      console.error('❌ Teste de conexão HTTPS falhou:', error.message);
+      
+      if (error.message === 'SSL_CERTIFICATE_NOT_ACCEPTED') {
+        return {
+          success: false,
+          message: 'Certificado SSL: Aceite o certificado abrindo https://146.59.227.248/health no navegador'
+        };
+      } else if (error.message === 'SERVER_TIMEOUT') {
+        return {
+          success: false,
+          message: 'Timeout: Servidor não respondeu em 15 segundos'
+        };
+      } else if (error.message === 'HTTPS_REQUIRED') {
+        return {
+          success: false,
+          message: 'HTTPS obrigatório: Configure certificado SSL e reinicie em modo HTTPS'
+        };
+      }
+      
+      return {
+        success: false,
+        message: `Erro de conexão HTTPS: ${error.message}`
+      };
+    }
   }
 }
 
-// Singleton
-export const whatsappService = new WhatsAppMultiClientService();
+// Export singleton instance
+const whatsappService = new WhatsAppMultiClientService();
 export default whatsappService;
+
+// Also export as named export for compatibility
+export { whatsappService };

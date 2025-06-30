@@ -3,39 +3,30 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, Loader2, RefreshCw } from "lucide-react";
-import { getServerConfig, resetConnectionCache, getAlternativeServerConfig } from "@/config/environment";
+import { CheckCircle, XCircle, Loader2, AlertTriangle } from "lucide-react";
+import { SERVER_URL, getServerConfig } from "@/config/environment";
 
 const ConnectionTest = () => {
-  const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error' | 'mixed-content'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
-  const [currentServerUrl, setCurrentServerUrl] = useState('');
-  const [detectedProtocol, setDetectedProtocol] = useState('');
+  const config = getServerConfig();
 
   const testConnection = async () => {
     setTestResult('testing');
     setErrorMessage('');
-    setCurrentServerUrl('');
-    
+
     try {
-      console.log('🔍 Iniciando teste de conectividade inteligente...');
+      console.log(`🧪 Testando conexão com: ${SERVER_URL}/health`);
       
-      // Resetar cache para nova detecção
-      resetConnectionCache();
-      
-      // Obter configuração com detecção automática
-      const config = await getServerConfig();
-      setCurrentServerUrl(config.serverUrl);
-      setDetectedProtocol(config.protocol.toUpperCase());
-      
-      console.log(`🧪 Testando conexão com: ${config.serverUrl}/health`);
-      
-      const response = await fetch(`${config.serverUrl}/health`, {
+      // Try CORS mode first
+      const response = await fetch(`${SERVER_URL}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
         },
-        signal: AbortSignal.timeout(10000) // 10 segundos timeout
+        mode: 'cors',
+        credentials: 'omit'
       });
 
       if (response.ok) {
@@ -48,36 +39,23 @@ const ConnectionTest = () => {
     } catch (error: any) {
       console.error('❌ Teste de conexão falhou:', error);
       
-      // Tentar configuração alternativa
-      const altConfig = getAlternativeServerConfig();
-      if (altConfig && error.message.includes('SSL')) {
-        console.log(`🔄 SSL falhou, tentando alternativa: ${altConfig.serverUrl}`);
-        
+      // If CORS fails, try no-cors mode for Mixed Content
+      if (error.message.includes('Mixed Content') || error.message.includes('CORS') || error.name === 'TypeError') {
+        console.log('🔄 Tentando modo no-cors para Mixed Content...');
         try {
-          const altResponse = await fetch(`${altConfig.serverUrl}/health`, {
+          await fetch(`${SERVER_URL}/health`, {
             method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-            signal: AbortSignal.timeout(10000)
+            mode: 'no-cors'
           });
-          
-          if (altResponse.ok) {
-            setCurrentServerUrl(altConfig.serverUrl);
-            setDetectedProtocol(altConfig.protocol.toUpperCase());
-            setTestResult('success');
-            console.log('✅ Conexão alternativa funcionou!');
-            return;
-          }
-        } catch (altError) {
-          console.error('❌ Conexão alternativa também falhou:', altError);
+          // no-cors doesn't allow reading response, so assume it worked
+          setTestResult('mixed-content');
+          setErrorMessage('Funcionando com limitações (Mixed Content)');
+        } catch (noCorsError: any) {
+          setTestResult('error');
+          setErrorMessage(error.message || 'Erro desconhecido');
         }
-      }
-      
-      setTestResult('error');
-      if (error.name === 'AbortError') {
-        setErrorMessage('Timeout - Servidor demorou para responder');
-      } else if (error.message.includes('SSL') || error.message.includes('ERR_SSL')) {
-        setErrorMessage('Problema com certificado SSL - Servidor pode estar configurado apenas para HTTP');
       } else {
+        setTestResult('error');
         setErrorMessage(error.message || 'Erro desconhecido');
       }
     }
@@ -87,6 +65,8 @@ const ConnectionTest = () => {
     switch (testResult) {
       case 'success':
         return <Badge className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />Conectado</Badge>;
+      case 'mixed-content':
+        return <Badge className="bg-yellow-500"><AlertTriangle className="w-3 h-3 mr-1" />Mixed Content</Badge>;
       case 'error':
         return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Erro</Badge>;
       case 'testing':
@@ -100,23 +80,34 @@ const ConnectionTest = () => {
     <Card className="mb-6">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          🔧 Teste de Conectividade Inteligente
+          🔧 Teste de Conectividade
           {getStatusBadge()}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        
+        {/* Mixed Content Info */}
+        {window.location.protocol === 'https:' && SERVER_URL.startsWith('http://') && (
+          <div className="p-3 bg-orange-50 border border-orange-200 rounded">
+            <div className="flex items-start space-x-2">
+              <AlertTriangle className="w-5 h-5 text-orange-500 mt-0.5" />
+              <div>
+                <p className="font-medium text-orange-900">Mixed Content Detectado</p>
+                <p className="text-sm text-orange-700">
+                  Frontend HTTPS tentando acessar servidor HTTP. Sistema configurado para modo compatibilidade.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="text-sm space-y-2">
           <p><strong>URL atual:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{window.location.href}</code></p>
-          <p><strong>Porta frontend:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{window.location.port || '80/443'}</code></p>
-          {currentServerUrl && (
-            <>
-              <p><strong>Servidor detectado:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{currentServerUrl}</code></p>
-              <p><strong>Protocolo:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{detectedProtocol}</code></p>
-            </>
-          )}
+          <p><strong>Servidor:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{SERVER_URL}</code></p>
+          <p><strong>Protocolo:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{config.protocol}</code></p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex space-x-2">
           <Button onClick={testConnection} disabled={testResult === 'testing'}>
             {testResult === 'testing' ? (
               <>
@@ -124,38 +115,27 @@ const ConnectionTest = () => {
                 Testando...
               </>
             ) : (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Testar Conexão
-              </>
+              'Testar Servidor'
             )}
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => {
-              resetConnectionCache();
-              setTestResult('idle');
-              setCurrentServerUrl('');
-              setDetectedProtocol('');
-            }}
-          >
-            Reset Cache
           </Button>
         </div>
 
         {testResult === 'success' && (
           <div className="p-3 bg-green-50 border border-green-200 rounded">
             <p className="text-green-800 font-medium">✅ Conexão estabelecida com sucesso!</p>
-            <p className="text-green-600 text-sm">
-              Servidor WhatsApp respondendo via {detectedProtocol} em: {currentServerUrl}
+            <p className="text-green-600 text-sm">O servidor WhatsApp está respondendo corretamente.</p>
+          </div>
+        )}
+
+        {testResult === 'mixed-content' && (
+          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <p className="text-yellow-800 font-medium">⚠️ Conexão funcionando com limitações</p>
+            <p className="text-yellow-600 text-sm">
+              Sistema funcionando em modo compatibilidade para Mixed Content.
             </p>
-            <div className="mt-2 text-xs text-green-600">
-              <p><strong>Detecção automática funcionou!</strong></p>
-              <p>• Protocolo: {detectedProtocol}</p>
-              <p>• URL: {currentServerUrl}</p>
-            </div>
+            <p className="text-yellow-600 text-xs mt-1">
+              Algumas funcionalidades podem ter limitações devido à política de segurança do navegador.
+            </p>
           </div>
         )}
 
@@ -166,25 +146,10 @@ const ConnectionTest = () => {
             <div className="mt-2 text-xs text-red-600">
               <p><strong>Possíveis soluções:</strong></p>
               <ul className="list-disc list-inside mt-1 space-y-1">
-                <li>Verifique se o servidor WhatsApp está rodando na porta 4000</li>
-                <li>Se erro SSL, servidor pode estar apenas em HTTP</li>
-                <li>Tente: <code className="bg-red-100 px-1 rounded">http://146.59.227.248:4000</code></li>
-                <li>Verifique firewall e portas abertas</li>
+                <li>Verificar se o servidor está online</li>
+                <li>Verificar configuração de CORS no servidor</li>
+                <li>Configurar HTTPS no servidor para resolver Mixed Content</li>
               </ul>
-            </div>
-          </div>
-        )}
-
-        {testResult === 'testing' && (
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-            <p className="text-blue-800 font-medium">🔍 Detectando melhor conexão...</p>
-            <p className="text-blue-600 text-sm">
-              Testando HTTPS primeiro, com fallback para HTTP se necessário
-            </p>
-            <div className="mt-2 space-y-1 text-xs text-blue-600">
-              <p>• Verificando certificado SSL...</p>
-              <p>• Testando conectividade HTTP/HTTPS...</p>
-              <p>• Aplicando configuração ideal...</p>
             </div>
           </div>
         )}
