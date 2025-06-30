@@ -1,4 +1,3 @@
-
 import io, { Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL, HTTPS_SERVER_URL, getServerConfig } from '@/config/environment';
 
@@ -73,7 +72,7 @@ class WhatsAppMultiClientService {
     try {
       this.socket = io(SOCKET_URL, {
         transports: ['websocket', 'polling'],
-        timeout: 30000, // Aumentado para 30 segundos
+        timeout: 20000,
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectInterval,
@@ -183,7 +182,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Methods with HTTPS DEFINITIVO e timeout melhorado
+  // API Methods with HTTPS DEFINITIVO
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     
@@ -202,11 +201,6 @@ class WhatsAppMultiClientService {
       'Origin': window.location.origin
     };
 
-    // Timeout progressivo: 30s para status, 90s para connect/disconnect, 60s para outros
-    const timeoutMs = url.includes('/status') ? 30000 : 
-                     url.includes('/connect') || url.includes('/disconnect') ? 90000 : 
-                     45000;
-
     const fetchConfig: RequestInit = {
       ...options,
       headers: {
@@ -215,11 +209,10 @@ class WhatsAppMultiClientService {
       },
       mode: 'cors',
       credentials: 'omit',
-      signal: options.signal || AbortSignal.timeout(timeoutMs)
+      signal: options.signal || AbortSignal.timeout(20000)
     };
 
     try {
-      console.log(`⏱️ Timeout configurado: ${timeoutMs}ms para ${fullUrl}`);
       const response = await fetch(fullUrl, fetchConfig);
       
       console.log(`📡 Resposta HTTPS DEFINITIVO: ${response.status} ${response.statusText}`);
@@ -242,7 +235,6 @@ class WhatsAppMultiClientService {
       console.error(`❌ Erro HTTPS DEFINITIVO para ${fullUrl}:`, error);
       
       if (error.name === 'AbortError' || error.name === 'TimeoutError') {
-        console.warn(`⏱️ Timeout de ${timeoutMs}ms excedido para ${fullUrl}`);
         throw new Error('TIMEOUT_ERROR');
       } else if (error.message === 'Failed to fetch' || 
                  error.name === 'TypeError' ||
@@ -278,10 +270,10 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Connect client with timeout estendido
+  // Connect client with improved HTTPS handling
   async connectClient(clientId: string): Promise<any> {
     try {
-      console.log(`🔗 Conectando cliente via HTTPS (timeout 90s): ${clientId}`);
+      console.log(`🔗 Conectando cliente via HTTPS: ${clientId}`);
       return await this.makeRequest(`/clients/${clientId}/connect`, {
         method: 'POST'
       });
@@ -296,28 +288,23 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Disconnect client - MÉTODO FALTANTE!
+  // Disconnect client
   async disconnectClient(clientId: string): Promise<any> {
     try {
-      console.log(`🔌 Desconectando cliente via HTTPS (timeout 90s): ${clientId}`);
+      console.log(`🔌 Desconectando cliente: ${clientId}`);
       return await this.makeRequest(`/clients/${clientId}/disconnect`, {
         method: 'POST'
       });
-    } catch (error: any) {
-      console.error(`❌ Erro ao desconectar cliente ${clientId}:`, error.message);
-      
-      if (error.message.includes('HTTPS_CERT_ERROR')) {
-        throw new Error('CERTIFICADO_SSL: Acesse https://146.59.227.248/health no navegador e aceite o certificado antes de usar o sistema');
-      }
-      
+    } catch (error) {
+      console.error(`❌ Erro ao desconectar cliente ${clientId}:`, error);
       throw error;
     }
   }
 
-  // Get client status with retry logic
-  async getClientStatus(clientId: string, retries = 2): Promise<WhatsAppClient> {
+  // Get client status
+  async getClientStatus(clientId: string): Promise<WhatsAppClient> {
     try {
-      console.log(`📊 Verificando status do cliente (timeout 30s): ${clientId}`);
+      console.log(`📊 Verificando status do cliente: ${clientId}`);
       const response = await this.makeRequest(`/clients/${clientId}/status`);
       
       if (response.success) {
@@ -332,16 +319,8 @@ class WhatsAppMultiClientService {
       } else {
         throw new Error(response.error || 'Erro desconhecido');
       }
-    } catch (error: any) {
-      console.error(`❌ Erro ao verificar status do cliente ${clientId}:`, error.message);
-      
-      // Retry logic for timeout errors
-      if (error.message === 'TIMEOUT_ERROR' && retries > 0) {
-        console.log(`🔄 Tentando novamente... (${retries} tentativas restantes)`);
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Aguarda 2s
-        return this.getClientStatus(clientId, retries - 1);
-      }
-      
+    } catch (error) {
+      console.error(`❌ Erro ao verificar status do cliente ${clientId}:`, error);
       throw error;
     }
   }
@@ -384,7 +363,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Check server health with timeout ajustado
+  // Check server health with HTTPS DEFINITIVO
   async checkServerHealth(): Promise<ServerHealth> {
     try {
       console.log('🔍 Health check HTTPS DEFINITIVO:', `${API_BASE_URL}/health`);
@@ -408,7 +387,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Test connection with timeout melhorado
+  // Test connection with HTTPS DEFINITIVO
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
       console.log('🧪 Testando conexão HTTPS DEFINITIVO...');
@@ -436,7 +415,7 @@ class WhatsAppMultiClientService {
       } else if (error.message === 'SERVER_TIMEOUT') {
         return {
           success: false,
-          message: 'Timeout: Servidor não respondeu em tempo hábil (30-60s). Verifique se o servidor WhatsApp está rodando.'
+          message: 'Timeout: Servidor não respondeu em 20 segundos'
         };
       } else if (error.message === 'HTTPS_REQUIRED') {
         return {
