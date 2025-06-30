@@ -7,6 +7,7 @@ const qrcode = require('qrcode');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const mime = require('mime-types');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,6 +21,52 @@ const io = new Server(server, {
 });
 
 const port = process.env.PORT || 4000;
+
+// CONFIGURAÇÃO SUPABASE PARA ATUALIZAÇÃO DO BANCO
+const supabaseUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// FUNÇÃO PARA ATUALIZAR STATUS NO BANCO SUPABASE
+const updateInstanceStatus = async (instanceId, status, phoneNumber = null) => {
+    try {
+        console.log(`💾 [UPDATE-DB] Atualizando ${instanceId}: status=${status}, phone=${phoneNumber}`);
+        
+        const updateData = {
+            status: status,
+            updated_at: new Date().toISOString()
+        };
+        
+        // Adicionar phone_number se fornecido
+        if (phoneNumber) {
+            updateData.phone_number = phoneNumber;
+        }
+        
+        // Adicionar campos QR baseado no status
+        if (status === 'qr_ready') {
+            updateData.has_qr_code = true;
+        } else if (status === 'connected') {
+            updateData.has_qr_code = false;
+            updateData.qr_code = null;
+        }
+        
+        const { data, error } = await supabase
+            .from('whatsapp_instances')
+            .update(updateData)
+            .eq('instance_id', instanceId);
+            
+        if (error) {
+            console.error(`❌ [UPDATE-DB] Erro ao atualizar ${instanceId}:`, error);
+        } else {
+            console.log(`✅ [UPDATE-DB] Status atualizado com sucesso: ${instanceId} -> ${status}`);
+        }
+        
+        return { success: !error, data, error };
+    } catch (error) {
+        console.error(`❌ [UPDATE-DB] Erro crítico ao atualizar ${instanceId}:`, error);
+        return { success: false, error };
+    }
+};
 
 // CONFIGURAÇÃO CORS DEFINITIVA PARA RESOLVER PROBLEMA LOVABLE
 console.log('🔧 Configurando CORS DEFINITIVO para resolver problema Lovable...');
@@ -314,6 +361,9 @@ const initClient = (clientId) => {
             console.log(`✅ [${timestamp}] QR Code ENVIADO VIA WEBSOCKET para sala: ${clientId}`);
             console.log(`✅ [${timestamp}] Clientes na sala ${clientId}: ${io.sockets.adapter.rooms.get(clientId)?.size || 0}`);
             
+            // ATUALIZAR BANCO COM STATUS QR_READY
+            await updateInstanceStatus(clientId, 'qr_ready');
+            
         } catch (error) {
             console.error(`❌ [${timestamp}] ERRO ao gerar QR Code para ${clientId}:`, error);
         }
@@ -365,12 +415,11 @@ const initClient = (clientId) => {
                 timestamp: timestamp
             });
             
-            // ATUALIZAR BANCO DE DADOS IMEDIATAMENTE
+            // ATUALIZAR BANCO DE DADOS IMEDIATAMENTE - IMPLEMENTADO
             if (phoneNumber) {
                 try {
                     console.log(`💾 [${timestamp}] Atualizando banco: ${clientId} -> connected + ${phoneNumber}`);
-                    // Aqui você deve adicionar sua lógica de atualização do banco
-                    // Por exemplo: await updateInstanceStatus(clientId, 'connected', phoneNumber);
+                    await updateInstanceStatus(clientId, 'connected', phoneNumber);
                 } catch (error) {
                     console.error(`❌ Erro ao atualizar banco para ${clientId}:`, error);
                 }
@@ -389,6 +438,9 @@ const initClient = (clientId) => {
             status: 'auth_failed',
             hasQrCode: false
         });
+        
+        // ATUALIZAR BANCO PARA STATUS AUTH_FAILED
+        updateInstanceStatus(clientId, 'auth_failed').catch(console.error);
     });
 
     client.on('ready', () => {
@@ -420,6 +472,11 @@ const initClient = (clientId) => {
             timestamp: timestamp
         });
         
+        // ATUALIZAR BANCO PARA STATUS CONNECTED NO READY
+        if (phoneNumber) {
+            await updateInstanceStatus(clientId, 'connected', phoneNumber);
+        }
+        
         // Emit clients update
         emitClientsUpdate();
     });
@@ -436,6 +493,10 @@ const initClient = (clientId) => {
             status: 'disconnected',
             hasQrCode: false
         });
+        
+        // ATUALIZAR BANCO PARA STATUS DISCONNECTED
+        updateInstanceStatus(clientId, 'disconnected').catch(console.error);
+        
         client.destroy();
         delete clients[clientId];
         emitClientsUpdate();

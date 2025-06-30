@@ -24,7 +24,8 @@
     "path": "^0.12.7",
     "http": "^0.0.1-security",
     "swagger-ui-express": "^5.0.0",
-    "swagger-jsdoc": "^6.2.8"
+    "swagger-jsdoc": "^6.2.8",
+    "@supabase/supabase-js": "^2.50.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
