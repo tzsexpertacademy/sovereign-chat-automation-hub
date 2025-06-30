@@ -5,7 +5,7 @@
 # Resolve problemas: Lovable conecta + API funciona + QR Code gera
 # Arquivo: scripts/setup-https-unified.sh
 
-echo "🔒 SETUP HTTPS UNIFICADO - VERSÃO DEFINITIVA"
+echo "🔒 SETUP HTTPS UNIFICADO - VERSÃO CORRIGIDA"
 echo "============================================"
 
 # Verificar se está rodando como root
@@ -31,21 +31,26 @@ echo "🛑 PASSO 1: Parando serviços..."
 systemctl stop nginx 2>/dev/null || true
 ./scripts/production-stop-whatsapp.sh 2>/dev/null || true
 
-# PASSO 2: Certificado SSL robusto
+# PASSO 2: Certificado SSL CORRIGIDO
 echo ""
-echo "🔐 PASSO 2: Configurando certificado SSL..."
+echo "🔐 PASSO 2: Configurando certificado SSL CORRIGIDO..."
 mkdir -p $SSL_DIR
 
-if [ ! -f "$SSL_DIR/privkey.pem" ] || [ ! -f "$SSL_DIR/fullchain.pem" ]; then
-    echo "🔧 Criando certificado SSL robusto..."
-    
-    # Gerar chave privada
-    openssl genrsa -out $SSL_DIR/privkey.pem 4096
-    
-    # Criar arquivo de configuração
-    cat > $SSL_DIR/cert.conf << EOF
+# Remover certificados antigos que podem estar causando problemas
+if [ -f "$SSL_DIR/privkey.pem" ] || [ -f "$SSL_DIR/fullchain.pem" ]; then
+    echo "🗑️ Removendo certificados antigos..."
+    rm -f $SSL_DIR/privkey.pem $SSL_DIR/fullchain.pem $SSL_DIR/cert.conf
+fi
+
+echo "🔧 Criando certificado SSL compatível..."
+
+# Gerar chave privada RSA (mais compatível)
+openssl genrsa -out $SSL_DIR/privkey.pem 2048
+
+# Criar arquivo de configuração CORRIGIDO
+cat > $SSL_DIR/cert.conf << EOF
 [req]
-default_bits = 4096
+default_bits = 2048
 prompt = no
 distinguished_name = req_distinguished_name
 req_extensions = v3_req
@@ -59,7 +64,8 @@ OU=Development
 CN=$DOMAIN
 
 [v3_req]
-keyUsage = keyEncipherment, dataEncipherment
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
@@ -70,17 +76,18 @@ DNS.2 = localhost
 IP.2 = 127.0.0.1
 EOF
 
-    # Gerar certificado
-    openssl req -new -x509 -key $SSL_DIR/privkey.pem \
-        -out $SSL_DIR/fullchain.pem \
-        -days 3650 \
-        -config $SSL_DIR/cert.conf \
-        -extensions v3_req
+# Gerar certificado com configuração corrigida
+openssl req -new -x509 -key $SSL_DIR/privkey.pem \
+    -out $SSL_DIR/fullchain.pem \
+    -days 365 \
+    -config $SSL_DIR/cert.conf \
+    -extensions v3_req
 
-    echo "✅ Certificado SSL criado"
-else
-    echo "✅ Certificado SSL já existe"
-fi
+echo "✅ Certificado SSL CORRIGIDO criado"
+
+# Verificar certificado
+echo "🔍 Verificando certificado..."
+openssl x509 -in $SSL_DIR/fullchain.pem -text -noout | grep -E "(Key Usage|Extended Key Usage|Subject Alternative Name)" || true
 
 # Definir permissões
 chmod 600 $SSL_DIR/privkey.pem
@@ -110,10 +117,10 @@ server {
     ssl_certificate $SSL_DIR/fullchain.pem;
     ssl_certificate_key $SSL_DIR/privkey.pem;
     
-    # Configurações SSL otimizadas
+    # Configurações SSL otimizadas e compatíveis
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
-    ssl_prefer_server_ciphers off;
+    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA;
+    ssl_prefer_server_ciphers on;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
     
@@ -253,25 +260,21 @@ echo ""
 echo "📍 Teste 4: Clients API via HTTPS"
 curl -k -s --max-time 15 https://$DOMAIN/clients | head -5 || echo "❌ Falha teste Clients"
 
-# PASSO 8: Remover scripts antigos
+# PASSO 8: Verificar certificado final
 echo ""
-echo "🧹 PASSO 8: Limpando scripts antigos..."
-if [ -f "scripts/setup-simple-https.sh" ]; then
-    mv scripts/setup-simple-https.sh scripts/setup-simple-https.sh.backup
-    echo "✅ setup-simple-https.sh → backup"
-fi
-
-if [ -f "scripts/fix-nginx-502.sh" ]; then
-    mv scripts/fix-nginx-502.sh scripts/fix-nginx-502.sh.backup  
-    echo "✅ fix-nginx-502.sh → backup"
-fi
+echo "🔍 PASSO 8: Verificação final do certificado..."
+echo "Informações do certificado SSL:"
+openssl x509 -in $SSL_DIR/fullchain.pem -noout -subject -issuer -dates
+echo ""
+echo "Extensões do certificado:"
+openssl x509 -in $SSL_DIR/fullchain.pem -noout -text | grep -A 5 "X509v3 extensions" || echo "Sem extensões específicas"
 
 # Status final
 echo ""
-echo "🎉 SETUP HTTPS UNIFICADO CONCLUÍDO!"
+echo "🎉 SETUP HTTPS UNIFICADO CORRIGIDO CONCLUÍDO!"
 echo "=================================="
 echo ""
-echo "✅ Certificado SSL: Robusto (4096 bits, 10 anos)"
+echo "✅ Certificado SSL: Corrigido (RSA 2048, keyUsage compatível)"
 echo "✅ Nginx: Configuração unificada otimizada"
 echo "✅ CORS: Apenas no servidor Node.js (sem duplicação)"
 echo "✅ Timeouts: Equilibrados (10-60s conforme uso)"
@@ -295,9 +298,10 @@ echo "🔍 Para debugging adicional:"
 echo "  • Verificar portas: lsof -i :$BACKEND_PORT -i :$FRONTEND_PORT"
 echo "  • Certificado: openssl x509 -in $SSL_DIR/fullchain.pem -text -noout"
 echo ""
-echo "💡 Problemas? Ambos devem funcionar:"
-echo "  1. Lovable deve conectar via HTTPS com CORS otimizado"
+echo "💡 Agora deve funcionar:"
+echo "  1. Lovable deve conectar via HTTPS com certificado corrigido"
 echo "  2. API deve gerar QR codes via roteamento direto"
-EOF
-
-chmod +x scripts/setup-https-unified.sh
+echo "  3. Navegador deve aceitar o certificado sem ERR_SSL_KEY_USAGE_INCOMPATIBLE"
+echo ""
+echo "🚨 IMPORTANTE: Após executar, acesse https://$DOMAIN/health no navegador"
+echo "   e aceite o certificado SSL para que o Lovable funcione corretamente."
