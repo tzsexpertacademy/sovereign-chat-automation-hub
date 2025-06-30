@@ -232,7 +232,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
 
                   {/* Action Buttons - ATUALIZADO */}
                   <div className="flex space-x-2 pt-2 flex-wrap">
-                    {instance.status === 'connected' ? (
+                    {getInstanceStatus(instance.instance_id).status === 'connected' ? (
                       <>
                         <Button 
                           size="sm" 
@@ -245,12 +245,11 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         </Button>
                         <Button 
                           size="sm" 
-                          variant="outline"
                           onClick={() => handleOpenChat(instance)}
                           className="bg-green-600 hover:bg-green-700 text-white"
                         >
                           <MessageSquare className="w-4 h-4 mr-1" />
-                          Chat
+                          Ir para Chat
                         </Button>
                       </>
                     ) : (

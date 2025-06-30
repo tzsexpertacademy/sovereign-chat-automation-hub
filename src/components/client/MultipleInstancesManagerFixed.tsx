@@ -19,12 +19,14 @@ import {
   Play,
   Pause,
   Wifi,
-  WifiOff
+  WifiOff,
+  MessageSquare
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { useInstanceManager } from "@/contexts/InstanceManagerContext";
+import { useNavigate } from "react-router-dom";
 
 interface MultipleInstancesManagerFixedProps {
   clientId: string;
@@ -40,6 +42,7 @@ const MultipleInstancesManagerFixed = ({ clientId, client, onInstancesUpdate }: 
   const [editName, setEditName] = useState("");
   const [selectedForQR, setSelectedForQR] = useState<string | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   // Hook unificado para gerenciar instâncias - NOVO
   const { 
@@ -400,17 +403,27 @@ const MultipleInstancesManagerFixed = ({ clientId, client, onInstancesUpdate }: 
                         </div>
                       )}
                       
-                      <div className="flex space-x-2 flex-wrap">
-                        {instance.status === 'connected' ? (
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleDisconnectInstance(instance.instance_id)}
-                            disabled={isLoading(instance.instance_id)}
-                          >
-                            <Pause className="w-4 h-4 mr-1" />
-                            Pausar
-                          </Button>
+                       <div className="flex space-x-2 flex-wrap">
+                        {getInstanceStatus(instance.instance_id).status === 'connected' ? (
+                          <>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleDisconnectInstance(instance.instance_id)}
+                              disabled={isLoading(instance.instance_id)}
+                            >
+                              <Pause className="w-4 h-4 mr-1" />
+                              Pausar
+                            </Button>
+                            <Button 
+                              size="sm"
+                              onClick={() => navigate(`/client/${clientId}/chat`)}
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-1" />
+                              Ir para Chat
+                            </Button>
+                          </>
                         ) : (
                           <Button 
                             size="sm"
@@ -418,17 +431,29 @@ const MultipleInstancesManagerFixed = ({ clientId, client, onInstancesUpdate }: 
                             disabled={isLoading(instance.instance_id)}
                             className="bg-green-600 hover:bg-green-700"
                           >
-                            <Play className="w-4 h-4 mr-1" />
-                            Conectar
+                            {isLoading(instance.instance_id) ? (
+                              <>
+                                <Clock className="w-4 h-4 mr-1 animate-spin" />
+                                Conectando...
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-4 h-4 mr-1" />
+                                Conectar
+                              </>
+                            )}
                           </Button>
                         )}
                         
-                        {getInstanceStatus(instance.instance_id).hasQrCode && (
-                          <Button size="sm" variant="outline">
-                            <QrCode className="w-4 h-4 mr-1" />
-                            Ver QR
-                          </Button>
-                        )}
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => setSelectedForQR(selectedForQR === instance.instance_id ? null : instance.instance_id)}
+                          disabled={isLoading(instance.instance_id)}
+                        >
+                          <QrCode className="w-4 h-4 mr-1" />
+                          {selectedForQR === instance.instance_id ? 'Ocultar QR' : 'Ver QR'}
+                        </Button>
                         
                         <Button
                           size="sm"

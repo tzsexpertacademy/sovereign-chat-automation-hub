@@ -75,8 +75,61 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
       });
     }
 
+    // NOVO: Sistema de polling para sincronizar status real
+    const statusPollingInterval = setInterval(async () => {
+      const instanceIds = Object.keys(instances);
+      if (instanceIds.length === 0) return;
+
+      console.log('🔄 [GLOBAL] Polling status para todas as instâncias...');
+      
+      for (const instanceId of instanceIds) {
+        try {
+          const realStatus = await whatsappService.getClientStatus(instanceId);
+          const currentStatus = instances[instanceId]?.status;
+          
+          // Mapear 'authenticated' para 'connected'
+          const normalizedStatus = realStatus.status === 'authenticated' ? 'connected' : realStatus.status;
+          
+          if (currentStatus !== normalizedStatus) {
+            console.log(`🔄 [GLOBAL] Status desatualizado para ${instanceId}: ${currentStatus} -> ${normalizedStatus}`);
+            
+            setInstances(prev => ({
+              ...prev,
+              [instanceId]: {
+                instanceId,
+                status: normalizedStatus,
+                qrCode: realStatus.qrCode,
+                hasQrCode: realStatus.hasQrCode || false,
+                phoneNumber: realStatus.phoneNumber
+              }
+            }));
+
+            // Atualizar no banco
+            if (normalizedStatus !== 'connecting') {
+              whatsappInstancesService.updateInstanceStatus(
+                instanceId, 
+                normalizedStatus,
+                realStatus.phoneNumber ? { phone_number: realStatus.phoneNumber } : undefined
+              ).catch(console.error);
+            }
+
+            // Toast para mudanças importantes
+            if (normalizedStatus === 'connected' && currentStatus !== 'connected') {
+              toast({
+                title: "✅ WhatsApp Conectado!",
+                description: `Instância ${instanceId} conectada com sucesso`,
+              });
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ [GLOBAL] Erro no polling para ${instanceId}:`, error);
+        }
+      }
+    }, 10000); // Polling a cada 10 segundos
+
     return () => {
       console.log('🧹 [GLOBAL] Limpando Instance Manager Global');
+      clearInterval(statusPollingInterval);
       // Limpar todos os listeners ao desmontar
       if (socket) {
         Object.keys(instances).forEach(instanceId => {
@@ -84,7 +137,7 @@ export const InstanceManagerProvider: React.FC<InstanceManagerProviderProps> = (
         });
       }
     };
-  }, []);
+  }, [instances, toast]);
 
   const connectInstance = async (instanceId: string) => {
     try {
