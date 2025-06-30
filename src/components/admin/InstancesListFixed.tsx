@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
-import { useGlobalInstanceManager } from "@/contexts/InstanceManagerContext";
+import { useInstanceManager } from "@/hooks/useInstanceManager";
 
 interface InstancesListFixedProps {
   instances: WhatsAppInstanceData[];
@@ -32,15 +32,15 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Hook global para gerenciar instâncias - NOVO
+  // Hook unificado para gerenciar instâncias - NOVO
   const { 
-    connectGlobalInstance, 
-    disconnectGlobalInstance,
-    globalInstanceStatus,
-    isGlobalLoading,
+    connectInstance, 
+    disconnectInstance,
+    getInstanceStatus,
+    isLoading,
     websocketConnected,
-    refreshInstanceStatus
-  } = useGlobalInstanceManager();
+    cleanup
+  } = useInstanceManager();
 
   const getClientName = (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
@@ -80,21 +80,16 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
-  // Função para obter status da instância global
-  const getInstanceStatus = (instanceId: string) => {
-    return globalInstanceStatus[instanceId] || { instanceId, status: 'disconnected', hasQrCode: false };
-  };
-
   // NOVO: Handlers simplificados
   const handleConnectInstance = async (instanceId: string) => {
     setSelectedInstanceForQR(instanceId);
-    await connectGlobalInstance(instanceId);
-    refreshInstanceStatus(instanceId);
+    await connectInstance(instanceId);
     onInstanceUpdated();
   };
 
   const handleDisconnectInstance = async (instanceId: string) => {
-    await disconnectGlobalInstance(instanceId);
+    await disconnectInstance(instanceId);
+    cleanup(instanceId);
     setSelectedInstanceForQR(null);
     onInstanceUpdated();
   };
@@ -243,7 +238,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           size="sm" 
                           variant="outline"
                           onClick={() => handleDisconnectInstance(instance.instance_id)}
-                          disabled={isGlobalLoading(instance.instance_id) || !systemHealth.serverOnline}
+                          disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
                         >
                           <Pause className="w-4 h-4 mr-1" />
                           Pausar
@@ -262,10 +257,10 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                       <Button 
                         size="sm"
                         onClick={() => handleConnectInstance(instance.instance_id)}
-                         disabled={isGlobalLoading(instance.instance_id) || !systemHealth.serverOnline}
-                         className="bg-green-600 hover:bg-green-700"
-                       >
-                         {isGlobalLoading(instance.instance_id) ? (
+                        disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        {isLoading(instance.instance_id) ? (
                           <>
                             <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
                             Conectando...
@@ -283,18 +278,18 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                       size="sm" 
                       variant="outline"
                       onClick={() => handleViewQRCode(instance.instance_id)}
-                       disabled={isGlobalLoading(instance.instance_id)}
-                     >
-                       <Eye className="w-4 h-4 mr-1" />
-                       QR Code
-                     </Button>
+                      disabled={isLoading(instance.instance_id)}
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      QR Code
+                    </Button>
 
-                     {/* NOVO: Botão Remover */}
-                     <Button 
-                       size="sm" 
-                       variant="outline"
-                       onClick={() => handleDeleteInstance(instance.instance_id)}
-                       disabled={isGlobalLoading(instance.instance_id)}
+                    {/* NOVO: Botão Remover */}
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleDeleteInstance(instance.instance_id)}
+                      disabled={isLoading(instance.instance_id)}
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
                       <Trash2 className="w-4 h-4 mr-1" />
