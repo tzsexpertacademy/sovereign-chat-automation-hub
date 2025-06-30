@@ -231,6 +231,46 @@ const QRCodeDebugger = () => {
       // Limpar QR anterior
       setQrCodeData(null);
       
+      // Garantir que WebSocket está conectado
+      const socket = whatsappService.getSocket();
+      if (!socket || !socket.connected) {
+        console.log('🔌 WebSocket não conectado, reconectando...');
+        whatsappService.connectSocket();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      // Limpar listeners anteriores
+      whatsappService.offClientStatus(testInstanceId);
+      
+      // Configurar listener ANTES de qualquer ação
+      whatsappService.onClientStatus(testInstanceId, (clientData) => {
+        console.log('📱 Status recebido via Socket.IO DEBUGGER:', clientData);
+        setInstanceStatus(clientData.status);
+        
+        if (clientData.hasQrCode && clientData.qrCode) {
+          console.log('🎉 QR Code recebido via Socket.IO DEBUGGER!');
+          setQrCodeData(clientData.qrCode);
+          toast({
+            title: "QR Code Gerado!",
+            description: "QR Code recebido via Socket.IO em tempo real",
+          });
+        }
+
+        if (clientData.status === 'connected') {
+          toast({
+            title: "WhatsApp Conectado!",
+            description: `Instância ${testInstanceId} conectada com sucesso`,
+          });
+        }
+      });
+      
+      // Entrar na sala
+      whatsappService.joinClientRoom(testInstanceId);
+      
+      // Aguardar configuração da sala
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Conectar
       await whatsappService.connectClient(testInstanceId);
       
       toast({

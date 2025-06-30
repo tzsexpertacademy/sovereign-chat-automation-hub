@@ -42,28 +42,42 @@ export const useInstanceManager = () => {
 
     return () => {
       console.log('🧹 Limpando Instance Manager');
+      // Limpar todos os listeners ao desmontar
+      if (socket) {
+        Object.keys(instances).forEach(instanceId => {
+          whatsappService.offClientStatus(instanceId);
+        });
+      }
     };
-  }, []);
+  }, []); // Removeu 'instances' da dependência para evitar re-renders desnecessários
 
   const connectInstance = async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
       console.log(`🚀 Conectando instância: ${instanceId}`);
       
-      // Entrar na sala da instância
-      whatsappService.joinClientRoom(instanceId);
+      // Primeiro, garantir que o WebSocket está conectado
+      const socket = whatsappService.getSocket();
+      if (!socket || !socket.connected) {
+        console.log('🔌 WebSocket não conectado, reconectando...');
+        whatsappService.connectSocket();
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar conexão
+      }
       
-      // Escutar status da instância
-      whatsappService.onClientStatus(instanceId, (clientData) => {
+      // Limpar listeners anteriores
+      whatsappService.offClientStatus(instanceId);
+      
+      // Configurar listener ANTES de entrar na sala
+      const handleClientStatus = (clientData: any) => {
         console.log(`📱 Status recebido para ${instanceId}:`, clientData);
         
         setInstances(prev => ({
           ...prev,
           [instanceId]: {
-            instanceId: clientData.clientId,
+            instanceId: clientData.clientId || instanceId,
             status: clientData.status,
             qrCode: clientData.qrCode,
-            hasQrCode: clientData.hasQrCode,
+            hasQrCode: clientData.hasQrCode || false,
             phoneNumber: clientData.phoneNumber
           }
         }));
@@ -78,6 +92,7 @@ export const useInstanceManager = () => {
         }
 
         if (clientData.hasQrCode && clientData.qrCode) {
+          console.log('🎉 QR Code recebido!', clientData.qrCode.substring(0, 50) + '...');
           toast({
             title: "QR Code Disponível!",
             description: `Escaneie o QR Code para conectar a instância`,
@@ -90,9 +105,19 @@ export const useInstanceManager = () => {
             description: `Instância conectada com sucesso`,
           });
         }
-      });
+      };
+
+      // Escutar status da instância
+      whatsappService.onClientStatus(instanceId, handleClientStatus);
+      
+      // Entrar na sala da instância
+      whatsappService.joinClientRoom(instanceId);
+      
+      // Aguardar um pouco para a sala ser configurada
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Iniciar conexão
+      console.log(`🔗 Enviando comando de conexão para ${instanceId}`);
       await whatsappService.connectClient(instanceId);
       
       toast({
