@@ -7,6 +7,8 @@ export interface WhatsAppClient {
   phoneNumber?: string;
   hasQrCode?: boolean;
   qrCode?: string;
+  timestamp?: string;
+  qrTimestamp?: string;
 }
 
 export interface ServerHealth {

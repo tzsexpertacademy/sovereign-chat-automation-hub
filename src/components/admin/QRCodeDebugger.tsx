@@ -29,27 +29,27 @@ const QRCodeDebugger = () => {
   const [socketConnecting, setSocketConnecting] = useState(false);
 
   useEffect(() => {
-    console.log('🔍 Iniciando QR Code Debugger - Socket.IO CORRIGIDO');
+    console.log('🔍 [DEBUGGER] Iniciando QR Code Debugger - SISTEMA OTIMIZADO');
     connectToSocket();
     
     return () => {
-      console.log('🧹 Limpando QR Code Debugger');
+      console.log('🧹 [DEBUGGER] Limpando QR Code Debugger');
       if (whatsappService.getSocket()) {
         whatsappService.offClientStatus(testInstanceId);
       }
     };
-  }, [testInstanceId, toast]);
+  }, [testInstanceId]);
 
   const connectToSocket = () => {
     try {
       setSocketConnecting(true);
-      console.log('🔌 Conectando ao Socket.IO corrigido...');
+      console.log('🔌 [DEBUGGER] Conectando ao Socket.IO OTIMIZADO...');
       
       const socket = whatsappService.connectSocket();
       
       if (socket) {
         socket.on('connect', () => {
-          console.log('✅ Socket.IO conectado com sucesso!');
+          console.log('✅ [DEBUGGER] Socket.IO conectado com sucesso!');
           setWebsocketConnected(true);
           setSocketConnecting(false);
           
@@ -63,12 +63,17 @@ const QRCodeDebugger = () => {
         });
 
         socket.on('disconnect', (reason) => {
-          console.log('❌ Socket.IO desconectado:', reason);
+          console.log('❌ [DEBUGGER] Socket.IO desconectado:', reason);
           setWebsocketConnected(false);
+          // Auto-reconectar após 2 segundos
+          setTimeout(() => {
+            console.log('🔄 [DEBUGGER] Tentando reconectar...');
+            connectToSocket();
+          }, 2000);
         });
 
         socket.on('connect_error', (error) => {
-          console.error('❌ Erro de conexão Socket.IO:', error);
+          console.error('❌ [DEBUGGER] Erro de conexão Socket.IO:', error);
           setWebsocketConnected(false);
           setSocketConnecting(false);
           
@@ -79,13 +84,22 @@ const QRCodeDebugger = () => {
           });
         });
 
+        // Responder ao heartbeat
+        socket.on('ping', () => {
+          socket.emit('pong');
+        });
+
         // Escutar status da instância de teste
         whatsappService.onClientStatus(testInstanceId, (clientData) => {
-          console.log('📱 Status recebido via Socket.IO:', clientData);
+          console.log('📱 [DEBUGGER] Status recebido via Socket.IO:', {
+            status: clientData.status,
+            hasQrCode: clientData.hasQrCode,
+            timestamp: clientData.timestamp
+          });
           setInstanceStatus(clientData.status);
           
           if (clientData.hasQrCode && clientData.qrCode) {
-            console.log('🎉 QR Code recebido via Socket.IO!');
+            console.log('🎉 [DEBUGGER] QR Code recebido via Socket.IO!');
             setQrCodeData(clientData.qrCode);
             toast({
               title: "QR Code Gerado!",
@@ -102,7 +116,7 @@ const QRCodeDebugger = () => {
         });
       }
     } catch (error: any) {
-      console.error('❌ Erro ao configurar Socket.IO:', error);
+      console.error('❌ [DEBUGGER] Erro ao configurar Socket.IO:', error);
       setSocketConnecting(false);
       toast({
         title: "Erro Socket.IO",
@@ -226,29 +240,34 @@ const QRCodeDebugger = () => {
   const generateQRCode = async () => {
     try {
       setLoading(true);
-      console.log('🚀 Gerando QR Code via Socket.IO...');
+      console.log('🚀 [DEBUGGER] Gerando QR Code OTIMIZADO...');
       
       // Limpar QR anterior
       setQrCodeData(null);
+      setInstanceStatus('connecting');
       
       // Garantir que WebSocket está conectado
       const socket = whatsappService.getSocket();
       if (!socket || !socket.connected) {
-        console.log('🔌 WebSocket não conectado, reconectando...');
+        console.log('🔌 [DEBUGGER] WebSocket não conectado, reconectando...');
         whatsappService.connectSocket();
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
       
       // Limpar listeners anteriores
       whatsappService.offClientStatus(testInstanceId);
       
       // Configurar listener ANTES de qualquer ação
-      whatsappService.onClientStatus(testInstanceId, (clientData) => {
-        console.log('📱 Status recebido via Socket.IO DEBUGGER:', clientData);
+      const handleQRStatus = (clientData: any) => {
+        console.log('📱 [DEBUGGER] Status recebido:', {
+          status: clientData.status,
+          hasQrCode: clientData.hasQrCode,
+          timestamp: clientData.timestamp
+        });
         setInstanceStatus(clientData.status);
         
         if (clientData.hasQrCode && clientData.qrCode) {
-          console.log('🎉 QR Code recebido via Socket.IO DEBUGGER!');
+          console.log('🎉 [DEBUGGER] QR Code recebido via Socket.IO!');
           setQrCodeData(clientData.qrCode);
           toast({
             title: "QR Code Gerado!",
@@ -262,24 +281,63 @@ const QRCodeDebugger = () => {
             description: `Instância ${testInstanceId} conectada com sucesso`,
           });
         }
-      });
+      };
+      
+      whatsappService.onClientStatus(testInstanceId, handleQRStatus);
       
       // Entrar na sala
       whatsappService.joinClientRoom(testInstanceId);
       
       // Aguardar configuração da sala
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Conectar
+      console.log('🔗 [DEBUGGER] Enviando comando de conexão...');
       await whatsappService.connectClient(testInstanceId);
+      
+      // POLLING BACKUP PARA DEBUGGER
+      let pollCount = 0;
+      const maxPolls = 20; // 20 tentativas = 1 minuto
+      
+      const pollInterval = setInterval(async () => {
+        pollCount++;
+        console.log(`🔄 [DEBUGGER] Polling QR status (tentativa ${pollCount}/${maxPolls})`);
+        
+        try {
+          const status = await whatsappService.getClientStatus(testInstanceId);
+          
+          if (status.hasQrCode && status.qrCode) {
+            console.log('📱 [DEBUGGER] QR Code encontrado via polling!');
+            handleQRStatus(status);
+            clearInterval(pollInterval);
+          } else if (status.status === 'connected') {
+            console.log('✅ [DEBUGGER] Cliente conectado via polling!');
+            handleQRStatus(status);
+            clearInterval(pollInterval);
+          } else if (pollCount >= maxPolls) {
+            console.log('⏰ [DEBUGGER] Polling timeout atingido');
+            clearInterval(pollInterval);
+            toast({
+              title: "Timeout",
+              description: "QR Code não foi gerado no tempo esperado",
+              variant: "destructive",
+            });
+          }
+        } catch (error: any) {
+          console.warn(`⚠️ [DEBUGGER] Erro no polling ${pollCount}:`, error.message);
+          if (pollCount >= maxPolls) {
+            clearInterval(pollInterval);
+          }
+        }
+      }, 3000); // Verificar a cada 3 segundos
       
       toast({
         title: "Gerando QR Code",
-        description: "Aguarde... QR Code será exibido automaticamente via Socket.IO",
+        description: "Sistema otimizado com WebSocket + Polling backup",
       });
       
     } catch (error: any) {
-      console.error('❌ Erro ao gerar QR:', error);
+      console.error('❌ [DEBUGGER] Erro ao gerar QR:', error);
       toast({
         title: "Erro na Geração QR",
         description: error.message,

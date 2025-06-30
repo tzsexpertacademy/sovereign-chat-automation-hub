@@ -249,7 +249,7 @@ const initClient = (clientId) => {
         return;
     }
 
-    console.log(`🚀 Inicializando cliente: ${clientId}`);
+    console.log(`🚀 [${new Date().toISOString()}] INICIALIZANDO CLIENTE: ${clientId}`);
 
     const client = new Client({
         session: clientSessions[clientId],
@@ -271,33 +271,80 @@ const initClient = (clientId) => {
                 '--disable-features=VizDisplayCompositor',
                 '--disable-ipc-flooding-protection'
             ],
+            timeout: 60000 // 60 segundos timeout
         }
     });
 
+    // ARMAZENAR QR TEMPORARIAMENTE NO OBJETO CLIENT
+    client.qrCode = null;
+    client.qrTimestamp = null;
+
     client.on('qr', async (qr) => {
-        console.log(`📱 QR Code gerado para ${clientId}`);
+        const timestamp = new Date().toISOString();
+        console.log(`📱 [${timestamp}] QR CODE EVENTO RECEBIDO para ${clientId}`);
+        console.log(`📱 [${timestamp}] QR Code length: ${qr?.length || 0} chars`);
+        
         try {
             const qrCodeDataUrl = await qrcode.toDataURL(qr);
+            
+            // ARMAZENAR QR NO CLIENTE
+            client.qrCode = qrCodeDataUrl;
+            client.qrTimestamp = timestamp;
+            
+            console.log(`📱 [${timestamp}] QR Code gerado DATA URL length: ${qrCodeDataUrl?.length || 0}`);
+            
+            // EMITIR PARA SALA ESPECÍFICA DO CLIENTE
+            io.to(clientId).emit(`client_status_${clientId}`, { 
+                clientId: clientId, 
+                status: 'qr_ready', 
+                qrCode: qrCodeDataUrl,
+                hasQrCode: true,
+                timestamp: timestamp
+            });
+            
+            // EMITIR TAMBÉM GERAL COMO BACKUP
             io.emit(`client_status_${clientId}`, { 
                 clientId: clientId, 
                 status: 'qr_ready', 
                 qrCode: qrCodeDataUrl,
-                hasQrCode: true
+                hasQrCode: true,
+                timestamp: timestamp
             });
-            console.log(`✅ QR Code enviado via WebSocket para ${clientId}`);
+            
+            console.log(`✅ [${timestamp}] QR Code ENVIADO VIA WEBSOCKET para sala: ${clientId}`);
+            console.log(`✅ [${timestamp}] Clientes na sala ${clientId}: ${io.sockets.adapter.rooms.get(clientId)?.size || 0}`);
+            
         } catch (error) {
-            console.error(`❌ Erro ao gerar QR Code para ${clientId}:`, error);
+            console.error(`❌ [${timestamp}] ERRO ao gerar QR Code para ${clientId}:`, error);
         }
     });
 
     client.on('authenticated', (session) => {
-        console.log(`✅ Cliente ${clientId} autenticado`);
+        const timestamp = new Date().toISOString();
+        console.log(`✅ [${timestamp}] Cliente ${clientId} AUTENTICADO`);
         clientSessions[clientId] = session;
         saveClientSessions();
+        
+        // LIMPAR QR CODE APÓS AUTENTICAÇÃO
+        client.qrCode = null;
+        client.qrTimestamp = null;
+        
+        // EMITIR PARA SALA ESPECÍFICA
+        io.to(clientId).emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'authenticated',
+            hasQrCode: false,
+            qrCode: null,
+            timestamp: timestamp
+        });
+        
+        // EMITIR GERAL COMO BACKUP
         io.emit(`client_status_${clientId}`, { 
             clientId: clientId, 
             status: 'authenticated',
-            hasQrCode: false
+            hasQrCode: false,
+            qrCode: null,
+            timestamp: timestamp
         });
     });
 
@@ -311,13 +358,32 @@ const initClient = (clientId) => {
     });
 
     client.on('ready', () => {
+        const timestamp = new Date().toISOString();
         const phoneNumber = client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null;
-        console.log(`🎉 Cliente ${clientId} conectado! Telefone: ${phoneNumber}`);
+        console.log(`🎉 [${timestamp}] Cliente ${clientId} CONECTADO! Telefone: ${phoneNumber}`);
+        
+        // LIMPAR QR CODE APÓS CONEXÃO
+        client.qrCode = null;
+        client.qrTimestamp = null;
+        
+        // EMITIR PARA SALA ESPECÍFICA
+        io.to(clientId).emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'connected',
+            phoneNumber: phoneNumber,
+            hasQrCode: false,
+            qrCode: null,
+            timestamp: timestamp
+        });
+        
+        // EMITIR GERAL COMO BACKUP
         io.emit(`client_status_${clientId}`, { 
             clientId: clientId, 
             status: 'connected',
             phoneNumber: phoneNumber,
-            hasQrCode: false
+            hasQrCode: false,
+            qrCode: null,
+            timestamp: timestamp
         });
         
         // Emit clients update
@@ -355,27 +421,56 @@ const initClient = (clientId) => {
 };
 
 io.on('connection', socket => {
-    console.log('🔌 Usuário conectado via WebSocket:', socket.id);
+    const timestamp = new Date().toISOString();
+    console.log(`🔌 [${timestamp}] USUÁRIO CONECTADO WebSocket: ${socket.id}`);
 
     socket.on('join_client', clientId => {
+        const joinTimestamp = new Date().toISOString();
         socket.join(clientId);
-        console.log(`📱 Socket ${socket.id} entrou na sala do cliente: ${clientId}`);
+        console.log(`📱 [${joinTimestamp}] Socket ${socket.id} ENTROU NA SALA: ${clientId}`);
+        console.log(`📱 [${joinTimestamp}] Clientes na sala ${clientId}: ${io.sockets.adapter.rooms.get(clientId)?.size || 0}`);
         
-        // Send current client status if exists
+        // ENVIAR STATUS ATUAL DO CLIENTE SE EXISTIR
         if (clients[clientId]) {
             const client = clients[clientId];
             const isConnected = client.info?.wid;
-            socket.emit(`client_status_${clientId}`, {
+            const hasStoredQr = !!client.qrCode;
+            
+            const statusData = {
                 clientId: clientId,
-                status: isConnected ? 'connected' : 'connecting',
+                status: isConnected ? 'connected' : (hasStoredQr ? 'qr_ready' : 'connecting'),
                 phoneNumber: isConnected ? phoneNumberFormatter(client.info.wid.user) : null,
-                hasQrCode: false
+                hasQrCode: hasStoredQr,
+                qrCode: hasStoredQr ? client.qrCode : null,
+                timestamp: joinTimestamp
+            };
+            
+            console.log(`📱 [${joinTimestamp}] ENVIANDO STATUS ATUAL para ${socket.id}:`, {
+                clientId: statusData.clientId,
+                status: statusData.status,
+                hasQrCode: statusData.hasQrCode,
+                hasStoredQr: hasStoredQr
             });
+            
+            socket.emit(`client_status_${clientId}`, statusData);
+        } else {
+            console.log(`📱 [${joinTimestamp}] Cliente ${clientId} NÃO EXISTE ainda`);
         }
     });
 
-    socket.on('disconnect', () => {
-        console.log('❌ Usuário desconectado do WebSocket:', socket.id);
+    // HEARTBEAT PARA MANTER CONEXÃO ATIVA
+    const heartbeat = setInterval(() => {
+        socket.emit('ping');
+    }, 30000);
+
+    socket.on('pong', () => {
+        console.log(`💓 Heartbeat recebido de ${socket.id}`);
+    });
+
+    socket.on('disconnect', (reason) => {
+        const disconnectTimestamp = new Date().toISOString();
+        console.log(`❌ [${disconnectTimestamp}] USUÁRIO DESCONECTADO: ${socket.id}, Razão: ${reason}`);
+        clearInterval(heartbeat);
     });
 });
 
@@ -440,21 +535,37 @@ app.get('/clients', (req, res) => {
 
 app.post('/clients/:clientId/connect', (req, res) => {
     const clientId = req.params.clientId;
-    console.log(`🔗 CONECTANDO CLIENTE (CORS DEFINITIVO): ${clientId}`);
+    const timestamp = new Date().toISOString();
+    console.log(`🔗 [${timestamp}] CONECTANDO CLIENTE: ${clientId}`);
     
     try {
-        // Clean up any orphaned Chrome processes first
+        // LIMPAR CLIENTE EXISTENTE SE HOUVER
+        if (clients[clientId]) {
+            console.log(`🧹 [${timestamp}] Limpando cliente existente: ${clientId}`);
+            try {
+                clients[clientId].destroy();
+            } catch (e) {
+                console.warn(`⚠️ [${timestamp}] Erro ao destruir cliente existente:`, e.message);
+            }
+            delete clients[clientId];
+        }
+
+        // LIMPAR PROCESSOS CHROME ÓRFÃOS
         cleanupOrphanedChromeProcesses();
         
-        setTimeout(() => {
-            initClient(clientId);
-        }, 2000); // Wait 2 seconds after cleanup
+        // INICIALIZAR CLIENTE IMEDIATAMENTE (SEM TIMEOUT)
+        console.log(`🚀 [${timestamp}] Iniciando cliente IMEDIATAMENTE: ${clientId}`);
+        initClient(clientId);
         
-        console.log(`✅ Cliente ${clientId} iniciando conexão com CORS DEFINITIVO`);
-        res.json({ success: true, message: `Cliente ${clientId} iniciando conexão.` });
+        console.log(`✅ [${timestamp}] Cliente ${clientId} iniciando conexão OTIMIZADA`);
+        res.json({ 
+            success: true, 
+            message: `Cliente ${clientId} iniciando conexão.`,
+            timestamp: timestamp
+        });
     } catch (error) {
-        console.error(`❌ Erro ao conectar cliente ${clientId}:`, error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error(`❌ [${timestamp}] Erro ao conectar cliente ${clientId}:`, error);
+        res.status(500).json({ success: false, error: error.message, timestamp: timestamp });
     }
 });
 
@@ -488,20 +599,28 @@ app.post('/clients/:clientId/disconnect', async (req, res) => {
 
 app.get('/clients/:clientId/status', async (req, res) => {
     const clientId = req.params.clientId;
-    console.log(`📊 Verificando status do cliente: ${clientId}`);
+    const timestamp = new Date().toISOString();
+    console.log(`📊 [${timestamp}] VERIFICANDO STATUS: ${clientId}`);
     
     if (clients[clientId]) {
         try {
             const client = clients[clientId];
             let qrCode = null;
             
-            if (client.qr) {
+            // VERIFICAR QR CODE ARMAZENADO NO CLIENTE
+            if (client.qrCode) {
+                qrCode = client.qrCode;
+                console.log(`📱 [${timestamp}] QR Code ENCONTRADO no cliente ${clientId} (${client.qrTimestamp})`);
+            } else if (client.qr) {
+                // FALLBACK PARA QR DIRETO (caso não tenha sido processado ainda)
                 qrCode = await qrcode.toDataURL(client.qr);
-                console.log(`📱 QR Code disponível para ${clientId}`);
+                client.qrCode = qrCode; // ARMAZENAR PARA PRÓXIMAS CONSULTAS
+                client.qrTimestamp = timestamp;
+                console.log(`📱 [${timestamp}] QR Code GERADO e armazenado para ${clientId}`);
             }
             
             const isConnected = client.info?.wid;
-            const status = isConnected ? 'connected' : (client.qr ? 'qr_ready' : 'connecting');
+            const status = isConnected ? 'connected' : (qrCode ? 'qr_ready' : 'connecting');
             const phoneNumber = isConnected ? phoneNumberFormatter(client.info.wid.user) : null;
             
             const response = { 
@@ -510,18 +629,28 @@ app.get('/clients/:clientId/status', async (req, res) => {
                 status: status, 
                 phoneNumber: phoneNumber, 
                 qrCode: qrCode,
-                hasQrCode: !!qrCode
+                hasQrCode: !!qrCode,
+                timestamp: timestamp,
+                qrTimestamp: client.qrTimestamp
             };
             
-            console.log(`✅ Status do cliente ${clientId}: ${status}`);
+            console.log(`✅ [${timestamp}] STATUS ${clientId}: ${status}, QR: ${!!qrCode}`);
             res.json(response);
         } catch (error) {
-            console.error(`❌ Erro ao verificar status do cliente ${clientId}:`, error);
-            res.status(500).json({ success: false, error: `Falha ao verificar status do cliente ${clientId}.` });
+            console.error(`❌ [${timestamp}] ERRO status ${clientId}:`, error);
+            res.status(500).json({ 
+                success: false, 
+                error: `Falha ao verificar status do cliente ${clientId}.`,
+                timestamp: timestamp
+            });
         }
     } else {
-        console.log(`❌ Cliente ${clientId} não encontrado`);
-        res.status(404).json({ success: false, error: `Cliente ${clientId} não encontrado.` });
+        console.log(`❌ [${timestamp}] Cliente ${clientId} NÃO ENCONTRADO`);
+        res.status(404).json({ 
+            success: false, 
+            error: `Cliente ${clientId} não encontrado.`,
+            timestamp: timestamp
+        });
     }
 });
 
