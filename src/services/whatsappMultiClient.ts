@@ -1,3 +1,4 @@
+
 import io, { Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL, HTTPS_SERVER_URL, getServerConfig } from '@/config/environment';
 
@@ -201,9 +202,9 @@ class WhatsAppMultiClientService {
       'Origin': window.location.origin
     };
 
-    // Timeout progressivo: 30s para status, 60s para connect
+    // Timeout progressivo: 30s para status, 90s para connect/disconnect, 60s para outros
     const timeoutMs = url.includes('/status') ? 30000 : 
-                     url.includes('/connect') ? 60000 : 
+                     url.includes('/connect') || url.includes('/disconnect') ? 90000 : 
                      45000;
 
     const fetchConfig: RequestInit = {
@@ -280,12 +281,30 @@ class WhatsAppMultiClientService {
   // Connect client with timeout estendido
   async connectClient(clientId: string): Promise<any> {
     try {
-      console.log(`🔗 Conectando cliente via HTTPS (timeout 60s): ${clientId}`);
+      console.log(`🔗 Conectando cliente via HTTPS (timeout 90s): ${clientId}`);
       return await this.makeRequest(`/clients/${clientId}/connect`, {
         method: 'POST'
       });
     } catch (error: any) {
       console.error(`❌ Erro ao conectar cliente ${clientId}:`, error.message);
+      
+      if (error.message.includes('HTTPS_CERT_ERROR')) {
+        throw new Error('CERTIFICADO_SSL: Acesse https://146.59.227.248/health no navegador e aceite o certificado antes de usar o sistema');
+      }
+      
+      throw error;
+    }
+  }
+
+  // Disconnect client - MÉTODO FALTANTE!
+  async disconnectClient(clientId: string): Promise<any> {
+    try {
+      console.log(`🔌 Desconectando cliente via HTTPS (timeout 90s): ${clientId}`);
+      return await this.makeRequest(`/clients/${clientId}/disconnect`, {
+        method: 'POST'
+      });
+    } catch (error: any) {
+      console.error(`❌ Erro ao desconectar cliente ${clientId}:`, error.message);
       
       if (error.message.includes('HTTPS_CERT_ERROR')) {
         throw new Error('CERTIFICADO_SSL: Acesse https://146.59.227.248/health no navegador e aceite o certificado antes de usar o sistema');

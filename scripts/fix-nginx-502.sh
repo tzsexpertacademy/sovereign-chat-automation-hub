@@ -68,10 +68,10 @@ server {
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
     
-    # Configurações de proxy otimizadas
-    proxy_connect_timeout 10s;
-    proxy_send_timeout 60s;
-    proxy_read_timeout 60s;
+    # Configurações de proxy otimizadas - TIMEOUTS AUMENTADOS
+    proxy_connect_timeout 30s;
+    proxy_send_timeout 120s;
+    proxy_read_timeout 120s;
     proxy_buffering off;
     proxy_request_buffering off;
     
@@ -89,12 +89,22 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_cache_bypass $http_upgrade;
+        
+        # Timeouts específicos para frontend
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
     }
     
     # API Backend - Health Check
     location /health {
         proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER/health;
         proxy_http_version 1.1;
+        
+        # Timeouts reduzidos para health check
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 10s;
+        proxy_read_timeout 10s;
         
         # CORS Headers
         add_header Access-Control-Allow-Origin "*" always;
@@ -118,6 +128,11 @@ server {
         proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER;
         proxy_http_version 1.1;
         
+        # Timeouts estendidos para API WhatsApp (conectar pode demorar)
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+        
         # CORS para responses da API
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
@@ -130,6 +145,11 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+        
+        # Timeouts para WebSocket
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
     }
     
     # Logs de acesso e erro específicos
@@ -184,11 +204,17 @@ curl -s http://$DOMAIN/health | head -5 || echo "❌ Falha no teste HTTP"
 echo "📍 Teste 3: Health check via Nginx HTTPS (ignorando SSL)"
 curl -k -s https://$DOMAIN/health | head -5 || echo "❌ Falha no teste HTTPS"
 
+echo "📍 Teste 4: API Swagger via HTTPS"
+curl -k -s https://$DOMAIN/api-docs | head -10 || echo "❌ Falha no teste Swagger"
+
 echo ""
-echo "🎉 CORREÇÃO 502 CONCLUÍDA!"
-echo "========================="
+echo "🎉 CORREÇÃO 502 CONCLUÍDA COM TIMEOUTS AUMENTADOS!"
+echo "================================================="
 echo ""
-echo "✅ Nginx reconfigurado e reiniciado"
+echo "✅ Nginx reconfigurado com timeouts estendidos:"
+echo "  • Health Check: 10s"
+echo "  • API WhatsApp: 120s (conectar/desconectar)"
+echo "  • WebSocket: 300s"
 echo "✅ Proxy para backend otimizado"
 echo "✅ CORS configurado"
 echo ""
