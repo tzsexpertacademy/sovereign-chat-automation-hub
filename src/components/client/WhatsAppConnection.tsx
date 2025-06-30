@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,8 @@ import {
   Edit,
   Users,
   MessageSquare,
-  Trash2
+  Trash2,
+  Clock
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -39,6 +41,7 @@ const WhatsAppConnection = () => {
   const [editingInstance, setEditingInstance] = useState<WhatsAppInstanceData | null>(null);
   const [editName, setEditName] = useState("");
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [statusCheckError, setStatusCheckError] = useState<string>("");
 
   useEffect(() => {
     if (clientId) {
@@ -50,6 +53,7 @@ const WhatsAppConnection = () => {
   const loadData = async () => {
     try {
       setLoading(true);
+      setStatusCheckError("");
       console.log('🔄 Carregando dados da conexão WhatsApp...');
       
       // Carregar dados do cliente
@@ -61,10 +65,11 @@ const WhatsAppConnection = () => {
       const instancesData = await whatsappInstancesService.getInstancesByClientId(clientId!);
       console.log('📱 Instâncias do banco:', instancesData);
 
-      // Para cada instância, verificar status real no servidor WhatsApp
-      const instancesWithRealStatus = await Promise.all(
+      // Para cada instância, verificar status real no servidor WhatsApp com timeout melhorado
+      const instancesWithRealStatus = await Promise.allSettled(
         instancesData.map(async (instance) => {
           try {
+            console.log(`📱 Verificando status para ${instance.instance_id}...`);
             const serverStatus = await whatsappService.getClientStatus(instance.instance_id);
             console.log(`📱 Status do servidor para ${instance.instance_id}:`, serverStatus);
             
@@ -84,14 +89,30 @@ const WhatsAppConnection = () => {
             }
             
             return instance;
-          } catch (error) {
-            console.log(`❌ Erro ao verificar status para ${instance.instance_id}:`, error);
+          } catch (error: any) {
+            console.log(`❌ Erro ao verificar status para ${instance.instance_id}:`, error.message);
+            
+            // Se for timeout, manter status atual mas mostrar warning
+            if (error.message === 'TIMEOUT_ERROR') {
+              setStatusCheckError(`Timeout ao verificar status da instância ${instance.instance_id}. O servidor pode estar sobrecarregado.`);
+            }
+            
             return instance;
           }
         })
       );
 
-      setInstances(instancesWithRealStatus);
+      // Processar resultados do Promise.allSettled
+      const finalInstances = instancesWithRealStatus.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        } else {
+          console.error(`Erro ao processar instância ${index}:`, result.reason);
+          return instancesData[index]; // Retorna dados originais em caso de erro
+        }
+      });
+
+      setInstances(finalInstances);
 
       // Carregar filas
       const queuesData = await queuesService.getClientQueues(clientId!);
@@ -161,10 +182,16 @@ const WhatsAppConnection = () => {
 
     try {
       setConnecting(true);
-      console.log('🚀 Criando nova instância...');
+      console.log('🚀 Criando nova instância com timeout estendido...');
       
       // Gerar um instanceId único
       const newInstanceId = `${clientId}_${Date.now()}`;
+      
+      // Mostrar aviso sobre o tempo de conexão
+      toast({
+        title: "Conectando...",
+        description: "Criando instância WhatsApp. Isso pode levar até 60 segundos...",
+      });
       
       const result = await whatsappService.connectClient(newInstanceId);
       console.log('✅ Instância criada:', result);
@@ -173,7 +200,8 @@ const WhatsAppConnection = () => {
       await whatsappInstancesService.createInstance({
         client_id: clientId,
         instance_id: newInstanceId,
-        status: 'connecting'
+        status: 'connecting',
+        custom_name: `Instância ${clientData.name || 'WhatsApp'}`
       });
 
       // Atualizar cliente se for a primeira instância
@@ -183,19 +211,28 @@ const WhatsAppConnection = () => {
       
       toast({
         title: "Sucesso",
-        description: "Nova instância WhatsApp criada! Aguarde o QR Code...",
+        description: "Nova instância WhatsApp criada! Aguarde o QR Code aparecer...",
       });
 
-      // Recarregar dados
+      // Recarregar dados após um delay
       setTimeout(() => {
         loadData();
-      }, 2000);
+      }, 3000);
 
     } catch (error: any) {
       console.error('❌ Erro ao criar instância:', error);
+      
+      let errorMessage = "Falha ao criar instância WhatsApp";
+      
+      if (error.message === 'TIMEOUT_ERROR') {
+        errorMessage = "Timeout: O servidor demorou mais de 60 segundos para responder. Tente novamente.";
+      } else if (error.message.includes('CERTIFICADO_SSL')) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Erro",
-        description: error.message || "Falha ao criar instância WhatsApp",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -396,6 +433,7 @@ const WhatsAppConnection = () => {
         <div className="text-center">
           <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
           <p className="text-muted-foreground">Carregando conexões...</p>
+          <p className="text-sm text-gray-500 mt-1">Verificando status do servidor...</p>
         </div>
       </div>
     );
@@ -428,7 +466,7 @@ const WhatsAppConnection = () => {
             {connecting ? (
               <>
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                Criando...
+                Criando... (até 60s)
               </>
             ) : (
               <>
@@ -439,6 +477,24 @@ const WhatsAppConnection = () => {
           </Button>
         </div>
       </div>
+
+      {/* Status Check Error Warning */}
+      {statusCheckError && (
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2">
+              <Clock className="w-5 h-5 text-yellow-500" />
+              <div>
+                <p className="font-medium text-yellow-900">Aviso de Timeout</p>
+                <p className="text-sm text-yellow-700">{statusCheckError}</p>
+                <p className="text-xs text-yellow-600 mt-1">
+                  Os dados podem estar desatualizados. Tente atualizar novamente em alguns segundos.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Plan Limit Warning */}
       {!canCreateNewInstance() && (
