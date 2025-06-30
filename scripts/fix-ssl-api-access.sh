@@ -29,14 +29,14 @@ rm -f /etc/nginx/sites-enabled/default
 
 echo "✅ Configurações antigas removidas"
 
-echo "🔐 PASSO 2: Verificando certificado SSL existente..."
+echo "🔐 PASSO 2: Criando certificado SSL COMPATÍVEL..."
 
-if [ ! -f "$SSL_DIR/fullchain.pem" ] || [ ! -f "$SSL_DIR/privkey.pem" ]; then
-    echo "🔧 Criando novo certificado SSL..."
-    mkdir -p $SSL_DIR
-    
-    # Criar arquivo de configuração temporário para o certificado
-    cat > /tmp/ssl_config.conf << EOF
+# Remover certificados antigos
+rm -rf $SSL_DIR
+mkdir -p $SSL_DIR
+
+# Criar certificado SSL COMPATÍVEL com navegadores modernos
+cat > /tmp/ssl_config.conf << 'EOF'
 [req]
 distinguished_name = req_distinguished_name
 req_extensions = v3_req
@@ -48,42 +48,42 @@ ST=State
 L=City
 O=WhatsApp-MultiClient
 OU=API-SSL
-CN=$DOMAIN
+CN=146.59.227.248
 
 [v3_req]
-keyUsage = keyEncipherment, dataEncipherment
-extendedKeyUsage = serverAuth
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1 = $DOMAIN
-IP.1 = $DOMAIN
+DNS.1 = 146.59.227.248
+IP.1 = 146.59.227.248
 EOF
-    
-    # Gerar certificado com o arquivo de configuração
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout $SSL_DIR/privkey.pem \
-        -out $SSL_DIR/fullchain.pem \
-        -config /tmp/ssl_config.conf
-    
-    # Limpar arquivo temporário
-    rm -f /tmp/ssl_config.conf
-    
-    # Definir permissões
-    chmod 600 $SSL_DIR/privkey.pem
-    chmod 644 $SSL_DIR/fullchain.pem
-    
-    echo "✅ Novo certificado SSL criado com SAN"
-else
-    echo "✅ Certificado SSL existente encontrado"
-fi
 
-echo "⚙️ PASSO 3: Criando configuração Nginx ÚNICA e LIMPA..."
+# Gerar certificado COMPATÍVEL
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout $SSL_DIR/privkey.pem \
+    -out $SSL_DIR/fullchain.pem \
+    -config /tmp/ssl_config.conf \
+    -extensions v3_req
 
-# Criar uma configuração única e limpa
-cat > /etc/nginx/sites-available/whatsapp-ssl-fixed << 'EOF'
-# Configuração SSL ÚNICA para WhatsApp Multi-Client
-# Corrige problemas de acesso SSL às APIs
+# Limpar arquivo temporário
+rm -f /tmp/ssl_config.conf
+
+# Definir permissões corretas
+chmod 600 $SSL_DIR/privkey.pem
+chmod 644 $SSL_DIR/fullchain.pem
+chown root:root $SSL_DIR/privkey.pem
+chown root:root $SSL_DIR/fullchain.pem
+
+echo "✅ Certificado SSL COMPATÍVEL criado"
+
+echo "⚙️ PASSO 3: Criando configuração Nginx OTIMIZADA..."
+
+# Criar configuração Nginx OTIMIZADA e COMPATÍVEL
+cat > /etc/nginx/sites-available/whatsapp-ssl-compatible << 'EOF'
+# Configuração SSL COMPATÍVEL para WhatsApp Multi-Client
+# Corrige ERR_SSL_KEY_USAGE_INCOMPATIBLE
 
 # Redirecionar HTTP para HTTPS
 server {
@@ -92,7 +92,7 @@ server {
     return 301 https://$server_name$request_uri;
 }
 
-# Servidor HTTPS Principal - CONFIGURAÇÃO ÚNICA
+# Servidor HTTPS COMPATÍVEL
 server {
     listen 443 ssl;
     http2 on;
@@ -102,21 +102,20 @@ server {
     ssl_certificate SSL_DIR_PLACEHOLDER/fullchain.pem;
     ssl_certificate_key SSL_DIR_PLACEHOLDER/privkey.pem;
     
-    # Configurações SSL otimizadas para APIs
+    # Configurações SSL COMPATÍVEIS
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384;
     ssl_prefer_server_ciphers off;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
     
-    # Headers SSL para APIs
-    ssl_stapling on;
-    ssl_stapling_verify on;
+    # Remover ssl_stapling para certificados autoassinados
+    # ssl_stapling off;
     
-    # Headers de segurança para APIs
+    # Headers de segurança COMPATÍVEIS
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header X-Content-Type-Options nosniff always;
-    add_header X-Frame-Options DENY always;
+    add_header X-Frame-Options SAMEORIGIN always;
     
     # Configurações de proxy otimizadas
     proxy_connect_timeout 30s;
@@ -146,29 +145,23 @@ server {
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
     }
     
-    # API Backend - Health Check (ALTA PRIORIDADE)
+    # API Backend - Health Check
     location = /health {
         proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER/health;
         proxy_http_version 1.1;
         
-        # CORS Headers específicos para health
+        # CORS Headers
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
-        
-        # Cache control para health check
-        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
     }
     
-    # API Backend - Swagger UI (CORRIGIDO)
+    # API Backend - Swagger UI
     location = /api-docs {
         proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER/api-docs;
         proxy_http_version 1.1;
         
-        # Headers específicos para Swagger UI
-        proxy_set_header Accept "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
-        
-        # CORS Headers para Swagger
+        # CORS Headers
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
@@ -179,14 +172,13 @@ server {
         proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER/api-docs.json;
         proxy_http_version 1.1;
         
-        # CORS Headers para JSON
+        # CORS Headers
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
-        add_header Content-Type "application/json" always;
     }
     
-    # API Backend - Clients (CORRIGIDO)
+    # API Backend - Clients
     location /clients {
         # Handle preflight OPTIONS requests
         if ($request_method = 'OPTIONS') {
@@ -202,7 +194,7 @@ server {
         proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER/clients;
         proxy_http_version 1.1;
         
-        # CORS para responses da API
+        # CORS Headers
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
@@ -214,30 +206,26 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
     }
     
-    # Logs específicos para debug
+    # Logs específicos
     access_log /var/log/nginx/whatsapp-ssl-access.log;
     error_log /var/log/nginx/whatsapp-ssl-error.log warn;
 }
 EOF
 
 # Substituir placeholders
-sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" /etc/nginx/sites-available/whatsapp-ssl-fixed
-sed -i "s|SSL_DIR_PLACEHOLDER|$SSL_DIR|g" /etc/nginx/sites-available/whatsapp-ssl-fixed
-sed -i "s/BACKEND_PORT_PLACEHOLDER/$BACKEND_PORT/g" /etc/nginx/sites-available/whatsapp-ssl-fixed
-sed -i "s/FRONTEND_PORT_PLACEHOLDER/$FRONTEND_PORT/g" /etc/nginx/sites-available/whatsapp-ssl-fixed
+sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" /etc/nginx/sites-available/whatsapp-ssl-compatible
+sed -i "s|SSL_DIR_PLACEHOLDER|$SSL_DIR|g" /etc/nginx/sites-available/whatsapp-ssl-compatible
+sed -i "s/BACKEND_PORT_PLACEHOLDER/$BACKEND_PORT/g" /etc/nginx/sites-available/whatsapp-ssl-compatible
+sed -i "s/FRONTEND_PORT_PLACEHOLDER/$FRONTEND_PORT/g" /etc/nginx/sites-available/whatsapp-ssl-compatible
 
-echo "✅ Configuração Nginx única criada"
+echo "✅ Configuração Nginx COMPATÍVEL criada"
 
 echo "🔗 PASSO 4: Ativando nova configuração..."
 
 # Ativar APENAS a nova configuração
-ln -sf /etc/nginx/sites-available/whatsapp-ssl-fixed /etc/nginx/sites-enabled/
+ln -sf /etc/nginx/sites-available/whatsapp-ssl-compatible /etc/nginx/sites-enabled/
 
 # Testar configuração
 echo "🧪 Testando configuração Nginx..."
@@ -290,13 +278,13 @@ else
 fi
 
 echo ""
-echo "🎉 CORREÇÃO SSL PARA APIS CONCLUÍDA!"
-echo "===================================="
+echo "🎉 CERTIFICADO SSL COMPATÍVEL CONFIGURADO!"
+echo "=========================================="
 echo ""
-echo "✅ Configurações antigas conflituosas removidas"
-echo "✅ Configuração Nginx única e limpa aplicada"
-echo "✅ Certificado SSL com SAN configurado"
-echo "✅ APIs otimizadas para SSL"
+echo "✅ Certificado SSL compatível com navegadores modernos"
+echo "✅ Configuração Nginx otimizada para SSL"
+echo "✅ ERR_SSL_KEY_USAGE_INCOMPATIBLE corrigido"
+echo "✅ APIs funcionando via HTTPS"
 echo ""
 echo "🌐 URLs para testar no navegador:"
 echo "  • Health Check: https://$DOMAIN/health"
@@ -306,12 +294,17 @@ echo "  • Frontend: https://$DOMAIN/"
 echo ""
 echo "🔧 INSTRUÇÕES IMPORTANTES:"
 echo "1. Abra https://$DOMAIN/health no navegador"
-echo "2. Aceite o certificado SSL"
-echo "3. Depois abra https://$DOMAIN/api-docs"
-echo "4. O certificado já estará aceito para todas as rotas"
+echo "2. Aceite o certificado SSL (aparecerá um aviso)"
+echo "3. Clique em 'Avançado' > 'Prosseguir para 146.59.227.248'"
+echo "4. Depois abra https://$DOMAIN/api-docs"
+echo "5. O certificado já estará aceito para todas as rotas"
 echo ""
 echo "📝 Se ainda houver problemas:"
 echo "  • Logs Nginx: tail -f /var/log/nginx/whatsapp-ssl-error.log"
 echo "  • Status Nginx: systemctl status nginx"
 echo "  • Reiniciar: sudo systemctl restart nginx"
+echo ""
+echo "⚠️ IMPORTANTE:"
+echo "O certificado é autoassinado, então o navegador mostrará um aviso."
+echo "Isso é normal e esperado. Basta aceitar o certificado uma vez."
 echo ""
