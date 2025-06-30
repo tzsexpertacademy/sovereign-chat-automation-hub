@@ -257,7 +257,7 @@ const ClientInstancesOverview = () => {
               <CheckCircle className="w-8 h-8 text-green-500" />
               <div>
                 <div className="text-2xl font-bold text-green-600">
-                  {instances.filter(i => i.status === 'connected').length}
+                  {instances.filter(i => i.status === 'connected' || i.status === 'authenticated').length}
                 </div>
                 <p className="text-sm text-gray-600">Conectadas</p>
               </div>
@@ -271,7 +271,7 @@ const ClientInstancesOverview = () => {
               <QrCode className="w-8 h-8 text-blue-500" />
               <div>
                 <div className="text-2xl font-bold text-blue-600">
-                  {instances.filter(i => i.status === 'qr_ready').length}
+                  {instances.filter(i => i.status === 'qr_ready' && !i.phone_number).length}
                 </div>
                 <p className="text-sm text-gray-600">Aguardando QR</p>
               </div>
