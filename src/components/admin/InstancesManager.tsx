@@ -16,7 +16,7 @@ import { clientsService, ClientData } from "@/services/clientsService";
 import WhatsAppSystemStatus from "./WhatsAppSystemStatus";
 import SimpleConnectionStatus from "./SimpleConnectionStatus";
 import InstanceCreationForm from "./InstanceCreationForm";
-import InstancesList from "./InstancesList";
+import InstancesListFixed from "./InstancesListFixed";
 import { getServerConfig } from "@/config/environment";
 import QRCodeDebugger from "./QRCodeDebugger";
 
@@ -320,8 +320,8 @@ const InstancesManager = () => {
         systemHealth={systemHealth}
       />
 
-      {/* Instances List */}
-      <InstancesList 
+      {/* Instances List - ATUALIZADO */}
+      <InstancesListFixed 
         instances={instances}
         clients={clients}
         onInstanceUpdated={loadData}

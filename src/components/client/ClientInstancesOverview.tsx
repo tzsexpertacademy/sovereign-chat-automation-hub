@@ -17,7 +17,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useToast } from "@/hooks/use-toast";
-import MultipleInstancesManager from "./MultipleInstancesManager";
+import MultipleInstancesManagerFixed from "./MultipleInstancesManagerFixed";
 
 const ClientInstancesOverview = () => {
   const { clientId } = useParams();
@@ -294,8 +294,8 @@ const ClientInstancesOverview = () => {
         </Card>
       </div>
 
-      {/* Multiple Instances Manager */}
-      <MultipleInstancesManager 
+      {/* Multiple Instances Manager - CORRIGIDO */}
+      <MultipleInstancesManagerFixed 
         clientId={clientId!}
         client={client}
         onInstancesUpdate={loadClientData}
