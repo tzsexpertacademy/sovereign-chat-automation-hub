@@ -53,7 +53,7 @@ const QRCodeDebugger = () => {
         diagnostics.websocket = {
           connected: socket?.connected || false,
           transport: socket?.io?.engine?.transport?.name || 'unknown',
-          url: socket?.io?.uri || 'unknown'
+          url: 'wss://146.59.227.248/socket.io/' // Using known URL instead of private property
         };
         console.log('🔌 WebSocket info:', diagnostics.websocket);
       } catch (error: any) {
