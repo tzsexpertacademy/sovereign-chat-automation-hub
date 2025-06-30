@@ -15,18 +15,28 @@ import {
   Zap
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useInstanceManager } from "@/contexts/InstanceManagerContext";
 import whatsappService from "@/services/whatsappMultiClient";
 
 const QRCodeDebugger = () => {
   const { toast } = useToast();
+  const { 
+    connectInstance, 
+    getInstanceStatus, 
+    websocketConnected,
+    isLoading 
+  } = useInstanceManager();
+  
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [loading, setLoading] = useState(false);
   const [testInstanceId] = useState("debug-test-instance");
-  const [qrCodeData, setQrCodeData] = useState<string | null>(null);
-  const [websocketConnected, setWebsocketConnected] = useState(false);
-  const [instanceStatus, setInstanceStatus] = useState<string>('disconnected');
   const [socketConnecting, setSocketConnecting] = useState(false);
+  
+  // Usar estado global do Instance Manager
+  const globalInstanceStatus = getInstanceStatus(testInstanceId);
+  const qrCodeData = globalInstanceStatus.qrCode;
+  const instanceStatus = globalInstanceStatus.status;
 
   useEffect(() => {
     console.log('🔍 [DEBUGGER] Iniciando QR Code Debugger - SISTEMA OTIMIZADO');
@@ -43,86 +53,16 @@ const QRCodeDebugger = () => {
   const connectToSocket = () => {
     try {
       setSocketConnecting(true);
-      console.log('🔌 [DEBUGGER] Conectando ao Socket.IO OTIMIZADO...');
-      
-      const socket = whatsappService.connectSocket();
-      
-      if (socket) {
-        socket.on('connect', () => {
-          console.log('✅ [DEBUGGER] Socket.IO conectado com sucesso!');
-          setWebsocketConnected(true);
-          setSocketConnecting(false);
-          
-          toast({
-            title: "Socket.IO Conectado!",
-            description: "WebSocket funcionando perfeitamente",
-          });
-          
-          // Entrar na sala da instância de teste
-          whatsappService.joinClientRoom(testInstanceId);
-        });
-
-        socket.on('disconnect', (reason) => {
-          console.log('❌ [DEBUGGER] Socket.IO desconectado:', reason);
-          setWebsocketConnected(false);
-          // Auto-reconectar após 2 segundos
-          setTimeout(() => {
-            console.log('🔄 [DEBUGGER] Tentando reconectar...');
-            connectToSocket();
-          }, 2000);
-        });
-
-        socket.on('connect_error', (error) => {
-          console.error('❌ [DEBUGGER] Erro de conexão Socket.IO:', error);
-          setWebsocketConnected(false);
-          setSocketConnecting(false);
-          
-          toast({
-            title: "Erro Socket.IO",
-            description: `Falha na conexão: ${error.message}`,
-            variant: "destructive",
-          });
-        });
-
-        // Responder ao heartbeat
-        socket.on('ping', () => {
-          socket.emit('pong');
-        });
-
-        // Escutar status da instância de teste
-        whatsappService.onClientStatus(testInstanceId, (clientData) => {
-          console.log('📱 [DEBUGGER] Status recebido via Socket.IO:', {
-            status: clientData.status,
-            hasQrCode: clientData.hasQrCode,
-            timestamp: clientData.timestamp
-          });
-          setInstanceStatus(clientData.status);
-          
-          if (clientData.hasQrCode && clientData.qrCode) {
-            console.log('🎉 [DEBUGGER] QR Code recebido via Socket.IO!');
-            setQrCodeData(clientData.qrCode);
-            toast({
-              title: "QR Code Gerado!",
-              description: "QR Code recebido via Socket.IO em tempo real",
-            });
-          }
-
-          if (clientData.status === 'connected') {
-            toast({
-              title: "WhatsApp Conectado!",
-              description: `Instância ${testInstanceId} conectada com sucesso`,
-            });
-          }
-        });
-      }
-    } catch (error: any) {
-      console.error('❌ [DEBUGGER] Erro ao configurar Socket.IO:', error);
+      console.log('🔌 [DEBUGGER] Socket.IO já é gerenciado pelo InstanceManagerContext');
       setSocketConnecting(false);
+      
       toast({
-        title: "Erro Socket.IO",
-        description: error.message,
-        variant: "destructive",
+        title: "Socket.IO Global",
+        description: "Usando conexão global sincronizada",
       });
+    } catch (error: any) {
+      console.error('❌ [DEBUGGER] Erro:', error);
+      setSocketConnecting(false);
     }
   };
 
@@ -202,8 +142,7 @@ const QRCodeDebugger = () => {
         console.log('📱 Status da instância:', status);
         
         if (status.hasQrCode && status.qrCode) {
-          setQrCodeData(status.qrCode);
-          console.log('📱 QR Code encontrado no status!');
+          console.log('📱 QR Code encontrado no status! (Agora gerenciado pelo context global)');
         }
       } catch (error: any) {
         console.error('❌ Erro no status da instância:', error);
@@ -240,100 +179,14 @@ const QRCodeDebugger = () => {
   const generateQRCode = async () => {
     try {
       setLoading(true);
-      console.log('🚀 [DEBUGGER] Gerando QR Code OTIMIZADO...');
+      console.log('🚀 [DEBUGGER] Usando InstanceManager global para gerar QR Code...');
       
-      // Limpar QR anterior
-      setQrCodeData(null);
-      setInstanceStatus('connecting');
-      
-      // Garantir que WebSocket está conectado
-      const socket = whatsappService.getSocket();
-      if (!socket || !socket.connected) {
-        console.log('🔌 [DEBUGGER] WebSocket não conectado, reconectando...');
-        whatsappService.connectSocket();
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-      
-      // Limpar listeners anteriores
-      whatsappService.offClientStatus(testInstanceId);
-      
-      // Configurar listener ANTES de qualquer ação
-      const handleQRStatus = (clientData: any) => {
-        console.log('📱 [DEBUGGER] Status recebido:', {
-          status: clientData.status,
-          hasQrCode: clientData.hasQrCode,
-          timestamp: clientData.timestamp
-        });
-        setInstanceStatus(clientData.status);
-        
-        if (clientData.hasQrCode && clientData.qrCode) {
-          console.log('🎉 [DEBUGGER] QR Code recebido via Socket.IO!');
-          setQrCodeData(clientData.qrCode);
-          toast({
-            title: "QR Code Gerado!",
-            description: "QR Code recebido via Socket.IO em tempo real",
-          });
-        }
-
-        if (clientData.status === 'connected') {
-          toast({
-            title: "WhatsApp Conectado!",
-            description: `Instância ${testInstanceId} conectada com sucesso`,
-          });
-        }
-      };
-      
-      whatsappService.onClientStatus(testInstanceId, handleQRStatus);
-      
-      // Entrar na sala
-      whatsappService.joinClientRoom(testInstanceId);
-      
-      // Aguardar configuração da sala
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Conectar
-      console.log('🔗 [DEBUGGER] Enviando comando de conexão...');
-      await whatsappService.connectClient(testInstanceId);
-      
-      // POLLING BACKUP PARA DEBUGGER
-      let pollCount = 0;
-      const maxPolls = 20; // 20 tentativas = 1 minuto
-      
-      const pollInterval = setInterval(async () => {
-        pollCount++;
-        console.log(`🔄 [DEBUGGER] Polling QR status (tentativa ${pollCount}/${maxPolls})`);
-        
-        try {
-          const status = await whatsappService.getClientStatus(testInstanceId);
-          
-          if (status.hasQrCode && status.qrCode) {
-            console.log('📱 [DEBUGGER] QR Code encontrado via polling!');
-            handleQRStatus(status);
-            clearInterval(pollInterval);
-          } else if (status.status === 'connected') {
-            console.log('✅ [DEBUGGER] Cliente conectado via polling!');
-            handleQRStatus(status);
-            clearInterval(pollInterval);
-          } else if (pollCount >= maxPolls) {
-            console.log('⏰ [DEBUGGER] Polling timeout atingido');
-            clearInterval(pollInterval);
-            toast({
-              title: "Timeout",
-              description: "QR Code não foi gerado no tempo esperado",
-              variant: "destructive",
-            });
-          }
-        } catch (error: any) {
-          console.warn(`⚠️ [DEBUGGER] Erro no polling ${pollCount}:`, error.message);
-          if (pollCount >= maxPolls) {
-            clearInterval(pollInterval);
-          }
-        }
-      }, 3000); // Verificar a cada 3 segundos
+      // Usar o método global do InstanceManager
+      await connectInstance(testInstanceId);
       
       toast({
         title: "Gerando QR Code",
-        description: "Sistema otimizado com WebSocket + Polling backup",
+        description: "Sistema global sincronizado ativo",
       });
       
     } catch (error: any) {

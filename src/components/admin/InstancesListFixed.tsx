@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
-import { useInstanceManager } from "@/hooks/useInstanceManager";
+import { useInstanceManager } from "@/contexts/InstanceManagerContext";
 
 interface InstancesListFixedProps {
   instances: WhatsAppInstanceData[];

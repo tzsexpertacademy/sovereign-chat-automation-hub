@@ -24,7 +24,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { clientsService, ClientData } from "@/services/clientsService";
-import { useInstanceManager } from "@/hooks/useInstanceManager";
+import { useInstanceManager } from "@/contexts/InstanceManagerContext";
 
 interface MultipleInstancesManagerFixedProps {
   clientId: string;
