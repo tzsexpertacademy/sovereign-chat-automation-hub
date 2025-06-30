@@ -35,7 +35,7 @@ cat > /etc/nginx/sites-available/whatsapp-lovable-cors << 'EOF'
 # Redirecionar HTTP para HTTPS
 server {
     listen 80;
-    server_name DOMAIN_PLACEHOLDER;
+    server_name 146.59.227.248;
     return 301 https://$server_name$request_uri;
 }
 
@@ -43,11 +43,11 @@ server {
 server {
     listen 443 ssl;
     http2 on;
-    server_name DOMAIN_PLACEHOLDER;
+    server_name 146.59.227.248;
     
     # Certificados SSL
-    ssl_certificate SSL_DIR_PLACEHOLDER/fullchain.pem;
-    ssl_certificate_key SSL_DIR_PLACEHOLDER/privkey.pem;
+    ssl_certificate /etc/ssl/whatsapp/fullchain.pem;
+    ssl_certificate_key /etc/ssl/whatsapp/privkey.pem;
     
     # Configurações SSL otimizadas
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -94,7 +94,7 @@ server {
     
     # Proxy para o frontend React
     location @frontend {
-        proxy_pass http://127.0.0.1:FRONTEND_PORT_PLACEHOLDER;
+        proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -107,7 +107,7 @@ server {
         add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Accept,Origin" always;
         
-        proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER/health;
+        proxy_pass http://127.0.0.1:4000/health;
         proxy_http_version 1.1;
     }
     
@@ -117,7 +117,7 @@ server {
         add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Accept,Origin" always;
         
-        proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER/api-docs;
+        proxy_pass http://127.0.0.1:4000/api-docs;
         proxy_http_version 1.1;
     }
     
@@ -138,13 +138,13 @@ server {
         add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Accept,Origin" always;
         
-        proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER/clients;
+        proxy_pass http://127.0.0.1:4000/clients;
         proxy_http_version 1.1;
     }
     
     # WebSocket para Socket.IO
     location /socket.io/ {
-        proxy_pass http://127.0.0.1:BACKEND_PORT_PLACEHOLDER/socket.io/;
+        proxy_pass http://127.0.0.1:4000/socket.io/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -159,12 +159,6 @@ server {
     error_log /var/log/nginx/whatsapp-lovable-error.log warn;
 }
 EOF
-
-# Substituir placeholders
-sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" /etc/nginx/sites-available/whatsapp-lovable-cors
-sed -i "s|SSL_DIR_PLACEHOLDER|$SSL_DIR|g" /etc/nginx/sites-available/whatsapp-lovable-cors
-sed -i "s/BACKEND_PORT_PLACEHOLDER/$BACKEND_PORT/g" /etc/nginx/sites-available/whatsapp-lovable-cors
-sed -i "s/FRONTEND_PORT_PLACEHOLDER/$FRONTEND_PORT/g" /etc/nginx/sites-available/whatsapp-lovable-cors
 
 echo "✅ Configuração Nginx CORS-FRIENDLY criada"
 
@@ -203,7 +197,7 @@ fi
 echo "🧪 PASSO 4: Testando CORS com Lovable..."
 
 echo "📍 Teste 1: Health Check HTTPS"
-if curl -k -s --connect-timeout 10 https://$DOMAIN/health > /dev/null; then
+if curl -k -s --connect-timeout 10 https://146.59.227.248/health > /dev/null; then
     echo "✅ Health Check funcionando"
 else
     echo "❌ Health Check com problema"
@@ -211,7 +205,7 @@ fi
 
 echo "📍 Teste 2: CORS Preflight"
 if curl -k -s --connect-timeout 10 \
-    -X OPTIONS https://$DOMAIN/clients \
+    -X OPTIONS https://146.59.227.248/clients \
     -H "Origin: https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com" \
     -H "Access-Control-Request-Method: GET" \
     -H "Access-Control-Request-Headers: Content-Type" \
@@ -222,7 +216,7 @@ else
 fi
 
 echo "📍 Teste 3: API Clients"
-if curl -k -s --connect-timeout 10 https://$DOMAIN/clients > /dev/null; then
+if curl -k -s --connect-timeout 10 https://146.59.227.248/clients > /dev/null; then
     echo "✅ API Clients funcionando"
 else
     echo "❌ API Clients com problema"
@@ -238,12 +232,12 @@ echo "✅ Lovable pode acessar o servidor HTTPS"
 echo "✅ Headers CORS compatíveis com políticas modernas"
 echo ""
 echo "🌐 URLs para testar:"
-echo "  • Health: https://$DOMAIN/health"
-echo "  • API Docs: https://$DOMAIN/api-docs"
-echo "  • Clients: https://$DOMAIN/clients"
+echo "  • Health: https://146.59.227.248/health"
+echo "  • API Docs: https://146.59.227.248/api-docs"
+echo "  • Clients: https://146.59.227.248/clients"
 echo ""
 echo "🔍 Verificação CORS:"
-echo "curl -k -X OPTIONS https://$DOMAIN/clients \\"
+echo "curl -k -X OPTIONS https://146.59.227.248/clients \\"
 echo "  -H \"Origin: https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com\" \\"
 echo "  -H \"Access-Control-Request-Method: GET\" -i"
 echo ""
