@@ -90,8 +90,8 @@ chmod 644 $SSL_DIR/fullchain.pem
 
 echo "✅ Certificado SSL compatível com Lovable criado!"
 
-# Criar configuração Nginx OTIMIZADA PARA LOVABLE (SEM IF STATEMENTS)
-echo "⚙️ Configurando Nginx para HTTPS + Lovable..."
+# Criar configuração Nginx OTIMIZADA PARA LOVABLE - VERSÃO CORRIGIDA
+echo "⚙️ Configurando Nginx para HTTPS + Lovable (Versão Corrigida)..."
 cat > /etc/nginx/sites-available/whatsapp-multi-client << EOF
 # HTTP -> HTTPS redirect
 server {
@@ -102,8 +102,7 @@ server {
 
 # HTTPS Server - OTIMIZADO PARA LOVABLE
 server {
-    listen 443 ssl;
-    http2 on;
+    listen 443 ssl http2;
     server_name $DOMAIN;
     
     # SSL Configuration - COMPATÍVEL COM LOVABLE
@@ -133,35 +132,42 @@ server {
     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto \$scheme;
     
-    # Handle preflight OPTIONS requests - CONFIGURAÇÃO ESPECIAL
-    location @options {
-        add_header Access-Control-Allow-Origin "*" always;
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
-        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Accept,Origin" always;
-        add_header Access-Control-Max-Age 1728000 always;
-        add_header Content-Type 'text/plain; charset=utf-8' always;
-        add_header Content-Length 0 always;
-        return 204;
-    }
-    
-    # Frontend
+    # ROTA PRINCIPAL - Frontend React (ESSENCIAL PARA LOVABLE)
     location / {
-        # Handle OPTIONS for frontend
+        # Handle preflight OPTIONS
         if (\$request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+            add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Accept,Origin" always;
+            add_header Access-Control-Max-Age 1728000 always;
+            add_header Content-Type 'text/plain; charset=utf-8' always;
+            add_header Content-Length 0 always;
             return 204;
         }
         
+        # Proxy para frontend React
         proxy_pass http://127.0.0.1:$FRONTEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_cache_bypass \$http_upgrade;
+        
+        # Timeouts otimizados
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
     }
     
     # Health Check - ESSENCIAL PARA LOVABLE
     location /health {
-        # Handle OPTIONS for health
+        # Handle preflight OPTIONS
         if (\$request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Accept,Origin" always;
+            add_header Access-Control-Max-Age 1728000 always;
+            add_header Content-Type 'text/plain; charset=utf-8' always;
+            add_header Content-Length 0 always;
             return 204;
         }
         
@@ -174,8 +180,14 @@ server {
     
     # API Docs
     location /api-docs {
-        # Handle OPTIONS for api-docs
+        # Handle preflight OPTIONS
         if (\$request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Accept,Origin" always;
+            add_header Access-Control-Max-Age 1728000 always;
+            add_header Content-Type 'text/plain; charset=utf-8' always;
+            add_header Content-Length 0 always;
             return 204;
         }
         
@@ -185,8 +197,14 @@ server {
     
     # API Backend - Clients (ROTA PRINCIPAL PARA LOVABLE)
     location /clients {
-        # Handle OPTIONS for clients
+        # Handle preflight OPTIONS
         if (\$request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+            add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Accept,Origin" always;
+            add_header Access-Control-Max-Age 1728000 always;
+            add_header Content-Type 'text/plain; charset=utf-8' always;
+            add_header Content-Length 0 always;
             return 204;
         }
         
@@ -207,6 +225,10 @@ server {
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
     }
+    
+    # Logs específicos para debug
+    access_log /var/log/nginx/whatsapp-lovable-access.log;
+    error_log /var/log/nginx/whatsapp-lovable-error.log warn;
 }
 EOF
 
@@ -241,36 +263,42 @@ if command -v pm2 > /dev/null; then
 fi
 
 echo ""
-echo "🎉 HTTPS CONFIGURADO PARA LOVABLE!"
-echo "================================="
+echo "🎉 HTTPS CONFIGURADO PARA LOVABLE (VERSÃO CORRIGIDA)!"
+echo "===================================================="
 echo ""
 echo "✅ Certificado compatível com Lovable criado!"
 echo "✅ CORS headers configurados globalmente"
-echo "✅ Preflight OPTIONS configurado"
+echo "✅ Preflight OPTIONS configurado para todas as rotas"
+echo "✅ Rota principal (/) configurada corretamente"
 echo "✅ Timeouts otimizados para Lovable"
 echo ""
-echo "🌐 Acesse: https://$DOMAIN/"
+echo "🌐 Teste TODAS as rotas:"
+echo "  • Rota Principal: https://$DOMAIN/"
+echo "  • Health Check: https://$DOMAIN/health"
+echo "  • API Docs: https://$DOMAIN/api-docs"
+echo "  • Clients API: https://$DOMAIN/clients"
 echo ""
 echo "⚠️ IMPORTANTE: CERTIFICADO AUTOASSINADO"
 echo "O navegador mostrará um aviso de segurança."
 echo ""
 echo "🔧 Para aceitar o certificado:"
-echo "1. Acesse https://$DOMAIN/health"
+echo "1. Acesse https://$DOMAIN/ (ROTA PRINCIPAL)"
 echo "2. Clique em 'Avançado' ou 'Advanced'"
 echo "3. Clique em 'Prosseguir para $DOMAIN'"
-echo "4. Depois acesse https://$DOMAIN/api-docs"
+echo "4. Depois teste as outras rotas"
 echo ""
-echo "🌐 URLs HTTPS disponíveis:"
-echo "  • Frontend: https://$DOMAIN/"
-echo "  • Health: https://$DOMAIN/health"
-echo "  • API Docs: https://$DOMAIN/api-docs"
-echo "  • Clients API: https://$DOMAIN/clients"
+echo "🧪 Testes de verificação:"
+echo "curl -k https://$DOMAIN/"
+echo "curl -k https://$DOMAIN/health"
+echo "curl -k https://$DOMAIN/clients"
+echo ""
+echo "🔍 Teste CORS Lovable (rota principal):"
+echo "curl -k -X OPTIONS https://$DOMAIN/ \\"
+echo "  -H \"Origin: https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com\" \\"
+echo "  -H \"Access-Control-Request-Method: GET\" -i"
 echo ""
 echo "📋 Próximo passo:"
 echo "Execute: ./scripts/update-frontend-urls.sh"
 echo ""
-echo "🔍 Teste CORS Lovable:"
-echo "curl -k -X OPTIONS https://$DOMAIN/clients \\"
-echo "  -H \"Origin: https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com\" \\"
-echo "  -H \"Access-Control-Request-Method: GET\" -i"
-echo ""
+echo "✅ Configuração CORRIGIDA concluída!"
+
