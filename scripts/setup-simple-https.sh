@@ -90,7 +90,7 @@ chmod 644 $SSL_DIR/fullchain.pem
 
 echo "✅ Certificado SSL compatível com Lovable criado!"
 
-# Criar configuração Nginx OTIMIZADA PARA LOVABLE
+# Criar configuração Nginx OTIMIZADA PARA LOVABLE (SEM IF STATEMENTS)
 echo "⚙️ Configurando Nginx para HTTPS + Lovable..."
 cat > /etc/nginx/sites-available/whatsapp-multi-client << EOF
 # HTTP -> HTTPS redirect
@@ -133,8 +133,8 @@ server {
     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto \$scheme;
     
-    # Handle preflight OPTIONS requests GLOBALMENTE
-    if (\$request_method = 'OPTIONS') {
+    # Handle preflight OPTIONS requests - CONFIGURAÇÃO ESPECIAL
+    location @options {
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Accept,Origin" always;
@@ -146,6 +146,11 @@ server {
     
     # Frontend
     location / {
+        # Handle OPTIONS for frontend
+        if (\$request_method = 'OPTIONS') {
+            return 204;
+        }
+        
         proxy_pass http://127.0.0.1:$FRONTEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -155,6 +160,11 @@ server {
     
     # Health Check - ESSENCIAL PARA LOVABLE
     location /health {
+        # Handle OPTIONS for health
+        if (\$request_method = 'OPTIONS') {
+            return 204;
+        }
+        
         proxy_pass http://127.0.0.1:$BACKEND_PORT/health;
         proxy_http_version 1.1;
         proxy_connect_timeout 10s;
@@ -164,12 +174,22 @@ server {
     
     # API Docs
     location /api-docs {
+        # Handle OPTIONS for api-docs
+        if (\$request_method = 'OPTIONS') {
+            return 204;
+        }
+        
         proxy_pass http://127.0.0.1:$BACKEND_PORT/api-docs;
         proxy_http_version 1.1;
     }
     
     # API Backend - Clients (ROTA PRINCIPAL PARA LOVABLE)
     location /clients {
+        # Handle OPTIONS for clients
+        if (\$request_method = 'OPTIONS') {
+            return 204;
+        }
+        
         proxy_pass http://127.0.0.1:$BACKEND_PORT/clients;
         proxy_http_version 1.1;
         proxy_connect_timeout 30s;
