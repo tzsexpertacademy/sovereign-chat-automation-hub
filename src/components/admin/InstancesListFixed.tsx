@@ -43,17 +43,19 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     refreshInstanceStatus
   } = useInstanceManager();
 
-  // Auto-refresh status das instâncias a cada 15 segundos
+  // Auto-refresh MAIS AGRESSIVO - a cada 10 segundos
   useEffect(() => {
     const interval = setInterval(() => {
       instances.forEach(instance => {
         const currentStatus = getInstanceStatus(instance.instance_id);
+        console.log(`🔄 Auto-refresh ${instance.instance_id}: status=${currentStatus.status}, phone=${currentStatus.phoneNumber}`);
+        
+        // Sempre verificar se não está definitivamente conectado
         if (currentStatus.status !== 'connected' || !currentStatus.phoneNumber) {
-          console.log(`🔄 Auto-refresh status: ${instance.instance_id}`);
           refreshInstanceStatus(instance.instance_id).catch(console.error);
         }
       });
-    }, 15000);
+    }, 10000); // A cada 10 segundos
 
     return () => clearInterval(interval);
   }, [instances, getInstanceStatus, refreshInstanceStatus]);
@@ -117,6 +119,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
 
   const handleRefreshStatus = async (instanceId: string) => {
     try {
+      console.log(`🔄 Refresh manual solicitado para ${instanceId}`);
       await refreshInstanceStatus(instanceId);
       toast({
         title: "Status Atualizado",
@@ -179,7 +182,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>Instâncias WhatsApp ({instances.length}) - DEFINITIVO ✅</span>
+            <span>Instâncias WhatsApp ({instances.length}) - STATUS CORRIGIDO ✅</span>
             <div className="flex items-center space-x-2 text-sm">
               <div className={`w-2 h-2 rounded-full ${websocketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
               <span className="text-gray-600">{websocketConnected ? 'WebSocket Conectado' : 'WebSocket Desconectado'}</span>
@@ -194,6 +197,16 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
               const displayPhone = realTimeStatus.phoneNumber || instance.phone_number;
               const isConnected = displayStatus === 'connected' && displayPhone;
               
+              // LOG PARA DEBUG
+              console.log(`🔍 Renderizando ${instance.instance_id}:`, {
+                realTimeStatus: realTimeStatus.status,
+                dbStatus: instance.status,
+                displayStatus,
+                displayPhone,
+                isConnected,
+                hasQrCode: realTimeStatus.hasQrCode
+              });
+              
               return (
                 <Card key={instance.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -205,7 +218,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         <p className="text-sm text-gray-600">
                           Cliente: {getClientName(instance.client_id)}
                         </p>
-                        <p className="text-sm font-medium text-green-600">
+                        <p className={`text-sm font-medium ${isConnected ? 'text-green-600' : 'text-gray-500'}`}>
                           {displayPhone || 'Não conectado'}
                         </p>
                       </div>
@@ -222,14 +235,19 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                   </CardHeader>
                   <CardContent className="space-y-4">
                     
-                    {/* Status Debug Info */}
+                    {/* Debug Info - MAIS DETALHADO */}
                     {selectedInstanceForQR === instance.instance_id && (
                       <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs">
                         <div className="grid grid-cols-2 gap-2">
-                          <div>Status: <strong>{displayStatus}</strong></div>
-                          <div>Phone: <strong>{displayPhone || 'N/A'}</strong></div>
-                          <div>QR: <strong>{realTimeStatus.hasQrCode ? 'Sim' : 'Não'}</strong></div>
-                          <div>WebSocket: <strong>{websocketConnected ? 'On' : 'Off'}</strong></div>
+                          <div>Status Real: <strong>{realTimeStatus.status}</strong></div>
+                          <div>Status DB: <strong>{instance.status}</strong></div>
+                          <div>Phone Real: <strong>{realTimeStatus.phoneNumber || 'N/A'}</strong></div>
+                          <div>Phone DB: <strong>{instance.phone_number || 'N/A'}</strong></div>
+                          <div>QR Disponível: <strong>{realTimeStatus.hasQrCode ? 'SIM' : 'NÃO'}</strong></div>
+                          <div>WebSocket: <strong>{websocketConnected ? 'ATIVO' : 'INATIVO'}</strong></div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t">
+                          <div>Timestamp: <strong>{realTimeStatus.timestamp || 'N/A'}</strong></div>
                         </div>
                       </div>
                     )}
@@ -257,16 +275,16 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                       </div>
                     )}
 
-                    {/* Connected Info - LÓGICA MELHORADA */}
+                    {/* Connected Info - MELHORADO */}
                     {isConnected && (
                       <div className="p-3 bg-green-50 border border-green-200 rounded">
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-medium text-green-800">
-                              ✅ WhatsApp Conectado
+                              ✅ WhatsApp Conectado DEFINITIVAMENTE
                             </p>
                             <p className="text-xs text-green-600">
-                              {displayPhone}
+                              {displayPhone} - {realTimeStatus.timestamp}
                             </p>
                           </div>
                           <Button 
@@ -321,7 +339,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         disabled={isLoading(instance.instance_id)}
                       >
                         <Eye className="w-4 h-4 mr-1" />
-                        {displayStatus === 'qr_ready' && realTimeStatus.hasQrCode ? 'Ver QR' : 'Status'}
+                        {displayStatus === 'qr_ready' && realTimeStatus.hasQrCode ? 'Ver QR' : 'Debug'}
                       </Button>
 
                       <Button 
@@ -329,7 +347,8 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         variant="outline"
                         onClick={() => handleRefreshStatus(instance.instance_id)}
                         disabled={isLoading(instance.instance_id)}
-                        title="Atualizar status manualmente"
+                        title="FORÇAR atualização de status"
+                        className="bg-blue-50 hover:bg-blue-100"
                       >
                         <RefreshCw className="w-4 h-4" />
                       </Button>
