@@ -48,7 +48,9 @@ export const getServerConfig = () => ({
   lovableCompatible: !isDevelopment,
   corsEnabled: true,
   sslRequired: !isDevelopment,
-  nginxProxy: !isDevelopment // Indica que está usando proxy Nginx
+  nginxProxy: !isDevelopment, // Indica que está usando proxy Nginx
+  serverIP: HTTPS_SERVER,
+  serverPort: isDevelopment ? '4000' : '443'
 });
 
 console.log('✅ Configuração HTTPS DEFINITIVO carregada:', {
