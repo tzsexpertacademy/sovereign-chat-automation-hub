@@ -19,6 +19,7 @@ import InstanceCreationForm from "./InstanceCreationForm";
 import InstancesListFixed from "./InstancesListFixed";
 import { getServerConfig } from "@/config/environment";
 import QRCodeDebugger from "./QRCodeDebugger";
+import CorsApiDiagnostic from "./CorsApiDiagnostic";
 
 interface SystemHealth {
   serverOnline: boolean;
@@ -232,7 +233,10 @@ const InstancesManager = () => {
       {/* Connection Status */}
       <SimpleConnectionStatus />
 
-      {/* QR Code Debugger - NOVO */}
+      {/* NOVO: Diagnóstico CORS da API - CRÍTICO */}
+      <CorsApiDiagnostic />
+
+      {/* QR Code Debugger */}
       <QRCodeDebugger />
 
       {/* System Health Card */}
@@ -320,7 +324,7 @@ const InstancesManager = () => {
         systemHealth={systemHealth}
       />
 
-      {/* Instances List - ATUALIZADO */}
+      {/* Instances List */}
       <InstancesListFixed 
         instances={instances}
         clients={clients}
