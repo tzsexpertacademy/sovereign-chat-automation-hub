@@ -1,3 +1,4 @@
+
 const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
@@ -20,6 +21,20 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const clients = {};
+
+// Rota de health check - ESSENCIAL
+app.get('/health', (req, res) => {
+  console.log(`🌐 GET /health - Origin: ${req.headers.origin || 'undefined'}`);
+  
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    port: process.env.WHATSAPP_PORT || process.env.PORT || 4000,
+    activeClients: Object.keys(clients).length,
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
 
 // Função para atualizar status no banco de dados
 const updateInstanceStatusInDB = async (instanceId, status, phoneNumber = null, additionalData = {}) => {
