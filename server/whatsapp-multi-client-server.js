@@ -428,10 +428,10 @@ const initClient = (clientId) => {
         
         // EXECUTAR IMEDIATAMENTE E VERIFICAR NOVAMENTE
         await forceConnectedStatus();
-        setTimeout(forceConnectedStatus, 3000); // Verificar novamente em 3s
+        setTimeout(() => forceConnectedStatus(), 3000); // Verificar novamente em 3s
     });
 
-    client.on('auth_failure', function (session) {
+    client.on('auth_failure', async function (session) {
         console.error(`❌ Falha de autenticação para ${clientId}`);
         io.emit(`client_status_${clientId}`, { 
             clientId: clientId, 
@@ -440,10 +440,14 @@ const initClient = (clientId) => {
         });
         
         // ATUALIZAR BANCO PARA STATUS AUTH_FAILED
-        updateInstanceStatus(clientId, 'auth_failed').catch(console.error);
+        try {
+            await updateInstanceStatus(clientId, 'auth_failed');
+        } catch (error) {
+            console.error(`❌ Erro ao atualizar banco para auth_failed ${clientId}:`, error);
+        }
     });
 
-    client.on('ready', () => {
+    client.on('ready', async () => {
         const timestamp = new Date().toISOString();
         const phoneNumber = client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null;
         console.log(`🎉 [${timestamp}] Cliente ${clientId} CONECTADO! Telefone: ${phoneNumber}`);
@@ -474,7 +478,11 @@ const initClient = (clientId) => {
         
         // ATUALIZAR BANCO PARA STATUS CONNECTED NO READY
         if (phoneNumber) {
-            await updateInstanceStatus(clientId, 'connected', phoneNumber);
+            try {
+                await updateInstanceStatus(clientId, 'connected', phoneNumber);
+            } catch (error) {
+                console.error(`❌ Erro ao atualizar banco no ready ${clientId}:`, error);
+            }
         }
         
         // Emit clients update
@@ -486,7 +494,7 @@ const initClient = (clientId) => {
         io.emit(`message_${clientId}`, msg);
     });
 
-    client.on('disconnected', (reason) => {
+    client.on('disconnected', async (reason) => {
         console.log(`❌ Cliente ${clientId} desconectado:`, reason);
         io.emit(`client_status_${clientId}`, { 
             clientId: clientId, 
@@ -495,7 +503,11 @@ const initClient = (clientId) => {
         });
         
         // ATUALIZAR BANCO PARA STATUS DISCONNECTED
-        updateInstanceStatus(clientId, 'disconnected').catch(console.error);
+        try {
+            await updateInstanceStatus(clientId, 'disconnected');
+        } catch (error) {
+            console.error(`❌ Erro ao atualizar banco para disconnected ${clientId}:`, error);
+        }
         
         client.destroy();
         delete clients[clientId];
