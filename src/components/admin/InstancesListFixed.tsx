@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Play, 
   Pause, 
@@ -13,13 +14,16 @@ import {
   Eye,
   MessageSquare,
   RefreshCw,
-  Trash2
+  Trash2,
+  AlertTriangle,
+  Zap
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
 import { useInstanceManager } from "@/contexts/InstanceManagerContext";
+import WhatsAppStatusFixer from "./WhatsAppStatusFixer";
 
 interface InstancesListFixedProps {
   instances: WhatsAppInstanceData[];
@@ -30,6 +34,7 @@ interface InstancesListFixedProps {
 
 const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealth }: InstancesListFixedProps) => {
   const [selectedInstanceForQR, setSelectedInstanceForQR] = useState<string | null>(null);
+  const [instancesWithFixer, setInstancesWithFixer] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -40,22 +45,22 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     isLoading,
     websocketConnected,
     cleanup,
-    refreshInstanceStatus
+    refreshInstanceStatus,
+    forceReconnectInstance
   } = useInstanceManager();
 
-  // Auto-refresh MAIS AGRESSIVO - a cada 10 segundos
+  // Auto-refresh mais inteligente
   useEffect(() => {
     const interval = setInterval(() => {
       instances.forEach(instance => {
         const currentStatus = getInstanceStatus(instance.instance_id);
-        console.log(`🔄 Auto-refresh ${instance.instance_id}: status=${currentStatus.status}, phone=${currentStatus.phoneNumber}`);
         
-        // Sempre verificar se não está definitivamente conectado
+        // Só verificar se NÃO estiver definitivamente conectado
         if (currentStatus.status !== 'connected' || !currentStatus.phoneNumber) {
           refreshInstanceStatus(instance.instance_id).catch(console.error);
         }
       });
-    }, 10000); // A cada 10 segundos
+    }, 8000); // A cada 8 segundos
 
     return () => clearInterval(interval);
   }, [instances, getInstanceStatus, refreshInstanceStatus]);
@@ -111,15 +116,19 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     onInstanceUpdated();
   };
 
+  const handleForceReconnect = async (instanceId: string) => {
+    await forceReconnectInstance(instanceId);
+    onInstanceUpdated();
+  };
+
   const handleViewQRCode = (instanceId: string) => {
     setSelectedInstanceForQR(instanceId);
-    // Forçar refresh do status para pegar QR mais recente
     refreshInstanceStatus(instanceId).catch(console.error);
   };
 
   const handleRefreshStatus = async (instanceId: string) => {
     try {
-      console.log(`🔄 Refresh manual solicitado para ${instanceId}`);
+      console.log(`🔄 [LIST] Refresh manual: ${instanceId}`);
       await refreshInstanceStatus(instanceId);
       toast({
         title: "Status Atualizado",
@@ -161,6 +170,18 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
+  const toggleStatusFixer = (instanceId: string) => {
+    setInstancesWithFixer(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(instanceId)) {
+        newSet.delete(instanceId);
+      } else {
+        newSet.add(instanceId);
+      }
+      return newSet;
+    });
+  };
+
   if (instances.length === 0) {
     return (
       <Card>
@@ -190,182 +211,220 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid lg:grid-cols-2 gap-6">
+          <div className="grid lg:grid-cols-1 gap-6">
             {instances.map((instance) => {
               const realTimeStatus = getInstanceStatus(instance.instance_id);
               const displayStatus = realTimeStatus.status || instance.status;
               const displayPhone = realTimeStatus.phoneNumber || instance.phone_number;
               const isConnected = displayStatus === 'connected' && displayPhone;
-              
-              // LOG PARA DEBUG
-              console.log(`🔍 Renderizando ${instance.instance_id}:`, {
-                realTimeStatus: realTimeStatus.status,
-                dbStatus: instance.status,
-                displayStatus,
-                displayPhone,
-                isConnected,
-                hasQrCode: realTimeStatus.hasQrCode
-              });
+              const isStuck = realTimeStatus.isStuck;
+              const hasIssues = isStuck || (displayStatus === 'qr_ready' && !realTimeStatus.hasQrCode);
+              const showFixer = instancesWithFixer.has(instance.instance_id);
               
               return (
-                <Card key={instance.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-lg">
-                          {instance.custom_name || instance.instance_id}
-                        </CardTitle>
-                        <p className="text-sm text-gray-600">
-                          Cliente: {getClientName(instance.client_id)}
-                        </p>
-                        <p className={`text-sm font-medium ${isConnected ? 'text-green-600' : 'text-gray-500'}`}>
-                          {displayPhone || 'Não conectado'}
-                        </p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className={`w-3 h-3 rounded-full ${getStatusColor(displayStatus)}`} />
-                        <Badge variant={isConnected ? 'default' : 'secondary'}>
-                          <div className="flex items-center space-x-1">
-                            {getStatusIcon(displayStatus)}
-                            <span>{getStatusText(displayStatus)}</span>
-                          </div>
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    
-                    {/* Debug Info - MAIS DETALHADO */}
-                    {selectedInstanceForQR === instance.instance_id && (
-                      <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>Status Real: <strong>{realTimeStatus.status}</strong></div>
-                          <div>Status DB: <strong>{instance.status}</strong></div>
-                          <div>Phone Real: <strong>{realTimeStatus.phoneNumber || 'N/A'}</strong></div>
-                          <div>Phone DB: <strong>{instance.phone_number || 'N/A'}</strong></div>
-                          <div>QR Disponível: <strong>{realTimeStatus.hasQrCode ? 'SIM' : 'NÃO'}</strong></div>
-                          <div>WebSocket: <strong>{websocketConnected ? 'ATIVO' : 'INATIVO'}</strong></div>
-                        </div>
-                        <div className="mt-2 pt-2 border-t">
-                          <div>Timestamp: <strong>{realTimeStatus.timestamp || 'N/A'}</strong></div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* QR Code Display - LÓGICA MELHORADA */}
-                    {selectedInstanceForQR === instance.instance_id && 
-                     displayStatus === 'qr_ready' && 
-                     realTimeStatus.hasQrCode && 
-                     realTimeStatus.qrCode && 
-                     !isConnected && (
-                      <div className="space-y-3">
-                        <div className="text-center">
-                          <h4 className="font-medium mb-2 text-blue-600">📱 QR Code Disponível!</h4>
-                          <div className="bg-white p-4 rounded border-2 border-blue-300">
-                            <img 
-                              src={realTimeStatus.qrCode} 
-                              alt="QR Code WhatsApp"
-                              className="mx-auto max-w-[200px]"
-                            />
-                          </div>
-                          <p className="text-xs text-green-600 mt-2 font-medium">
-                            ✅ Escaneie com seu WhatsApp para conectar
+                <div key={instance.id} className="space-y-4">
+                  <Card className={`hover:shadow-lg transition-shadow ${hasIssues ? 'border-l-4 border-l-red-500' : isConnected ? 'border-l-4 border-l-green-500' : ''}`}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <CardTitle className="text-lg">
+                            {instance.custom_name || instance.instance_id}
+                          </CardTitle>
+                          <p className="text-sm text-gray-600">
+                            Cliente: {getClientName(instance.client_id)}
+                          </p>
+                          <p className={`text-sm font-medium ${isConnected ? 'text-green-600' : 'text-gray-500'}`}>
+                            {displayPhone || 'Não conectado'}
                           </p>
                         </div>
-                      </div>
-                    )}
-
-                    {/* Connected Info - MELHORADO */}
-                    {isConnected && (
-                      <div className="p-3 bg-green-50 border border-green-200 rounded">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-green-800">
-                              ✅ WhatsApp Conectado DEFINITIVAMENTE
-                            </p>
-                            <p className="text-xs text-green-600">
-                              {displayPhone} - {realTimeStatus.timestamp}
-                            </p>
-                          </div>
-                          <Button 
-                            size="sm" 
-                            onClick={() => handleOpenChat(instance)}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                          >
-                            <MessageSquare className="w-4 h-4 mr-1" />
-                            Ir para Chat
-                          </Button>
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-3 h-3 rounded-full ${getStatusColor(displayStatus)}`} />
+                          <Badge variant={isConnected ? 'default' : hasIssues ? 'destructive' : 'secondary'}>
+                            <div className="flex items-center space-x-1">
+                              {getStatusIcon(displayStatus)}
+                              <span>{getStatusText(displayStatus)}</span>
+                              {isStuck && <AlertTriangle className="w-3 h-3 ml-1" />}
+                            </div>
+                          </Badge>
                         </div>
                       </div>
-                    )}
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      
+                      {/* Issues Alert */}
+                      {hasIssues && (
+                        <Alert variant="destructive">
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertDescription>
+                            <div className="space-y-1">
+                              <p><strong>⚠️ Problema Detectado:</strong></p>
+                              {isStuck && <p>• Instância presa há muito tempo (tentativas: {realTimeStatus.retryCount || 0})</p>}
+                              {displayStatus === 'qr_ready' && !realTimeStatus.hasQrCode && <p>• QR Code não disponível</p>}
+                              <p><strong>Solução:</strong> Use "Status Fixer" ou "Forçar Reconexão"</p>
+                            </div>
+                          </AlertDescription>
+                        </Alert>
+                      )}
 
-                     {/* Action Buttons */}
-                     <div className="flex space-x-2 pt-2 flex-wrap gap-2">
-                      {!isConnected ? (
-                        <Button 
-                          size="sm"
-                          onClick={() => handleConnectInstance(instance.instance_id)}
-                          disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          {isLoading(instance.instance_id) ? (
-                            <>
-                              <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                              Conectando...
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-4 h-4 mr-1" />
-                              Conectar
-                            </>
-                          )}
-                        </Button>
-                      ) : (
+                      {/* Debug Info */}
+                      {selectedInstanceForQR === instance.instance_id && (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>Status: <strong>{realTimeStatus.status}</strong></div>
+                            <div>Phone: <strong>{realTimeStatus.phoneNumber || 'N/A'}</strong></div>
+                            <div>QR: <strong>{realTimeStatus.hasQrCode ? 'SIM' : 'NÃO'}</strong></div>
+                            <div>Preso: <strong>{realTimeStatus.isStuck ? 'SIM' : 'NÃO'}</strong></div>
+                            <div>Tentativas: <strong>{realTimeStatus.retryCount || 0}</strong></div>
+                            <div>Timestamp: <strong>{realTimeStatus.timestamp || 'N/A'}</strong></div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* QR Code Display */}
+                      {selectedInstanceForQR === instance.instance_id && 
+                       displayStatus === 'qr_ready' && 
+                       realTimeStatus.hasQrCode && 
+                       realTimeStatus.qrCode && 
+                       !isConnected && (
+                        <div className="space-y-3">
+                          <div className="text-center">
+                            <h4 className="font-medium mb-2 text-blue-600">📱 QR Code Disponível!</h4>
+                            <div className="bg-white p-4 rounded border-2 border-blue-300">
+                              <img 
+                                src={realTimeStatus.qrCode} 
+                                alt="QR Code WhatsApp"
+                                className="mx-auto max-w-[200px]"
+                              />
+                            </div>
+                            <p className="text-xs text-green-600 mt-2 font-medium">
+                              ✅ Escaneie com seu WhatsApp para conectar
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Connected Info */}
+                      {isConnected && (
+                        <div className="p-3 bg-green-50 border border-green-200 rounded">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-green-800">
+                                ✅ WhatsApp Conectado
+                              </p>
+                              <p className="text-xs text-green-600">
+                                {displayPhone} - {realTimeStatus.timestamp}
+                              </p>
+                            </div>
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleOpenChat(instance)}
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-1" />
+                              Ir para Chat
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex space-x-2 pt-2 flex-wrap gap-2">
+                        {!isConnected ? (
+                          <Button 
+                            size="sm"
+                            onClick={() => handleConnectInstance(instance.instance_id)}
+                            disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            {isLoading(instance.instance_id) ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                                Conectando...
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-4 h-4 mr-1" />
+                                Conectar
+                              </>
+                            )}
+                          </Button>
+                        ) : (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleDisconnectInstance(instance.instance_id)}
+                            disabled={isLoading(instance.instance_id)}
+                          >
+                            <Pause className="w-4 h-4 mr-1" />
+                            Pausar
+                          </Button>
+                        )}
+                        
                         <Button 
                           size="sm" 
                           variant="outline"
-                          onClick={() => handleDisconnectInstance(instance.instance_id)}
+                          onClick={() => handleViewQRCode(instance.instance_id)}
                           disabled={isLoading(instance.instance_id)}
                         >
-                          <Pause className="w-4 h-4 mr-1" />
-                          Pausar
+                          <Eye className="w-4 h-4 mr-1" />
+                          Debug
                         </Button>
-                      )}
-                      
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleViewQRCode(instance.instance_id)}
-                        disabled={isLoading(instance.instance_id)}
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        {displayStatus === 'qr_ready' && realTimeStatus.hasQrCode ? 'Ver QR' : 'Debug'}
-                      </Button>
 
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleRefreshStatus(instance.instance_id)}
-                        disabled={isLoading(instance.instance_id)}
-                        title="FORÇAR atualização de status"
-                        className="bg-blue-50 hover:bg-blue-100"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleRefreshStatus(instance.instance_id)}
+                          disabled={isLoading(instance.instance_id)}
+                          className="bg-blue-50 hover:bg-blue-100"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </Button>
 
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleDeleteInstance(instance.instance_id)}
-                        disabled={isLoading(instance.instance_id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Remover
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleForceReconnect(instance.instance_id)}
+                          disabled={isLoading(instance.instance_id)}
+                          className="bg-orange-50 hover:bg-orange-100 text-orange-700"
+                        >
+                          <Zap className="w-4 h-4 mr-1" />
+                          Forçar Reconexão
+                        </Button>
+
+                        <Button 
+                          size="sm" 
+                          variant={showFixer ? "default" : "outline"}
+                          onClick={() => toggleStatusFixer(instance.instance_id)}
+                          className={showFixer ? "bg-purple-600 hover:bg-purple-700" : ""}
+                        >
+                          <Zap className="w-4 h-4 mr-1" />
+                          Status Fixer
+                        </Button>
+
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleDeleteInstance(instance.instance_id)}
+                          disabled={isLoading(instance.instance_id)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Remover
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Status Fixer Component */}
+                  {showFixer && (
+                    <WhatsAppStatusFixer 
+                      instanceId={instance.instance_id}
+                      onStatusChange={(status) => {
+                        console.log(`🔧 [FIXER] Status change for ${instance.instance_id}:`, status);
+                      }}
+                    />
+                  )}
+                </div>
               );
             })}
           </div>

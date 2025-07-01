@@ -8,6 +8,9 @@ interface InstanceStatus {
   hasQrCode?: boolean;
   qrCode?: string;
   timestamp?: string;
+  retryCount?: number;
+  lastStatusChange?: Date;
+  isStuck?: boolean;
 }
 
 interface InstanceManagerContextType {
@@ -18,6 +21,7 @@ interface InstanceManagerContextType {
   websocketConnected: boolean;
   cleanup: (instanceId: string) => void;
   refreshInstanceStatus: (instanceId: string) => Promise<void>;
+  forceReconnectInstance: (instanceId: string) => Promise<void>;
 }
 
 const InstanceManagerContext = createContext<InstanceManagerContextType | undefined>(undefined);
@@ -32,10 +36,11 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
   const socketRef = useRef<any>(null);
   const pollingIntervals = useRef<Record<string, NodeJS.Timeout>>({});
   const activeConnections = useRef<Set<string>>(new Set());
+  const retryCounters = useRef<Record<string, number>>({});
 
   // Inicializar WebSocket com reconexão automática
   useEffect(() => {
-    console.log('🔌 Inicializando InstanceManager com WebSocket...');
+    console.log('🔌 [MANAGER] Inicializando InstanceManager...');
     
     const initSocket = () => {
       try {
@@ -43,30 +48,30 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
         
         if (socketRef.current) {
           socketRef.current.on('connect', () => {
-            console.log('✅ WebSocket InstanceManager conectado');
+            console.log('✅ [MANAGER] WebSocket conectado');
             setWebsocketConnected(true);
           });
 
           socketRef.current.on('disconnect', () => {
-            console.log('❌ WebSocket InstanceManager desconectado');
+            console.log('❌ [MANAGER] WebSocket desconectado');
             setWebsocketConnected(false);
             
             // Tentar reconectar após 3 segundos
             setTimeout(() => {
               if (!socketRef.current?.connected) {
-                console.log('🔄 Tentando reconectar WebSocket...');
+                console.log('🔄 [MANAGER] Tentando reconectar...');
                 initSocket();
               }
             }, 3000);
           });
 
           socketRef.current.on('connect_error', (error: any) => {
-            console.error('❌ Erro de conexão WebSocket:', error);
+            console.error('❌ [MANAGER] Erro WebSocket:', error);
             setWebsocketConnected(false);
           });
         }
       } catch (error) {
-        console.error('❌ Erro ao inicializar WebSocket:', error);
+        console.error('❌ [MANAGER] Erro ao inicializar WebSocket:', error);
         setWebsocketConnected(false);
       }
     };
@@ -74,7 +79,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     initSocket();
 
     return () => {
-      console.log('🧹 Limpando InstanceManager...');
+      console.log('🧹 [MANAGER] Limpando InstanceManager...');
       Object.values(pollingIntervals.current).forEach(clearInterval);
       pollingIntervals.current = {};
       
@@ -85,86 +90,178 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     };
   }, []);
 
-  // Função para verificar status via API (CORRIGIDA)
+  // Detectar se instância está presa
+  const detectStuckInstance = useCallback((instanceId: string, currentStatus: InstanceStatus): boolean => {
+    const previous = instanceStates[instanceId];
+    
+    if (!previous || !previous.lastStatusChange) return false;
+    
+    const timeSinceLastChange = Date.now() - previous.lastStatusChange.getTime();
+    const isStuckInQrReady = currentStatus.status === 'qr_ready' && timeSinceLastChange > 90000; // 1.5 minutos
+    
+    if (isStuckInQrReady) {
+      console.log(`⚠️ [MANAGER] Instância ${instanceId} presa em qr_ready há ${Math.round(timeSinceLastChange / 1000)}s`);
+      return true;
+    }
+    
+    return false;
+  }, [instanceStates]);
+
+  // Função para verificar status via API (MELHORADA)
   const refreshInstanceStatus = useCallback(async (instanceId: string): Promise<void> => {
     try {
-      console.log(`🔄 Verificando status via API: ${instanceId}`);
+      console.log(`🔄 [MANAGER] Verificando status: ${instanceId}`);
       const status = await whatsappService.getClientStatus(instanceId);
       
-      console.log(`📊 Status obtido via API para ${instanceId}:`, {
-        status: status.status,
-        phoneNumber: status.phoneNumber,
-        hasQrCode: status.hasQrCode
-      });
+      const previous = instanceStates[instanceId];
+      const statusChanged = !previous || previous.status !== status.status;
       
-      // FORÇAR atualização do estado mesmo se for igual
-      const newStatus = {
+      const newStatus: InstanceStatus = {
         status: status.status,
         phoneNumber: status.phoneNumber,
         hasQrCode: status.hasQrCode,
         qrCode: status.qrCode,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        retryCount: previous?.retryCount || 0,
+        lastStatusChange: statusChanged ? new Date() : previous?.lastStatusChange || new Date(),
+        isStuck: false
       };
       
-      setInstanceStates(prev => {
-        const updated = { ...prev, [instanceId]: newStatus };
-        console.log(`📱 Estado atualizado para ${instanceId}:`, updated[instanceId]);
-        return updated;
-      });
+      // Detectar se está preso
+      newStatus.isStuck = detectStuckInstance(instanceId, newStatus);
       
-      // Se conectou, notificar
+      // Log mudanças importantes
+      if (statusChanged) {
+        console.log(`📱 [MANAGER] Status mudou ${instanceId}: ${previous?.status || 'N/A'} → ${status.status}`);
+      }
+      
+      setInstanceStates(prev => ({
+        ...prev,
+        [instanceId]: newStatus
+      }));
+      
+      // Se conectou com sucesso
       if (status.status === 'connected' && status.phoneNumber) {
-        console.log(`🎉 ${instanceId} CONECTADO! Telefone: ${status.phoneNumber}`);
+        console.log(`🎉 [MANAGER] ${instanceId} CONECTADO! Telefone: ${status.phoneNumber}`);
+        
+        // Parar polling
+        if (pollingIntervals.current[instanceId]) {
+          clearInterval(pollingIntervals.current[instanceId]);
+          delete pollingIntervals.current[instanceId];
+        }
+        
         toast({
           title: "WhatsApp Conectado!",
           description: `Instância conectada: ${status.phoneNumber}`,
         });
       }
       
+      // Se detectou que está preso, tentar reconectar automaticamente
+      if (newStatus.isStuck && newStatus.retryCount < 3) {
+        console.log(`🔄 [MANAGER] Auto-correção: reconectando ${instanceId}`);
+        setTimeout(() => {
+          forceReconnectInstance(instanceId);
+        }, 2000);
+      }
+      
     } catch (error) {
-      console.error(`❌ Erro ao verificar status via API ${instanceId}:`, error);
+      console.error(`❌ [MANAGER] Erro ao verificar status ${instanceId}:`, error);
       throw error;
+    }
+  }, [instanceStates, detectStuckInstance, toast]);
+
+  // Forçar reconexão limpa
+  const forceReconnectInstance = useCallback(async (instanceId: string): Promise<void> => {
+    try {
+      console.log(`🔄 [MANAGER] Forçando reconexão: ${instanceId}`);
+      
+      // Incrementar contador de retry
+      retryCounters.current[instanceId] = (retryCounters.current[instanceId] || 0) + 1;
+      
+      // Parar polling atual
+      if (pollingIntervals.current[instanceId]) {
+        clearInterval(pollingIntervals.current[instanceId]);
+        delete pollingIntervals.current[instanceId];
+      }
+      
+      // Desconectar (limpar sessão)
+      await whatsappService.disconnectClient(instanceId);
+      console.log(`🔌 [MANAGER] ${instanceId} desconectado`);
+      
+      // Aguardar 3 segundos
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Reconectar
+      await whatsappService.connectClient(instanceId);
+      console.log(`🚀 [MANAGER] ${instanceId} reconectando...`);
+      
+      // Atualizar estado
+      setInstanceStates(prev => ({
+        ...prev,
+        [instanceId]: {
+          ...prev[instanceId],
+          status: 'connecting',
+          retryCount: retryCounters.current[instanceId],
+          lastStatusChange: new Date(),
+          isStuck: false
+        }
+      }));
+      
+      // Iniciar polling mais agressivo após reconexão
+      setTimeout(() => {
+        startPolling(instanceId, 3000); // Polling a cada 3 segundos
+      }, 2000);
+      
+      toast({
+        title: "Reconectando...",
+        description: `Sessão limpa, aguarde novo QR Code (tentativa ${retryCounters.current[instanceId]})`,
+      });
+      
+    } catch (error: any) {
+      console.error(`❌ [MANAGER] Erro na reconexão ${instanceId}:`, error);
+      toast({
+        title: "Erro na Reconexão",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   }, [toast]);
 
-  // Configurar listener WebSocket para uma instância específica
+  // Configurar listener WebSocket
   const setupWebSocketListener = useCallback((instanceId: string) => {
-    if (!socketRef.current) {
-      console.warn(`⚠️ WebSocket não disponível para ${instanceId}`);
-      return;
-    }
+    if (!socketRef.current) return;
 
-    console.log(`👂 Configurando listener WebSocket para ${instanceId}`);
+    console.log(`👂 [MANAGER] Configurando listener para ${instanceId}`);
     
-    // Entrar na sala da instância
     whatsappService.joinClientRoom(instanceId);
     
     const eventName = `client_status_${instanceId}`;
     
     const statusHandler = (data: any) => {
-      console.log(`📡 Status WebSocket recebido para ${instanceId}:`, {
-        status: data.status,
-        phoneNumber: data.phoneNumber,
-        hasQrCode: data.hasQrCode
-      });
+      console.log(`📡 [MANAGER] Status WebSocket ${instanceId}:`, data.status);
       
-      const newStatus = {
+      const previous = instanceStates[instanceId];
+      const statusChanged = !previous || previous.status !== data.status;
+      
+      const newStatus: InstanceStatus = {
         status: data.status,
         phoneNumber: data.phoneNumber,
         hasQrCode: data.hasQrCode,
         qrCode: data.qrCode,
-        timestamp: data.timestamp || new Date().toISOString()
+        timestamp: data.timestamp || new Date().toISOString(),
+        retryCount: previous?.retryCount || 0,
+        lastStatusChange: statusChanged ? new Date() : previous?.lastStatusChange || new Date(),
+        isStuck: false
       };
       
-      setInstanceStates(prev => {
-        const updated = { ...prev, [instanceId]: newStatus };
-        console.log(`📱 Estado WebSocket atualizado para ${instanceId}:`, updated[instanceId]);
-        return updated;
-      });
+      setInstanceStates(prev => ({
+        ...prev,
+        [instanceId]: newStatus
+      }));
 
-      // Se conectou com sucesso, parar polling e notificar
+      // Se conectou, parar polling
       if (data.status === 'connected' && data.phoneNumber) {
-        console.log(`✅ ${instanceId} conectado via WebSocket - parando polling`);
+        console.log(`✅ [MANAGER] ${instanceId} conectado via WebSocket`);
         if (pollingIntervals.current[instanceId]) {
           clearInterval(pollingIntervals.current[instanceId]);
           delete pollingIntervals.current[instanceId];
@@ -179,59 +276,54 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
 
     socketRef.current.off(eventName, statusHandler);
     socketRef.current.on(eventName, statusHandler);
-    
-    return () => {
-      socketRef.current?.off(eventName, statusHandler);
-    };
-  }, [toast]);
+  }, [instanceStates, toast]);
 
-  // Polling AGRESSIVO como backup (CORRIGIDO)
-  const startPolling = useCallback((instanceId: string) => {
-    // Parar polling existente
+  // Polling melhorado com detecção de problemas
+  const startPolling = useCallback((instanceId: string, interval: number = 5000) => {
     if (pollingIntervals.current[instanceId]) {
       clearInterval(pollingIntervals.current[instanceId]);
     }
 
-    console.log(`🔄 Iniciando polling AGRESSIVO para ${instanceId}`);
+    console.log(`🔄 [MANAGER] Iniciando polling para ${instanceId} (${interval}ms)`);
     
     pollingIntervals.current[instanceId] = setInterval(async () => {
       try {
         await refreshInstanceStatus(instanceId);
         
-        // Verificar se conectou para parar polling
         const currentStatus = instanceStates[instanceId];
         if (currentStatus?.status === 'connected' && currentStatus?.phoneNumber) {
-          console.log(`✅ ${instanceId} conectado via polling - parando polling`);
+          console.log(`✅ [MANAGER] ${instanceId} conectado - parando polling`);
           clearInterval(pollingIntervals.current[instanceId]);
           delete pollingIntervals.current[instanceId];
         }
       } catch (error) {
-        console.error(`❌ Erro no polling ${instanceId}:`, error);
+        console.error(`❌ [MANAGER] Erro no polling ${instanceId}:`, error);
       }
-    }, 5000); // Verificar a cada 5 segundos (mais agressivo)
+    }, interval);
   }, [refreshInstanceStatus, instanceStates]);
 
   const connectInstance = useCallback(async (instanceId: string) => {
-    console.log(`🚀 Conectando instância: ${instanceId}`);
+    console.log(`🚀 [MANAGER] Conectando instância: ${instanceId}`);
     
     try {
       setLoadingStates(prev => ({ ...prev, [instanceId]: true }));
       
-      // Configurar WebSocket listener primeiro
+      // Reset retry counter
+      retryCounters.current[instanceId] = 0;
+      
+      // Configurar WebSocket listener
       setupWebSocketListener(instanceId);
       
       // Chamar API de conexão
       await whatsappService.connectClient(instanceId);
       
-      // Verificar status inicial IMEDIATAMENTE
+      // Verificar status inicial
       setTimeout(() => {
-        console.log(`🔍 Verificação inicial de status para ${instanceId}`);
         refreshInstanceStatus(instanceId);
       }, 2000);
       
-      // Iniciar polling backup SEMPRE
+      // Iniciar polling
       setTimeout(() => {
-        console.log(`🔄 Iniciando polling backup para ${instanceId}`);
         startPolling(instanceId);
       }, 3000);
       
@@ -243,7 +335,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
       });
       
     } catch (error: any) {
-      console.error(`❌ Erro ao conectar ${instanceId}:`, error);
+      console.error(`❌ [MANAGER] Erro ao conectar ${instanceId}:`, error);
       toast({
         title: "Erro na Conexão",
         description: error.message,
@@ -252,17 +344,16 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     } finally {
       setLoadingStates(prev => ({ ...prev, [instanceId]: false }));
     }
-  }, [setupWebSocketListener, startPolling, refreshInstanceStatus, toast]);
+  }, [setupWebSocketListener, refreshInstanceStatus, startPolling, toast]);
 
   const disconnectInstance = useCallback(async (instanceId: string) => {
-    console.log(`🔌 Desconectando instância: ${instanceId}`);
+    console.log(`🔌 [MANAGER] Desconectando instância: ${instanceId}`);
     
     try {
       setLoadingStates(prev => ({ ...prev, [instanceId]: true }));
       
       await whatsappService.disconnectClient(instanceId);
       
-      // Limpar estado local
       setInstanceStates(prev => ({
         ...prev,
         [instanceId]: {
@@ -270,7 +361,10 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
           phoneNumber: undefined,
           hasQrCode: false,
           qrCode: undefined,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          retryCount: 0,
+          lastStatusChange: new Date(),
+          isStuck: false
         }
       }));
       
@@ -282,7 +376,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
       });
       
     } catch (error: any) {
-      console.error(`❌ Erro ao desconectar ${instanceId}:`, error);
+      console.error(`❌ [MANAGER] Erro ao desconectar ${instanceId}:`, error);
       toast({
         title: "Erro",
         description: error.message,
@@ -294,18 +388,15 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
   }, [toast]);
 
   const getInstanceStatus = useCallback((instanceId: string): InstanceStatus => {
-    const cached = instanceStates[instanceId];
-    
-    if (!cached) {
-      return {
-        status: 'disconnected',
-        phoneNumber: undefined,
-        hasQrCode: false,
-        qrCode: undefined
-      };
-    }
-    
-    return cached;
+    return instanceStates[instanceId] || {
+      status: 'disconnected',
+      phoneNumber: undefined,
+      hasQrCode: false,
+      qrCode: undefined,
+      retryCount: 0,
+      lastStatusChange: new Date(),
+      isStuck: false
+    };
   }, [instanceStates]);
 
   const isLoading = useCallback((instanceId: string): boolean => {
@@ -313,18 +404,16 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
   }, [loadingStates]);
 
   const cleanup = useCallback((instanceId: string) => {
-    console.log(`🧹 Limpando instância: ${instanceId}`);
+    console.log(`🧹 [MANAGER] Limpando instância: ${instanceId}`);
     
-    // Parar polling
     if (pollingIntervals.current[instanceId]) {
       clearInterval(pollingIntervals.current[instanceId]);
       delete pollingIntervals.current[instanceId];
     }
     
-    // Remover das conexões ativas
     activeConnections.current.delete(instanceId);
+    delete retryCounters.current[instanceId];
     
-    // Limpar estado
     setInstanceStates(prev => {
       const newState = { ...prev };
       delete newState[instanceId];
@@ -337,7 +426,6 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
       return newState;
     });
     
-    // Remover listener WebSocket
     if (socketRef.current) {
       const eventName = `client_status_${instanceId}`;
       socketRef.current.removeAllListeners(eventName);
@@ -350,7 +438,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
       activeConnections.current.forEach(instanceId => {
         const currentStatus = instanceStates[instanceId];
         if (!currentStatus?.phoneNumber || currentStatus?.status !== 'connected') {
-          console.log(`🔄 Auto-verificando status de ${instanceId}`);
+          console.log(`🔄 [MANAGER] Auto-verificando status de ${instanceId}`);
           refreshInstanceStatus(instanceId).catch(console.error);
         }
       });
@@ -366,7 +454,8 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     isLoading,
     websocketConnected,
     cleanup,
-    refreshInstanceStatus
+    refreshInstanceStatus,
+    forceReconnectInstance
   };
 
   return (
