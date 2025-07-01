@@ -9,7 +9,6 @@ interface InstanceStatus {
   hasQrCode?: boolean;
   qrCode?: string;
   timestamp?: string;
-  isConnected?: boolean;
 }
 
 interface InstanceManagerContextType {
@@ -33,7 +32,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
   
   // Cache inteligente para evitar polling desnecessário
   const lastStatusCheck = useRef<Record<string, number>>({});
-  const connectedInstances = useRef<Set<string>>(newSet());
+  const connectedInstances = useRef<Set<string>>(new Set());
   
   // Socket único reutilizado
   const socketRef = useRef<any>(null);
@@ -67,19 +66,19 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     };
   }, []);
 
-  // Função para polling inteligente - OTIMIZADA
+  // Função para polling inteligente - SUPER OTIMIZADA
   const startIntelligentPolling = useCallback((instanceId: string) => {
     // Parar polling existente
     if (pollingIntervals.current[instanceId]) {
       clearInterval(pollingIntervals.current[instanceId]);
     }
 
-    // Não fazer polling para instâncias conectadas há mais de 30s
+    // Não fazer polling para instâncias definitivamente conectadas
     const currentStatus = instanceStates[instanceId];
     if (currentStatus?.status === 'connected' && currentStatus.phoneNumber) {
       const timeSinceStatus = Date.now() - (new Date(currentStatus.timestamp || 0).getTime());
-      if (timeSinceStatus > 30000) { // 30 segundos
-        console.log(`⚠️ [POLLING-INTELIGENTE] Parando polling para ${instanceId} - conectado há ${Math.round(timeSinceStatus/1000)}s`);
+      if (timeSinceStatus > 60000) { // 1 minuto
+        console.log(`⚠️ [POLLING-INTELIGENTE] Instância ${instanceId} conectada há ${Math.round(timeSinceStatus/1000)}s - parando polling`);
         connectedInstances.current.add(instanceId);
         return;
       }
@@ -89,11 +88,11 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     
     pollingIntervals.current[instanceId] = setInterval(async () => {
       try {
-        // Cache: não verificar se checou há menos de 10s
+        // Cache ultra-inteligente: não verificar se checou há menos de 30s
         const lastCheck = lastStatusCheck.current[instanceId] || 0;
         const timeSinceLastCheck = Date.now() - lastCheck;
         
-        if (timeSinceLastCheck < 10000) { // 10 segundos
+        if (timeSinceLastCheck < 30000) { // 30 segundos
           return;
         }
 
@@ -102,7 +101,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
         
         console.log(`📊 [POLLING-INTELIGENTE] Status ${instanceId}:`, status.status, status.phoneNumber || 'no-phone');
         
-        // Atualizar estado apenas se mudou
+        // Atualizar estado apenas se mudou SIGNIFICATIVAMENTE
         setInstanceStates(prev => {
           const current = prev[instanceId];
           if (!current || 
@@ -123,17 +122,16 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
                 phoneNumber: status.phoneNumber,
                 hasQrCode: status.hasQrCode,
                 qrCode: status.qrCode,
-                timestamp: status.timestamp,
-                isConnected: status.isConnected
+                timestamp: status.timestamp
               }
             };
           }
           return prev;
         });
 
-        // Parar polling se conectado definitivamente
+        // Parar polling se definitivamente conectado
         if (status.status === 'connected' && status.phoneNumber) {
-          console.log(`✅ [POLLING-INTELIGENTE] ${instanceId} conectado - parando polling`);
+          console.log(`✅ [POLLING-INTELIGENTE] ${instanceId} definitivamente conectado - parando polling`);
           clearInterval(pollingIntervals.current[instanceId]);
           delete pollingIntervals.current[instanceId];
           connectedInstances.current.add(instanceId);
@@ -142,10 +140,10 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
       } catch (error) {
         console.error(`❌ [POLLING-INTELIGENTE] Erro para ${instanceId}:`, error);
       }
-    }, 15000); // 15 segundos entre verificações
+    }, 45000); // 45 segundos entre verificações - MUITO REDUZIDO
   }, [instanceStates]);
 
-  // WebSocket listener inteligente
+  // WebSocket listener DEFINITIVO
   const setupWebSocketListener = useCallback((instanceId: string) => {
     if (!socketRef.current) return;
 
@@ -160,7 +158,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     const statusHandler = (data: any) => {
       console.log(`📡 [WEBSOCKET] Status recebido ${instanceId}:`, data.status, data.phoneNumber || 'no-phone');
       
-      // Atualizar estado imediatamente
+      // Atualizar estado imediatamente - PRIORIDADE MÁXIMA
       setInstanceStates(prev => ({
         ...prev,
         [instanceId]: {
@@ -168,14 +166,13 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
           phoneNumber: data.phoneNumber,
           hasQrCode: data.hasQrCode,
           qrCode: data.qrCode,
-          timestamp: data.timestamp,
-          isConnected: data.isConnected
+          timestamp: data.timestamp
         }
       }));
 
-      // Parar polling se conectado via WebSocket
+      // Parar polling se conectado via WebSocket - DEFINITIVO
       if (data.status === 'connected' && data.phoneNumber) {
-        console.log(`✅ [WEBSOCKET] ${instanceId} conectado - parando polling`);
+        console.log(`✅ [WEBSOCKET] ${instanceId} conectado - parando polling DEFINITIVAMENTE`);
         if (pollingIntervals.current[instanceId]) {
           clearInterval(pollingIntervals.current[instanceId]);
           delete pollingIntervals.current[instanceId];
@@ -198,18 +195,19 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     try {
       setLoadingStates(prev => ({ ...prev, [instanceId]: true }));
       
-      // Configurar WebSocket listener primeiro
+      // Configurar WebSocket listener primeiro - PRIORIDADE
       setupWebSocketListener(instanceId);
       
       // Chamar API de conexão
       await whatsappService.connectClient(instanceId);
       
-      // Iniciar polling inteligente como backup
+      // Iniciar polling inteligente apenas como backup
       setTimeout(() => {
         if (!connectedInstances.current.has(instanceId)) {
+          console.log(`🔄 [BACKUP] Iniciando polling backup para ${instanceId}`);
           startIntelligentPolling(instanceId);
         }
-      }, 5000);
+      }, 10000); // 10 segundos de delay para WebSocket agir
       
       toast({
         title: "Conectando...",
@@ -236,7 +234,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
       
       await whatsappService.disconnectClient(instanceId);
       
-      // Limpar estado local
+      // Limpar estado local DEFINITIVAMENTE
       setInstanceStates(prev => ({
         ...prev,
         [instanceId]: {
@@ -288,7 +286,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
   const cleanup = useCallback((instanceId: string) => {
     console.log(`🧹 [CLEANUP] Limpando ${instanceId}`);
     
-    // Parar polling
+    // Parar polling DEFINITIVAMENTE
     if (pollingIntervals.current[instanceId]) {
       clearInterval(pollingIntervals.current[instanceId]);
       delete pollingIntervals.current[instanceId];
