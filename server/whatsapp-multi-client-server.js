@@ -471,7 +471,10 @@ io.on('connection', socket => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.WHATSAPP_PORT || process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`📅 Iniciado em: ${new Date().toISOString()}`);
+  console.log(`🌐 Health check: http://localhost:${PORT}/health`);
+  console.log(`📚 API docs: http://localhost:${PORT}/api-docs`);
 });
