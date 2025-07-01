@@ -183,42 +183,23 @@ echo ""
 echo "🚀 FASE 6: TESTE DE INICIALIZAÇÃO"
 echo "==============================="
 
-# Iniciar servidor com PM2
-echo "🚀 Iniciando servidor..."
-cd /home/ubuntu/sovereign-chat-automation-hub/server
-pm2 start whatsapp-multi-client-server.js --name "whatsapp-multi-client" --log ../logs/whatsapp-multi-client.log
+# Usar o script de produção existente que já gerencia PM2
+echo "🚀 Iniciando servidor usando script de produção..."
+cd /home/ubuntu/sovereign-chat-automation-hub
+./scripts/production-start-whatsapp.sh
 
 # Aguardar inicialização
-echo "⏳ Aguardando inicialização..."
-sleep 10
+echo "⏳ Aguardando estabilização adicional..."
+sleep 5
 
-# Verificar se está rodando
-if pm2 describe whatsapp-multi-client > /dev/null 2>&1; then
-    echo "✅ Servidor iniciado com PM2"
-    
-    # Teste de health check
-    echo "🧪 Testando health check..."
-    HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health 2>/dev/null)
-    
-    if [ "$HEALTH_STATUS" = "200" ]; then
-        echo "✅ Health check OK"
-    else
-        echo "⚠️ Health check retornou: $HEALTH_STATUS"
-    fi
-    
-    # Verificar logs por erros
-    echo "🔍 Verificando logs..."
-    RECENT_ERRORS=$(pm2 logs whatsapp-multi-client --lines 5 --nostream 2>/dev/null | grep -E "(TypeError|Error:|Cannot read)" | wc -l)
-    
-    if [ "$RECENT_ERRORS" -eq 0 ]; then
-        echo "✅ Nenhum erro encontrado nos logs"
-    else
-        echo "⚠️ $RECENT_ERRORS erros encontrados"
-    fi
-    
+# Verificar se está funcionando
+echo "🧪 Testando health check..."
+HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health 2>/dev/null)
+
+if [ "$HEALTH_STATUS" = "200" ]; then
+    echo "✅ Health check OK"
 else
-    echo "❌ Falha ao iniciar servidor"
-    exit 1
+    echo "⚠️ Health check retornou: $HEALTH_STATUS"
 fi
 
 echo ""
