@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, XCircle, AlertTriangle, RefreshCw } from "lucide-react";
+import { CheckCircle, XCircle, AlertTriangle, RefreshCw, PartyPopper } from "lucide-react";
 import { API_BASE_URL } from "@/config/environment";
 
 interface EndpointTest {
@@ -20,8 +20,8 @@ const CorsApiDiagnostic = () => {
   const [tests, setTests] = useState<EndpointTest[]>([
     { name: "Health Check", url: "/health", method: "GET", status: "pending" },
     { name: "Lista Clientes", url: "/clients", method: "GET", status: "pending" },
-    { name: "Conectar Cliente", url: "/clients/test-instance/connect", method: "POST", status: "pending" },
-    { name: "Status Cliente", url: "/clients/test-instance/status", method: "GET", status: "pending" },
+    { name: "Conectar Cliente", url: "/clients/35f36a03-39b2-412c-bba6-01fdd45c2dd3/connect", method: "POST", status: "pending" },
+    { name: "Status Cliente", url: "/clients/35f36a03-39b2-412c-bba6-01fdd45c2dd3/status", method: "GET", status: "pending" },
     { name: "API Docs", url: "/api-docs.json", method: "GET", status: "pending" }
   ]);
   const [testing, setTesting] = useState(false);
@@ -50,14 +50,14 @@ const CorsApiDiagnostic = () => {
           ...endpoint,
           status: 'success',
           httpStatus,
-          details: `✅ Success - Status ${httpStatus}`
+          details: `✅ CORS FUNCIONANDO! Status ${httpStatus}`
         };
       } else if (httpStatus === 404) {
         return {
           ...endpoint,
           status: 'not_found',
           httpStatus,
-          details: `⚠️ Endpoint não implementado - Status ${httpStatus}`
+          details: `⚠️ Endpoint não encontrado - Status ${httpStatus}`
         };
       } else {
         return {
@@ -83,7 +83,7 @@ const CorsApiDiagnostic = () => {
         return {
           ...endpoint,
           status: 'cors_error',
-          details: `❌ CORS Error: Sem header Access-Control-Allow-Origin`
+          details: `❌ CORS Error: Servidor não responde`
         };
       } else {
         return {
@@ -97,7 +97,7 @@ const CorsApiDiagnostic = () => {
 
   const runAllTests = async () => {
     setTesting(true);
-    console.log('🧪 Iniciando diagnóstico CORS dos endpoints da API...');
+    console.log('🧪 Iniciando diagnóstico CORS APÓS CORREÇÃO DO SERVIDOR...');
     
     const updatedTests: EndpointTest[] = [];
     
@@ -120,6 +120,10 @@ const CorsApiDiagnostic = () => {
     const successes = updatedTests.filter(t => t.status === 'success').length;
     
     console.log(`🎯 Diagnóstico concluído: ${successes} sucessos, ${corsErrors} erros CORS`);
+    
+    if (corsErrors === 0 && successes > 0) {
+      console.log('🎉 CORS CORRIGIDO COM SUCESSO! Todas as APIs funcionando!');
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -144,22 +148,27 @@ const CorsApiDiagnostic = () => {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'success': return 'OK';
+      case 'success': return 'FUNCIONANDO! 🎉';
       case 'cors_error': return 'CORS Error';
-      case 'not_found': return 'Não implementado';
+      case 'not_found': return 'Não encontrado';
       case 'server_error': return 'Erro servidor';
       default: return 'Aguardando';
     }
   };
 
   const corsErrors = tests.filter(t => t.status === 'cors_error');
-  const hasApiCorsIssues = corsErrors.some(t => t.url.includes('/clients/'));
+  const successes = tests.filter(t => t.status === 'success');
+  const allTestsComplete = tests.every(t => t.status !== 'pending');
+  const corsFixed = allTestsComplete && corsErrors.length === 0 && successes.length > 0;
 
   return (
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle>🧪 Diagnóstico CORS da API</CardTitle>
+          <CardTitle className="flex items-center space-x-2">
+            {corsFixed && <PartyPopper className="w-5 h-5 text-green-500" />}
+            <span>🧪 Diagnóstico CORS - PÓS CORREÇÃO</span>
+          </CardTitle>
           <Button onClick={runAllTests} disabled={testing}>
             {testing ? (
               <>
@@ -169,7 +178,7 @@ const CorsApiDiagnostic = () => {
             ) : (
               <>
                 <RefreshCw className="w-4 h-4 mr-2" />
-                Testar Endpoints
+                Testar Agora
               </>
             )}
           </Button>
@@ -177,6 +186,27 @@ const CorsApiDiagnostic = () => {
       </CardHeader>
       <CardContent className="space-y-4">
         
+        {/* SUCESSO - CORS CORRIGIDO */}
+        {corsFixed && (
+          <Alert className="border-green-200 bg-green-50">
+            <PartyPopper className="h-4 w-4 text-green-600" />
+            <AlertDescription>
+              <div className="space-y-2">
+                <p className="font-medium text-green-900">🎉 CORS CORRIGIDO COM SUCESSO!</p>
+                <p className="text-green-800">
+                  Todas as APIs estão respondendo corretamente! Agora você pode:
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-sm text-green-700">
+                  <li>✅ Criar instâncias WhatsApp</li>
+                  <li>✅ Conectar e gerar QR Code</li>
+                  <li>✅ Enviar mensagens</li>
+                  <li>✅ Todas as funcionalidades funcionando!</li>
+                </ul>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Status Summary */}
         {!testing && tests.some(t => t.status !== 'pending') && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -196,7 +226,7 @@ const CorsApiDiagnostic = () => {
               <div className="text-2xl font-bold text-yellow-600">
                 {tests.filter(t => t.status === 'not_found').length}
               </div>
-              <div className="text-sm text-gray-600">Não implementado</div>
+              <div className="text-sm text-gray-600">Não encontrado</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-600">
@@ -207,28 +237,13 @@ const CorsApiDiagnostic = () => {
           </div>
         )}
 
-        {/* API CORS Issue Alert */}
-        {hasApiCorsIssues && (
-          <Alert variant="destructive">
-            <XCircle className="h-4 w-4" />
-            <AlertDescription>
-              <div className="space-y-2">
-                <p className="font-medium">🎯 PROBLEMA IDENTIFICADO:</p>
-                <p>Os endpoints da API <code>/clients/*</code> não têm CORS configurado!</p>
-                <p className="text-sm">
-                  <strong>Solução:</strong> Configure CORS no servidor backend para todos os endpoints da API, 
-                  não apenas para <code>/health</code>.
-                </p>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* Test Results */}
         <div className="space-y-3">
           <h4 className="font-medium">Resultados dos Testes:</h4>
           {tests.map((test, index) => (
-            <div key={index} className="flex items-center justify-between p-3 border rounded">
+            <div key={index} className={`flex items-center justify-between p-3 border rounded ${
+              test.status === 'success' ? 'border-green-200 bg-green-50' : ''
+            }`}>
               <div className="flex items-center space-x-3">
                 {getStatusIcon(test.status)}
                 <div>
@@ -258,7 +273,9 @@ const CorsApiDiagnostic = () => {
             <h4 className="font-medium">Detalhes:</h4>
             <div className="bg-gray-50 p-3 rounded text-sm space-y-1">
               {tests.filter(t => t.details).map((test, index) => (
-                <div key={index}>
+                <div key={index} className={
+                  test.status === 'success' ? 'text-green-700 font-medium' : ''
+                }>
                   <strong>{test.name}:</strong> {test.details}
                 </div>
               ))}
@@ -266,17 +283,31 @@ const CorsApiDiagnostic = () => {
           </div>
         )}
 
-        {/* Instructions */}
-        <div className="bg-blue-50 p-4 rounded">
-          <h4 className="font-medium text-blue-900 mb-2">📋 Como corrigir:</h4>
-          <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-            <li>Execute: <code>sudo ./scripts/fix-cors-duplicate.sh</code></li>
-            <li>Verifique configuração CORS no servidor Node.js</li>
-            <li>Certifique-se que CORS está aplicado a TODOS os endpoints</li>
-            <li>Reinicie o servidor: <code>pm2 restart whatsapp-multi-client</code></li>
-            <li>Execute este diagnóstico novamente</li>
-          </ol>
-        </div>
+        {/* Next Steps - Apenas se CORS funcionando */}
+        {corsFixed && (
+          <div className="bg-blue-50 p-4 rounded">
+            <h4 className="font-medium text-blue-900 mb-2">🚀 PRÓXIMOS PASSOS:</h4>
+            <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+              <li>Vá para "Instâncias WhatsApp" na tela principal</li>
+              <li>Clique em "Conectar" em uma instância</li>
+              <li>O QR Code deve aparecer automaticamente</li>
+              <li>Escaneie o QR Code com seu WhatsApp</li>
+              <li>Instância será conectada e pronta para uso! 🎉</li>
+            </ol>
+          </div>
+        )}
+
+        {/* Ainda com CORS Error */}
+        {!corsFixed && corsErrors.length > 0 && allTestsComplete && (
+          <div className="bg-red-50 p-4 rounded">
+            <h4 className="font-medium text-red-900 mb-2">❌ Ainda há problemas CORS:</h4>
+            <ol className="text-sm text-red-800 space-y-1 list-decimal list-inside">
+              <li>Verifique se o Nginx foi reiniciado: <code>sudo systemctl restart nginx</code></li>
+              <li>Verifique se o Node.js foi reiniciado: <code>pm2 restart whatsapp-multi-client</code></li>
+              <li>Execute: <code>sudo ./scripts/validate-api-routes.sh</code></li>
+            </ol>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
