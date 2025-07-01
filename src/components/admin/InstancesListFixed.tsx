@@ -78,9 +78,9 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     
     switch (status) {
       case 'connected': return 'bg-green-500';
+      case 'authenticated': return 'bg-cyan-500'; // NOVO v2.1
       case 'qr_ready': return 'bg-blue-500';
       case 'connecting': return 'bg-yellow-500';
-      case 'authenticated': return 'bg-cyan-500';
       case 'disconnected': return 'bg-gray-500';
       default: return 'bg-gray-500';
     }
@@ -88,13 +88,13 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
 
   const getStatusText = (status: string, reallyConnected?: boolean) => {
     // Se realmente conectado, sempre "Conectado"
-    if (reallyConnected) return 'Conectado';
+    if (reallyConnected) return 'Conectado ✅';
     
     switch (status) {
       case 'connected': return 'Conectado';
+      case 'authenticated': return 'Autenticado'; // NOVO v2.1
       case 'qr_ready': return 'QR Pronto';
       case 'connecting': return 'Conectando';
-      case 'authenticated': return 'Autenticado';
       case 'disconnected': return 'Desconectado';
       default: return 'Desconhecido';
     }
@@ -106,9 +106,9 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     
     switch (status) {
       case 'connected': return <Wifi className="w-4 h-4" />;
+      case 'authenticated': return <CheckCircle className="w-4 h-4" />; // NOVO v2.1
       case 'qr_ready': return <QrCode className="w-4 h-4" />;
       case 'connecting': return <RefreshCw className="w-4 h-4 animate-spin" />;
-      case 'authenticated': return <Smartphone className="w-4 h-4" />;
       case 'disconnected': return <WifiOff className="w-4 h-4" />;
       default: return <WifiOff className="w-4 h-4" />;
     }
@@ -139,7 +139,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
 
   const handleRefreshStatus = async (instanceId: string) => {
     try {
-      console.log(`🔄 [LIST] Refresh manual: ${instanceId}`);
+      console.log(`🔄 [LIST v2.1] Refresh manual: ${instanceId}`);
       await refreshInstanceStatus(instanceId);
       toast({
         title: "Status Atualizado",
@@ -225,7 +225,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>Instâncias WhatsApp ({instances.length}) - SISTEMA INTELIGENTE v2.0 🚀</span>
+            <span>Instâncias WhatsApp ({instances.length}) - SISTEMA INTELIGENTE v2.1 🚀</span>
             <div className="flex items-center space-x-2 text-sm">
               <div className={`w-2 h-2 rounded-full ${websocketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
               <span className="text-gray-600">{websocketConnected ? 'WebSocket Conectado' : 'WebSocket Desconectado'}</span>
@@ -238,7 +238,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
               const realTimeStatus = getInstanceStatus(instance.instance_id);
               const displayStatus = realTimeStatus.reallyConnected ? 'connected' : realTimeStatus.status || instance.status;
               const displayPhone = realTimeStatus.phoneNumber || instance.phone_number;
-              const isConnected = realTimeStatus.reallyConnected || (displayStatus === 'connected' && displayPhone);
+              const isConnected = realTimeStatus.reallyConnected || (displayStatus === 'connected' && displayPhone) || displayStatus === 'authenticated';
               const isStuck = realTimeStatus.isStuck && !realTimeStatus.reallyConnected;
               const hasIssues = isStuck || (displayStatus === 'qr_ready' && !realTimeStatus.hasQrCode && !realTimeStatus.reallyConnected);
               const showFixer = instancesWithFixer.has(instance.instance_id);
@@ -262,7 +262,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           {/* Status Debug Info */}
                           {selectedInstanceForQR === instance.instance_id && (
                             <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
-                              <div className="font-medium text-blue-800 mb-1">🔍 Status Debug v2.0:</div>
+                              <div className="font-medium text-blue-800 mb-1">🔍 Status Debug v2.1:</div>
                               <div>API Status: <strong>{realTimeStatus.status}</strong></div>
                               <div>Really Connected: <strong>{realTimeStatus.reallyConnected ? 'SIM ✅' : 'NÃO ❌'}</strong></div>
                               <div>Phone: <strong>{realTimeStatus.phoneNumber || 'N/A'}</strong></div>
@@ -270,7 +270,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                               <div>Stuck: <strong>{realTimeStatus.isStuck ? 'SIM' : 'NÃO'}</strong></div>
                               <div>Retries: <strong>{realTimeStatus.retryCount || 0}</strong></div>
                               <div className="mt-1 text-blue-700">
-                                <strong>Sistema v2.0:</strong> Detecção inteligente ativa 🧠
+                                <strong>Sistema v2.1:</strong> Detecção SEM /chats (mais estável) 🧠
                               </div>
                             </div>
                           )}
@@ -297,8 +297,9 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           <AlertDescription className="text-green-800">
                             <div className="space-y-1">
                               <p><strong>🎉 WhatsApp Realmente Conectado!</strong></p>
-                              <p>Sistema v2.0 detectou conexão ativa via verificação de chats.</p>
+                              <p>Sistema v2.1 detectou conexão ativa via critérios inteligentes.</p>
                               <p>Telefone: {realTimeStatus.phoneNumber || 'Detectado'}</p>
+                              <p className="text-xs text-green-600">✅ Detecção SEM dependência do endpoint /chats</p>
                             </div>
                           </AlertDescription>
                         </Alert>
@@ -339,7 +340,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                               ✅ Escaneie com seu WhatsApp para conectar
                             </p>
                             <p className="text-xs text-blue-600 mt-1">
-                              🧠 Sistema v2.0 detectará a conexão automaticamente
+                              🧠 Sistema v2.1 detectará a conexão automaticamente
                             </p>
                           </div>
                         </div>
@@ -351,11 +352,16 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-sm font-medium text-green-800">
-                                ✅ WhatsApp Conectado {realTimeStatus.reallyConnected ? '(Verificado v2.0)' : ''}
+                                ✅ WhatsApp Conectado {realTimeStatus.reallyConnected ? '(Verificado v2.1)' : ''}
                               </p>
                               <p className="text-xs text-green-600">
                                 {displayPhone} - {realTimeStatus.timestamp}
                               </p>
+                              {displayStatus === 'authenticated' && (
+                                <p className="text-xs text-cyan-600 mt-1">
+                                  🔐 Status: Autenticado e funcional
+                                </p>
+                              )}
                             </div>
                             <Button 
                               size="sm" 
@@ -409,7 +415,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           disabled={isLoading(instance.instance_id)}
                         >
                           <Eye className="w-4 h-4 mr-1" />
-                          Debug v2.0
+                          Debug v2.1
                         </Button>
 
                         <Button 
