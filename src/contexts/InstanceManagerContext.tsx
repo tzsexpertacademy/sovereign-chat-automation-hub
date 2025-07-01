@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import whatsappService from '@/services/whatsappMultiClient';
 import { useToast } from '@/hooks/use-toast';
@@ -87,7 +86,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
   }, []);
 
   // Função para verificar status via API (backup para WebSocket)
-  const refreshInstanceStatus = useCallback(async (instanceId: string) => {
+  const refreshInstanceStatus = useCallback(async (instanceId: string): Promise<void> => {
     try {
       console.log(`🔄 Verificando status via API: ${instanceId}`);
       const status = await whatsappService.getClientStatus(instanceId);
@@ -109,7 +108,6 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
         }
       }));
       
-      return status;
     } catch (error) {
       console.error(`❌ Erro ao verificar status via API ${instanceId}:`, error);
       throw error;
@@ -177,10 +175,11 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     
     pollingIntervals.current[instanceId] = setInterval(async () => {
       try {
-        const status = await refreshInstanceStatus(instanceId);
+        await refreshInstanceStatus(instanceId);
         
         // Parar polling se definitivamente conectado
-        if (status.status === 'connected' && status.phoneNumber) {
+        const currentStatus = instanceStates[instanceId];
+        if (currentStatus?.status === 'connected' && currentStatus?.phoneNumber) {
           console.log(`✅ ${instanceId} conectado via polling - parando polling`);
           clearInterval(pollingIntervals.current[instanceId]);
           delete pollingIntervals.current[instanceId];
@@ -189,7 +188,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
         console.error(`❌ Erro no polling ${instanceId}:`, error);
       }
     }, 10000); // Verificar a cada 10 segundos
-  }, [refreshInstanceStatus]);
+  }, [refreshInstanceStatus, instanceStates]);
 
   const connectInstance = useCallback(async (instanceId: string) => {
     console.log(`🚀 Conectando instância: ${instanceId}`);
