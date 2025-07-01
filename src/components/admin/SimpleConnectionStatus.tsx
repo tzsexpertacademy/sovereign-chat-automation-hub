@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,27 +14,20 @@ const SimpleConnectionStatus = () => {
   const [serverInfo, setServerInfo] = useState<any>(null);
   const [sslAccepted, setSslAccepted] = useState<boolean>(false);
   const [debugInfo, setDebugInfo] = useState<string>('');
-  const [autoCheckInterval, setAutoCheckInterval] = useState<NodeJS.Timeout | null>(null);
   const config = getServerConfig();
   const { toast } = useToast();
 
   useEffect(() => {
     checkConnection();
-    
-    // Check immediately and then every 10 seconds for faster updates
-    const interval = setInterval(checkConnection, 10000);
-    setAutoCheckInterval(interval);
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    const interval = setInterval(checkConnection, 15000); // Check every 15 seconds
+    return () => clearInterval(interval);
   }, []);
 
   const checkConnection = async () => {
     try {
       setStatus('checking');
-      setDebugInfo('🔄 Verificando status pós-correção CORS...');
-      console.log('🔒 Testando conexão HTTPS pós-correção:', API_BASE_URL);
+      setDebugInfo('🔒 Iniciando teste HTTPS...');
+      console.log('🔒 Testando conexão HTTPS OBRIGATÓRIA:', API_BASE_URL);
       
       // Verificar se estamos em produção e exigir HTTPS
       if (!config.isDevelopment && !API_BASE_URL.startsWith('https://')) {
@@ -44,23 +38,19 @@ const SimpleConnectionStatus = () => {
         return;
       }
       
-      setDebugInfo('🔄 Testando health check pós-correção...');
+      setDebugInfo('🔄 Testando conectividade HTTPS...');
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // Reduced timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // Reduced timeout
       
-      // Add cache-busting parameter to avoid cached responses
-      const cacheBuster = `?t=${Date.now()}&check=post-fix`;
-      const response = await fetch(`${API_BASE_URL}/health${cacheBuster}`, {
+      const response = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
         mode: 'cors',
         credentials: 'omit',
         signal: controller.signal,
         headers: {
           'Accept': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-Check-Type': 'post-cors-fix'
+          'Cache-Control': 'no-cache',
+          'X-Requested-With': 'XMLHttpRequest'
         }
       });
 
@@ -68,20 +58,12 @@ const SimpleConnectionStatus = () => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Conexão HTTPS pós-correção funcionando!', data);
+        console.log('✅ Conexão HTTPS funcionando!', data);
         setStatus('connected');
         setServerInfo(data);
         setSslAccepted(true);
-        setDebugInfo(`✅ HTTPS funcionando! Servidor: ${data.server} | CORS: ${data.cors?.status || 'OK'}`);
+        setDebugInfo('✅ HTTPS funcionando perfeitamente!');
         setLastCheck(new Date());
-        
-        // Show success toast only on first successful connection after being offline
-        if (status !== 'connected') {
-          toast({
-            title: "✅ Servidor Online!",
-            description: "CORS corrigido com sucesso! Todas as APIs funcionando.",
-          });
-        }
         return;
       } else {
         console.log('⚠️ Resposta HTTPS não OK:', response.status);
@@ -89,22 +71,22 @@ const SimpleConnectionStatus = () => {
         throw new Error(`HTTPS ${response.status}: ${response.statusText}`);
       }
     } catch (error: any) {
-      console.log('❌ Erro na conexão HTTPS pós-correção:', error.message);
+      console.log('❌ Erro na conexão HTTPS:', error.message);
       
       if (error.name === 'AbortError') {
         console.log('⏰ Timeout na conexão HTTPS');
         setStatus('error');
-        setDebugInfo('⏰ Timeout - Verificando se servidor reiniciou...');
+        setDebugInfo('⏰ Timeout - Servidor pode estar offline');
       } else if (error.message === 'Failed to fetch' || 
                  error.message.includes('SSL') ||
                  error.message.includes('certificate') ||
                  error.message.includes('TLS') ||
                  error.message.includes('CERTIFICATE') ||
                  error.name === 'TypeError') {
-        console.log('🔒 Problema de SSL/TLS detectado - pode precisar aceitar certificado novamente');
+        console.log('🔒 Problema de SSL/TLS detectado');
         setStatus('ssl_error');
         setSslAccepted(false);
-        setDebugInfo('🔒 Certificado SSL precisa ser aceito novamente');
+        setDebugInfo('🔒 Certificado SSL não aceito pelo navegador');
       } else {
         console.log('❌ Erro geral de conexão HTTPS');
         setStatus('error');
@@ -126,7 +108,7 @@ const SimpleConnectionStatus = () => {
       case 'error':
         return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />❌ Offline</Badge>;
       case 'checking':
-        return <Badge variant="secondary"><RefreshCw className="w-3 h-3 mr-1 animate-spin" />🔄 Verificando</Badge>;
+        return <Badge variant="secondary"><RefreshCw className="w-3 h-3 mr-1 animate-spin" />🔄 Verificando HTTPS</Badge>;
     }
   };
 
@@ -151,20 +133,9 @@ const SimpleConnectionStatus = () => {
   };
 
   const forceRecheck = async () => {
-    console.log('🔄 Forçando nova verificação HTTPS pós-correção...');
-    setDebugInfo('🔄 Forçando nova verificação pós-correção...');
+    console.log('🔄 Forçando nova verificação HTTPS...');
+    setDebugInfo('🔄 Forçando nova verificação...');
     await checkConnection();
-  };
-
-  const stopAutoCheck = () => {
-    if (autoCheckInterval) {
-      clearInterval(autoCheckInterval);
-      setAutoCheckInterval(null);
-      toast({
-        title: "Auto-verificação pausada",
-        description: "Clique em 'Verificar HTTPS' para testar manualmente",
-      });
-    }
   };
 
   return (
@@ -173,7 +144,7 @@ const SimpleConnectionStatus = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Shield className="w-5 h-5 text-blue-500" />
-            <CardTitle>Status HTTPS - Pós Correção CORS</CardTitle>
+            <CardTitle>Status HTTPS - Diagnóstico Completo</CardTitle>
           </div>
           {getStatusBadge()}
         </div>
@@ -190,31 +161,6 @@ const SimpleConnectionStatus = () => {
           </div>
           <div className="mt-1 text-gray-700">{debugInfo}</div>
         </div>
-
-        {/* Post-Fix Success Message */}
-        {status === 'connected' && serverInfo && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              <div>
-                <p className="font-medium text-green-900">🎉 CORREÇÃO CORS BEM-SUCEDIDA!</p>
-                <p className="text-sm text-green-700">
-                  Servidor funcionando perfeitamente após as correções
-                </p>
-                {serverInfo && (
-                  <div className="mt-2 text-sm text-green-600 space-y-1">
-                    <p><strong>Status:</strong> {serverInfo.status}</p>
-                    <p><strong>Versão:</strong> {serverInfo.version}</p>
-                    <p><strong>CORS:</strong> ✅ {serverInfo.cors?.status || 'OK'}</p>
-                    <p><strong>APIs:</strong> ✅ Todas funcionando</p>
-                    <p><strong>SSL:</strong> ✅ Certificado funcionando</p>
-                    <p><strong>Uptime:</strong> {Math.floor(serverInfo.uptime / 60)} minutos</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* HTTPS Required Warning */}
         {status === 'https_required' && (
@@ -242,55 +188,95 @@ const SimpleConnectionStatus = () => {
             <Shield className="h-4 w-4" />
             <AlertDescription>
               <div className="space-y-4">
-                <p className="font-medium text-red-900">🔒 CERTIFICADO SSL PRECISA SER ACEITO NOVAMENTE</p>
+                <p className="font-medium text-red-900">🔒 PROBLEMA DE CERTIFICADO SSL DETECTADO</p>
                 <p className="text-sm text-red-800">
-                  Após a correção do servidor, você pode precisar aceitar o certificado SSL novamente.
+                  O certificado SSL não foi aceito pelo navegador. Isso é comum com certificados autoassinados.
                 </p>
                 
                 <div className="bg-red-50 p-4 rounded border text-sm space-y-3">
-                  <p className="font-medium text-red-900">🚨 SOLUÇÃO RÁPIDA:</p>
+                  <p className="font-medium text-red-900">🚨 SOLUÇÃO PASSO A PASSO:</p>
                   
                   <div className="space-y-2">
-                    <p className="font-medium text-red-800">1️⃣ Abra uma nova aba:</p>
-                    <Button size="sm" variant="outline" onClick={openServerDirectly}>
-                      <ExternalLink className="w-3 h-3 mr-1" />
-                      Abrir {API_BASE_URL}/health
-                    </Button>
+                    <p className="font-medium text-red-800">1️⃣ Copie a URL do servidor:</p>
+                    <div className="flex items-center space-x-2">
+                      <code className="flex-1 p-2 bg-red-100 rounded text-xs">{API_BASE_URL}</code>
+                      <Button size="sm" variant="outline" onClick={copyServerUrl}>
+                        <Copy className="w-3 h-3 mr-1" />
+                        Copiar
+                      </Button>
+                    </div>
                   </div>
                   
                   <div className="space-y-2">
-                    <p className="font-medium text-red-800">2️⃣ Aceite o certificado e volte aqui</p>
+                    <p className="font-medium text-red-800">2️⃣ Abra uma NOVA ABA e cole a URL</p>
+                    <p className="text-red-700 text-xs">- O navegador mostrará um aviso de segurança</p>
+                    <p className="text-red-700 text-xs">- Clique em "Avançado" ou "Advanced"</p>
+                    <p className="text-red-700 text-xs">- Clique em "Prosseguir para 146.59.227.248"</p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <p className="font-medium text-red-800">3️⃣ Após aceitar, volte aqui e clique:</p>
                     <Button onClick={forceRecheck} className="bg-red-600 hover:bg-red-700">
                       <RefreshCw className="w-4 h-4 mr-2" />
                       Testar Novamente
                     </Button>
                   </div>
                 </div>
+                
+                <div className="flex space-x-2">
+                  <Button onClick={acceptSSLCertificate} variant="outline" className="text-blue-600">
+                    <Shield className="w-4 h-4 mr-2" />
+                    Abrir URLs para Aceitar SSL
+                  </Button>
+                </div>
               </div>
             </AlertDescription>
           </Alert>
         )}
 
-        {/* Generic Error - Server might be restarting */}
-        {status === 'error' && (
-          <div className="p-4 bg-orange-50 border border-orange-200 rounded">
+        {/* Connected Status */}
+        {status === 'connected' && (
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-5 h-5 text-orange-500" />
+              <CheckCircle className="w-5 h-5 text-green-500" />
               <div>
-                <p className="text-orange-800 font-medium">⚠️ Servidor Temporariamente Indisponível</p>
-                <p className="text-orange-600 text-sm">
+                <p className="font-medium text-green-900">🎉 Sistema HTTPS Online!</p>
+                <p className="text-sm text-green-700">
+                  Conexão HTTPS segura estabelecida - Compatível com Lovable
+                </p>
+                {serverInfo && (
+                  <div className="mt-2 text-sm text-green-600 space-y-1">
+                    <p><strong>Status:</strong> {serverInfo.status}</p>
+                    <p><strong>Protocolo:</strong> {serverInfo.protocol || 'HTTPS'}</p>
+                    <p><strong>Versão:</strong> {serverInfo.version}</p>
+                    <p><strong>CORS:</strong> {serverInfo.cors?.enabled ? '✅ Habilitado' : '❌ Desabilitado'}</p>
+                    <p><strong>SSL:</strong> ✅ Certificado aceito globalmente</p>
+                    <p><strong>Uptime:</strong> {Math.floor(serverInfo.uptime / 60)} minutos</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Generic Error */}
+        {status === 'error' && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded">
+            <div className="flex items-center space-x-2">
+              <XCircle className="w-5 h-5 text-red-500" />
+              <div>
+                <p className="text-red-800 font-medium">❌ Servidor HTTPS Indisponível</p>
+                <p className="text-red-600 text-sm">
                   {debugInfo.includes('Timeout') ? 
-                    'O servidor pode estar reiniciando após as correções. Aguarde alguns segundos...' : 
-                    'Verificando conectividade após correções do servidor...'
+                    'Servidor não responde - Pode estar offline ou sobrecarregado' : 
+                    'Falha na conexão HTTPS. Verifique se o servidor está rodando.'
                   }
                 </p>
-                <div className="mt-2 text-xs text-orange-600 space-y-1">
-                  <p><strong>Isso é normal após correções no servidor:</strong></p>
-                  <ul className="list-disc list-inside mt-1 space-y-1">
-                    <li>O Nginx pode estar reiniciando</li>
-                    <li>O certificado SSL pode precisar ser aceito novamente</li>
-                    <li>As correções CORS podem levar alguns segundos para aplicar</li>
-                  </ul>
+                <div className="mt-2 text-xs text-red-600 space-y-1">
+                  <p><strong>Comandos para verificar no servidor:</strong></p>
+                  <code className="block p-1 bg-red-100 rounded">sudo systemctl status nginx</code>
+                  <code className="block p-1 bg-red-100 rounded">curl -k https://146.59.227.248/health</code>
+                  <code className="block p-1 bg-red-100 rounded">sudo ./scripts/production-start-whatsapp.sh</code>
                 </div>
               </div>
             </div>
@@ -300,8 +286,9 @@ const SimpleConnectionStatus = () => {
         {/* Server Info - Always Show */}
         <div className="text-sm space-y-2 bg-blue-50 p-3 rounded">
           <p><strong>URL HTTPS:</strong> <code className="bg-blue-200 px-2 py-1 rounded text-xs">{API_BASE_URL}</code></p>
-          <p><strong>Status:</strong> <code className="bg-blue-200 px-2 py-1 rounded text-xs">{status === 'connected' ? '✅ Online pós-correção' : '🔄 Verificando pós-correção'}</code></p>
-          <p><strong>Auto-verificação:</strong> <code className="bg-blue-200 px-2 py-1 rounded text-xs">{autoCheckInterval ? '✅ Ativa (10s)' : '❌ Pausada'}</code></p>
+          <p><strong>Protocolo:</strong> <code className="bg-blue-200 px-2 py-1 rounded text-xs">{config.isHttps ? 'HTTPS (Obrigatório)' : 'HTTP (Desenvolvimento)'}</code></p>
+          <p><strong>Lovable Compatível:</strong> <code className="bg-blue-200 px-2 py-1 rounded text-xs">{config.lovableCompatible ? '✅ Sim' : '❌ Não (HTTP)'}</code></p>
+          <p><strong>SSL Obrigatório:</strong> <code className="bg-blue-200 px-2 py-1 rounded text-xs">{config.sslRequired ? '✅ Sim' : '❌ Não'}</code></p>
           {lastCheck && (
             <p><strong>Última verificação:</strong> {lastCheck.toLocaleTimeString()}</p>
           )}
@@ -329,21 +316,15 @@ const SimpleConnectionStatus = () => {
             <Copy className="w-4 h-4 mr-2" />
             Copiar URL
           </Button>
-
-          {autoCheckInterval && (
-            <Button onClick={stopAutoCheck} variant="outline" size="sm" className="text-gray-600">
-              Pausar Auto-Check
-            </Button>
-          )}
         </div>
 
-        {/* Success Message - Post Fix */}
+        {/* Success Message */}
         {status === 'connected' && (
           <div className="p-3 bg-green-50 border border-green-200 rounded">
-            <p className="text-green-800 font-medium">🎉 Correção CORS Aplicada com Sucesso!</p>
+            <p className="text-green-800 font-medium">🎉 Perfeito!</p>
             <p className="text-green-600 text-sm">
-              O servidor está funcionando perfeitamente. Agora você pode usar o diagnóstico CORS 
-              para testar todas as APIs e conectar suas instâncias WhatsApp!
+              Sistema funcionando com HTTPS seguro. Totalmente compatível com Lovable e integração externa.
+              Agora você pode criar instâncias WhatsApp sem problemas!
             </p>
           </div>
         )}
