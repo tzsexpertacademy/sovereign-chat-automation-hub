@@ -12,6 +12,14 @@ export interface WhatsAppClient {
   qrTimestamp?: string;
 }
 
+export interface QueuedMessage {
+  id: string;
+  from: string;
+  to: string;
+  body: string;
+  timestamp: number;
+}
+
 export interface ServerHealth {
   status: string;
   timestamp: string;

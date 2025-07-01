@@ -85,23 +85,6 @@ const RealInstancesManager = () => {
     try {
       // Conectar ao WebSocket
       whatsappService.connectSocket();
-
-      // Ouvir atualizações de todos os clientes
-      whatsappService.onClientsUpdate((updatedClients) => {
-        console.log("📥 Recebidos clientes atualizados:", updatedClients);
-        setClients(updatedClients);
-        
-        // Update client statuses in Supabase
-        updatedClients.forEach(client => {
-          const linkedClient = getClientByInstanceId(client.clientId);
-          if (linkedClient) {
-            updateClientInstance(linkedClient.id, client.clientId, client.status);
-          }
-        });
-        
-        setConnectionError(null);
-      });
-
       setConnectionError(null);
     } catch (error) {
       console.error("❌ Erro ao inicializar serviço:", error);
