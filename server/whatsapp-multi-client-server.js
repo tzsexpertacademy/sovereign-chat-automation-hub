@@ -171,32 +171,8 @@ app.get('/api-docs.json', (req, res) => {
     res.json(swaggerDocument);
 });
 
-// Load client sessions from file
-const SESSION_FILE_PATH = './whatsapp-sessions.json';
-let clientSessions = {};
-
-const loadClientSessions = () => {
-    try {
-        if (fs.existsSync(SESSION_FILE_PATH)) {
-            const sessionData = fs.readFileSync(SESSION_FILE_PATH, 'utf-8');
-            clientSessions = JSON.parse(sessionData);
-            console.log('✅ Client sessions loaded from file.');
-        }
-    } catch (error) {
-        console.error('❌ Error loading client sessions:', error);
-    }
-};
-
-loadClientSessions();
-
-const saveClientSessions = () => {
-    try {
-        fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(clientSessions, null, 2));
-        console.log('✅ Client sessions saved to file.');
-    } catch (error) {
-        console.error('❌ Error saving client sessions:', error);
-    }
-};
+// Authentication is now handled by LocalAuth - no need for session files
+console.log('🔧 Usando LocalAuth - sistema de autenticação moderno iniciado');
 
 const clients = {};
 
@@ -255,7 +231,9 @@ const initClient = (clientId) => {
     console.log(`🚀 [${new Date().toISOString()}] INICIALIZANDO CLIENTE: ${clientId}`);
 
     const client = new Client({
-        session: clientSessions[clientId],
+        authStrategy: new (require('whatsapp-web.js').LocalAuth)({
+            clientId: clientId
+        }),
         puppeteer: {
             headless: true,
             args: [
@@ -325,20 +303,20 @@ const initClient = (clientId) => {
         }
     });
 
-    client.on('authenticated', async (session) => {
+    client.on('authenticated', async () => {
         const timestamp = new Date().toISOString();
-        console.log(`✅ [${timestamp}] Cliente ${clientId} AUTENTICADO`);
-        clientSessions[clientId] = session;
-        saveClientSessions();
+        console.log(`✅ [${timestamp}] Cliente ${clientId} AUTENTICADO VIA LOCAL AUTH`);
         
         // LIMPAR QR CODE APÓS AUTENTICAÇÃO
         client.qrCode = null;
         client.qrTimestamp = null;
         
+        console.log(`🔄 [${timestamp}] Forçando status CONNECTED após autenticação...`);
+        
         // FORÇAR STATUS CONNECTED IMEDIATAMENTE APÓS AUTHENTICATED
         const forceConnectedStatus = async () => {
             // Aguardar um momento para o WhatsApp Web estabilizar
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             const isConnected = client.info?.wid;
             let phoneNumber = null;
@@ -367,21 +345,20 @@ const initClient = (clientId) => {
             
             console.log(`📡 [${timestamp}] Status CONNECTED enviado via WebSocket para ${clientId}`);
             
-            // ATUALIZAR BANCO DE DADOS IMEDIATAMENTE - IMPLEMENTADO
-            if (phoneNumber) {
-                try {
-                    console.log(`💾 [${timestamp}] Atualizando banco: ${clientId} -> connected + ${phoneNumber}`);
-                    await updateInstanceStatus(clientId, 'connected', phoneNumber);
-                } catch (error) {
-                    console.error(`❌ Erro ao atualizar banco para ${clientId}:`, error);
-                }
+            // ATUALIZAR BANCO DE DADOS
+            try {
+                console.log(`💾 [${timestamp}] Atualizando banco: ${clientId} -> connected + ${phoneNumber}`);
+                await updateInstanceStatus(clientId, 'connected', phoneNumber);
+            } catch (error) {
+                console.error(`❌ Erro ao atualizar banco para ${clientId}:`, error);
             }
         };
         
-        // EXECUTAR IMEDIATAMENTE E VERIFICAR NOVAMENTE
+        // EXECUTAR MÚLTIPLAS VEZES PARA GARANTIR
         await forceConnectedStatus();
-        setTimeout(() => forceConnectedStatus(), 3000); // Verificar novamente em 3s
-        setTimeout(() => forceConnectedStatus(), 10000); // Verificar novamente em 10s
+        setTimeout(() => forceConnectedStatus(), 3000);
+        setTimeout(() => forceConnectedStatus(), 10000);
+        setTimeout(() => forceConnectedStatus(), 20000);
     });
 
     client.on('auth_failure', async function (session) {
@@ -638,8 +615,6 @@ app.post('/clients/:clientId/disconnect', async (req, res) => {
         try {
             await clients[clientId].logout();
             delete clients[clientId];
-            delete clientSessions[clientId];
-            saveClientSessions();
             
             io.emit(`client_status_${clientId}`, { 
                 clientId: clientId, 
