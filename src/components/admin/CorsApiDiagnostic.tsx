@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,21 +67,21 @@ const CorsApiDiagnostic = () => {
       if (response.ok) {
         return {
           ...endpoint,
-          status: 'success',
+          status: 'success' as const,
           httpStatus,
           details: `✅ CORS CORRIGIDO! Status ${httpStatus} - API funcionando!`
         };
       } else if (httpStatus === 404) {
         return {
           ...endpoint,
-          status: 'not_found',
+          status: 'not_found' as const,
           httpStatus,
           details: `⚠️ Endpoint não encontrado - Status ${httpStatus}`
         };
       } else {
         return {
           ...endpoint,
-          status: 'server_error',
+          status: 'server_error' as const,
           httpStatus,
           details: `❌ Erro servidor - Status ${httpStatus}`
         };
@@ -96,25 +95,25 @@ const CorsApiDiagnostic = () => {
           error.message.includes('preflight')) {
         return {
           ...endpoint,
-          status: 'cors_error',
+          status: 'cors_error' as const,
           details: `❌ CORS Error ainda presente: ${error.message}`
         };
       } else if (error.message === 'Failed to fetch') {
         return {
           ...endpoint,
-          status: 'cors_error',
+          status: 'cors_error' as const,
           details: `❌ CORS Error: Servidor não responde ou SSL não aceito`
         };
       } else if (error.name === 'AbortError' || error.name === 'TimeoutError') {
         return {
           ...endpoint,
-          status: 'server_error',
+          status: 'server_error' as const,
           details: `⏰ Timeout: Servidor pode estar reiniciando`
         };
       } else {
         return {
           ...endpoint,
-          status: 'server_error',
+          status: 'server_error' as const,
           details: `❌ Erro: ${error.message}`
         };
       }
@@ -133,7 +132,7 @@ const CorsApiDiagnostic = () => {
       updatedTests.push(result);
       
       // Atualizar estado incremental para mostrar progresso
-      setTests([...updatedTests, ...tests.slice(updatedTests.length).map(t => ({ ...t, status: 'pending' }))]);
+      setTests([...updatedTests, ...tests.slice(updatedTests.length).map(t => ({ ...t, status: 'pending' as const }))]);
       
       // Pequena pausa para não sobrecarregar
       await new Promise(resolve => setTimeout(resolve, 500));
