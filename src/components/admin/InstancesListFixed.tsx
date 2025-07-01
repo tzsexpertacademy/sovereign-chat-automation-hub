@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
 import { useInstanceManager } from "@/contexts/InstanceManagerContext";
 import WhatsAppStatusFixer from "./WhatsAppStatusFixer";
+import WhatsAppMasterController from "./WhatsAppMasterController";
 
 interface InstancesListFixedProps {
   instances: WhatsAppInstanceData[];
@@ -207,12 +209,23 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     );
   }
 
+  // Obter cliente único para o Master Controller
+  const clientId = instances[0]?.client_id || '';
+  const instanceIds = instances.map(i => i.instance_id);
+
   return (
     <div className="space-y-6">
+      {/* Master Controller */}
+      <WhatsAppMasterController 
+        clientId={clientId}
+        instanceIds={instanceIds}
+        onStatusUpdate={onInstanceUpdated}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>Instâncias WhatsApp ({instances.length}) - STATUS INTELIGENTE ✅</span>
+            <span>Instâncias WhatsApp ({instances.length}) - SISTEMA INTELIGENTE v2.0 🚀</span>
             <div className="flex items-center space-x-2 text-sm">
               <div className={`w-2 h-2 rounded-full ${websocketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
               <span className="text-gray-600">{websocketConnected ? 'WebSocket Conectado' : 'WebSocket Desconectado'}</span>
@@ -249,13 +262,16 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           {/* Status Debug Info */}
                           {selectedInstanceForQR === instance.instance_id && (
                             <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
-                              <div className="font-medium text-blue-800 mb-1">🔍 Status Debug:</div>
+                              <div className="font-medium text-blue-800 mb-1">🔍 Status Debug v2.0:</div>
                               <div>API Status: <strong>{realTimeStatus.status}</strong></div>
-                              <div>Really Connected: <strong>{realTimeStatus.reallyConnected ? 'SIM' : 'NÃO'}</strong></div>
+                              <div>Really Connected: <strong>{realTimeStatus.reallyConnected ? 'SIM ✅' : 'NÃO ❌'}</strong></div>
                               <div>Phone: <strong>{realTimeStatus.phoneNumber || 'N/A'}</strong></div>
                               <div>QR Available: <strong>{realTimeStatus.hasQrCode ? 'SIM' : 'NÃO'}</strong></div>
                               <div>Stuck: <strong>{realTimeStatus.isStuck ? 'SIM' : 'NÃO'}</strong></div>
                               <div>Retries: <strong>{realTimeStatus.retryCount || 0}</strong></div>
+                              <div className="mt-1 text-blue-700">
+                                <strong>Sistema v2.0:</strong> Detecção inteligente ativa 🧠
+                              </div>
                             </div>
                           )}
                         </div>
@@ -281,7 +297,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           <AlertDescription className="text-green-800">
                             <div className="space-y-1">
                               <p><strong>🎉 WhatsApp Realmente Conectado!</strong></p>
-                              <p>Sistema detectou conexão ativa via verificação de chats.</p>
+                              <p>Sistema v2.0 detectou conexão ativa via verificação de chats.</p>
                               <p>Telefone: {realTimeStatus.phoneNumber || 'Detectado'}</p>
                             </div>
                           </AlertDescription>
@@ -322,6 +338,9 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                             <p className="text-xs text-green-600 mt-2 font-medium">
                               ✅ Escaneie com seu WhatsApp para conectar
                             </p>
+                            <p className="text-xs text-blue-600 mt-1">
+                              🧠 Sistema v2.0 detectará a conexão automaticamente
+                            </p>
                           </div>
                         </div>
                       )}
@@ -332,7 +351,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-sm font-medium text-green-800">
-                                ✅ WhatsApp Conectado {realTimeStatus.reallyConnected ? '(Verificado)' : ''}
+                                ✅ WhatsApp Conectado {realTimeStatus.reallyConnected ? '(Verificado v2.0)' : ''}
                               </p>
                               <p className="text-xs text-green-600">
                                 {displayPhone} - {realTimeStatus.timestamp}
@@ -390,7 +409,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           disabled={isLoading(instance.instance_id)}
                         >
                           <Eye className="w-4 h-4 mr-1" />
-                          Debug
+                          Debug v2.0
                         </Button>
 
                         <Button 
