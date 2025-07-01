@@ -175,15 +175,6 @@ const SimpleInstanceManager = () => {
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'connected': return <CheckCircle className="w-4 h-4" />;
-      case 'qr_ready': return <QrCode className="w-4 h-4" />;
-      case 'connecting': return <RefreshCw className="w-4 h-4 animate-spin" />;
-      default: return <XCircle className="w-4 h-4" />;
-    }
-  };
-
   const availableClients = clients.filter(client => 
     !instances.some(instance => instance.clientId === client.id)
   );
