@@ -91,88 +91,51 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     };
   }, []);
 
-  // NOVA FUNCIONALIDADE v2.2: Detectar cliente não encontrado e recuperar
-  const handleClientNotFound = useCallback(async (instanceId: string) => {
-    console.log(`🔍 [MANAGER v2.2] Cliente não encontrado no servidor: ${instanceId}`);
-    
-    // Parar polling para este cliente
-    if (pollingIntervals.current[instanceId]) {
-      clearInterval(pollingIntervals.current[instanceId]);
-      delete pollingIntervals.current[instanceId];
-    }
-    
-    // Atualizar estado para disconnected
-    setInstanceStates(prev => ({
-      ...prev,
-      [instanceId]: {
-        status: 'disconnected',
-        phoneNumber: undefined,
-        hasQrCode: false,
-        qrCode: undefined,
-        timestamp: new Date().toISOString(),
-        retryCount: 0,
-        lastStatusChange: new Date(),
-        isStuck: false,
-        reallyConnected: false
-      }
-    }));
-    
-    // Remover das conexões ativas
-    activeConnections.current.delete(instanceId);
-    delete retryCounters.current[instanceId];
-    
-    console.log(`✅ [MANAGER v2.2] Cliente ${instanceId} marcado como desconectado - pronto para recriar`);
-    
-    toast({
-      title: "Cliente Desconectado",
-      description: `Sistema v2.2: Cliente ${instanceId} não existe mais no servidor. Reconecte para criar nova instância.`,
-      variant: "destructive",
-    });
-  }, [toast]);
-
-  // NOVA FUNCIONALIDADE v2.2: Verificar se realmente está conectado SEM usar /chats
+  // NOVA FUNCIONALIDADE v2.1: Verificar se realmente está conectado SEM usar /chats
   const checkRealConnection = useCallback(async (instanceId: string, currentStatus: InstanceStatus): Promise<boolean> => {
     try {
-      console.log(`🧠 [MANAGER v2.2] Verificando conexão real (SEM /chats): ${instanceId}`);
+      console.log(`🧠 [MANAGER v2.1] Verificando conexão real (SEM /chats): ${instanceId}`);
       
       // 1. Se tem phoneNumber válido, está conectado
       if (currentStatus.phoneNumber && 
           currentStatus.phoneNumber !== 'null' && 
           currentStatus.phoneNumber.length > 5) {
-        console.log(`✅ [MANAGER v2.2] ${instanceId} tem telefone válido: ${currentStatus.phoneNumber} - CONECTADO!`);
+        console.log(`✅ [MANAGER v2.1] ${instanceId} tem telefone válido: ${currentStatus.phoneNumber} - CONECTADO!`);
         return true;
       }
 
       // 2. Se status é connected, deve estar conectado
       if (currentStatus.status === 'connected') {
-        console.log(`✅ [MANAGER v2.2] ${instanceId} status connected - CONECTADO!`);
+        console.log(`✅ [MANAGER v2.1] ${instanceId} status connected - CONECTADO!`);
         return true;
       }
 
-      // 3. ESTRATÉGIA v2.2: Verificar se QR foi escaneado
+      // 3. NOVA ESTRATÉGIA v2.1: Verificar se QR foi escaneado
       if (currentStatus.status === 'qr_ready' && !currentStatus.hasQrCode) {
-        console.log(`🤔 [MANAGER v2.2] ${instanceId} qr_ready mas sem QR - pode estar conectado!`);
+        console.log(`🤔 [MANAGER v2.1] ${instanceId} qr_ready mas sem QR - pode estar conectado!`);
         
+        // Se não tem QR disponível mas status ainda é qr_ready, 
+        // provavelmente foi escaneado e está conectando
         const timeSinceLastChange = currentStatus.lastStatusChange ? 
           Date.now() - currentStatus.lastStatusChange.getTime() : 0;
           
-        if (timeSinceLastChange > 10000) {
-          console.log(`🎯 [MANAGER v2.2] ${instanceId} suspeita de conexão - aguardando mais...`);
+        if (timeSinceLastChange > 10000) { // 10 segundos sem mudanças
+          console.log(`🎯 [MANAGER v2.1] ${instanceId} suspeita de conexão - aguardando mais...`);
           return false;
         }
       }
 
-      // 4. Status "authenticated"
+      // 4. ESTRATÉGIA ADICIONAL v2.1: Status "authenticated"
       if (currentStatus.status === 'authenticated') {
-        console.log(`🔐 [MANAGER v2.2] ${instanceId} authenticated - conectado!`);
-        return true;
+        console.log(`🔐 [MANAGER v2.1] ${instanceId} authenticated - quase conectado!`);
+        return true; // Authenticated = conectado
       }
 
-      console.log(`❌ [MANAGER v2.2] ${instanceId} não conseguiu confirmar conexão pelos critérios alternativos`);
+      console.log(`❌ [MANAGER v2.1] ${instanceId} não conseguiu confirmar conexão pelos critérios alternativos`);
       return false;
       
     } catch (error) {
-      console.error(`❌ [MANAGER v2.2] Erro ao verificar conexão real ${instanceId}:`, error);
+      console.error(`❌ [MANAGER v2.1] Erro ao verificar conexão real ${instanceId}:`, error);
       return false;
     }
   }, []);
@@ -200,10 +163,10 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     return false;
   }, [instanceStates]);
 
-  // Função para verificar status via API (MELHORADA v2.2)
+  // Função para verificar status via API (MELHORADA v2.1)
   const refreshInstanceStatus = useCallback(async (instanceId: string): Promise<void> => {
     try {
-      console.log(`🔄 [MANAGER v2.2] Verificando status: ${instanceId}`);
+      console.log(`🔄 [MANAGER v2.1] Verificando status: ${instanceId}`);
       const status = await whatsappService.getClientStatus(instanceId);
       
       const previous = instanceStates[instanceId];
@@ -221,20 +184,20 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
         reallyConnected: false
       };
       
-      // v2.2: Verificar se realmente está conectado
+      // NOVA FUNCIONALIDADE v2.1: Verificar se realmente está conectado SEM /chats
       newStatus.reallyConnected = await checkRealConnection(instanceId, newStatus);
       
-      // Detectar se está preso
+      // Detectar se está preso (mas não se realmente conectado)
       newStatus.isStuck = detectStuckInstance(instanceId, newStatus);
       
       // Log mudanças importantes
       if (statusChanged) {
-        console.log(`📱 [MANAGER v2.2] Status mudou ${instanceId}: ${previous?.status || 'N/A'} → ${status.status}`);
+        console.log(`📱 [MANAGER v2.1] Status mudou ${instanceId}: ${previous?.status || 'N/A'} → ${status.status}`);
       }
 
-      // v2.2: Se detectou conexão real, forçar status connected
+      // NOVO v2.1: Se detectou conexão real, forçar status connected
       if (newStatus.reallyConnected && status.status !== 'connected') {
-        console.log(`🎉 [MANAGER v2.2] ${instanceId} REALMENTE CONECTADO! Corrigindo status: ${status.status} → connected`);
+        console.log(`🎉 [MANAGER v2.1] ${instanceId} REALMENTE CONECTADO! Corrigindo status: ${status.status} → connected`);
         newStatus.status = 'connected';
       }
       
@@ -243,9 +206,9 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
         [instanceId]: newStatus
       }));
       
-      // Se conectou com sucesso
+      // Se conectou com sucesso (MELHORADO v2.1)
       if (newStatus.reallyConnected || (status.status === 'connected' && status.phoneNumber)) {
-        console.log(`🎉 [MANAGER v2.2] ${instanceId} CONECTADO! Telefone: ${status.phoneNumber || 'detectado pelos critérios'}`);
+        console.log(`🎉 [MANAGER v2.1] ${instanceId} CONECTADO! Telefone: ${status.phoneNumber || 'detectado pelos critérios'}`);
         
         // Parar polling
         if (pollingIntervals.current[instanceId]) {
@@ -255,33 +218,25 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
         
         toast({
           title: "WhatsApp Conectado! 🎉",
-          description: `Sistema v2.2 detectou conexão: ${status.phoneNumber || 'Telefone detectado'}`,
+          description: `Sistema v2.1 detectou conexão: ${status.phoneNumber || 'Telefone detectado'}`,
         });
         
-        return;
+        return; // Não tentar auto-correção se conectado
       }
       
-      // Auto-correção inteligente
+      // NOVO v2.1: Auto-correção mais inteligente
       if (newStatus.isStuck && newStatus.retryCount < 2 && !newStatus.reallyConnected) {
-        console.log(`🔄 [MANAGER v2.2] Auto-correção inteligente: reconectando ${instanceId}`);
+        console.log(`🔄 [MANAGER v2.1] Auto-correção inteligente: reconectando ${instanceId}`);
         setTimeout(() => {
           forceReconnectInstance(instanceId);
         }, 3000);
       }
       
-    } catch (error: any) {
-      console.error(`❌ [MANAGER v2.2] Erro ao verificar status ${instanceId}:`, error);
-      
-      // v2.2: NOVA FUNCIONALIDADE - Detectar cliente não encontrado (erro 404)
-      if (error.message.includes('404') || error.message.includes('não encontrado')) {
-        console.log(`🔍 [MANAGER v2.2] Cliente não encontrado no servidor: ${instanceId}`);
-        await handleClientNotFound(instanceId);
-        return;
-      }
-      
+    } catch (error) {
+      console.error(`❌ [MANAGER v2.1] Erro ao verificar status ${instanceId}:`, error);
       throw error;
     }
-  }, [instanceStates, detectStuckInstance, toast, checkRealConnection, handleClientNotFound]);
+  }, [instanceStates, detectStuckInstance, toast, checkRealConnection]);
 
   // Forçar reconexão limpa (MELHORADA v2.1)
   const forceReconnectInstance = useCallback(async (instanceId: string): Promise<void> => {
@@ -436,7 +391,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
   }, [refreshInstanceStatus, instanceStates]);
 
   const connectInstance = useCallback(async (instanceId: string) => {
-    console.log(`🚀 [MANAGER v2.2] Conectando instância: ${instanceId}`);
+    console.log(`🚀 [MANAGER v2.1] Conectando instância: ${instanceId}`);
     
     try {
       setLoadingStates(prev => ({ ...prev, [instanceId]: true }));
@@ -464,27 +419,20 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
       
       toast({
         title: "Conectando... 🚀",
-        description: `Sistema v2.2 iniciando conexão: ${instanceId}`,
+        description: `Sistema v2.1 iniciando conexão: ${instanceId}`,
       });
       
     } catch (error: any) {
-      console.error(`❌ [MANAGER v2.2] Erro ao conectar ${instanceId}:`, error);
-      
-      // v2.2: Se cliente não existe, permitir criação nova
-      if (error.message.includes('404') || error.message.includes('não encontrado')) {
-        console.log(`🔍 [MANAGER v2.2] Cliente não existe - criando nova instância`);
-        await handleClientNotFound(instanceId);
-      }
-      
+      console.error(`❌ [MANAGER v2.1] Erro ao conectar ${instanceId}:`, error);
       toast({
         title: "Erro na Conexão",
-        description: `v2.2: ${error.message}`,
+        description: `v2.1: ${error.message}`,
         variant: "destructive",
       });
     } finally {
       setLoadingStates(prev => ({ ...prev, [instanceId]: false }));
     }
-  }, [setupWebSocketListener, refreshInstanceStatus, startPolling, toast, handleClientNotFound]);
+  }, [setupWebSocketListener, refreshInstanceStatus, startPolling, toast]);
 
   const disconnectInstance = useCallback(async (instanceId: string) => {
     console.log(`🔌 [MANAGER v2.1] Desconectando instância: ${instanceId}`);
@@ -581,21 +529,21 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     }
   }, []);
 
-  // v2.2: Auto-verificação mais inteligente
+  // NOVO v2.1: Auto-verificação mais inteligente a cada 15 segundos
   useEffect(() => {
     const interval = setInterval(() => {
       activeConnections.current.forEach(instanceId => {
         const currentStatus = instanceStates[instanceId];
         
-        // Só verificar se NÃO estiver realmente conectado
+        // Só verificar se NÃO estiver realmente conectado e não estiver em processo de conexão
         if (!currentStatus?.reallyConnected && 
             currentStatus?.status !== 'connected' && 
             currentStatus?.status !== 'connecting') {
-          console.log(`🔄 [MANAGER v2.2] Auto-verificação inteligente de ${instanceId}`);
+          console.log(`🔄 [MANAGER v2.1] Auto-verificação inteligente de ${instanceId}`);
           refreshInstanceStatus(instanceId).catch(console.error);
         }
       });
-    }, 15000);
+    }, 15000); // Verificar a cada 15 segundos
 
     return () => clearInterval(interval);
   }, [instanceStates, refreshInstanceStatus]);
