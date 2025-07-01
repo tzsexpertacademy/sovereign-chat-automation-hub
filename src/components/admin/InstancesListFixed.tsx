@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +15,8 @@ import {
   RefreshCw,
   Trash2,
   AlertTriangle,
-  Zap
+  Zap,
+  CheckCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -56,7 +56,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
         const currentStatus = getInstanceStatus(instance.instance_id);
         
         // Só verificar se NÃO estiver definitivamente conectado
-        if (currentStatus.status !== 'connected' || !currentStatus.phoneNumber) {
+        if (!currentStatus.reallyConnected && currentStatus.status !== 'connected') {
           refreshInstanceStatus(instance.instance_id).catch(console.error);
         }
       });
@@ -70,7 +70,10 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     return client?.name || 'Cliente Desconhecido';
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string, reallyConnected?: boolean) => {
+    // Se realmente conectado, sempre verde
+    if (reallyConnected) return 'bg-green-500';
+    
     switch (status) {
       case 'connected': return 'bg-green-500';
       case 'qr_ready': return 'bg-blue-500';
@@ -81,7 +84,10 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: string, reallyConnected?: boolean) => {
+    // Se realmente conectado, sempre "Conectado"
+    if (reallyConnected) return 'Conectado';
+    
     switch (status) {
       case 'connected': return 'Conectado';
       case 'qr_ready': return 'QR Pronto';
@@ -92,7 +98,10 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string, reallyConnected?: boolean) => {
+    // Se realmente conectado, sempre ícone de conectado
+    if (reallyConnected) return <Wifi className="w-4 h-4" />;
+    
     switch (status) {
       case 'connected': return <Wifi className="w-4 h-4" />;
       case 'qr_ready': return <QrCode className="w-4 h-4" />;
@@ -203,7 +212,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>Instâncias WhatsApp ({instances.length}) - STATUS CORRIGIDO ✅</span>
+            <span>Instâncias WhatsApp ({instances.length}) - STATUS INTELIGENTE ✅</span>
             <div className="flex items-center space-x-2 text-sm">
               <div className={`w-2 h-2 rounded-full ${websocketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
               <span className="text-gray-600">{websocketConnected ? 'WebSocket Conectado' : 'WebSocket Desconectado'}</span>
@@ -214,11 +223,11 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
           <div className="grid lg:grid-cols-1 gap-6">
             {instances.map((instance) => {
               const realTimeStatus = getInstanceStatus(instance.instance_id);
-              const displayStatus = realTimeStatus.status || instance.status;
+              const displayStatus = realTimeStatus.reallyConnected ? 'connected' : realTimeStatus.status || instance.status;
               const displayPhone = realTimeStatus.phoneNumber || instance.phone_number;
-              const isConnected = displayStatus === 'connected' && displayPhone;
-              const isStuck = realTimeStatus.isStuck;
-              const hasIssues = isStuck || (displayStatus === 'qr_ready' && !realTimeStatus.hasQrCode);
+              const isConnected = realTimeStatus.reallyConnected || (displayStatus === 'connected' && displayPhone);
+              const isStuck = realTimeStatus.isStuck && !realTimeStatus.reallyConnected;
+              const hasIssues = isStuck || (displayStatus === 'qr_ready' && !realTimeStatus.hasQrCode && !realTimeStatus.reallyConnected);
               const showFixer = instancesWithFixer.has(instance.instance_id);
               
               return (
@@ -236,14 +245,28 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           <p className={`text-sm font-medium ${isConnected ? 'text-green-600' : 'text-gray-500'}`}>
                             {displayPhone || 'Não conectado'}
                           </p>
+                          
+                          {/* Status Debug Info */}
+                          {selectedInstanceForQR === instance.instance_id && (
+                            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                              <div className="font-medium text-blue-800 mb-1">🔍 Status Debug:</div>
+                              <div>API Status: <strong>{realTimeStatus.status}</strong></div>
+                              <div>Really Connected: <strong>{realTimeStatus.reallyConnected ? 'SIM' : 'NÃO'}</strong></div>
+                              <div>Phone: <strong>{realTimeStatus.phoneNumber || 'N/A'}</strong></div>
+                              <div>QR Available: <strong>{realTimeStatus.hasQrCode ? 'SIM' : 'NÃO'}</strong></div>
+                              <div>Stuck: <strong>{realTimeStatus.isStuck ? 'SIM' : 'NÃO'}</strong></div>
+                              <div>Retries: <strong>{realTimeStatus.retryCount || 0}</strong></div>
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center space-x-2">
-                          <div className={`w-3 h-3 rounded-full ${getStatusColor(displayStatus)}`} />
+                          <div className={`w-3 h-3 rounded-full ${getStatusColor(displayStatus, realTimeStatus.reallyConnected)}`} />
                           <Badge variant={isConnected ? 'default' : hasIssues ? 'destructive' : 'secondary'}>
                             <div className="flex items-center space-x-1">
-                              {getStatusIcon(displayStatus)}
-                              <span>{getStatusText(displayStatus)}</span>
+                              {getStatusIcon(displayStatus, realTimeStatus.reallyConnected)}
+                              <span>{getStatusText(displayStatus, realTimeStatus.reallyConnected)}</span>
                               {isStuck && <AlertTriangle className="w-3 h-3 ml-1" />}
+                              {realTimeStatus.reallyConnected && <CheckCircle className="w-3 h-3 ml-1 text-green-600" />}
                             </div>
                           </Badge>
                         </div>
@@ -251,12 +274,26 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                     </CardHeader>
                     <CardContent className="space-y-4">
                       
+                      {/* Real Connection Alert */}
+                      {realTimeStatus.reallyConnected && (
+                        <Alert className="border-green-200 bg-green-50">
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                          <AlertDescription className="text-green-800">
+                            <div className="space-y-1">
+                              <p><strong>🎉 WhatsApp Realmente Conectado!</strong></p>
+                              <p>Sistema detectou conexão ativa via verificação de chats.</p>
+                              <p>Telefone: {realTimeStatus.phoneNumber || 'Detectado'}</p>
+                            </div>
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
                       {/* Issues Alert */}
-                      {hasIssues && (
+                      {hasIssues && !realTimeStatus.reallyConnected && (
                         <Alert variant="destructive">
                           <AlertTriangle className="h-4 w-4" />
                           <AlertDescription>
-                            <div className="space-y-1">
+                            <div className="space-y-2">
                               <p><strong>⚠️ Problema Detectado:</strong></p>
                               {isStuck && <p>• Instância presa há muito tempo (tentativas: {realTimeStatus.retryCount || 0})</p>}
                               {displayStatus === 'qr_ready' && !realTimeStatus.hasQrCode && <p>• QR Code não disponível</p>}
@@ -264,20 +301,6 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                             </div>
                           </AlertDescription>
                         </Alert>
-                      )}
-
-                      {/* Debug Info */}
-                      {selectedInstanceForQR === instance.instance_id && (
-                        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>Status: <strong>{realTimeStatus.status}</strong></div>
-                            <div>Phone: <strong>{realTimeStatus.phoneNumber || 'N/A'}</strong></div>
-                            <div>QR: <strong>{realTimeStatus.hasQrCode ? 'SIM' : 'NÃO'}</strong></div>
-                            <div>Preso: <strong>{realTimeStatus.isStuck ? 'SIM' : 'NÃO'}</strong></div>
-                            <div>Tentativas: <strong>{realTimeStatus.retryCount || 0}</strong></div>
-                            <div>Timestamp: <strong>{realTimeStatus.timestamp || 'N/A'}</strong></div>
-                          </div>
-                        </div>
                       )}
 
                       {/* QR Code Display */}
@@ -309,7 +332,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-sm font-medium text-green-800">
-                                ✅ WhatsApp Conectado
+                                ✅ WhatsApp Conectado {realTimeStatus.reallyConnected ? '(Verificado)' : ''}
                               </p>
                               <p className="text-xs text-green-600">
                                 {displayPhone} - {realTimeStatus.timestamp}
@@ -380,16 +403,18 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           <RefreshCw className="w-4 h-4" />
                         </Button>
 
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleForceReconnect(instance.instance_id)}
-                          disabled={isLoading(instance.instance_id)}
-                          className="bg-orange-50 hover:bg-orange-100 text-orange-700"
-                        >
-                          <Zap className="w-4 h-4 mr-1" />
-                          Forçar Reconexão
-                        </Button>
+                        {!realTimeStatus.reallyConnected && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleForceReconnect(instance.instance_id)}
+                            disabled={isLoading(instance.instance_id)}
+                            className="bg-orange-50 hover:bg-orange-100 text-orange-700"
+                          >
+                            <Zap className="w-4 h-4 mr-1" />
+                            Forçar Reconexão
+                          </Button>
+                        )}
 
                         <Button 
                           size="sm" 
