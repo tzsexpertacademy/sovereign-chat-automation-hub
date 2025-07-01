@@ -68,47 +68,8 @@ const updateInstanceStatus = async (instanceId, status, phoneNumber = null) => {
     }
 };
 
-// CORS ÚNICO E DEFINITIVO - SEM DUPLICAÇÃO
-console.log('🔧 Configurando CORS ÚNICO para resolver problema Lovable...');
-
-// Middleware CORS ÚNICO - configuração definitiva
-app.use(cors({
-    origin: function(origin, callback) {
-        // Lista específica de origens permitidas
-        const allowedOrigins = [
-            'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
-            'https://146.59.227.248',
-            'http://localhost:3000',
-            'http://localhost:8080'
-        ];
-        
-        // Se não há origem (requisições diretas) ou está na lista, permitir
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            // Para outras origens, ainda permitir (modo desenvolvimento)
-            callback(null, true);
-        }
-    },
-    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-        'Origin', 
-        'X-Requested-With', 
-        'Content-Type', 
-        'Accept', 
-        'Authorization', 
-        'Cache-Control', 
-        'Pragma',
-        'Access-Control-Request-Method',
-        'Access-Control-Request-Headers',
-        'X-Client-Info',
-        'User-Agent',
-        'Referer'
-    ],
-    credentials: false,
-    optionsSuccessStatus: 200,
-    preflightContinue: false
-}));
+// CORS REMOVIDO - NGINX VAI CONFIGURAR
+console.log('🔧 CORS removido do Node.js - Nginx vai configurar...');
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
