@@ -1,6 +1,5 @@
-
 import io, { Socket } from 'socket.io-client';
-import { SERVER_URL, API_BASE_URL, SOCKET_URL, getServerConfig } from '@/config/environment';
+import { SERVER_URL, API_BASE_URL, SOCKET_URL, HTTPS_SERVER_URL, getServerConfig } from '@/config/environment';
 
 export interface WhatsAppClient {
   clientId: string;
@@ -25,6 +24,24 @@ export interface ServerHealth {
   cors?: any;
 }
 
+export interface MessageData {
+  id: string;
+  from: string;
+  to: string;
+  body: string;
+  timestamp: number;
+  type: string;
+  isFromMe?: boolean;
+}
+
+export interface QueuedMessage {
+  id: string;
+  from: string;
+  to: string;
+  body: string;
+  timestamp: number;
+}
+
 class WhatsAppMultiClientService {
   private socket: Socket | null = null;
   private reconnectAttempts = 0;
@@ -32,15 +49,16 @@ class WhatsAppMultiClientService {
   private reconnectInterval = 5000;
 
   constructor() {
-    console.log('🔧 WhatsApp Multi-Client Service iniciado');
+    console.log('🔒 WhatsApp Multi-Client Service - HTTPS DEFINITIVO');
     const config = getServerConfig();
-    console.log('📡 URLs configuradas:', {
+    console.log('📡 URLs HTTPS DEFINITIVO configuradas:', {
       SERVER_URL,
       API_BASE_URL,
       SOCKET_URL,
-      protocol: config.protocol,
-      serverIP: config.serverIP,
-      serverPort: config.serverPort
+      HTTPS_SERVER_URL,
+      isHttps: config.isHttps,
+      nginxProxy: config.nginxProxy,
+      lovableCompatible: config.lovableCompatible
     });
   }
 
@@ -51,7 +69,7 @@ class WhatsAppMultiClientService {
       return this.socket;
     }
 
-    console.log('🔌 Conectando ao WebSocket:', SOCKET_URL);
+    console.log('🔌 Conectando ao WebSocket HTTPS DEFINITIVO:', SOCKET_URL);
 
     try {
       this.socket = io(SOCKET_URL, {
@@ -62,6 +80,8 @@ class WhatsAppMultiClientService {
         reconnectionDelay: this.reconnectInterval,
         forceNew: true,
         withCredentials: false,
+        rejectUnauthorized: false, // Accept self-signed certificates
+        secure: SOCKET_URL.startsWith('wss://'),
         extraHeaders: {
           'Origin': window.location.origin,
           'User-Agent': 'Lovable-WhatsApp-Client'
@@ -69,22 +89,22 @@ class WhatsAppMultiClientService {
       });
 
       this.socket.on('connect', () => {
-        console.log('✅ WebSocket conectado com sucesso');
+        console.log('✅ WebSocket HTTPS DEFINITIVO conectado');
         this.reconnectAttempts = 0;
       });
 
       this.socket.on('disconnect', (reason) => {
-        console.log('❌ WebSocket desconectado:', reason);
+        console.log('❌ WebSocket HTTPS DEFINITIVO desconectado:', reason);
       });
 
       this.socket.on('connect_error', (error) => {
-        console.error('❌ Erro de conexão WebSocket:', error.message);
+        console.error('❌ Erro WebSocket HTTPS DEFINITIVO:', error.message);
         this.reconnectAttempts++;
       });
 
       return this.socket;
     } catch (error) {
-      console.error('❌ Erro ao inicializar WebSocket:', error);
+      console.error('❌ Erro ao inicializar WebSocket HTTPS DEFINITIVO:', error);
       throw error;
     }
   }
@@ -143,11 +163,37 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // API Methods with proper error handling
+  // Listen to all clients updates
+  onClientsUpdate(callback: (clients: WhatsAppClient[]) => void): void {
+    if (!this.socket) {
+      this.connectSocket();
+    }
+    
+    console.log('👂 Ouvindo atualizações de todos os clientes');
+    this.socket?.on('clients_update', callback);
+  }
+
+  // Remove clients update listener
+  offClientsUpdate(callback?: (clients: WhatsAppClient[]) => void): void {
+    console.log('🔇 Removendo listener de clientes');
+    
+    if (callback) {
+      this.socket?.off('clients_update', callback);
+    } else {
+      this.socket?.removeAllListeners('clients_update');
+    }
+  }
+
+  // API Methods with HTTPS DEFINITIVO
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     
-    console.log(`🔗 Requisição: ${options.method || 'GET'} ${fullUrl}`);
+    console.log(`🔒 Requisição HTTPS DEFINITIVO: ${options.method || 'GET'} ${fullUrl}`);
+    
+    const config = getServerConfig();
+    if (!config.isDevelopment && !fullUrl.startsWith('https://')) {
+      throw new Error('HTTPS_REQUIRED: HTTPS é obrigatório via Nginx');
+    }
     
     const defaultHeaders = {
       'Content-Type': 'application/json',
@@ -165,37 +211,42 @@ class WhatsAppMultiClientService {
       },
       mode: 'cors',
       credentials: 'omit',
-      signal: options.signal || AbortSignal.timeout(30000)
+      signal: options.signal || AbortSignal.timeout(20000)
     };
 
     try {
       const response = await fetch(fullUrl, fetchConfig);
       
-      console.log(`📡 Resposta: ${response.status} ${response.statusText}`);
+      console.log(`📡 Resposta HTTPS DEFINITIVO: ${response.status} ${response.statusText}`);
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTPS ${response.status}: ${response.statusText}`);
       }
 
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        console.log('✅ Dados JSON recebidos:', data);
+        console.log('✅ Dados JSON recebidos via HTTPS DEFINITIVO:', data);
         return data;
       } else {
         const text = await response.text();
-        console.log('✅ Texto recebido:', text);
+        console.log('✅ Texto recebido via HTTPS DEFINITIVO:', text);
         return text;
       }
     } catch (error: any) {
-      console.error(`❌ Erro para ${fullUrl}:`, error);
+      console.error(`❌ Erro HTTPS DEFINITIVO para ${fullUrl}:`, error);
       
       if (error.name === 'AbortError' || error.name === 'TimeoutError') {
         throw new Error('TIMEOUT_ERROR');
       } else if (error.message === 'Failed to fetch' || 
                  error.name === 'TypeError' ||
-                 error.message.includes('net::')) {
-        throw new Error('CONNECTION_ERROR');
+                 error.message.includes('net::') ||
+                 error.message.includes('SSL') ||
+                 error.message.includes('certificate') ||
+                 error.message.includes('TLS')) {
+        throw new Error('SSL_CERTIFICATE_ERROR');
+      } else if (error.message.includes('HTTPS_REQUIRED')) {
+        throw new Error('HTTPS_REQUIRED');
       }
       
       throw error;
@@ -205,7 +256,7 @@ class WhatsAppMultiClientService {
   // Get all clients
   async getAllClients(): Promise<WhatsAppClient[]> {
     try {
-      console.log('📋 Buscando todos os clientes...');
+      console.log('📋 Buscando todos os clientes via HTTPS...');
       const response = await this.makeRequest('/clients');
       
       if (response.success && Array.isArray(response.clients)) {
@@ -221,15 +272,20 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Connect client
+  // Connect client with improved HTTPS handling
   async connectClient(clientId: string): Promise<any> {
     try {
-      console.log(`🔗 Conectando cliente: ${clientId}`);
+      console.log(`🔗 Conectando cliente via HTTPS: ${clientId}`);
       return await this.makeRequest(`/clients/${clientId}/connect`, {
         method: 'POST'
       });
     } catch (error: any) {
       console.error(`❌ Erro ao conectar cliente ${clientId}:`, error.message);
+      
+      if (error.message.includes('HTTPS_CERT_ERROR')) {
+        throw new Error('CERTIFICADO_SSL: Acesse https://146.59.227.248/health no navegador e aceite o certificado antes de usar o sistema');
+      }
+      
       throw error;
     }
   }
@@ -285,38 +341,64 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Check server health
+  // Get chats
+  async getChats(clientId: string): Promise<any> {
+    try {
+      console.log(`💬 Buscando chats do cliente: ${clientId}`);
+      return await this.makeRequest(`/clients/${clientId}/chats`);
+    } catch (error) {
+      console.error(`❌ Erro ao buscar chats do cliente ${clientId}:`, error);
+      throw error;
+    }
+  }
+
+  // Check if CORS is working
+  async checkCorsStatus(): Promise<boolean> {
+    try {
+      await this.checkServerHealth();
+      return true;
+    } catch (error: any) {
+      if (error.message === 'CORS_ERROR') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  // Check server health with HTTPS DEFINITIVO
   async checkServerHealth(): Promise<ServerHealth> {
     try {
-      console.log('🔍 Health check:', `${API_BASE_URL}/health`);
+      console.log('🔍 Health check HTTPS DEFINITIVO:', `${API_BASE_URL}/health`);
       
       const response = await this.makeRequest('/health');
-      console.log('✅ Health check bem-sucedido:', response);
+      console.log('✅ Health check HTTPS DEFINITIVO bem-sucedido:', response);
       
       return response;
     } catch (error: any) {
-      console.error('❌ Health check falhou:', error.message);
+      console.error('❌ Health check HTTPS DEFINITIVO falhou:', error.message);
       
-      if (error.message === 'CONNECTION_ERROR') {
-        throw new Error('SERVER_OFFLINE');
+      if (error.message === 'SSL_CERTIFICATE_ERROR') {
+        throw new Error('SSL_CERTIFICATE_NOT_ACCEPTED');
       } else if (error.message === 'TIMEOUT_ERROR') {
         throw new Error('SERVER_TIMEOUT');
+      } else if (error.message === 'HTTPS_REQUIRED') {
+        throw new Error('HTTPS_REQUIRED');
       }
       
       throw error;
     }
   }
 
-  // Test connection
+  // Test connection with HTTPS DEFINITIVO
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
-      console.log('🧪 Testando conexão...');
+      console.log('🧪 Testando conexão HTTPS DEFINITIVO...');
       const health = await this.checkServerHealth();
       
       if (health && health.status === 'ok') {
         return {
           success: true,
-          message: `✅ Servidor funcionando! IP: ${health.server || 'localhost:4000'} | Versão: ${health.version || 'unknown'}`
+          message: `✅ HTTPS DEFINITIVO funcionando! Servidor: ${health.server || 'HTTPS via Nginx'} | Versão: ${health.version || 'unknown'} | SSL: ✅`
         };
       } else {
         return {
@@ -325,23 +407,28 @@ class WhatsAppMultiClientService {
         };
       }
     } catch (error: any) {
-      console.error('❌ Teste de conexão falhou:', error.message);
+      console.error('❌ Teste HTTPS DEFINITIVO falhou:', error.message);
       
-      if (error.message === 'SERVER_OFFLINE') {
+      if (error.message === 'SSL_CERTIFICATE_NOT_ACCEPTED') {
         return {
           success: false,
-          message: 'Servidor offline: Verifique se o servidor está rodando na porta 4000'
+          message: 'Certificado SSL: Aceite o certificado abrindo https://146.59.227.248/health no navegador primeiro'
         };
       } else if (error.message === 'SERVER_TIMEOUT') {
         return {
           success: false,
-          message: 'Timeout: Servidor não respondeu em 30 segundos'
+          message: 'Timeout: Servidor não respondeu em 20 segundos'
+        };
+      } else if (error.message === 'HTTPS_REQUIRED') {
+        return {
+          success: false,
+          message: 'HTTPS obrigatório: Sistema configurado para HTTPS via Nginx'
         };
       }
       
       return {
         success: false,
-        message: `Erro de conexão: ${error.message}`
+        message: `Erro HTTPS DEFINITIVO: ${error.message}`
       };
     }
   }
