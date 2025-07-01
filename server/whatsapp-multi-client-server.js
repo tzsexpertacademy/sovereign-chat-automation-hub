@@ -27,29 +27,27 @@ const supabaseUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// FUNÇÃO PARA ATUALIZAÇÃO DEFINITIVA DO BANCO - CORRIGIDA
+// FUNÇÃO PARA ATUALIZAR STATUS NO BANCO SUPABASE
 const updateInstanceStatus = async (instanceId, status, phoneNumber = null) => {
     try {
-        console.log(`💾 [UPDATE-DB-DEFINITIVO] Atualizando ${instanceId}: status=${status}, phone=${phoneNumber}`);
+        console.log(`💾 [UPDATE-DB] Atualizando ${instanceId}: status=${status}, phone=${phoneNumber}`);
         
         const updateData = {
             status: status,
             updated_at: new Date().toISOString()
         };
         
-        // LÓGICA DEFINITIVA: CONNECTED sempre limpa QR
-        if (status === 'connected') {
+        // Adicionar phone_number se fornecido
+        if (phoneNumber) {
             updateData.phone_number = phoneNumber;
-            updateData.has_qr_code = false;
-            updateData.qr_code = null;
-            console.log(`✅ [UPDATE-DB-DEFINITIVO] CONNECTED detectado - limpando QR e definindo phone: ${phoneNumber}`);
-        } else if (status === 'qr_ready') {
+        }
+        
+        // Adicionar campos QR baseado no status
+        if (status === 'qr_ready') {
             updateData.has_qr_code = true;
-            // NÃO limpar phone_number se já existe (preservar conexões anteriores)
-        } else if (status === 'disconnected' || status === 'auth_failed') {
+        } else if (status === 'connected') {
             updateData.has_qr_code = false;
             updateData.qr_code = null;
-            updateData.phone_number = null;
         }
         
         const { data, error } = await supabase
@@ -58,14 +56,14 @@ const updateInstanceStatus = async (instanceId, status, phoneNumber = null) => {
             .eq('instance_id', instanceId);
             
         if (error) {
-            console.error(`❌ [UPDATE-DB-DEFINITIVO] Erro ao atualizar ${instanceId}:`, error);
+            console.error(`❌ [UPDATE-DB] Erro ao atualizar ${instanceId}:`, error);
         } else {
-            console.log(`✅ [UPDATE-DB-DEFINITIVO] Status atualizado: ${instanceId} -> ${status} ${phoneNumber ? `+ ${phoneNumber}` : ''}`);
+            console.log(`✅ [UPDATE-DB] Status atualizado com sucesso: ${instanceId} -> ${status}`);
         }
         
         return { success: !error, data, error };
     } catch (error) {
-        console.error(`❌ [UPDATE-DB-DEFINITIVO] Erro crítico ao atualizar ${instanceId}:`, error);
+        console.error(`❌ [UPDATE-DB] Erro crítico ao atualizar ${instanceId}:`, error);
         return { success: false, error };
     }
 };
@@ -291,7 +289,7 @@ const phoneNumberFormatter = function(number) {
     return formatted;
 };
 
-// Função para inicializar um novo cliente - CORRIGIDA
+// Função para inicializar um novo cliente
 const initClient = (clientId) => {
     if (clients[clientId]) {
         console.log(`⚠️ Cliente ${clientId} já está inicializado.`);
@@ -320,24 +318,18 @@ const initClient = (clientId) => {
                 '--disable-features=VizDisplayCompositor',
                 '--disable-ipc-flooding-protection'
             ],
-            timeout: 60000
+            timeout: 60000 // 60 segundos timeout
         }
     });
 
     // ARMAZENAR QR TEMPORARIAMENTE NO OBJETO CLIENT
     client.qrCode = null;
     client.qrTimestamp = null;
-    client.isConnected = false; // NOVO: Flag definitiva de conexão
 
     client.on('qr', async (qr) => {
         const timestamp = new Date().toISOString();
-        console.log(`📱 [${timestamp}] QR CODE EVENTO para ${clientId}`);
-        
-        // VERIFICAÇÃO DEFINITIVA: Só processar QR se não estiver conectado
-        if (client.isConnected || (client.info && client.info.wid)) {
-            console.log(`⚠️ [${timestamp}] Cliente ${clientId} já conectado - ignorando QR`);
-            return;
-        }
+        console.log(`📱 [${timestamp}] QR CODE EVENTO RECEBIDO para ${clientId}`);
+        console.log(`📱 [${timestamp}] QR Code length: ${qr?.length || 0} chars`);
         
         try {
             const qrCodeDataUrl = await qrcode.toDataURL(qr);
@@ -346,9 +338,9 @@ const initClient = (clientId) => {
             client.qrCode = qrCodeDataUrl;
             client.qrTimestamp = timestamp;
             
-            console.log(`📱 [${timestamp}] QR Code gerado para ${clientId}`);
+            console.log(`📱 [${timestamp}] QR Code gerado DATA URL length: ${qrCodeDataUrl?.length || 0}`);
             
-            // EMITIR QR VIA WEBSOCKET
+            // EMITIR PARA SALA ESPECÍFICA DO CLIENTE
             io.to(clientId).emit(`client_status_${clientId}`, { 
                 clientId: clientId, 
                 status: 'qr_ready', 
@@ -357,6 +349,7 @@ const initClient = (clientId) => {
                 timestamp: timestamp
             });
             
+            // EMITIR TAMBÉM GERAL COMO BACKUP
             io.emit(`client_status_${clientId}`, { 
                 clientId: clientId, 
                 status: 'qr_ready', 
@@ -364,6 +357,9 @@ const initClient = (clientId) => {
                 hasQrCode: true,
                 timestamp: timestamp
             });
+            
+            console.log(`✅ [${timestamp}] QR Code ENVIADO VIA WEBSOCKET para sala: ${clientId}`);
+            console.log(`✅ [${timestamp}] Clientes na sala ${clientId}: ${io.sockets.adapter.rooms.get(clientId)?.size || 0}`);
             
             // ATUALIZAR BANCO COM STATUS QR_READY
             await updateInstanceStatus(clientId, 'qr_ready');
@@ -383,62 +379,102 @@ const initClient = (clientId) => {
         client.qrCode = null;
         client.qrTimestamp = null;
         
-        // AGUARDAR CONEXÃO COMPLETA antes de marcar como conectado
-        console.log(`🔄 [${timestamp}] Aguardando conexão completa para ${clientId}...`);
+        // FORÇAR STATUS CONNECTED IMEDIATAMENTE APÓS AUTHENTICATED
+        const forceConnectedStatus = async () => {
+            // Aguardar um momento para o WhatsApp Web estabilizar
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            const isConnected = client.info?.wid;
+            let phoneNumber = null;
+            
+            if (isConnected) {
+                phoneNumber = phoneNumberFormatter(client.info.wid.user);
+            }
+            
+            // SEMPRE MAPEAR AUTHENTICATED PARA CONNECTED
+            const finalStatus = 'connected';
+            
+            console.log(`🔍 [${timestamp}] Cliente ${clientId} FORÇANDO CONNECTED: hasWid=${!!isConnected}, phone=${phoneNumber}`);
+            
+            // EMITIR STATUS CONNECTED PARA TODOS
+            io.to(clientId).emit(`client_status_${clientId}`, { 
+                clientId: clientId, 
+                status: finalStatus,
+                phoneNumber: phoneNumber,
+                hasQrCode: false,
+                qrCode: null,
+                timestamp: timestamp
+            });
+            
+            io.emit(`client_status_${clientId}`, { 
+                clientId: clientId, 
+                status: finalStatus,
+                phoneNumber: phoneNumber,
+                hasQrCode: false,
+                qrCode: null,
+                timestamp: timestamp
+            });
+            
+            // ATUALIZAR BANCO DE DADOS IMEDIATAMENTE - IMPLEMENTADO
+            if (phoneNumber) {
+                try {
+                    console.log(`💾 [${timestamp}] Atualizando banco: ${clientId} -> connected + ${phoneNumber}`);
+                    await updateInstanceStatus(clientId, 'connected', phoneNumber);
+                } catch (error) {
+                    console.error(`❌ Erro ao atualizar banco para ${clientId}:`, error);
+                }
+            }
+        };
+        
+        // EXECUTAR IMEDIATAMENTE E VERIFICAR NOVAMENTE
+        await forceConnectedStatus();
+        setTimeout(forceConnectedStatus, 3000); // Verificar novamente em 3s
     });
 
-    client.on('auth_failure', async function (session) {
-        const timestamp = new Date().toISOString();
-        console.error(`❌ [${timestamp}] Falha de autenticação para ${clientId}`);
-        
-        client.isConnected = false;
-        client.qrCode = null;
-        
+    client.on('auth_failure', function (session) {
+        console.error(`❌ Falha de autenticação para ${clientId}`);
         io.emit(`client_status_${clientId}`, { 
             clientId: clientId, 
             status: 'auth_failed',
-            hasQrCode: false,
-            timestamp: timestamp
+            hasQrCode: false
         });
         
-        try {
-            await updateInstanceStatus(clientId, 'auth_failed');
-        } catch (error) {
-            console.error(`❌ Erro ao atualizar banco para auth_failed ${clientId}:`, error);
-        }
+        // ATUALIZAR BANCO PARA STATUS AUTH_FAILED
+        updateInstanceStatus(clientId, 'auth_failed').catch(console.error);
     });
 
-    client.on('ready', async () => {
+    client.on('ready', () => {
         const timestamp = new Date().toISOString();
         const phoneNumber = client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null;
-        console.log(`🎉 [${timestamp}] Cliente ${clientId} CONECTADO DEFINITIVAMENTE! Telefone: ${phoneNumber}`);
+        console.log(`🎉 [${timestamp}] Cliente ${clientId} CONECTADO! Telefone: ${phoneNumber}`);
         
-        // MARCAR COMO CONECTADO DEFINITIVAMENTE
-        client.isConnected = true;
+        // LIMPAR QR CODE APÓS CONEXÃO
         client.qrCode = null;
         client.qrTimestamp = null;
         
-        // EMITIR STATUS CONNECTED IMEDIATAMENTE
-        const connectedData = {
+        // EMITIR PARA SALA ESPECÍFICA
+        io.to(clientId).emit(`client_status_${clientId}`, { 
             clientId: clientId, 
             status: 'connected',
             phoneNumber: phoneNumber,
             hasQrCode: false,
             qrCode: null,
             timestamp: timestamp
-        };
+        });
         
-        io.to(clientId).emit(`client_status_${clientId}`, connectedData);
-        io.emit(`client_status_${clientId}`, connectedData);
+        // EMITIR GERAL COMO BACKUP
+        io.emit(`client_status_${clientId}`, { 
+            clientId: clientId, 
+            status: 'connected',
+            phoneNumber: phoneNumber,
+            hasQrCode: false,
+            qrCode: null,
+            timestamp: timestamp
+        });
         
-        // ATUALIZAR BANCO IMEDIATAMENTE COM CONNECTED + PHONE
+        // ATUALIZAR BANCO PARA STATUS CONNECTED NO READY
         if (phoneNumber) {
-            try {
-                await updateInstanceStatus(clientId, 'connected', phoneNumber);
-                console.log(`💾 [${timestamp}] Banco atualizado: ${clientId} -> connected + ${phoneNumber}`);
-            } catch (error) {
-                console.error(`❌ Erro ao atualizar banco no ready ${clientId}:`, error);
-            }
+            await updateInstanceStatus(clientId, 'connected', phoneNumber);
         }
         
         // Emit clients update
@@ -450,25 +486,16 @@ const initClient = (clientId) => {
         io.emit(`message_${clientId}`, msg);
     });
 
-    client.on('disconnected', async (reason) => {
-        const timestamp = new Date().toISOString();
-        console.log(`❌ [${timestamp}] Cliente ${clientId} desconectado:`, reason);
-        
-        client.isConnected = false;
-        client.qrCode = null;
-        
+    client.on('disconnected', (reason) => {
+        console.log(`❌ Cliente ${clientId} desconectado:`, reason);
         io.emit(`client_status_${clientId}`, { 
             clientId: clientId, 
             status: 'disconnected',
-            hasQrCode: false,
-            timestamp: timestamp
+            hasQrCode: false
         });
         
-        try {
-            await updateInstanceStatus(clientId, 'disconnected');
-        } catch (error) {
-            console.error(`❌ Erro ao atualizar banco para disconnected ${clientId}:`, error);
-        }
+        // ATUALIZAR BANCO PARA STATUS DISCONNECTED
+        updateInstanceStatus(clientId, 'disconnected').catch(console.error);
         
         client.destroy();
         delete clients[clientId];
@@ -668,41 +695,45 @@ app.post('/clients/:clientId/disconnect', async (req, res) => {
 app.get('/clients/:clientId/status', async (req, res) => {
     const clientId = req.params.clientId;
     const timestamp = new Date().toISOString();
-    console.log(`📊 [${timestamp}] VERIFICANDO STATUS DEFINITIVO: ${clientId}`);
+    console.log(`📊 [${timestamp}] VERIFICANDO STATUS: ${clientId}`);
     
     if (clients[clientId]) {
         try {
             const client = clients[clientId];
-            
-            // VERIFICAÇÃO DEFINITIVA DE CONEXÃO
-            const isConnected = client.isConnected || (client.info && client.info.wid);
-            const phoneNumber = isConnected && client.info?.wid?.user ? 
-                phoneNumberFormatter(client.info.wid.user) : null;
-            
-            let status = 'connecting';
             let qrCode = null;
             
-            // LÓGICA DEFINITIVA DE STATUS
-            if (isConnected && phoneNumber) {
-                status = 'connected';
-                qrCode = null; // NUNCA retornar QR se conectado
-                console.log(`✅ [${timestamp}] ${clientId} DEFINITIVAMENTE CONECTADO: ${phoneNumber}`);
-                
-                // GARANTIR que banco está atualizado
-                try {
-                    await updateInstanceStatus(clientId, 'connected', phoneNumber);
-                } catch (error) {
-                    console.error(`❌ Erro ao garantir atualização do banco:`, error);
-                }
-                
-            } else if (client.qrCode && !isConnected) {
-                status = 'qr_ready';
+            // VERIFICAR QR CODE ARMAZENADO NO CLIENTE
+            if (client.qrCode) {
                 qrCode = client.qrCode;
-                console.log(`📱 [${timestamp}] ${clientId} tem QR disponível`);
+                console.log(`📱 [${timestamp}] QR Code ENCONTRADO no cliente ${clientId} (${client.qrTimestamp})`);
+            } else if (client.qr) {
+                // FALLBACK PARA QR DIRETO (caso não tenha sido processado ainda)
+                qrCode = await qrcode.toDataURL(client.qr);
+                client.qrCode = qrCode; // ARMAZENAR PARA PRÓXIMAS CONSULTAS
+                client.qrTimestamp = timestamp;
+                console.log(`📱 [${timestamp}] QR Code GERADO e armazenado para ${clientId}`);
+            }
+            
+            const isConnected = client.info?.wid;
+            const isAuthenticated = client.authStrategy?.authenticated || false;
+            
+            // ALWAYS MAP AUTHENTICATED TO CONNECTED - DEFINITIVO
+            let status;
+            if (isConnected) {
+                status = 'connected';
+            } else if (isAuthenticated) {
+                status = 'connected'; // SEMPRE TRATAR AUTHENTICATED COMO CONNECTED
+            } else if (client.getState && client.getState() === 'CONNECTED') {
+                status = 'connected'; // VERIFICAR ESTADO DO WHATSAPP WEB
+            } else if (qrCode) {
+                status = 'qr_ready';
             } else {
                 status = 'connecting';
-                console.log(`🔄 [${timestamp}] ${clientId} ainda conectando`);
             }
+            
+            const phoneNumber = isConnected ? phoneNumberFormatter(client.info.wid.user) : null;
+            
+            console.log(`🔍 [${timestamp}] Status check ${clientId}: connected=${isConnected}, authenticated=${isAuthenticated}, final=${status}`);
             
             const response = { 
                 success: true, 
@@ -712,17 +743,10 @@ app.get('/clients/:clientId/status', async (req, res) => {
                 qrCode: qrCode,
                 hasQrCode: !!qrCode,
                 timestamp: timestamp,
-                qrTimestamp: client.qrTimestamp,
-                isConnected: isConnected // DEBUG: mostrar flag interna
+                qrTimestamp: client.qrTimestamp
             };
             
-            console.log(`📋 [${timestamp}] STATUS FINAL ${clientId}:`, {
-                status,
-                phoneNumber: phoneNumber || 'null',
-                hasQR: !!qrCode,
-                isConnected
-            });
-            
+            console.log(`✅ [${timestamp}] STATUS ${clientId}: ${status}, QR: ${!!qrCode}`);
             res.json(response);
         } catch (error) {
             console.error(`❌ [${timestamp}] ERRO status ${clientId}:`, error);
