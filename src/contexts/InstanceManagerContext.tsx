@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import whatsappService from '@/services/whatsappMultiClient';
 import { useToast } from '@/hooks/use-toast';
@@ -29,7 +30,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
   const [websocketConnected, setWebsocketConnected] = useState(false);
   
-  // Cache inteligente para evitar chamadas desnecessárias
+  // Cache inteligente para evitar polling desnecessário
   const lastStatusCheck = useRef<Record<string, number>>({});
   const connectedInstances = useRef<Set<string>>(new Set());
   
@@ -39,7 +40,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
 
   // Inicializar WebSocket uma única vez
   useEffect(() => {
-    console.log('🔌 Inicializando InstanceManager DEFINITIVO...');
+    console.log('🔌 Inicializando InstanceManager definitivo...');
     
     if (!socketRef.current) {
       socketRef.current = whatsappService.connectSocket();
@@ -59,111 +60,94 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
 
     return () => {
       console.log('🧹 Limpando InstanceManager...');
+      // Limpar todos os intervalos
       Object.values(pollingIntervals.current).forEach(clearInterval);
       pollingIntervals.current = {};
     };
   }, []);
 
-  // Função para atualização IMEDIATA de status
-  const updateInstanceStatusImmediate = useCallback((instanceId: string, statusData: InstanceStatus) => {
-    console.log(`⚡ [IMMEDIATE-UPDATE] ${instanceId}:`, statusData);
-    
-    setInstanceStates(prev => {
-      const current = prev[instanceId];
-      
-      // Só atualizar se houve mudança significativa
-      if (!current || 
-          current.status !== statusData.status || 
-          current.phoneNumber !== statusData.phoneNumber ||
-          current.hasQrCode !== statusData.hasQrCode) {
-        
-        console.log(`🔄 [STATE-CHANGE] ${instanceId}:`, {
-          de: current?.status || 'undefined',
-          para: statusData.status,
-          phone: statusData.phoneNumber || 'none'
-        });
-        
-        // Se conectou, parar polling
-        if (statusData.status === 'connected' && statusData.phoneNumber) {
-          console.log(`✅ [CONNECTED] ${instanceId} - PARANDO polling definitivamente`);
-          if (pollingIntervals.current[instanceId]) {
-            clearInterval(pollingIntervals.current[instanceId]);
-            delete pollingIntervals.current[instanceId];
-          }
-          connectedInstances.current.add(instanceId);
-        }
-        
-        return {
-          ...prev,
-          [instanceId]: {
-            ...statusData,
-            timestamp: statusData.timestamp || new Date().toISOString()
-          }
-        };
-      }
-      
-      return prev;
-    });
-  }, []);
-
-  // Função para polling APENAS como backup
-  const startBackupPolling = useCallback((instanceId: string) => {
-    // Não fazer polling se já conectado
-    if (connectedInstances.current.has(instanceId)) {
-      console.log(`⚠️ [POLLING-SKIP] ${instanceId} já conectado - não fazendo polling`);
-      return;
-    }
-
-    console.log(`🔄 [BACKUP-POLLING] Iniciando para ${instanceId}`);
-    
+  // Função para polling inteligente - SUPER OTIMIZADA
+  const startIntelligentPolling = useCallback((instanceId: string) => {
     // Parar polling existente
     if (pollingIntervals.current[instanceId]) {
       clearInterval(pollingIntervals.current[instanceId]);
     }
+
+    // Não fazer polling para instâncias definitivamente conectadas
+    const currentStatus = instanceStates[instanceId];
+    if (currentStatus?.status === 'connected' && currentStatus.phoneNumber) {
+      const timeSinceStatus = Date.now() - (new Date(currentStatus.timestamp || 0).getTime());
+      if (timeSinceStatus > 60000) { // 1 minuto
+        console.log(`⚠️ [POLLING-INTELIGENTE] Instância ${instanceId} conectada há ${Math.round(timeSinceStatus/1000)}s - parando polling`);
+        connectedInstances.current.add(instanceId);
+        return;
+      }
+    }
+
+    console.log(`🔄 [POLLING-INTELIGENTE] Iniciando para ${instanceId}`);
     
     pollingIntervals.current[instanceId] = setInterval(async () => {
       try {
-        // Não verificar se já conectado
-        const currentStatus = instanceStates[instanceId];
-        if (currentStatus?.status === 'connected' && currentStatus.phoneNumber) {
-          console.log(`✅ [BACKUP-POLLING] ${instanceId} conectado - parando polling`);
-          clearInterval(pollingIntervals.current[instanceId]);
-          delete pollingIntervals.current[instanceId];
-          return;
-        }
-
-        // Cache: não verificar se checou há menos de 15s
+        // Cache ultra-inteligente: não verificar se checou há menos de 30s
         const lastCheck = lastStatusCheck.current[instanceId] || 0;
         const timeSinceLastCheck = Date.now() - lastCheck;
         
-        if (timeSinceLastCheck < 15000) { // 15 segundos
+        if (timeSinceLastCheck < 30000) { // 30 segundos
           return;
         }
 
-        console.log(`📊 [BACKUP-POLLING] Verificando ${instanceId}...`);
         const status = await whatsappService.getClientStatus(instanceId);
         lastStatusCheck.current[instanceId] = Date.now();
         
-        // Atualizar estado apenas se mudou
-        updateInstanceStatusImmediate(instanceId, {
-          status: status.status,
-          phoneNumber: status.phoneNumber,
-          hasQrCode: status.hasQrCode,
-          qrCode: status.qrCode,
-          timestamp: status.timestamp
+        console.log(`📊 [POLLING-INTELIGENTE] Status ${instanceId}:`, status.status, status.phoneNumber || 'no-phone');
+        
+        // Atualizar estado apenas se mudou SIGNIFICATIVAMENTE
+        setInstanceStates(prev => {
+          const current = prev[instanceId];
+          if (!current || 
+              current.status !== status.status || 
+              current.phoneNumber !== status.phoneNumber ||
+              current.hasQrCode !== status.hasQrCode) {
+            
+            console.log(`🔄 [POLLING-INTELIGENTE] Estado mudou para ${instanceId}:`, {
+              de: current?.status || 'undefined',
+              para: status.status,
+              phone: status.phoneNumber || 'no-phone'
+            });
+            
+            return {
+              ...prev,
+              [instanceId]: {
+                status: status.status,
+                phoneNumber: status.phoneNumber,
+                hasQrCode: status.hasQrCode,
+                qrCode: status.qrCode,
+                timestamp: status.timestamp
+              }
+            };
+          }
+          return prev;
         });
+
+        // Parar polling se definitivamente conectado
+        if (status.status === 'connected' && status.phoneNumber) {
+          console.log(`✅ [POLLING-INTELIGENTE] ${instanceId} definitivamente conectado - parando polling`);
+          clearInterval(pollingIntervals.current[instanceId]);
+          delete pollingIntervals.current[instanceId];
+          connectedInstances.current.add(instanceId);
+        }
         
       } catch (error) {
-        console.error(`❌ [BACKUP-POLLING] Erro para ${instanceId}:`, error);
+        console.error(`❌ [POLLING-INTELIGENTE] Erro para ${instanceId}:`, error);
       }
-    }, 20000); // 20 segundos - REDUZIDO drasticamente
-  }, [instanceStates, updateInstanceStatusImmediate]);
+    }, 45000); // 45 segundos entre verificações - MUITO REDUZIDO
+  }, [instanceStates]);
 
-  // WebSocket listener PRIORITÁRIO
+  // WebSocket listener DEFINITIVO
   const setupWebSocketListener = useCallback((instanceId: string) => {
     if (!socketRef.current) return;
 
-    console.log(`👂 [WEBSOCKET-PRIORITY] Configurando para ${instanceId}`);
+    console.log(`👂 [WEBSOCKET] Configurando listener para ${instanceId}`);
     
     // Entrar na sala
     whatsappService.joinClientRoom(instanceId);
@@ -172,20 +156,23 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     const eventName = `client_status_${instanceId}`;
     
     const statusHandler = (data: any) => {
-      console.log(`📡 [WEBSOCKET-PRIORITY] Status recebido ${instanceId}:`, data);
+      console.log(`📡 [WEBSOCKET] Status recebido ${instanceId}:`, data.status, data.phoneNumber || 'no-phone');
       
-      // Atualizar estado IMEDIATAMENTE - PRIORIDADE MÁXIMA
-      updateInstanceStatusImmediate(instanceId, {
-        status: data.status,
-        phoneNumber: data.phoneNumber,
-        hasQrCode: data.hasQrCode,
-        qrCode: data.qrCode,
-        timestamp: data.timestamp
-      });
+      // Atualizar estado imediatamente - PRIORIDADE MÁXIMA
+      setInstanceStates(prev => ({
+        ...prev,
+        [instanceId]: {
+          status: data.status,
+          phoneNumber: data.phoneNumber,
+          hasQrCode: data.hasQrCode,
+          qrCode: data.qrCode,
+          timestamp: data.timestamp
+        }
+      }));
 
-      // Se conectado via WebSocket, parar polling DEFINITIVAMENTE
+      // Parar polling se conectado via WebSocket - DEFINITIVO
       if (data.status === 'connected' && data.phoneNumber) {
-        console.log(`✅ [WEBSOCKET-PRIORITY] ${instanceId} conectado - parando polling`);
+        console.log(`✅ [WEBSOCKET] ${instanceId} conectado - parando polling DEFINITIVAMENTE`);
         if (pollingIntervals.current[instanceId]) {
           clearInterval(pollingIntervals.current[instanceId]);
           delete pollingIntervals.current[instanceId];
@@ -194,13 +181,13 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
       }
     };
 
-    socketRef.current.off(eventName, statusHandler);
+    socketRef.current.off(eventName, statusHandler); // Remove listener anterior
     socketRef.current.on(eventName, statusHandler);
     
     return () => {
       socketRef.current?.off(eventName, statusHandler);
     };
-  }, [updateInstanceStatusImmediate]);
+  }, []);
 
   const connectInstance = useCallback(async (instanceId: string) => {
     console.log(`🚀 [CONNECT] Iniciando conexão ${instanceId}`);
@@ -208,36 +195,19 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     try {
       setLoadingStates(prev => ({ ...prev, [instanceId]: true }));
       
-      // 1. Configurar WebSocket listener PRIMEIRO
+      // Configurar WebSocket listener primeiro - PRIORIDADE
       setupWebSocketListener(instanceId);
       
-      // 2. Chamar API de conexão
+      // Chamar API de conexão
       await whatsappService.connectClient(instanceId);
       
-      // 3. Verificar status inicial IMEDIATAMENTE
-      setTimeout(async () => {
-        try {
-          const initialStatus = await whatsappService.getClientStatus(instanceId);
-          updateInstanceStatusImmediate(instanceId, {
-            status: initialStatus.status,
-            phoneNumber: initialStatus.phoneNumber,
-            hasQrCode: initialStatus.hasQrCode,
-            qrCode: initialStatus.qrCode,
-            timestamp: initialStatus.timestamp
-          });
-        } catch (error) {
-          console.error(`❌ [INITIAL-STATUS] Erro ${instanceId}:`, error);
-        }
-      }, 2000);
-      
-      // 4. Iniciar polling backup apenas se não conectar via WebSocket em 15s
+      // Iniciar polling inteligente apenas como backup
       setTimeout(() => {
-        const currentStatus = instanceStates[instanceId];
-        if (!currentStatus || currentStatus.status !== 'connected') {
+        if (!connectedInstances.current.has(instanceId)) {
           console.log(`🔄 [BACKUP] Iniciando polling backup para ${instanceId}`);
-          startBackupPolling(instanceId);
+          startIntelligentPolling(instanceId);
         }
-      }, 15000);
+      }, 10000); // 10 segundos de delay para WebSocket agir
       
       toast({
         title: "Conectando...",
@@ -254,7 +224,7 @@ export const InstanceManagerProvider: React.FC<{ children: React.ReactNode }> = 
     } finally {
       setLoadingStates(prev => ({ ...prev, [instanceId]: false }));
     }
-  }, [setupWebSocketListener, startBackupPolling, toast, instanceStates, updateInstanceStatusImmediate]);
+  }, [setupWebSocketListener, startIntelligentPolling, toast]);
 
   const disconnectInstance = useCallback(async (instanceId: string) => {
     console.log(`🔌 [DISCONNECT] Desconectando ${instanceId}`);
