@@ -74,6 +74,13 @@ console.log('🔧 CORS removido do Node.js - Nginx vai configurar...');
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// MIDDLEWARE PARA UPLOAD DE ARQUIVOS
+const fileUpload = require('express-fileupload');
+app.use(fileUpload({
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+    createParentPath: true
+}));
+
 // Configuração do Swagger UI para HTTPS
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = {
@@ -313,52 +320,38 @@ const initClient = (clientId) => {
         
         console.log(`🔄 [${timestamp}] Forçando status CONNECTED após autenticação...`);
         
-        // FORÇAR STATUS CONNECTED IMEDIATAMENTE APÓS AUTHENTICATED
-        const forceConnectedStatus = async () => {
-            // Aguardar um momento para o WhatsApp Web estabilizar
-            await new Promise(resolve => setTimeout(resolve, 2000));
+        // OBTER NÚMERO DO TELEFONE IMEDIATAMENTE
+        try {
+            await new Promise(resolve => setTimeout(resolve, 3000)); // Aguardar estabilizar
             
-            const isConnected = client.info?.wid;
             let phoneNumber = null;
-            
-            if (isConnected) {
+            if (client.info?.wid?.user) {
                 phoneNumber = phoneNumberFormatter(client.info.wid.user);
             }
             
-            // SEMPRE MAPEAR AUTHENTICATED PARA CONNECTED
-            const finalStatus = 'connected';
-            
-            console.log(`🔍 [${timestamp}] Cliente ${clientId} FORÇANDO CONNECTED: hasWid=${!!isConnected}, phone=${phoneNumber}`);
+            console.log(`🔍 [${timestamp}] Cliente ${clientId} AUTHENTICATED -> CONNECTED: phone=${phoneNumber}`);
             
             const statusData = { 
                 clientId: clientId, 
-                status: finalStatus,
+                status: 'connected',
                 phoneNumber: phoneNumber,
                 hasQrCode: false,
                 qrCode: null,
                 timestamp: timestamp
             };
             
-            // EMITIR STATUS CONNECTED PARA TODOS
+            // EMITIR PARA SALA E GERAL
             io.to(clientId).emit(`client_status_${clientId}`, statusData);
             io.emit(`client_status_${clientId}`, statusData);
             
-            console.log(`📡 [${timestamp}] Status CONNECTED enviado via WebSocket para ${clientId}`);
+            console.log(`📡 [${timestamp}] Status CONNECTED enviado via AUTHENTICATED para ${clientId}`);
             
-            // ATUALIZAR BANCO DE DADOS
-            try {
-                console.log(`💾 [${timestamp}] Atualizando banco: ${clientId} -> connected + ${phoneNumber}`);
-                await updateInstanceStatus(clientId, 'connected', phoneNumber);
-            } catch (error) {
-                console.error(`❌ Erro ao atualizar banco para ${clientId}:`, error);
-            }
-        };
-        
-        // EXECUTAR MÚLTIPLAS VEZES PARA GARANTIR
-        await forceConnectedStatus();
-        setTimeout(() => forceConnectedStatus(), 3000);
-        setTimeout(() => forceConnectedStatus(), 10000);
-        setTimeout(() => forceConnectedStatus(), 20000);
+            // ATUALIZAR BANCO
+            await updateInstanceStatus(clientId, 'connected', phoneNumber);
+            
+        } catch (error) {
+            console.error(`❌ [${timestamp}] Erro no authenticated handler:`, error);
+        }
     });
 
     // VERIFICADOR MANUAL DE CONEXÃO - NOVO SISTEMA PARA CONTORNAR BUGS DA BIBLIOTECA

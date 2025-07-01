@@ -21,8 +21,12 @@ const CorsApiDiagnostic = () => {
     { name: "Health Check", url: "/health", method: "GET", status: "pending" },
     { name: "Lista Clientes", url: "/clients", method: "GET", status: "pending" },
     { name: "Conectar Cliente", url: "/clients/test-instance/connect", method: "POST", status: "pending" },
+    { name: "Desconectar Cliente", url: "/clients/test-instance/disconnect", method: "POST", status: "pending" },
     { name: "Status Cliente", url: "/clients/test-instance/status", method: "GET", status: "pending" },
-    { name: "API Docs", url: "/api-docs.json", method: "GET", status: "pending" }
+    { name: "Enviar Mensagem", url: "/clients/test-instance/send-message", method: "POST", status: "pending" },
+    { name: "Listar Chats", url: "/clients/test-instance/chats", method: "GET", status: "pending" },
+    { name: "API Docs JSON", url: "/api-docs.json", method: "GET", status: "pending" },
+    { name: "API Docs Interface", url: "/api-docs", method: "GET", status: "pending" }
   ]);
   const [testing, setTesting] = useState(false);
 
