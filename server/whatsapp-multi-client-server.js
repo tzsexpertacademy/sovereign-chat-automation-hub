@@ -361,6 +361,67 @@ const initClient = (clientId) => {
         setTimeout(() => forceConnectedStatus(), 20000);
     });
 
+    // VERIFICADOR MANUAL DE CONEXÃO - NOVO SISTEMA PARA CONTORNAR BUGS DA BIBLIOTECA
+    const manualConnectionChecker = setInterval(async () => {
+        try {
+            // Verificar se o cliente ainda existe
+            if (!clients[clientId]) {
+                clearInterval(manualConnectionChecker);
+                return;
+            }
+
+            // Verificar se já está marcado como conectado
+            const currentState = client.getState ? client.getState() : null;
+            const hasWid = client.info?.wid;
+            
+            if ((currentState === 'CONNECTED' || hasWid) && !client.manuallyConnected) {
+                client.manuallyConnected = true;
+                const timestamp = new Date().toISOString();
+                
+                let phoneNumber = null;
+                if (hasWid) {
+                    phoneNumber = phoneNumberFormatter(client.info.wid.user);
+                }
+                
+                console.log(`🔄 [${timestamp}] CONEXÃO DETECTADA MANUALMENTE: ${clientId}, phone=${phoneNumber}`);
+                
+                // LIMPAR QR CODE
+                client.qrCode = null;
+                client.qrTimestamp = null;
+                
+                const statusData = { 
+                    clientId: clientId, 
+                    status: 'connected',
+                    phoneNumber: phoneNumber,
+                    hasQrCode: false,
+                    qrCode: null,
+                    timestamp: timestamp
+                };
+                
+                // EMITIR STATUS CONNECTED
+                io.to(clientId).emit(`client_status_${clientId}`, statusData);
+                io.emit(`client_status_${clientId}`, statusData);
+                
+                console.log(`📡 [${timestamp}] Status CONNECTED enviado via VERIFICADOR MANUAL para ${clientId}`);
+                
+                // ATUALIZAR BANCO
+                try {
+                    await updateInstanceStatus(clientId, 'connected', phoneNumber);
+                } catch (error) {
+                    console.error(`❌ Erro ao atualizar banco via verificador manual:`, error);
+                }
+                
+                // PARAR VERIFICADOR
+                clearInterval(manualConnectionChecker);
+            }
+        } catch (error) {
+            console.error(`❌ Erro no verificador manual de conexão:`, error);
+        }
+    }, 5000); // Verificar a cada 5 segundos
+
+    // Limpar verificador quando cliente for removido
+    client.manualConnectionChecker = manualConnectionChecker;
+
     client.on('auth_failure', async function (session) {
         console.error(`❌ Falha de autenticação para ${clientId}`);
         io.emit(`client_status_${clientId}`, { 
