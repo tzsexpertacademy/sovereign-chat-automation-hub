@@ -352,24 +352,20 @@ const initClient = (clientId) => {
             
             console.log(`🔍 [${timestamp}] Cliente ${clientId} FORÇANDO CONNECTED: hasWid=${!!isConnected}, phone=${phoneNumber}`);
             
-            // EMITIR STATUS CONNECTED PARA TODOS
-            io.to(clientId).emit(`client_status_${clientId}`, { 
+            const statusData = { 
                 clientId: clientId, 
                 status: finalStatus,
                 phoneNumber: phoneNumber,
                 hasQrCode: false,
                 qrCode: null,
                 timestamp: timestamp
-            });
+            };
             
-            io.emit(`client_status_${clientId}`, { 
-                clientId: clientId, 
-                status: finalStatus,
-                phoneNumber: phoneNumber,
-                hasQrCode: false,
-                qrCode: null,
-                timestamp: timestamp
-            });
+            // EMITIR STATUS CONNECTED PARA TODOS
+            io.to(clientId).emit(`client_status_${clientId}`, statusData);
+            io.emit(`client_status_${clientId}`, statusData);
+            
+            console.log(`📡 [${timestamp}] Status CONNECTED enviado via WebSocket para ${clientId}`);
             
             // ATUALIZAR BANCO DE DADOS IMEDIATAMENTE - IMPLEMENTADO
             if (phoneNumber) {
@@ -385,6 +381,7 @@ const initClient = (clientId) => {
         // EXECUTAR IMEDIATAMENTE E VERIFICAR NOVAMENTE
         await forceConnectedStatus();
         setTimeout(() => forceConnectedStatus(), 3000); // Verificar novamente em 3s
+        setTimeout(() => forceConnectedStatus(), 10000); // Verificar novamente em 10s
     });
 
     client.on('auth_failure', async function (session) {

@@ -76,22 +76,46 @@ const SimpleInstanceManager = () => {
     
     try {
       const instancesData = await whatsappService.getAllClients();
+      console.log('🔍 Instâncias carregadas:', instancesData);
       setInstances(instancesData);
       
       // Set up WebSocket listeners for each instance
       instancesData.forEach(instance => {
+        console.log(`📱 Configurando listener para: ${instance.clientId} (status: ${instance.status})`);
         whatsappService.joinClientRoom(instance.clientId);
+        
+        // Remove listener anterior se existir
+        whatsappService.offClientStatus(instance.clientId);
+        
+        // Configurar novo listener
         whatsappService.onClientStatus(instance.clientId, (updatedClient) => {
-          setInstances(prev => 
-            prev.map(inst => 
-              inst.clientId === updatedClient.clientId ? updatedClient : inst
-            )
-          );
+          console.log(`🔄 Status atualizado via WebSocket: ${updatedClient.clientId} -> ${updatedClient.status}`, updatedClient);
+          
+          setInstances(prev => {
+            const updated = prev.map(inst => 
+              inst.clientId === updatedClient.clientId ? {
+                ...inst,
+                ...updatedClient,
+                timestamp: new Date().toISOString()
+              } : inst
+            );
+            console.log('📊 Instâncias após atualização:', updated);
+            return updated;
+          });
+          
+          // Mostrar toast quando conectar
+          if (updatedClient.status === 'connected' && updatedClient.phoneNumber) {
+            toast({ 
+              title: "WhatsApp Conectado!", 
+              description: `Instância ${updatedClient.clientId} conectada (${updatedClient.phoneNumber})`,
+              duration: 5000 
+            });
+          }
         });
       });
       
     } catch (error) {
-      console.error('Erro ao carregar instâncias:', error);
+      console.error('❌ Erro ao carregar instâncias:', error);
     }
   };
 
@@ -159,9 +183,20 @@ const SimpleInstanceManager = () => {
   };
 
   const openChat = (clientId: string) => {
+    console.log(`🚀 Abrindo chat para: ${clientId}`);
     const client = clients.find(c => c.instance_id === clientId);
+    console.log(`🔍 Cliente encontrado:`, client);
     if (client) {
-      navigate(`/client/${client.id}/chat`);
+      const chatUrl = `/client/${client.id}/chat`;
+      console.log(`📱 Navegando para: ${chatUrl}`);
+      navigate(chatUrl);
+    } else {
+      console.error(`❌ Cliente não encontrado para instância: ${clientId}`);
+      toast({ 
+        title: "Erro", 
+        description: "Cliente não encontrado para esta instância", 
+        variant: "destructive" 
+      });
     }
   };
 
