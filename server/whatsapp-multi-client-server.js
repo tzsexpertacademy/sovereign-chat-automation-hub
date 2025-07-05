@@ -27,6 +27,118 @@ const supabaseUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// FUNÇÃO PARA CARREGAR INSTÂNCIAS EXISTENTES DO SUPABASE
+const loadExistingInstances = async () => {
+    console.log('🔄 [SYNC] Carregando instâncias existentes do Supabase...');
+    
+    try {
+        const { data: instances, error } = await supabase
+            .from('whatsapp_instances')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        if (error) {
+            console.error('❌ [SYNC] Erro ao carregar instâncias:', error);
+            return { success: false, instances: [] };
+        }
+        
+        console.log(`📊 [SYNC] Encontradas ${instances?.length || 0} instâncias no banco`);
+        
+        for (const instance of instances || []) {
+            const { instance_id, status, custom_name, phone_number } = instance;
+            
+            console.log(`📋 [SYNC] Instância ${instance_id}: status=${status}, name=${custom_name}, phone=${phone_number}`);
+            
+            // Verificar se já existe no servidor
+            if (!clients[instance_id]) {
+                console.log(`🔄 [SYNC] Inicializando cliente ${instance_id} do banco...`);
+                
+                // Inicializar estrutura do cliente sem conectar automaticamente
+                clients[instance_id] = {
+                    id: instance_id,
+                    client: null,
+                    status: 'disconnected',
+                    phoneNumber: phone_number || null,
+                    hasQrCode: false,
+                    qrCode: null,
+                    timestamp: new Date().toISOString(),
+                    qrTimestamp: null,
+                    lastActivity: new Date(),
+                    customName: custom_name || null,
+                    fromDatabase: true,
+                    needsReconnect: status === 'connected' || status === 'qr_ready'
+                };
+                
+                console.log(`✅ [SYNC] Cliente ${instance_id} carregado do banco (status=${status})`);
+            } else {
+                console.log(`ℹ️ [SYNC] Cliente ${instance_id} já existe no servidor`);
+            }
+        }
+        
+        return { success: true, instances: instances || [] };
+    } catch (error) {
+        console.error('❌ [SYNC] Erro crítico ao carregar instâncias:', error);
+        return { success: false, instances: [] };
+    }
+};
+
+// FUNÇÃO PARA SINCRONIZAR ESTADO COM BANCO
+const syncWithDatabase = async () => {
+    console.log('🔄 [SYNC] Executando sincronização completa...');
+    
+    try {
+        // Buscar instâncias do banco
+        const { data: dbInstances, error } = await supabase
+            .from('whatsapp_instances')
+            .select('*');
+        
+        if (error) {
+            console.error('❌ [SYNC] Erro na sincronização:', error);
+            return false;
+        }
+        
+        const dbInstanceIds = new Set(dbInstances?.map(i => i.instance_id) || []);
+        const serverInstanceIds = new Set(Object.keys(clients));
+        
+        console.log(`📊 [SYNC] Banco: ${dbInstanceIds.size} instâncias | Servidor: ${serverInstanceIds.size} instâncias`);
+        
+        // Instâncias no banco mas não no servidor
+        const missingInServer = [...dbInstanceIds].filter(id => !serverInstanceIds.has(id));
+        console.log(`📥 [SYNC] ${missingInServer.length} instâncias faltando no servidor:`, missingInServer);
+        
+        // Instâncias no servidor mas não no banco
+        const missingInDatabase = [...serverInstanceIds].filter(id => !dbInstanceIds.has(id));
+        console.log(`📤 [SYNC] ${missingInDatabase.length} instâncias faltando no banco:`, missingInDatabase);
+        
+        // Carregar instâncias faltantes no servidor
+        for (const instanceId of missingInServer) {
+            const dbInstance = dbInstances.find(i => i.instance_id === instanceId);
+            if (dbInstance) {
+                clients[instanceId] = {
+                    id: instanceId,
+                    client: null,
+                    status: 'disconnected',
+                    phoneNumber: dbInstance.phone_number || null,
+                    hasQrCode: false,
+                    qrCode: null,
+                    timestamp: new Date().toISOString(),
+                    qrTimestamp: null,
+                    lastActivity: new Date(),
+                    customName: dbInstance.custom_name || null,
+                    fromDatabase: true,
+                    needsReconnect: dbInstance.status === 'connected' || dbInstance.status === 'qr_ready'
+                };
+                console.log(`✅ [SYNC] Adicionada instância ${instanceId} do banco`);
+            }
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('❌ [SYNC] Erro crítico na sincronização:', error);
+        return false;
+    }
+};
+
 // FUNÇÃO PARA ATUALIZAR STATUS NO BANCO SUPABASE - MELHORADA
 const updateInstanceStatus = async (instanceId, status, phoneNumber = null, retryCount = 0) => {
     const maxRetries = 3;
@@ -1601,19 +1713,144 @@ app.post('/clients/:clientId/send-reaction', async (req, res) => {
     }
 });
 
+// ENDPOINT PARA SINCRONIZAÇÃO MANUAL COM BANCO
+app.post('/sync/database', async (req, res) => {
+    console.log('🔄 [SYNC-API] Solicitação de sincronização manual recebida');
+    
+    try {
+        const result = await syncWithDatabase();
+        
+        if (result) {
+            const activeClients = Object.keys(clients).length;
+            const connectedClients = Object.values(clients).filter(c => c.status === 'connected').length;
+            
+            res.json({
+                success: true,
+                message: 'Sincronização completada com sucesso',
+                statistics: {
+                    totalInstances: activeClients,
+                    connectedInstances: connectedClients,
+                    timestamp: new Date().toISOString()
+                }
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                error: 'Falha na sincronização com banco de dados'
+            });
+        }
+    } catch (error) {
+        console.error('❌ [SYNC-API] Erro na sincronização manual:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erro interno na sincronização'
+        });
+    }
+});
+
+// ENDPOINT PARA VERIFICAR SINCRONIZAÇÃO
+app.get('/sync/status', async (req, res) => {
+    try {
+        const { data: dbInstances, error } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_id, status, custom_name, phone_number');
+        
+        if (error) {
+            throw error;
+        }
+        
+        const serverInstances = Object.keys(clients).map(id => ({
+            instance_id: id,
+            status: clients[id].status,
+            custom_name: clients[id].customName,
+            phone_number: clients[id].phoneNumber,
+            in_server: true
+        }));
+        
+        const dbInstanceIds = new Set(dbInstances?.map(i => i.instance_id) || []);
+        const serverInstanceIds = new Set(Object.keys(clients));
+        
+        const missingInServer = [...dbInstanceIds].filter(id => !serverInstanceIds.has(id));
+        const missingInDatabase = [...serverInstanceIds].filter(id => !dbInstanceIds.has(id));
+        
+        res.json({
+            success: true,
+            sync_status: {
+                database_instances: dbInstances?.length || 0,
+                server_instances: serverInstances.length,
+                missing_in_server: missingInServer,
+                missing_in_database: missingInDatabase,
+                is_synchronized: missingInServer.length === 0 && missingInDatabase.length === 0
+            },
+            database_instances: dbInstances || [],
+            server_instances: serverInstances
+        });
+    } catch (error) {
+        console.error('❌ [SYNC-STATUS] Erro:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erro ao verificar status de sincronização'
+        });
+    }
+});
+
 // Cleanup on startup
 cleanupOrphanedChromeProcesses();
 
-server.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 WhatsApp Multi-Client Server iniciado na porta ${port}`);
-    console.log(`📡 Health Check HTTPS: https://146.59.227.248:${port}/health`);
-    console.log(`📱 API Base HTTPS: https://146.59.227.248:${port}/clients`);
-    console.log(`📚 Swagger UI HTTPS: https://146.59.227.248:${port}/api-docs`);
-    console.log(`🔧 CORS ÚNICO DEFINITIVAMENTE CONFIGURADO!`);
-    console.log(`   - Middleware: cors() com lista específica de origens`);
-    console.log(`   - Headers: Único por request, sem duplicação`);
-    console.log(`   - OPTIONS: Tratado pelo middleware automaticamente`);
-    console.log(`   - Métodos: GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS`);
-    console.log(`   - HTTPS: Swagger UI configurado definitivamente`);
-    console.log(`📱 SERVIDOR HTTPS PRONTO - CORS ÚNICO RESOLVIDO!`);
+// INICIALIZAÇÃO DO SERVIDOR COM SINCRONIZAÇÃO
+const initializeServer = async () => {
+    console.log('🚀 [INIT] Iniciando WhatsApp Multi-Client Server...');
+    
+    // Carregar instâncias existentes do banco
+    console.log('📊 [INIT] Carregando instâncias do Supabase...');
+    const loadResult = await loadExistingInstances();
+    
+    if (loadResult.success) {
+        console.log(`✅ [INIT] ${loadResult.instances.length} instâncias carregadas do banco`);
+        
+        // Executar sincronização completa
+        console.log('🔄 [INIT] Executando sincronização inicial...');
+        const syncResult = await syncWithDatabase();
+        
+        if (syncResult) {
+            console.log('✅ [INIT] Sincronização inicial completada');
+        } else {
+            console.warn('⚠️ [INIT] Sincronização inicial teve problemas');
+        }
+    } else {
+        console.warn('⚠️ [INIT] Problemas ao carregar instâncias do banco');
+    }
+    
+    // Estatísticas iniciais
+    const activeClients = Object.keys(clients).length;
+    const needReconnect = Object.values(clients).filter(c => c.needsReconnect).length;
+    
+    console.log(`📊 [INIT] Status inicial:`);
+    console.log(`   - Instâncias carregadas: ${activeClients}`);
+    console.log(`   - Precisam reconectar: ${needReconnect}`);
+    console.log(`   - Porta: ${port}`);
+    
+    // Iniciar servidor
+    server.listen(port, '0.0.0.0', () => {
+        console.log(`🚀 WhatsApp Multi-Client Server iniciado na porta ${port}`);
+        console.log(`📡 Health Check HTTPS: https://146.59.227.248:${port}/health`);
+        console.log(`📱 API Base HTTPS: https://146.59.227.248:${port}/clients`);
+        console.log(`📚 Swagger UI HTTPS: https://146.59.227.248:${port}/api-docs`);
+        console.log(`🔄 Sync API: https://146.59.227.248:${port}/sync/database`);
+        console.log(`📊 Sync Status: https://146.59.227.248:${port}/sync/status`);
+        console.log(`🔧 CORS ÚNICO DEFINITIVAMENTE CONFIGURADO!`);
+        console.log(`   - Middleware: cors() com lista específica de origens`);
+        console.log(`   - Headers: Único por request, sem duplicação`);
+        console.log(`   - OPTIONS: Tratado pelo middleware automaticamente`);
+        console.log(`   - Métodos: GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS`);
+        console.log(`   - HTTPS: Swagger UI configurado definitivamente`);
+        console.log(`📱 SERVIDOR HTTPS PRONTO - CORS ÚNICO RESOLVIDO!`);
+        console.log(`✅ SINCRONIZAÇÃO COM BANCO IMPLEMENTADA!`);
+    });
+};
+
+// Inicializar servidor com sincronização
+initializeServer().catch(error => {
+    console.error('❌ [INIT] Erro crítico na inicialização:', error);
+    process.exit(1);
 });

@@ -10,11 +10,14 @@ import {
   Server, 
   AlertCircle,
   CheckCircle,
-  ExternalLink
+  ExternalLink,
+  Database,
+  Clock
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import whatsappService from "@/services/whatsappMultiClient";
 import { SERVER_URL } from "@/config/environment";
+import DatabaseSyncStatus from "./DatabaseSyncStatus";
 
 const WhatsAppSystemStatus = () => {
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -88,27 +91,28 @@ const WhatsAppSystemStatus = () => {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Server className="w-5 h-5" />
-            <CardTitle>Sistema WhatsApp Multi-Cliente</CardTitle>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Server className="w-5 h-5" />
+              <CardTitle>Sistema WhatsApp Multi-Cliente</CardTitle>
+            </div>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={handleRefresh}
+              disabled={serverStatus === 'checking'}
+            >
+              <RefreshCw className={`w-4 h-4 mr-1 ${serverStatus === 'checking' ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
           </div>
-          <Button 
-            size="sm" 
-            variant="outline" 
-            onClick={handleRefresh}
-            disabled={serverStatus === 'checking'}
-          >
-            <RefreshCw className={`w-4 h-4 mr-1 ${serverStatus === 'checking' ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
-        </div>
-        <CardDescription>
-          Status do servidor backend e APIs disponíveis
-        </CardDescription>
-      </CardHeader>
+          <CardDescription>
+            Status do servidor backend e APIs disponíveis
+          </CardDescription>
+        </CardHeader>
       <CardContent className="space-y-4">
         
         {/* Status Principal */}
@@ -213,7 +217,10 @@ const WhatsAppSystemStatus = () => {
           </div>
         )}
       </CardContent>
-    </Card>
+      </Card>
+      
+      <DatabaseSyncStatus />
+    </div>
   );
 };
 
