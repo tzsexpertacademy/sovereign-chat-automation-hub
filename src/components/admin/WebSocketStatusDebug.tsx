@@ -189,24 +189,69 @@ const WebSocketStatusDebug = () => {
   );
 };
 
-// Componente interno para teste QR Code
+// Componente interno para teste QR Code - VERSÃO FORÇADA
 const QRCodeTest = () => {
-  const [qrData, setQrData] = useState<{qrCode?: string, status: string, loading: boolean}>({
+  const [qrData, setQrData] = useState<{qrCode?: string, status: string, loading: boolean, phoneNumber?: string}>({
     status: 'disconnected',
     loading: false
   });
   const [testId] = useState(() => `test_${Date.now()}`);
   const [attempts, setAttempts] = useState(0);
-  const [isScanned, setIsScanned] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev.slice(-4), `[${timestamp}] ${message}`]);
+    console.log(message);
+  };
+
+  // WebSocket listener em tempo real
+  useEffect(() => {
+    if (qrData.status === 'qr_ready') {
+      addLog('🎧 Ativando WebSocket listener...');
+      
+      const socket = whatsappService.getSocket();
+      if (socket) {
+        const eventName = `client_status_${testId}`;
+        
+        const handleWebSocketStatus = (data: any) => {
+          addLog(`📡 WebSocket evento: ${JSON.stringify(data)}`);
+          
+          if (data.phoneNumber && data.phoneNumber.length > 0) {
+            addLog('🎉 TELEFONE DETECTADO via WebSocket!');
+            setQrData({
+              status: 'connected',
+              loading: false,
+              phoneNumber: data.phoneNumber
+            });
+          } else if (data.status === 'connected' || data.status === 'authenticated' || data.status === 'ready') {
+            addLog('✅ STATUS CONECTADO via WebSocket!');
+            setQrData({
+              status: 'connected',
+              loading: false,
+              phoneNumber: data.phoneNumber
+            });
+          }
+        };
+
+        socket.on(eventName, handleWebSocketStatus);
+        whatsappService.joinClientRoom(testId);
+        
+        return () => {
+          socket.off(eventName, handleWebSocketStatus);
+        };
+      }
+    }
+  }, [qrData.status, testId]);
 
   const generateQR = async () => {
     try {
       setQrData(prev => ({ ...prev, loading: true, status: 'connecting' }));
-      setIsScanned(false);
+      setLogs([]);
       
-      console.log(`🚀 Conectando ${testId}...`);
+      addLog(`🚀 Conectando ${testId}...`);
       
-      // Conectar diretamente via API
+      // 1. CONECTAR
       const response = await fetch(`https://146.59.227.248/clients/${testId}/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -214,144 +259,117 @@ const QRCodeTest = () => {
       });
       
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      addLog('✅ Comando connect enviado');
       
-      console.log('✅ Comando connect enviado');
-      
-      // Aguardar e verificar status - VERSÃO MELHORADA
+      // 2. VERIFICAÇÃO AGRESSIVA
       let attemptCount = 0;
-      const checkStatus = async () => {
+      const aggressiveCheck = async () => {
         attemptCount++;
         setAttempts(attemptCount);
-        console.log(`🔄 Verificando status (${attemptCount}/20)...`);
+        addLog(`🔄 Verificação ${attemptCount}/50`);
         
         try {
           const statusResponse = await fetch(`https://146.59.227.248/clients/${testId}/status`, {
             headers: { 'Content-Type': 'application/json' },
-            mode: 'cors'
+            mode: 'cors',
+            cache: 'no-cache'
           });
           
           if (statusResponse.ok) {
             const data = await statusResponse.json();
-            console.log('📊 Status recebido:', data);
+            addLog(`📊 Status: ${data.status}, Phone: ${data.phoneNumber || 'null'}, QR: ${data.hasQrCode}`);
             
-            // DETECTAR CONEXÃO MELHORADA
-            const isConnected = data.success && (
-              data.status === 'connected' || 
-              data.status === 'authenticated' ||
-              data.status === 'ready' ||
-              (data.phoneNumber && data.phoneNumber.length > 0)
-            );
-            
-            if (isConnected) {
-              console.log('🎉 WhatsApp CONECTADO com sucesso!');
+            // DETECÇÃO SUPER AGRESSIVA
+            if (data.phoneNumber && data.phoneNumber.trim().length > 5) {
+              addLog('🎉 CONECTADO! Telefone detectado!');
               setQrData({
                 status: 'connected',
                 loading: false,
-                qrCode: data.qrCode
+                qrCode: data.qrCode,
+                phoneNumber: data.phoneNumber
               });
-              setIsScanned(true);
               return;
             }
             
-            if (data.success && data.hasQrCode && data.qrCode) {
-              console.log('📱 QR Code disponível');
+            if (data.status === 'connected' || data.status === 'authenticated' || data.status === 'ready') {
+              addLog('✅ CONECTADO! Status confirmado!');
+              setQrData({
+                status: 'connected',
+                loading: false,
+                qrCode: data.qrCode,
+                phoneNumber: data.phoneNumber
+              });
+              return;
+            }
+            
+            if (data.hasQrCode && data.qrCode) {
+              addLog('📱 QR Code disponível - ativando WebSocket');
               setQrData({
                 qrCode: data.qrCode,
                 status: 'qr_ready',
                 loading: false
               });
               
-              // Se QR foi gerado, continuar verificando por mais tempo (até 2 minutos)
-              if (attemptCount < 40) { // 40 x 3s = 2 minutos
-                setTimeout(checkStatus, 3000);
-              } else {
-                setQrData(prev => ({ ...prev, loading: false, status: 'timeout' }));
-              }
-              return;
-            }
-            
-            // Status ainda connecting - continuar verificando
-            if (data.success && data.status === 'connecting') {
-              if (attemptCount < 20) { // Primeira fase: 1 minuto
-                setTimeout(checkStatus, 3000);
-              } else {
-                setQrData(prev => ({ ...prev, loading: false, status: 'waiting_qr' }));
+              // Continuar verificando por mais 2 minutos
+              if (attemptCount < 50) {
+                setTimeout(aggressiveCheck, 2500);
               }
               return;
             }
           }
           
           if (attemptCount < 20) {
-            setTimeout(checkStatus, 3000);
+            setTimeout(aggressiveCheck, 2500);
           } else {
+            addLog('⏰ Timeout na verificação');
             setQrData(prev => ({ ...prev, loading: false, status: 'timeout' }));
           }
         } catch (error) {
-          console.error(`❌ Erro na verificação ${attemptCount}:`, error);
+          addLog(`❌ Erro: ${error}`);
           if (attemptCount < 20) {
-            setTimeout(checkStatus, 3000);
+            setTimeout(aggressiveCheck, 2500);
           } else {
             setQrData(prev => ({ ...prev, loading: false, status: 'error' }));
           }
         }
       };
       
-      // Iniciar verificação após 2 segundos
-      setTimeout(checkStatus, 2000);
+      setTimeout(aggressiveCheck, 1500);
       
     } catch (error: any) {
-      console.error('❌ Erro ao gerar QR:', error);
+      addLog(`❌ Erro fatal: ${error.message}`);
       setQrData({ status: 'error', loading: false });
     }
   };
 
-  // Verificação contínua quando QR foi escaneado
-  useEffect(() => {
-    if (qrData.status === 'qr_ready' && qrData.qrCode && !isScanned) {
-      console.log('📱 QR Code ativo - iniciando verificação contínua...');
+  // Verificação manual forçada
+  const forceCheck = async () => {
+    addLog('🔧 VERIFICAÇÃO FORÇADA MANUAL');
+    try {
+      const response = await fetch(`https://146.59.227.248/clients/${testId}/status`, {
+        headers: { 'Content-Type': 'application/json' },
+        mode: 'cors',
+        cache: 'no-cache'
+      });
       
-      const continuousCheck = setInterval(async () => {
-        try {
-          const response = await fetch(`https://146.59.227.248/clients/${testId}/status`, {
-            headers: { 'Content-Type': 'application/json' },
-            mode: 'cors'
+      if (response.ok) {
+        const data = await response.json();
+        addLog(`🔍 Dados completos: ${JSON.stringify(data)}`);
+        
+        if (data.phoneNumber) {
+          addLog('📞 TELEFONE ENCONTRADO NA VERIFICAÇÃO MANUAL!');
+          setQrData({
+            status: 'connected',
+            loading: false,
+            qrCode: data.qrCode,
+            phoneNumber: data.phoneNumber
           });
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log('🔄 Verificação contínua:', data.status);
-            
-            const isConnected = data.success && (
-              data.status === 'connected' || 
-              data.status === 'authenticated' ||
-              data.status === 'ready' ||
-              (data.phoneNumber && data.phoneNumber.length > 0)
-            );
-            
-            if (isConnected) {
-              console.log('🎉 CONEXÃO DETECTADA na verificação contínua!');
-              setQrData({
-                status: 'connected',
-                loading: false,
-                qrCode: data.qrCode
-              });
-              setIsScanned(true);
-              clearInterval(continuousCheck);
-            }
-          }
-        } catch (error) {
-          console.warn('Erro na verificação contínua:', error);
         }
-      }, 2000); // Verificar a cada 2 segundos
-      
-      // Limpar após 3 minutos
-      setTimeout(() => {
-        clearInterval(continuousCheck);
-      }, 180000);
-      
-      return () => clearInterval(continuousCheck);
+      }
+    } catch (error) {
+      addLog(`❌ Erro verificação manual: ${error}`);
     }
-  }, [qrData.status, qrData.qrCode, isScanned, testId]);
+  };
 
   return (
     <div className="space-y-4">
@@ -388,25 +406,53 @@ const QRCodeTest = () => {
         </div>
       )}
 
+      {/* Logs em tempo real */}
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">📋 Logs em Tempo Real:</h4>
+        <div className="bg-black text-green-400 p-3 rounded text-xs font-mono max-h-32 overflow-y-auto">
+          {logs.length > 0 ? (
+            logs.map((log, index) => (
+              <div key={index}>{log}</div>
+            ))
+          ) : (
+            <div className="text-gray-500">Aguardando logs...</div>
+          )}
+        </div>
+      </div>
+
+      {qrData.phoneNumber && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded">
+          <p className="text-green-800 font-medium">📞 Telefone Conectado:</p>
+          <p className="text-green-600 text-sm font-mono">{qrData.phoneNumber}</p>
+        </div>
+      )}
+
       {qrData.status === 'connected' && (
         <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg text-center">
-          <div className="text-2xl mb-2">🎉</div>
-          <p className="text-green-800 font-bold text-lg">WhatsApp Conectado!</p>
-          <p className="text-green-600 text-sm">Instância funcionando perfeitamente</p>
+          <div className="text-3xl mb-2">🎉</div>
+          <p className="text-green-800 font-bold text-xl">CONECTADO!</p>
+          <p className="text-green-600">WhatsApp funcionando perfeitamente</p>
+          {qrData.phoneNumber && (
+            <p className="text-green-500 text-sm mt-2">Tel: {qrData.phoneNumber}</p>
+          )}
         </div>
       )}
 
-      {qrData.status === 'qr_ready' && !isScanned && (
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-center">
-          <p className="text-blue-800 font-medium">📱 Aguardando escaneamento...</p>
-          <p className="text-blue-600 text-sm">Verificação contínua ativa</p>
-        </div>
-      )}
-
-      {qrData.status === 'timeout' && (
-        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-center">
-          <p className="text-yellow-800 font-medium">⏰ Timeout</p>
-          <p className="text-yellow-600 text-sm">Tente gerar um novo QR Code</p>
+      {qrData.status === 'qr_ready' && (
+        <div className="space-y-3">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded text-center">
+            <p className="text-blue-800 font-medium">📱 QR Code Ativo</p>
+            <p className="text-blue-600 text-sm">WebSocket + Verificação contínua</p>
+          </div>
+          
+          <Button 
+            onClick={forceCheck} 
+            variant="outline"
+            size="sm"
+            className="w-full"
+          >
+            🔧 Verificação Manual Forçada
+          </Button>
         </div>
       )}
 
