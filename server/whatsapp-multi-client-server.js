@@ -969,8 +969,348 @@ app.post('/clients/:clientId/send-message', async (req, res) => {
             console.error('Erro ao enviar mensagem:', error);
             res.status(500).json({ success: false, error: 'Erro ao enviar mensagem' });
         }
+    }
+});
+
+// ===== SISTEMA DE DIAGNÓSTICO PROFUNDO =====
+const diagnosticClient = (client, clientId) => {
+    const timestamp = new Date().toISOString();
+    const diagnostic = {
+        timestamp,
+        clientId,
+        exists: !!client,
+        hasInfo: !!(client && client.info),
+        hasWid: !!(client && client.info && client.info.wid),
+        hasPupPage: !!(client && client.pupPage),
+        isPageClosed: null,
+        hasMainFrame: null,
+        hasAuthStrategy: !!(client && client.authStrategy),
+        isAuthenticated: !!(client && client.authStrategy && client.authStrategy.authenticated),
+        hasStoredQrCode: !!(client && client.qrCode),
+        hasRawQr: !!(client && client.qr),
+        recoveryAttempts: client ? (client.recoveryAttempts || 0) : 0
+    };
+    
+    if (client && client.pupPage) {
+        try {
+            diagnostic.isPageClosed = client.pupPage.isClosed ? client.pupPage.isClosed() : false;
+            diagnostic.hasMainFrame = !!client.pupPage.mainFrame;
+        } catch (error) {
+            diagnostic.isPageClosed = true;
+            diagnostic.hasMainFrame = false;
+            diagnostic.pageError = error.message;
+        }
+    }
+    
+    console.log(`🔍 [${timestamp}] DIAGNÓSTICO COMPLETO ${clientId}:`, diagnostic);
+    return diagnostic;
+};
+
+const isSessionHealthy = (client, clientId) => {
+    try {
+        if (!client) {
+            console.log(`❌ SAÚDE: Cliente ${clientId} não existe`);
+            return false;
+        }
+        
+        if (!client.pupPage) {
+            console.log(`❌ SAÚDE: Cliente ${clientId} sem pupPage`);
+            return false;
+        }
+        
+        if (client.pupPage.isClosed && client.pupPage.isClosed()) {
+            console.log(`❌ SAÚDE: Cliente ${clientId} com página fechada`);
+            return false;
+        }
+        
+        if (!client.pupPage.mainFrame) {
+            console.log(`❌ SAÚDE: Cliente ${clientId} sem mainFrame`);
+            return false;
+        }
+        
+        console.log(`✅ SAÚDE: Cliente ${clientId} saudável`);
+        return true;
+    } catch (error) {
+        console.log(`❌ SAÚDE: Cliente ${clientId} erro na verificação: ${error.message}`);
+        return false;
+    }
+};
+
+const getClientStatusSafe = async (client, clientId) => {
+    const timestamp = new Date().toISOString();
+    console.log(`🔍 [${timestamp}] INICIANDO DETECÇÃO DE STATUS: ${clientId}`);
+    
+    try {
+        // FONTE 1: Verificar info.wid (mais confiável para conexões estabelecidas)
+        if (client.info && client.info.wid) {
+            console.log(`✅ [${timestamp}] FONTE 1 - Info.wid encontrado: ${client.info.wid.user}`);
+            return { 
+                status: 'connected', 
+                phoneNumber: client.info.wid.user,
+                source: 'info.wid'
+            };
+        } else {
+            console.log(`⚪ [${timestamp}] FONTE 1 - Sem info.wid`);
+        }
+        
+        // FONTE 2: Verificar getState apenas se sessão está saudável
+        if (isSessionHealthy(client, clientId)) {
+            console.log(`⚪ [${timestamp}] FONTE 2 - Sessão saudável, verificando getState...`);
+            try {
+                const state = await Promise.race([
+                    client.getState(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('getState timeout')), 5000))
+                ]);
+                
+                console.log(`🔍 [${timestamp}] FONTE 2 - getState retornou: ${state}`);
+                if (state === 'CONNECTED') {
+                    return { 
+                        status: 'connected', 
+                        phoneNumber: null,
+                        source: 'getState'
+                    };
+                }
+            } catch (stateError) {
+                console.log(`⚠️ [${timestamp}] FONTE 2 - Erro getState: ${stateError.message}`);
+            }
+        } else {
+            console.log(`❌ [${timestamp}] FONTE 2 - Sessão não está saudável, pulando getState`);
+        }
+        
+        // FONTE 3: Verificar authStrategy
+        if (client.authStrategy && client.authStrategy.authenticated) {
+            console.log(`✅ [${timestamp}] FONTE 3 - AuthStrategy authenticated`);
+            return { 
+                status: 'authenticated', 
+                phoneNumber: null,
+                source: 'authStrategy'
+            };
+        } else {
+            console.log(`⚪ [${timestamp}] FONTE 3 - AuthStrategy não authenticated`);
+        }
+        
+        // FONTE 4: Verificar se tem QR code armazenado
+        if (client.qrCode) {
+            console.log(`✅ [${timestamp}] FONTE 4 - QR Code armazenado encontrado`);
+            return { 
+                status: 'qr_ready', 
+                phoneNumber: null,
+                source: 'stored_qr'
+            };
+        } else {
+            console.log(`⚪ [${timestamp}] FONTE 4 - Sem QR Code armazenado`);
+        }
+        
+        // FONTE 5: Verificar QR raw
+        if (client.qr) {
+            console.log(`✅ [${timestamp}] FONTE 5 - QR Raw encontrado`);
+            return { 
+                status: 'qr_ready', 
+                phoneNumber: null,
+                source: 'raw_qr'
+            };
+        } else {
+            console.log(`⚪ [${timestamp}] FONTE 5 - Sem QR Raw`);
+        }
+        
+        console.log(`⚪ [${timestamp}] STATUS PADRÃO - connecting`);
+        return { 
+            status: 'connecting', 
+            phoneNumber: null,
+            source: 'default'
+        };
+    } catch (error) {
+        console.error(`❌ [${timestamp}] ERRO GERAL na detecção de status: ${error.message}`);
+        console.error(`❌ [${timestamp}] Stack trace:`, error.stack);
+        return { 
+            status: 'error', 
+            phoneNumber: null,
+            source: 'error',
+            errorMessage: error.message
+        };
+    }
+};
+
+// ===== SISTEMA DE LIMPEZA AUTOMÁTICA DE SESSÕES MORTAS =====
+const cleanupDeadSession = async (clientId, reason = 'dead_session') => {
+    const timestamp = new Date().toISOString();
+    console.log(`🧹 [${timestamp}] LIMPANDO SESSÃO MORTA: ${clientId}, razão: ${reason}`);
+    
+    try {
+        const client = clients[clientId];
+        if (client) {
+            // Limpar interval de auto-recovery se existir
+            if (client.autoRecoveryInterval) {
+                clearInterval(client.autoRecoveryInterval);
+                console.log(`🧹 [${timestamp}] Auto-recovery interval limpo para ${clientId}`);
+            }
+            
+            // Destruir cliente Puppeteer
+            try {
+                await client.destroy();
+                console.log(`🧹 [${timestamp}] Cliente Puppeteer destruído: ${clientId}`);
+            } catch (destroyError) {
+                console.warn(`⚠️ [${timestamp}] Erro ao destruir cliente: ${destroyError.message}`);
+            }
+            
+            // Remover da lista de clientes
+            delete clients[clientId];
+            console.log(`🧹 [${timestamp}] Cliente removido da lista: ${clientId}`);
+            
+            // Atualizar banco de dados
+            try {
+                await updateInstanceStatus(clientId, 'disconnected');
+                console.log(`🧹 [${timestamp}] Status do banco atualizado: ${clientId} -> disconnected`);
+            } catch (dbError) {
+                console.error(`❌ [${timestamp}] Erro ao atualizar banco: ${dbError.message}`);
+            }
+            
+            // Emitir evento de desconexão
+            const disconnectData = {
+                clientId: clientId,
+                status: 'disconnected',
+                phoneNumber: null,
+                hasQrCode: false,
+                qrCode: null,
+                timestamp: timestamp,
+                reason: reason
+            };
+            
+            io.to(clientId).emit(`client_status_${clientId}`, disconnectData);
+            io.emit(`client_status_${clientId}`, disconnectData);
+            
+            console.log(`✅ [${timestamp}] Limpeza completa realizada para: ${clientId}`);
+            return true;
+        } else {
+            console.log(`⚠️ [${timestamp}] Cliente ${clientId} já foi removido`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`❌ [${timestamp}] Erro na limpeza de sessão morta ${clientId}:`, error);
+        return false;
+    }
+};
+
+app.get('/clients/:clientId/status', async (req, res) => {
+    const clientId = req.params.clientId;
+    const timestamp = new Date().toISOString();
+    console.log(`📊 [${timestamp}] ===== VERIFICAÇÃO DE STATUS INICIADA: ${clientId} =====`);
+    
+    if (clients[clientId]) {
+        const client = clients[clientId];
+        
+        try {
+            // FASE 1: DIAGNÓSTICO COMPLETO
+            const diagnostic = diagnosticClient(client, clientId);
+            
+            // FASE 2: DETECÇÃO INTELIGENTE DE STATUS
+            const statusResult = await getClientStatusSafe(client, clientId);
+            console.log(`🔍 [${timestamp}] Status detectado: ${statusResult.status} via ${statusResult.source}`);
+            
+            // FASE 3: VERIFICAÇÃO E LIMPEZA DE SESSÕES MORTAS
+            if (statusResult.status === 'error' || !isSessionHealthy(client, clientId)) {
+                console.log(`💀 [${timestamp}] SESSÃO MORTA DETECTADA para ${clientId}`);
+                
+                // Incrementar contador
+                client.deadSessionDetections = (client.deadSessionDetections || 0) + 1;
+                
+                if (client.deadSessionDetections >= 2) {
+                    console.log(`💀 [${timestamp}] LIMITE DE DETECÇÕES ATINGIDO (${client.deadSessionDetections}), limpando sessão`);
+                    
+                    // Executar limpeza em background
+                    setTimeout(() => cleanupDeadSession(clientId, 'max_dead_detections'), 1000);
+                    
+                    return res.json({
+                        success: true,
+                        clientId: clientId,
+                        status: 'disconnected',
+                        phoneNumber: null,
+                        qrCode: null,
+                        hasQrCode: false,
+                        timestamp: timestamp,
+                        diagnostic: diagnostic,
+                        message: 'Sessão morta detectada, limpeza automática iniciada'
+                    });
+                } else {
+                    console.log(`💀 [${timestamp}] Detecção ${client.deadSessionDetections}/2, aguardando próxima verificação`);
+                }
+            } else {
+                // Reset contador se sessão está saudável
+                client.deadSessionDetections = 0;
+            }
+            
+            // FASE 4: PROCESSAMENTO DE QR CODE
+            let qrCode = null;
+            if (client.qrCode) {
+                qrCode = client.qrCode;
+                console.log(`📱 [${timestamp}] QR Code ARMAZENADO encontrado (${client.qrTimestamp})`);
+            } else if (client.qr) {
+                console.log(`📱 [${timestamp}] QR Raw encontrado, convertendo para DataURL...`);
+                try {
+                    qrCode = await qrcode.toDataURL(client.qr);
+                    client.qrCode = qrCode;
+                    client.qrTimestamp = timestamp;
+                    console.log(`📱 [${timestamp}] QR Code convertido e armazenado`);
+                } catch (qrError) {
+                    console.error(`❌ [${timestamp}] Erro ao converter QR: ${qrError.message}`);
+                }
+            }
+            
+            // FASE 5: MAPEAMENTO DE STATUS FINAL
+            let finalStatus = statusResult.status;
+            if (finalStatus === 'authenticated') {
+                finalStatus = 'connected';
+            }
+            if (qrCode && finalStatus !== 'connected') {
+                finalStatus = 'qr_ready';
+            }
+            
+            const phoneNumber = statusResult.phoneNumber ? phoneNumberFormatter(statusResult.phoneNumber) : null;
+            
+            console.log(`🔍 [${timestamp}] Status final mapeado: ${statusResult.status} -> ${finalStatus}`);
+            
+            const response = {
+                success: true,
+                clientId: clientId,
+                status: finalStatus,
+                phoneNumber: phoneNumber,
+                qrCode: qrCode,
+                hasQrCode: !!qrCode,
+                timestamp: timestamp,
+                qrTimestamp: client.qrTimestamp,
+                diagnostic: diagnostic,
+                source: statusResult.source
+            };
+            
+            console.log(`✅ [${timestamp}] ===== STATUS FINAL ${clientId}: ${finalStatus}, QR: ${!!qrCode} =====`);
+            res.json(response);
+            
+        } catch (error) {
+            console.error(`❌ [${timestamp}] ERRO CRÍTICO no status ${clientId}:`, error);
+            console.error(`❌ [${timestamp}] Stack trace:`, error.stack);
+            
+            // Em caso de erro crítico, tentar limpeza
+            setTimeout(() => cleanupDeadSession(clientId, 'critical_error'), 2000);
+            
+            res.status(500).json({
+                success: false,
+                error: `Erro crítico ao verificar status: ${error.message}`,
+                clientId: clientId,
+                timestamp: timestamp,
+                diagnostic: diagnosticClient(client, clientId)
+            });
+        }
     } else {
-        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
+        console.log(`❌ [${timestamp}] Cliente ${clientId} NÃO ENCONTRADO na lista de clientes`);
+        console.log(`📋 [${timestamp}] Clientes ativos: [${Object.keys(clients).join(', ')}]`);
+        
+        res.status(404).json({
+            success: false,
+            error: `Cliente ${clientId} não encontrado.`,
+            clientId: clientId,
+            timestamp: timestamp,
+            activeClients: Object.keys(clients)
+        });
     }
 });
 
