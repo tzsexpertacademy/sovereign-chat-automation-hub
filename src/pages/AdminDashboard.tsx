@@ -9,6 +9,7 @@ import ClientsManagement from "@/components/admin/ClientsManagement";
 import InstancesMonitor from "@/components/admin/InstancesMonitor";
 import SystemLogs from "@/components/admin/SystemLogs";
 import WebSocketStatusDebug from "@/components/admin/WebSocketStatusDebug";
+import HumanizationDashboard from "@/components/admin/HumanizationDashboard";
 
 const AdminDashboard = () => {
   return (
@@ -25,6 +26,7 @@ const AdminDashboard = () => {
               <Route path="instances" element={<InstancesMonitor />} />
               <Route path="logs" element={<SystemLogs />} />
               <Route path="websocket" element={<WebSocketStatusDebug />} />
+              <Route path="humanization" element={<HumanizationDashboard clientId="admin_dashboard" />} />
             </Routes>
           </main>
         </div>
