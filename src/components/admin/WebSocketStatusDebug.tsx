@@ -173,6 +173,165 @@ const WebSocketStatusDebug = () => {
           </div>
         </CardContent>
       </Card>
+      {/* QR Code Debugger */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Activity className="w-5 h-5" />
+            <span>Teste QR Code Rápido</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <QRCodeTest />
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// Componente interno para teste QR Code
+const QRCodeTest = () => {
+  const [qrData, setQrData] = useState<{qrCode?: string, status: string, loading: boolean}>({
+    status: 'disconnected',
+    loading: false
+  });
+  const [testId] = useState(() => `test_${Date.now()}`);
+  const [attempts, setAttempts] = useState(0);
+
+  const generateQR = async () => {
+    try {
+      setQrData(prev => ({ ...prev, loading: true, status: 'connecting' }));
+      
+      console.log(`🚀 Conectando ${testId}...`);
+      
+      // Conectar diretamente via API
+      const response = await fetch(`https://146.59.227.248/clients/${testId}/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        mode: 'cors'
+      });
+      
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      console.log('✅ Comando connect enviado');
+      
+      // Aguardar e verificar status
+      let attemptCount = 0;
+      const checkStatus = async () => {
+        attemptCount++;
+        setAttempts(attemptCount);
+        console.log(`🔄 Verificando status (${attemptCount}/10)...`);
+        
+        try {
+          const statusResponse = await fetch(`https://146.59.227.248/clients/${testId}/status`, {
+            headers: { 'Content-Type': 'application/json' },
+            mode: 'cors'
+          });
+          
+          if (statusResponse.ok) {
+            const data = await statusResponse.json();
+            console.log('📊 Status recebido:', data);
+            
+            if (data.success && data.hasQrCode && data.qrCode) {
+              console.log('🎉 QR Code encontrado!');
+              setQrData({
+                qrCode: data.qrCode,
+                status: 'qr_ready',
+                loading: false
+              });
+              return;
+            } else if (data.success && data.status === 'connected') {
+              setQrData({
+                status: 'connected',
+                loading: false
+              });
+              return;
+            }
+          }
+          
+          if (attemptCount < 10) {
+            setTimeout(checkStatus, 3000);
+          } else {
+            setQrData(prev => ({ ...prev, loading: false, status: 'timeout' }));
+          }
+        } catch (error) {
+          console.error(`❌ Erro na verificação ${attemptCount}:`, error);
+          if (attemptCount < 10) {
+            setTimeout(checkStatus, 3000);
+          } else {
+            setQrData(prev => ({ ...prev, loading: false, status: 'error' }));
+          }
+        }
+      };
+      
+      // Iniciar verificação após 2 segundos
+      setTimeout(checkStatus, 2000);
+      
+    } catch (error: any) {
+      console.error('❌ Erro ao gerar QR:', error);
+      setQrData({ status: 'error', loading: false });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
+        <span className="text-sm font-medium">Test ID:</span>
+        <code className="text-xs bg-white px-2 py-1 rounded">{testId}</code>
+      </div>
+      
+      <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
+        <span className="text-sm font-medium">Status:</span>
+        <div className="flex items-center space-x-2">
+          <Badge variant={qrData.status === 'connected' ? 'default' : 'secondary'}>
+            {qrData.status}
+          </Badge>
+          {qrData.loading && attempts > 0 && (
+            <span className="text-xs text-gray-500">({attempts}/10)</span>
+          )}
+        </div>
+      </div>
+
+      {qrData.qrCode && (
+        <div className="text-center space-y-2">
+          <div className="p-4 bg-white border-2 border-dashed border-green-300 rounded-lg">
+            <img 
+              src={qrData.qrCode} 
+              alt="QR Code" 
+              className="max-w-xs mx-auto"
+              style={{ imageRendering: 'pixelated' }}
+            />
+          </div>
+          <p className="text-xs text-green-600 font-medium">
+            ✅ QR Code Disponível! Escaneie com WhatsApp
+          </p>
+        </div>
+      )}
+
+      {qrData.status === 'connected' && (
+        <div className="p-3 bg-green-50 rounded text-center">
+          <p className="text-green-800 font-medium">🎉 WhatsApp Conectado!</p>
+        </div>
+      )}
+
+      <Button 
+        onClick={generateQR} 
+        disabled={qrData.loading}
+        className="w-full"
+        variant={qrData.status === 'connected' ? 'secondary' : 'default'}
+      >
+        {qrData.loading ? (
+          <>
+            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            Gerando QR Code...
+          </>
+        ) : (
+          <>
+            <Activity className="w-4 h-4 mr-2" />
+            {qrData.status === 'connected' ? 'Reconectar' : 'Gerar QR Code'}
+          </>
+        )}
+      </Button>
     </div>
   );
 };
