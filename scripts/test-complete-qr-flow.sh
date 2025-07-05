@@ -55,6 +55,51 @@ echo "📱 FASE 2: Verificando QR Code inicial"
 echo "====================================="
 check_detailed_status "$TEST_CLIENT_ID"
 
+# Tentar exibir QR no terminal
+echo ""
+echo "🔍 Tentando exibir QR Code no terminal..."
+QR_RESPONSE=$(curl -k -s "$API_BASE/clients/$TEST_CLIENT_ID/status")
+QR_CODE=$(echo "$QR_RESPONSE" | jq -r '.qrCode // empty')
+
+if [ ! -z "$QR_CODE" ] && [ "$QR_CODE" != "null" ]; then
+    echo "📱 QR CODE ENCONTRADO! Exibindo no terminal:"
+    echo "============================================="
+    
+    # Salvar QR como arquivo temporário
+    echo "$QR_CODE" | sed 's/data:image\/png;base64,//' | base64 -d > /tmp/qr_temp.png 2>/dev/null
+    
+    # Tentar exibir usando diferentes métodos
+    if command -v qrencode >/dev/null 2>&1 && [ -f /tmp/qr_temp.png ]; then
+        echo "🖼️  Exibindo QR Code ASCII:"
+        echo ""
+        # Decodificar a imagem e gerar novo QR em ASCII
+        if command -v zbarimg >/dev/null 2>&1; then
+            QR_TEXT=$(zbarimg -q --raw /tmp/qr_temp.png 2>/dev/null)
+            if [ ! -z "$QR_TEXT" ]; then
+                echo "$QR_TEXT" | qrencode -t ansiutf8
+            fi
+        fi
+    fi
+    
+    # Sempre mostrar a URL para visualização no navegador
+    echo ""
+    echo "📋 Para ver o QR Code no navegador:"
+    echo "=================================="
+    echo "1. Copie esta URL completa:"
+    echo "$QR_CODE"
+    echo ""
+    echo "2. Cole no navegador e escaneie com WhatsApp"
+    echo ""
+    
+    # Salvar também em arquivo para fácil acesso
+    echo "$QR_CODE" > /tmp/qr_code_url.txt
+    echo "💾 QR Code URL salva em: /tmp/qr_code_url.txt"
+    echo "💡 Use: cat /tmp/qr_code_url.txt para recuperar"
+    
+else
+    echo "❌ QR Code não encontrado ou ainda não gerado"
+fi
+
 # FASE 3: Aguardar e monitorar
 echo ""
 echo "⏳ FASE 3: Monitoramento por 60 segundos"
@@ -71,8 +116,23 @@ for i in {1..12}; do
     STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.status // "unknown"')
     HAS_QR=$(echo "$STATUS_RESPONSE" | jq -r '.hasQrCode // false')
     PHONE=$(echo "$STATUS_RESPONSE" | jq -r '.phoneNumber // "N/A"')
+    QR_CODE=$(echo "$STATUS_RESPONSE" | jq -r '.qrCode // empty')
     
     echo "Status: $STATUS | QR: $HAS_QR | Telefone: $PHONE"
+    
+    # Se tem QR Code novo, exibir
+    if [ "$HAS_QR" = "true" ] && [ ! -z "$QR_CODE" ] && [ "$QR_CODE" != "null" ]; then
+        if [ ! -f "/tmp/qr_displayed_$TEST_CLIENT_ID" ]; then
+            echo "📱 NOVO QR CODE DETECTADO!"
+            echo "=========================="
+            echo "📋 URL do QR Code:"
+            echo "$QR_CODE"
+            echo ""
+            echo "💾 Salvo em: /tmp/qr_code_url.txt"
+            echo "$QR_CODE" > /tmp/qr_code_url.txt
+            touch "/tmp/qr_displayed_$TEST_CLIENT_ID"
+        fi
+    fi
     
     # Se conectou, mostrar detalhes
     if [ "$STATUS" = "connected" ]; then
@@ -116,3 +176,11 @@ echo "• ID do teste: $TEST_CLIENT_ID"
 echo "• Status final: $(curl -k -s "$API_BASE/clients/$TEST_CLIENT_ID/status" | jq -r '.status // "unknown"')"
 echo ""
 echo "🧹 Para limpar: curl -k -X POST \"$API_BASE/clients/$TEST_CLIENT_ID/disconnect\""
+echo ""
+echo "📄 ARQUIVOS GERADOS:"
+echo "• QR Code URL: /tmp/qr_code_url.txt"
+echo "• QR Code PNG: /tmp/qr_temp.png"
+echo "• Flag display: /tmp/qr_displayed_$TEST_CLIENT_ID"
+echo ""
+echo "🗑️  Para limpar arquivos temporários:"
+echo "rm -f /tmp/qr_*.txt /tmp/qr_*.png /tmp/qr_displayed_*"
