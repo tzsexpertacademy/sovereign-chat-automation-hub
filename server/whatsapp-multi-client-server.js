@@ -375,29 +375,88 @@ const initClient = (clientId) => {
         console.log(`🔍 [${timestamp}] AUTHENTICATED processado para ${clientId}`);
     });
 
-    // VERIFICADOR MANUAL DE CONEXÃO - NOVO SISTEMA PARA CONTORNAR BUGS DA BIBLIOTECA
-    const manualConnectionChecker = setInterval(async () => {
+    // ===== FASE 1: SISTEMA DE VERIFICAÇÃO DE SAÚDE DAS SESSÕES =====
+    const isSessionHealthy = (client) => {
         try {
-            // Verificar se o cliente ainda existe
+            // Verificar se o cliente existe e tem página ativa
+            if (!client || !client.pupPage) {
+                return false;
+            }
+            
+            // Verificar se a página não foi fechada
+            if (client.pupPage.isClosed && client.pupPage.isClosed()) {
+                return false;
+            }
+            
+            // Verificar se ainda tem contexto de execução
+            if (!client.pupPage.mainFrame) {
+                return false;
+            }
+            
+            return true;
+        } catch (error) {
+            console.log(`⚠️ Erro ao verificar saúde da sessão: ${error.message}`);
+            return false;
+        }
+    };
+
+    // ===== FASE 2: SISTEMA DE DETECÇÃO ATIVA COM MÚLTIPLAS FONTES =====
+    const getClientStatus = async (client) => {
+        try {
+            // Fonte 1: Verificar info.wid (mais confiável)
+            if (client.info && client.info.wid) {
+                return { status: 'connected', phoneNumber: client.info.wid.user };
+            }
+            
+            // Fonte 2: Verificar getState apenas se sessão está saudável
+            if (isSessionHealthy(client)) {
+                try {
+                    const state = await client.getState();
+                    if (state === 'CONNECTED') {
+                        return { status: 'connected', phoneNumber: null };
+                    }
+                } catch (stateError) {
+                    console.log(`⚠️ Erro ao chamar getState (esperado se sessão fechou): ${stateError.message}`);
+                }
+            }
+            
+            // Fonte 3: Verificar authStrategy
+            if (client.authStrategy && client.authStrategy.authenticated) {
+                return { status: 'authenticated', phoneNumber: null };
+            }
+            
+            // Fonte 4: Verificar se tem QR code armazenado
+            if (client.qrCode) {
+                return { status: 'qr_ready', phoneNumber: null };
+            }
+            
+            return { status: 'connecting', phoneNumber: null };
+        } catch (error) {
+            console.log(`⚠️ Erro geral na detecção de status: ${error.message}`);
+            return { status: 'error', phoneNumber: null };
+        }
+    };
+
+    // ===== FASE 3: SISTEMA DE RECUPERAÇÃO AUTOMÁTICA =====
+    const autoRecoverySystem = async () => {
+        try {
+            // Verificar se o cliente ainda deve existir
             if (!clients[clientId]) {
-                clearInterval(manualConnectionChecker);
-                return;
+                console.log(`🗑️ Auto-recovery parado - cliente ${clientId} foi removido`);
+                return true; // Parar sistema
             }
 
-            // Verificar se já está marcado como conectado
-            const currentState = client.getState ? client.getState() : null;
-            const hasWid = client.info?.wid;
+            const statusResult = await getClientStatus(client);
+            const timestamp = new Date().toISOString();
             
-            if ((currentState === 'CONNECTED' || hasWid) && !client.manuallyConnected) {
+            console.log(`🔍 [${timestamp}] Auto-recovery check ${clientId}: ${statusResult.status}`);
+
+            // DETECTAR CONEXÃO ESTABELECIDA
+            if (statusResult.status === 'connected' && !client.manuallyConnected) {
                 client.manuallyConnected = true;
-                const timestamp = new Date().toISOString();
                 
-                let phoneNumber = null;
-                if (hasWid) {
-                    phoneNumber = phoneNumberFormatter(client.info.wid.user);
-                }
-                
-                console.log(`🔄 [${timestamp}] CONEXÃO DETECTADA MANUALMENTE: ${clientId}, phone=${phoneNumber}`);
+                const phoneNumber = statusResult.phoneNumber ? phoneNumberFormatter(statusResult.phoneNumber) : null;
+                console.log(`🎉 [${timestamp}] CONEXÃO DETECTADA via auto-recovery: ${clientId}, phone=${phoneNumber}`);
                 
                 // LIMPAR QR CODE
                 client.qrCode = null;
@@ -416,25 +475,84 @@ const initClient = (clientId) => {
                 io.to(clientId).emit(`client_status_${clientId}`, statusData);
                 io.emit(`client_status_${clientId}`, statusData);
                 
-                console.log(`📡 [${timestamp}] Status CONNECTED enviado via VERIFICADOR MANUAL para ${clientId}`);
+                console.log(`📡 [${timestamp}] Status CONNECTED enviado via AUTO-RECOVERY para ${clientId}`);
                 
                 // ATUALIZAR BANCO
                 try {
                     await updateInstanceStatus(clientId, 'connected', phoneNumber);
+                    console.log(`✅ [${timestamp}] Banco atualizado via auto-recovery para ${clientId}`);
                 } catch (error) {
-                    console.error(`❌ Erro ao atualizar banco via verificador manual:`, error);
+                    console.error(`❌ Erro ao atualizar banco via auto-recovery:`, error);
                 }
                 
-                // PARAR VERIFICADOR
-                clearInterval(manualConnectionChecker);
+                return true; // Parar sistema - conexão estabelecida
             }
+            
+            // DETECTAR SESSÃO MORTA - IMPLEMENTAR RECUPERAÇÃO
+            if (statusResult.status === 'error' || !isSessionHealthy(client)) {
+                console.log(`⚠️ [${timestamp}] Sessão morta detectada para ${clientId} - tentando recuperação`);
+                
+                // Increment recovery attempts
+                client.recoveryAttempts = (client.recoveryAttempts || 0) + 1;
+                
+                if (client.recoveryAttempts <= 2) { // Máximo 2 tentativas
+                    console.log(`🔄 [${timestamp}] Tentativa de recuperação ${client.recoveryAttempts}/2 para ${clientId}`);
+                    
+                    try {
+                        // Destruir cliente atual
+                        client.destroy();
+                        delete clients[clientId];
+                        
+                        // Aguardar e reinicializar
+                        setTimeout(() => {
+                            console.log(`🚀 [${timestamp}] Reinicializando cliente ${clientId} após recuperação`);
+                            initClient(clientId);
+                        }, 3000);
+                        
+                        return true; // Parar este sistema - novo será criado
+                    } catch (recoveryError) {
+                        console.error(`❌ Erro na recuperação de ${clientId}:`, recoveryError);
+                    }
+                } else {
+                    console.log(`❌ [${timestamp}] Máximo de tentativas de recuperação atingido para ${clientId}`);
+                    
+                    // Marcar como falha definitiva
+                    await updateInstanceStatus(clientId, 'error');
+                    
+                    const errorStatusData = { 
+                        clientId: clientId, 
+                        status: 'error',
+                        phoneNumber: null,
+                        hasQrCode: false,
+                        qrCode: null,
+                        timestamp: timestamp
+                    };
+                    
+                    io.to(clientId).emit(`client_status_${clientId}`, errorStatusData);
+                    io.emit(`client_status_${clientId}`, errorStatusData);
+                    
+                    return true; // Parar sistema
+                }
+            }
+            
+            return false; // Continuar verificando
         } catch (error) {
-            console.error(`❌ Erro no verificador manual de conexão:`, error);
+            console.error(`❌ Erro no sistema de auto-recovery:`, error);
+            return false; // Continuar tentando
         }
-    }, 5000); // Verificar a cada 5 segundos
+    };
 
-    // Limpar verificador quando cliente for removido
-    client.manualConnectionChecker = manualConnectionChecker;
+    // INICIAR SISTEMA DE AUTO-RECOVERY
+    const recoveryInterval = setInterval(async () => {
+        const shouldStop = await autoRecoverySystem();
+        if (shouldStop) {
+            clearInterval(recoveryInterval);
+            console.log(`✅ Sistema de auto-recovery finalizado para ${clientId}`);
+        }
+    }, 4000); // Verificar a cada 4 segundos
+
+    // Limpar sistema quando cliente for removido
+    client.autoRecoveryInterval = recoveryInterval;
 
     client.on('auth_failure', async function (session) {
         console.error(`❌ Falha de autenticação para ${clientId}`);
@@ -730,7 +848,56 @@ app.get('/clients/:clientId/status', async (req, res) => {
     
     if (clients[clientId]) {
         try {
-            const client = clients[clientId];
+            // ===== USAR SISTEMA DE DETECÇÃO INTELIGENTE =====
+            // Reutilizar as funções que já foram definidas no initClient
+            const isSessionHealthy = (client) => {
+                try {
+                    if (!client || !client.pupPage) return false;
+                    if (client.pupPage.isClosed && client.pupPage.isClosed()) return false;
+                    if (!client.pupPage.mainFrame) return false;
+                    return true;
+                } catch (error) {
+                    return false;
+                }
+            };
+
+            const getClientStatusSafe = async (client) => {
+                try {
+                    // Fonte 1: Verificar info.wid (mais confiável)
+                    if (client.info && client.info.wid) {
+                        return { status: 'connected', phoneNumber: client.info.wid.user };
+                    }
+                    
+                    // Fonte 2: Verificar getState apenas se sessão está saudável
+                    if (isSessionHealthy(client)) {
+                        try {
+                            const state = await client.getState();
+                            if (state === 'CONNECTED') {
+                                return { status: 'connected', phoneNumber: null };
+                            }
+                        } catch (stateError) {
+                            console.log(`⚠️ Erro ao chamar getState (esperado se sessão fechou): ${stateError.message}`);
+                        }
+                    }
+                    
+                    // Fonte 3: Verificar authStrategy
+                    if (client.authStrategy && client.authStrategy.authenticated) {
+                        return { status: 'authenticated', phoneNumber: null };
+                    }
+                    
+                    // Fonte 4: Verificar se tem QR code armazenado
+                    if (client.qrCode) {
+                        return { status: 'qr_ready', phoneNumber: null };
+                    }
+                    
+                    return { status: 'connecting', phoneNumber: null };
+                } catch (error) {
+                    console.log(`⚠️ Erro geral na detecção de status: ${error.message}`);
+                    return { status: 'error', phoneNumber: null };
+                }
+            };
+            
+            const statusResult = await getClientStatusSafe(client);
             let qrCode = null;
             
             // VERIFICAR QR CODE ARMAZENADO NO CLIENTE
@@ -745,31 +912,23 @@ app.get('/clients/:clientId/status', async (req, res) => {
                 console.log(`📱 [${timestamp}] QR Code GERADO e armazenado para ${clientId}`);
             }
             
-            const isConnected = client.info?.wid;
-            const isAuthenticated = client.authStrategy?.authenticated || false;
-            
-            // ALWAYS MAP AUTHENTICATED TO CONNECTED - DEFINITIVO
-            let status;
-            if (isConnected) {
-                status = 'connected';
-            } else if (isAuthenticated) {
-                status = 'connected'; // SEMPRE TRATAR AUTHENTICATED COMO CONNECTED
-            } else if (client.getState && client.getState() === 'CONNECTED') {
-                status = 'connected'; // VERIFICAR ESTADO DO WHATSAPP WEB
-            } else if (qrCode) {
-                status = 'qr_ready';
-            } else {
-                status = 'connecting';
+            // MAPEAR STATUS FINAL
+            let finalStatus = statusResult.status;
+            if (finalStatus === 'authenticated') {
+                finalStatus = 'connected'; // SEMPRE TRATAR AUTHENTICATED COMO CONNECTED
+            }
+            if (qrCode && finalStatus !== 'connected') {
+                finalStatus = 'qr_ready';
             }
             
-            const phoneNumber = isConnected ? phoneNumberFormatter(client.info.wid.user) : null;
+            const phoneNumber = statusResult.phoneNumber ? phoneNumberFormatter(statusResult.phoneNumber) : null;
             
-            console.log(`🔍 [${timestamp}] Status check ${clientId}: connected=${isConnected}, authenticated=${isAuthenticated}, final=${status}`);
+            console.log(`🔍 [${timestamp}] Status check ${clientId}: result=${statusResult.status}, final=${finalStatus}`);
             
             const response = { 
                 success: true, 
                 clientId: clientId, 
-                status: status, 
+                status: finalStatus, 
                 phoneNumber: phoneNumber, 
                 qrCode: qrCode,
                 hasQrCode: !!qrCode,
@@ -777,7 +936,7 @@ app.get('/clients/:clientId/status', async (req, res) => {
                 qrTimestamp: client.qrTimestamp
             };
             
-            console.log(`✅ [${timestamp}] STATUS ${clientId}: ${status}, QR: ${!!qrCode}`);
+            console.log(`✅ [${timestamp}] STATUS ${clientId}: ${finalStatus}, QR: ${!!qrCode}`);
             res.json(response);
         } catch (error) {
             console.error(`❌ [${timestamp}] ERRO status ${clientId}:`, error);

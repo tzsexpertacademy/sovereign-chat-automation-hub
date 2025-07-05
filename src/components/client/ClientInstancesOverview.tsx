@@ -18,7 +18,7 @@ import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useToast } from "@/hooks/use-toast";
 import { useInstanceManager } from "@/contexts/InstanceManagerContext";
-import ClientInstancesPanel from "./ClientInstancesPanel";
+import EnhancedInstancesManager from "./EnhancedInstancesManager";
 
 const ClientInstancesOverview = () => {
   const { clientId } = useParams();
@@ -305,12 +305,8 @@ const ClientInstancesOverview = () => {
         </Card>
       </div>
 
-      {/* Client Instances Panel - NOVO SISTEMA UNIFICADO */}
-      <ClientInstancesPanel 
-        clientId={clientId!}
-        client={client}
-        onInstancesUpdate={loadClientData}
-      />
+      {/* Enhanced Instances Manager - SISTEMA CORRIGIDO COM AUTO-RECUPERAÇÃO */}
+      <EnhancedInstancesManager />
     </div>
   );
 };
