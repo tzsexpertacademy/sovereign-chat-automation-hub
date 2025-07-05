@@ -412,7 +412,7 @@ const initClient = (clientId) => {
         authStrategy: new (require('whatsapp-web.js').LocalAuth)({
             clientId: clientId
         }),
-            puppeteer: {
+        puppeteer: {
             headless: true,
             args: [
                 '--no-sandbox',
@@ -420,17 +420,14 @@ const initClient = (clientId) => {
                 '--disable-dev-shm-usage',
                 '--disable-accelerated-2d-canvas',
                 '--no-first-run',
-                '--no-zygote',
-                '--single-process',
                 '--disable-gpu',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
                 '--disable-renderer-backgrounding',
                 '--disable-web-security',
-                '--disable-features=VizDisplayCompositor',
-                '--disable-ipc-flooding-protection'
+                '--disable-features=VizDisplayCompositor'
             ],
-            timeout: 90000 // 90 segundos timeout - mais tempo para QR
+            timeout: 120000 // 120 segundos timeout
         }
     });
     
@@ -516,7 +513,14 @@ const initClient = (clientId) => {
     client.on('authenticated', async () => {
         const timestamp = new Date().toISOString();
         console.log(`🎉 [${timestamp}] ====== EVENTO AUTHENTICATED DISPARADO para ${clientId} ======`);
-        console.log(`✅ [${timestamp}] Cliente ${clientId} AUTENTICADO VIA LOCAL AUTH`);
+        console.log(`✅ [${timestamp}] Cliente ${clientId} AUTENTICADO - aguardando ready...`);
+        
+        // PARAR AUTO-RECOVERY TEMPORARIAMENTE PARA DAR ESPAÇO AO PROCESSO
+        if (client.autoRecoveryInterval) {
+            clearInterval(client.autoRecoveryInterval);
+            client.autoRecoveryInterval = null;
+            console.log(`⏸️ [${timestamp}] Auto-recovery pausado para ${clientId} durante authenticated`);
+        }
         
         // MARCAR COMO PROCESSADO PARA EVITAR DUPLICAÇÕES
         if (client.authenticatedProcessed) {
@@ -717,14 +721,14 @@ const initClient = (clientId) => {
         }
     };
 
-    // INICIAR SISTEMA DE AUTO-RECOVERY
+    // INICIAR SISTEMA DE AUTO-RECOVERY (REDUZIDO)
     const recoveryInterval = setInterval(async () => {
         const shouldStop = await autoRecoverySystem();
         if (shouldStop) {
             clearInterval(recoveryInterval);
             console.log(`✅ Sistema de auto-recovery finalizado para ${clientId}`);
         }
-    }, 4000); // Verificar a cada 4 segundos
+    }, 15000); // Verificar a cada 15 segundos - menos intrusivo
 
     // Limpar sistema quando cliente for removido
     client.autoRecoveryInterval = recoveryInterval;
@@ -752,6 +756,13 @@ const initClient = (clientId) => {
         console.log(`🎉 [${timestamp}] ====== EVENTO READY DISPARADO para ${clientId} ======`);
         console.log(`🎉 [${timestamp}] Cliente ${clientId} READY! Telefone: ${phoneNumber}`);
         console.log(`🔍 [${timestamp}] Dados do cliente - WID: ${client.info?.wid ? 'Presente' : 'Ausente'}`);
+        
+        // PARAR AUTO-RECOVERY DEFINITIVAMENTE - CONEXÃO ESTABELECIDA
+        if (client.autoRecoveryInterval) {
+            clearInterval(client.autoRecoveryInterval);
+            client.autoRecoveryInterval = null;
+            console.log(`✅ [${timestamp}] Auto-recovery finalizado para ${clientId} - conexão estabelecida`);
+        }
         
         // VERIFICAR SE JÁ FOI PROCESSADO
         if (client.connectedProcessed) {
@@ -802,29 +813,6 @@ const initClient = (clientId) => {
         }
         
         console.log(`🎉 [${timestamp}] ====== CONEXÃO ${clientId} FINALIZADA COM SUCESSO ======`);
-    });
-
-    // NOVOS EVENT LISTENERS PARA DEBUG
-    client.on('auth_failure', async (msg) => {
-        const timestamp = new Date().toISOString();
-        console.log(`❌ [${timestamp}] ====== AUTH_FAILURE para ${clientId} ======`);
-        console.log(`❌ [${timestamp}] Mensagem: ${msg}`);
-        
-        if (clients[clientId]) {
-            clients[clientId].status = 'auth_failure';
-        }
-        
-        const failureData = { 
-            clientId: clientId, 
-            status: 'auth_failure',
-            phoneNumber: null,
-            hasQrCode: false,
-            qrCode: null,
-            timestamp: timestamp
-        };
-        
-        io.to(clientId).emit(`client_status_${clientId}`, failureData);
-        await updateInstanceStatus(clientId, 'auth_failure');
     });
 
     client.on('disconnected', async (reason) => {
