@@ -197,10 +197,12 @@ const QRCodeTest = () => {
   });
   const [testId] = useState(() => `test_${Date.now()}`);
   const [attempts, setAttempts] = useState(0);
+  const [isScanned, setIsScanned] = useState(false);
 
   const generateQR = async () => {
     try {
       setQrData(prev => ({ ...prev, loading: true, status: 'connecting' }));
+      setIsScanned(false);
       
       console.log(`🚀 Conectando ${testId}...`);
       
@@ -215,12 +217,12 @@ const QRCodeTest = () => {
       
       console.log('✅ Comando connect enviado');
       
-      // Aguardar e verificar status
+      // Aguardar e verificar status - VERSÃO MELHORADA
       let attemptCount = 0;
       const checkStatus = async () => {
         attemptCount++;
         setAttempts(attemptCount);
-        console.log(`🔄 Verificando status (${attemptCount}/10)...`);
+        console.log(`🔄 Verificando status (${attemptCount}/20)...`);
         
         try {
           const statusResponse = await fetch(`https://146.59.227.248/clients/${testId}/status`, {
@@ -232,31 +234,61 @@ const QRCodeTest = () => {
             const data = await statusResponse.json();
             console.log('📊 Status recebido:', data);
             
+            // DETECTAR CONEXÃO MELHORADA
+            const isConnected = data.success && (
+              data.status === 'connected' || 
+              data.status === 'authenticated' ||
+              data.status === 'ready' ||
+              (data.phoneNumber && data.phoneNumber.length > 0)
+            );
+            
+            if (isConnected) {
+              console.log('🎉 WhatsApp CONECTADO com sucesso!');
+              setQrData({
+                status: 'connected',
+                loading: false,
+                qrCode: data.qrCode
+              });
+              setIsScanned(true);
+              return;
+            }
+            
             if (data.success && data.hasQrCode && data.qrCode) {
-              console.log('🎉 QR Code encontrado!');
+              console.log('📱 QR Code disponível');
               setQrData({
                 qrCode: data.qrCode,
                 status: 'qr_ready',
                 loading: false
               });
+              
+              // Se QR foi gerado, continuar verificando por mais tempo (até 2 minutos)
+              if (attemptCount < 40) { // 40 x 3s = 2 minutos
+                setTimeout(checkStatus, 3000);
+              } else {
+                setQrData(prev => ({ ...prev, loading: false, status: 'timeout' }));
+              }
               return;
-            } else if (data.success && data.status === 'connected') {
-              setQrData({
-                status: 'connected',
-                loading: false
-              });
+            }
+            
+            // Status ainda connecting - continuar verificando
+            if (data.success && data.status === 'connecting') {
+              if (attemptCount < 20) { // Primeira fase: 1 minuto
+                setTimeout(checkStatus, 3000);
+              } else {
+                setQrData(prev => ({ ...prev, loading: false, status: 'waiting_qr' }));
+              }
               return;
             }
           }
           
-          if (attemptCount < 10) {
+          if (attemptCount < 20) {
             setTimeout(checkStatus, 3000);
           } else {
             setQrData(prev => ({ ...prev, loading: false, status: 'timeout' }));
           }
         } catch (error) {
           console.error(`❌ Erro na verificação ${attemptCount}:`, error);
-          if (attemptCount < 10) {
+          if (attemptCount < 20) {
             setTimeout(checkStatus, 3000);
           } else {
             setQrData(prev => ({ ...prev, loading: false, status: 'error' }));
@@ -272,6 +304,54 @@ const QRCodeTest = () => {
       setQrData({ status: 'error', loading: false });
     }
   };
+
+  // Verificação contínua quando QR foi escaneado
+  useEffect(() => {
+    if (qrData.status === 'qr_ready' && qrData.qrCode && !isScanned) {
+      console.log('📱 QR Code ativo - iniciando verificação contínua...');
+      
+      const continuousCheck = setInterval(async () => {
+        try {
+          const response = await fetch(`https://146.59.227.248/clients/${testId}/status`, {
+            headers: { 'Content-Type': 'application/json' },
+            mode: 'cors'
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log('🔄 Verificação contínua:', data.status);
+            
+            const isConnected = data.success && (
+              data.status === 'connected' || 
+              data.status === 'authenticated' ||
+              data.status === 'ready' ||
+              (data.phoneNumber && data.phoneNumber.length > 0)
+            );
+            
+            if (isConnected) {
+              console.log('🎉 CONEXÃO DETECTADA na verificação contínua!');
+              setQrData({
+                status: 'connected',
+                loading: false,
+                qrCode: data.qrCode
+              });
+              setIsScanned(true);
+              clearInterval(continuousCheck);
+            }
+          }
+        } catch (error) {
+          console.warn('Erro na verificação contínua:', error);
+        }
+      }, 2000); // Verificar a cada 2 segundos
+      
+      // Limpar após 3 minutos
+      setTimeout(() => {
+        clearInterval(continuousCheck);
+      }, 180000);
+      
+      return () => clearInterval(continuousCheck);
+    }
+  }, [qrData.status, qrData.qrCode, isScanned, testId]);
 
   return (
     <div className="space-y-4">
@@ -309,8 +389,24 @@ const QRCodeTest = () => {
       )}
 
       {qrData.status === 'connected' && (
-        <div className="p-3 bg-green-50 rounded text-center">
-          <p className="text-green-800 font-medium">🎉 WhatsApp Conectado!</p>
+        <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg text-center">
+          <div className="text-2xl mb-2">🎉</div>
+          <p className="text-green-800 font-bold text-lg">WhatsApp Conectado!</p>
+          <p className="text-green-600 text-sm">Instância funcionando perfeitamente</p>
+        </div>
+      )}
+
+      {qrData.status === 'qr_ready' && !isScanned && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-center">
+          <p className="text-blue-800 font-medium">📱 Aguardando escaneamento...</p>
+          <p className="text-blue-600 text-sm">Verificação contínua ativa</p>
+        </div>
+      )}
+
+      {qrData.status === 'timeout' && (
+        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-center">
+          <p className="text-yellow-800 font-medium">⏰ Timeout</p>
+          <p className="text-yellow-600 text-sm">Tente gerar um novo QR Code</p>
         </div>
       )}
 
@@ -323,7 +419,7 @@ const QRCodeTest = () => {
         {qrData.loading ? (
           <>
             <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-            Gerando QR Code...
+            {qrData.status === 'qr_ready' ? 'Aguardando conexão...' : 'Gerando QR Code...'}
           </>
         ) : (
           <>
