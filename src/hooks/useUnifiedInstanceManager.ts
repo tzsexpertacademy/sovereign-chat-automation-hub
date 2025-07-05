@@ -38,18 +38,24 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     
     if (socket) {
       const handleConnect = () => {
-        console.log('✅ [UNIFIED] WebSocket conectado');
+        console.log('✅ [UNIFIED] WebSocket conectado com sucesso');
         setWebsocketConnected(true);
       };
 
-      const handleDisconnect = () => {
-        console.log('❌ [UNIFIED] WebSocket desconectado');
+      const handleDisconnect = (reason: string) => {
+        console.log(`❌ [UNIFIED] WebSocket desconectado: ${reason}`);
         setWebsocketConnected(false);
-        // Reconectar automaticamente
-        setTimeout(() => {
-          console.log('🔄 [UNIFIED] Reconectando WebSocket...');
-          whatsappService.connectSocket();
-        }, 3000);
+        
+        // Reconectar automaticamente após pequeno delay
+        if (reason !== 'io client disconnect') {
+          setTimeout(() => {
+            console.log('🔄 [UNIFIED] Tentando reconectar WebSocket...');
+            const newSocket = whatsappService.connectSocket();
+            if (newSocket) {
+              console.log('🔄 [UNIFIED] Nova conexão WebSocket estabelecida');
+            }
+          }, 2000);
+        }
       };
 
       const handleError = (error: any) => {
@@ -57,40 +63,52 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         setWebsocketConnected(false);
       };
 
+      // CONFIGURAR EVENTOS WEBSOCKET
       socket.on('connect', handleConnect);
       socket.on('disconnect', handleDisconnect);
       socket.on('connect_error', handleError);
 
-      // Heartbeat
-      socket.on('ping', () => socket.emit('pong'));
+      // Heartbeat melhorado
+      socket.on('ping', () => {
+        socket.emit('pong');
+        console.log('💗 [UNIFIED] Heartbeat enviado');
+      });
+
+      // LOG DE STATUS INICIAL
+      if (socket.connected) {
+        handleConnect();
+      }
 
       return () => {
+        console.log('🧹 [UNIFIED] Limpando listeners WebSocket');
         socket.off('connect', handleConnect);
         socket.off('disconnect', handleDisconnect);
         socket.off('connect_error', handleError);
+        socket.off('ping');
       };
+    } else {
+      console.error('❌ [UNIFIED] Falha ao obter socket WebSocket');
     }
   }, []);
 
-  // Função para normalizar status
+  // Função para normalizar status - SIMPLIFICADA
   const normalizeStatus = useCallback((clientData: any): string => {
-    // REGRA 1: phoneNumber = connected (sempre)
+    console.log(`🔧 [UNIFIED] Normalizando status:`, {
+      status: clientData.status,
+      phoneNumber: clientData.phoneNumber ? 'Presente' : 'Ausente',
+      hasQrCode: clientData.hasQrCode
+    });
+    
+    // REGRA PRINCIPAL: Se tem phoneNumber, está conectado
     if (clientData.phoneNumber && clientData.phoneNumber.trim().length > 0) {
+      console.log(`✅ [UNIFIED] Status normalizado: phoneNumber presente -> connected`);
       return 'connected';
     }
     
-    // REGRA 2: authenticated = connected (sempre)
-    if (clientData.status === 'authenticated') {
-      return 'connected';
-    }
-    
-    // REGRA 3: QR code disponível = qr_ready
-    if (clientData.hasQrCode && clientData.qrCode && !clientData.phoneNumber) {
-      return 'qr_ready';
-    }
-    
-    // REGRA 4: Outros status passam direto
-    return clientData.status || 'disconnected';
+    // USAR STATUS DIRETO DO BACKEND (já está correto)
+    const finalStatus = clientData.status || 'disconnected';
+    console.log(`📊 [UNIFIED] Status normalizado: ${clientData.status} -> ${finalStatus}`);
+    return finalStatus;
   }, []);
 
   // Configurar listener para uma instância
@@ -105,39 +123,53 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       const normalizedStatus = normalizeStatus(clientData);
       const timestamp = Date.now();
       
-      console.log(`📱 [UNIFIED] Status update ${instanceId}: ${clientData.status} -> ${normalizedStatus}`, {
+      console.log(`📱 [UNIFIED] Status update recebido para ${instanceId}:`, {
+        originalStatus: clientData.status,
+        normalizedStatus: normalizedStatus,
+        phoneNumber: clientData.phoneNumber || 'N/A',
         hasQrCode: clientData.hasQrCode,
-        phoneNumber: clientData.phoneNumber ? 'Presente' : 'Ausente'
+        timestamp: clientData.timestamp
       });
       
-      setInstances(prev => ({
-        ...prev,
-        [instanceId]: {
-          instanceId,
-          status: normalizedStatus,
-          qrCode: clientData.qrCode,
-          hasQrCode: clientData.hasQrCode || false,
-          phoneNumber: clientData.phoneNumber,
-          lastUpdated: timestamp
-        }
-      }));
+      // ATUALIZAR ESTADO LOCAL IMEDIATAMENTE
+      setInstances(prev => {
+        const newState = {
+          ...prev,
+          [instanceId]: {
+            instanceId,
+            status: normalizedStatus,
+            qrCode: clientData.qrCode,
+            hasQrCode: clientData.hasQrCode || false,
+            phoneNumber: clientData.phoneNumber,
+            lastUpdated: timestamp
+          }
+        };
+        
+        console.log(`🔄 [UNIFIED] Estado atualizado para ${instanceId}:`, newState[instanceId]);
+        return newState;
+      });
 
-      // Atualizar banco para status permanentes
+      // SYNC COM BANCO DE DADOS (sem await para não bloquear UI)
       if (normalizedStatus !== 'connecting') {
-        whatsappInstancesService.updateInstanceStatus(
-          instanceId, 
-          normalizedStatus,
-          clientData.phoneNumber ? { phone_number: clientData.phoneNumber } : undefined
-        ).catch(console.error);
+        const updateData = clientData.phoneNumber ? { phone_number: clientData.phoneNumber } : undefined;
+        whatsappInstancesService.updateInstanceStatus(instanceId, normalizedStatus, updateData)
+          .then(() => {
+            console.log(`✅ [UNIFIED] Banco sincronizado para ${instanceId}: ${normalizedStatus}`);
+          })
+          .catch((error) => {
+            console.error(`❌ [UNIFIED] Erro ao sincronizar banco para ${instanceId}:`, error);
+          });
       }
 
-      // Toasts para eventos importantes
+      // NOTIFICAÇÕES DE SUCESSO
       if (normalizedStatus === 'connected' && clientData.phoneNumber) {
+        console.log(`🎉 [UNIFIED] WhatsApp conectado com sucesso: ${clientData.phoneNumber}`);
         toast({
           title: "✅ WhatsApp Conectado!",
           description: `Conectado com sucesso: ${clientData.phoneNumber}`,
         });
       } else if (normalizedStatus === 'qr_ready' && clientData.hasQrCode) {
+        console.log(`📱 [UNIFIED] QR Code disponível para ${instanceId}`);
         toast({
           title: "📱 QR Code Disponível!",
           description: "Escaneie o QR Code para conectar",
@@ -192,9 +224,9 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       // Iniciar conexão
       await whatsappService.connectClient(instanceId);
       
-      // Polling inteligente como backup
+      // Polling inteligente como backup - REDUZIDO
       let pollCount = 0;
-      const maxPolls = 20;
+      const maxPolls = 10; // Reduzido de 20 para 10
       
       const pollInterval = setInterval(async () => {
         pollCount++;
@@ -204,7 +236,12 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           await refreshStatus(instanceId);
           const currentStatus = getInstanceStatus(instanceId);
           
-          if (currentStatus.hasQrCode || currentStatus.status === 'connected' || pollCount >= maxPolls) {
+          // PARAR POLLING SE QR CODE APARECER OU CONECTAR
+          if (currentStatus.hasQrCode || currentStatus.status === 'connected') {
+            console.log(`✅ [UNIFIED] Polling finalizado para ${instanceId}: ${currentStatus.status}`);
+            clearInterval(pollInterval);
+          } else if (pollCount >= maxPolls) {
+            console.log(`⏰ [UNIFIED] Polling timeout para ${instanceId} após ${maxPolls} tentativas`);
             clearInterval(pollInterval);
           }
         } catch (error) {
@@ -213,7 +250,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             clearInterval(pollInterval);
           }
         }
-      }, 3000);
+      }, 4000); // Aumentado de 3000 para 4000ms (menos agressivo)
       
       toast({
         title: "Conectando...",

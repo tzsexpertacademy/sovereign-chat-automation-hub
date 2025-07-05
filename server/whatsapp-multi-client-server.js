@@ -27,10 +27,13 @@ const supabaseUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// FUNÇÃO PARA ATUALIZAR STATUS NO BANCO SUPABASE
-const updateInstanceStatus = async (instanceId, status, phoneNumber = null) => {
+// FUNÇÃO PARA ATUALIZAR STATUS NO BANCO SUPABASE - MELHORADA
+const updateInstanceStatus = async (instanceId, status, phoneNumber = null, retryCount = 0) => {
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 segundo
+    
     try {
-        console.log(`💾 [UPDATE-DB] Atualizando ${instanceId}: status=${status}, phone=${phoneNumber}`);
+        console.log(`💾 [UPDATE-DB] Tentativa ${retryCount + 1}/${maxRetries + 1} - Atualizando ${instanceId}: status=${status}, phone=${phoneNumber}`);
         
         const updateData = {
             status: status,
@@ -56,15 +59,55 @@ const updateInstanceStatus = async (instanceId, status, phoneNumber = null) => {
             .eq('instance_id', instanceId);
             
         if (error) {
-            console.error(`❌ [UPDATE-DB] Erro ao atualizar ${instanceId}:`, error);
+            console.error(`❌ [UPDATE-DB] Erro tentativa ${retryCount + 1} - ${instanceId}:`, error);
+            
+            // Retry com exponential backoff
+            if (retryCount < maxRetries) {
+                const delay = baseDelay * Math.pow(2, retryCount);
+                console.log(`🔄 [UPDATE-DB] Retry em ${delay}ms para ${instanceId}`);
+                
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        resolve(updateInstanceStatus(instanceId, status, phoneNumber, retryCount + 1));
+                    }, delay);
+                });
+            } else {
+                console.error(`❌ [UPDATE-DB] FALHA DEFINITIVA após ${maxRetries + 1} tentativas para ${instanceId}`);
+                throw error;
+            }
         } else {
-            console.log(`✅ [UPDATE-DB] Status atualizado com sucesso: ${instanceId} -> ${status}`);
+            console.log(`✅ [UPDATE-DB] Sucesso tentativa ${retryCount + 1} - ${instanceId} -> ${status}`);
+            
+            // VERIFICAR SE UPDATE FOI APLICADO
+            const { data: verification, error: verifyError } = await supabase
+                .from('whatsapp_instances')
+                .select('status, phone_number, updated_at')
+                .eq('instance_id', instanceId)
+                .single();
+                
+            if (verification && !verifyError) {
+                console.log(`🔍 [UPDATE-DB] Verificação ${instanceId}: DB status=${verification.status}, phone=${verification.phone_number}`);
+            }
         }
         
         return { success: !error, data, error };
     } catch (error) {
-        console.error(`❌ [UPDATE-DB] Erro crítico ao atualizar ${instanceId}:`, error);
-        return { success: false, error };
+        console.error(`❌ [UPDATE-DB] Erro crítico tentativa ${retryCount + 1} - ${instanceId}:`, error);
+        
+        // Retry com exponential backoff
+        if (retryCount < maxRetries) {
+            const delay = baseDelay * Math.pow(2, retryCount);
+            console.log(`🔄 [UPDATE-DB] Retry crítico em ${delay}ms para ${instanceId}`);
+            
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    resolve(updateInstanceStatus(instanceId, status, phoneNumber, retryCount + 1));
+                }, delay);
+            });
+        } else {
+            console.error(`❌ [UPDATE-DB] FALHA CRÍTICA DEFINITIVA após ${maxRetries + 1} tentativas para ${instanceId}`);
+            return { success: false, error };
+        }
     }
 };
 
@@ -318,40 +361,18 @@ const initClient = (clientId) => {
         client.qrCode = null;
         client.qrTimestamp = null;
         
-        console.log(`🔄 [${timestamp}] Forçando status CONNECTED após autenticação...`);
+        // AGUARDAR ESTABILIZAÇÃO E VERIFICAR CONEXÃO
+        console.log(`🔄 [${timestamp}] Aguardando estabilização após autenticação...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // OBTER NÚMERO DO TELEFONE IMEDIATAMENTE
-        try {
-            await new Promise(resolve => setTimeout(resolve, 3000)); // Aguardar estabilizar
-            
-            let phoneNumber = null;
-            if (client.info?.wid?.user) {
-                phoneNumber = phoneNumberFormatter(client.info.wid.user);
-            }
-            
-            console.log(`🔍 [${timestamp}] Cliente ${clientId} AUTHENTICATED -> CONNECTED: phone=${phoneNumber}`);
-            
-            const statusData = { 
-                clientId: clientId, 
-                status: 'connected',
-                phoneNumber: phoneNumber,
-                hasQrCode: false,
-                qrCode: null,
-                timestamp: timestamp
-            };
-            
-            // EMITIR PARA SALA E GERAL
-            io.to(clientId).emit(`client_status_${clientId}`, statusData);
-            io.emit(`client_status_${clientId}`, statusData);
-            
-            console.log(`📡 [${timestamp}] Status CONNECTED enviado via AUTHENTICATED para ${clientId}`);
-            
-            // ATUALIZAR BANCO
-            await updateInstanceStatus(clientId, 'connected', phoneNumber);
-            
-        } catch (error) {
-            console.error(`❌ [${timestamp}] Erro no authenticated handler:`, error);
+        // MARCAR COMO PROCESSADO PARA EVITAR DUPLICAÇÕES
+        if (client.authenticatedProcessed) {
+            console.log(`⚠️ [${timestamp}] Authenticated já processado para ${clientId}`);
+            return;
         }
+        client.authenticatedProcessed = true;
+        
+        console.log(`🔍 [${timestamp}] AUTHENTICATED processado para ${clientId}`);
     });
 
     // VERIFICADOR MANUAL DE CONEXÃO - NOVO SISTEMA PARA CONTORNAR BUGS DA BIBLIOTECA
@@ -434,39 +455,54 @@ const initClient = (clientId) => {
     client.on('ready', async () => {
         const timestamp = new Date().toISOString();
         const phoneNumber = client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null;
-        console.log(`🎉 [${timestamp}] Cliente ${clientId} CONECTADO! Telefone: ${phoneNumber}`);
+        
+        console.log(`🎉 [${timestamp}] Cliente ${clientId} READY! Telefone: ${phoneNumber}`);
+        console.log(`🔍 [${timestamp}] Dados do cliente - WID: ${client.info?.wid ? 'Presente' : 'Ausente'}`);
+        
+        // VERIFICAR SE JÁ FOI PROCESSADO
+        if (client.connectedProcessed) {
+            console.log(`⚠️ [${timestamp}] READY já processado para ${clientId}`);
+            return;
+        }
+        client.connectedProcessed = true;
         
         // LIMPAR QR CODE APÓS CONEXÃO
         client.qrCode = null;
         client.qrTimestamp = null;
         
-        // EMITIR PARA SALA ESPECÍFICA
-        io.to(clientId).emit(`client_status_${clientId}`, { 
+        const statusData = { 
             clientId: clientId, 
             status: 'connected',
             phoneNumber: phoneNumber,
             hasQrCode: false,
             qrCode: null,
             timestamp: timestamp
-        });
+        };
+        
+        console.log(`📡 [${timestamp}] Enviando status CONNECTED para ${clientId}:`, statusData);
+        
+        // EMITIR PARA SALA ESPECÍFICA COM CONFIRMAÇÃO
+        io.to(clientId).emit(`client_status_${clientId}`, statusData);
+        console.log(`✅ [${timestamp}] Evento enviado para sala ${clientId} - clientes na sala: ${io.sockets.adapter.rooms.get(clientId)?.size || 0}`);
         
         // EMITIR GERAL COMO BACKUP
-        io.emit(`client_status_${clientId}`, { 
-            clientId: clientId, 
-            status: 'connected',
-            phoneNumber: phoneNumber,
-            hasQrCode: false,
-            qrCode: null,
-            timestamp: timestamp
-        });
+        io.emit(`client_status_${clientId}`, statusData);
+        console.log(`✅ [${timestamp}] Evento enviado globalmente para ${clientId}`);
         
-        // ATUALIZAR BANCO PARA STATUS CONNECTED NO READY
+        // ATUALIZAR BANCO COM RETRY
         if (phoneNumber) {
             try {
-                await updateInstanceStatus(clientId, 'connected', phoneNumber);
+                const result = await updateInstanceStatus(clientId, 'connected', phoneNumber);
+                if (result.success) {
+                    console.log(`✅ [${timestamp}] Banco atualizado com sucesso para ${clientId}`);
+                } else {
+                    console.error(`❌ [${timestamp}] Falha ao atualizar banco para ${clientId}:`, result.error);
+                }
             } catch (error) {
-                console.error(`❌ Erro ao atualizar banco no ready ${clientId}:`, error);
+                console.error(`❌ [${timestamp}] Erro crítico ao atualizar banco no ready ${clientId}:`, error);
             }
+        } else {
+            console.warn(`⚠️ [${timestamp}] Sem número de telefone para atualizar banco ${clientId}`);
         }
         
         // Emit clients update
