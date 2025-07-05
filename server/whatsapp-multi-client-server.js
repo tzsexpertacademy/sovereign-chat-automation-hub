@@ -853,51 +853,11 @@ const initClient = (clientId) => {
         const timestamp = new Date().toISOString();
         console.log(`⏳ [${timestamp}] LOADING ${clientId}: ${percent}% - ${message}`);
     });
-        io.emit(`client_status_${clientId}`, statusData);
-        console.log(`✅ [${timestamp}] Evento enviado globalmente para ${clientId}`);
-        
-        // ATUALIZAR BANCO COM RETRY
-        if (phoneNumber) {
-            try {
-                const result = await updateInstanceStatus(clientId, 'connected', phoneNumber);
-                if (result.success) {
-                    console.log(`✅ [${timestamp}] Banco atualizado com sucesso para ${clientId}`);
-                } else {
-                    console.error(`❌ [${timestamp}] Falha ao atualizar banco para ${clientId}:`, result.error);
-                }
-            } catch (error) {
-                console.error(`❌ [${timestamp}] Erro crítico ao atualizar banco no ready ${clientId}:`, error);
-            }
-        } else {
-            console.warn(`⚠️ [${timestamp}] Sem número de telefone para atualizar banco ${clientId}`);
-        }
-        
-        // Emit clients update
-        emitClientsUpdate();
-    });
 
     client.on('message', msg => {
         console.log(`📩 Mensagem recebida em ${clientId}:`, msg.body.substring(0, 50));
         io.emit(`message_${clientId}`, msg);
     });
-
-    client.on('disconnected', async (reason) => {
-        console.log(`❌ Cliente ${clientId} desconectado:`, reason);
-        io.emit(`client_status_${clientId}`, { 
-            clientId: clientId, 
-            status: 'disconnected',
-            hasQrCode: false
-        });
-        
-        // ATUALIZAR BANCO PARA STATUS DISCONNECTED
-        try {
-            await updateInstanceStatus(clientId, 'disconnected');
-        } catch (error) {
-            console.error(`❌ Erro ao atualizar banco para disconnected ${clientId}:`, error);
-        }
-        
-        client.destroy();
-        delete clients[clientId];
         emitClientsUpdate();
     });
 
