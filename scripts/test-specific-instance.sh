@@ -9,11 +9,11 @@ echo "Timestamp: $(date)"
 echo "================================"
 
 echo "1️⃣ Status atual:"
-curl -s "https://146.59.227.248/clients/$INSTANCE_ID/status" | jq '.'
+curl -s "https://146.59.227.248/clients/$INSTANCE_ID/status" || echo "❌ Falha na requisição"
 
 echo ""
 echo "2️⃣ Tentando reconectar:"
-curl -X POST -s "https://146.59.227.248/clients/$INSTANCE_ID/connect" | jq '.'
+curl -X POST -s "https://146.59.227.248/clients/$INSTANCE_ID/connect" || echo "❌ Falha na conexão"
 
 echo ""
 echo "3️⃣ Aguardando 5 segundos..."
@@ -21,16 +21,16 @@ sleep 5
 
 echo ""
 echo "4️⃣ Status após reconectar:"
-curl -s "https://146.59.227.248/clients/$INSTANCE_ID/status" | jq '.'
+curl -s "https://146.59.227.248/clients/$INSTANCE_ID/status" || echo "❌ Falha na verificação"
 
 echo ""
 echo "5️⃣ Verificando chats disponíveis:"
-curl -s "https://146.59.227.248/clients/$INSTANCE_ID/chats" | jq '.'
+curl -s "https://146.59.227.248/clients/$INSTANCE_ID/chats" || echo "❌ Falha nos chats"
 
 echo ""
 echo "6️⃣ Health check do servidor:"
-curl -s "https://146.59.227.248/health" | jq '.activeClients, .connectedClients'
+curl -s "https://146.59.227.248/health" || echo "❌ Servidor offline"
 
 echo ""
 echo "7️⃣ Lista de todos os clientes:"
-curl -s "https://146.59.227.248/clients" | jq '.'
+curl -s "https://146.59.227.248/clients" || echo "❌ Falha na listagem"

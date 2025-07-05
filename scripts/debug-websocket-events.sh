@@ -80,10 +80,51 @@ fi
 
 cd /home/ubuntu/sovereign-chat-automation-hub/server
 
+# Verificar e instalar socket.io-client
 if [ ! -d "node_modules/socket.io-client" ]; then
     echo "📦 Instalando socket.io-client..."
-    npm install socket.io-client
+    npm install socket.io-client --save
 fi
 
+# Executar o teste no diretório correto
 echo "🚀 Iniciando teste WebSocket..."
-node /tmp/websocket-test.js
+node -e "
+const io = require('socket.io-client');
+
+console.log('🔌 Conectando ao WebSocket...');
+const socket = io('https://146.59.227.248', {
+  transports: ['websocket', 'polling'],
+  timeout: 10000,
+  forceNew: true
+});
+
+socket.on('connect', () => {
+  console.log('✅ WebSocket conectado!');
+  console.log('Socket ID:', socket.id);
+  
+  const instanceId = '35f36a03-39b2-412c-bba6-01fdd45c2dd3_1751730495129';
+  socket.emit('join_client_room', instanceId);
+  console.log(\`🚪 Entrando na sala: \${instanceId}\`);
+});
+
+socket.on('disconnect', (reason) => {
+  console.log('❌ WebSocket desconectado:', reason);
+});
+
+const events = ['client_status_update', 'client_authenticated', 'client_ready', 'client_qr'];
+events.forEach(eventName => {
+  socket.on(eventName, (data) => {
+    console.log(\`📡 Evento [\${eventName}]:\`, JSON.stringify(data, null, 2));
+  });
+});
+
+console.log('🎧 Escutando eventos... (Ctrl+C para sair)');
+
+setInterval(() => {
+  if (socket.connected) {
+    console.log('💗 Socket conectado');
+  } else {
+    console.log('💔 Socket desconectado');
+  }
+}, 10000);
+"
