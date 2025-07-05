@@ -383,22 +383,6 @@ const phoneNumberFormatter = function(number) {
     return formatted;
 };
 
-// Função para limpeza de sessões mortas
-const cleanupDeadSession = (clientId, reason = 'unknown') => {
-    console.log(`🧹 [CLEANUP] Limpando sessão morta: ${clientId} (${reason})`);
-    
-    if (clients[clientId]) {
-        try {
-            if (clients[clientId].client) {
-                clients[clientId].client.destroy();
-            }
-            delete clients[clientId];
-            console.log(`✅ [CLEANUP] Sessão ${clientId} removida`);
-        } catch (error) {
-            console.error(`❌ [CLEANUP] Erro ao limpar ${clientId}:`, error.message);
-        }
-    }
-};
 
 // Função para inicializar um novo cliente
 const initClient = (clientId) => {
