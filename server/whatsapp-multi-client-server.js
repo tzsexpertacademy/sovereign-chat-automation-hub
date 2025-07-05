@@ -515,14 +515,8 @@ const initClient = (clientId) => {
 
     client.on('authenticated', async () => {
         const timestamp = new Date().toISOString();
+        console.log(`🎉 [${timestamp}] ====== EVENTO AUTHENTICATED DISPARADO para ${clientId} ======`);
         console.log(`✅ [${timestamp}] Cliente ${clientId} AUTENTICADO VIA LOCAL AUTH`);
-        
-        // NÃO LIMPAR QR CODE AQUI - MANTER ATÉ READY EVENT
-        console.log(`🔄 [${timestamp}] QR Code mantido até ready event para ${clientId}`);
-        
-        // AGUARDAR ESTABILIZAÇÃO E VERIFICAR CONEXÃO
-        console.log(`🔄 [${timestamp}] Aguardando estabilização após autenticação...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
         
         // MARCAR COMO PROCESSADO PARA EVITAR DUPLICAÇÕES
         if (client.authenticatedProcessed) {
@@ -531,7 +525,28 @@ const initClient = (clientId) => {
         }
         client.authenticatedProcessed = true;
         
-        console.log(`🔍 [${timestamp}] AUTHENTICATED processado para ${clientId}`);
+        // ATUALIZAR STATUS IMEDIATAMENTE
+        if (clients[clientId]) {
+            clients[clientId].status = 'authenticated';
+        }
+        
+        // EMITIR STATUS AUTHENTICATED
+        const authStatusData = { 
+            clientId: clientId, 
+            status: 'authenticated',
+            phoneNumber: null,
+            hasQrCode: false,
+            qrCode: null,
+            timestamp: timestamp
+        };
+        
+        io.to(clientId).emit(`client_status_${clientId}`, authStatusData);
+        console.log(`📡 [${timestamp}] Status AUTHENTICATED enviado para ${clientId}`);
+        
+        // ATUALIZAR BANCO
+        await updateInstanceStatus(clientId, 'authenticated');
+        
+        console.log(`🔄 [${timestamp}] Aguardando evento READY para finalizar conexão...`);
     });
 
     // ===== FASE 1: SISTEMA DE VERIFICAÇÃO DE SAÚDE DAS SESSÕES =====
@@ -734,6 +749,7 @@ const initClient = (clientId) => {
         const timestamp = new Date().toISOString();
         const phoneNumber = client.info?.wid?.user ? phoneNumberFormatter(client.info.wid.user) : null;
         
+        console.log(`🎉 [${timestamp}] ====== EVENTO READY DISPARADO para ${clientId} ======`);
         console.log(`🎉 [${timestamp}] Cliente ${clientId} READY! Telefone: ${phoneNumber}`);
         console.log(`🔍 [${timestamp}] Dados do cliente - WID: ${client.info?.wid ? 'Presente' : 'Ausente'}`);
         
@@ -777,7 +793,66 @@ const initClient = (clientId) => {
         io.to(clientId).emit(`client_status_${clientId}`, statusData);
         console.log(`✅ [${timestamp}] Evento enviado para sala ${clientId} - clientes na sala: ${io.sockets.adapter.rooms.get(clientId)?.size || 0}`);
         
-        // EMITIR GERAL COMO BACKUP
+        // ATUALIZAR ESTRUTURA LOCAL
+        if (clients[clientId]) {
+            clients[clientId].status = 'connected';
+            clients[clientId].phoneNumber = phoneNumber;
+            clients[clientId].hasQrCode = false;
+            clients[clientId].qrCode = null;
+        }
+        
+        console.log(`🎉 [${timestamp}] ====== CONEXÃO ${clientId} FINALIZADA COM SUCESSO ======`);
+    });
+
+    // NOVOS EVENT LISTENERS PARA DEBUG
+    client.on('auth_failure', async (msg) => {
+        const timestamp = new Date().toISOString();
+        console.log(`❌ [${timestamp}] ====== AUTH_FAILURE para ${clientId} ======`);
+        console.log(`❌ [${timestamp}] Mensagem: ${msg}`);
+        
+        if (clients[clientId]) {
+            clients[clientId].status = 'auth_failure';
+        }
+        
+        const failureData = { 
+            clientId: clientId, 
+            status: 'auth_failure',
+            phoneNumber: null,
+            hasQrCode: false,
+            qrCode: null,
+            timestamp: timestamp
+        };
+        
+        io.to(clientId).emit(`client_status_${clientId}`, failureData);
+        await updateInstanceStatus(clientId, 'auth_failure');
+    });
+
+    client.on('disconnected', async (reason) => {
+        const timestamp = new Date().toISOString();
+        console.log(`🔌 [${timestamp}] ====== DISCONNECTED para ${clientId} ======`);
+        console.log(`🔌 [${timestamp}] Motivo: ${reason}`);
+        
+        if (clients[clientId]) {
+            clients[clientId].status = 'disconnected';
+        }
+        
+        const disconnectedData = { 
+            clientId: clientId, 
+            status: 'disconnected',
+            phoneNumber: null,
+            hasQrCode: false,
+            qrCode: null,
+            timestamp: timestamp
+        };
+        
+        io.to(clientId).emit(`client_status_${clientId}`, disconnectedData);
+        await updateInstanceStatus(clientId, 'disconnected');
+    });
+
+    client.on('loading_screen', (percent, message) => {
+        const timestamp = new Date().toISOString();
+        console.log(`⏳ [${timestamp}] LOADING ${clientId}: ${percent}% - ${message}`);
+    });
         io.emit(`client_status_${clientId}`, statusData);
         console.log(`✅ [${timestamp}] Evento enviado globalmente para ${clientId}`);
         
