@@ -529,12 +529,15 @@ const initClient = (clientId) => {
         }
         client.authenticatedProcessed = true;
         
-        // ATUALIZAR STATUS IMEDIATAMENTE
+        // ATUALIZAR STATUS IMEDIATAMENTE NA ESTRUTURA LOCAL
         if (clients[clientId]) {
             clients[clientId].status = 'authenticated';
+            clients[clientId].phoneNumber = null;
+            clients[clientId].hasQrCode = false;
+            clients[clientId].qrCode = null;
         }
         
-        // EMITIR STATUS AUTHENTICATED
+        // EMITIR STATUS AUTHENTICATED PARA TODAS AS SALAS
         const authStatusData = { 
             clientId: clientId, 
             status: 'authenticated',
@@ -544,8 +547,11 @@ const initClient = (clientId) => {
             timestamp: timestamp
         };
         
+        // EMITIR PARA A SALA ESPECÍFICA E GLOBALMENTE
         io.to(clientId).emit(`client_status_${clientId}`, authStatusData);
-        console.log(`📡 [${timestamp}] Status AUTHENTICATED enviado para ${clientId}`);
+        io.emit(`client_status_${clientId}`, authStatusData); // Enviar também globalmente
+        
+        console.log(`📡 [${timestamp}] Status AUTHENTICATED enviado para ${clientId} - clientes na sala: ${io.sockets.adapter.rooms.get(clientId)?.size || 0}`);
         
         // ATUALIZAR BANCO
         await updateInstanceStatus(clientId, 'authenticated');
@@ -800,9 +806,10 @@ const initClient = (clientId) => {
         
         console.log(`📡 [${timestamp}] Enviando status CONNECTED para ${clientId}:`, statusData);
         
-        // EMITIR PARA SALA ESPECÍFICA COM CONFIRMAÇÃO
+        // EMITIR PARA SALA ESPECÍFICA E GLOBALMENTE
         io.to(clientId).emit(`client_status_${clientId}`, statusData);
-        console.log(`✅ [${timestamp}] Evento enviado para sala ${clientId} - clientes na sala: ${io.sockets.adapter.rooms.get(clientId)?.size || 0}`);
+        io.emit(`client_status_${clientId}`, statusData); // Enviar também globalmente
+        console.log(`✅ [${timestamp}] Evento CONNECTED enviado para sala ${clientId} - clientes na sala: ${io.sockets.adapter.rooms.get(clientId)?.size || 0}`);
         
         // ATUALIZAR ESTRUTURA LOCAL
         if (clients[clientId]) {
