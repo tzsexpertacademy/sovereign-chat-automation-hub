@@ -858,8 +858,6 @@ const initClient = (clientId) => {
         console.log(`📩 Mensagem recebida em ${clientId}:`, msg.body.substring(0, 50));
         io.emit(`message_${clientId}`, msg);
     });
-        emitClientsUpdate();
-    });
 
     client.initialize();
     clients[clientId] = client;
