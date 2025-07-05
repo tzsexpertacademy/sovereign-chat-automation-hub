@@ -3,7 +3,7 @@
 # Script para monitoramento contínuo da saúde dos clientes
 # Arquivo: scripts/monitor-client-health.sh
 
-INSTANCE_ID="${1:-35f36a03-39b2-412c-bba6-01fdd45c2dd3_1751733656603}"
+INSTANCE_ID="${1:-35f36a03-39b2-412c-bba6-01fdd45c2dd3_1751734727003}"
 API_BASE="https://146.59.227.248"
 INTERVAL="${2:-10}"
 

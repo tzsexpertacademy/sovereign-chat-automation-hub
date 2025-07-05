@@ -3,7 +3,7 @@
 echo "🔍 TESTE RÁPIDO DA API COM DIAGNÓSTICO APRIMORADO"
 echo "================================================="
 
-INSTANCE_ID="35f36a03-39b2-412c-bba6-01fdd45c2dd3_1751733656603"
+INSTANCE_ID="35f36a03-39b2-412c-bba6-01fdd45c2dd3_1751734727003"
 API_BASE="https://146.59.227.248"
 
 echo "🎯 Instance ID: $INSTANCE_ID"
