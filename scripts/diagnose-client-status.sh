@@ -3,7 +3,7 @@
 # Script para diagnóstico profundo de clientes WhatsApp
 # Arquivo: scripts/diagnose-client-status.sh
 
-INSTANCE_ID="${1:-35f36a03-39b2-412c-bba6-01fdd45c2dd3_1751732037364}"
+INSTANCE_ID="${1:-35f36a03-39b2-412c-bba6-01fdd45c2dd3_1751733656603}"
 API_BASE="https://146.59.227.248"
 
 echo "🔍 DIAGNÓSTICO PROFUNDO DO CLIENTE WHATSAPP"
