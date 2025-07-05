@@ -146,15 +146,28 @@ const SimpleInstanceManager = () => {
     try {
       setLoading(true);
       
-      const result = await whatsappService.connectClient(selectedClient);
-      console.log('Instância criada:', result);
+      // Gerar ID dinâmico para nova instância
+      const dynamicInstanceId = `${selectedClient}_${Date.now()}`;
+      console.log(`🚀 Criando instância dinâmica: ${dynamicInstanceId}`);
       
-      toast({ title: "Sucesso", description: "Instância criada! Aguarde o QR Code..." });
+      const result = await whatsappService.connectClient(dynamicInstanceId);
+      console.log('✅ Instância criada no backend:', result);
+      
+      toast({ 
+        title: "Instância Criada", 
+        description: "Nova instância WhatsApp criada! Aguarde o QR Code...",
+        duration: 4000
+      });
       
       setSelectedClient("");
-      setTimeout(loadInstances, 2000);
+      
+      // Recarregar após um delay para garantir que a instância esteja no backend
+      setTimeout(() => {
+        loadInstances();
+      }, 3000);
       
     } catch (error: any) {
+      console.error('❌ Erro ao criar instância:', error);
       toast({ 
         title: "Erro", 
         description: error.message || "Falha ao criar instância", 
@@ -168,11 +181,29 @@ const SimpleInstanceManager = () => {
   const connectInstance = async (clientId: string) => {
     try {
       setLoading(true);
-      await whatsappService.connectClient(clientId);
-      toast({ title: "Sucesso", description: "Conectando instância..." });
-      setTimeout(loadInstances, 2000);
+      console.log(`🔗 Reconectando instância: ${clientId}`);
+      
+      const result = await whatsappService.connectClient(clientId);
+      console.log('✅ Reconexão iniciada:', result);
+      
+      toast({ 
+        title: "Reconectando", 
+        description: "Iniciando reconexão... Aguarde o QR Code.",
+        duration: 3000
+      });
+      
+      // Recarregar instâncias após delay
+      setTimeout(() => {
+        loadInstances();
+      }, 3000);
+      
     } catch (error: any) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+      console.error('❌ Erro na reconexão:', error);
+      toast({ 
+        title: "Erro na Reconexão", 
+        description: error.message || "Falha ao reconectar instância", 
+        variant: "destructive" 
+      });
     } finally {
       setLoading(false);
     }
@@ -181,11 +212,28 @@ const SimpleInstanceManager = () => {
   const disconnectInstance = async (clientId: string) => {
     try {
       setLoading(true);
-      await whatsappService.disconnectClient(clientId);
-      toast({ title: "Sucesso", description: "Instância desconectada" });
-      setTimeout(loadInstances, 2000);
+      console.log(`🔌 Desconectando instância: ${clientId}`);
+      
+      const result = await whatsappService.disconnectClient(clientId);
+      console.log('✅ Instância desconectada:', result);
+      
+      toast({ 
+        title: "Instância Desconectada", 
+        description: "Instância WhatsApp foi desconectada com sucesso"
+      });
+      
+      // Recarregar instâncias imediatamente
+      setTimeout(() => {
+        loadInstances();
+      }, 1000);
+      
     } catch (error: any) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+      console.error('❌ Erro na desconexão:', error);
+      toast({ 
+        title: "Erro na Desconexão", 
+        description: error.message || "Falha ao desconectar instância", 
+        variant: "destructive" 
+      });
     } finally {
       setLoading(false);
     }
@@ -228,9 +276,7 @@ const SimpleInstanceManager = () => {
     }
   };
 
-  const availableClients = clients.filter(client => 
-    !instances.some(instance => instance.clientId.startsWith(client.id + '_'))
-  );
+  const availableClients = clients; // Todos os clientes podem ter múltiplas instâncias dinâmicas
 
   if (!serverOnline) {
     return (
@@ -298,47 +344,66 @@ const SimpleInstanceManager = () => {
       {/* Create Instance */}
       <Card>
         <CardHeader>
-          <CardTitle>🚀 Nova Instância</CardTitle>
-          <CardDescription>Selecione um cliente para criar uma instância WhatsApp</CardDescription>
+          <CardTitle>🚀 Criar Nova Instância WhatsApp</CardTitle>
+          <CardDescription>
+            Selecione um cliente para criar uma nova instância dinâmica. 
+            Cada instância terá um ID único gerado automaticamente.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex space-x-4">
-            <Select value={selectedClient} onValueChange={setSelectedClient}>
-              <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Selecione um cliente..." />
-              </SelectTrigger>
-              <SelectContent>
-                {availableClients.length === 0 ? (
-                  <SelectItem value="none" disabled>Todos os clientes têm instâncias</SelectItem>
+          <div className="space-y-4">
+            <div className="flex space-x-4">
+              <Select value={selectedClient} onValueChange={setSelectedClient}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Selecione um cliente..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.length === 0 ? (
+                    <SelectItem value="none" disabled>Nenhum cliente encontrado</SelectItem>
+                  ) : (
+                    clients.map(client => (
+                      <SelectItem key={client.id} value={client.id}>
+                        <div className="flex items-center space-x-2">
+                          <User className="w-4 h-4" />
+                          <span>{client.name}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {client.email}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <Button 
+                onClick={createInstance} 
+                disabled={loading || !selectedClient || selectedClient === "none"}
+                className="bg-green-600 hover:bg-green-700 min-w-32"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Criando...
+                  </>
                 ) : (
-                  availableClients.map(client => (
-                    <SelectItem key={client.id} value={client.id}>
-                      <div className="flex items-center space-x-2">
-                        <User className="w-4 h-4" />
-                        <span>{client.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))
+                  <>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Criar Instância
+                  </>
                 )}
-              </SelectContent>
-            </Select>
-            <Button 
-              onClick={createInstance} 
-              disabled={loading || !selectedClient || selectedClient === "none"}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {loading ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Criando...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Criar
-                </>
-              )}
-            </Button>
+              </Button>
+            </div>
+            
+            {selectedClient && selectedClient !== "none" && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  💡 <strong>ID da nova instância:</strong> {selectedClient}_{Date.now()}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Cada instância criada terá um timestamp único para diferenciação
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
