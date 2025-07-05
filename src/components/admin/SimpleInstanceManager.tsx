@@ -34,11 +34,11 @@ const SimpleInstanceManager = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(loadInstances, 10000); // Refresh every 10 seconds
-    return () => clearInterval(interval);
-  }, []);
+    useEffect(() => {
+        loadData();
+        const interval = setInterval(loadInstances, 5000); // Polling mais rápido: 5 segundos
+        return () => clearInterval(interval);
+    }, []);
 
   const loadData = async () => {
     try {

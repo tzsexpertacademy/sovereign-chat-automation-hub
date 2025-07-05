@@ -1240,6 +1240,7 @@ export type Database = {
           instance_id: string
           phone_number: string | null
           qr_code: string | null
+          qr_expires_at: string | null
           status: string | null
           updated_at: string
         }
@@ -1252,6 +1253,7 @@ export type Database = {
           instance_id: string
           phone_number?: string | null
           qr_code?: string | null
+          qr_expires_at?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -1264,6 +1266,7 @@ export type Database = {
           instance_id?: string
           phone_number?: string | null
           qr_code?: string | null
+          qr_expires_at?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -1333,6 +1336,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_expired_qr_codes: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       get_max_instances_for_plan: {
         Args: { plan_name: Database["public"]["Enums"]["plan_type"] }
         Returns: number

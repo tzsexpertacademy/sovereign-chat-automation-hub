@@ -281,13 +281,30 @@ class WhatsAppMultiClientService {
       const response = await this.makeRequest(`/clients/${clientId}/status`);
       
       if (response.success) {
-        return {
+        const result = {
           clientId: response.clientId,
           status: response.status,
           phoneNumber: response.phoneNumber,
           hasQrCode: response.hasQrCode,
-          qrCode: response.qrCode
+          qrCode: response.qrCode,
+          qrTimestamp: response.qrExpiresAt
         };
+        
+        // Verificar se QR ainda é válido
+        if (result.hasQrCode && response.qrExpiresAt) {
+          const expiresAt = new Date(response.qrExpiresAt);
+          const now = new Date();
+          
+          if (expiresAt <= now) {
+            console.warn(`⏰ QR Code expirado para ${clientId}`);
+            result.hasQrCode = false;
+            result.qrCode = undefined;
+          } else {
+            console.log(`✅ QR Code válido para ${clientId} até ${expiresAt.toISOString()}`);
+          }
+        }
+        
+        return result;
       } else {
         throw new Error(response.error || 'Erro desconhecido');
       }

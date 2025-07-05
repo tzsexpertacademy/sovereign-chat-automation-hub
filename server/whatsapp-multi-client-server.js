@@ -412,7 +412,7 @@ const initClient = (clientId) => {
         authStrategy: new (require('whatsapp-web.js').LocalAuth)({
             clientId: clientId
         }),
-        puppeteer: {
+            puppeteer: {
             headless: true,
             args: [
                 '--no-sandbox',
@@ -430,7 +430,7 @@ const initClient = (clientId) => {
                 '--disable-features=VizDisplayCompositor',
                 '--disable-ipc-flooding-protection'
             ],
-            timeout: 60000 // 60 segundos timeout
+            timeout: 90000 // 90 segundos timeout - mais tempo para QR
         }
     });
     
@@ -443,19 +443,40 @@ const initClient = (clientId) => {
 
     client.on('qr', async (qr) => {
         const timestamp = new Date().toISOString();
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutos
         console.log(`📱 [${timestamp}] QR CODE EVENTO RECEBIDO para ${clientId}`);
-        console.log(`📱 [${timestamp}] QR Code length: ${qr?.length || 0} chars`);
+        console.log(`📱 [${timestamp}] QR Code length: ${qr?.length || 0} chars - Expira em: ${expiresAt.toISOString()}`);
         
         try {
             const qrCodeDataUrl = await qrcode.toDataURL(qr);
             
+            // SALVAR QR NO SUPABASE IMEDIATAMENTE
+            const qrUpdateResult = await supabase
+                .from('whatsapp_instances')
+                .update({
+                    qr_code: qrCodeDataUrl,
+                    has_qr_code: true,
+                    qr_expires_at: expiresAt.toISOString(),
+                    status: 'qr_ready',
+                    updated_at: timestamp
+                })
+                .eq('instance_id', clientId);
+
+            if (qrUpdateResult.error) {
+                console.error(`❌ [QR-DB] Erro ao salvar QR no banco para ${clientId}:`, qrUpdateResult.error);
+            } else {
+                console.log(`✅ [QR-DB] QR salvo no banco para ${clientId} - expira: ${expiresAt.toISOString()}`);
+            }
+            
             // ARMAZENAR QR NO CLIENTE E NA ESTRUTURA
             client.qrCode = qrCodeDataUrl;
             client.qrTimestamp = timestamp;
+            client.qrExpiresAt = expiresAt;
             
             if (clients[clientId]) {
                 clients[clientId].qrCode = qrCodeDataUrl;
                 clients[clientId].qrTimestamp = timestamp;
+                clients[clientId].qrExpiresAt = expiresAt;
                 clients[clientId].hasQrCode = true;
                 clients[clientId].status = 'qr_ready';
             }
@@ -468,13 +489,14 @@ const initClient = (clientId) => {
                 status: 'qr_ready', 
                 qrCode: qrCodeDataUrl,
                 hasQrCode: true,
-                timestamp: timestamp
+                timestamp: timestamp,
+                qrExpiresAt: expiresAt.toISOString()
             });
             
             // EMITIR TAMBÉM GERAL COMO BACKUP
             io.emit(`client_status_${clientId}`, { 
                 clientId: clientId, 
-                status: 'qr_ready', 
+                status: 'qr_ready',
                 qrCode: qrCodeDataUrl,
                 hasQrCode: true,
                 timestamp: timestamp
@@ -1345,18 +1367,67 @@ app.get('/clients/:clientId/status', async (req, res) => {
             
             // FASE 4: PROCESSAMENTO DE QR CODE
             let qrCode = null;
+            let qrExpiresAt = null;
+            
+            // Primeiro tentar recuperar do cliente em memória
             if (client.qrCode) {
                 qrCode = client.qrCode;
+                qrExpiresAt = client.qrExpiresAt;
                 console.log(`📱 [${timestamp}] QR Code ARMAZENADO encontrado (${client.qrTimestamp})`);
             } else if (client.qr) {
                 console.log(`📱 [${timestamp}] QR Raw encontrado, convertendo para DataURL...`);
                 try {
                     qrCode = await qrcode.toDataURL(client.qr);
+                    qrExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutos
                     client.qrCode = qrCode;
                     client.qrTimestamp = timestamp;
+                    client.qrExpiresAt = qrExpiresAt;
                     console.log(`📱 [${timestamp}] QR Code convertido e armazenado`);
                 } catch (qrError) {
                     console.error(`❌ [${timestamp}] Erro ao converter QR: ${qrError.message}`);
+                }
+            } else {
+                // Se não tem QR em memória, tentar recuperar do banco
+                console.log(`🔍 [${timestamp}] Tentando recuperar QR do banco para ${clientId}`);
+                try {
+                    const { data: dbInstance, error: dbError } = await supabase
+                        .from('whatsapp_instances')
+                        .select('qr_code, qr_expires_at, has_qr_code')
+                        .eq('instance_id', clientId)
+                        .single();
+                    
+                    if (dbError) {
+                        console.warn(`⚠️ [${timestamp}] Erro ao buscar QR do banco: ${dbError.message}`);
+                    } else if (dbInstance && dbInstance.has_qr_code && dbInstance.qr_code) {
+                        const expiresAt = new Date(dbInstance.qr_expires_at);
+                        const now = new Date();
+                        
+                        if (expiresAt > now) {
+                            qrCode = dbInstance.qr_code;
+                            qrExpiresAt = expiresAt;
+                            client.qrCode = qrCode;
+                            client.qrExpiresAt = qrExpiresAt;
+                            client.qrTimestamp = dbInstance.qr_expires_at;
+                            console.log(`✅ [${timestamp}] QR Code recuperado do banco (expira: ${expiresAt.toISOString()})`);
+                        } else {
+                            console.log(`⏰ [${timestamp}] QR Code do banco expirado (${expiresAt.toISOString()})`);
+                            
+                            // Limpar QR expirado do banco
+                            await supabase
+                                .from('whatsapp_instances')
+                                .update({ 
+                                    qr_code: null, 
+                                    has_qr_code: false, 
+                                    qr_expires_at: null,
+                                    updated_at: timestamp
+                                })
+                                .eq('instance_id', clientId);
+                        }
+                    } else {
+                        console.log(`📝 [${timestamp}] Nenhum QR válido encontrado no banco`);
+                    }
+                } catch (recoveryError) {
+                    console.error(`❌ [${timestamp}] Erro na recuperação do QR: ${recoveryError.message}`);
                 }
             }
             
@@ -1782,6 +1853,73 @@ app.get('/sync/status', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Erro ao verificar status de sincronização'
+        });
+    }
+});
+
+// ===== ENDPOINT PARA LIMPEZA AUTOMÁTICA DE QR CODES EXPIRADOS =====
+app.post('/cleanup-expired-qr', async (req, res) => {
+    const timestamp = new Date().toISOString();
+    console.log(`🧹 [${timestamp}] Iniciando limpeza de QR codes expirados...`);
+    
+    try {
+        // Executar função do Supabase para limpeza
+        const { data, error } = await supabase.rpc('cleanup_expired_qr_codes');
+        
+        if (error) {
+            console.error(`❌ [${timestamp}] Erro na limpeza de QR codes:`, error);
+            return res.status(500).json({
+                success: false,
+                error: error.message,
+                cleaned: 0
+            });
+        }
+        
+        const cleanedCount = data || 0;
+        console.log(`✅ [${timestamp}] ${cleanedCount} QR codes expirados foram limpos`);
+        
+        // Limpar também QR codes em memória que expiraram
+        let memoryCleanupCount = 0;
+        for (const [clientId, client] of Object.entries(clients)) {
+            if (client.qrExpiresAt && new Date(client.qrExpiresAt) <= new Date()) {
+                client.qrCode = null;
+                client.qrTimestamp = null;
+                client.qrExpiresAt = null;
+                client.hasQrCode = false;
+                
+                if (client.status === 'qr_ready') {
+                    client.status = 'disconnected';
+                }
+                
+                console.log(`🧹 [${timestamp}] QR expirado removido da memória: ${clientId}`);
+                memoryCleanupCount++;
+                
+                // Emitir atualização de status
+                io.to(clientId).emit(`client_status_${clientId}`, {
+                    clientId: clientId,
+                    status: 'disconnected',
+                    hasQrCode: false,
+                    qrCode: null,
+                    timestamp: timestamp
+                });
+            }
+        }
+        
+        console.log(`✅ [${timestamp}] ${memoryCleanupCount} QR codes limpos da memória`);
+        
+        res.json({
+            success: true,
+            cleaned: cleanedCount,
+            memoryCleanup: memoryCleanupCount,
+            timestamp: timestamp
+        });
+        
+    } catch (error) {
+        console.error(`❌ [${timestamp}] Erro crítico na limpeza:`, error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            cleaned: 0
         });
     }
 });
