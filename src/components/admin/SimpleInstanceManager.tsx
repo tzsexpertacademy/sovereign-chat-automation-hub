@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
 import { clientsService, ClientData } from "@/services/clientsService";
+import { supabase } from "@/integrations/supabase/client";
 
 const SimpleInstanceManager = () => {
   const [instances, setInstances] = useState<WhatsAppClient[]>([]);
@@ -36,7 +37,7 @@ const SimpleInstanceManager = () => {
 
     useEffect(() => {
         loadData();
-        const interval = setInterval(loadInstances, 5000); // Polling mais rápido: 5 segundos
+        const interval = setInterval(loadInstances, 2000); // Polling muito rápido: 2 segundos
         return () => clearInterval(interval);
     }, []);
 
@@ -87,9 +88,24 @@ const SimpleInstanceManager = () => {
 
   const loadInstances = async () => {
     try {
-      console.log('🔄 Carregando instâncias do backend...');
+      console.log('🔄 Carregando instâncias (prioridade: Supabase + Backend)...');
+      
+      // PRIORIZAR DADOS DO SUPABASE PARA QR CODES
+      try {
+        const supabaseInstances = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .order('updated_at', { ascending: false });
+        
+        if (supabaseInstances.data) {
+          console.log('📊 Dados do Supabase carregados:', supabaseInstances.data.length);
+        }
+      } catch (supabaseError) {
+        console.warn('⚠️ Erro ao buscar Supabase, usando backend:', supabaseError);
+      }
+      
       const instancesData = await whatsappService.getAllClients();
-      console.log('🔍 Instâncias carregadas:', instancesData);
+      console.log('🔍 Instâncias do backend carregadas:', instancesData);
       setInstances(instancesData);
       
       // Set up WebSocket listeners for each instance

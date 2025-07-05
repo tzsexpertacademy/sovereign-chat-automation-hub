@@ -1,6 +1,7 @@
 
 import io, { Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL, HTTPS_SERVER_URL, getServerConfig } from '@/config/environment';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface WhatsAppClient {
   clientId: string;
@@ -274,10 +275,43 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Get client status
+  // Get client status with Supabase priority
   async getClientStatus(clientId: string): Promise<WhatsAppClient> {
     try {
-      console.log(`📊 Status do cliente: ${clientId}`);
+      console.log(`📊 Status do cliente (Supabase + Backend): ${clientId}`);
+      
+      // TENTAR SUPABASE PRIMEIRO PARA QR CODES
+      try {
+        const { data: supabaseData } = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .eq('instance_id', clientId)
+          .single();
+        
+        if (supabaseData && supabaseData.has_qr_code && supabaseData.qr_code) {
+          console.log(`✅ QR recuperado do Supabase para ${clientId}`);
+          
+          // Verificar se ainda não expirou
+          const now = new Date();
+          const expiresAt = supabaseData.qr_expires_at ? new Date(supabaseData.qr_expires_at) : null;
+          
+          if (expiresAt && expiresAt > now) {
+            return {
+              clientId,
+              status: 'qr_ready',
+              hasQrCode: true,
+              qrCode: supabaseData.qr_code,
+              qrTimestamp: supabaseData.qr_expires_at,
+              phoneNumber: supabaseData.phone_number
+            };
+          } else if (expiresAt && expiresAt <= now) {
+            console.warn(`⏰ QR expirado no Supabase para ${clientId}`);
+          }
+        }
+      } catch (supabaseError) {
+        console.warn(`⚠️ Erro no Supabase para ${clientId}, usando backend:`, supabaseError);
+      }
+      
       const response = await this.makeRequest(`/clients/${clientId}/status`);
       
       if (response.success) {

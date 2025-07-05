@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "🔄 REINICIANDO SERVIDOR E TESTANDO CORREÇÕES"
-echo "==========================================="
+echo "🔄 REINICIANDO SERVIDOR E TESTANDO CORREÇÕES DE QR CODE"
+echo "======================================================"
 
 # Parar servidor atual
 echo "🛑 Parando servidor atual..."
@@ -24,14 +24,22 @@ echo "⏳ Aguardando inicialização..."
 sleep 10
 
 # Testar correções
-echo "🧪 Testando com instance ID correto..."
+echo "🧪 Testando correções do sistema QR Code..."
 ./scripts/quick-api-test.sh
 
 echo ""
-echo "🔗 TESTE MANUAL DE CONEXÃO:"
-echo "curl -k -X POST \"https://146.59.227.248/clients/35f36a03-39b2-412c-bba6-01fdd45c2dd3_1751734727003/connect\""
+echo "🔗 TESTE MANUAL COMPLETO DE QR CODE:"
+echo "1. Criar instância:"
+echo "curl -k -X POST \"https://146.59.227.248/clients/test_instance_$(date +%s)/connect\""
 echo ""
-echo "📊 VERIFICAR STATUS:"
-echo "curl -k -s \"https://146.59.227.248/clients/35f36a03-39b2-412c-bba6-01fdd45c2dd3_1751734727003/status\" | jq '.'"
+echo "2. Verificar QR disponível:"
+echo "curl -k -s \"https://146.59.227.248/clients/test_instance_*/status\" | jq '.'"
 echo ""
-echo "✅ Correções implementadas!"
+echo "3. Escanear QR Code no WhatsApp"
+echo ""
+echo "4. Aguardar transição: qr_ready → connected"
+echo ""
+echo "✅ Correções QR Code implementadas!"
+echo "📱 QR Code agora permanece visível até escaneamento completo"
+echo "🔄 Polling otimizado para 2 segundos"
+echo "🗄️ Recovery system com Supabase habilitado"

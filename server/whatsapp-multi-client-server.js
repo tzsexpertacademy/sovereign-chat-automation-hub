@@ -517,9 +517,8 @@ const initClient = (clientId) => {
         const timestamp = new Date().toISOString();
         console.log(`✅ [${timestamp}] Cliente ${clientId} AUTENTICADO VIA LOCAL AUTH`);
         
-        // LIMPAR QR CODE APÓS AUTENTICAÇÃO
-        client.qrCode = null;
-        client.qrTimestamp = null;
+        // NÃO LIMPAR QR CODE AQUI - MANTER ATÉ READY EVENT
+        console.log(`🔄 [${timestamp}] QR Code mantido até ready event para ${clientId}`);
         
         // AGUARDAR ESTABILIZAÇÃO E VERIFICAR CONEXÃO
         console.log(`🔄 [${timestamp}] Aguardando estabilização após autenticação...`);
@@ -618,9 +617,10 @@ const initClient = (clientId) => {
                 const phoneNumber = statusResult.phoneNumber ? phoneNumberFormatter(statusResult.phoneNumber) : null;
                 console.log(`🎉 [${timestamp}] CONEXÃO DETECTADA via auto-recovery: ${clientId}, phone=${phoneNumber}`);
                 
-                // LIMPAR QR CODE
+                // LIMPAR QR CODE APÓS CONEXÃO CONFIRMADA
                 client.qrCode = null;
                 client.qrTimestamp = null;
+                client.qrExpiresAt = null;
                 
                 const statusData = { 
                     clientId: clientId, 
@@ -744,9 +744,23 @@ const initClient = (clientId) => {
         }
         client.connectedProcessed = true;
         
-        // LIMPAR QR CODE APÓS CONEXÃO
+        // LIMPAR QR CODE APÓS CONEXÃO CONFIRMADA (READY)
         client.qrCode = null;
         client.qrTimestamp = null;
+        client.qrExpiresAt = null;
+        
+        // ATUALIZAR SUPABASE PARA LIMPAR QR CODE
+        await supabase
+            .from('whatsapp_instances')
+            .update({
+                qr_code: null,
+                has_qr_code: false,
+                qr_expires_at: null,
+                status: 'connected',
+                phone_number: phoneNumber,
+                updated_at: timestamp
+            })
+            .eq('instance_id', clientId);
         
         const statusData = { 
             clientId: clientId, 
