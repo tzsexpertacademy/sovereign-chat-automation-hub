@@ -41,11 +41,20 @@ const SimpleInstanceManager = () => {
   }, []);
 
   const loadData = async () => {
-    await Promise.all([
-      checkServer(),
-      loadClients(),
-      loadInstances()
-    ]);
+    try {
+      // Load clients first
+      await loadClients();
+      
+      // Check server status
+      const serverCheck = await checkServer();
+      
+      // Only load instances if server is online
+      if (serverCheck) {
+        await loadInstances();
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+    }
   };
 
   const checkServer = async () => {
@@ -56,9 +65,14 @@ const SimpleInstanceManager = () => {
       if (result.success) {
         // Connect WebSocket
         whatsappService.connectSocket();
+        console.log('✅ Servidor online, WebSocket conectado');
       }
+      
+      return result.success;
     } catch (error) {
+      console.error('Erro ao verificar servidor:', error);
       setServerOnline(false);
+      return false;
     }
   };
 
@@ -72,9 +86,8 @@ const SimpleInstanceManager = () => {
   };
 
   const loadInstances = async () => {
-    if (!serverOnline) return;
-    
     try {
+      console.log('🔄 Carregando instâncias do backend...');
       const instancesData = await whatsappService.getAllClients();
       console.log('🔍 Instâncias carregadas:', instancesData);
       setInstances(instancesData);
@@ -107,7 +120,7 @@ const SimpleInstanceManager = () => {
           if (updatedClient.status === 'connected' && updatedClient.phoneNumber) {
             toast({ 
               title: "WhatsApp Conectado!", 
-              description: `Instância ${updatedClient.clientId} conectada (${updatedClient.phoneNumber})`,
+              description: `Instância ${updatedClient.clientId.split('_')[0]} conectada (${updatedClient.phoneNumber})`,
               duration: 5000 
             });
           }
@@ -116,6 +129,11 @@ const SimpleInstanceManager = () => {
       
     } catch (error) {
       console.error('❌ Erro ao carregar instâncias:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao carregar instâncias do servidor",
+        variant: "destructive"
+      });
     }
   };
 
@@ -184,7 +202,7 @@ const SimpleInstanceManager = () => {
 
   const openChat = (clientId: string) => {
     console.log(`🚀 Abrindo chat para: ${clientId}`);
-    const client = clients.find(c => c.instance_id === clientId);
+    const client = clients.find(c => clientId.startsWith(c.id + '_'));
     console.log(`🔍 Cliente encontrado:`, client);
     if (client) {
       const chatUrl = `/client/${client.id}/chat`;
@@ -211,7 +229,7 @@ const SimpleInstanceManager = () => {
   };
 
   const availableClients = clients.filter(client => 
-    !instances.some(instance => instance.clientId === client.id)
+    !instances.some(instance => instance.clientId.startsWith(client.id + '_'))
   );
 
   if (!serverOnline) {
@@ -329,87 +347,123 @@ const SimpleInstanceManager = () => {
       {instances.length > 0 ? (
         <div className="grid gap-4">
           {instances.map(instance => {
-            const client = clients.find(c => c.instance_id === instance.clientId);
+            const client = clients.find(c => instance.clientId.startsWith(c.id + '_'));
+            const displayName = client?.name || instance.clientId.split('_')[0];
             return (
-              <Card key={instance.clientId}>
+              <Card key={instance.clientId} className="border-l-4 border-l-blue-500">
                 <CardContent className="pt-6">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-2">
                         <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
-                        <h3 className="font-semibold">{instance.clientId}</h3>
-                        {client && (
-                          <Badge variant="outline">
-                            <User className="w-3 h-3 mr-1" />
-                            {client.name}
-                          </Badge>
-                        )}
+                        <h3 className="font-semibold text-lg">{displayName}</h3>
+                        <Badge variant="secondary">
+                          ID: ...{instance.clientId.split('_')[1]?.slice(-6) || 'N/A'}
+                        </Badge>
                       </div>
                       
-                      <div className="flex items-center space-x-4 text-sm text-gray-600">
-                        <span>Status: {instance.status}</span>
-                        {instance.phoneNumber && <span>📱 {instance.phoneNumber}</span>}
-                        {instance.hasQrCode && <span>📱 QR Disponível</span>}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-gray-600 mb-3">
+                        <div className="flex items-center space-x-1">
+                          <span className="font-medium">Status:</span>
+                          <Badge variant={instance.status === 'connected' ? 'default' : 
+                                        instance.status === 'qr_ready' ? 'secondary' : 'destructive'}>
+                            {instance.status === 'qr_ready' ? 'QR Pronto' :
+                             instance.status === 'connected' ? 'Conectado' :
+                             instance.status === 'connecting' ? 'Conectando' : instance.status}
+                          </Badge>
+                        </div>
+                        {instance.phoneNumber && (
+                          <div className="flex items-center space-x-1">
+                            <span className="font-medium">📱</span>
+                            <span>{instance.phoneNumber}</span>
+                          </div>
+                        )}
+                        {instance.hasQrCode && (
+                          <div className="flex items-center space-x-1">
+                            <QrCode className="w-4 h-4" />
+                            <span className="text-blue-600 font-medium">QR Disponível</span>
+                          </div>
+                        )}
                       </div>
 
                       {instance.status === 'qr_ready' && instance.hasQrCode && (
-                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
-                          <p className="text-blue-800 text-sm font-medium">
-                            📱 QR Code pronto! Clique para visualizar e escanear.
-                          </p>
+                        <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-blue-800 text-sm font-medium">
+                                📱 QR Code pronto para escaneamento!
+                              </p>
+                              <p className="text-blue-600 text-xs mt-1">
+                                Clique em "Ver QR" para escanear com seu WhatsApp
+                              </p>
+                            </div>
+                            <Button size="sm" onClick={() => showQrCode(instance.clientId)} className="bg-blue-600 hover:bg-blue-700">
+                              <QrCode className="w-4 h-4 mr-1" />
+                              Ver QR
+                            </Button>
+                          </div>
                         </div>
                       )}
 
                       {instance.status === 'connected' && (
-                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
-                          <p className="text-green-800 text-sm font-medium">
-                            ✅ WhatsApp conectado e funcionando!
+                        <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-green-800 text-sm font-medium">
+                                ✅ WhatsApp conectado e funcionando!
+                              </p>
+                              {instance.phoneNumber && (
+                                <p className="text-green-600 text-xs mt-1">
+                                  Conectado como: {instance.phoneNumber}
+                                </p>
+                              )}
+                            </div>
+                            <Button 
+                              size="sm" 
+                              onClick={() => openChat(instance.clientId)}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-1" />
+                              Abrir Chat
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {instance.status === 'connecting' && (
+                        <div className="mt-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-yellow-800 text-sm font-medium">
+                            ⏳ Conectando... Aguarde o QR Code aparecer.
                           </p>
                         </div>
                       )}
                     </div>
 
-                    <div className="flex space-x-2">
-                      {instance.status === 'qr_ready' && instance.hasQrCode && (
-                        <Button size="sm" onClick={() => showQrCode(instance.clientId)}>
-                          <QrCode className="w-4 h-4 mr-1" />
-                          Ver QR
-                        </Button>
-                      )}
-                      
+                    <div className="flex flex-col space-y-2 ml-4">
                       {instance.status === 'connected' ? (
-                        <>
-                          <Button 
-                            size="sm" 
-                            onClick={() => openChat(instance.clientId)}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            <MessageSquare className="w-4 h-4 mr-1" />
-                            Chat
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => disconnectInstance(instance.clientId)}
-                          >
-                            <Pause className="w-4 h-4 mr-1" />
-                            Pausar
-                          </Button>
-                        </>
-                      ) : (
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => disconnectInstance(instance.clientId)}
+                        >
+                          <Pause className="w-4 h-4 mr-1" />
+                          Pausar
+                        </Button>
+                      ) : instance.status !== 'qr_ready' ? (
                         <Button 
                           size="sm"
                           onClick={() => connectInstance(instance.clientId)}
                           disabled={instance.status === 'connecting'}
+                          className="bg-green-600 hover:bg-green-700"
                         >
                           <Play className="w-4 h-4 mr-1" />
                           {instance.status === 'connecting' ? 'Conectando...' : 'Conectar'}
                         </Button>
-                      )}
+                      ) : null}
                       
                       <Button 
                         size="sm" 
-                        variant="outline"
+                        variant="destructive"
                         onClick={() => disconnectInstance(instance.clientId)}
                       >
                         <Trash2 className="w-4 h-4 mr-1" />
