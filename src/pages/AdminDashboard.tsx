@@ -8,6 +8,7 @@ import AdminOverview from "@/components/admin/AdminOverview";
 import ClientsManagement from "@/components/admin/ClientsManagement";
 import InstancesMonitor from "@/components/admin/InstancesMonitor";
 import SystemLogs from "@/components/admin/SystemLogs";
+import WebSocketStatusDebug from "@/components/admin/WebSocketStatusDebug";
 
 const AdminDashboard = () => {
   return (
@@ -23,6 +24,7 @@ const AdminDashboard = () => {
               <Route path="clients" element={<ClientsManagement />} />
               <Route path="instances" element={<InstancesMonitor />} />
               <Route path="logs" element={<SystemLogs />} />
+              <Route path="websocket" element={<WebSocketStatusDebug />} />
             </Routes>
           </main>
         </div>
