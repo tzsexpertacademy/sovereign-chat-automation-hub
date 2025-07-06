@@ -34,7 +34,10 @@ const QRCodeTestHttps = () => {
     try {
       addLog('🧪 Testando conexão HTTPS...');
       const result = await whatsappService.testConnection();
-      setConnectionTest(result);
+      setConnectionTest({
+        status: result.success ? 'success' : 'error', // Corrigido aqui
+        message: result.message
+      });
       
       if (result.success) {
         addLog('✅ Conexão HTTPS funcionando!');
@@ -196,7 +199,7 @@ const QRCodeTestHttps = () => {
                 <RefreshCw className="w-4 h-4 text-red-500" />
               )}
               <span className="text-sm font-medium">
-                Status HTTPS: {connectionTest.status === 'success' ? 'OK' : 'ERRO'}
+                Status HTTPS: {connectionTest.status === 'success' ? 'OK' : 'ERRO'} {/* Corrigido aqui */}
               </span>
             </div>
             <p className="text-xs mt-1">{connectionTest.message}</p>
@@ -268,7 +271,7 @@ const QRCodeTestHttps = () => {
         <div className="space-y-2">
           <Button 
             onClick={generateQR} 
-            disabled={qrData.loading || !connectionTest?.success}
+            disabled={qrData.loading || connectionTest?.status !== 'success'}
             className="w-full"
             variant={qrData.status === 'connected' ? 'secondary' : 'default'}
           >

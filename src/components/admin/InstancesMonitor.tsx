@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,7 +61,7 @@ const InstancesMonitor = () => {
       console.log('📊 [MONITOR] Carregando dados HTTPS...');
       
       const [clientsData, instancesData] = await Promise.all([
-        clientsService.getClients(),
+        clientsService.getAllClients(),
         loadAllInstances()
       ]);
 
@@ -84,7 +83,7 @@ const InstancesMonitor = () => {
 
   const loadAllInstances = async (): Promise<WhatsAppInstanceData[]> => {
     try {
-      const clients = await clientsService.getClients();
+      const clients = await clientsService.getAllClients();
       const allInstances: WhatsAppInstanceData[] = [];
       
       for (const client of clients) {

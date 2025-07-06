@@ -106,7 +106,7 @@ const ConnectionTest = () => {
           <p><strong>Frontend URL:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{window.location.href}</code></p>
           <p><strong>Servidor HTTPS:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{SERVER_URL}</code></p>
           <p><strong>Protocolo:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{config.protocol}</code></p>
-          <p><strong>Nginx Proxy:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{config.nginxProxy ? 'Ativo' : 'Inativo'}</code></p>
+          <p><strong>HTTPS Ativo:</strong> <code className="bg-gray-100 px-2 py-1 rounded">{config.isHttps ? 'Sim' : 'Não'}</code></p>
         </div>
 
         <div className="flex space-x-2">
