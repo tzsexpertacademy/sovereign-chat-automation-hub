@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 echo "🔧 APLICANDO CORREÇÕES DEFINITIVAS DO WHATSAPP"
