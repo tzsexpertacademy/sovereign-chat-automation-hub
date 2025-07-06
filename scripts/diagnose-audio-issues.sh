@@ -102,3 +102,4 @@ echo "💡 PRÓXIMAS AÇÕES RECOMENDADAS:"
 echo "• Se 'Evaluation failed': Execute ./scripts/fix-dependencies.sh"
 echo "• Se servidor offline: Execute ./scripts/production-start-whatsapp.sh"
 echo "• Para monitorar: tail -f logs/whatsapp-multi-client.log"
+
