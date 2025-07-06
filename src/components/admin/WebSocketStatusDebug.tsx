@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Wifi, WifiOff, RefreshCw, Activity } from "lucide-react";
 import whatsappService from "@/services/whatsappMultiClient";
 import QRCodeTestHttps from "./QRCodeTestHttps";
+import SSLCertificateHelper from "./SSLCertificateHelper";
 
 const WebSocketStatusDebug = () => {
   const [wsConnected, setWsConnected] = useState(false);
@@ -23,16 +24,16 @@ const WebSocketStatusDebug = () => {
 
       const handleConnect = () => {
         setWsConnected(true);
-        addLog("✅ WebSocket HTTPS conectado");
+        addLog("✅ WebSocket conectado via Nginx HTTPS");
       };
 
       const handleDisconnect = (reason: string) => {
         setWsConnected(false);
-        addLog(`❌ WebSocket HTTPS desconectado: ${reason}`);
+        addLog(`❌ WebSocket desconectado: ${reason}`);
       };
 
       const handleError = (error: any) => {
-        addLog(`❌ Erro WebSocket HTTPS: ${error.message || error}`);
+        addLog(`❌ Erro WebSocket: ${error.message || error}`);
       };
 
       // Listener genérico para eventos de instância
@@ -48,7 +49,7 @@ const WebSocketStatusDebug = () => {
             hasQrCode: data.hasQrCode || false
           }
         }]);
-        addLog(`📱 Evento HTTPS ${eventName}: ${data.clientId || data.instanceId} -> ${data.status}`);
+        addLog(`📱 Evento ${eventName}: ${data.clientId || data.instanceId} -> ${data.status}`);
       };
 
       socket.on('connect', handleConnect);
@@ -71,14 +72,17 @@ const WebSocketStatusDebug = () => {
   const testConnection = async () => {
     try {
       const result = await whatsappService.testConnection();
-      setConnectionLogs(prev => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Test HTTPS: ${result.message}`]);
+      setConnectionLogs(prev => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Test Nginx: ${result.message}`]);
     } catch (error: any) {
-      setConnectionLogs(prev => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Test HTTPS failed: ${error.message}`]);
+      setConnectionLogs(prev => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Test Nginx failed: ${error.message}`]);
     }
   };
 
   return (
     <div className="space-y-4">
+      {/* SSL Certificate Helper - NOVO */}
+      <SSLCertificateHelper />
+
       {/* Status Geral */}
       <Card>
         <CardHeader>
@@ -90,33 +94,33 @@ const WebSocketStatusDebug = () => {
                 ) : (
                   <WifiOff className="w-5 h-5 text-red-500" />
                 )}
-                <span>WebSocket HTTPS Debug</span>
+                <span>WebSocket via Nginx HTTPS</span>
               </CardTitle>
               <CardDescription>
-                Monitor de conexão HTTPS em tempo real
+                Monitor de conexão WebSocket via proxy Nginx
               </CardDescription>
             </div>
             <div className="flex items-center space-x-2">
               <Badge variant={wsConnected ? "default" : "destructive"}>
-                {wsConnected ? "Conectado HTTPS" : "Desconectado"}
+                {wsConnected ? "Conectado via Nginx" : "Desconectado"}
               </Badge>
               <Button size="sm" onClick={testConnection}>
                 <RefreshCw className="w-4 h-4 mr-1" />
-                Testar HTTPS
+                Testar Nginx
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <h4 className="font-medium">Logs de Conexão HTTPS:</h4>
+            <h4 className="font-medium">Logs de Conexão via Nginx:</h4>
             <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded text-sm font-mono max-h-32 overflow-y-auto">
               {connectionLogs.length > 0 ? (
                 connectionLogs.map((log, index) => (
                   <div key={index} className="text-xs">{log}</div>
                 ))
               ) : (
-                <div className="text-gray-500">Nenhum log HTTPS ainda...</div>
+                <div className="text-gray-500">Aguardando logs do Nginx...</div>
               )}
             </div>
           </div>

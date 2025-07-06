@@ -1,4 +1,3 @@
-
 import io, { Socket } from 'socket.io-client';
 import { SERVER_URL, API_BASE_URL, SOCKET_URL, HTTPS_SERVER_URL, getServerConfig } from '@/config/environment';
 import { supabase } from '@/integrations/supabase/client';
@@ -42,14 +41,14 @@ class WhatsAppMultiClientService {
   private healthCheckCache: { result: any; timestamp: number } | null = null;
 
   constructor() {
-    console.log('🔧 WhatsApp Service - HTTPS DEFINITIVO CORRETO');
+    console.log('🔧 WhatsApp Service - SSL CORRIGIDO VIA NGINX');
     console.log('📊 Configuração:', getServerConfig());
   }
 
-  // HTTPS connection test - CORRIGIDO
+  // HTTPS connection test - CORRIGIDO para Nginx proxy
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
-      console.log('🧪 Testando conexão HTTPS:', API_BASE_URL);
+      console.log('🧪 Testando conexão via Nginx HTTPS:', API_BASE_URL);
       
       const response = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
@@ -58,53 +57,59 @@ class WhatsAppMultiClientService {
         signal: AbortSignal.timeout(15000),
         headers: {
           'Accept': 'application/json',
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-cache',
+          'X-Requested-With': 'XMLHttpRequest' // Ajudar CORS
         }
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Servidor HTTPS respondendo:', data);
+        console.log('✅ Nginx HTTPS proxy funcionando:', data);
         return {
           success: true,
-          message: `✅ HTTPS Online! Status: ${data.status} | Server: ${data.server} | Protocol: ${data.protocol}`
+          message: `✅ NGINX HTTPS OK! Status: ${data.status} | Server: ${data.server} | Via Proxy: SIM`
         };
       } else {
         return {
           success: false,
-          message: `❌ Servidor HTTPS retornou HTTP ${response.status}`
+          message: `❌ Nginx retornou HTTP ${response.status}: ${response.statusText}`
         };
       }
     } catch (error: any) {
-      console.error('❌ Erro na conexão HTTPS:', error);
+      console.error('❌ Erro na conexão Nginx HTTPS:', error);
       
       if (error.name === 'AbortError') {
         return {
           success: false,
-          message: '⏰ Timeout - Servidor HTTPS não respondeu em 15 segundos'
+          message: '⏰ Timeout - Nginx não respondeu em 15 segundos'
         };
       } else if (error.message === 'Failed to fetch') {
         return {
           success: false,
-          message: `🔒 Problema SSL/CORS - Aceite o certificado em: ${API_BASE_URL}/health`
+          message: `🔒 Certificado SSL precisa ser aceito no navegador: ${API_BASE_URL}/health`
+        };
+      } else if (error.message.includes('SSL') || error.message.includes('certificate')) {
+        return {
+          success: false,
+          message: `🔐 Problema SSL: Aceite o certificado em ${API_BASE_URL}/health`
         };
       } else {
         return {
           success: false,
-          message: `❌ Erro HTTPS: ${error.message}`
+          message: `❌ Erro Nginx: ${error.message}`
         };
       }
     }
   }
 
-  // WebSocket connection - CORRIGIDO PARA HTTPS
+  // WebSocket connection - CORRIGIDO para usar Nginx proxy
   connectSocket(): Socket {
     if (this.socket?.connected) {
-      console.log('🔌 WebSocket já conectado');
+      console.log('🔌 WebSocket já conectado via Nginx');
       return this.socket;
     }
 
-    console.log('🔌 Conectando WebSocket HTTPS:', SOCKET_URL);
+    console.log('🔌 Conectando WebSocket via Nginx HTTPS:', SOCKET_URL);
 
     try {
       this.socket = io(SOCKET_URL, {
@@ -115,31 +120,37 @@ class WhatsAppMultiClientService {
         reconnectionDelay: this.reconnectInterval,
         forceNew: false,
         upgrade: true,
-        rejectUnauthorized: false, // Para aceitar certificados self-signed
-        secure: !SOCKET_URL.includes('localhost') // Usar SSL para produção
+        // Configurações para certificado autoassinado via Nginx
+        rejectUnauthorized: false,
+        secure: !SOCKET_URL.includes('localhost'),
+        // Headers adicionais para CORS via Nginx
+        extraHeaders: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Origin': window.location.origin
+        }
       });
 
       this.socket.on('connect', () => {
-        console.log('✅ WebSocket HTTPS conectado com sucesso!');
+        console.log('✅ WebSocket conectado via Nginx HTTPS!');
         this.reconnectAttempts = 0;
       });
 
       this.socket.on('disconnect', (reason) => {
-        console.log('❌ WebSocket HTTPS desconectado:', reason);
+        console.log('❌ WebSocket Nginx desconectado:', reason);
       });
 
       this.socket.on('connect_error', (error) => {
-        console.error('❌ Erro WebSocket HTTPS:', error.message);
+        console.error('❌ Erro WebSocket Nginx:', error.message);
         this.reconnectAttempts++;
         
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-          console.log('❌ Máximo de tentativas WebSocket HTTPS atingido');
+          console.log('❌ Máximo de tentativas WebSocket Nginx atingido');
         }
       });
 
       return this.socket;
     } catch (error) {
-      console.error('❌ Erro ao criar WebSocket HTTPS:', error);
+      console.error('❌ Erro ao criar WebSocket via Nginx:', error);
       throw error;
     }
   }
@@ -156,16 +167,18 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // HTTPS API request - CORRIGIDO
+  // HTTPS API request - OTIMIZADO para Nginx proxy
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     
-    console.log(`📡 Requisição HTTPS: ${options.method || 'GET'} ${fullUrl}`);
+    console.log(`📡 Requisição via Nginx: ${options.method || 'GET'} ${fullUrl}`);
     
     const defaultHeaders = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'no-cache',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Origin': window.location.origin
     };
 
     const fetchConfig: RequestInit = {
@@ -182,7 +195,7 @@ class WhatsAppMultiClientService {
     try {
       const response = await fetch(fullUrl, fetchConfig);
       
-      console.log(`📡 Resposta HTTPS: ${response.status} ${response.statusText}`);
+      console.log(`📡 Resposta Nginx: ${response.status} ${response.statusText}`);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -195,7 +208,7 @@ class WhatsAppMultiClientService {
         return await response.text();
       }
     } catch (error: any) {
-      console.error(`❌ Erro na requisição HTTPS para ${fullUrl}:`, error);
+      console.error(`❌ Erro na requisição Nginx para ${fullUrl}:`, error);
       throw error;
     }
   }
