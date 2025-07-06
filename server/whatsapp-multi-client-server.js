@@ -14,6 +14,27 @@ const { sendAudio } = require('./services/elevenlabs');
 const { AudioSendService } = require('./services/audioSendService');
 const { SERVER_URL, PORT, WA_TIMEOUT } = require('./config/environment');
 
+// Importar AudioProcessor de forma segura
+let AudioProcessor;
+try {
+  AudioProcessor = require('./utils/audioProcessor').AudioProcessor;
+  console.log('✅ AudioProcessor carregado com sucesso');
+} catch (error) {
+  console.warn('⚠️ AudioProcessor não encontrado, funcionalidade base64 não disponível:', error.message);
+  // Criar um fallback básico
+  AudioProcessor = {
+    processBase64Audio: (base64Audio, fileName, mimeType) => {
+      return new MessageMedia(mimeType, base64Audio, fileName);
+    },
+    optimizeMimeType: (mimeType) => mimeType,
+    getAudioStats: (base64Audio, mimeType) => ({
+      originalMimeType: mimeType,
+      base64Length: base64Audio.length,
+      estimatedSizeKB: Math.round((base64Audio.length * 0.75) / 1024)
+    })
+  };
+}
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
@@ -183,6 +204,25 @@ io.on('connection', socket => {
     });
 });
 
+// Função para adicionar headers CORS seletivos
+function addSelectiveCORS(req, res, next) {
+  // Aplicar CORS apenas para rotas que começam com /api/
+  if (req.path.startsWith('/api/')) {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+  }
+  next();
+}
+
+// Aplicar CORS seletivo ANTES das rotas
+app.use(addSelectiveCORS);
+
 // Health check endpoint
 app.get('/health', (req, res) => {
     const healthcheck = {
@@ -307,27 +347,6 @@ app.get('/clients/:clientId/chats', async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to get chats', error: err.message });
     }
 });
-
-const { AudioProcessor } = require('./utils/audioProcessor');
-
-// Função para adicionar headers CORS seletivos
-function addSelectiveCORS(req, res, next) {
-  // Aplicar CORS apenas para rotas que começam com /api/
-  if (req.path.startsWith('/api/')) {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
-    }
-  }
-  next();
-}
-
-// Aplicar CORS seletivo ANTES das rotas
-app.use(addSelectiveCORS);
 
 // ====== NOVA SEÇÃO: ROTAS DE API COMPATÍVEIS ======
 // Estas rotas complementam as existentes sem alterá-las
