@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # Script para correção DEFINITIVA do whatsapp-web.js
