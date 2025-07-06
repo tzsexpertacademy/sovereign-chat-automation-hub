@@ -19,6 +19,57 @@ rm -f /etc/nginx/sites-enabled/default
 rm -f /etc/nginx/sites-enabled/whatsapp-multi-client
 rm -f /etc/nginx/sites-available/whatsapp-multi-client
 
+echo "🔐 Criando certificados SSL..."
+mkdir -p /etc/ssl/whatsapp
+
+# Criar certificado SSL autoassinado se não existir
+if [ ! -f "/etc/ssl/whatsapp/fullchain.pem" ] || [ ! -f "/etc/ssl/whatsapp/privkey.pem" ]; then
+    echo "🔑 Gerando certificado SSL autoassinado..."
+    
+    # Criar configuração para o certificado
+    cat > /tmp/ssl.conf << EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = BR
+ST = SP
+L = Sao Paulo
+O = WhatsApp Multi Client
+CN = $DOMAIN
+
+[v3_req]
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = $DOMAIN
+IP.1 = $DOMAIN
+IP.2 = 127.0.0.1
+EOF
+
+    # Gerar chave privada e certificado
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/ssl/whatsapp/privkey.pem \
+        -out /etc/ssl/whatsapp/fullchain.pem \
+        -config /tmp/ssl.conf \
+        -extensions v3_req
+
+    # Definir permissões
+    chmod 600 /etc/ssl/whatsapp/privkey.pem
+    chmod 644 /etc/ssl/whatsapp/fullchain.pem
+    
+    # Limpar arquivo temporário
+    rm -f /tmp/ssl.conf
+    
+    echo "✅ Certificado SSL criado!"
+else
+    echo "✅ Certificados SSL já existem"
+fi
+
 echo "📝 Criando configuração Nginx CORRETA..."
 cat > /etc/nginx/sites-available/whatsapp-multi-client << 'EOF'
 # WhatsApp Multi-Client - Configuração FINAL CORRETA
@@ -32,7 +83,8 @@ server {
 
 # HTTPS Server - CONFIGURAÇÃO CORRETA
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name 146.59.227.248;
     
     # SSL Configuration
@@ -194,6 +246,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "🎉 NGINX ROUTING CORRIGIDO!"
     echo "=========================="
+    echo "✅ Certificado SSL criado automaticamente"
     echo "✅ Todas as rotas apontam para porta 4000 (Node.js)"
     echo "✅ WebSocket configurado corretamente"
     echo "✅ CORS habilitado para todas as APIs"
@@ -210,3 +263,6 @@ echo "• Health: https://$DOMAIN/health"
 echo "• API: https://$DOMAIN/clients"
 echo "• Swagger: https://$DOMAIN/api-docs"
 echo "• Frontend Lovable: https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com/admin/instances"
+echo ""
+echo "⚠️ IMPORTANTE: Aceite o certificado autoassinado no navegador"
+echo "   Clique em 'Avançado' > 'Prosseguir para $DOMAIN'"
