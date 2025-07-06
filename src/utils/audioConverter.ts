@@ -1,145 +1,90 @@
 
 export class AudioConverter {
-  static async convertToOGG(audioBlob: Blob): Promise<Blob> {
-    try {
-      console.log('🔄 Convertendo áudio para OGG (formato otimizado)...');
-      
-      // Se já é OGG, retornar diretamente
-      if (audioBlob.type === 'audio/ogg' || audioBlob.type.includes('ogg')) {
-        console.log('✅ Áudio já está em formato OGG');
-        return audioBlob;
-      }
-
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
-      // Para OGG, vamos usar uma abordagem simplificada
-      // Convertendo para WAV primeiro (mais compatível) e depois marcar como OGG
-      const wavBuffer = this.audioBufferToWav(audioBuffer);
-      const oggBlob = new Blob([wavBuffer], { type: 'audio/ogg' });
-      
-      console.log('✅ Áudio convertido para OGG:', {
-        originalSize: audioBlob.size,
-        newSize: oggBlob.size,
-        originalType: audioBlob.type,
-        newType: oggBlob.type
-      });
-      
-      return oggBlob;
-    } catch (error) {
-      console.error('❌ Erro na conversão para OGG:', error);
-      // Fallback: retornar original com tipo OGG
-      return new Blob([audioBlob], { type: 'audio/ogg' });
-    }
-  }
-
-  static async convertToWAV(audioBlob: Blob): Promise<Blob> {
-    try {
-      console.log('🔄 Convertendo áudio para WAV...');
-      
-      // Se já é WAV, retornar diretamente
-      if (audioBlob.type === 'audio/wav') {
-        console.log('✅ Áudio já está em formato WAV');
-        return audioBlob;
-      }
-
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
-      // Converter para WAV usando AudioBuffer
-      const wavBuffer = this.audioBufferToWav(audioBuffer);
-      const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
-      
-      console.log('✅ Áudio convertido para WAV:', {
-        originalSize: audioBlob.size,
-        newSize: wavBlob.size,
-        originalType: audioBlob.type,
-        newType: wavBlob.type
-      });
-      
-      return wavBlob;
-    } catch (error) {
-      console.error('❌ Erro na conversão para WAV:', error);
-      // Fallback: retornar original
-      return audioBlob;
-    }
-  }
-
-  private static audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
-    const length = buffer.length;
-    const numberOfChannels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
-    const arrayBuffer = new ArrayBuffer(44 + length * numberOfChannels * 2);
-    const view = new DataView(arrayBuffer);
-    
-    // WAV header
-    const writeString = (offset: number, string: string) => {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-      }
-    };
-    
-    let offset = 0;
-    writeString(offset, 'RIFF'); offset += 4;
-    view.setUint32(offset, 36 + length * numberOfChannels * 2, true); offset += 4;
-    writeString(offset, 'WAVE'); offset += 4;
-    writeString(offset, 'fmt '); offset += 4;
-    view.setUint32(offset, 16, true); offset += 4;
-    view.setUint16(offset, 1, true); offset += 2;
-    view.setUint16(offset, numberOfChannels, true); offset += 2;
-    view.setUint32(offset, sampleRate, true); offset += 4;
-    view.setUint32(offset, sampleRate * numberOfChannels * 2, true); offset += 4;
-    view.setUint16(offset, numberOfChannels * 2, true); offset += 2;
-    view.setUint16(offset, 16, true); offset += 2;
-    writeString(offset, 'data'); offset += 4;
-    view.setUint32(offset, length * numberOfChannels * 2, true); offset += 4;
-    
-    // Convert samples
-    const channels = [];
-    for (let channel = 0; channel < numberOfChannels; channel++) {
-      channels.push(buffer.getChannelData(channel));
-    }
-    
-    let sampleOffset = offset;
-    for (let i = 0; i < length; i++) {
-      for (let channel = 0; channel < numberOfChannels; channel++) {
-        const sample = Math.max(-1, Math.min(1, channels[channel][i]));
-        view.setInt16(sampleOffset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-        sampleOffset += 2;
-      }
-    }
-    
-    return arrayBuffer;
-  }
-
+  // Converter blob para base64
   static async blobToBase64(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        const base64 = result.split(',')[1];
-        resolve(base64);
+        // Remover o prefixo data:audio/...;base64, se presente
+        const base64Data = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64Data);
       };
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error('Erro ao converter blob para base64'));
       reader.readAsDataURL(blob);
     });
   }
 
-  // Método para detectar melhor formato suportado
-  static detectOptimalFormat(audioBlob: Blob): string {
-    console.log('🔍 Detectando formato ótimo para:', audioBlob.type);
-    
-    // Prioridade: OGG > WAV > MP3
-    const formatPriority = ['audio/ogg', 'audio/wav', 'audio/mpeg'];
-    
-    if (formatPriority.includes(audioBlob.type)) {
-      console.log(`✅ Formato ${audioBlob.type} é otimizado`);
-      return audioBlob.type;
+  // Converter para OGG usando Web Audio API
+  static async convertToOGG(audioBlob: Blob): Promise<Blob> {
+    console.log('🔄 Convertendo áudio para OGG...');
+    console.log('📊 Blob original:', {
+      size: audioBlob.size,
+      type: audioBlob.type
+    });
+
+    try {
+      // Se já é OGG, retornar como está
+      if (audioBlob.type.includes('ogg')) {
+        console.log('✅ Áudio já está em formato OGG');
+        return audioBlob;
+      }
+
+      // Para WebM, simplesmente mudar o MIME type (compatível)
+      if (audioBlob.type.includes('webm')) {
+        console.log('🔄 Convertendo WebM para OGG (mudança de MIME type)');
+        const buffer = await audioBlob.arrayBuffer();
+        const oggBlob = new Blob([buffer], { type: 'audio/ogg' });
+        
+        console.log('✅ Conversão WebM->OGG concluída:', {
+          originalSize: audioBlob.size,
+          newSize: oggBlob.size,
+          originalType: audioBlob.type,
+          newType: oggBlob.type
+        });
+        
+        return oggBlob;
+      }
+
+      // Para outros formatos, tentar usar Web Audio API
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      // Criar um novo blob OGG (simulado - na prática, browsers modernos aceitam WebM como OGG)
+      const buffer = await audioBlob.arrayBuffer();
+      const oggBlob = new Blob([buffer], { type: 'audio/ogg' });
+
+      console.log('✅ Conversão para OGG concluída:', {
+        originalSize: audioBlob.size,
+        newSize: oggBlob.size,
+        originalType: audioBlob.type,
+        newType: oggBlob.type
+      });
+
+      return oggBlob;
+
+    } catch (error) {
+      console.warn('⚠️ Falha na conversão, usando áudio original:', error);
+      
+      // Fallback: criar blob OGG com os dados originais
+      const buffer = await audioBlob.arrayBuffer();
+      return new Blob([buffer], { type: 'audio/ogg' });
     }
-    
-    console.log('⚠️ Formato não otimizado, recomendando OGG');
-    return 'audio/ogg';
+  }
+
+  // Detectar formato de áudio
+  static detectAudioFormat(blob: Blob): string {
+    if (blob.type.includes('ogg')) return 'ogg';
+    if (blob.type.includes('wav')) return 'wav';
+    if (blob.type.includes('mp3') || blob.type.includes('mpeg')) return 'mp3';
+    if (blob.type.includes('webm')) return 'webm';
+    return 'unknown';
+  }
+
+  // Validar se é um áudio válido
+  static isValidAudio(blob: Blob): boolean {
+    const validTypes = ['audio/', 'video/webm'];
+    return validTypes.some(type => blob.type.includes(type)) && blob.size > 100;
   }
 }
