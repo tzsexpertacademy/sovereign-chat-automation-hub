@@ -383,6 +383,7 @@ const phoneNumberFormatter = function(number) {
     return formatted;
 };
 
+
 // Função para inicializar um novo cliente
 const initClient = (clientId) => {
     if (clients[clientId] && clients[clientId].client) {
@@ -962,19 +963,6 @@ app.get('/health', (req, res) => {
         }
     };
     res.json(healthcheck);
-});
-
-// MIDDLEWARE PARA CORS SELETIVO APENAS PARA /api/*
-app.use('/api/*', (req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    
-    if (req.method === 'OPTIONS') {
-        res.sendStatus(200);
-    } else {
-        next();
-    }
 });
 
 // Rotas principais
@@ -1627,111 +1615,31 @@ app.post('/clients/:clientId/send-video', async (req, res) => {
     }
 });
 
-// NOVA ROTA: /api/clients/:clientId/send-audio
-// Esta rota aceita JSON + base64 e reutiliza a lógica existente
-app.post('/api/clients/:clientId/send-audio', async (req, res) => {
-    const startTime = Date.now();
-    const { clientId } = req.params;
-    const { to, audioData, fileName = 'audio.wav', mimeType = 'audio/wav' } = req.body;
-    
-    console.log(`🎵 Nova rota API: Recebendo áudio via JSON para cliente ${clientId}`);
-    
-    try {
-        // Importar AudioProcessor de forma segura
-        let AudioProcessor;
+app.post('/clients/:clientId/send-audio', async (req, res) => {
+    const clientId = req.params.clientId;
+    const number = phoneNumberFormatter(req.body.to);
+    const caption = req.body.caption;
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+        return res.status(400).json({ success: false, error: 'Nenhum arquivo foi enviado.' });
+    }
+
+    const file = req.files.file;
+    const mimeType = file.mimetype;
+    const filename = file.name;
+    const base64File = file.data.toString('base64');
+
+    if (clients[clientId]) {
         try {
-            AudioProcessor = require('./utils/audioProcessor');
-        } catch (importError) {
-            console.error('❌ Erro ao importar AudioProcessor:', importError);
-            return res.status(500).json({
-                success: false,
-                error: 'AudioProcessor não disponível',
-                timestamp: new Date().toISOString()
-            });
+            const media = new MessageMedia(mimeType, base64File, filename);
+            await clients[clientId].sendMessage(number, media, { caption: caption });
+            res.json({ success: true, message: 'Áudio enviado' });
+        } catch (error) {
+            console.error('Erro ao enviar áudio:', error);
+            res.status(500).json({ success: false, error: 'Erro ao enviar áudio' });
         }
-        
-        // Validar entrada
-        if (!to || !audioData) {
-            return res.status(400).json({
-                success: false,
-                error: 'Campos obrigatórios: to, audioData',
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        // Validar dados de áudio
-        AudioProcessor.validateAudioData(audioData, fileName, mimeType);
-        
-        // Processar áudio base64 para formato compatível
-        const mockFile = AudioProcessor.processBase64Audio(audioData, fileName, mimeType);
-        
-        // Simular req.files para reutilizar lógica existente
-        const mockReq = {
-            params: { clientId },
-            body: { to },
-            files: { file: mockFile }
-        };
-        
-        // Verificar se cliente existe (reutilizar validação existente)
-        const client = clients.get(clientId);
-        if (!client) {
-            return res.status(404).json({
-                success: false,
-                error: `Cliente ${clientId} não encontrado`,
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        if (!client.isReady()) {
-            return res.status(400).json({
-                success: false,
-                error: `Cliente ${clientId} não está conectado`,
-                status: await client.getState(),
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        // REUTILIZAR EXATAMENTE A MESMA LÓGICA DO ENDPOINT EXISTENTE
-        console.log(`📤 Enviando áudio via WhatsApp para ${to}...`);
-        
-        const media = MessageMedia.fromFilePath = function(filePath) {
-            const data = mockFile.buffer.toString('base64');
-            return new MessageMedia(mockFile.mimetype, data, mockFile.originalname);
-        };
-        
-        const audioMessage = new MessageMedia(
-            mockFile.mimetype,
-            mockFile.buffer.toString('base64'),
-            mockFile.originalname
-        );
-        
-        const result = await client.sendMessage(to, audioMessage);
-        
-        const processingTime = Date.now() - startTime;
-        
-        console.log(`✅ Áudio enviado com sucesso via nova rota API em ${processingTime}ms`);
-        
-        res.json({
-            success: true,
-            message: 'Áudio enviado com sucesso via API',
-            messageId: result.id?.id || result.id,
-            to: to,
-            fileName: fileName,
-            mimeType: mimeType,
-            processingTime: `${processingTime}ms`,
-            timestamp: new Date().toISOString()
-        });
-        
-    } catch (error) {
-        const processingTime = Date.now() - startTime;
-        console.error(`❌ Erro na nova rota API de áudio (${processingTime}ms):`, error);
-        
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            processingTime: `${processingTime}ms`,
-            timestamp: new Date().toISOString()
-        });
+    } else {
+        res.status(404).json({ success: false, message: `Client ${clientId} não encontrado, verifique se a instancia foi criada.` });
     }
 });
 
