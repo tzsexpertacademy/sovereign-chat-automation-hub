@@ -29,49 +29,67 @@ if [ $? -eq 0 ]; then
 else
     echo "❌ Erro na sintaxe do servidor"
     echo "🔄 Restaurando backup..."
-    mv server/whatsapp-multi-client-server.js.backup.* server/whatsapp-multi-client-server.js
+    cp server/whatsapp-multi-client-server.js.backup.* server/whatsapp-multi-client-server.js
     exit 1
 fi
 
-# Testar se servidor pode iniciar
+# Parar servidor existente primeiro
 echo ""
-echo "🧪 3. Testando inicialização do servidor..."
-timeout 10s node server/whatsapp-multi-client-server.js &
-PID=$!
+echo "🛑 3. Parando servidor existente..."
+./scripts/production-stop-whatsapp.sh
+sleep 3
+
+# Testar se servidor pode iniciar (apenas teste rápido)
+echo ""
+echo "🧪 4. Testando inicialização do servidor..."
+cd server
+timeout 8s node whatsapp-multi-client-server.js &
+TEST_PID=$!
+cd ..
 sleep 5
 
-if ps -p $PID > /dev/null; then
-    echo "✅ Servidor inicializa corretamente"
-    kill $PID
+# Verificar se teste foi bem-sucedido
+if ps -p $TEST_PID > /dev/null 2>&1; then
+    echo "✅ Servidor pode inicializar corretamente"
+    kill $TEST_PID 2>/dev/null
+    wait $TEST_PID 2>/dev/null
 else
     echo "❌ Servidor não consegue inicializar"
     echo "🔄 Restaurando backup..."
-    mv server/whatsapp-multi-client-server.js.backup.* server/whatsapp-multi-client-server.js
+    cp server/whatsapp-multi-client-server.js.backup.* server/whatsapp-multi-client-server.js
     exit 1
 fi
 
-# Aplicar melhorias
-echo ""
-echo "🚀 4. Reiniciando servidor com melhorias..."
-./scripts/production-stop-whatsapp.sh
+# Aguardar processo de teste terminar completamente
 sleep 3
+
+# Aplicar melhorias reiniciando servidor
+echo ""
+echo "🚀 5. Reiniciando servidor com melhorias..."
 ./scripts/production-start-whatsapp.sh
 
 # Aguardar servidor ficar online
 echo ""
-echo "⏳ 5. Aguardando servidor ficar online..."
-for i in {1..10}; do
-    if curl -s --max-time 3 http://localhost:4000/health > /dev/null; then
+echo "⏳ 6. Aguardando servidor ficar online..."
+for i in {1..15}; do
+    if curl -s --max-time 5 http://localhost:4000/health > /dev/null; then
         echo "✅ Servidor online após $i tentativas"
         break
     fi
-    echo "⏳ Tentativa $i/10..."
-    sleep 2
+    echo "⏳ Tentativa $i/15..."
+    sleep 3
 done
+
+# Verificar se servidor está realmente online
+if ! curl -s --max-time 5 http://localhost:4000/health > /dev/null; then
+    echo "❌ Servidor não ficou online após várias tentativas"
+    echo "📝 Verificar logs: tail -f logs/whatsapp-multi-client.log"
+    exit 1
+fi
 
 # Testar nova funcionalidade
 echo ""
-echo "🧪 6. Testando nova funcionalidade..."
+echo "🧪 7. Testando nova funcionalidade de áudio..."
 ./scripts/test-audio-system-complete.sh
 
 echo ""
