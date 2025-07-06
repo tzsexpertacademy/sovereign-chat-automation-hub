@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Hook unificado para gerenciar instâncias - NOVO
+  // Hook simplificado para HTTPS
   const { 
     connectInstance, 
     disconnectInstance,
@@ -60,10 +61,10 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'connected': return 'Conectado';
-      case 'qr_ready': return 'QR Pronto';
-      case 'connecting': return 'Conectando';
-      case 'authenticated': return 'Autenticado';
+      case 'connected': return 'Conectado HTTPS';
+      case 'qr_ready': return 'QR Pronto HTTPS';
+      case 'connecting': return 'Conectando HTTPS';
+      case 'authenticated': return 'Autenticado HTTPS';
       case 'disconnected': return 'Desconectado';
       default: return 'Desconhecido';
     }
@@ -80,7 +81,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
-  // NOVO: Handlers simplificados
+  // Handlers simplificados HTTPS
   const handleConnectInstance = async (instanceId: string) => {
     setSelectedInstanceForQR(instanceId);
     await connectInstance(instanceId);
@@ -103,7 +104,6 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
   };
 
   const handleDeleteInstance = async (instanceId: string) => {
-    // NOVO: Funcionalidade de deletar
     if (confirm('Tem certeza que deseja remover esta instância?')) {
       try {
         const { whatsappInstancesService } = await import('@/services/whatsappInstancesService');
@@ -134,7 +134,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
             <Smartphone className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma instância encontrada</h3>
             <p className="text-gray-600">
-              Crie uma nova instância para começar a usar o WhatsApp
+              Crie uma nova instância para começar a usar o WhatsApp HTTPS
             </p>
           </div>
         </CardContent>
@@ -146,7 +146,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Instâncias WhatsApp ({instances.length}) - ATUALIZADO</CardTitle>
+          <CardTitle>Instâncias WhatsApp HTTPS ({instances.length}) - CORRIGIDO</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid lg:grid-cols-2 gap-6">
@@ -162,7 +162,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         Cliente: {getClientName(instance.client_id)}
                       </p>
                       <p className="text-sm text-gray-500">
-                        {instance.phone_number || 'Não conectado'}
+                        {instance.phone_number || 'Não conectado via HTTPS'}
                       </p>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -178,11 +178,11 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                 </CardHeader>
                 <CardContent className="space-y-4">
                   
-                  {/* Status específico para instância selecionada - NOVO */}
+                  {/* Status WebSocket HTTPS */}
                   {selectedInstanceForQR === instance.instance_id && (
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Status WebSocket:</span>
+                        <span className="text-sm font-medium">Status WebSocket HTTPS:</span>
                         <div className="flex items-center space-x-1">
                           {websocketConnected ? (
                             <Wifi className="w-4 h-4 text-green-500" />
@@ -190,32 +190,32 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                             <WifiOff className="w-4 h-4 text-red-500" />
                           )}
                           <span className="text-xs">
-                            {websocketConnected ? 'Conectado' : 'Desconectado'}
+                            {websocketConnected ? 'Conectado HTTPS' : 'Desconectado'}
                           </span>
                         </div>
                       </div>
                       <p className="text-sm text-blue-800">
-                        Status atual: {getInstanceStatus(instance.instance_id).status}
+                        Status atual HTTPS: {getInstanceStatus(instance.instance_id).status}
                       </p>
                     </div>
                   )}
 
-                  {/* QR Code Display - NOVO */}
+                  {/* QR Code Display HTTPS */}
                   {selectedInstanceForQR === instance.instance_id && 
                    getInstanceStatus(instance.instance_id).hasQrCode && 
                    getInstanceStatus(instance.instance_id).qrCode && (
                     <div className="space-y-3">
                       <div className="text-center">
-                        <h4 className="font-medium mb-2">QR Code Disponível!</h4>
+                        <h4 className="font-medium mb-2">QR Code HTTPS Disponível!</h4>
                         <div className="bg-white p-4 rounded border">
                           <img 
                             src={getInstanceStatus(instance.instance_id).qrCode} 
-                            alt="QR Code WhatsApp"
+                            alt="QR Code WhatsApp HTTPS"
                             className="mx-auto max-w-[200px]"
                           />
                         </div>
                         <p className="text-xs text-green-600 mt-2">
-                          ✅ Escaneie com seu WhatsApp para conectar
+                          ✅ Escaneie com seu WhatsApp para conectar via HTTPS
                         </p>
                       </div>
                     </div>
@@ -225,14 +225,13 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                   {instance.status === 'connected' && (
                     <div className="p-3 bg-green-50 border border-green-200 rounded">
                       <p className="text-sm text-green-800">
-                        ✅ WhatsApp conectado e funcionando
+                        ✅ WhatsApp conectado via HTTPS e funcionando
                       </p>
                     </div>
                   )}
 
-                   {/* Action Buttons - OTIMIZADO E ESTÁVEL */}
+                   {/* Action Buttons HTTPS */}
                    <div className="flex space-x-2 pt-2 flex-wrap">
-                    {/* LÓGICA DEFINITIVA: Mostrar botão Chat se tem phoneNumber OU status connected */}
                     {(getInstanceStatus(instance.instance_id).phoneNumber || 
                       getInstanceStatus(instance.instance_id).status === 'connected' || 
                       instance.phone_number) ? (
@@ -244,7 +243,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
                         >
                           <Pause className="w-4 h-4 mr-1" />
-                          Pausar
+                          Pausar HTTPS
                         </Button>
                         <Button 
                           size="sm" 
@@ -252,7 +251,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           className="bg-green-600 hover:bg-green-700 text-white"
                         >
                           <MessageSquare className="w-4 h-4 mr-1" />
-                          Ir para Chat
+                          Chat HTTPS
                         </Button>
                       </>
                     ) : (
@@ -265,12 +264,12 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         {isLoading(instance.instance_id) ? (
                           <>
                             <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                            Conectando...
+                            Conectando HTTPS...
                           </>
                         ) : (
                           <>
                             <Play className="w-4 h-4 mr-1" />
-                            Conectar
+                            Conectar HTTPS
                           </>
                         )}
                       </Button>
@@ -283,10 +282,9 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                       disabled={isLoading(instance.instance_id)}
                     >
                       <Eye className="w-4 h-4 mr-1" />
-                      QR Code
+                      QR HTTPS
                     </Button>
 
-                    {/* NOVO: Botão Remover */}
                     <Button 
                       size="sm" 
                       variant="outline"

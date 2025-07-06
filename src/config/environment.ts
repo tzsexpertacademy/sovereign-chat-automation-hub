@@ -1,13 +1,14 @@
 
-// Environment configuration for WhatsApp Multi-Client - HTTPS DEFINITIVO
-console.log('🔒 Configurando ambiente HTTPS DEFINITIVO...');
+// Environment configuration for WhatsApp Multi-Client - HTTPS DEFINITIVO CORRETO
+console.log('🔒 Configurando ambiente HTTPS DEFINITIVO CORRETO...');
 
 // Detect environment
 const isProduction = window.location.hostname.includes('lovableproject.com');
 const isDevelopment = window.location.hostname === 'localhost';
 
-// HTTPS Server configuration - DEFINITIVO para Lovable
+// HTTPS Server configuration - PORTA 4000 CORRETA
 const HTTPS_SERVER = '146.59.227.248';
+const SERVER_PORT = '4000'; // PORTA CORRETA DO SERVIDOR
 
 // Configure URLs for HTTPS DEFINITIVO
 let SERVER_HOST: string;
@@ -21,16 +22,16 @@ if (isDevelopment) {
   SOCKET_URL = 'ws://localhost:4000';
   console.log('🛠️ Modo Desenvolvimento - Usando localhost HTTP');
 } else {
-  // Production - HTTPS DEFINITIVO via Nginx (porta 443)
-  SERVER_HOST = `https://${HTTPS_SERVER}`;
-  API_BASE_URL = `https://${HTTPS_SERVER}`;
-  SOCKET_URL = `wss://${HTTPS_SERVER}`;
-  console.log('🔒 Modo Produção - HTTPS DEFINITIVO via Nginx');
+  // Production - HTTPS DEFINITIVO com PORTA 4000
+  SERVER_HOST = `https://${HTTPS_SERVER}:${SERVER_PORT}`;
+  API_BASE_URL = `https://${HTTPS_SERVER}:${SERVER_PORT}`;
+  SOCKET_URL = `wss://${HTTPS_SERVER}:${SERVER_PORT}`;
+  console.log('🔒 Modo Produção - HTTPS DEFINITIVO porta 4000');
 }
 
 // Export the configured URLs
 export const SERVER_URL = SERVER_HOST;
-export const HTTPS_SERVER_URL = `https://${HTTPS_SERVER}`;
+export const HTTPS_SERVER_URL = `https://${HTTPS_SERVER}:${SERVER_PORT}`;
 export { API_BASE_URL, SOCKET_URL };
 
 // Export additional config
@@ -48,12 +49,12 @@ export const getServerConfig = () => ({
   lovableCompatible: !isDevelopment,
   corsEnabled: true,
   sslRequired: !isDevelopment,
-  nginxProxy: !isDevelopment, // Indica que está usando proxy Nginx
+  httpsPort: SERVER_PORT,
   serverIP: HTTPS_SERVER,
-  serverPort: isDevelopment ? '4000' : '443'
+  serverPort: SERVER_PORT
 });
 
-console.log('✅ Configuração HTTPS DEFINITIVO carregada:', {
+console.log('✅ Configuração HTTPS DEFINITIVO CORRETO carregada:', {
   SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
@@ -61,6 +62,6 @@ console.log('✅ Configuração HTTPS DEFINITIVO carregada:', {
   isHttps: !isDevelopment,
   requiresHttps: true,
   lovableCompatible: !isDevelopment,
-  nginxProxy: !isDevelopment,
+  httpsPort: SERVER_PORT,
   environment: isProduction ? 'production' : isDevelopment ? 'development' : 'https-production'
 });
