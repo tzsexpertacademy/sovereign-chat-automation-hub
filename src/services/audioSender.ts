@@ -1,5 +1,5 @@
 
-import { SERVER_URL } from '@/config/environment';
+import { getServerConfig } from '@/config/environment';
 import { AudioConverter } from '@/utils/audioConverter';
 
 export interface AudioSendResult {
@@ -75,12 +75,13 @@ export class AudioSender {
       // Converter para base64
       const base64Audio = await AudioConverter.blobToBase64(audioBlob);
       
-      // Preparar dados para o servidor
+      // Preparar dados para o servidor (novo formato JSON + base64)
       const requestData = {
         to: chatId,
         audioData: base64Audio,
         fileName: `audio_${messageId}.ogg`,
-        mimeType: 'audio/ogg'
+        mimeType: 'audio/ogg',
+        caption: ''
       };
 
       console.log('📊 Dados preparados para envio:', {
@@ -90,13 +91,22 @@ export class AudioSender {
         fileName: requestData.fileName
       });
 
-      // Enviar com timeout otimizado
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout (servidor faz 3 tentativas)
+      // Usar configuração HTTPS correta
+      const config = getServerConfig();
+      const serverUrl = config.httpsUrl || config.serverUrl;
+      
+      console.log('🔗 Usando servidor HTTPS:', serverUrl);
 
-      const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/send-audio`, {
+      // Enviar com timeout otimizado para o novo endpoint
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout
+
+      const response = await fetch(`${serverUrl}/api/clients/${connectedInstance}/send-audio`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify(requestData),
         signal: controller.signal
       });
@@ -153,7 +163,10 @@ export class AudioSender {
   // Método para obter estatísticas do servidor
   static async getAudioStats(connectedInstance: string): Promise<any> {
     try {
-      const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/audio-stats`);
+      const config = getServerConfig();
+      const serverUrl = config.httpsUrl || config.serverUrl;
+      
+      const response = await fetch(`${serverUrl}/api/clients/${connectedInstance}/file-stats`);
       
       if (response.ok) {
         return await response.json();
