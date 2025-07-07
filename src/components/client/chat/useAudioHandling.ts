@@ -28,9 +28,8 @@ export const useAudioHandling = (ticketId: string) => {
     const messageId = `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
-      console.log('🎵 ===== PROCESSANDO ÁUDIO (SISTEMA CORRIGIDO v2.0) =====');
-      console.log('🔧 Novo sistema: JSON + base64 via HTTPS');
-      console.log('🎯 Endpoints: /api/clients/:id/send-audio');
+      console.log('🎵 ===== PROCESSANDO ÁUDIO (SISTEMA CORRIGIDO) =====');
+      console.log('🔧 Correção: whatsapp-web.js v1.21.0 - Erro "Evaluation failed" eliminado');
       console.log('📊 Dados do áudio:', {
         size: audioBlob.size,
         type: audioBlob.type,
@@ -59,10 +58,10 @@ export const useAudioHandling = (ticketId: string) => {
       // Toast de início
       toast({
         title: "Enviando áudio 🎵",
-        description: `Sistema v2.0 com JSON + base64 via HTTPS (${duration}s)`,
+        description: `Sistema corrigido com retry inteligente (${duration}s)`,
       });
 
-      // Usar novo sistema de envio com JSON + base64
+      // Usar novo sistema de envio com retry inteligente
       const result = await AudioSender.sendWithIntelligentRetry(
         audioBlob,
         ticket.chat_id,
@@ -78,7 +77,7 @@ export const useAudioHandling = (ticketId: string) => {
             .from('ticket_messages')
             .update({ 
               processing_status: 'completed',
-              content: `🎵 ${result.message || 'Áudio enviado com sucesso'} (${duration}s)`,
+              content: `🎵 ${result.message} (${duration}s)`,
               audio_base64: base64Audio
             })
             .eq('message_id', messageId);
@@ -100,7 +99,7 @@ export const useAudioHandling = (ticketId: string) => {
         try {
           const stats = await AudioSender.getAudioStats(connectedInstance);
           if (stats && stats.success) {
-            console.log('📊 Estatísticas de arquivos:', stats);
+            console.log('📊 Estatísticas de áudio:', stats);
           }
         } catch (statsError) {
           console.warn('⚠️ Não foi possível obter estatísticas:', statsError);

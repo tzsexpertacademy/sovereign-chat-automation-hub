@@ -1,5 +1,5 @@
 
-import { getServerConfig } from '@/config/environment';
+import { SERVER_URL } from '@/config/environment';
 import { AudioConverter } from '@/utils/audioConverter';
 
 export interface AudioSendResult {
@@ -75,13 +75,12 @@ export class AudioSender {
       // Converter para base64
       const base64Audio = await AudioConverter.blobToBase64(audioBlob);
       
-      // Preparar dados para o servidor (novo formato JSON + base64)
+      // Preparar dados para o servidor
       const requestData = {
         to: chatId,
         audioData: base64Audio,
         fileName: `audio_${messageId}.ogg`,
-        mimeType: 'audio/ogg',
-        caption: ''
+        mimeType: 'audio/ogg'
       };
 
       console.log('📊 Dados preparados para envio:', {
@@ -91,22 +90,13 @@ export class AudioSender {
         fileName: requestData.fileName
       });
 
-      // Usar configuração HTTPS correta
-      const config = getServerConfig();
-      const serverUrl = config.HTTPS_SERVER_URL || config.serverUrl;
-      
-      console.log('🔗 Usando servidor HTTPS:', serverUrl);
-
-      // Enviar com timeout otimizado para o novo endpoint
+      // Enviar com timeout otimizado
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout
+      const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout (servidor faz 3 tentativas)
 
-      const response = await fetch(`${serverUrl}/api/clients/${connectedInstance}/send-audio`, {
+      const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/send-audio`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestData),
         signal: controller.signal
       });
@@ -163,10 +153,7 @@ export class AudioSender {
   // Método para obter estatísticas do servidor
   static async getAudioStats(connectedInstance: string): Promise<any> {
     try {
-      const config = getServerConfig();
-      const serverUrl = config.HTTPS_SERVER_URL || config.serverUrl;
-      
-      const response = await fetch(`${serverUrl}/api/clients/${connectedInstance}/file-stats`);
+      const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/audio-stats`);
       
       if (response.ok) {
         return await response.json();
