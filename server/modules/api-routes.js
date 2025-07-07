@@ -1,4 +1,3 @@
-
 // server/modules/api-routes.js - Todos os endpoints da API
 const { 
   createWhatsAppInstance, 
@@ -31,6 +30,229 @@ function setupApiRoutes(app, io) {
       uptime: process.uptime(),
       version: '1.0.0'
     });
+  });
+
+  /**
+   * @swagger
+   * /clients:
+   *   get:
+   *     summary: Listar todas as instâncias WhatsApp
+   *     tags: [Instâncias]
+   *     responses:
+   *       200:
+   *         description: Lista de instâncias
+   */
+  app.get('/clients', async (req, res) => {
+    try {
+      console.log('📋 Listando todas as instâncias...');
+      
+      const { data: instances, error } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Adicionar status dos clientes ativos
+      const clientsWithStatus = instances.map(instance => {
+        const clientStatus = getClientStatus(instance.instance_id);
+        return {
+          ...instance,
+          clientId: instance.instance_id,
+          clientActive: clientStatus.exists,
+          clientState: clientStatus.state,
+          isReady: clientStatus.isReady
+        };
+      });
+      
+      res.json({
+        success: true,
+        clients: clientsWithStatus
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao listar instâncias:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /clients/{id}/connect:
+   *   post:
+   *     summary: Conectar instância WhatsApp
+   *     tags: [Instâncias]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Instância conectada
+   *       500:
+   *         description: Erro ao conectar
+   */
+  app.post('/clients/:id/connect', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      
+      console.log(`🔗 Conectando instância: ${instanceId}`);
+      
+      // Verificar se instância existe no banco
+      const { data: existingInstance } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      if (!existingInstance) {
+        // Criar instância se não existir
+        const { data, error } = await supabase
+          .from('whatsapp_instances')
+          .insert({
+            instance_id: instanceId,
+            client_id: instanceId, // Temporário até ter client_id real
+            status: 'connecting'
+          })
+          .select()
+          .single();
+        
+        if (error) {
+          throw error;
+        }
+      }
+      
+      // Criar instância WhatsApp
+      const result = await createWhatsAppInstance(instanceId, io);
+      
+      if (!result.success) {
+        return res.status(500).json(result);
+      }
+      
+      res.json({
+        success: true,
+        message: 'Instância conectada com sucesso',
+        clientId: instanceId
+      });
+      
+    } catch (error) {
+      console.error(`❌ Erro ao conectar instância ${req.params.id}:`, error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /clients/{id}/disconnect:
+   *   post:
+   *     summary: Desconectar instância WhatsApp
+   *     tags: [Instâncias]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Instância desconectada
+   *       500:
+   *         description: Erro ao desconectar
+   */
+  app.post('/clients/:id/disconnect', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      
+      console.log(`🔌 Desconectando instância: ${instanceId}`);
+      
+      const result = await disconnectClient(instanceId);
+      
+      res.json({
+        success: true,
+        message: 'Instância desconectada com sucesso',
+        data: result
+      });
+      
+    } catch (error) {
+      console.error(`❌ Erro ao desconectar instância ${req.params.id}:`, error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /clients/{id}/status:
+   *   get:
+   *     summary: Obter status detalhado da instância
+   *     tags: [Instâncias]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Status da instância
+   *       404:
+   *         description: Instância não encontrada
+   */
+  app.get('/clients/:id/status', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      
+      console.log(`📊 Verificando status da instância: ${instanceId}`);
+      
+      // Buscar no banco
+      const { data: dbInstance, error } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      if (error || !dbInstance) {
+        return res.status(404).json({
+          success: false,
+          error: 'Instância não encontrada'
+        });
+      }
+      
+      // Verificar status do cliente ativo
+      const clientStatus = getClientStatus(instanceId);
+      
+      res.json({
+        success: true,
+        clientId: instanceId,
+        status: dbInstance.status,
+        phoneNumber: dbInstance.phone_number,
+        hasQrCode: dbInstance.has_qr_code || false,
+        qrCode: dbInstance.qr_code,
+        qrExpiresAt: dbInstance.qr_expires_at,
+        clientActive: clientStatus.exists,
+        clientState: clientStatus.state,
+        isReady: clientStatus.isReady
+      });
+      
+    } catch (error) {
+      console.error(`❌ Erro ao obter status da instância ${req.params.id}:`, error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
   });
 
   /**
