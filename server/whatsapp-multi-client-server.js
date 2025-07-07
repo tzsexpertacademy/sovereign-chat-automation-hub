@@ -1,3 +1,4 @@
+
 const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
@@ -7,7 +8,6 @@ const { Client, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
-const { body, validationResult } = require('express-validator');
 const { convertJsonToFiles, cleanupTempFile } = require('./utils/jsonToMultipart');
 
 const app = express();
@@ -201,15 +201,7 @@ app.get('/clients/:clientId/status', (req, res) => {
     });
 });
 
-app.post('/clients/:clientId/send-message', [
-    body('to').notEmpty(),
-    body('message').notEmpty()
-], async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ success: false, errors: errors.array() });
-    }
-
+app.post('/clients/:clientId/send-message', async (req, res) => {
     const clientId = req.params.clientId;
     const client = whatsappClients.get(clientId);
 
@@ -222,6 +214,10 @@ app.post('/clients/:clientId/send-message', [
     }
 
     const { to, message } = req.body;
+
+    if (!to || !message) {
+        return res.status(400).json({ success: false, error: 'to and message are required' });
+    }
 
     try {
         await client.client.sendMessage(to, message);
