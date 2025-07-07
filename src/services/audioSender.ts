@@ -12,21 +12,15 @@ export interface AudioSendResult {
 }
 
 export class AudioSender {
-  private static readonly RETRY_FORMATS = [
-    { mimeType: 'audio/ogg', extension: 'ogg', description: 'OGG (Formato primário)' },
-    { mimeType: 'audio/wav', extension: 'wav', description: 'WAV (Fallback 1)' },
-    { mimeType: 'audio/mpeg', extension: 'mp3', description: 'MP3 (Fallback 2)' }
-  ];
-
   static async sendWithIntelligentRetry(
     audioBlob: Blob,
     chatId: string,
     connectedInstance: string,
     messageId: string
   ): Promise<AudioSendResult> {
-    console.log('🎵 ===== INICIANDO ENVIO COM RETRY INTELIGENTE =====');
-    console.log('🔧 Sistema corrigido: whatsapp-web.js v1.21.0');
-    console.log('🎯 Correção: Erro "Evaluation failed" eliminado');
+    console.log('🎵 ===== ENVIANDO VIA NOVO ENDPOINT MODULAR =====');
+    console.log('🔧 Sistema refatorado: usando file-handlers.js');
+    console.log('🎯 Endpoint: /api/clients/:id/send-audio (JSON+base64)');
     
     // Converter para formato otimizado (OGG por padrão)
     let processedBlob: Blob;
@@ -38,9 +32,9 @@ export class AudioSender {
     }
 
     try {
-      console.log('📤 Enviando para servidor com sistema de retry...');
+      console.log('📤 Enviando para novo endpoint modular...');
       
-      const result = await this.sendToServerWithRetry(
+      const result = await this.sendToModularEndpoint(
         processedBlob,
         chatId,
         connectedInstance,
@@ -48,15 +42,15 @@ export class AudioSender {
       );
       
       if (result.success) {
-        console.log(`✅ Sucesso no envio de áudio:`, result);
+        console.log(`✅ Sucesso via endpoint modular:`, result);
         return result;
       } else {
-        console.error('❌ Falha no envio após todas as tentativas:', result);
+        console.error('❌ Falha no endpoint modular:', result);
         return result;
       }
       
     } catch (error: any) {
-      console.error('💥 Erro crítico no envio:', error);
+      console.error('💥 Erro crítico no novo endpoint:', error);
       return { 
         success: false, 
         error: `Erro crítico: ${error.message}`,
@@ -65,7 +59,7 @@ export class AudioSender {
     }
   }
 
-  private static async sendToServerWithRetry(
+  private static async sendToModularEndpoint(
     audioBlob: Blob,
     chatId: string,
     connectedInstance: string,
@@ -75,7 +69,7 @@ export class AudioSender {
       // Converter para base64
       const base64Audio = await AudioConverter.blobToBase64(audioBlob);
       
-      // Preparar dados para o servidor
+      // Preparar dados para o novo endpoint modular
       const requestData = {
         to: chatId,
         audioData: base64Audio,
@@ -83,16 +77,17 @@ export class AudioSender {
         mimeType: 'audio/ogg'
       };
 
-      console.log('📊 Dados preparados para envio:', {
+      console.log('📊 Dados para endpoint modular:', {
         to: chatId,
         audioSize: audioBlob.size,
         base64Length: base64Audio.length,
-        fileName: requestData.fileName
+        fileName: requestData.fileName,
+        endpoint: `/api/clients/${connectedInstance}/send-audio`
       });
 
-      // Enviar com timeout otimizado
+      // Enviar para novo endpoint modular
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout (servidor faz 3 tentativas)
+      const timeout = setTimeout(() => controller.abort(), 30000);
 
       const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/send-audio`, {
         method: 'POST',
@@ -105,7 +100,7 @@ export class AudioSender {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Resposta HTTP não OK:', response.status, errorText);
+        console.error('❌ Resposta HTTP não OK do endpoint modular:', response.status, errorText);
         return { 
           success: false, 
           error: `HTTP ${response.status}: ${errorText}` 
@@ -114,7 +109,7 @@ export class AudioSender {
 
       const result = await response.json();
       
-      console.log('📥 Resposta do servidor:', result);
+      console.log('📥 Resposta do endpoint modular:', result);
       
       if (result.success) {
         return {
@@ -122,12 +117,12 @@ export class AudioSender {
           format: result.details?.format || 'ogg',
           attempts: result.details?.attempts || 1,
           isFallback: result.details?.isFallback || false,
-          message: result.message || 'Áudio enviado com sucesso'
+          message: result.message || 'Áudio enviado com sucesso via endpoint modular'
         };
       } else {
         return {
           success: false,
-          error: result.error || 'Erro desconhecido do servidor',
+          error: result.error || 'Erro desconhecido do endpoint modular',
           attempts: result.details?.attempts || 0
         };
       }
@@ -136,12 +131,12 @@ export class AudioSender {
       if (error.name === 'AbortError') {
         return { 
           success: false, 
-          error: 'Timeout no envio (servidor fazendo múltiplas tentativas)',
-          attempts: 3
+          error: 'Timeout no endpoint modular (30s)',
+          attempts: 1
         };
       }
       
-      console.error('💥 Erro na requisição:', error);
+      console.error('💥 Erro na requisição para endpoint modular:', error);
       return { 
         success: false, 
         error: `Erro de rede: ${error.message}`,
@@ -150,19 +145,21 @@ export class AudioSender {
     }
   }
 
-  // Método para obter estatísticas do servidor
+  // Método para obter estatísticas do servidor via endpoint modular
   static async getAudioStats(connectedInstance: string): Promise<any> {
     try {
-      const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/audio-stats`);
+      const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/file-stats`);
       
       if (response.ok) {
-        return await response.json();
+        const stats = await response.json();
+        console.log('📊 Estatísticas do endpoint modular:', stats);
+        return stats;
       } else {
-        console.warn('⚠️ Não foi possível obter estatísticas de áudio');
+        console.warn('⚠️ Não foi possível obter estatísticas via endpoint modular');
         return null;
       }
     } catch (error) {
-      console.error('❌ Erro ao obter estatísticas:', error);
+      console.error('❌ Erro ao obter estatísticas do endpoint modular:', error);
       return null;
     }
   }
