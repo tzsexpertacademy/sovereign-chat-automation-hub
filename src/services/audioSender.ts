@@ -93,7 +93,7 @@ export class AudioSender {
 
       // Usar configuração HTTPS correta
       const config = getServerConfig();
-      const serverUrl = config.httpsUrl || config.serverUrl;
+      const serverUrl = config.HTTPS_SERVER_URL || config.serverUrl;
       
       console.log('🔗 Usando servidor HTTPS:', serverUrl);
 
@@ -164,7 +164,7 @@ export class AudioSender {
   static async getAudioStats(connectedInstance: string): Promise<any> {
     try {
       const config = getServerConfig();
-      const serverUrl = config.httpsUrl || config.serverUrl;
+      const serverUrl = config.HTTPS_SERVER_URL || config.serverUrl;
       
       const response = await fetch(`${serverUrl}/api/clients/${connectedInstance}/file-stats`);
       

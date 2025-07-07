@@ -50,7 +50,7 @@ export class FileSender {
 
       // Usar configuração HTTPS correta
       const config = getServerConfig();
-      const serverUrl = config.httpsUrl || config.serverUrl;
+      const serverUrl = config.HTTPS_SERVER_URL || config.serverUrl;
       
       console.log(`🔗 Enviando ${fileType} via HTTPS:`, serverUrl);
 
@@ -198,7 +198,7 @@ export class FileSender {
   static async getFileStats(connectedInstance: string): Promise<any> {
     try {
       const config = getServerConfig();
-      const serverUrl = config.httpsUrl || config.serverUrl;
+      const serverUrl = config.HTTPS_SERVER_URL || config.serverUrl;
       
       const response = await fetch(`${serverUrl}/api/clients/${connectedInstance}/file-stats`);
       
