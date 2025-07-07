@@ -12,15 +12,21 @@ export interface AudioSendResult {
 }
 
 export class AudioSender {
+  private static readonly RETRY_FORMATS = [
+    { mimeType: 'audio/ogg', extension: 'ogg', description: 'OGG (Formato primário)' },
+    { mimeType: 'audio/wav', extension: 'wav', description: 'WAV (Fallback 1)' },
+    { mimeType: 'audio/mpeg', extension: 'mp3', description: 'MP3 (Fallback 2)' }
+  ];
+
   static async sendWithIntelligentRetry(
     audioBlob: Blob,
     chatId: string,
     connectedInstance: string,
     messageId: string
   ): Promise<AudioSendResult> {
-    console.log('🎵 ===== ENVIO DE ÁUDIO VIA JSON+BASE64 =====');
-    console.log('🔧 Sistema atualizado: endpoints JSON compatíveis');
-    console.log('🎯 Endpoint: /api/clients/:id/send-audio');
+    console.log('🎵 ===== INICIANDO ENVIO COM RETRY INTELIGENTE =====');
+    console.log('🔧 Sistema corrigido: whatsapp-web.js v1.21.0');
+    console.log('🎯 Correção: Erro "Evaluation failed" eliminado');
     
     // Converter para formato otimizado (OGG por padrão)
     let processedBlob: Blob;
@@ -32,9 +38,9 @@ export class AudioSender {
     }
 
     try {
-      console.log('📤 Enviando via novo endpoint JSON...');
+      console.log('📤 Enviando para servidor com sistema de retry...');
       
-      const result = await this.sendToServerWithJson(
+      const result = await this.sendToServerWithRetry(
         processedBlob,
         chatId,
         connectedInstance,
@@ -45,7 +51,7 @@ export class AudioSender {
         console.log(`✅ Sucesso no envio de áudio:`, result);
         return result;
       } else {
-        console.error('❌ Falha no envio:', result);
+        console.error('❌ Falha no envio após todas as tentativas:', result);
         return result;
       }
       
@@ -59,7 +65,7 @@ export class AudioSender {
     }
   }
 
-  private static async sendToServerWithJson(
+  private static async sendToServerWithRetry(
     audioBlob: Blob,
     chatId: string,
     connectedInstance: string,
@@ -69,7 +75,7 @@ export class AudioSender {
       // Converter para base64
       const base64Audio = await AudioConverter.blobToBase64(audioBlob);
       
-      // Preparar dados JSON para o servidor
+      // Preparar dados para o servidor
       const requestData = {
         to: chatId,
         audioData: base64Audio,
@@ -77,24 +83,20 @@ export class AudioSender {
         mimeType: 'audio/ogg'
       };
 
-      console.log('📊 Dados JSON preparados:', {
+      console.log('📊 Dados preparados para envio:', {
         to: chatId,
         audioSize: audioBlob.size,
         base64Length: base64Audio.length,
-        fileName: requestData.fileName,
-        endpoint: `/api/clients/${connectedInstance}/send-audio`
+        fileName: requestData.fileName
       });
 
       // Enviar com timeout otimizado
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout (servidor faz 3 tentativas)
 
       const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/send-audio`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestData),
         signal: controller.signal
       });
@@ -117,16 +119,16 @@ export class AudioSender {
       if (result.success) {
         return {
           success: true,
-          format: result.details?.format || 'JSON+base64',
-          attempts: 1,
-          isFallback: false,
-          message: result.message || 'Áudio enviado com sucesso via JSON'
+          format: result.details?.format || 'ogg',
+          attempts: result.details?.attempts || 1,
+          isFallback: result.details?.isFallback || false,
+          message: result.message || 'Áudio enviado com sucesso'
         };
       } else {
         return {
           success: false,
           error: result.error || 'Erro desconhecido do servidor',
-          attempts: 1
+          attempts: result.details?.attempts || 0
         };
       }
 
@@ -134,12 +136,12 @@ export class AudioSender {
       if (error.name === 'AbortError') {
         return { 
           success: false, 
-          error: 'Timeout no envio de áudio',
-          attempts: 1
+          error: 'Timeout no envio (servidor fazendo múltiplas tentativas)',
+          attempts: 3
         };
       }
       
-      console.error('💥 Erro na requisição JSON:', error);
+      console.error('💥 Erro na requisição:', error);
       return { 
         success: false, 
         error: `Erro de rede: ${error.message}`,
