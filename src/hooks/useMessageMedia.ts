@@ -140,7 +140,7 @@ export const useMessageMedia = (clientId: string) => {
     });
   }, [sendMedia, toast]);
 
-  // Processar áudio de arquivo
+  // Processar áudio de arquivo com estratégia avançada
   const handleAudioUpload = useCallback(async (file: File, to: string, caption?: string) => {
     if (!file.type.startsWith('audio/')) {
       toast({
@@ -161,12 +161,30 @@ export const useMessageMedia = (clientId: string) => {
       return false;
     }
 
-    return await sendMedia({
-      type: 'audio',
-      file,
-      caption,
-      to
-    });
+    try {
+      setIsUploading(true);
+      
+      // Usar estratégia avançada de envio
+      console.log('📤 Enviando áudio via estratégia avançada:', {
+        filename: file.name,
+        size: file.size,
+        type: file.type
+      });
+      
+      const result = await sendMedia({
+        type: 'audio',
+        file,
+        caption,
+        to
+      });
+
+      return result;
+    } catch (error) {
+      console.error('❌ Erro no upload de áudio:', error);
+      return false;
+    } finally {
+      setIsUploading(false);
+    }
   }, [sendMedia, toast]);
 
   // Gravação de áudio
@@ -228,24 +246,52 @@ export const useMessageMedia = (clientId: string) => {
       return false;
     }
 
-    const audioFile = new File([audioRecording.audioBlob], 'audio.wav', { type: 'audio/wav' });
-    
-    const success = await sendMedia({
-      type: 'audio',
-      file: audioFile,
-      to
-    });
-
-    if (success) {
-      setAudioRecording({
-        isRecording: false,
-        audioBlob: null,
-        duration: 0
+    try {
+      setIsUploading(true);
+      
+      // ✅ CORREÇÃO: Manter formato original e duração correta
+      const originalType = audioRecording.audioBlob.type || 'audio/webm';
+      const extension = originalType.includes('webm') ? 'webm' : 'wav';
+      const filename = `recording_${Date.now()}.${extension}`;
+      
+      console.log('📤 Enviando gravação de áudio:', {
+        filename,
+        size: audioRecording.audioBlob.size,
+        type: originalType,
+        duration: audioRecording.duration
       });
-    }
 
-    return success;
-  }, [audioRecording.audioBlob, sendMedia, toast]);
+      const audioFile = new File([audioRecording.audioBlob], filename, { 
+        type: originalType 
+      });
+      
+      const success = await sendMedia({
+        type: 'audio',
+        file: audioFile,
+        to
+      });
+
+      if (success) {
+        setAudioRecording({
+          isRecording: false,
+          audioBlob: null,
+          duration: 0
+        });
+        
+        toast({
+          title: "Áudio enviado",
+          description: `Gravação de ${audioRecording.duration}s enviada com sucesso`,
+        });
+      }
+
+      return success;
+    } catch (error) {
+      console.error('❌ Erro ao enviar gravação:', error);
+      return false;
+    } finally {
+      setIsUploading(false);
+    }
+  }, [audioRecording, sendMedia, toast]);
 
   const clearSelectedMedia = useCallback(() => {
     setSelectedMedia(null);

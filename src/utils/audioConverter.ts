@@ -2,11 +2,20 @@
 export class AudioConverter {
   static async convertToOGG(audioBlob: Blob): Promise<Blob> {
     try {
-      console.log('🔄 Convertendo áudio para OGG (formato otimizado)...');
+      console.log('🔄 Otimizando áudio para WhatsApp...');
       
-      // Se já é OGG, retornar diretamente
-      if (audioBlob.type === 'audio/ogg' || audioBlob.type.includes('ogg')) {
-        console.log('✅ Áudio já está em formato OGG');
+      // ✅ CORREÇÃO: Priorizar formatos nativos e manter tamanho otimizado
+      const compatibleFormats = ['audio/ogg', 'audio/webm', 'audio/wav'];
+      
+      if (compatibleFormats.some(format => audioBlob.type.includes(format))) {
+        console.log('✅ Áudio já está em formato compatível:', audioBlob.type);
+        return audioBlob;
+      }
+
+      // Só converter se realmente necessário e para um formato menor
+      if (audioBlob.type.includes('webm')) {
+        // WebM é nativo do navegador, manter como está
+        console.log('✅ Mantendo formato WebM nativo');
         return audioBlob;
       }
 
@@ -14,23 +23,22 @@ export class AudioConverter {
       const arrayBuffer = await audioBlob.arrayBuffer();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
       
-      // Para OGG, vamos usar uma abordagem simplificada
-      // Convertendo para WAV primeiro (mais compatível) e depois marcar como OGG
+      // Criar WAV otimizado (mais compatível que converter para OGG)
       const wavBuffer = this.audioBufferToWav(audioBuffer);
-      const oggBlob = new Blob([wavBuffer], { type: 'audio/ogg' });
+      const optimizedBlob = new Blob([wavBuffer], { type: 'audio/wav' });
       
-      console.log('✅ Áudio convertido para OGG:', {
+      console.log('✅ Áudio otimizado:', {
         originalSize: audioBlob.size,
-        newSize: oggBlob.size,
+        optimizedSize: optimizedBlob.size,
+        reduction: Math.round((1 - optimizedBlob.size / audioBlob.size) * 100) + '%',
         originalType: audioBlob.type,
-        newType: oggBlob.type
+        finalType: optimizedBlob.type
       });
       
-      return oggBlob;
+      return optimizedBlob;
     } catch (error) {
-      console.error('❌ Erro na conversão para OGG:', error);
-      // Fallback: retornar original com tipo OGG
-      return new Blob([audioBlob], { type: 'audio/ogg' });
+      console.error('❌ Erro na otimização, mantendo original:', error);
+      return audioBlob; // ✅ CORREÇÃO: Retornar original em caso de erro
     }
   }
 

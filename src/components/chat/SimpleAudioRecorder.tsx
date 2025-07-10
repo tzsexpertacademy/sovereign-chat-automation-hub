@@ -142,15 +142,19 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
       
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: selectedType });
-        console.log('📦 Áudio gravado:', {
+        const finalDuration = currentTime > 0 ? currentTime : 1; // mínimo 1 segundo
+        
+        console.log('📦 Áudio gravado com duração corrigida:', {
           size: blob.size,
           type: blob.type,
           sizeInKB: Math.round(blob.size / 1024),
-          duration: currentTime
+          duration: finalDuration,
+          originalDuration: currentTime
         });
         
         if (blob.size > 0) {
           setRecordedBlob(blob);
+          setDuration(finalDuration); // ✅ CORREÇÃO: Garantir duração correta
         } else {
           toast({
             title: "Erro na Gravação",
@@ -197,7 +201,9 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
         mediaRecorderRef.current.stop();
       }
       setIsRecording(false);
-      setDuration(currentTime);
+      // ✅ CORREÇÃO: Usar currentTime como duração final
+      const finalDuration = currentTime > 0 ? currentTime : 1; // mínimo 1 segundo
+      setDuration(finalDuration);
       
       if (timerRef.current) {
         clearInterval(timerRef.current);
