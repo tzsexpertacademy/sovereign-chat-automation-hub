@@ -8,17 +8,38 @@ echo "🛑 PARANDO WHATSAPP MULTI-CLIENTE - PRODUÇÃO"
 echo "=========================================="
 
 # Verificar se PM2 está disponível e sendo usado
-if command -v pm2 &> /dev/null; then
-    echo "🔧 Verificando processos PM2..."
-    if pm2 jlist | grep -q "whatsapp-multi-client"; then
-        echo "⏹️ Parando processo via PM2..."
-        pm2 stop whatsapp-multi-client
-        pm2 delete whatsapp-multi-client
-        pm2 save
-        echo "✅ Processo PM2 parado"
-    else
-        echo "ℹ️ Nenhum processo PM2 encontrado"
+PM2_FOUND=false
+
+# Procurar PM2 em diferentes locais
+PM2_LOCATIONS=(
+    "pm2"
+    "/usr/bin/pm2"
+    "/usr/local/bin/pm2"
+    "/home/ubuntu/.nvm/versions/node/*/bin/pm2"
+    "/root/.nvm/versions/node/*/bin/pm2"
+)
+
+echo "🔧 Verificando processos PM2..."
+for location in "${PM2_LOCATIONS[@]}"; do
+    if command -v $location &> /dev/null; then
+        echo "✅ PM2 encontrado: $location"
+        PM2_FOUND=true
+        
+        if $location jlist | grep -q "whatsapp-multi-client"; then
+            echo "⏹️ Parando processo via PM2..."
+            $location stop whatsapp-multi-client
+            $location delete whatsapp-multi-client
+            $location save
+            echo "✅ Processo PM2 parado"
+        else
+            echo "ℹ️ Nenhum processo PM2 encontrado"
+        fi
+        break
     fi
+done
+
+if [ "$PM2_FOUND" = false ]; then
+    echo "ℹ️ PM2 não encontrado no PATH"
 fi
 
 # Parar pelo PID se disponível
