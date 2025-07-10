@@ -12,6 +12,7 @@ const { mime } = require('./config');
 // Configurar todas as rotas da API
 function setupApiRoutes(app, io) {
   console.log('🛣️ Configurando rotas da API...');
+  console.log('📊 Registrando endpoints da API...');
 
   /**
    * @swagger
@@ -878,7 +879,17 @@ function setupApiRoutes(app, io) {
     }
   });
 
+  // Listar todas as rotas registradas para debugging
+  console.log('🔍 ROTAS REGISTRADAS:');
+  app._router.stack.forEach((layer, index) => {
+    if (layer.route) {
+      const methods = Object.keys(layer.route.methods).join(', ').toUpperCase();
+      console.log(`   ${index + 1}. ${methods} ${layer.route.path}`);
+    }
+  });
+  
   console.log('✅ Rotas da API configuradas (incluindo compatibilidade)');
+  console.log(`📊 Total de rotas registradas: ${app._router.stack.filter(layer => layer.route).length}`);
 }
 
 module.exports = {

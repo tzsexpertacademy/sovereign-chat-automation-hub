@@ -26,7 +26,7 @@ export const useMessageMedia = (clientId: string) => {
   });
   const { toast } = useToast();
 
-  // Enviar mídia
+  // Enviar mídia via endpoint correto /api/clients/{id}/send-media
   const sendMedia = useCallback(async (mediaMessage: MediaMessage) => {
     if (!clientId) {
       toast({
@@ -40,21 +40,27 @@ export const useMessageMedia = (clientId: string) => {
     try {
       setIsUploading(true);
       
-      // Usar apenas os 3 parâmetros aceitos pelo sendMessage
-      await whatsappService.sendMessage(
-        clientId,
-        mediaMessage.to,
-        mediaMessage.caption || `[${mediaMessage.type.toUpperCase()}] Arquivo enviado`
-      );
-
-      toast({
-        title: "Mídia enviada",
-        description: `${mediaMessage.type} enviado com sucesso`,
+      console.log(`📤 Enviando ${mediaMessage.type} para ${mediaMessage.to}:`, {
+        filename: mediaMessage.file.name,
+        size: mediaMessage.file.size,
+        type: mediaMessage.file.type
       });
+      
+      // Usar endpoint correto para envio de mídia
+      const result = await whatsappService.sendMedia(clientId, mediaMessage.to, mediaMessage.file, mediaMessage.caption);
 
-      return true;
+      if (result.success) {
+        toast({
+          title: "Mídia enviada",
+          description: `${mediaMessage.type} enviado com sucesso`,
+        });
+        return true;
+      } else {
+        throw new Error(result.error || 'Falha ao enviar mídia');
+      }
+
     } catch (error: any) {
-      console.error('Erro ao enviar mídia:', error);
+      console.error('❌ Erro ao enviar mídia:', error);
       toast({
         title: "Erro ao enviar mídia",
         description: error.message || "Falha ao enviar arquivo",

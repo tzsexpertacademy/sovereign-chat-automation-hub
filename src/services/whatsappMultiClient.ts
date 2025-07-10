@@ -375,21 +375,28 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Send audio/media - NOVO método para envio de áudio
-  async sendAudio(clientId: string, to: string, audioFile: File): Promise<any> {
+  // Send media/files - Sistema completo para qualquer tipo de arquivo
+  async sendMedia(clientId: string, to: string, file: File, caption?: string): Promise<any> {
     try {
-      console.log(`🎵 Enviando áudio HTTPS via ${clientId} para ${to}`);
+      console.log(`📤 Enviando mídia HTTPS via ${clientId} para ${to}:`, {
+        filename: file.name,
+        size: file.size,
+        type: file.type
+      });
       
       const formData = new FormData();
       formData.append('to', to);
-      formData.append('file', audioFile);
+      formData.append('file', file);
+      if (caption) {
+        formData.append('caption', caption);
+      }
       
       const response = await fetch(`${API_BASE_URL}/api/clients/${clientId}/send-media`, {
         method: 'POST',
         body: formData,
         mode: 'cors',
         credentials: 'omit',
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000), // 60s para arquivos grandes
         headers: {
           'X-Requested-With': 'XMLHttpRequest',
           'Origin': window.location.origin
@@ -400,11 +407,18 @@ class WhatsAppMultiClientService {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      return await response.json();
+      const result = await response.json();
+      console.log(`✅ Mídia enviada com sucesso:`, result);
+      return result;
     } catch (error) {
-      console.error(`❌ Erro ao enviar áudio HTTPS:`, error);
+      console.error(`❌ Erro ao enviar mídia HTTPS:`, error);
       throw error;
     }
+  }
+
+  // Send audio - Alias para compatibilidade
+  async sendAudio(clientId: string, to: string, audioFile: File): Promise<any> {
+    return this.sendMedia(clientId, to, audioFile);
   }
 }
 

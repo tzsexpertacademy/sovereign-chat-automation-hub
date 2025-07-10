@@ -123,6 +123,12 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         ticket.chat_id,
         newMessage
       );
+      
+      console.log('📡 Resposta detalhada do envio:', {
+        success: response.success,
+        error: response.error,
+        endpoint: `/api/clients/${connectedInstance}/send`
+      });
 
       console.log('📡 Resposta do envio:', response);
 
