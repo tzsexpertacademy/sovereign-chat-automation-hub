@@ -1,14 +1,17 @@
 
 // server/modules/database.js - Funções do Supabase
 const { createClient } = require('@supabase/supabase-js');
-const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = require('./config');
 
-// Inicialização do Supabase com debug
-console.log('🔍 [DEBUG] Inicializando Supabase...');
-console.log(`🔍 [DEBUG] SUPABASE_URL: ${SUPABASE_URL}`);
-console.log(`🔍 [DEBUG] SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY.substring(0, 20)}...`);
+// CREDENCIAIS FIXAS DEFINITIVAS PARA SUPABASE
+const SUPABASE_URL_DEFINITIVE = 'https://ymygyagbvbsdfkduxmgu.supabase.co';
+const SUPABASE_SERVICE_KEY_DEFINITIVE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDQ1NDE2OSwiZXhwIjoyMDY2MDMwMTY5fQ.NVHSdQAUw8a8HkHdFQKqfTNAT2dFuuSlZRhzqpnV3dY';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+// Inicialização do Supabase com credenciais definitivas
+console.log('🔍 [DEBUG] Inicializando Supabase com credenciais DEFINITIVAS...');
+console.log(`🔍 [DEBUG] SUPABASE_URL: ${SUPABASE_URL_DEFINITIVE}`);
+console.log(`🔍 [DEBUG] SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY_DEFINITIVE.substring(0, 20)}...`);
+
+const supabase = createClient(SUPABASE_URL_DEFINITIVE, SUPABASE_SERVICE_KEY_DEFINITIVE);
 
 // Testar conexão imediatamente
 (async () => {
