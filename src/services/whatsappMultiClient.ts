@@ -213,28 +213,16 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Health check - CORRIGIDO
+  // Health check - CORRIGIDO SEM CACHE
   async checkServerHealth(): Promise<ServerHealth> {
     try {
-      if (this.healthCheckCache && 
-          Date.now() - this.healthCheckCache.timestamp < 10000) {
-        console.log('📋 Usando cache do health check HTTPS');
-        return this.healthCheckCache.result;
-      }
-
-      console.log('🔍 Health check HTTPS...');
+      console.log('🔍 Health check HTTPS (sem cache)...');
       const response = await this.makeRequest('/health');
-      
-      this.healthCheckCache = {
-        result: response,
-        timestamp: Date.now()
-      };
       
       console.log('✅ Health check HTTPS bem-sucedido:', response);
       return response;
     } catch (error: any) {
       console.error('❌ Health check HTTPS falhou:', error.message);
-      this.healthCheckCache = null;
       throw error;
     }
   }

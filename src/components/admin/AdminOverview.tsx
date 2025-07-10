@@ -14,6 +14,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { SERVER_URL } from "@/config/environment";
+import whatsappService from "@/services/whatsappMultiClient";
 
 interface SystemStats {
   totalClients: number;
@@ -36,21 +37,37 @@ const AdminOverview = () => {
   const checkServerHealth = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${SERVER_URL}/health`);
       
-      if (response.ok) {
-        const data = await response.json();
-        setStats(prev => ({
-          ...prev,
-          serverStatus: 'online',
-          activeInstances: data.activeClients || 0,
-          uptime: formatUptime(data.uptime || 0)
-        }));
+      // Use the whatsappService for consistent connection testing
+      const testResult = await whatsappService.testConnection();
+      
+      if (testResult.success) {
+        // If connection test passes, get detailed health info
+        try {
+          const healthData = await whatsappService.checkServerHealth();
+          setStats(prev => ({
+            ...prev,
+            serverStatus: 'online',
+            activeInstances: healthData.activeClients || 0,
+            uptime: formatUptime(healthData.uptime || 0)
+          }));
+          console.log('✅ AdminOverview: Servidor online', healthData);
+        } catch (healthError) {
+          // Connection works but health endpoint failed
+          setStats(prev => ({
+            ...prev,
+            serverStatus: 'online',
+            activeInstances: 0,
+            uptime: 'Indisponível'
+          }));
+          console.warn('⚠️ AdminOverview: Conexão ok mas health falhou', healthError);
+        }
       } else {
         setStats(prev => ({ ...prev, serverStatus: 'offline' }));
+        console.log('❌ AdminOverview: Servidor offline -', testResult.message);
       }
     } catch (error) {
-      console.error("Erro ao verificar servidor:", error);
+      console.error("❌ AdminOverview: Erro ao verificar servidor:", error);
       setStats(prev => ({ ...prev, serverStatus: 'offline' }));
     } finally {
       setLoading(false);

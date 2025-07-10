@@ -44,13 +44,32 @@ const WhatsAppSystemStatus = () => {
   const checkServerStatus = async () => {
     try {
       setServerStatus('checking');
-      const health = await whatsappService.checkServerHealth();
-      setServerInfo(health);
-      setServerStatus('online');
+      
+      // First test basic connectivity
+      const testResult = await whatsappService.testConnection();
+      
+      if (testResult.success) {
+        // If basic test passes, try to get detailed health info
+        try {
+          const health = await whatsappService.checkServerHealth();
+          setServerInfo(health);
+          setServerStatus('online');
+          console.log('✅ WhatsAppSystemStatus: Servidor online com detalhes:', health);
+        } catch (healthError) {
+          // Connection works but detailed health failed
+          setServerInfo({ status: 'online', activeClients: 0, uptime: 0, version: 'unknown' });
+          setServerStatus('online');
+          console.warn('⚠️ WhatsAppSystemStatus: Conexão ok mas health detalhado falhou');
+        }
+      } else {
+        setServerStatus('offline');
+        setServerInfo(null);
+        console.log('❌ WhatsAppSystemStatus: Teste de conexão falhou:', testResult.message);
+      }
+      
       setLastCheck(new Date());
-      console.log('✅ Status do servidor verificado com sucesso:', health);
     } catch (error) {
-      console.error('❌ Erro ao verificar status do servidor:', error);
+      console.error('❌ WhatsAppSystemStatus: Erro na verificação:', error);
       setServerStatus('offline');
       setServerInfo(null);
       setLastCheck(new Date());
