@@ -182,45 +182,116 @@ async function createWhatsAppInstance(instanceId, io) {
     // 8. Armazenar cliente
     clients.set(instanceId, client);
 
-    // 9. Inicializar cliente COM TIMEOUT
-    console.log('🔍 [DIAGNÓSTICO] Inicializando cliente (isso pode demorar até 60s)...');
+    // 9. Inicializar cliente COM TIMEOUT ESTENDIDO E RETRY
+    console.log('🔍 [DIAGNÓSTICO] Inicializando cliente (timeout estendido para 180s)...');
     const initStartTime = Date.now();
     
-    try {
-      // Adicionar timeout manual para inicialização
-      const initPromise = client.initialize();
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error('Timeout na inicialização do cliente (60s)'));
-        }, 60000);
-      });
-      
-      await Promise.race([initPromise, timeoutPromise]);
-      
-      const initTime = Date.now() - initStartTime;
-      console.log(`✅ Cliente inicializado com sucesso em ${initTime}ms`);
-    } catch (initError) {
-      console.error(`❌ Erro na inicialização do cliente:`, initError);
-      
-      // Limpar recursos em caso de falha
+    // Configurar timeout de 180 segundos (3 minutos) para dar mais tempo
+    const timeoutMs = 180000;
+    let initAttempt = 0;
+    const maxAttempts = 2;
+    
+    while (initAttempt < maxAttempts) {
       try {
-        if (client) {
-          await client.destroy();
+        initAttempt++;
+        console.log(`🔄 Tentativa ${initAttempt}/${maxAttempts} de inicialização...`);
+        
+        // Limpar cliente anterior se existir
+        if (initAttempt > 1) {
+          try {
+            if (client) {
+              await client.destroy();
+            }
+          } catch (cleanupError) {
+            console.warn(`⚠️ Aviso na limpeza da tentativa ${initAttempt}:`, cleanupError.message);
+          }
+          
+          // Recriar cliente para nova tentativa
+          client = new Client({
+            authStrategy: new LocalAuth({
+              clientId: instanceId,
+              dataPath: sessionPath
+            }),
+            puppeteer: {
+              headless: true,
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-extensions',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--no-default-browser-check',
+                '--disable-features=VizDisplayCompositor',
+                '--user-data-dir=/tmp/chrome-user-data',
+                '--disable-software-rasterizer'
+              ],
+              timeout: timeoutMs
+            },
+            webVersionCache: {
+              type: 'remote',
+              remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+            }
+          });
+          
+          // Reconfigurar event handlers
+          setupClientEventHandlers(client, instanceId, io);
+          clients.set(instanceId, client);
         }
-      } catch (cleanupError) {
-        console.error(`❌ Erro na limpeza:`, cleanupError);
+        
+        // Tentar inicializar com timeout estendido
+        const initPromise = client.initialize();
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Timeout na inicialização do cliente (${timeoutMs/1000}s)`));
+          }, timeoutMs);
+        });
+        
+        await Promise.race([initPromise, timeoutPromise]);
+        
+        const initTime = Date.now() - initStartTime;
+        console.log(`✅ Cliente inicializado com sucesso em ${initTime}ms na tentativa ${initAttempt}`);
+        break; // Sucesso, sair do loop
+        
+      } catch (initError) {
+        console.error(`❌ Erro na tentativa ${initAttempt} de inicialização:`, initError);
+        
+        // Se for a última tentativa, retornar erro
+        if (initAttempt >= maxAttempts) {
+          // Limpar recursos em caso de falha final
+          try {
+            if (client) {
+              await client.destroy();
+            }
+          } catch (cleanupError) {
+            console.error(`❌ Erro na limpeza final:`, cleanupError);
+          }
+          
+          clients.delete(instanceId);
+          clientInitStates.delete(instanceId);
+          
+          return {
+            success: false,
+            error: 'Falha na inicialização do cliente WhatsApp após múltiplas tentativas',
+            details: `Tentativa ${initAttempt}: ${initError.message}`,
+            type: 'ClientInitializationError',
+            initTime: Date.now() - initStartTime,
+            attempts: initAttempt
+          };
+        }
+        
+        // Aguardar antes da próxima tentativa
+        console.log(`⏳ Aguardando 5s antes da próxima tentativa...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
-      
-      clients.delete(instanceId);
-      clientInitStates.delete(instanceId);
-      
-      return {
-        success: false,
-        error: 'Falha na inicialização do cliente WhatsApp',
-        details: initError.message,
-        type: 'ClientInitializationError',
-        initTime: Date.now() - initStartTime
-      };
     }
 
     console.log(`✅ Instância ${instanceId} criada com sucesso`);

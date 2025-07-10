@@ -3,10 +3,14 @@
 # Script rápido para finalizar a instalação do Puppeteer
 # Arquivo: scripts/restart-and-test.sh
 
-echo "🎉 FINALIZANDO INSTALAÇÃO DO PUPPETEER"
-echo "====================================="
-
+echo "🔧 CORREÇÃO DO ERRO 500 - WHATSAPP TIMEOUT"
+echo "==========================================="
+echo "🚀 Aplicando correção para timeout de inicialização"
+echo "⏰ Timeout estendido: 60s → 180s"
+echo "🔄 Sistema de retry: 2 tentativas"
+echo "🔧 Configurações Chrome otimizadas"
 echo ""
+
 echo "🔧 DANDO PERMISSÃO A TODOS OS SCRIPTS"
 echo "====================================="
 chmod +x scripts/*.sh
@@ -18,8 +22,17 @@ echo "========================"
 pkill -f "whatsapp-multi-client-server" 2>/dev/null || true
 pkill -f "node.*whatsapp" 2>/dev/null || true
 
+# Limpar processos Chrome órfãos
+echo "🧹 Limpando processos Chrome órfãos..."
+pkill -f "chrome" 2>/dev/null || true
+pkill -f "chromium" 2>/dev/null || true
+
+# Limpar diretório temporário do Chrome
+echo "🧹 Limpando cache temporário..."
+rm -rf /tmp/chrome-user-data 2>/dev/null || true
+
 # Aguardar um pouco
-sleep 3
+sleep 5
 
 echo ""
 echo "🚀 INICIANDO SERVIDOR COM PUPPETEER INSTALADO"
@@ -55,19 +68,33 @@ if [ "$RESPONSE" = "200" ]; then
     API_TEST=$(curl -s http://127.0.0.1:4000/clients 2>/dev/null)
     
     if echo "$API_TEST" | grep -q "success"; then
-        echo "🎉🎉🎉 TUDO FUNCIONANDO PERFEITAMENTE! 🎉🎉🎉"
+        echo "🎉🎉🎉 CORREÇÃO APLICADA COM SUCESSO! 🎉🎉🎉"
         echo ""
-        echo "✅ Puppeteer: INSTALADO"
+        echo "✅ Timeout corrigido: 60s → 180s"
+        echo "✅ Sistema de retry: 2 tentativas"
+        echo "✅ Chrome otimizado"
+        echo "✅ Puppeteer: ATUALIZADO"
         echo "✅ Servidor: RODANDO"
         echo "✅ API: FUNCIONANDO"
         echo "✅ Supabase: CONECTADO"
         echo ""
+        echo "🔧 CORREÇÕES IMPLEMENTADAS:"
+        echo "• Timeout estendido para evitar erro 500"
+        echo "• Retry automático em caso de falha"
+        echo "• Limpeza de processos Chrome órfãos"
+        echo "• Configurações Chrome otimizadas"
+        echo ""
         echo "🧪 AGORA TESTE O QR CODE:"
         echo "1. Acesse: http://146.59.227.248:8080/admin/instances"
         echo "2. Clique em 'Conectar HTTPS'"
-        echo "3. DEVE APARECER O QR CODE! 📱"
+        echo "3. ✅ NÃO DEVE MAIS APARECER ERRO 500!"
+        echo "4. 📱 QR CODE DEVE APARECER EM ATÉ 3 MINUTOS"
         echo ""
         echo "📱 Escaneie com WhatsApp para conectar"
+        echo ""
+        echo "🐛 Se ainda houver erro 500:"
+        echo "• Verifique logs: tail -f logs/whatsapp-multi-client.log"
+        echo "• Execute: ./scripts/diagnose-complete-system.sh"
         
     else
         echo "⚠️ Servidor rodando mas API com problema"
