@@ -107,19 +107,23 @@ class AudioSendService {
                 formato: path.extname(audioPath)
             });
             
-            // Criar mídia com logs detalhados
-            const media = MessageMedia.fromFilePath(audioPath);
+            // ✅ CORREÇÃO: Enviar como documento para evitar "Evaluation failed"
+            console.log(`🔧 [CORREÇÃO] Tentativa ${attempt}: Enviando áudio como documento`);
             
-            // Diagnóstico do conteúdo base64
-            console.log(`🔍 [DIAGNÓSTICO] Base64:`, {
-                hasData: !!media.data,
-                dataLength: media.data?.length || 0,
-                firstChars: media.data?.substring(0, 50) || 'N/A',
-                isValidBase64: /^[A-Za-z0-9+/]*={0,2}$/.test(media.data || '')
+            // Ler arquivo diretamente em base64 (mais confiável)
+            const fileBuffer = fs.readFileSync(audioPath);
+            const base64Data = fileBuffer.toString('base64');
+            
+            // Validar base64 gerado
+            console.log(`🔍 [VALIDAÇÃO] Base64:`, {
+                hasData: !!base64Data,
+                dataLength: base64Data.length,
+                firstChars: base64Data.substring(0, 50),
+                isValidBase64: /^[A-Za-z0-9+/]*={0,2}$/.test(base64Data)
             });
             
-            media.mimetype = format.mime;
-            media.filename = `${originalFileName}.${format.ext}`;
+            // Criar MessageMedia manualmente com base64 válido
+            const media = new MessageMedia(format.mime, base64Data, `${originalFileName}.${format.ext}`);
             
             console.log(`📊 [CONFIGURAÇÃO] Mídia:`, {
                 mimetype: media.mimetype,
@@ -128,21 +132,14 @@ class AudioSendService {
                 dataSize: media.data?.length || 0
             });
             
-            // Estratégias diferentes por tentativa
-            let sendOptions;
-            if (attempt === 1) {
-                // Primeira tentativa: áudio como voz
-                sendOptions = { sendAudioAsVoice: true };
-                console.log(`🎯 [ESTRATÉGIA 1] Enviando como mensagem de voz`);
-            } else if (attempt === 2) {
-                // Segunda tentativa: áudio como arquivo
-                sendOptions = { sendAudioAsVoice: false };
-                console.log(`🎯 [ESTRATÉGIA 2] Enviando como arquivo de áudio`);
-            } else {
-                // Terceira tentativa: sem opções especiais
-                sendOptions = {};
-                console.log(`🎯 [ESTRATÉGIA 3] Enviando sem configurações especiais`);
-            }
+            // ✅ ESTRATÉGIA CORRIGIDA: Sempre como documento para áudio
+            const sendOptions = { 
+                caption: `🎵 Áudio: ${originalFileName}`,
+                // Remover sendAudioAsVoice que causa "Evaluation failed"
+                sendDocumentAsSticker: false
+            };
+            
+            console.log(`🎯 [ESTRATÉGIA FIXA] Enviando como documento de áudio`);
             
             // Timeout adaptativo por tentativa
             const timeouts = [15000, 20000, 30000]; // 15s, 20s, 30s
@@ -156,9 +153,9 @@ class AudioSendService {
                 setTimeout(() => reject(new Error(`Timeout no envio (${currentTimeout}ms)`)), currentTimeout);
             });
             
-            console.log(`📤 [ENVIANDO] Iniciando envio...`);
+            console.log(`📤 [ENVIANDO] Iniciando envio como documento...`);
             await Promise.race([sendPromise, timeoutPromise]);
-            console.log(`✅ [SUCESSO] Áudio enviado com sucesso!`);
+            console.log(`✅ [SUCESSO] Áudio enviado como documento!`);
             
             return { success: true };
             
