@@ -105,48 +105,113 @@ function setupApiRoutes(app, io) {
       
       console.log(`🔗 Conectando instância: ${instanceId}`);
       
-      // Verificar se instância existe no banco
-      const { data: existingInstance } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .eq('instance_id', instanceId)
-        .single();
+      // Validar instanceId
+      if (!instanceId || instanceId.length < 10) {
+        return res.status(400).json({
+          success: false,
+          error: 'ID da instância inválido',
+          provided: instanceId
+        });
+      }
+      
+      // Verificar se instância existe no banco com retry
+      let existingInstance = null;
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          const { data, error } = await supabase
+            .from('whatsapp_instances')
+            .select('*')
+            .eq('instance_id', instanceId)
+            .maybeSingle();
+          
+          if (error) {
+            throw error;
+          }
+          
+          existingInstance = data;
+          break;
+          
+        } catch (dbError) {
+          retryCount++;
+          console.error(`❌ Tentativa ${retryCount} falhou para buscar instância ${instanceId}:`, dbError);
+          
+          if (retryCount >= maxRetries) {
+            return res.status(500).json({
+              success: false,
+              error: 'Falha na conexão com banco de dados após múltiplas tentativas',
+              details: dbError.message,
+              instanceId
+            });
+          }
+          
+          // Aguardar antes da próxima tentativa
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+        }
+      }
       
       if (!existingInstance) {
         // Criar instância se não existir
-        const { data, error } = await supabase
-          .from('whatsapp_instances')
-          .insert({
-            instance_id: instanceId,
-            client_id: instanceId, // Temporário até ter client_id real
-            status: 'connecting'
-          })
-          .select()
-          .single();
-        
-        if (error) {
-          throw error;
+        try {
+          const { data, error } = await supabase
+            .from('whatsapp_instances')
+            .insert({
+              instance_id: instanceId,
+              client_id: instanceId.split('_')[0] || instanceId, // Extrair client_id do instanceId
+              status: 'connecting'
+            })
+            .select()
+            .single();
+          
+          if (error) {
+            throw error;
+          }
+          
+          console.log(`✅ Instância criada no banco: ${instanceId}`);
+        } catch (insertError) {
+          console.error(`❌ Erro ao criar instância ${instanceId}:`, insertError);
+          return res.status(500).json({
+            success: false,
+            error: 'Falha ao criar instância no banco',
+            details: insertError.message,
+            instanceId
+          });
         }
       }
       
       // Criar instância WhatsApp
+      console.log(`🎯 Iniciando criação do cliente WhatsApp para: ${instanceId}`);
       const result = await createWhatsAppInstance(instanceId, io);
       
       if (!result.success) {
-        return res.status(500).json(result);
+        console.error(`❌ Falha ao criar cliente WhatsApp ${instanceId}:`, result);
+        return res.status(500).json({
+          success: false,
+          error: result.error || 'Falha ao criar cliente WhatsApp',
+          details: result.details,
+          type: result.type,
+          instanceId
+        });
       }
       
+      console.log(`✅ Cliente WhatsApp criado com sucesso: ${instanceId}`);
       res.json({
         success: true,
         message: 'Instância conectada com sucesso',
-        clientId: instanceId
+        clientId: instanceId,
+        timestamp: new Date().toISOString()
       });
       
     } catch (error) {
-      console.error(`❌ Erro ao conectar instância ${req.params.id}:`, error);
+      console.error(`💥 Erro crítico ao conectar instância ${req.params.id}:`, error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: error.message,
+        stack: process.env.DEBUG ? error.stack : undefined,
+        instanceId: req.params.id,
+        timestamp: new Date().toISOString()
       });
     }
   });

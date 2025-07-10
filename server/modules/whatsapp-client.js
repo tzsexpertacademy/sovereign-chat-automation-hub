@@ -39,6 +39,23 @@ async function createWhatsAppInstance(instanceId, io) {
       return { success: false, message: 'Cliente já existe' };
     }
 
+    // Verificar conexão com Supabase antes de prosseguir
+    try {
+      const { data, error } = await updateClientStatus(instanceId, 'initializing');
+      if (error) {
+        console.error(`❌ Falha na conexão Supabase para ${instanceId}:`, error);
+        throw new Error(`Erro de conexão com banco de dados: ${error.message}`);
+      }
+      console.log(`✅ Conexão Supabase validada para ${instanceId}`);
+    } catch (supabaseError) {
+      console.error(`💥 Erro crítico Supabase para ${instanceId}:`, supabaseError);
+      return { 
+        success: false, 
+        error: `Falha na conexão com banco: ${supabaseError.message}`,
+        details: 'Verifique as credenciais do Supabase'
+      };
+    }
+
     // Marcar como inicializando
     clientInitStates.set(instanceId, 'initializing');
 
@@ -93,9 +110,19 @@ async function createWhatsAppInstance(instanceId, io) {
     clientInitStates.delete(instanceId);
     clients.delete(instanceId);
     
-    await updateClientStatus(instanceId, 'error');
+    // Tentar atualizar status com retry
+    try {
+      await updateClientStatus(instanceId, 'error');
+    } catch (dbError) {
+      console.error(`❌ Falha adicional ao atualizar status para ${instanceId}:`, dbError);
+    }
     
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      error: error.message,
+      type: error.name || 'UnknownError',
+      instanceId
+    };
   }
 }
 
@@ -111,11 +138,20 @@ function setupClientEventHandlers(client, instanceId, io) {
       
       await updateClientStatus(instanceId, 'qr_ready', null, qrCodeDataURL, true, expiresAt);
       
-      // Emitir via WebSocket
+      // Emitir via WebSocket - MÚLTIPLOS EVENTOS PARA COMPATIBILIDADE
       io.emit('qr_updated', {
         instanceId,
         qrCode: qrCodeDataURL,
         expiresAt
+      });
+      
+      // Evento específico da instância
+      io.emit(`client_status_${instanceId}`, {
+        instanceId,
+        status: 'qr_ready',
+        qrCode: qrCodeDataURL,
+        hasQrCode: true,
+        qrTimestamp: expiresAt
       });
       
       console.log(`✅ QR Code salvo para ${instanceId}`);
@@ -135,11 +171,20 @@ function setupClientEventHandlers(client, instanceId, io) {
       await updateClientStatus(instanceId, 'connected', phoneNumber, null, false, null);
       clientInitStates.set(instanceId, 'ready');
       
-      // Emitir status via WebSocket
+      // Emitir status via WebSocket - MÚLTIPLOS EVENTOS
       io.emit('client_ready', {
         instanceId,
         phoneNumber,
         status: 'connected'
+      });
+      
+      // Evento específico da instância
+      io.emit(`client_status_${instanceId}`, {
+        instanceId,
+        status: 'connected',
+        phoneNumber,
+        hasQrCode: false,
+        qrCode: null
       });
       
       // Sincronizar chats iniciais

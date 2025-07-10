@@ -14,6 +14,9 @@ const path = require('path');
 const http = require('http');
 const mime = require('mime-types');
 
+// Carregar variáveis de ambiente do .env
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
 // Configurações do servidor
 const PORT = process.env.PORT || 4000;
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ymygyagbvbsdfkduxmgu.supabase.co';
