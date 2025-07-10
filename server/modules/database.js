@@ -3,8 +3,26 @@
 const { createClient } = require('@supabase/supabase-js');
 const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = require('./config');
 
-// Inicialização do Supabase
+// Inicialização do Supabase com debug
+console.log('🔍 [DEBUG] Inicializando Supabase...');
+console.log(`🔍 [DEBUG] SUPABASE_URL: ${SUPABASE_URL}`);
+console.log(`🔍 [DEBUG] SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY.substring(0, 20)}...`);
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+// Testar conexão imediatamente
+(async () => {
+  try {
+    const { data, error } = await supabase.from('whatsapp_instances').select('id').limit(1);
+    if (error) {
+      console.error('❌ [DEBUG] Erro na conexão Supabase:', error);
+    } else {
+      console.log('✅ [DEBUG] Conexão Supabase funcionando!');
+    }
+  } catch (testError) {
+    console.error('💥 [DEBUG] Erro crítico na conexão Supabase:', testError);
+  }
+})();
 
 // Função para atualizar status do cliente no Supabase
 async function updateClientStatus(instanceId, status, phoneNumber = null, qrCode = null, hasQrCode = null, qrExpiresAt = null) {
