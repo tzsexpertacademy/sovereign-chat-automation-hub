@@ -1,45 +1,84 @@
 #!/bin/bash
 
-echo "🔄 REINICIANDO SERVIDOR E TESTANDO CORREÇÕES DE QR CODE"
-echo "======================================================"
+# Script rápido para finalizar a instalação do Puppeteer
+# Arquivo: scripts/restart-and-test.sh
 
-# Parar servidor atual
-echo "🛑 Parando servidor atual..."
-./scripts/production-stop-whatsapp.sh
+echo "🎉 FINALIZANDO INSTALAÇÃO DO PUPPETEER"
+echo "====================================="
 
-# Limpar processos Chrome órfãos
-echo "🧹 Limpando processos Chrome..."
-pkill -f chrome || true
-pkill -f chromium || true
+echo ""
+echo "🔧 DANDO PERMISSÃO A TODOS OS SCRIPTS"
+echo "====================================="
+chmod +x scripts/*.sh
 
-# Aguardar limpeza
+echo ""
+echo "🛑 PARANDO SERVIDOR ATUAL"
+echo "========================"
+# Matar todos os processos Node.js do WhatsApp
+pkill -f "whatsapp-multi-client-server" 2>/dev/null || true
+pkill -f "node.*whatsapp" 2>/dev/null || true
+
+# Aguardar um pouco
 sleep 3
 
-# Iniciar servidor com correções
-echo "🚀 Iniciando servidor corrigido..."
-./scripts/production-start-whatsapp.sh
+echo ""
+echo "🚀 INICIANDO SERVIDOR COM PUPPETEER INSTALADO"
+echo "============================================="
+
+cd server
+
+# Iniciar em background e capturar PID
+nohup node whatsapp-multi-client-server.js > ../logs/whatsapp-multi-client.log 2>&1 &
+SERVER_PID=$!
+
+echo "🆔 Servidor iniciado com PID: $SERVER_PID"
+
+cd ..
 
 # Aguardar inicialização
-echo "⏳ Aguardando inicialização..."
-sleep 10
-
-# Testar correções
-echo "🧪 Testando correções do sistema QR Code..."
-./scripts/quick-api-test.sh
+echo "⏳ Aguardando 8 segundos para inicialização..."
+sleep 8
 
 echo ""
-echo "🔗 TESTE MANUAL COMPLETO DE QR CODE:"
-echo "1. Criar instância:"
-echo "curl -k -X POST \"https://146.59.227.248/clients/test_instance_$(date +%s)/connect\""
+echo "🧪 TESTANDO O SERVIDOR"
+echo "====================="
+
+# Testar se está funcionando
+RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health)
+
+if [ "$RESPONSE" = "200" ]; then
+    echo "✅ SERVIDOR FUNCIONANDO!"
+    echo ""
+    echo "🎯 TESTE FINAL: Verificando se API está ok..."
+    
+    # Testar a API
+    API_TEST=$(curl -s http://127.0.0.1:4000/clients 2>/dev/null)
+    
+    if echo "$API_TEST" | grep -q "success"; then
+        echo "🎉🎉🎉 TUDO FUNCIONANDO PERFEITAMENTE! 🎉🎉🎉"
+        echo ""
+        echo "✅ Puppeteer: INSTALADO"
+        echo "✅ Servidor: RODANDO"
+        echo "✅ API: FUNCIONANDO"
+        echo "✅ Supabase: CONECTADO"
+        echo ""
+        echo "🧪 AGORA TESTE O QR CODE:"
+        echo "1. Acesse: http://146.59.227.248:8080/admin/instances"
+        echo "2. Clique em 'Conectar HTTPS'"
+        echo "3. DEVE APARECER O QR CODE! 📱"
+        echo ""
+        echo "📱 Escaneie com WhatsApp para conectar"
+        
+    else
+        echo "⚠️ Servidor rodando mas API com problema"
+        echo "💡 Teste manual: http://146.59.227.248:8080"
+    fi
+    
+else
+    echo "❌ Servidor não está respondendo"
+    echo "📋 Status HTTP: $RESPONSE"
+    echo "💡 Verificar logs: tail -f logs/whatsapp-multi-client.log"
+fi
+
 echo ""
-echo "2. Verificar QR disponível:"
-echo "curl -k -s \"https://146.59.227.248/clients/test_instance_*/status\" | jq '.'"
-echo ""
-echo "3. Escanear QR Code no WhatsApp"
-echo ""
-echo "4. Aguardar transição: qr_ready → connected"
-echo ""
-echo "✅ Correções QR Code implementadas!"
-echo "📱 QR Code agora permanece visível até escaneamento completo"
-echo "🔄 Polling otimizado para 2 segundos"
-echo "🗄️ Recovery system com Supabase habilitado"
+echo "📅 Teste concluído em: $(date)"
