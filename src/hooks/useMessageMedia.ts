@@ -140,6 +140,35 @@ export const useMessageMedia = (clientId: string) => {
     });
   }, [sendMedia, toast]);
 
+  // Processar áudio de arquivo
+  const handleAudioUpload = useCallback(async (file: File, to: string, caption?: string) => {
+    if (!file.type.startsWith('audio/')) {
+      toast({
+        title: "Erro",
+        description: "Arquivo deve ser um áudio",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    // Verificar tamanho do arquivo (máximo 25MB)
+    if (file.size > 25 * 1024 * 1024) {
+      toast({
+        title: "Erro",
+        description: "Áudio muito grande (máximo 25MB)",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    return await sendMedia({
+      type: 'audio',
+      file,
+      caption,
+      to
+    });
+  }, [sendMedia, toast]);
+
   // Gravação de áudio
   const startRecording = useCallback(async () => {
     try {
@@ -236,6 +265,7 @@ export const useMessageMedia = (clientId: string) => {
     handleImageUpload,
     handleVideoUpload,
     handleDocumentUpload,
+    handleAudioUpload,
     startRecording,
     stopRecording,
     sendAudioRecording,
