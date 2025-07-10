@@ -550,13 +550,14 @@ function getClientStatus(instanceId) {
   const initState = clientInitStates.get(instanceId);
   
   if (!client) {
-    return { exists: false, state: null };
+    return { exists: false, state: null, client: null };
   }
   
   return {
     exists: true,
     state: initState || 'unknown',
-    isReady: initState === 'ready'
+    isReady: initState === 'ready',
+    client: client
   };
 }
 
