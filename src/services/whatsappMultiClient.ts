@@ -350,11 +350,11 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Send message
+  // Send message - CORRIGIDO para usar endpoint /api/
   async sendMessage(clientId: string, to: string, message: string): Promise<any> {
     try {
       console.log(`📤 Enviando mensagem HTTPS via ${clientId} para ${to}`);
-      return await this.makeRequest(`/clients/${clientId}/send-message`, {
+      return await this.makeRequest(`/api/clients/${clientId}/send`, {
         method: 'POST',
         body: JSON.stringify({ to, message })
       });
@@ -364,13 +364,45 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Get chats
+  // Get chats - CORRIGIDO para usar endpoint /api/
   async getChats(clientId: string): Promise<any> {
     try {
       console.log(`💬 Buscando chats HTTPS: ${clientId}`);
-      return await this.makeRequest(`/clients/${clientId}/chats`);
+      return await this.makeRequest(`/api/clients/${clientId}/chats`);
     } catch (error) {
       console.error(`❌ Erro ao buscar chats HTTPS:`, error);
+      throw error;
+    }
+  }
+
+  // Send audio/media - NOVO método para envio de áudio
+  async sendAudio(clientId: string, to: string, audioFile: File): Promise<any> {
+    try {
+      console.log(`🎵 Enviando áudio HTTPS via ${clientId} para ${to}`);
+      
+      const formData = new FormData();
+      formData.append('to', to);
+      formData.append('file', audioFile);
+      
+      const response = await fetch(`${API_BASE_URL}/api/clients/${clientId}/send-media`, {
+        method: 'POST',
+        body: formData,
+        mode: 'cors',
+        credentials: 'omit',
+        signal: AbortSignal.timeout(30000),
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Origin': window.location.origin
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`❌ Erro ao enviar áudio HTTPS:`, error);
       throw error;
     }
   }

@@ -704,7 +704,181 @@ function setupApiRoutes(app, io) {
     }
   });
 
-  console.log('✅ Rotas da API configuradas');
+  // ===============================================
+  // ENDPOINTS DE COMPATIBILIDADE (para não quebrar frontend antigo)
+  // ===============================================
+  
+  /**
+   * @swagger
+   * /clients/{id}/send-message:
+   *   post:
+   *     summary: Enviar mensagem (compatibilidade)
+   *     tags: [Compatibilidade]
+   *     description: Endpoint de compatibilidade que redireciona para /api/clients/{id}/send
+   */
+  app.post('/clients/:id/send-message', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      const { to, message } = req.body;
+      
+      console.log(`📤 [COMPAT] Redirecionando send-message para /api/clients/${instanceId}/send`);
+      
+      if (!to || !message) {
+        return res.status(400).json({
+          success: false,
+          error: 'to e message são obrigatórios'
+        });
+      }
+      
+      const result = await sendMessage(instanceId, to, message);
+      
+      res.json({
+        success: true,
+        message: 'Mensagem enviada com sucesso',
+        data: result
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao enviar mensagem (compat):', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/clients/{id}/chats:
+   *   get:
+   *     summary: Listar conversas do cliente
+   *     tags: [Conversas]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Lista de conversas
+   *       404:
+   *         description: Cliente não encontrado
+   */
+  app.get('/api/clients/:id/chats', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      
+      console.log(`💬 Buscando chats da instância: ${instanceId}`);
+      
+      // Buscar conversas no banco de dados
+      const { data: tickets, error } = await supabase
+        .from('conversation_tickets')
+        .select(`
+          *,
+          customers (
+            name,
+            phone,
+            email
+          )
+        `)
+        .eq('instance_id', instanceId)
+        .order('last_message_at', { ascending: false })
+        .limit(50);
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Formatar resposta para o frontend
+      const chats = (tickets || []).map(ticket => ({
+        id: ticket.chat_id,
+        name: ticket.customers?.name || 'Usuário',
+        phone: ticket.customers?.phone || '',
+        lastMessage: ticket.last_message_preview || '',
+        lastMessageTime: ticket.last_message_at,
+        unreadCount: 0, // TODO: implementar contagem de não lidas
+        status: ticket.status
+      }));
+      
+      res.json({
+        success: true,
+        chats: chats
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao buscar chats:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /clients/{id}/chats:
+   *   get:
+   *     summary: Listar conversas (compatibilidade)
+   *     tags: [Compatibilidade]
+   *     description: Endpoint de compatibilidade que redireciona para /api/clients/{id}/chats
+   */
+  app.get('/clients/:id/chats', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      console.log(`💬 [COMPAT] Redirecionando chats para /api/clients/${instanceId}/chats`);
+      
+      // Redirecionar para o endpoint API
+      req.url = `/api/clients/${instanceId}/chats`;
+      req.params.id = instanceId;
+      
+      // Chamar o handler do endpoint API
+      const apiHandler = app._router.stack.find(layer => 
+        layer.route && layer.route.path === '/api/clients/:id/chats'
+      );
+      
+      if (apiHandler) {
+        return apiHandler.route.stack[0].handle(req, res);
+      } else {
+        // Fallback: buscar chats diretamente
+        const { data: tickets, error } = await supabase
+          .from('conversation_tickets')
+          .select(`
+            *,
+            customers (name, phone, email)
+          `)
+          .eq('instance_id', instanceId)
+          .order('last_message_at', { ascending: false })
+          .limit(50);
+        
+        if (error) throw error;
+        
+        const chats = (tickets || []).map(ticket => ({
+          id: ticket.chat_id,
+          name: ticket.customers?.name || 'Usuário',
+          phone: ticket.customers?.phone || '',
+          lastMessage: ticket.last_message_preview || '',
+          lastMessageTime: ticket.last_message_at,
+          unreadCount: 0,
+          status: ticket.status
+        }));
+        
+        res.json({
+          success: true,
+          chats: chats
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao buscar chats (compat):', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  console.log('✅ Rotas da API configuradas (incluindo compatibilidade)');
 }
 
 module.exports = {
