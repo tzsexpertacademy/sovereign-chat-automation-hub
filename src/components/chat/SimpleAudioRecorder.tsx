@@ -201,9 +201,6 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
         mediaRecorderRef.current.stop();
       }
       setIsRecording(false);
-      // ✅ CORREÇÃO: Usar currentTime como duração final
-      const finalDuration = currentTime > 0 ? currentTime : 1; // mínimo 1 segundo
-      setDuration(finalDuration);
       
       if (timerRef.current) {
         clearInterval(timerRef.current);
