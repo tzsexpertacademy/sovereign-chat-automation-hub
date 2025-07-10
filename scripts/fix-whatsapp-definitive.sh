@@ -58,6 +58,43 @@ fi
 
 echo "✅ Node.js: $(node --version)"
 
+# Verificar dependências do Puppeteer
+echo ""
+echo "🔍 4.1. TESTANDO DEPENDÊNCIAS PUPPETEER"
+echo "======================================"
+if [ -f "./scripts/test-puppeteer-dependencies.sh" ]; then
+    chmod +x ./scripts/test-puppeteer-dependencies.sh
+    if ! ./scripts/test-puppeteer-dependencies.sh; then
+        echo ""
+        echo "❌ DEPENDÊNCIAS DO PUPPETEER COM PROBLEMAS"
+        echo "=========================================="
+        echo ""
+        echo "💡 Deseja tentar corrigir automaticamente? (s/N)"
+        read -r -n 1 -t 30 response
+        echo ""
+        
+        if [[ "$response" =~ ^[Ss]$ ]]; then
+            echo "🔧 Executando correção automática..."
+            chmod +x ./scripts/fix-puppeteer-dependencies.sh
+            if sudo ./scripts/fix-puppeteer-dependencies.sh; then
+                echo "✅ Dependências corrigidas com sucesso!"
+            else
+                echo "❌ Falha na correção automática"
+                echo "💡 Você pode tentar corrigir manualmente ou continuar"
+                echo "   Pressione Enter para continuar ou Ctrl+C para cancelar"
+                read -r
+            fi
+        else
+            echo "⚠️ Continuando sem corrigir dependências..."
+            echo "💡 Isso pode causar falhas na criação de instâncias WhatsApp"
+        fi
+    else
+        echo "✅ Dependências do Puppeteer OK"
+    fi
+else
+    echo "⚠️ Script de teste do Puppeteer não encontrado"
+fi
+
 # Verificar dependências do servidor
 cd server
 if [ ! -d "node_modules" ] || [ ! -f "node_modules/dotenv/package.json" ]; then

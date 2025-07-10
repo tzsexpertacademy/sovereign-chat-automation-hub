@@ -39,7 +39,25 @@ async function createWhatsAppInstance(instanceId, io) {
       return { success: false, message: 'Cliente já existe' };
     }
 
-    // Verificar conexão com Supabase antes de prosseguir
+    // DIAGNÓSTICO DETALHADO - Verificar dependências do sistema
+    console.log('🔍 [DIAGNÓSTICO] Verificando dependências do sistema...');
+    
+    // 1. Verificar Node.js e memória
+    console.log(`🔧 Node.js versão: ${process.version}`);
+    console.log(`💾 Memória usada: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
+    console.log(`⚡ Uptime do processo: ${Math.round(process.uptime())} segundos`);
+    
+    // 2. Verificar espaço em disco
+    try {
+      const fs = require('fs');
+      const stats = fs.statSync('/tmp');
+      console.log(`💽 Diretório /tmp acessível: ${stats.isDirectory() ? 'SIM' : 'NÃO'}`);
+    } catch (diskError) {
+      console.warn(`⚠️ Problema com /tmp:`, diskError.message);
+    }
+
+    // 3. Verificar conexão com Supabase ANTES de inicializar Puppeteer
+    console.log('🔍 [DIAGNÓSTICO] Testando conexão Supabase...');
     try {
       const { data, error } = await updateClientStatus(instanceId, 'initializing');
       if (error) {
@@ -52,55 +70,158 @@ async function createWhatsAppInstance(instanceId, io) {
       return { 
         success: false, 
         error: `Falha na conexão com banco: ${supabaseError.message}`,
-        details: 'Verifique as credenciais do Supabase'
+        details: 'Verifique as credenciais do Supabase',
+        type: 'DatabaseConnectionError'
       };
     }
 
     // Marcar como inicializando
     clientInitStates.set(instanceId, 'initializing');
 
-    // Configurar pasta de sessão
+    // 4. Configurar pasta de sessão COM VERIFICAÇÕES
+    console.log('🔍 [DIAGNÓSTICO] Configurando pasta de sessão...');
     const sessionPath = path.join(__dirname, '..', 'sessions', instanceId);
-    if (!fs.existsSync(sessionPath)) {
-      fs.mkdirSync(sessionPath, { recursive: true });
+    try {
+      if (!fs.existsSync(sessionPath)) {
+        fs.mkdirSync(sessionPath, { recursive: true });
+        console.log(`📁 Pasta de sessão criada: ${sessionPath}`);
+      } else {
+        console.log(`📁 Pasta de sessão existente: ${sessionPath}`);
+      }
+      
+      // Verificar permissões de escrita
+      fs.accessSync(sessionPath, fs.constants.W_OK);
+      console.log(`✅ Permissões de escrita OK: ${sessionPath}`);
+    } catch (sessionError) {
+      console.error(`❌ Erro na pasta de sessão:`, sessionError);
+      return {
+        success: false,
+        error: 'Falha ao configurar pasta de sessão',
+        details: sessionError.message,
+        type: 'SessionDirectoryError'
+      };
     }
 
-    // Criar cliente WhatsApp
-    const client = new Client({
-      authStrategy: new LocalAuth({
-        clientId: instanceId,
-        dataPath: sessionPath
-      }),
-      puppeteer: {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding'
-        ]
-      },
-      webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+    // 5. TESTE DE PUPPETEER ANTES DE CRIAR O CLIENTE
+    console.log('🔍 [DIAGNÓSTICO] Testando disponibilidade do Puppeteer...');
+    let puppeteerTest = null;
+    try {
+      // Tentar importar puppeteer para verificar se está disponível
+      const puppeteer = require('puppeteer-core') || require('puppeteer');
+      console.log('✅ Puppeteer disponível');
+      
+      // Verificar se pode encontrar o Chrome
+      try {
+        const executablePath = puppeteer.executablePath();
+        console.log(`🌐 Chrome executável encontrado: ${executablePath}`);
+      } catch (chromeError) {
+        console.warn(`⚠️ Chrome não encontrado automaticamente:`, chromeError.message);
       }
-    });
+    } catch (puppeteerError) {
+      console.error(`❌ Puppeteer não disponível:`, puppeteerError);
+      return {
+        success: false,
+        error: 'Puppeteer não está disponível no sistema',
+        details: puppeteerError.message,
+        type: 'PuppeteerUnavailableError'
+      };
+    }
 
-    // Event Handlers
+    // 6. Criar cliente WhatsApp COM TIMEOUT E MELHOR TRATAMENTO
+    console.log('🔍 [DIAGNÓSTICO] Criando cliente WhatsApp...');
+    let client = null;
+    try {
+      client = new Client({
+        authStrategy: new LocalAuth({
+          clientId: instanceId,
+          dataPath: sessionPath
+        }),
+        puppeteer: {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-extensions',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--no-default-browser-check',
+            '--no-first-run',
+            '--disable-features=VizDisplayCompositor'
+          ],
+          timeout: 60000 // 60 segundos de timeout
+        },
+        webVersionCache: {
+          type: 'remote',
+          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+        }
+      });
+      console.log('✅ Cliente WhatsApp criado com sucesso');
+    } catch (clientError) {
+      console.error(`❌ Erro ao criar cliente WhatsApp:`, clientError);
+      return {
+        success: false,
+        error: 'Falha ao criar cliente WhatsApp',
+        details: clientError.message,
+        type: 'ClientCreationError'
+      };
+    }
+
+    // 7. Configurar event handlers
+    console.log('🔍 [DIAGNÓSTICO] Configurando event handlers...');
     setupClientEventHandlers(client, instanceId, io);
 
-    // Armazenar cliente
+    // 8. Armazenar cliente
     clients.set(instanceId, client);
 
-    // Inicializar cliente
-    await client.initialize();
+    // 9. Inicializar cliente COM TIMEOUT
+    console.log('🔍 [DIAGNÓSTICO] Inicializando cliente (isso pode demorar até 60s)...');
+    const initStartTime = Date.now();
+    
+    try {
+      // Adicionar timeout manual para inicialização
+      const initPromise = client.initialize();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Timeout na inicialização do cliente (60s)'));
+        }, 60000);
+      });
+      
+      await Promise.race([initPromise, timeoutPromise]);
+      
+      const initTime = Date.now() - initStartTime;
+      console.log(`✅ Cliente inicializado com sucesso em ${initTime}ms`);
+    } catch (initError) {
+      console.error(`❌ Erro na inicialização do cliente:`, initError);
+      
+      // Limpar recursos em caso de falha
+      try {
+        if (client) {
+          await client.destroy();
+        }
+      } catch (cleanupError) {
+        console.error(`❌ Erro na limpeza:`, cleanupError);
+      }
+      
+      clients.delete(instanceId);
+      clientInitStates.delete(instanceId);
+      
+      return {
+        success: false,
+        error: 'Falha na inicialização do cliente WhatsApp',
+        details: initError.message,
+        type: 'ClientInitializationError',
+        initTime: Date.now() - initStartTime
+      };
+    }
 
     console.log(`✅ Instância ${instanceId} criada com sucesso`);
     return { success: true, message: 'Instância criada com sucesso' };
