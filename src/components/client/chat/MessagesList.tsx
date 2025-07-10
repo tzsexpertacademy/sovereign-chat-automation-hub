@@ -17,15 +17,16 @@ const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesLis
   const renderMessageContent = (message: any) => {
     if (message.message_type === 'audio' && message.audio_base64) {
       return (
-        <div className="space-y-2">
+        <div className="space-y-2 max-w-sm">
           <AudioPlayer 
             audioUrl=""
             audioData={message.audio_base64}
+            duration={message.media_duration}
             fileName={`audio_${message.id}.wav`}
           />
           {message.media_transcription && (
-            <div className="text-xs opacity-75 bg-black/5 rounded p-2">
-              <strong>Transcrição:</strong> {message.media_transcription}
+            <div className="text-xs opacity-75 bg-white/10 rounded p-2 mt-2">
+              <strong>💬 Transcrição:</strong> {message.media_transcription}
             </div>
           )}
         </div>
@@ -34,12 +35,19 @@ const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesLis
 
     if (message.message_type === 'audio') {
       return (
-        <div className="flex items-center gap-2 p-2 bg-gray-100 rounded">
-          <Mic className="w-4 h-4" />
-          <span className="text-sm">Mensagem de áudio</span>
-          {message.media_transcription && (
-            <span className="text-xs opacity-75">- {message.media_transcription}</span>
-          )}
+        <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+          <Mic className="w-4 h-4 text-blue-600" />
+          <div className="flex-1">
+            <span className="text-sm font-medium text-blue-800">Mensagem de áudio</span>
+            {message.media_duration && (
+              <span className="text-xs text-blue-600 ml-2">({message.media_duration}s)</span>
+            )}
+            {message.media_transcription && (
+              <div className="text-xs text-blue-700 mt-1 opacity-90">
+                💬 {message.media_transcription}
+              </div>
+            )}
+          </div>
         </div>
       );
     }

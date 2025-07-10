@@ -249,11 +249,12 @@ const AudioPlayer = ({
   }
 
   return (
-    <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border">
+    <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-200 shadow-sm">
       <audio 
         ref={audioRef} 
         preload="metadata"
         src={audioSrc}
+        style={{ display: 'none' }}
       >
         Seu navegador não suporta o elemento de áudio.
       </audio>
@@ -263,18 +264,18 @@ const AudioPlayer = ({
         size="sm"
         onClick={togglePlay}
         disabled={isLoading || !!error}
-        className="flex-shrink-0"
+        className="flex-shrink-0 hover:bg-gray-200 transition-colors"
       >
         {isLoading ? (
-          <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         ) : isPlaying ? (
-          <Pause className="w-4 h-4" />
+          <Pause className="w-4 h-4 text-blue-600" />
         ) : (
-          <Play className="w-4 h-4" />
+          <Play className="w-4 h-4 text-green-600" />
         )}
       </Button>
 
-      <Volume2 className="w-4 h-4 text-gray-500 flex-shrink-0" />
+      <Volume2 className="w-4 h-4 text-blue-500 flex-shrink-0" />
 
       <div className="flex-1 mx-2">
         {error ? (
@@ -291,7 +292,12 @@ const AudioPlayer = ({
               value={currentTime}
               onChange={handleSeek}
               disabled={!totalDuration || isLoading}
-              className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:cursor-not-allowed"
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:cursor-not-allowed
+                         [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 
+                         [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 
+                         [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-md
+                         [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full 
+                         [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-none"
             />
             <div className="flex justify-between text-xs text-gray-500 mt-1">
               <span>{formatTime(currentTime)}</span>
@@ -305,10 +311,11 @@ const AudioPlayer = ({
         variant="ghost"
         size="sm"
         onClick={downloadAudio}
-        className="flex-shrink-0"
+        className="flex-shrink-0 hover:bg-gray-200 transition-colors"
         disabled={!audioSrc}
+        title="Baixar áudio"
       >
-        <Download className="w-4 h-4" />
+        <Download className="w-4 h-4 text-gray-600" />
       </Button>
     </div>
   );
