@@ -704,7 +704,7 @@ function setupApiRoutes(app, io) {
         console.log(`📁 Arquivo temporário criado: ${tempFilePath}`);
         
         // Usar AudioSendService para envio com retry
-        const AudioSendService = require('../../services/audioSendService');
+const AudioSendService = require('../services/audioSendService');
         const audioService = new AudioSendService();
         
         const result = await audioService.sendAudioWithRetry(
@@ -786,7 +786,7 @@ function setupApiRoutes(app, io) {
    */
   app.get('/api/clients/:id/audio-stats', async (req, res) => {
     try {
-      const AudioSendService = require('../../services/audioSendService');
+      const AudioSendService = require('../services/audioSendService');
       const audioService = new AudioSendService();
       
       res.json({
