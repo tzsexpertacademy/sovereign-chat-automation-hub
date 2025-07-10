@@ -618,6 +618,193 @@ function setupApiRoutes(app, io) {
 
   /**
    * @swagger
+   * /api/clients/{id}/send-audio:
+   *   post:
+   *     summary: Enviar áudio com retry inteligente
+   *     tags: [Mensagens]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               to:
+   *                 type: string
+   *               audioData:
+   *                 type: string
+   *                 description: Base64 encoded audio data
+   *               fileName:
+   *                 type: string
+   *               mimeType:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Áudio enviado
+   *       400:
+   *         description: Dados inválidos
+   *       500:
+   *         description: Erro ao enviar
+   */
+  app.post('/api/clients/:id/send-audio', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      const { to, audioData, fileName = 'audio', mimeType = 'audio/ogg' } = req.body;
+      
+      if (!to || !audioData) {
+        return res.status(400).json({
+          success: false,
+          error: 'to e audioData são obrigatórios'
+        });
+      }
+      
+      console.log(`🎵 Enviando áudio de ${instanceId} para ${to}`);
+      console.log(`📊 Dados do áudio:`, {
+        fileName,
+        mimeType,
+        dataSize: audioData.length
+      });
+      
+      // Verificar se cliente existe e está ativo
+      const { getClientStatus } = require('./whatsapp-client');
+      const clientStatus = getClientStatus(instanceId);
+      
+      if (!clientStatus.exists || !clientStatus.isReady) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cliente não encontrado ou não está pronto',
+          clientStatus
+        });
+      }
+      
+      // Salvar arquivo temporário
+      const fs = require('fs');
+      const path = require('path');
+      const tempDir = path.join(__dirname, '../../temp');
+      
+      // Criar diretório temp se não existir
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      const tempFileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.ogg`;
+      const tempFilePath = path.join(tempDir, tempFileName);
+      
+      try {
+        // Decodificar base64 e salvar arquivo
+        const audioBuffer = Buffer.from(audioData, 'base64');
+        fs.writeFileSync(tempFilePath, audioBuffer);
+        
+        console.log(`📁 Arquivo temporário criado: ${tempFilePath}`);
+        
+        // Usar AudioSendService para envio com retry
+        const AudioSendService = require('../../services/audioSendService');
+        const audioService = new AudioSendService();
+        
+        const result = await audioService.sendAudioWithRetry(
+          clientStatus.client,
+          to,
+          tempFilePath,
+          fileName.replace(/\.[^/.]+$/, "") // Remove extensão
+        );
+        
+        // Limpar arquivo temporário
+        try {
+          if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+            console.log(`🗑️ Arquivo temporário removido: ${tempFilePath}`);
+          }
+        } catch (cleanupError) {
+          console.warn(`⚠️ Erro ao limpar arquivo temporário:`, cleanupError);
+        }
+        
+        if (result.success) {
+          console.log(`✅ Áudio enviado com sucesso:`, result);
+          res.json({
+            success: true,
+            message: result.message || 'Áudio enviado com sucesso',
+            details: {
+              format: result.format,
+              attempts: result.attempt,
+              isFallback: result.isFallback || false
+            }
+          });
+        } else {
+          console.error(`❌ Falha no envio de áudio:`, result);
+          res.status(500).json({
+            success: false,
+            error: result.error,
+            details: {
+              attempts: result.attempts
+            }
+          });
+        }
+        
+      } catch (fileError) {
+        // Limpar arquivo em caso de erro
+        try {
+          if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+          }
+        } catch (cleanupError) {
+          console.warn(`⚠️ Erro ao limpar arquivo após falha:`, cleanupError);
+        }
+        
+        throw fileError;
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao enviar áudio:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/clients/{id}/audio-stats:
+   *   get:
+   *     summary: Obter estatísticas do serviço de áudio
+   *     tags: [Mensagens]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Estatísticas do áudio
+   */
+  app.get('/api/clients/:id/audio-stats', async (req, res) => {
+    try {
+      const AudioSendService = require('../../services/audioSendService');
+      const audioService = new AudioSendService();
+      
+      res.json({
+        success: true,
+        stats: audioService.getStats()
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao obter estatísticas:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
    * /api/clients/{id}/logout:
    *   post:
    *     summary: Desconectar instância
