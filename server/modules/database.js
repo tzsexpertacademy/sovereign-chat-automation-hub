@@ -2,16 +2,16 @@
 // server/modules/database.js - Funções do Supabase
 const { createClient } = require('@supabase/supabase-js');
 
-// CREDENCIAIS CORRETAS DO PROJETO ATUAL
+// USANDO ANON KEY (QUE FUNCIONA) AO INVÉS DO SERVICE KEY INVÁLIDO
 const SUPABASE_URL_DEFINITIVE = 'https://ymygyagbvbsdfkduxmgu.supabase.co';
-const SUPABASE_SERVICE_KEY_DEFINITIVE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDQ1NDE2OSwiZXhwIjoyMDY2MDMwMTY5fQ.NVHSdQAUw8a8HkHdFQKqfTNAT2dFuuSlZRhzqpnV3dY';
+const SUPABASE_ANON_KEY_FUNCIONAL = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI';
 
-// Inicialização do Supabase com credenciais definitivas
-console.log('🔍 [DEBUG] Inicializando Supabase com credenciais DEFINITIVAS...');
+// Inicialização do Supabase com ANON KEY (que funciona)
+console.log('🔍 [DEBUG] Inicializando Supabase com ANON KEY (SERVICE KEY inválido)...');
 console.log(`🔍 [DEBUG] SUPABASE_URL: ${SUPABASE_URL_DEFINITIVE}`);
-console.log(`🔍 [DEBUG] SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY_DEFINITIVE.substring(0, 20)}...`);
+console.log(`🔍 [DEBUG] SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY_FUNCIONAL.substring(0, 20)}...`);
 
-const supabase = createClient(SUPABASE_URL_DEFINITIVE, SUPABASE_SERVICE_KEY_DEFINITIVE);
+const supabase = createClient(SUPABASE_URL_DEFINITIVE, SUPABASE_ANON_KEY_FUNCIONAL);
 
 // Testar conexão imediatamente
 (async () => {
