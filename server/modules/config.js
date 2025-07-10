@@ -17,7 +17,7 @@ const mime = require('mime-types');
 // Carregar variáveis de ambiente do .env
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
-// Configurações do servidor
+// Configurações do servidor com credenciais corretas
 const PORT = process.env.PORT || 4000;
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ymygyagbvbsdfkduxmgu.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDQ1NDE2OSwiZXhwIjoyMDY2MDMwMTY5fQ.NVHSdQAUw8a8HkHdFQKqfTNAT2dFuuSlZRhzqpnV3dY';

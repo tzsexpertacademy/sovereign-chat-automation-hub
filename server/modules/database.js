@@ -2,7 +2,7 @@
 // server/modules/database.js - Funções do Supabase
 const { createClient } = require('@supabase/supabase-js');
 
-// CREDENCIAIS FIXAS DEFINITIVAS PARA SUPABASE
+// CREDENCIAIS CORRETAS DO PROJETO ATUAL
 const SUPABASE_URL_DEFINITIVE = 'https://ymygyagbvbsdfkduxmgu.supabase.co';
 const SUPABASE_SERVICE_KEY_DEFINITIVE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDQ1NDE2OSwiZXhwIjoyMDY2MDMwMTY5fQ.NVHSdQAUw8a8HkHdFQKqfTNAT2dFuuSlZRhzqpnV3dY';
 
