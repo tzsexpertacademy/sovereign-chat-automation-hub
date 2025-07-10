@@ -135,7 +135,28 @@ server {
         proxy_no_cache $http_upgrade;
     }
     
-    # 3. API CLIENTS - Terceira prioridade
+    # 3. API ENDPOINTS - Terceira prioridade (CRÍTICO)
+    location ~ ^/api/ {
+        # Handle preflight OPTIONS
+        if ($request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+            add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
+            add_header Access-Control-Max-Age 1728000 always;
+            add_header Content-Type 'text/plain; charset=utf-8' always;
+            add_header Content-Length 0 always;
+            return 204;
+        }
+        
+        proxy_pass http://127.0.0.1:4000;
+        
+        # CORS Headers para API
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
+    }
+    
+    # 4. CLIENTS COMPATIBILITY - Quarta prioridade (compatibilidade)
     location ~ ^/clients {
         # Handle preflight OPTIONS
         if ($request_method = 'OPTIONS') {
@@ -156,7 +177,7 @@ server {
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
     }
     
-    # 4. API DOCS - Swagger
+    # 5. API DOCS - Swagger
     location /api-docs {
         proxy_pass http://127.0.0.1:4000/api-docs;
         proxy_redirect off;
@@ -176,7 +197,7 @@ server {
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" always;
     }
     
-    # 5. FRONTEND - Página padrão simples (sem proxy para 8080)
+    # 6. FRONTEND - Página padrão simples (sem proxy para 8080)
     location / {
         return 200 '<!DOCTYPE html>
 <html>
