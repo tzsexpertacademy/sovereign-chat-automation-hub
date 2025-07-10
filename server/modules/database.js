@@ -1,113 +1,49 @@
 
-// server/modules/database.js - Database CORRIGIDO com validações
+// server/modules/database.js - Funções do Supabase
 const { createClient } = require('@supabase/supabase-js');
 const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = require('./config');
 
-// Criar cliente Supabase com configuração corrigida
-let supabase;
+// Inicialização do Supabase
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-try {
-  console.log('🔗 Inicializando cliente Supabase...');
-  console.log(`📍 URL: ${SUPABASE_URL}`);
-  console.log(`🔑 Service Key: ${SUPABASE_SERVICE_KEY.substring(0, 20)}...`);
-  
-  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    },
-    db: {
-      schema: 'public'
-    }
-  });
-  
-  console.log('✅ Cliente Supabase inicializado com sucesso');
-} catch (error) {
-  console.error('❌ Erro ao inicializar Supabase:', error);
-  process.exit(1);
-}
-
-// Função para testar conectividade com Supabase
-async function testSupabaseConnection() {
+// Função para atualizar status do cliente no Supabase
+async function updateClientStatus(instanceId, status, phoneNumber = null, qrCode = null, hasQrCode = null, qrExpiresAt = null) {
   try {
-    console.log('🧪 Testando conectividade com Supabase...');
-    
-    const { data, error } = await supabase
-      .from('whatsapp_instances')
-      .select('count(*)')
-      .limit(1);
-    
-    if (error) {
-      throw error;
-    }
-    
-    console.log('✅ Conectividade com Supabase confirmada');
-    return true;
-  } catch (error) {
-    console.error('❌ Erro na conectividade com Supabase:', error);
-    return false;
-  }
-}
-
-// Executar teste de conectividade na inicialização
-testSupabaseConnection();
-
-// Função para atualizar status do cliente com validação
-async function updateClientStatus(instanceId, status, phoneNumber = null, qrCode = null, hasQrCode = false, qrExpiresAt = null) {
-  try {
-    if (!instanceId) {
-      throw new Error('instanceId é obrigatório');
-    }
-    
-    if (!status) {
-      throw new Error('status é obrigatório');
-    }
-    
-    console.log(`📊 Atualizando status: ${instanceId} -> ${status}`);
+    console.log(`📊 Atualizando status no Supabase - Instância: ${instanceId}, Status: ${status}`);
     
     const updateData = {
-      status,
+      status: status,
       updated_at: new Date().toISOString()
     };
-    
+
     if (phoneNumber) updateData.phone_number = phoneNumber;
-    if (qrCode) updateData.qr_code = qrCode;
+    if (qrCode !== null) updateData.qr_code = qrCode;
     if (hasQrCode !== null) updateData.has_qr_code = hasQrCode;
-    if (qrExpiresAt) updateData.qr_expires_at = qrExpiresAt;
-    
-    // Limpar QR code se status não for qr_ready
-    if (status !== 'qr_ready') {
-      updateData.qr_code = null;
-      updateData.has_qr_code = false;
-      updateData.qr_expires_at = null;
-    }
-    
+    if (qrExpiresAt !== null) updateData.qr_expires_at = qrExpiresAt;
+
     const { data, error } = await supabase
       .from('whatsapp_instances')
       .update(updateData)
       .eq('instance_id', instanceId)
       .select();
-    
+
     if (error) {
-      throw error;
+      console.error('❌ Erro ao atualizar status no Supabase:', error);
+      return { success: false, error };
     }
-    
-    console.log(`✅ Status atualizado para ${instanceId}: ${status}`);
-    return data;
+
+    console.log('✅ Status atualizado no Supabase:', data);
+    return { success: true, data };
   } catch (error) {
-    console.error(`❌ Erro ao atualizar status para ${instanceId}:`, error);
-    throw error;
+    console.error('💥 Erro crítico ao atualizar status:', error);
+    return { success: false, error: error.message };
   }
 }
 
 // Função para salvar mensagem no Supabase
 async function saveMessageToSupabase(instanceId, chatId, messageData) {
   try {
-    if (!instanceId || !chatId || !messageData) {
-      throw new Error('Dados incompletos para salvar mensagem');
-    }
-    
-    console.log(`💾 Salvando mensagem: ${instanceId} - ${chatId}`);
+    console.log(`💾 Salvando mensagem no Supabase - Chat: ${chatId}`);
     
     const { data, error } = await supabase
       .from('whatsapp_messages')
@@ -117,112 +53,69 @@ async function saveMessageToSupabase(instanceId, chatId, messageData) {
         message_id: messageData.id,
         body: messageData.body || '',
         from_me: messageData.fromMe || false,
-        message_type: messageData.type || 'text',
-        timestamp: messageData.timestamp ? new Date(messageData.timestamp * 1000).toISOString() : new Date().toISOString(),
-        sender: messageData.from || chatId
+        sender: messageData.from || '',
+        timestamp: new Date(messageData.timestamp * 1000).toISOString(),
+        message_type: messageData.type || 'chat'
       });
-    
+
     if (error) {
-      throw error;
+      console.error('❌ Erro ao salvar mensagem:', error);
+      return { success: false, error };
     }
-    
-    console.log(`✅ Mensagem salva: ${instanceId} - ${chatId}`);
-    return data;
+
+    console.log('✅ Mensagem salva no Supabase');
+    return { success: true, data };
   } catch (error) {
-    console.error(`❌ Erro ao salvar mensagem ${instanceId}:`, error);
-    throw error;
+    console.error('💥 Erro crítico ao salvar mensagem:', error);
+    return { success: false, error: error.message };
   }
 }
 
-// Função para sincronizar chat no Supabase
-async function syncChatToSupabase(instanceId, chat) {
+// Função para sincronizar chats
+async function syncChatToSupabase(instanceId, chatData) {
   try {
-    if (!instanceId || !chat) {
-      throw new Error('Dados incompletos para sincronizar chat');
-    }
-    
-    console.log(`🔄 Sincronizando chat: ${instanceId} - ${chat.id._serialized}`);
-    
     const { data, error } = await supabase
       .from('whatsapp_chats')
       .upsert({
         instance_id: instanceId,
-        chat_id: chat.id._serialized,
-        name: chat.name || 'Chat sem nome',
-        is_group: chat.isGroup || false,
-        last_message: chat.lastMessage?.body || null,
-        last_message_time: chat.lastMessage?.timestamp ? 
-          new Date(chat.lastMessage.timestamp * 1000).toISOString() : null,
-        unread_count: chat.unreadCount || 0
-      }, {
-        onConflict: 'instance_id,chat_id'
-      });
-    
+        chat_id: chatData.id._serialized,
+        name: chatData.name || null,
+        is_group: chatData.isGroup || false,
+        last_message: chatData.lastMessage ? chatData.lastMessage.body : null,
+        last_message_time: chatData.lastMessage ? new Date(chatData.lastMessage.timestamp * 1000).toISOString() : null,
+        unread_count: chatData.unreadCount || 0,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'instance_id,chat_id' });
+
     if (error) {
-      throw error;
+      console.error('❌ Erro ao sincronizar chat:', error);
+      return { success: false, error };
     }
-    
-    console.log(`✅ Chat sincronizado: ${instanceId} - ${chat.id._serialized}`);
-    return data;
+
+    return { success: true, data };
   } catch (error) {
-    console.error(`❌ Erro ao sincronizar chat ${instanceId}:`, error);
-    throw error;
+    console.error('💥 Erro crítico ao sincronizar chat:', error);
+    return { success: false, error: error.message };
   }
 }
 
-// Função para limpeza de QR codes expirados
+// Função para limpar QR codes expirados
 async function cleanupExpiredQRCodes() {
   try {
-    console.log('🧹 Limpando QR codes expirados...');
+    console.log('🧹 Iniciando limpeza de QR codes expirados...');
     
-    const { data, error } = await supabase
-      .from('whatsapp_instances')
-      .update({
-        qr_code: null,
-        has_qr_code: false,
-        qr_expires_at: null,
-        status: 'disconnected',
-        updated_at: new Date().toISOString()
-      })
-      .lt('qr_expires_at', new Date().toISOString())
-      .not('qr_expires_at', 'is', null);
+    const { data, error } = await supabase.rpc('cleanup_expired_qr_codes');
     
     if (error) {
-      throw error;
+      console.error('❌ Erro na limpeza de QR codes:', error);
+      return { success: false, error };
     }
     
-    console.log(`✅ QR codes expirados limpos: ${data?.length || 0} registros`);
-    return data;
+    console.log(`✅ Limpeza concluída: ${data} QR codes expirados removidos`);
+    return { success: true, count: data };
   } catch (error) {
-    console.error('❌ Erro ao limpar QR codes expirados:', error);
-    return null;
-  }
-}
-
-// Executar limpeza de QR codes a cada 2 minutos
-setInterval(cleanupExpiredQRCodes, 2 * 60 * 1000);
-
-// Função para obter estatísticas do banco
-async function getDatabaseStats() {
-  try {
-    const [instancesResult, messagesResult, chatsResult] = await Promise.all([
-      supabase.from('whatsapp_instances').select('status', { count: 'exact' }),
-      supabase.from('whatsapp_messages').select('id', { count: 'exact' }),
-      supabase.from('whatsapp_chats').select('id', { count: 'exact' })
-    ]);
-    
-    return {
-      totalInstances: instancesResult.count || 0,
-      totalMessages: messagesResult.count || 0,
-      totalChats: chatsResult.count || 0,
-      instancesByStatus: instancesResult.data?.reduce((acc, instance) => {
-        acc[instance.status] = (acc[instance.status] || 0) + 1;
-        return acc;
-      }, {}) || {}
-    };
-  } catch (error) {
-    console.error('❌ Erro ao obter estatísticas do banco:', error);
-    return null;
+    console.error('💥 Erro crítico na limpeza:', error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -231,7 +124,5 @@ module.exports = {
   updateClientStatus,
   saveMessageToSupabase,
   syncChatToSupabase,
-  cleanupExpiredQRCodes,
-  getDatabaseStats,
-  testSupabaseConnection
+  cleanupExpiredQRCodes
 };

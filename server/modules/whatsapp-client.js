@@ -1,221 +1,110 @@
 
-// server/modules/whatsapp-client.js - WhatsApp Client CORRIGIDO E ROBUSTO
+// server/modules/whatsapp-client.js - Lógica completa do WhatsApp
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { QRCode, fs, path } = require('./config');
 const { updateClientStatus, saveMessageToSupabase, syncChatToSupabase } = require('./database');
 
 // Armazenamento de clientes WhatsApp
 const clients = new Map();
+
+// Estados de inicialização dos clientes
 const clientInitStates = new Map();
-const clientRetries = new Map();
 
-// Configurações de retry
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 5000;
-
-// Logging aprimorado
-function logWithContext(level, instanceId, message, data = null) {
-  const timestamp = new Date().toISOString();
-  const logMessage = `[${timestamp}] [${level.toUpperCase()}] [${instanceId}] ${message}`;
-  
-  if (data) {
-    console.log(logMessage, data);
-  } else {
-    console.log(logMessage);
-  }
-}
-
-// Função para gerar QR Code com validação
+// Função para gerar QR Code
 async function generateQRCode(qrString) {
   try {
-    if (!qrString || typeof qrString !== 'string') {
-      throw new Error('QR string inválida');
-    }
-    
     const qrCodeDataURL = await QRCode.toDataURL(qrString, {
       width: 256,
       margin: 2,
       color: {
         dark: '#000000',
         light: '#FFFFFF'
-      },
-      errorCorrectionLevel: 'M'
+      }
     });
-    
     return qrCodeDataURL;
   } catch (error) {
     console.error('❌ Erro ao gerar QR Code:', error);
-    throw new Error(`Falha ao gerar QR Code: ${error.message}`);
+    throw error;
   }
 }
 
-// Função para validar instância antes de criar
-function validateInstanceCreation(instanceId, io) {
-  if (!instanceId || typeof instanceId !== 'string') {
-    throw new Error('instanceId deve ser uma string válida');
-  }
-  
-  if (!io) {
-    throw new Error('Socket.IO não fornecido');
-  }
-  
-  if (clients.has(instanceId)) {
-    throw new Error(`Cliente ${instanceId} já existe`);
-  }
-  
-  return true;
-}
-
-// Função para configurar pasta de sessão
-function setupSessionPath(instanceId) {
-  const sessionPath = path.join(__dirname, '..', 'sessions', instanceId);
-  
-  try {
-    if (!fs.existsSync(sessionPath)) {
-      fs.mkdirSync(sessionPath, { recursive: true });
-      logWithContext('info', instanceId, `Pasta de sessão criada: ${sessionPath}`);
-    }
-    return sessionPath;
-  } catch (error) {
-    logWithContext('error', instanceId, 'Erro ao configurar pasta de sessão', error);
-    throw new Error(`Falha ao configurar sessão: ${error.message}`);
-  }
-}
-
-// Função principal para criar instância do WhatsApp - CORRIGIDA
+// Função para criar instância do WhatsApp
 async function createWhatsAppInstance(instanceId, io) {
-  const startTime = Date.now();
-  
   try {
-    logWithContext('info', instanceId, '🚀 Iniciando criação de instância WhatsApp');
+    console.log(`🚀 Criando instância WhatsApp: ${instanceId}`);
     
-    // Validações iniciais
-    validateInstanceCreation(instanceId, io);
-    
+    // Verificar se cliente já existe
+    if (clients.has(instanceId)) {
+      console.log(`⚠️ Cliente ${instanceId} já existe`);
+      return { success: false, message: 'Cliente já existe' };
+    }
+
     // Marcar como inicializando
     clientInitStates.set(instanceId, 'initializing');
-    await updateClientStatus(instanceId, 'initializing');
 
     // Configurar pasta de sessão
-    const sessionPath = setupSessionPath(instanceId);
-
-    // Configuração Puppeteer otimizada
-    const puppeteerConfig = {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-        '--disable-features=TranslateUI',
-        '--disable-ipc-flooding-protection',
-        '--memory-pressure-off'
-      ],
-      timeout: 60000
-    };
+    const sessionPath = path.join(__dirname, '..', 'sessions', instanceId);
+    if (!fs.existsSync(sessionPath)) {
+      fs.mkdirSync(sessionPath, { recursive: true });
+    }
 
     // Criar cliente WhatsApp
-    logWithContext('info', instanceId, '🔧 Criando cliente WhatsApp...');
-    
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: instanceId,
         dataPath: sessionPath
       }),
-      puppeteer: puppeteerConfig,
+      puppeteer: {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding'
+        ]
+      },
       webVersionCache: {
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-      },
-      ffmpegPath: null // Desabilitar ffmpeg se não disponível
+      }
     });
 
-    // Configurar event handlers
+    // Event Handlers
     setupClientEventHandlers(client, instanceId, io);
 
     // Armazenar cliente
     clients.set(instanceId, client);
-    clientRetries.set(instanceId, 0);
 
-    // Inicializar cliente com timeout
-    logWithContext('info', instanceId, '⚡ Inicializando cliente...');
-    
-    const initPromise = client.initialize();
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Timeout na inicialização')), 120000); // 2 minutos
-    });
+    // Inicializar cliente
+    await client.initialize();
 
-    await Promise.race([initPromise, timeoutPromise]);
-
-    const elapsedTime = Date.now() - startTime;
-    logWithContext('success', instanceId, `✅ Instância criada com sucesso em ${elapsedTime}ms`);
-
-    return { 
-      success: true, 
-      message: 'Instância criada com sucesso', 
-      instanceId,
-      elapsedTime 
-    };
+    console.log(`✅ Instância ${instanceId} criada com sucesso`);
+    return { success: true, message: 'Instância criada com sucesso' };
 
   } catch (error) {
-    const elapsedTime = Date.now() - startTime;
-    logWithContext('error', instanceId, `💥 Erro ao criar instância (${elapsedTime}ms)`, error);
-    
-    // Limpeza em caso de erro
-    cleanupFailedInstance(instanceId);
-    
-    // Tentar retry se não excedeu o limite
-    const retryCount = clientRetries.get(instanceId) || 0;
-    if (retryCount < MAX_RETRIES) {
-      logWithContext('warn', instanceId, `🔄 Tentativa ${retryCount + 1}/${MAX_RETRIES} em ${RETRY_DELAY}ms`);
-      clientRetries.set(instanceId, retryCount + 1);
-      
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-      return createWhatsAppInstance(instanceId, io);
-    }
+    console.error(`💥 Erro ao criar instância ${instanceId}:`, error);
+    clientInitStates.delete(instanceId);
+    clients.delete(instanceId);
     
     await updateClientStatus(instanceId, 'error');
     
-    return { 
-      success: false, 
-      error: error.message,
-      instanceId,
-      elapsedTime,
-      retries: retryCount
-    };
+    return { success: false, error: error.message };
   }
 }
 
-// Função para limpeza de instância falhada
-function cleanupFailedInstance(instanceId) {
-  try {
-    clientInitStates.delete(instanceId);
-    
-    if (clients.has(instanceId)) {
-      const client = clients.get(instanceId);
-      client.destroy().catch(() => {}); // Ignorar erros de destruição
-      clients.delete(instanceId);
-    }
-    
-    logWithContext('info', instanceId, '🧹 Limpeza de instância falhada concluída');
-  } catch (error) {
-    logWithContext('warn', instanceId, 'Erro na limpeza', error);
-  }
-}
-
-// Configurar event handlers do cliente - MELHORADOS
+// Configurar event handlers do cliente
 function setupClientEventHandlers(client, instanceId, io) {
   // QR Code gerado
   client.on('qr', async (qr) => {
     try {
-      logWithContext('info', instanceId, '📱 QR Code gerado');
+      console.log(`📱 QR Code gerado para ${instanceId}`);
       
       const qrCodeDataURL = await generateQRCode(qr);
       const expiresAt = new Date(Date.now() + 45000).toISOString(); // 45 segundos
@@ -226,89 +115,81 @@ function setupClientEventHandlers(client, instanceId, io) {
       io.emit('qr_updated', {
         instanceId,
         qrCode: qrCodeDataURL,
-        expiresAt,
-        timestamp: new Date().toISOString()
+        expiresAt
       });
       
-      logWithContext('success', instanceId, '✅ QR Code processado e enviado');
+      console.log(`✅ QR Code salvo para ${instanceId}`);
     } catch (error) {
-      logWithContext('error', instanceId, 'Erro ao processar QR', error);
+      console.error(`❌ Erro ao processar QR para ${instanceId}:`, error);
     }
   });
 
   // Cliente pronto
   client.on('ready', async () => {
     try {
-      logWithContext('success', instanceId, '✅ Cliente conectado e pronto!');
+      console.log(`✅ Cliente ${instanceId} conectado e pronto!`);
       
       const clientInfo = client.info;
       const phoneNumber = clientInfo.wid.user;
       
       await updateClientStatus(instanceId, 'connected', phoneNumber, null, false, null);
       clientInitStates.set(instanceId, 'ready');
-      clientRetries.delete(instanceId); // Limpar contadores de retry
       
       // Emitir status via WebSocket
       io.emit('client_ready', {
         instanceId,
         phoneNumber,
-        status: 'connected',
-        timestamp: new Date().toISOString()
+        status: 'connected'
       });
       
-      // Sincronizar chats iniciais (não bloqueante)
-      syncInitialChats(client, instanceId).catch(error => {
-        logWithContext('warn', instanceId, 'Erro na sincronização de chats', error);
-      });
+      // Sincronizar chats iniciais
+      await syncInitialChats(client, instanceId);
       
     } catch (error) {
-      logWithContext('error', instanceId, 'Erro ao processar cliente pronto', error);
+      console.error(`❌ Erro ao processar cliente pronto ${instanceId}:`, error);
     }
   });
 
   // Cliente autenticado
   client.on('authenticated', async () => {
-    logWithContext('info', instanceId, '🔐 Cliente autenticado');
+    console.log(`🔐 Cliente ${instanceId} autenticado`);
     await updateClientStatus(instanceId, 'authenticated');
     clientInitStates.set(instanceId, 'authenticated');
   });
 
   // Falha na autenticação
   client.on('auth_failure', async (msg) => {
-    logWithContext('error', instanceId, 'Falha na autenticação', msg);
+    console.error(`❌ Falha na autenticação ${instanceId}:`, msg);
     await updateClientStatus(instanceId, 'auth_failed');
-    cleanupFailedInstance(instanceId);
+    clientInitStates.delete(instanceId);
   });
 
   // Cliente desconectado
   client.on('disconnected', async (reason) => {
-    logWithContext('warn', instanceId, 'Cliente desconectado', reason);
+    console.log(`⚠️ Cliente ${instanceId} desconectado:`, reason);
     await updateClientStatus(instanceId, 'disconnected');
     clientInitStates.delete(instanceId);
     
     // Emitir via WebSocket
     io.emit('client_disconnected', {
       instanceId,
-      reason,
-      timestamp: new Date().toISOString()
+      reason
     });
   });
 
   // Nova mensagem recebida
   client.on('message', async (message) => {
     try {
-      logWithContext('info', instanceId, `📨 Nova mensagem de ${message.from}`);
+      console.log(`📨 Nova mensagem em ${instanceId}: ${message.from}`);
       
-      // Salvar mensagem (não bloqueante)
-      saveMessageToSupabase(instanceId, message.from, {
+      // Salvar mensagem
+      await saveMessageToSupabase(instanceId, message.from, {
         id: message.id.id,
         body: message.body,
         fromMe: message.fromMe,
         from: message.from,
         timestamp: message.timestamp,
         type: message.type
-      }).catch(error => {
-        logWithContext('warn', instanceId, 'Erro ao salvar mensagem', error);
       });
       
       // Emitir via WebSocket
@@ -325,48 +206,38 @@ function setupClientEventHandlers(client, instanceId, io) {
       });
       
     } catch (error) {
-      logWithContext('error', instanceId, 'Erro ao processar mensagem', error);
+      console.error(`❌ Erro ao processar mensagem ${instanceId}:`, error);
     }
   });
 
   // Mudança de estado
   client.on('change_state', (state) => {
-    logWithContext('info', instanceId, `🔄 Estado alterado: ${state}`);
-  });
-
-  // Eventos de erro
-  client.on('loading_screen', (percent, message) => {
-    logWithContext('info', instanceId, `⏳ Carregando ${percent}%: ${message}`);
+    console.log(`🔄 Estado alterado ${instanceId}:`, state);
   });
 }
 
-// Sincronizar chats iniciais - OTIMIZADA
+// Sincronizar chats iniciais
 async function syncInitialChats(client, instanceId) {
   try {
-    logWithContext('info', instanceId, '🔄 Iniciando sincronização de chats...');
+    console.log(`🔄 Sincronizando chats iniciais para ${instanceId}...`);
     
     const chats = await client.getChats();
-    logWithContext('info', instanceId, `📊 Encontrados ${chats.length} chats para sincronização`);
+    console.log(`📊 Encontrados ${chats.length} chats para sincronização`);
     
-    // Sincronizar até 20 chats mais recentes (reduzido para performance)
-    const recentChats = chats.slice(0, 20);
+    // Sincronizar até 50 chats mais recentes
+    const recentChats = chats.slice(0, 50);
     
     for (const chat of recentChats) {
-      try {
-        await syncChatToSupabase(instanceId, chat);
-      } catch (error) {
-        logWithContext('warn', instanceId, `Erro ao sincronizar chat ${chat.id._serialized}`, error);
-        // Continuar com próximo chat
-      }
+      await syncChatToSupabase(instanceId, chat);
     }
     
-    logWithContext('success', instanceId, `✅ Sincronização concluída: ${recentChats.length} chats`);
+    console.log(`✅ Sincronização de chats concluída para ${instanceId}`);
   } catch (error) {
-    logWithContext('error', instanceId, 'Erro na sincronização de chats', error);
+    console.error(`❌ Erro na sincronização de chats ${instanceId}:`, error);
   }
 }
 
-// Função para enviar mensagem - MELHORADA
+// Função para enviar mensagem
 async function sendMessage(instanceId, to, message) {
   try {
     const client = clients.get(instanceId);
@@ -375,25 +246,21 @@ async function sendMessage(instanceId, to, message) {
       throw new Error('Cliente não encontrado');
     }
     
-    const clientState = clientInitStates.get(instanceId);
-    if (clientState !== 'ready') {
-      throw new Error(`Cliente não está pronto. Estado atual: ${clientState}`);
+    if (clientInitStates.get(instanceId) !== 'ready') {
+      throw new Error('Cliente não está pronto');
     }
     
-    logWithContext('info', instanceId, `📤 Enviando mensagem para ${to}`);
-    
     const result = await client.sendMessage(to, message);
-    
-    logWithContext('success', instanceId, `✅ Mensagem enviada para ${to}`);
+    console.log(`✅ Mensagem enviada de ${instanceId} para ${to}`);
     
     return { success: true, messageId: result.id.id };
   } catch (error) {
-    logWithContext('error', instanceId, 'Erro ao enviar mensagem', error);
+    console.error(`❌ Erro ao enviar mensagem ${instanceId}:`, error);
     throw error;
   }
 }
 
-// Função para enviar mídia - MELHORADA
+// Função para enviar mídia
 async function sendMedia(instanceId, to, media, caption = '') {
   try {
     const client = clients.get(instanceId);
@@ -402,29 +269,23 @@ async function sendMedia(instanceId, to, media, caption = '') {
       throw new Error('Cliente não encontrado');
     }
     
-    const clientState = clientInitStates.get(instanceId);
-    if (clientState !== 'ready') {
-      throw new Error(`Cliente não está pronto. Estado atual: ${clientState}`);
+    if (clientInitStates.get(instanceId) !== 'ready') {
+      throw new Error('Cliente não está pronto');
     }
     
-    logWithContext('info', instanceId, `📤 Enviando mídia para ${to}`);
-    
     const result = await client.sendMessage(to, media, { caption });
-    
-    logWithContext('success', instanceId, `✅ Mídia enviada para ${to}`);
+    console.log(`✅ Mídia enviada de ${instanceId} para ${to}`);
     
     return { success: true, messageId: result.id.id };
   } catch (error) {
-    logWithContext('error', instanceId, 'Erro ao enviar mídia', error);
+    console.error(`❌ Erro ao enviar mídia ${instanceId}:`, error);
     throw error;
   }
 }
 
-// Função para desconectar cliente - MELHORADA
+// Função para desconectar cliente
 async function disconnectClient(instanceId) {
   try {
-    logWithContext('info', instanceId, '🔌 Iniciando desconexão...');
-    
     const client = clients.get(instanceId);
     
     if (client) {
@@ -432,52 +293,33 @@ async function disconnectClient(instanceId) {
       await client.destroy();
       clients.delete(instanceId);
       clientInitStates.delete(instanceId);
-      clientRetries.delete(instanceId);
       
       await updateClientStatus(instanceId, 'disconnected');
       
-      logWithContext('success', instanceId, '✅ Cliente desconectado com sucesso');
+      console.log(`✅ Cliente ${instanceId} desconectado`);
       return { success: true };
     }
     
     return { success: false, message: 'Cliente não encontrado' };
   } catch (error) {
-    logWithContext('error', instanceId, 'Erro ao desconectar', error);
+    console.error(`❌ Erro ao desconectar ${instanceId}:`, error);
     return { success: false, error: error.message };
   }
 }
 
-// Função para obter status do cliente - MELHORADA
+// Função para obter status do cliente
 function getClientStatus(instanceId) {
   const client = clients.get(instanceId);
   const initState = clientInitStates.get(instanceId);
-  const retryCount = clientRetries.get(instanceId) || 0;
   
   if (!client) {
-    return { 
-      exists: false, 
-      state: null,
-      isReady: false,
-      retries: retryCount
-    };
+    return { exists: false, state: null };
   }
   
   return {
     exists: true,
     state: initState || 'unknown',
-    isReady: initState === 'ready',
-    retries: retryCount
-  };
-}
-
-// Função para obter estatísticas do sistema
-function getSystemStats() {
-  return {
-    totalClients: clients.size,
-    readyClients: Array.from(clientInitStates.values()).filter(state => state === 'ready').length,
-    initializingClients: Array.from(clientInitStates.values()).filter(state => state === 'initializing').length,
-    clientStates: Object.fromEntries(clientInitStates),
-    memoryUsage: process.memoryUsage()
+    isReady: initState === 'ready'
   };
 }
 
@@ -490,7 +332,5 @@ module.exports = {
   sendMedia,
   disconnectClient,
   getClientStatus,
-  syncInitialChats,
-  getSystemStats,
-  logWithContext
+  syncInitialChats
 };

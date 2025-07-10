@@ -1,25 +1,17 @@
-
-// server/modules/api-routes.js - API Routes COMPLETA E CORRIGIDA
+// server/modules/api-routes.js - Todos os endpoints da API
 const { 
   createWhatsAppInstance, 
   getClientStatus, 
   sendMessage, 
   sendMedia, 
-  disconnectClient,
-  getSystemStats
+  disconnectClient 
 } = require('./whatsapp-client');
 const { supabase } = require('./database');
 const { mime } = require('./config');
 
 // Configurar todas as rotas da API
 function setupApiRoutes(app, io) {
-  console.log('🛣️ Configurando rotas da API CORRIGIDAS...');
-
-  // Middleware de logging para debugging
-  app.use((req, res, next) => {
-    console.log(`📡 ${req.method} ${req.path} - ${new Date().toISOString()}`);
-    next();
-  });
+  console.log('🛣️ Configurando rotas da API...');
 
   /**
    * @swagger
@@ -32,14 +24,11 @@ function setupApiRoutes(app, io) {
    *         description: Servidor funcionando
    */
   app.get('/health', (req, res) => {
-    const stats = getSystemStats();
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      version: '2.0.0',
-      server: 'modular-corrected',
-      stats
+      version: '1.0.0'
     });
   });
 
@@ -55,7 +44,7 @@ function setupApiRoutes(app, io) {
    */
   app.get('/clients', async (req, res) => {
     try {
-      console.log('📋 [API] Listando todas as instâncias...');
+      console.log('📋 Listando todas as instâncias...');
       
       const { data: instances, error } = await supabase
         .from('whatsapp_instances')
@@ -74,26 +63,20 @@ function setupApiRoutes(app, io) {
           clientId: instance.instance_id,
           clientActive: clientStatus.exists,
           clientState: clientStatus.state,
-          isReady: clientStatus.isReady,
-          retries: clientStatus.retries
+          isReady: clientStatus.isReady
         };
       });
       
-      console.log(`✅ [API] Retornando ${clientsWithStatus.length} instâncias`);
-      
       res.json({
         success: true,
-        clients: clientsWithStatus,
-        total: clientsWithStatus.length,
-        stats: getSystemStats()
+        clients: clientsWithStatus
       });
       
     } catch (error) {
-      console.error('❌ [API] Erro ao listar instâncias:', error);
+      console.error('❌ Erro ao listar instâncias:', error);
       res.status(500).json({
         success: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
+        error: error.message
       });
     }
   });
@@ -117,33 +100,25 @@ function setupApiRoutes(app, io) {
    *         description: Erro ao conectar
    */
   app.post('/clients/:id/connect', async (req, res) => {
-    const startTime = Date.now();
-    
     try {
       const { id: instanceId } = req.params;
       
-      console.log(`🔗 [API] Conectando instância: ${instanceId}`);
+      console.log(`🔗 Conectando instância: ${instanceId}`);
       
       // Verificar se instância existe no banco
-      const { data: existingInstance, error: selectError } = await supabase
+      const { data: existingInstance } = await supabase
         .from('whatsapp_instances')
         .select('*')
         .eq('instance_id', instanceId)
         .single();
       
-      if (selectError && selectError.code !== 'PGRST116') {
-        throw selectError;
-      }
-      
       if (!existingInstance) {
         // Criar instância se não existir
-        console.log(`📝 [API] Criando registro para instância: ${instanceId}`);
-        
         const { data, error } = await supabase
           .from('whatsapp_instances')
           .insert({
             instance_id: instanceId,
-            client_id: instanceId.split('_')[0], // Extrair client_id do instanceId
+            client_id: instanceId, // Temporário até ter client_id real
             status: 'connecting'
           })
           .select()
@@ -152,54 +127,26 @@ function setupApiRoutes(app, io) {
         if (error) {
           throw error;
         }
-        
-        console.log(`✅ [API] Registro criado para: ${instanceId}`);
-      } else {
-        // Atualizar status para connecting
-        await supabase
-          .from('whatsapp_instances')
-          .update({ status: 'connecting', updated_at: new Date().toISOString() })
-          .eq('instance_id', instanceId);
       }
       
       // Criar instância WhatsApp
-      console.log(`🚀 [API] Criando instância WhatsApp: ${instanceId}`);
       const result = await createWhatsAppInstance(instanceId, io);
       
-      const elapsedTime = Date.now() - startTime;
-      
       if (!result.success) {
-        console.error(`❌ [API] Falha ao criar instância ${instanceId}:`, result);
-        return res.status(500).json({
-          success: false,
-          error: result.error,
-          instanceId,
-          elapsedTime,
-          retries: result.retries || 0
-        });
+        return res.status(500).json(result);
       }
-      
-      console.log(`✅ [API] Instância conectada: ${instanceId} (${elapsedTime}ms)`);
       
       res.json({
         success: true,
         message: 'Instância conectada com sucesso',
-        clientId: instanceId,
-        instanceId,
-        elapsedTime,
-        timestamp: new Date().toISOString()
+        clientId: instanceId
       });
       
     } catch (error) {
-      const elapsedTime = Date.now() - startTime;
-      console.error(`❌ [API] Erro ao conectar instância ${req.params.id}:`, error);
-      
+      console.error(`❌ Erro ao conectar instância ${req.params.id}:`, error);
       res.status(500).json({
         success: false,
-        error: error.message,
-        instanceId: req.params.id,
-        elapsedTime,
-        timestamp: new Date().toISOString()
+        error: error.message
       });
     }
   });
@@ -226,39 +173,21 @@ function setupApiRoutes(app, io) {
     try {
       const { id: instanceId } = req.params;
       
-      console.log(`🔌 [API] Desconectando instância: ${instanceId}`);
+      console.log(`🔌 Desconectando instância: ${instanceId}`);
       
       const result = await disconnectClient(instanceId);
-      
-      // Atualizar banco de dados
-      await supabase
-        .from('whatsapp_instances')
-        .update({ 
-          status: 'disconnected', 
-          updated_at: new Date().toISOString(),
-          qr_code: null,
-          has_qr_code: false,
-          qr_expires_at: null
-        })
-        .eq('instance_id', instanceId);
-      
-      console.log(`✅ [API] Instância desconectada: ${instanceId}`);
       
       res.json({
         success: true,
         message: 'Instância desconectada com sucesso',
-        data: result,
-        instanceId,
-        timestamp: new Date().toISOString()
+        data: result
       });
       
     } catch (error) {
-      console.error(`❌ [API] Erro ao desconectar instância ${req.params.id}:`, error);
+      console.error(`❌ Erro ao desconectar instância ${req.params.id}:`, error);
       res.status(500).json({
         success: false,
-        error: error.message,
-        instanceId: req.params.id,
-        timestamp: new Date().toISOString()
+        error: error.message
       });
     }
   });
@@ -285,7 +214,7 @@ function setupApiRoutes(app, io) {
     try {
       const { id: instanceId } = req.params;
       
-      console.log(`📊 [API] Verificando status da instância: ${instanceId}`);
+      console.log(`📊 Verificando status da instância: ${instanceId}`);
       
       // Buscar no banco
       const { data: dbInstance, error } = await supabase
@@ -294,25 +223,19 @@ function setupApiRoutes(app, io) {
         .eq('instance_id', instanceId)
         .single();
       
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
-      
-      if (!dbInstance) {
+      if (error || !dbInstance) {
         return res.status(404).json({
           success: false,
-          error: 'Instância não encontrada',
-          instanceId
+          error: 'Instância não encontrada'
         });
       }
       
       // Verificar status do cliente ativo
       const clientStatus = getClientStatus(instanceId);
       
-      const response = {
+      res.json({
         success: true,
         clientId: instanceId,
-        instanceId,
         status: dbInstance.status,
         phoneNumber: dbInstance.phone_number,
         hasQrCode: dbInstance.has_qr_code || false,
@@ -320,34 +243,17 @@ function setupApiRoutes(app, io) {
         qrExpiresAt: dbInstance.qr_expires_at,
         clientActive: clientStatus.exists,
         clientState: clientStatus.state,
-        isReady: clientStatus.isReady,
-        retries: clientStatus.retries,
-        customName: dbInstance.custom_name,
-        createdAt: dbInstance.created_at,
-        updatedAt: dbInstance.updated_at,
-        timestamp: new Date().toISOString()
-      };
-      
-      console.log(`✅ [API] Status obtido para ${instanceId}:`, {
-        status: response.status,
-        hasQrCode: response.hasQrCode,
-        clientActive: response.clientActive
+        isReady: clientStatus.isReady
       });
       
-      res.json(response);
-      
     } catch (error) {
-      console.error(`❌ [API] Erro ao obter status da instância ${req.params.id}:`, error);
+      console.error(`❌ Erro ao obter status da instância ${req.params.id}:`, error);
       res.status(500).json({
         success: false,
-        error: error.message,
-        instanceId: req.params.id,
-        timestamp: new Date().toISOString()
+        error: error.message
       });
     }
   });
-
-  // Endpoints de API RESTful adicionais
 
   /**
    * @swagger
@@ -355,6 +261,24 @@ function setupApiRoutes(app, io) {
    *   post:
    *     summary: Criar nova instância WhatsApp
    *     tags: [Instâncias]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               instanceId:
+   *                 type: string
+   *               clientId:
+   *                 type: string
+   *     responses:
+   *       201:
+   *         description: Instância criada com sucesso
+   *       400:
+   *         description: Dados inválidos
+   *       500:
+   *         description: Erro interno
    */
   app.post('/api/clients', async (req, res) => {
     try {
@@ -367,9 +291,9 @@ function setupApiRoutes(app, io) {
         });
       }
       
-      console.log(`📝 [API] Criando instância: ${instanceId} para cliente: ${clientId}`);
+      console.log(`📝 Criando instância: ${instanceId} para cliente: ${clientId}`);
       
-      // Verificar se instância já existe
+      // Verificar se instância já existe no banco
       const { data: existingInstance } = await supabase
         .from('whatsapp_instances')
         .select('*')
@@ -398,19 +322,88 @@ function setupApiRoutes(app, io) {
         throw error;
       }
       
+      // Criar instância WhatsApp
+      const result = await createWhatsAppInstance(instanceId, io);
+      
+      if (!result.success) {
+        // Remover do banco se falhou
+        await supabase
+          .from('whatsapp_instances')
+          .delete()
+          .eq('instance_id', instanceId);
+        
+        return res.status(500).json(result);
+      }
+      
       res.status(201).json({
         success: true,
         message: 'Instância criada com sucesso',
-        data: { instanceId, clientId },
-        timestamp: new Date().toISOString()
+        data: { instanceId, clientId }
       });
       
     } catch (error) {
-      console.error('❌ [API] Erro ao criar instância:', error);
+      console.error('❌ Erro ao criar instância:', error);
       res.status(500).json({
         success: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/clients/{id}:
+   *   get:
+   *     summary: Obter status da instância
+   *     tags: [Instâncias]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Status da instância
+   *       404:
+   *         description: Instância não encontrada
+   */
+  app.get('/api/clients/:id', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      
+      // Buscar no banco
+      const { data: dbInstance, error } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      if (error || !dbInstance) {
+        return res.status(404).json({
+          success: false,
+          error: 'Instância não encontrada'
+        });
+      }
+      
+      // Verificar status do cliente ativo
+      const clientStatus = getClientStatus(instanceId);
+      
+      res.json({
+        success: true,
+        data: {
+          ...dbInstance,
+          clientActive: clientStatus.exists,
+          clientState: clientStatus.state,
+          isReady: clientStatus.isReady
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao obter status:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
       });
     }
   });
@@ -421,6 +414,30 @@ function setupApiRoutes(app, io) {
    *   post:
    *     summary: Enviar mensagem de texto
    *     tags: [Mensagens]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               to:
+   *                 type: string
+   *               message:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Mensagem enviada
+   *       400:
+   *         description: Dados inválidos
+   *       500:
+   *         description: Erro ao enviar
    */
   app.post('/api/clients/:id/send', async (req, res) => {
     try {
@@ -434,38 +451,195 @@ function setupApiRoutes(app, io) {
         });
       }
       
-      console.log(`📤 [API] Enviando mensagem de ${instanceId} para ${to}`);
+      console.log(`📤 Enviando mensagem de ${instanceId} para ${to}`);
       
       const result = await sendMessage(instanceId, to, message);
       
       res.json({
         success: true,
         message: 'Mensagem enviada com sucesso',
-        data: result,
-        timestamp: new Date().toISOString()
+        data: result
       });
       
     } catch (error) {
-      console.error('❌ [API] Erro ao enviar mensagem:', error);
+      console.error('❌ Erro ao enviar mensagem:', error);
       res.status(500).json({
         success: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
+        error: error.message
       });
     }
   });
 
-  // Endpoint para estatísticas do sistema
-  app.get('/api/stats', (req, res) => {
-    const stats = getSystemStats();
-    res.json({
-      success: true,
-      stats,
-      timestamp: new Date().toISOString()
-    });
+  /**
+   * @swagger
+   * /api/clients/{id}/send-media:
+   *   post:
+   *     summary: Enviar arquivo de mídia
+   *     tags: [Mensagens]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         multipart/form-data:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               to:
+   *                 type: string
+   *               caption:
+   *                 type: string
+   *               file:
+   *                 type: string
+   *                 format: binary
+   *     responses:
+   *       200:
+   *         description: Mídia enviada
+   *       400:
+   *         description: Dados inválidos
+   *       500:
+   *         description: Erro ao enviar
+   */
+  app.post('/api/clients/:id/send-media', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      const { to, caption = '' } = req.body;
+      
+      if (!to) {
+        return res.status(400).json({
+          success: false,
+          error: 'Campo to é obrigatório'
+        });
+      }
+      
+      if (!req.files || !req.files.file) {
+        return res.status(400).json({
+          success: false,
+          error: 'Arquivo é obrigatório'
+        });
+      }
+      
+      const file = req.files.file;
+      console.log(`📤 Enviando mídia de ${instanceId} para ${to}:`, file.name);
+      
+      // Preparar mídia para envio
+      const media = {
+        data: file.data.toString('base64'),
+        mimetype: file.mimetype,
+        filename: file.name
+      };
+      
+      const result = await sendMedia(instanceId, to, media, caption);
+      
+      res.json({
+        success: true,
+        message: 'Mídia enviada com sucesso',
+        data: result
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao enviar mídia:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
   });
 
-  console.log('✅ Rotas da API CORRIGIDAS configuradas');
+  /**
+   * @swagger
+   * /api/clients/{id}/logout:
+   *   post:
+   *     summary: Desconectar instância
+   *     tags: [Instâncias]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Instância desconectada
+   *       500:
+   *         description: Erro ao desconectar
+   */
+  app.post('/api/clients/:id/logout', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      
+      console.log(`🔌 Desconectando instância: ${instanceId}`);
+      
+      const result = await disconnectClient(instanceId);
+      
+      res.json({
+        success: true,
+        message: 'Instância desconectada com sucesso',
+        data: result
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao desconectar:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/clients/{id}/close:
+   *   post:
+   *     summary: Fechar instância completamente
+   *     tags: [Instâncias]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Instância fechada
+   *       500:
+   *         description: Erro ao fechar
+   */
+  app.post('/api/clients/:id/close', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      
+      console.log(`❌ Fechando instância: ${instanceId}`);
+      
+      // Desconectar cliente
+      const result = await disconnectClient(instanceId);
+      
+      // Remover do banco de dados
+      await supabase
+        .from('whatsapp_instances')
+        .delete()
+        .eq('instance_id', instanceId);
+      
+      res.json({
+        success: true,
+        message: 'Instância fechada e removida com sucesso',
+        data: result
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao fechar instância:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  console.log('✅ Rotas da API configuradas');
 }
 
 module.exports = {
