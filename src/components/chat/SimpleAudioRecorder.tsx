@@ -22,6 +22,7 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const startTimeRef = useRef<number>(0);
   
   const { toast } = useToast();
 
@@ -33,21 +34,28 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
   const checkMicrophonePermission = async () => {
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
+        console.log('❌ getUserMedia não suportado');
         setHasPermission(false);
         return;
       }
       
       const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      console.log('🎤 Permissão do microfone:', permission.state);
       setHasPermission(permission.state === 'granted');
     } catch (error) {
-      console.error('Erro ao verificar permissões:', error);
+      console.error('❌ Erro ao verificar permissões:', error);
       setHasPermission(null);
     }
   };
 
   const cleanup = () => {
+    console.log('🧹 Limpando recursos...');
+    
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('🛑 Track parado:', track.kind);
+      });
       streamRef.current = null;
     }
     
@@ -64,6 +72,7 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
 
   const requestMicrophoneAccess = async () => {
     try {
+      console.log('🎤 Solicitando acesso ao microfone...');
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
@@ -73,11 +82,12 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
         } 
       });
       
+      console.log('✅ Acesso concedido');
       setHasPermission(true);
       stream.getTracks().forEach(track => track.stop());
       return true;
     } catch (error) {
-      console.error('Erro ao solicitar microfone:', error);
+      console.error('❌ Erro ao solicitar microfone:', error);
       setHasPermission(false);
       
       toast({
@@ -92,11 +102,14 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
 
   const startRecording = async () => {
     try {
+      console.log('🎤 ===== INICIANDO GRAVAÇÃO REVISADA =====');
+      
       if (hasPermission !== true) {
         const hasAccess = await requestMicrophoneAccess();
         if (!hasAccess) return;
       }
       
+      // Obter stream
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
@@ -107,82 +120,128 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
         } 
       });
       
+      console.log('📡 Stream obtido:', {
+        tracks: stream.getTracks().length,
+        audioTracks: stream.getAudioTracks().length,
+        settings: stream.getAudioTracks()[0]?.getSettings()
+      });
+      
       streamRef.current = stream;
       chunksRef.current = [];
       
-      // Preferir OGG (mais compatível com WhatsApp), depois WAV
+      // Teste de formatos - priorizar OGG/WebM para WhatsApp
       const supportedTypes = [
         'audio/ogg;codecs=opus',
-        'audio/webm;codecs=opus',
-        'audio/wav',
-        'audio/webm'
+        'audio/webm;codecs=opus', 
+        'audio/webm',
+        'audio/wav'
       ];
       
-      let selectedType = 'audio/wav'; // fallback seguro
+      let selectedType = 'audio/webm'; // fallback mais seguro
       for (const type of supportedTypes) {
         if (MediaRecorder.isTypeSupported(type)) {
           selectedType = type;
-          console.log('✅ Formato de gravação selecionado:', type);
+          console.log('✅ Formato selecionado:', type);
           break;
         }
       }
       
+      console.log('🎵 Criando MediaRecorder com:', selectedType);
+      
+      // Criar MediaRecorder
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: selectedType,
-        audioBitsPerSecond: 128000 // qualidade otimizada
+        mimeType: selectedType
       });
       
       mediaRecorderRef.current = mediaRecorder;
       
+      // Event handlers
       mediaRecorder.ondataavailable = (event) => {
+        console.log('📊 Dados disponíveis:', {
+          size: event.data.size,
+          type: event.data.type,
+          timestamp: Date.now() - startTimeRef.current
+        });
+        
         if (event.data.size > 0) {
           chunksRef.current.push(event.data);
         }
       };
       
       mediaRecorder.onstop = () => {
+        console.log('🛑 ===== GRAVAÇÃO PARADA =====');
+        
+        const recordedDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        console.log('⏱️ Duração calculada:', recordedDuration, 'segundos');
+        console.log('📦 Chunks coletados:', chunksRef.current.length);
+        console.log('📏 Tamanhos:', chunksRef.current.map(c => c.size));
+        
+        if (chunksRef.current.length === 0) {
+          console.error('❌ Nenhum chunk foi coletado!');
+          toast({
+            title: "Erro na Gravação",
+            description: "Nenhum dado de áudio foi capturado",
+            variant: "destructive",
+          });
+          return;
+        }
+        
         const blob = new Blob(chunksRef.current, { type: selectedType });
         
-        console.log('📦 Áudio gravado:', {
+        console.log('📦 Blob final:', {
           size: blob.size,
           type: blob.type,
           sizeInKB: Math.round(blob.size / 1024),
-          recordedDuration: currentTime
+          duration: recordedDuration
         });
         
-        if (blob.size > 0) {
-          setRecordedBlob(blob);
-          // ✅ CORREÇÃO: Manter a duração atual do timer
-          setDuration(currentTime);
-        } else {
+        if (blob.size === 0) {
+          console.error('❌ Blob vazio criado!');
           toast({
             title: "Erro na Gravação",
             description: "Áudio gravado está vazio",
             variant: "destructive",
           });
+          return;
         }
+        
+        console.log('✅ Gravação bem-sucedida!');
+        setRecordedBlob(blob);
+        setDuration(recordedDuration);
         
         cleanup();
       };
       
-      mediaRecorder.start(250); // chunks menores para melhor qualidade
+      mediaRecorder.onerror = (event) => {
+        console.error('❌ Erro no MediaRecorder:', event);
+        toast({
+          title: "Erro na Gravação",
+          description: "Falha durante a gravação",
+          variant: "destructive",
+        });
+      };
+      
+      // Iniciar gravação
+      startTimeRef.current = Date.now();
+      mediaRecorder.start(250); // Chunks a cada 250ms
       setIsRecording(true);
       setCurrentTime(0);
       
-      // Timer
+      console.log('🔴 Gravação iniciada em:', new Date().toISOString());
+      
+      // Timer visual
       timerRef.current = setInterval(() => {
-        setCurrentTime(prev => {
-          const newTime = prev + 1;
-          if (newTime >= maxDuration) {
-            stopRecording();
-            return maxDuration;
-          }
-          return newTime;
-        });
+        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setCurrentTime(elapsed);
+        
+        if (elapsed >= maxDuration) {
+          console.log('⏰ Tempo máximo atingido');
+          stopRecording();
+        }
       }, 1000);
       
     } catch (error) {
-      console.error('Erro ao iniciar gravação:', error);
+      console.error('❌ Erro ao iniciar gravação:', error);
       toast({
         title: "Erro na Gravação",
         description: "Não foi possível acessar o microfone",
@@ -195,46 +254,73 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
   };
 
   const stopRecording = () => {
+    console.log('🛑 Parando gravação...');
+    
     if (mediaRecorderRef.current && isRecording) {
       if (mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.stop();
+        console.log('🛑 MediaRecorder.stop() chamado');
       }
       setIsRecording(false);
       
-      // ✅ CORREÇÃO: Parar timer APÓS MediaRecorder.stop() para preservar currentTime
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      
-      console.log('🛑 Gravação parada - duração preservada:', currentTime, 'segundos');
     }
   };
 
   const playRecording = () => {
     if (recordedBlob && !isPlaying) {
+      console.log('▶️ Reproduzindo áudio...');
+      
       const audioUrl = URL.createObjectURL(recordedBlob);
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
       
-      audio.onplay = () => setIsPlaying(true);
+      // Debug da reprodução
+      audio.onloadstart = () => console.log('🔄 Carregando áudio...');
+      audio.oncanplay = () => console.log('✅ Áudio pronto para reproduzir');
+      audio.onplay = () => {
+        console.log('▶️ Reprodução iniciada');
+        setIsPlaying(true);
+      };
       audio.onended = () => {
+        console.log('⏹️ Reprodução finalizada');
         setIsPlaying(false);
         URL.revokeObjectURL(audioUrl);
       };
+      audio.onerror = (error) => {
+        console.error('❌ Erro na reprodução:', error);
+        setIsPlaying(false);
+        URL.revokeObjectURL(audioUrl);
+        toast({
+          title: "Erro na Reprodução",
+          description: "Não foi possível reproduzir o áudio",
+          variant: "destructive",
+        });
+      };
       
       audio.play().catch(error => {
-        console.error('Erro na reprodução:', error);
+        console.error('❌ Erro ao iniciar reprodução:', error);
         setIsPlaying(false);
+        toast({
+          title: "Erro na Reprodução", 
+          description: "Falha ao reproduzir áudio",
+          variant: "destructive",
+        });
       });
       
     } else if (audioRef.current && isPlaying) {
+      console.log('⏸️ Pausando reprodução');
       audioRef.current.pause();
       setIsPlaying(false);
     }
   };
 
   const discardRecording = () => {
+    console.log('🗑️ Descartando gravação');
+    
     setRecordedBlob(null);
     setDuration(0);
     setCurrentTime(0);
@@ -248,14 +334,23 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
 
   const sendRecording = () => {
     if (recordedBlob && recordedBlob.size > 0) {
-      console.log('📤 Enviando áudio:', {
+      console.log('📤 ===== ENVIANDO ÁUDIO =====');
+      console.log('📊 Detalhes do envio:', {
         size: recordedBlob.size,
         type: recordedBlob.type,
-        duration: duration
+        duration: duration,
+        sizeInKB: Math.round(recordedBlob.size / 1024)
       });
       
       onAudioReady(recordedBlob, duration);
       discardRecording();
+    } else {
+      console.error('❌ Tentativa de envio com blob inválido');
+      toast({
+        title: "Erro",
+        description: "Áudio inválido ou vazio",
+        variant: "destructive",
+      });
     }
   };
 
