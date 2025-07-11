@@ -138,17 +138,12 @@ async function createWhatsAppInstance(instanceId, io) {
         }),
         puppeteer: {
           headless: true,
+          timeout: 120000, // ✅ Aumentar timeout para 120s
           args: [
             '--no-sandbox',
-            '--disable-setuid-sandbox',
+            '--disable-setuid-sandbox', 
             '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
+            '--unhandled-rejections=strict' // ✅ Adicionar gestão de rejeições
             '--disable-renderer-backgrounding',
             '--disable-extensions',
             '--disable-default-apps',
@@ -214,17 +209,12 @@ async function createWhatsAppInstance(instanceId, io) {
             }),
             puppeteer: {
               headless: true,
+              timeout: 120000, // ✅ Aumentar timeout para 120s  
               args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-gpu',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
+                '--disable-dev-shm-usage', 
+                '--unhandled-rejections=strict' // ✅ Adicionar gestão de rejeições
                 '--disable-renderer-backgrounding',
                 '--disable-extensions',
                 '--disable-default-apps',
