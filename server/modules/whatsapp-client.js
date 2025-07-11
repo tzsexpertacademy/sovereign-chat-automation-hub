@@ -1,6 +1,6 @@
 
 // server/modules/whatsapp-client.js - Lógica completa do WhatsApp
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const { QRCode, fs, path } = require('./config');
 const { updateClientStatus, saveMessageToSupabase, syncChatToSupabase } = require('./database');
 
@@ -564,6 +564,7 @@ function getClientStatus(instanceId) {
 // Função para enviar áudio com whatsapp-web.js v1.25.0+ APIs corretas
 async function sendAudio(instanceId, to, audioFile) {
   try {
+    console.log('🎵 ===== CORREÇÃO DEFINITIVA - APIs CORRETAS =====');
     console.log('🎵 sendAudio() - APIs corretas whatsapp-web.js v1.25.0+');
     const client = clients.get(instanceId);
     
@@ -575,20 +576,42 @@ async function sendAudio(instanceId, to, audioFile) {
       throw new Error('Cliente não está pronto');
     }
 
-    // ✅ CORREÇÃO: Usar MessageMedia.fromFilePath (API oficial v1.25.0+)
-    const { MessageMedia } = require('whatsapp-web.js');
-    
     let result;
     
     if (typeof audioFile === 'string') {
       // Caminho do arquivo
       console.log('📁 Enviando áudio via MessageMedia.fromFilePath()');
+      console.log('📂 Caminho do arquivo:', audioFile);
+      
+      // ✅ CORREÇÃO 1: Validar se arquivo existe
+      if (!fs.existsSync(audioFile)) {
+        throw new Error(`Arquivo não encontrado: ${audioFile}`);
+      }
+      
+      // ✅ CORREÇÃO 2: Verificar tamanho do arquivo
+      const stats = fs.statSync(audioFile);
+      console.log('📊 Tamanho do arquivo:', stats.size, 'bytes');
+      
+      if (stats.size === 0) {
+        throw new Error('Arquivo está vazio');
+      }
+      
+      // ✅ CORREÇÃO 3: Usar MessageMedia corretamente (já importado no topo)
       const media = MessageMedia.fromFilePath(audioFile);
+      console.log('✅ MessageMedia criado:', { 
+        mimetype: media.mimetype, 
+        filename: media.filename,
+        hasData: !!media.data 
+      });
+      
       result = await client.sendMessage(to, media);
+      
     } else if (audioFile instanceof File || audioFile.data) {
       // File object ou objeto com data
       console.log('📦 Enviando áudio via MessageMedia constructor');
-      const base64Data = audioFile.data || await fileToBase64(audioFile);
+      
+      // ✅ CORREÇÃO 4: Usar Node.js fs ao invés de FileReader
+      const base64Data = audioFile.data || await fileToBase64NodeJS(audioFile);
       const fileName = audioFile.name || 'audio.ogg';
       const mimeType = audioFile.type || 'audio/ogg';
       
@@ -598,27 +621,35 @@ async function sendAudio(instanceId, to, audioFile) {
       throw new Error('Formato de arquivo não suportado');
     }
     
-    console.log('✅ Áudio enviado via APIs corretas:', result.id._serialized);
+    console.log('✅ Sucesso real - ID da mensagem:', result.id._serialized);
+    console.log('✅ Áudio enviado via APIs corretas v1.25.0+');
     return { success: true, messageId: result.id._serialized };
     
   } catch (error) {
     console.error(`❌ Erro ao enviar áudio ${instanceId}:`, error);
+    console.error('❌ Stack do erro:', error.stack);
     throw error;
   }
 }
 
-// Helper para converter File para base64
-async function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      const base64 = result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+// ✅ CORREÇÃO 5: Helper Node.js para converter arquivo para base64
+async function fileToBase64NodeJS(file) {
+  try {
+    if (typeof file === 'string') {
+      // É um caminho de arquivo
+      const fileData = fs.readFileSync(file);
+      return fileData.toString('base64');
+    } else if (file.path) {
+      // Objeto File com path
+      const fileData = fs.readFileSync(file.path);
+      return fileData.toString('base64');
+    } else {
+      throw new Error('Formato de arquivo não suportado para conversão base64');
+    }
+  } catch (error) {
+    console.error('❌ Erro na conversão base64:', error);
+    throw error;
+  }
 }
 
 module.exports = {
