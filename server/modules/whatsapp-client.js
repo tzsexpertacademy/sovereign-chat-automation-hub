@@ -598,13 +598,22 @@ async function sendAudio(instanceId, to, audioFile) {
       
       // ✅ CORREÇÃO 3: Usar MessageMedia corretamente (já importado no topo)
       const media = MessageMedia.fromFilePath(audioFile);
+      
+      // ✅ CORREÇÃO DEFINITIVA: Forçar mimetype correto para áudio
+      media.mimetype = 'audio/ogg; codecs=opus';
+      
       console.log('✅ MessageMedia criado:', { 
         mimetype: media.mimetype, 
         filename: media.filename,
         hasData: !!media.data 
       });
       
-      result = await client.sendMessage(to, media);
+      // ✅ CORREÇÃO DEFINITIVA: Usar opções específicas para áudio (contorna bug v1.25.0)
+      console.log('🎵 Enviando com sendAudioAsVoice: true');
+      result = await client.sendMessage(to, media, { 
+        sendAudioAsVoice: true,
+        mimetype: 'audio/ogg; codecs=opus'
+      });
       
     } else if (audioFile instanceof File || audioFile.data) {
       // File object ou objeto com data
@@ -613,10 +622,16 @@ async function sendAudio(instanceId, to, audioFile) {
       // ✅ CORREÇÃO 4: Usar Node.js fs ao invés de FileReader
       const base64Data = audioFile.data || await fileToBase64NodeJS(audioFile);
       const fileName = audioFile.name || 'audio.ogg';
-      const mimeType = audioFile.type || 'audio/ogg';
+      const mimeType = 'audio/ogg; codecs=opus'; // ✅ Forçar mimetype correto
       
       const media = new MessageMedia(mimeType, base64Data, fileName);
-      result = await client.sendMessage(to, media);
+      
+      // ✅ CORREÇÃO DEFINITIVA: Usar opções específicas para áudio
+      console.log('🎵 Enviando File object com sendAudioAsVoice: true');
+      result = await client.sendMessage(to, media, { 
+        sendAudioAsVoice: true,
+        mimetype: 'audio/ogg; codecs=opus'
+      });
     } else {
       throw new Error('Formato de arquivo não suportado');
     }
