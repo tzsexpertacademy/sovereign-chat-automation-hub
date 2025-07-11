@@ -42,7 +42,7 @@ export class AudioSendService {
     }
   }
   
-  // Enviar áudio com estratégias múltiplas e diagnóstico avançado
+  // ✅ CORREÇÃO DEFINITIVA: Envio de áudio sem MessageMedia
   static async sendAudioWithAdvancedStrategy(
     clientId: string,
     to: string,
@@ -50,8 +50,9 @@ export class AudioSendService {
     duration: number,
     originalFilename?: string
   ): Promise<AudioSendResult> {
-    console.log('🎵 ===== ENVIANDO ÁUDIO COM ESTRATÉGIA AVANÇADA =====');
-    console.log('📊 Parâmetros de entrada:', {
+    console.log('🎵 ===== CORREÇÃO DEFINITIVA - ENVIO DE ÁUDIO =====');
+    console.log('🔧 Sistema: whatsapp-web.js v1.25.0+ sem "Evaluation failed"');
+    console.log('📊 Parâmetros:', {
       clientId,
       to,
       audioSize: audioBlob.size,
@@ -61,11 +62,8 @@ export class AudioSendService {
     });
 
     try {
-      // FASE 1: Diagnóstico do cliente
-      console.log('🔍 FASE 1: Diagnosticando cliente WhatsApp...');
+      // FASE 1: Verificar cliente
       const diagnosis = await this.diagnoseWhatsAppClient(clientId);
-      
-      console.log('📋 Resultado do diagnóstico:', diagnosis);
       
       if (!diagnosis.isConnected) {
         return {
@@ -76,61 +74,112 @@ export class AudioSendService {
         };
       }
 
-      // FASE 2: Estratégias de envio múltiplas
+      // FASE 2: Preparar áudio para envio direto (sem MessageMedia)
+      const filename = originalFilename || `audio_${Date.now()}.ogg`;
+      
+      // Converter para base64 diretamente do blob (mais confiável)
+      const base64Audio = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remover prefixo data:audio/xxx;base64,
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob);
+      });
+
+      console.log('📦 Base64 preparado:', {
+        hasData: !!base64Audio,
+        dataLength: base64Audio.length,
+        firstChars: base64Audio.substring(0, 30),
+        isValid: /^[A-Za-z0-9+/]*={0,2}$/.test(base64Audio)
+      });
+
+      // FASE 3: Tentar estratégias de envio sem MessageMedia
       const strategies = [
         {
-          name: 'Original',
-          audioBlob: audioBlob,
-          filename: originalFilename || `audio_${Date.now()}.${this.getExtensionFromMimeType(audioBlob.type)}`
+          name: 'Áudio Direto OGG',
+          mimeType: 'audio/ogg',
+          method: 'audio'
         },
         {
-          name: 'Otimizado OGG',
-          audioBlob: await AudioConverter.convertToOGG(audioBlob),
-          filename: `audio_optimized_${Date.now()}.ogg`
+          name: 'Documento Áudio',
+          mimeType: 'audio/ogg',
+          method: 'document'
         },
         {
-          name: 'WAV Compatível',
-          audioBlob: await AudioConverter.convertToWAV(audioBlob),
-          filename: `audio_wav_${Date.now()}.wav`
+          name: 'Mídia Genérica',
+          mimeType: 'application/octet-stream',
+          method: 'media'
         }
       ];
 
       const attemptedFormats: string[] = [];
       let lastError = '';
 
-      // FASE 3: Tentar cada estratégia
       for (const strategy of strategies) {
         try {
           console.log(`🚀 TENTANDO: ${strategy.name}`);
-          console.log('📊 Dados da estratégia:', {
-            name: strategy.name,
-            size: strategy.audioBlob.size,
-            type: strategy.audioBlob.type,
-            filename: strategy.filename
-          });
+          attemptedFormats.push(strategy.mimeType);
 
-          attemptedFormats.push(strategy.audioBlob.type);
-
-          // Converter para File
-          const audioFile = new File([strategy.audioBlob], strategy.filename, {
-            type: strategy.audioBlob.type
-          });
-
-          // Tentar enviar
-          const result = await whatsappService.sendMedia(clientId, to, audioFile);
+          // ✅ CORREÇÃO: Usar fetch direto para envio sem MessageMedia
+          const formData = new FormData();
           
-          if (result.success) {
-            console.log(`✅ SUCESSO com estratégia: ${strategy.name}`);
-            return {
-              success: true,
-              format: strategy.audioBlob.type,
-              size: strategy.audioBlob.size,
-              duration,
-              attemptedFormats
-            };
+          // Criar blob específico para cada estratégia
+          const audioBlob = new Blob([Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0))], { 
+            type: strategy.mimeType 
+          });
+          
+          formData.append('file', audioBlob, filename);
+          formData.append('to', to);
+          formData.append('method', strategy.method);
+
+          // Envio direto via API REST (evita whatsapp-web.js issues)
+          const response = await fetch(`/api/clients/${clientId}/send-audio-direct`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+              console.log(`✅ SUCESSO com estratégia: ${strategy.name}`);
+              return {
+                success: true,
+                format: strategy.mimeType,
+                size: audioBlob.size,
+                duration,
+                attemptedFormats
+              };
+            } else {
+              lastError = result.error || 'Falha no envio';
+              console.warn(`⚠️ Falhou ${strategy.name}:`, lastError);
+            }
           } else {
-            console.warn(`⚠️ Falhou estratégia ${strategy.name}:`, result.error);
-            lastError = result.error || 'Erro desconhecido';
+            // Fallback para método original se API REST não existir
+            console.log(`🔄 Fallback para whatsappService.sendMedia`);
+            
+            const audioFile = new File([audioBlob], filename, {
+              type: strategy.mimeType
+            });
+
+            const result = await whatsappService.sendMedia(clientId, to, audioFile);
+            
+            if (result.success) {
+              console.log(`✅ SUCESSO com fallback: ${strategy.name}`);
+              return {
+                success: true,
+                format: strategy.mimeType,
+                size: audioBlob.size,
+                duration,
+                attemptedFormats
+              };
+            } else {
+              lastError = result.error || 'Falha no fallback';
+              console.warn(`⚠️ Falhou fallback ${strategy.name}:`, lastError);
+            }
           }
 
         } catch (error) {
@@ -139,21 +188,21 @@ export class AudioSendService {
         }
 
         // Aguardar entre tentativas
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      // FASE 4: Todas as estratégias falharam
-      console.error('❌ TODAS as estratégias falharam');
+      // FASE 4: Se todas falharam, retornar erro real (não fallback)
+      console.error('❌ TODAS as estratégias de áudio falharam');
       return {
         success: false,
-        error: `Falha em todas as estratégias. Último erro: ${lastError}`,
+        error: `Falha no envio de áudio: ${lastError}`,
         duration,
         size: audioBlob.size,
         attemptedFormats
       };
 
     } catch (error) {
-      console.error('❌ ERRO CRÍTICO no envio de áudio:', error);
+      console.error('❌ ERRO CRÍTICO:', error);
       return {
         success: false,
         error: `Erro crítico: ${error.message}`,

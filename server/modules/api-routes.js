@@ -770,6 +770,180 @@ const AudioSendService = require('../services/audioSendService');
 
   /**
    * @swagger
+   * /api/clients/{id}/send-audio-direct:
+   *   post:
+   *     summary: Enviar áudio direto sem MessageMedia (correção definitiva)
+   *     tags: [Mensagens]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         multipart/form-data:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               file:
+   *                 type: string
+   *                 format: binary
+   *               to:
+   *                 type: string
+   *               method:
+   *                 type: string
+   *                 enum: [audio, document, media]
+   *     responses:
+   *       200:
+   *         description: Áudio enviado com sucesso
+   */
+  app.post('/api/clients/:id/send-audio-direct', async (req, res) => {
+    try {
+      const { id: instanceId } = req.params;
+      
+      console.log('🔧 ENVIO DIRETO - Correção definitiva sem MessageMedia');
+      console.log(`📨 Instância: ${instanceId}`);
+      
+      // Parse do FormData
+      const formidable = require('formidable');
+      const form = new formidable.IncomingForm();
+      
+      form.parse(req, async (err, fields, files) => {
+        if (err) {
+          return res.status(400).json({
+            success: false,
+            error: 'Erro ao processar upload: ' + err.message
+          });
+        }
+        
+        const { to, method = 'buffer' } = fields;
+        const audioFile = files.file;
+        
+        if (!audioFile || !to) {
+          return res.status(400).json({
+            success: false,
+            error: 'Arquivo de áudio e destinatário obrigatórios'
+          });
+        }
+        
+        // Verificar cliente
+        const { getClientStatus } = require('./whatsapp-client');
+        const clientStatus = getClientStatus(instanceId);
+        
+        if (!clientStatus.exists || !clientStatus.isReady) {
+          return res.status(400).json({
+            success: false,
+            error: 'Cliente não conectado'
+          });
+        }
+        
+        console.log(`🎯 Método: ${method}, Arquivo: ${audioFile.originalFilename}`);
+        
+        const fs = require('fs');
+        let tempFilePath = null;
+        
+        try {
+          // ✅ MÉTODO DEFINITIVO: Envio direto por buffer (sem MessageMedia)
+          const audioBuffer = fs.readFileSync(audioFile.filepath);
+          
+          console.log('📦 Enviando buffer direto (sem MessageMedia)...');
+          
+          // Estratégia sem MessageMedia - apenas buffer + opções
+          const result = await clientStatus.client.sendMessage(to, audioBuffer, {
+            type: 'document',
+            mimetype: 'audio/ogg', 
+            filename: audioFile.originalFilename || 'audio.ogg',
+            caption: '🎵 Mensagem de áudio'
+          });
+          
+          console.log('✅ BUFFER ENVIADO! ID:', result?.id?.id || result?.id || 'sem-id');
+          
+          // Limpar arquivo temporário
+          try {
+            fs.unlinkSync(audioFile.filepath);
+          } catch (cleanupError) {
+            console.warn('⚠️ Limpeza:', cleanupError.message);
+          }
+          
+          if (result && (result.id || result._data)) {
+            return res.json({
+              success: true,
+              message: 'Áudio enviado via buffer direto',
+              method: 'buffer-direct',
+              messageId: result.id?.id || result.id || 'buffer-success'
+            });
+          } else {
+            throw new Error('Sem resultado válido do buffer');
+          }
+          
+        } catch (bufferError) {
+          console.error(`❌ Buffer falhou: ${bufferError.message}`);
+          
+          // Fallback para AudioSendService original
+          console.log('🔄 Fallback para AudioSendService...');
+          
+          try {
+            // Copiar arquivo para local temporário
+            const path = require('path');
+            const tempDir = path.join(process.cwd(), 'temp');
+            
+            if (!fs.existsSync(tempDir)) {
+              fs.mkdirSync(tempDir, { recursive: true });
+            }
+            
+            tempFilePath = path.join(tempDir, `fallback_${Date.now()}.ogg`);
+            fs.copyFileSync(audioFile.filepath, tempFilePath);
+            
+            // Usar AudioSendService
+            const AudioSendService = require('../services/audioSendService');
+            const audioService = new AudioSendService();
+            
+            const fallbackResult = await audioService.sendAudioWithRetry(
+              clientStatus.client,
+              to,
+              tempFilePath,
+              (audioFile.originalFilename || 'audio').replace(/\.[^/.]+$/, "")
+            );
+            
+            return res.json({
+              success: fallbackResult.success,
+              message: fallbackResult.success ? 'Áudio via fallback' : 'Falha completa',
+              method: 'fallback',
+              details: fallbackResult
+            });
+            
+          } catch (fallbackError) {
+            console.error(`❌ Fallback falhou: ${fallbackError.message}`);
+            
+            return res.status(500).json({
+              success: false,
+              error: `Buffer e fallback falharam: ${bufferError.message} | ${fallbackError.message}`
+            });
+          } finally {
+            // Limpar arquivos temporários
+            try {
+              if (audioFile.filepath) fs.unlinkSync(audioFile.filepath);
+              if (tempFilePath) fs.unlinkSync(tempFilePath);
+            } catch (cleanupError) {
+              console.warn('⚠️ Erro na limpeza final:', cleanupError.message);
+            }
+          }
+        }
+      });
+      
+    } catch (error) {
+      console.error(`❌ Erro geral: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * @swagger
    * /api/clients/{id}/audio-stats:
    *   get:
    *     summary: Obter estatísticas do serviço de áudio

@@ -107,8 +107,8 @@ class AudioSendService {
                 formato: path.extname(audioPath)
             });
             
-            // ✅ CORREÇÃO: Enviar como documento para evitar "Evaluation failed"
-            console.log(`🔧 [CORREÇÃO] Tentativa ${attempt}: Enviando áudio como documento`);
+            // ✅ CORREÇÃO DEFINITIVA: Estratégias sem MessageMedia
+            console.log(`🔧 [CORREÇÃO DEFINITIVA] Tentativa ${attempt}: Evitando "Evaluation failed"`);
             
             // Ler arquivo diretamente em base64 (mais confiável)
             const fileBuffer = fs.readFileSync(audioPath);
@@ -118,44 +118,70 @@ class AudioSendService {
             console.log(`🔍 [VALIDAÇÃO] Base64:`, {
                 hasData: !!base64Data,
                 dataLength: base64Data.length,
-                firstChars: base64Data.substring(0, 50),
+                firstChars: base64Data.substring(0, 30),
                 isValidBase64: /^[A-Za-z0-9+/]*={0,2}$/.test(base64Data)
             });
             
-            // Criar MessageMedia manualmente com base64 válido
-            const media = new MessageMedia(format.mime, base64Data, `${originalFileName}.${format.ext}`);
+            let result;
             
-            console.log(`📊 [CONFIGURAÇÃO] Mídia:`, {
-                mimetype: media.mimetype,
-                filename: media.filename,
-                hasData: !!media.data,
-                dataSize: media.data?.length || 0
+            // ✅ ESTRATÉGIAS PROGRESSIVAS SEM MessageMedia
+            if (attempt === 1) {
+                // Estratégia 1: Envio direto como buffer (mais estável)
+                console.log(`🎯 [ESTRATÉGIA 1] Envio direto como buffer`);
+                result = await client.sendMessage(to, fileBuffer, {
+                    type: 'audio',
+                    mimetype: format.mime,
+                    filename: `${originalFileName}.${format.ext}`
+                });
+            } else if (attempt === 2) {
+                // Estratégia 2: Envio como documento com buffer
+                console.log(`🎯 [ESTRATÉGIA 2] Documento com buffer`);
+                result = await client.sendMessage(to, fileBuffer, {
+                    type: 'document',
+                    mimetype: format.mime,
+                    filename: `${originalFileName}.${format.ext}`,
+                    caption: '🎵 Mensagem de áudio'
+                });
+            } else {
+                // Estratégia 3: MessageMedia manual (última tentativa)
+                console.log(`🎯 [ESTRATÉGIA 3] MessageMedia manual seguro`);
+                const { MessageMedia } = require('whatsapp-web.js');
+                
+                // Criar MessageMedia sem usar fromFilePath
+                const media = new MessageMedia(format.mime, base64Data, `${originalFileName}.${format.ext}`);
+                
+                result = await client.sendMessage(to, media, {
+                    caption: `🎵 Áudio: ${originalFileName}`
+                });
+            }
+            
+            console.log(`📊 [CONFIGURAÇÃO] Estratégia ${attempt}:`, {
+                formato: format.ext,
+                mimetype: format.mime,
+                filename: `${originalFileName}.${format.ext}`,
+                hasData: !!base64Data,
+                dataSize: base64Data.length
             });
             
-            // ✅ ESTRATÉGIA CORRIGIDA: Sempre como documento para áudio
-            const sendOptions = { 
-                caption: `🎵 Áudio: ${originalFileName}`,
-                // Remover sendAudioAsVoice que causa "Evaluation failed"
-                sendDocumentAsSticker: false
-            };
-            
-            console.log(`🎯 [ESTRATÉGIA FIXA] Enviando como documento de áudio`);
-            
             // Timeout adaptativo por tentativa
-            const timeouts = [15000, 20000, 30000]; // 15s, 20s, 30s
-            const currentTimeout = timeouts[attempt - 1] || 30000;
+            const timeouts = [10000, 15000, 25000]; // 10s, 15s, 25s (mais rápido)
+            const currentTimeout = timeouts[attempt - 1] || 25000;
             
             console.log(`⏱️ [TIMEOUT] Configurado para ${currentTimeout}ms`);
             
-            // Enviar com timeout adaptativo
-            const sendPromise = client.sendMessage(to, media, sendOptions);
+            // Aguardar resultado
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => reject(new Error(`Timeout no envio (${currentTimeout}ms)`)), currentTimeout);
             });
             
-            console.log(`📤 [ENVIANDO] Iniciando envio como documento...`);
-            await Promise.race([sendPromise, timeoutPromise]);
-            console.log(`✅ [SUCESSO] Áudio enviado como documento!`);
+            console.log(`📤 [ENVIANDO] Iniciando estratégia ${attempt}...`);
+            const finalResult = await Promise.race([Promise.resolve(result), timeoutPromise]);
+            
+            if (finalResult && (finalResult.id || finalResult._data)) {
+                console.log(`✅ [SUCESSO] Áudio enviado com estratégia ${attempt}!`);
+            } else {
+                throw new Error('Resultado inválido - sem ID de mensagem');
+            }
             
             return { success: true };
             
