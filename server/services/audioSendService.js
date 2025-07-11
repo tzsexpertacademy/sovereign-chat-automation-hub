@@ -1,49 +1,48 @@
+// ✅ CORREÇÃO DEFINITIVA - AudioSendService com APIs corretas whatsapp-web.js v1.25.0+
 
 const fs = require('fs');
 const path = require('path');
-const { MessageMedia } = require('whatsapp-web.js');
 
 class AudioSendService {
     constructor() {
         this.maxRetries = 3;
-        this.retryDelays = [2000, 5000, 10000]; // 2s, 5s, 10s
+        this.retryDelays = [1000, 3000, 5000]; // Timeouts mais rápidos
         this.supportedFormats = [
             { ext: 'ogg', mime: 'audio/ogg' },
             { ext: 'wav', mime: 'audio/wav' },
-            { ext: 'mp3', mime: 'audio/mpeg' }
+            { ext: 'webm', mime: 'audio/webm' }
         ];
     }
 
     async sendAudioWithRetry(client, to, audioPath, originalFileName = 'audio') {
-        console.log(`🎵 ===== INICIANDO ENVIO DE ÁUDIO COM RETRY =====`);
+        console.log(`🎵 ===== CORREÇÃO DEFINITIVA - APIs WHATSAPP-WEB.JS v1.25.0+ =====`);
         console.log(`📁 Arquivo: ${audioPath}`);
         console.log(`📞 Para: ${to}`);
+        console.log(`🔧 APIs corretas: MessageMedia.fromFilePath() + new MessageMedia()`);
         
         let lastError = null;
         
         for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-            const format = this.supportedFormats[attempt % this.supportedFormats.length];
-            
-            console.log(`🔄 TENTATIVA ${attempt + 1}/${this.maxRetries} - Formato: ${format.ext}`);
+            console.log(`🔄 TENTATIVA ${attempt + 1}/${this.maxRetries}`);
             
             try {
-                // Aguardar delay progressivo nas tentativas seguintes
+                // Delay progressivo
                 if (attempt > 0) {
                     const delay = this.retryDelays[attempt - 1];
-                    console.log(`⏱️ Aguardando ${delay}ms antes da tentativa...`);
+                    console.log(`⏱️ Aguardando ${delay}ms...`);
                     await this.sleep(delay);
                 }
                 
-                // Tentar enviar áudio com informação da tentativa
-                const result = await this.attemptAudioSend(client, to, audioPath, format, originalFileName, attempt + 1);
+                // ✅ ESTRATÉGIAS COM APIs REAIS DO WHATSAPP-WEB.JS
+                const result = await this.attemptAudioSendCorrect(client, to, audioPath, originalFileName, attempt + 1);
                 
                 if (result.success) {
-                    console.log(`✅ SUCESSO na tentativa ${attempt + 1} com formato ${format.ext}`);
+                    console.log(`✅ SUCESSO REAL na tentativa ${attempt + 1}!`);
                     return {
                         success: true,
                         attempt: attempt + 1,
-                        format: format.ext,
-                        message: `Áudio enviado com sucesso (${format.ext})`
+                        format: 'audio/ogg',
+                        message: `Áudio enviado com APIs corretas (tentativa ${attempt + 1})`
                     };
                 }
                 
@@ -56,204 +55,112 @@ class AudioSendService {
             }
         }
         
-        console.log(`❌ TODAS AS TENTATIVAS FALHARAM`);
-        
-        // Obter estatísticas do arquivo para fallback melhorado
-        let audioStats = {};
-        try {
-            if (fs.existsSync(audioPath)) {
-                const stats = fs.statSync(audioPath);
-                audioStats = { size: stats.size };
-            }
-        } catch (statsError) {
-            console.warn(`⚠️ Não foi possível obter estatísticas do arquivo:`, statsError.message);
-        }
-
-        // Tentar fallback para texto com informações detalhadas
-        try {
-            const fallbackResult = await this.attemptTextFallback(client, to, originalFileName, audioStats);
-            if (fallbackResult.success) {
-                return fallbackResult;
-            }
-        } catch (fallbackError) {
-            console.error(`⚠️ [FALLBACK] Fallback para texto também falhou:`, fallbackError);
-        }
-        
+        console.log(`❌ TODAS AS TENTATIVAS FALHARAM COM APIs CORRETAS`);
         return {
             success: false,
-            error: `Falha após ${this.maxRetries} tentativas. Último erro: ${lastError}`,
+            error: `Falha com APIs corretas após ${this.maxRetries} tentativas: ${lastError}`,
             attempts: this.maxRetries
         };
     }
 
-    async attemptAudioSend(client, to, audioPath, format, originalFileName, attempt = 1) {
+    async attemptAudioSendCorrect(client, to, audioPath, originalFileName, attempt = 1) {
         try {
-            console.log(`📤 [TENTATIVA ${attempt}] Enviando como ${format.ext}...`);
+            console.log(`📤 [TENTATIVA ${attempt}] APIs CORRETAS whatsapp-web.js...`);
             
-            // Diagnóstico avançado do cliente
+            // Verificar cliente
             const state = await client.getState();
-            console.log(`🔍 [DIAGNÓSTICO] Estado do cliente: ${state}`);
+            console.log(`🔍 Estado do cliente: ${state}`);
             
             if (state !== 'CONNECTED') {
                 throw new Error(`Cliente não conectado. Estado: ${state}`);
             }
 
-            // Verificar se arquivo existe e obter estatísticas
+            // Verificar arquivo
+            if (!fs.existsSync(audioPath)) {
+                throw new Error(`Arquivo não encontrado: ${audioPath}`);
+            }
+
             const stats = fs.statSync(audioPath);
-            console.log(`📊 [DIAGNÓSTICO] Arquivo:`, {
-                tamanho: stats.size,
-                tamanhoKB: Math.round(stats.size / 1024),
-                existe: fs.existsSync(audioPath),
-                formato: path.extname(audioPath)
-            });
+            console.log(`📊 Arquivo: ${Math.round(stats.size / 1024)}KB`);
             
-            // ✅ CORREÇÃO DEFINITIVA: Estratégias sem MessageMedia
-            console.log(`🔧 [CORREÇÃO DEFINITIVA] Tentativa ${attempt}: Evitando "Evaluation failed"`);
-            
-            // Ler arquivo diretamente em base64 (mais confiável)
-            const fileBuffer = fs.readFileSync(audioPath);
-            const base64Data = fileBuffer.toString('base64');
-            
-            // Validar base64 gerado
-            console.log(`🔍 [VALIDAÇÃO] Base64:`, {
-                hasData: !!base64Data,
-                dataLength: base64Data.length,
-                firstChars: base64Data.substring(0, 30),
-                isValidBase64: /^[A-Za-z0-9+/]*={0,2}$/.test(base64Data)
-            });
-            
+            const { MessageMedia } = require('whatsapp-web.js');
             let result;
             
-            // ✅ ESTRATÉGIAS PROGRESSIVAS SEM MessageMedia
+            // ✅ ESTRATÉGIA 1: MessageMedia.fromFilePath() - API OFICIAL
             if (attempt === 1) {
-                // Estratégia 1: Envio direto como buffer (mais estável)
-                console.log(`🎯 [ESTRATÉGIA 1] Envio direto como buffer`);
-                result = await client.sendMessage(to, fileBuffer, {
-                    type: 'audio',
-                    mimetype: format.mime,
-                    filename: `${originalFileName}.${format.ext}`
-                });
-            } else if (attempt === 2) {
-                // Estratégia 2: Envio como documento com buffer
-                console.log(`🎯 [ESTRATÉGIA 2] Documento com buffer`);
-                result = await client.sendMessage(to, fileBuffer, {
-                    type: 'document',
-                    mimetype: format.mime,
-                    filename: `${originalFileName}.${format.ext}`,
-                    caption: '🎵 Mensagem de áudio'
-                });
-            } else {
-                // Estratégia 3: MessageMedia manual (última tentativa)
-                console.log(`🎯 [ESTRATÉGIA 3] MessageMedia manual seguro`);
-                const { MessageMedia } = require('whatsapp-web.js');
+                console.log(`🎯 [ESTRATÉGIA 1] MessageMedia.fromFilePath() - API OFICIAL`);
                 
-                // Criar MessageMedia sem usar fromFilePath
-                const media = new MessageMedia(format.mime, base64Data, `${originalFileName}.${format.ext}`);
+                const media = MessageMedia.fromFilePath(audioPath);
+                console.log(`📦 MessageMedia criado:`, {
+                    mimetype: media.mimetype,
+                    filename: media.filename,
+                    hasData: !!media.data
+                });
                 
+                result = await client.sendMessage(to, media);
+                
+            } 
+            // ✅ ESTRATÉGIA 2: MessageMedia constructor com base64
+            else if (attempt === 2) {
+                console.log(`🎯 [ESTRATÉGIA 2] MessageMedia constructor com base64`);
+                
+                const fileBuffer = fs.readFileSync(audioPath);
+                const base64Data = fileBuffer.toString('base64');
+                const fileName = `${originalFileName}.ogg`;
+                
+                console.log(`📊 Base64: ${base64Data.length} chars, arquivo: ${fileName}`);
+                
+                const media = new MessageMedia('audio/ogg', base64Data, fileName);
+                result = await client.sendMessage(to, media);
+                
+            } 
+            // ✅ ESTRATÉGIA 3: sendMessage com options específicas para voz
+            else {
+                console.log(`🎯 [ESTRATÉGIA 3] sendMessage como audio com options`);
+                
+                const fileBuffer = fs.readFileSync(audioPath);
+                const base64Data = fileBuffer.toString('base64');
+                const fileName = `${originalFileName}.ogg`;
+                
+                const media = new MessageMedia('audio/ogg', base64Data, fileName);
+                
+                // Enviar especificamente como mensagem de voz
                 result = await client.sendMessage(to, media, {
-                    caption: `🎵 Áudio: ${originalFileName}`
+                    sendAudioAsVoice: true
                 });
             }
             
-            console.log(`📊 [CONFIGURAÇÃO] Estratégia ${attempt}:`, {
-                formato: format.ext,
-                mimetype: format.mime,
-                filename: `${originalFileName}.${format.ext}`,
-                hasData: !!base64Data,
-                dataSize: base64Data.length
+            // ✅ DETECÇÃO REAL DE SUCESSO
+            console.log(`📊 Resultado bruto:`, {
+                hasResult: !!result,
+                hasId: !!result?.id,
+                hasSerialized: !!result?.id?._serialized,
+                type: typeof result
             });
             
-            // Timeout adaptativo por tentativa
-            const timeouts = [10000, 15000, 25000]; // 10s, 15s, 25s (mais rápido)
-            const currentTimeout = timeouts[attempt - 1] || 25000;
-            
-            console.log(`⏱️ [TIMEOUT] Configurado para ${currentTimeout}ms`);
-            
-            // Aguardar resultado
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error(`Timeout no envio (${currentTimeout}ms)`)), currentTimeout);
-            });
-            
-            console.log(`📤 [ENVIANDO] Iniciando estratégia ${attempt}...`);
-            const finalResult = await Promise.race([Promise.resolve(result), timeoutPromise]);
-            
-            if (finalResult && (finalResult.id || finalResult._data)) {
-                console.log(`✅ [SUCESSO] Áudio enviado com estratégia ${attempt}!`);
+            if (result && result.id && result.id._serialized) {
+                console.log(`✅ SUCESSO REAL - ID da mensagem: ${result.id._serialized}`);
+                return { success: true, messageId: result.id._serialized };
             } else {
-                throw new Error('Resultado inválido - sem ID de mensagem');
+                throw new Error('Resultado inválido - API não retornou ID válido');
             }
-            
-            return { success: true };
             
         } catch (error) {
-            console.error(`❌ [ERRO ${attempt}] Falha no envio ${format.ext}:`, error.message);
+            console.error(`❌ [ERRO ${attempt}] APIs corretas falharam:`, error.message);
             
-            // Categorizar tipos de erro
-            const errorType = this.categorizeError(error.message);
-            console.log(`🏷️ [CATEGORIA] Tipo de erro: ${errorType}`);
+            // Categorizar erro para debugging
+            let errorType = 'UNKNOWN';
+            if (error.message.includes('Evaluation failed')) errorType = 'PUPPETEER_EVALUATION';
+            if (error.message.includes('timeout')) errorType = 'TIMEOUT';
+            if (error.message.includes('não conectado')) errorType = 'NOT_CONNECTED';
             
-            // Log detalhado para problemas específicos
-            if (error.message.includes('Evaluation failed')) {
-                console.log(`🔍 [WHATSAPP-WEB.JS] Erro "Evaluation failed" detectado`);
-                console.log(`💡 [SUGESTÃO] Problema na API interna do WhatsApp Web`);
-            }
-            
-            if (error.message.includes('timeout') || error.message.includes('Timeout')) {
-                console.log(`⏱️ [TIMEOUT] Timeout detectado - rede ou servidor lento`);
-            }
+            console.log(`🏷️ Tipo de erro: ${errorType}`);
             
             return { 
                 success: false, 
                 error: error.message,
-                errorType: errorType,
-                isEvaluationError: error.message.includes('Evaluation failed'),
-                isTimeout: error.message.includes('timeout') || error.message.includes('Timeout')
+                errorType: errorType
             };
-        }
-    }
-
-    categorizeError(errorMessage) {
-        if (errorMessage.includes('Evaluation failed')) return 'WHATSAPP_API_ERROR';
-        if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) return 'TIMEOUT';
-        if (errorMessage.includes('Client not ready')) return 'CLIENT_NOT_READY';
-        if (errorMessage.includes('não conectado')) return 'NOT_CONNECTED';
-        if (errorMessage.includes('Network')) return 'NETWORK_ERROR';
-        return 'UNKNOWN';
-    }
-
-    async attemptTextFallback(client, to, originalFileName, audioStats = {}) {
-        try {
-            console.log(`📝 [FALLBACK] Tentando fallback para texto...`);
-            
-            const duration = audioStats.duration ? `${audioStats.duration}s` : 'duração desconhecida';
-            const size = audioStats.size ? `${Math.round(audioStats.size / 1024)}KB` : 'tamanho desconhecido';
-            
-            const fallbackMessage = `🎵 [ÁUDIO NÃO ENVIADO - ${duration}]
-            
-⚠️ Falha técnica no envio do áudio
-📁 Arquivo: ${originalFileName} (${size})
-🔧 Sistema: WhatsApp Web com retry inteligente
-
-💡 Sugestões:
-• Tente gravar novamente
-• Use mensagem de texto
-• Verifique sua conexão
-
-O sistema tentou múltiplos formatos automaticamente.`;
-            
-            await client.sendMessage(to, fallbackMessage);
-            
-            console.log(`✅ [FALLBACK] Mensagem de fallback enviada com sucesso`);
-            
-            return {
-                success: true,
-                isFallback: true,
-                message: 'Áudio convertido para mensagem de texto devido a falha técnica'
-            };
-            
-        } catch (error) {
-            console.error(`❌ [FALLBACK] Erro no fallback para texto:`, error);
-            return { success: false, error: error.message };
         }
     }
 
@@ -261,9 +168,9 @@ O sistema tentou múltiplos formatos automaticamente.`;
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Método para estatísticas
     getStats() {
         return {
+            version: 'v1.25.0+ APIs',
             maxRetries: this.maxRetries,
             supportedFormats: this.supportedFormats,
             retryDelays: this.retryDelays

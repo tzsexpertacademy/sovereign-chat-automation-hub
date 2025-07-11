@@ -155,7 +155,7 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
       
       mediaRecorderRef.current = mediaRecorder;
       
-      // Event handlers
+      // ✅ CORREÇÃO: Event handlers melhorados
       mediaRecorder.ondataavailable = (event) => {
         console.log('📊 Dados disponíveis:', {
           size: event.data.size,
@@ -163,9 +163,9 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
           timestamp: Date.now() - startTimeRef.current
         });
         
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
+        // ✅ CORREÇÃO: Sempre adicionar chunk (mesmo se size = 0 no início)
+        chunksRef.current.push(event.data);
+        console.log(`📦 Chunk adicionado. Total chunks: ${chunksRef.current.length}`);
       };
       
       mediaRecorder.onstop = () => {
@@ -176,8 +176,11 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
         console.log('📦 Chunks coletados:', chunksRef.current.length);
         console.log('📏 Tamanhos:', chunksRef.current.map(c => c.size));
         
-        if (chunksRef.current.length === 0) {
-          console.error('❌ Nenhum chunk foi coletado!');
+        // ✅ CORREÇÃO: Filtrar chunks vazios antes de criar blob
+        const validChunks = chunksRef.current.filter(chunk => chunk.size > 0);
+        
+        if (validChunks.length === 0) {
+          console.error('❌ Nenhum chunk válido foi coletado!');
           toast({
             title: "Erro na Gravação",
             description: "Nenhum dado de áudio foi capturado",
@@ -186,7 +189,8 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
           return;
         }
         
-        const blob = new Blob(chunksRef.current, { type: selectedType });
+        console.log(`📦 Chunks válidos: ${validChunks.length}/${chunksRef.current.length}`);
+        const blob = new Blob(validChunks, { type: selectedType });
         
         console.log('📦 Blob final:', {
           size: blob.size,
@@ -221,9 +225,9 @@ const SimpleAudioRecorder = ({ onAudioReady, maxDuration = 60, className }: Simp
         });
       };
       
-      // Iniciar gravação
+      // ✅ CORREÇÃO: Iniciar gravação com intervalo menor
       startTimeRef.current = Date.now();
-      mediaRecorder.start(250); // Chunks a cada 250ms
+      mediaRecorder.start(100); // ✅ Chunks a cada 100ms (mais frequente)
       setIsRecording(true);
       setCurrentTime(0);
       

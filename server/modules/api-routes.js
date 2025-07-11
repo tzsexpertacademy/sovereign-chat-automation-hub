@@ -703,16 +703,11 @@ function setupApiRoutes(app, io) {
         
         console.log(`📁 Arquivo temporário criado: ${tempFilePath}`);
         
-        // Usar AudioSendService para envio com retry
-const AudioSendService = require('../services/audioSendService');
-        const audioService = new AudioSendService();
+        // ✅ CORREÇÃO: Usar nova função sendAudio do módulo whatsapp-client
+        const { sendAudio } = require('./whatsapp-client');
         
-        const result = await audioService.sendAudioWithRetry(
-          clientStatus.client,
-          to,
-          tempFilePath,
-          fileName.replace(/\.[^/.]+$/, "") // Remove extensão
-        );
+        console.log(`🎵 Usando sendAudio() com APIs corretas v1.25.0+`);
+        const result = await sendAudio(instanceId, to, tempFilePath);
         
         // Limpar arquivo temporário
         try {

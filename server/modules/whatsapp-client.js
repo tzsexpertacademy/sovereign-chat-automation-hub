@@ -561,6 +561,66 @@ function getClientStatus(instanceId) {
   };
 }
 
+// Função para enviar áudio com whatsapp-web.js v1.25.0+ APIs corretas
+async function sendAudio(instanceId, to, audioFile) {
+  try {
+    console.log('🎵 sendAudio() - APIs corretas whatsapp-web.js v1.25.0+');
+    const client = clients.get(instanceId);
+    
+    if (!client) {
+      throw new Error('Cliente não encontrado');
+    }
+    
+    if (clientInitStates.get(instanceId) !== 'ready') {
+      throw new Error('Cliente não está pronto');
+    }
+
+    // ✅ CORREÇÃO: Usar MessageMedia.fromFilePath (API oficial v1.25.0+)
+    const { MessageMedia } = require('whatsapp-web.js');
+    
+    let result;
+    
+    if (typeof audioFile === 'string') {
+      // Caminho do arquivo
+      console.log('📁 Enviando áudio via MessageMedia.fromFilePath()');
+      const media = MessageMedia.fromFilePath(audioFile);
+      result = await client.sendMessage(to, media);
+    } else if (audioFile instanceof File || audioFile.data) {
+      // File object ou objeto com data
+      console.log('📦 Enviando áudio via MessageMedia constructor');
+      const base64Data = audioFile.data || await fileToBase64(audioFile);
+      const fileName = audioFile.name || 'audio.ogg';
+      const mimeType = audioFile.type || 'audio/ogg';
+      
+      const media = new MessageMedia(mimeType, base64Data, fileName);
+      result = await client.sendMessage(to, media);
+    } else {
+      throw new Error('Formato de arquivo não suportado');
+    }
+    
+    console.log('✅ Áudio enviado via APIs corretas:', result.id._serialized);
+    return { success: true, messageId: result.id._serialized };
+    
+  } catch (error) {
+    console.error(`❌ Erro ao enviar áudio ${instanceId}:`, error);
+    throw error;
+  }
+}
+
+// Helper para converter File para base64
+async function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      const base64 = result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 module.exports = {
   clients,
   clientInitStates,
@@ -568,6 +628,7 @@ module.exports = {
   createWhatsAppInstance,
   sendMessage,
   sendMedia,
+  sendAudio,  // ✅ Nova função para áudio
   disconnectClient,
   getClientStatus,
   syncInitialChats
