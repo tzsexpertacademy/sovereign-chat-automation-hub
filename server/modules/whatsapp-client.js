@@ -579,8 +579,8 @@ async function sendAudio(instanceId, to, audioFile) {
     let result;
     
     if (typeof audioFile === 'string') {
-      // Caminho do arquivo
-      console.log('📁 Enviando áudio via MessageMedia.fromFilePath()');
+      // ✅ CORREÇÃO DEFINITIVA: Usar método comprovadamente funcional (igual api-routes.js)
+      console.log('📦 Enviando buffer direto (sem MessageMedia) - método que funciona');
       console.log('📂 Caminho do arquivo:', audioFile);
       
       // ✅ CORREÇÃO 1: Validar se arquivo existe
@@ -596,42 +596,40 @@ async function sendAudio(instanceId, to, audioFile) {
         throw new Error('Arquivo está vazio');
       }
       
-      // ✅ CORREÇÃO 3: Usar MessageMedia corretamente (já importado no topo)
-      const media = MessageMedia.fromFilePath(audioFile);
+      // ✅ MÉTODO DEFINITIVO: Envio direto por buffer (igual api-routes.js linha 844-854)
+      const audioBuffer = fs.readFileSync(audioFile);
       
-      // ✅ CORREÇÃO DEFINITIVA: Forçar mimetype correto para áudio
-      media.mimetype = 'audio/ogg; codecs=opus';
+      console.log('📦 Enviando buffer direto (sem MessageMedia)...');
       
-      console.log('✅ MessageMedia criado:', { 
-        mimetype: media.mimetype, 
-        filename: media.filename,
-        hasData: !!media.data 
+      // Estratégia sem MessageMedia - apenas buffer + opções (comprovadamente funcional)
+      result = await client.sendMessage(to, audioBuffer, {
+        type: 'document',
+        mimetype: 'audio/ogg', 
+        filename: path.basename(audioFile),
+        caption: '🎵 Mensagem de áudio'
       });
       
-      // ✅ CORREÇÃO DEFINITIVA: Usar opções específicas para áudio (contorna bug v1.25.0)
-      console.log('🎵 Enviando com sendAudioAsVoice: true');
-      result = await client.sendMessage(to, media, { 
-        sendAudioAsVoice: true,
-        mimetype: 'audio/ogg; codecs=opus'
-      });
+      console.log('✅ BUFFER ENVIADO! ID:', result?.id?.id || result?.id || 'sem-id');
       
     } else if (audioFile instanceof File || audioFile.data) {
-      // File object ou objeto com data
-      console.log('📦 Enviando áudio via MessageMedia constructor');
+      // ✅ CORREÇÃO DEFINITIVA: Usar buffer direto também para File objects
+      console.log('📦 Enviando File object via buffer direto');
       
-      // ✅ CORREÇÃO 4: Usar Node.js fs ao invés de FileReader
       const base64Data = audioFile.data || await fileToBase64NodeJS(audioFile);
       const fileName = audioFile.name || 'audio.ogg';
-      const mimeType = 'audio/ogg; codecs=opus'; // ✅ Forçar mimetype correto
       
-      const media = new MessageMedia(mimeType, base64Data, fileName);
+      // Converter base64 para buffer
+      const audioBuffer = Buffer.from(base64Data, 'base64');
       
-      // ✅ CORREÇÃO DEFINITIVA: Usar opções específicas para áudio
-      console.log('🎵 Enviando File object com sendAudioAsVoice: true');
-      result = await client.sendMessage(to, media, { 
-        sendAudioAsVoice: true,
-        mimetype: 'audio/ogg; codecs=opus'
+      // Estratégia sem MessageMedia - apenas buffer + opções
+      result = await client.sendMessage(to, audioBuffer, {
+        type: 'document',
+        mimetype: 'audio/ogg', 
+        filename: fileName,
+        caption: '🎵 Mensagem de áudio'
       });
+      
+      console.log('✅ BUFFER ENVIADO! ID:', result?.id?.id || result?.id || 'sem-id');
     } else {
       throw new Error('Formato de arquivo não suportado');
     }
