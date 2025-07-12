@@ -703,11 +703,21 @@ function setupApiRoutes(app, io) {
         
         console.log(`📁 Arquivo temporário criado: ${tempFilePath}`);
         
-        // ✅ CORREÇÃO DEFINITIVA: Usar método direto sem MessageMedia
-        const { sendAudioDirect } = require('./whatsapp-client');
+        // ✅ CORREÇÃO DEFINITIVA: Usar AudioSendService com MessageMedia
+        const AudioSendService = require('../services/audioSendService');
+        const audioService = new AudioSendService();
         
-        console.log(`🎵 CORREÇÃO DEFINITIVA: Usando sendAudioDirect() - SEM MessageMedia`);
-        const result = await sendAudioDirect(instanceId, to, tempFilePath);
+        console.log(`🎵 CORREÇÃO DEFINITIVA: Usando AudioSendService com MessageMedia v1.25.0+`);
+        
+        // Obter cliente
+        const { clients } = require('./whatsapp-client');
+        const client = clients.get(instanceId);
+        
+        if (!client) {
+          throw new Error(`Cliente não encontrado: ${instanceId}`);
+        }
+        
+        const result = await audioService.sendAudioWithRetry(client, to, tempFilePath, filename || 'audio');
         
         // Limpar arquivo temporário
         try {

@@ -650,10 +650,10 @@ async function fileToBase64NodeJS(file) {
   }
 }
 
-// ✅ CORREÇÃO DEFINITIVA: Método direto sem MessageMedia
+// ✅ CORREÇÃO DEFINITIVA: MessageMedia API v1.25.0+ (humanizada)
 async function sendAudioDirect(instanceId, to, audioPath) {
-  console.log('🎵 ===== CORREÇÃO DEFINITIVA - MÉTODO DIRETO =====');
-  console.log('🔧 Usando client.sendMessage() com buffer - SEM MessageMedia');
+  console.log('🎵 ===== CORREÇÃO DEFINITIVA - MESSAGEMEDIA API v1.25.0+ =====');
+  console.log('🔧 Usando MessageMedia.fromFilePath() + humanização');
   
   try {
     const client = clients.get(instanceId);
@@ -665,34 +665,72 @@ async function sendAudioDirect(instanceId, to, audioPath) {
       throw new Error('Cliente não está pronto para envio');
     }
 
-    // Ler arquivo como buffer
-    const audioBuffer = fs.readFileSync(audioPath);
-    const fileName = path.basename(audioPath);
+    // ✅ HUMANIZAÇÃO: Simular presença online e gravação
+    console.log('👤 Humanizando: presença online...');
+    await client.sendPresenceAvailable();
     
-    console.log('📦 Enviando buffer direto...', {
-      bufferSize: audioBuffer.length,
-      fileName: fileName,
-      to: to
-    });
+    console.log('🎙️ Humanizando: simulando gravação de áudio...');
+    await client.sendPresenceRecording();
+    
+    // Delay realista de gravação
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // MÉTODO DIRETO: apenas buffer + tipo de mensagem
-    const result = await client.sendMessage(to, {
-      body: audioBuffer,
-      type: 'audio',
-      mimetype: 'audio/ogg',
-      filename: fileName
-    });
+    // ✅ MÉTODO CORRETO: MessageMedia API
+    const { MessageMedia } = require('whatsapp-web.js');
+    
+    // Estratégia 1: fromFilePath (mais confiável)
+    let media, result;
+    
+    try {
+      console.log('📁 Criando MessageMedia.fromFilePath()...');
+      media = MessageMedia.fromFilePath(audioPath);
+      console.log('📦 MessageMedia criado:', {
+        mimetype: media.mimetype,
+        filename: media.filename || path.basename(audioPath),
+        hasData: !!media.data
+      });
+      
+      result = await client.sendMessage(to, media, { 
+        sendAudioAsVoice: true 
+      });
+      
+    } catch (filePathError) {
+      console.log('⚠️ fromFilePath falhou, tentando base64...');
+      
+      // Estratégia 2: constructor com base64
+      const audioBuffer = fs.readFileSync(audioPath);
+      const base64Data = audioBuffer.toString('base64');
+      const fileName = path.basename(audioPath);
+      
+      media = new MessageMedia('audio/ogg', base64Data, fileName);
+      result = await client.sendMessage(to, media, { 
+        sendAudioAsVoice: true 
+      });
+    }
 
-    console.log('✅ SUCESSO MÉTODO DIRETO! ID:', result?.id?._serialized || result?.id || 'direto-ok');
+    // Parar presença de gravação
+    console.log('✋ Parando simulação de gravação...');
+    await client.sendPresenceUnavailable();
+
+    console.log('✅ SUCESSO MessageMedia! ID:', result?.id?._serialized || result?.id);
     
     return { 
       success: true, 
-      messageId: result?.id?._serialized || result?.id || 'direto-success',
-      method: 'buffer-direct'
+      messageId: result?.id?._serialized || result?.id || 'media-success',
+      method: 'MessageMedia-API',
+      humanized: true
     };
     
   } catch (error) {
-    console.error('❌ Erro método direto:', error);
+    console.error('❌ Erro MessageMedia:', error);
+    
+    // Parar presença em caso de erro
+    try {
+      await client.sendPresenceUnavailable();
+    } catch (presenceError) {
+      console.warn('⚠️ Erro ao parar presença:', presenceError);
+    }
+    
     throw error;
   }
 }
