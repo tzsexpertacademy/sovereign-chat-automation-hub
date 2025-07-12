@@ -155,7 +155,7 @@ async function createWhatsAppInstance(instanceId, io) {
         },
         webVersionCache: {
           type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1015901307.html',
         }
       });
       console.log('✅ Cliente WhatsApp criado com sucesso');
@@ -226,7 +226,7 @@ async function createWhatsAppInstance(instanceId, io) {
             },
             webVersionCache: {
               type: 'remote',
-              remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+              remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1015901307.html',
             }
           });
           
