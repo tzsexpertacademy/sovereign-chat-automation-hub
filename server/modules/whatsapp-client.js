@@ -150,7 +150,14 @@ async function createWhatsAppInstance(instanceId, io) {
             '--disable-sync',
             '--no-default-browser-check',
             '--no-first-run',
-            '--disable-features=VizDisplayCompositor'
+            '--disable-features=VizDisplayCompositor',
+            '--ignore-certificate-errors',
+            '--ignore-ssl-errors',
+            '--ignore-certificate-errors-spki-list',
+            '--ignore-certificate-errors-skip-list',
+            '--allow-running-insecure-content',
+            '--disable-web-security',
+            '--allow-insecure-localhost'
           ]
         },
         webVersionCache: {
@@ -221,7 +228,14 @@ async function createWhatsAppInstance(instanceId, io) {
                 '--no-default-browser-check',
                 '--disable-features=VizDisplayCompositor',
                 '--user-data-dir=/tmp/chrome-user-data',
-                '--disable-software-rasterizer'
+                '--disable-software-rasterizer',
+                '--ignore-certificate-errors',
+                '--ignore-ssl-errors',
+                '--ignore-certificate-errors-spki-list',
+                '--ignore-certificate-errors-skip-list',
+                '--allow-running-insecure-content',
+                '--disable-web-security',
+                '--allow-insecure-localhost'
               ]
             },
             webVersionCache: {
