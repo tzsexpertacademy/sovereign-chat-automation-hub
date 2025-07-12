@@ -703,11 +703,11 @@ function setupApiRoutes(app, io) {
         
         console.log(`📁 Arquivo temporário criado: ${tempFilePath}`);
         
-        // ✅ CORREÇÃO: Usar nova função sendAudio do módulo whatsapp-client
-        const { sendAudio } = require('./whatsapp-client');
+        // ✅ CORREÇÃO DEFINITIVA: Usar método direto sem MessageMedia
+        const { sendAudioDirect } = require('./whatsapp-client');
         
-        console.log(`🎵 Usando sendAudio() com APIs corretas v1.25.0+`);
-        const result = await sendAudio(instanceId, to, tempFilePath);
+        console.log(`🎵 CORREÇÃO DEFINITIVA: Usando sendAudioDirect() - SEM MessageMedia`);
+        const result = await sendAudioDirect(instanceId, to, tempFilePath);
         
         // Limpar arquivo temporário
         try {
@@ -796,6 +796,7 @@ function setupApiRoutes(app, io) {
    */
   app.post('/api/clients/:id/send-audio-direct', async (req, res) => {
     try {
+      console.log('🎵 ===== MÉTODO DIRETO SEM MESSAGEMEDIA =====');
       const { id: instanceId } = req.params;
       
       console.log('🔧 ENVIO DIRETO - Correção definitiva sem MessageMedia');

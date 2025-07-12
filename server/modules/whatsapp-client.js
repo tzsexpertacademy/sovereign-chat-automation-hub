@@ -143,7 +143,6 @@ async function createWhatsAppInstance(instanceId, io) {
             '--no-sandbox',
             '--disable-setuid-sandbox', 
             '--disable-dev-shm-usage',
-            '--unhandled-rejections=strict', // ✅ Adicionar gestão de rejeições
             '--disable-renderer-backgrounding',
             '--disable-extensions',
             '--disable-default-apps',
@@ -214,7 +213,6 @@ async function createWhatsAppInstance(instanceId, io) {
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage', 
-                '--unhandled-rejections=strict', // ✅ Adicionar gestão de rejeições
                 '--disable-renderer-backgrounding',
                 '--disable-extensions',
                 '--disable-default-apps',
@@ -652,6 +650,49 @@ async function fileToBase64NodeJS(file) {
   }
 }
 
+// ✅ CORREÇÃO DEFINITIVA: Método direto sem MessageMedia
+async function sendAudioDirect(instanceId, to, audioPath) {
+  console.log('🎵 ===== CORREÇÃO DEFINITIVA - MÉTODO DIRETO =====');
+  console.log('🔧 Usando client.sendMessage() com buffer - SEM MessageMedia');
+  
+  try {
+    const client = clients[instanceId];
+    if (!client) {
+      throw new Error(`Cliente não encontrado: ${instanceId}`);
+    }
+
+    // Ler arquivo como buffer
+    const audioBuffer = fs.readFileSync(audioPath);
+    const fileName = path.basename(audioPath);
+    
+    console.log('📦 Enviando buffer direto...', {
+      bufferSize: audioBuffer.length,
+      fileName: fileName,
+      to: to
+    });
+
+    // MÉTODO DIRETO: apenas buffer + tipo de mensagem
+    const result = await client.sendMessage(to, {
+      body: audioBuffer,
+      type: 'audio',
+      mimetype: 'audio/ogg',
+      filename: fileName
+    });
+
+    console.log('✅ SUCESSO MÉTODO DIRETO! ID:', result?.id?._serialized || result?.id || 'direto-ok');
+    
+    return { 
+      success: true, 
+      messageId: result?.id?._serialized || result?.id || 'direto-success',
+      method: 'buffer-direct'
+    };
+    
+  } catch (error) {
+    console.error('❌ Erro método direto:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   clients,
   clientInitStates,
@@ -660,6 +701,7 @@ module.exports = {
   sendMessage,
   sendMedia,
   sendAudio,  // ✅ Nova função para áudio
+  sendAudioDirect,  // ✅ CORREÇÃO DEFINITIVA
   disconnectClient,
   getClientStatus,
   syncInitialChats
