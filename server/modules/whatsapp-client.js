@@ -143,7 +143,7 @@ async function createWhatsAppInstance(instanceId, io) {
             '--no-sandbox',
             '--disable-setuid-sandbox', 
             '--disable-dev-shm-usage',
-            '--unhandled-rejections=strict' // ✅ Adicionar gestão de rejeições
+            '--unhandled-rejections=strict', // ✅ Adicionar gestão de rejeições
             '--disable-renderer-backgrounding',
             '--disable-extensions',
             '--disable-default-apps',
@@ -214,7 +214,7 @@ async function createWhatsAppInstance(instanceId, io) {
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage', 
-                '--unhandled-rejections=strict' // ✅ Adicionar gestão de rejeições
+                '--unhandled-rejections=strict', // ✅ Adicionar gestão de rejeições
                 '--disable-renderer-backgrounding',
                 '--disable-extensions',
                 '--disable-default-apps',
