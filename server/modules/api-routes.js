@@ -668,7 +668,7 @@ function setupApiRoutes(app, io) {
       console.log(`📊 Dados do áudio:`, {
         fileName,
         mimeType,
-        dataSize: audioData.length
+        dataSize: audioData ? audioData.length : 'N/A'
       });
       
       // Verificar se cliente existe e está ativo
@@ -717,7 +717,7 @@ function setupApiRoutes(app, io) {
           throw new Error(`Cliente não encontrado: ${instanceId}`);
         }
         
-        const result = await audioService.sendAudioWithRetry(client, to, tempFilePath, filename || 'audio');
+        const result = await audioService.sendAudioWithRetry(client, to, tempFilePath, fileName || 'audio');
         
         // Limpar arquivo temporário
         try {
