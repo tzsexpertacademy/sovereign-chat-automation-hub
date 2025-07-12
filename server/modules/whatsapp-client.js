@@ -137,6 +137,7 @@ async function createWhatsAppInstance(instanceId, io) {
           dataPath: sessionPath
         }),
         puppeteer: {
+          executablePath: '/usr/bin/google-chrome', // 🎯 CORREÇÃO: Forçar Chrome do sistema
           headless: true,
           timeout: 120000, // ✅ Aumentar timeout para 120s
           args: [
@@ -150,8 +151,7 @@ async function createWhatsAppInstance(instanceId, io) {
             '--no-default-browser-check',
             '--no-first-run',
             '--disable-features=VizDisplayCompositor'
-          ],
-          timeout: 60000 // 60 segundos de timeout
+          ]
         },
         webVersionCache: {
           type: 'remote',
@@ -207,6 +207,7 @@ async function createWhatsAppInstance(instanceId, io) {
               dataPath: sessionPath
             }),
             puppeteer: {
+              executablePath: '/usr/bin/google-chrome', // 🎯 CORREÇÃO: Forçar Chrome do sistema  
               headless: true,
               timeout: 120000, // ✅ Aumentar timeout para 120s  
               args: [
@@ -221,8 +222,7 @@ async function createWhatsAppInstance(instanceId, io) {
                 '--disable-features=VizDisplayCompositor',
                 '--user-data-dir=/tmp/chrome-user-data',
                 '--disable-software-rasterizer'
-              ],
-              timeout: timeoutMs
+              ]
             },
             webVersionCache: {
               type: 'remote',
