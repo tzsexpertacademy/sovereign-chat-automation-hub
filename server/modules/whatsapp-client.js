@@ -137,12 +137,12 @@ async function createWhatsAppInstance(instanceId, io) {
           dataPath: sessionPath
         }),
         puppeteer: {
-          executablePath: '/usr/bin/google-chrome', // 🎯 CORREÇÃO: Forçar Chrome do sistema
+          executablePath: '/opt/google/chrome/chrome',
           headless: true,
-          timeout: 120000, // ✅ Aumentar timeout para 120s
+          timeout: 120000,
           args: [
             '--no-sandbox',
-            '--disable-setuid-sandbox', 
+            '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-renderer-backgrounding',
             '--disable-extensions',
@@ -150,19 +150,12 @@ async function createWhatsAppInstance(instanceId, io) {
             '--disable-sync',
             '--no-default-browser-check',
             '--no-first-run',
-            '--disable-features=VizDisplayCompositor',
-            '--ignore-certificate-errors',
-            '--ignore-ssl-errors',
-            '--ignore-certificate-errors-spki-list',
-            '--ignore-certificate-errors-skip-list',
-            '--allow-running-insecure-content',
-            '--disable-web-security',
-            '--allow-insecure-localhost'
+            '--disable-features=VizDisplayCompositor'
           ]
         },
         webVersionCache: {
           type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1015901307.html',
+          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
         }
       });
       console.log('✅ Cliente WhatsApp criado com sucesso');
@@ -214,33 +207,24 @@ async function createWhatsAppInstance(instanceId, io) {
               dataPath: sessionPath
             }),
             puppeteer: {
-              executablePath: '/usr/bin/google-chrome', // 🎯 CORREÇÃO: Forçar Chrome do sistema  
+              executablePath: '/opt/google/chrome/chrome',
               headless: true,
-              timeout: 120000, // ✅ Aumentar timeout para 120s  
+              timeout: 120000,
               args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage', 
+                '--disable-dev-shm-usage',
                 '--disable-renderer-backgrounding',
                 '--disable-extensions',
                 '--disable-default-apps',
                 '--disable-sync',
                 '--no-default-browser-check',
-                '--disable-features=VizDisplayCompositor',
-                '--user-data-dir=/tmp/chrome-user-data',
-                '--disable-software-rasterizer',
-                '--ignore-certificate-errors',
-                '--ignore-ssl-errors',
-                '--ignore-certificate-errors-spki-list',
-                '--ignore-certificate-errors-skip-list',
-                '--allow-running-insecure-content',
-                '--disable-web-security',
-                '--allow-insecure-localhost'
+                '--disable-features=VizDisplayCompositor'
               ]
             },
             webVersionCache: {
               type: 'remote',
-              remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1015901307.html',
+              remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
             }
           });
           
