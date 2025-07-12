@@ -656,9 +656,13 @@ async function sendAudioDirect(instanceId, to, audioPath) {
   console.log('🔧 Usando client.sendMessage() com buffer - SEM MessageMedia');
   
   try {
-    const client = clients[instanceId];
+    const client = clients.get(instanceId);
     if (!client) {
       throw new Error(`Cliente não encontrado: ${instanceId}`);
+    }
+    
+    if (clientInitStates.get(instanceId) !== 'ready') {
+      throw new Error('Cliente não está pronto para envio');
     }
 
     // Ler arquivo como buffer
