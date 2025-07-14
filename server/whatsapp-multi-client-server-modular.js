@@ -29,12 +29,7 @@ async function main() {
   }
 }
 
-// Executar se chamado diretamente
-if (require.main === module) {
-  main().catch(error => {
-    console.error('💥 Erro crítico:', error);
-    process.exit(1);
-  });
-}
+// Não executar automaticamente - apenas exportar
+// A execução é controlada pelo arquivo principal
 
 module.exports = { main };

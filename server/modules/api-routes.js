@@ -506,20 +506,46 @@ function setupApiRoutes(app, io) {
    *         description: Erro ao enviar
    */
   app.post('/api/clients/:id/send', async (req, res) => {
+    const instanceId = req.params.id;
+    const { to, message } = req.body;
+    
+    console.log(`📤 SEND ENDPOINT: Iniciando envio para ${instanceId}`);
+    console.log(`📤 Dados recebidos:`, { to, message: message?.substring(0, 50) + '...', hasBody: !!req.body });
+    console.log(`📤 Headers:`, req.headers);
+    
     try {
-      const { id: instanceId } = req.params;
-      const { to, message } = req.body;
+      console.log(`📤 Validando dados: to=${to}, message=${!!message}`);
       
       if (!to || !message) {
+        console.log(`❌ Dados inválidos: to=${to}, message=${!!message}`);
         return res.status(400).json({
           success: false,
-          error: 'to e message são obrigatórios'
+          error: 'to e message são obrigatórios',
+          received: { to: !!to, message: !!message }
+        });
+      }
+
+      // Verificar se cliente existe e está ativo
+      console.log(`📤 Verificando status do cliente ${instanceId}`);
+      const { getClientStatus, clients } = require('./whatsapp-client');
+      const clientStatus = getClientStatus(instanceId);
+      
+      console.log(`📤 Status do cliente:`, clientStatus);
+      
+      if (!clientStatus.exists || !clientStatus.isReady) {
+        console.log(`❌ Cliente não está pronto:`, clientStatus);
+        return res.status(400).json({
+          success: false,
+          error: 'Cliente não encontrado ou não está pronto',
+          clientStatus
         });
       }
       
-      console.log(`📤 Enviando mensagem de ${instanceId} para ${to}`);
+      console.log(`📤 Cliente validado, enviando mensagem de ${instanceId} para ${to}`);
       
       const result = await sendMessage(instanceId, to, message);
+      
+      console.log(`✅ Mensagem enviada com sucesso:`, result);
       
       res.json({
         success: true,
@@ -528,10 +554,13 @@ function setupApiRoutes(app, io) {
       });
       
     } catch (error) {
-      console.error('❌ Erro ao enviar mensagem:', error);
+      console.error('❌ Erro crítico no endpoint /send:', error);
+      console.error('❌ Stack do erro:', error.stack);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: error.message,
+        endpoint: '/api/clients/:id/send',
+        instanceId
       });
     }
   });
@@ -672,8 +701,11 @@ function setupApiRoutes(app, io) {
       });
       
       // Verificar se cliente existe e está ativo
+      console.log(`📤 Verificando status do cliente ${instanceId}`);
       const { getClientStatus, clients } = require('./whatsapp-client');
       const clientStatus = getClientStatus(instanceId);
+      
+      console.log(`📤 Status do cliente:`, clientStatus);
       
       if (!clientStatus.exists || !clientStatus.isReady) {
         return res.status(400).json({

@@ -21,7 +21,7 @@ const { ensureDirectoryExists, cleanupTempFiles } = require('./utils');
 const { fs, path } = require('./config');
 
 // Função para inicializar o servidor
-function initializeServer() {
+async function initializeServer() {
   console.log('🚀 Iniciando servidor WhatsApp Multi-Cliente...');
   
   // Criar app Express
@@ -53,7 +53,7 @@ function initializeServer() {
   setupPeriodicCleanup();
   
   // Iniciar servidor
-  return startServer(server);
+  return await startServer(server);
 }
 
 // Configurar middlewares do Express
