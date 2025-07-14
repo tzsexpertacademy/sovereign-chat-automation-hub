@@ -138,7 +138,7 @@ async function createWhatsAppInstance(instanceId, io) {
         }),
         puppeteer: {
           executablePath: '/opt/google/chrome/google-chrome',
-          headless: false,
+          headless: true,
           dumpio: true,
           timeout: 120000,
           args: [
@@ -209,7 +209,7 @@ async function createWhatsAppInstance(instanceId, io) {
             }),
             puppeteer: {
               executablePath: '/opt/google/chrome/google-chrome',
-              headless: false,
+              headless: true,
               dumpio: true,
               timeout: 120000,
               args: [
