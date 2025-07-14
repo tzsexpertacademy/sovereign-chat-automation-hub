@@ -6,12 +6,14 @@ const path = require('path');
 class AudioSendService {
     constructor() {
         this.maxRetries = 3;
-        this.retryDelays = [1000, 3000, 5000]; // Timeouts mais rápidos
+        this.retryDelays = [2000, 5000, 10000]; // Timeouts mais longos para estabilidade
         this.supportedFormats = [
             { ext: 'ogg', mime: 'audio/ogg' },
             { ext: 'wav', mime: 'audio/wav' },
-            { ext: 'webm', mime: 'audio/webm' }
+            { ext: 'webm', mime: 'audio/webm' },
+            { ext: 'mp3', mime: 'audio/mpeg' }
         ];
+        this.maxFileSize = 16 * 1024 * 1024; // 16MB limit
     }
 
     async sendAudioWithRetry(client, to, audioPath, originalFileName = 'audio') {
@@ -65,31 +67,9 @@ class AudioSendService {
 
     async attemptAudioSendCorrect(client, to, audioPath, originalFileName, attempt = 1) {
         try {
-            console.log(`📤 [TENTATIVA ${attempt}] APIs CORRETAS whatsapp-web.js...`);
+            console.log(`📤 [TENTATIVA ${attempt}] APIs OTIMIZADAS whatsapp-web.js v21+...`);
             
-            // DEBUGGING AVANÇADO: Testar Puppeteer primeiro
-            console.log('🔧 [DEBUG] Testando comunicação Puppeteer...');
-            
-            try {
-                const puppeteerTest = await client.pupPage.evaluate(() => {
-                    console.log('🧪 Teste Puppeteer básico - OK');
-                    return { status: 'ok', timestamp: Date.now() };
-                });
-                console.log('🧪 Puppeteer funciona:', puppeteerTest);
-            } catch (puppeteerError) {
-                console.log('❌ Erro no Puppeteer básico:', puppeteerError.message);
-                throw new Error(`Puppeteer não responde: ${puppeteerError.message}`);
-            }
-            
-            // Verificar cliente
-            const state = await client.getState();
-            console.log(`🔍 Estado do cliente: ${state}`);
-            
-            if (state !== 'CONNECTED') {
-                throw new Error(`Cliente não conectado. Estado: ${state}`);
-            }
-
-            // Verificar arquivo
+            // Verificar arquivo primeiro
             if (!fs.existsSync(audioPath)) {
                 throw new Error(`Arquivo não encontrado: ${audioPath}`);
             }
@@ -97,21 +77,51 @@ class AudioSendService {
             const stats = fs.statSync(audioPath);
             console.log(`📊 Arquivo: ${Math.round(stats.size / 1024)}KB`);
             
-            // DEBUGGING: Verificar se MessageMedia está disponível no contexto
-            console.log('🔧 [DEBUG] Verificando disponibilidade de APIs...');
+            // Verificar tamanho do arquivo
+            if (stats.size > this.maxFileSize) {
+                throw new Error(`Arquivo muito grande: ${Math.round(stats.size / 1024 / 1024)}MB. Limite: ${this.maxFileSize / 1024 / 1024}MB`);
+            }
+            
+            // Verificar cliente com timeout
+            console.log('🔧 [DEBUG] Verificando estado do cliente...');
+            
+            let clientState;
+            try {
+                // Timeout para getState
+                const statePromise = client.getState();
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Timeout ao verificar estado')), 10000)
+                );
+                clientState = await Promise.race([statePromise, timeoutPromise]);
+                console.log(`🔍 Estado do cliente: ${clientState}`);
+            } catch (stateError) {
+                console.log('❌ Erro ao verificar estado:', stateError.message);
+                throw new Error(`Falha ao verificar estado do cliente: ${stateError.message}`);
+            }
+            
+            if (clientState !== 'CONNECTED') {
+                throw new Error(`Cliente não conectado. Estado: ${clientState}`);
+            }
+
+            // Verificar página do Puppeteer
+            console.log('🔧 [DEBUG] Verificando página do Puppeteer...');
             
             try {
-                const apiCheck = await client.pupPage.evaluate(() => {
+                const pageCheck = await client.pupPage.evaluate(() => {
                     return {
+                        ready: document.readyState === 'complete',
                         hasWWebJS: typeof window.WWebJS !== 'undefined',
-                        hasMessageMedia: typeof window.WWebJS?.MessageMedia !== 'undefined',
-                        hasStore: typeof window.Store !== 'undefined',
-                        hasClient: typeof window.Store?.SendMessage !== 'undefined'
+                        timestamp: Date.now()
                     };
                 });
-                console.log('🔧 [DEBUG] APIs disponíveis:', apiCheck);
-            } catch (apiError) {
-                console.log('❌ Erro ao verificar APIs:', apiError.message);
+                console.log('🧪 Página do Puppeteer:', pageCheck);
+                
+                if (!pageCheck.ready) {
+                    throw new Error('Página do WhatsApp não está pronta');
+                }
+            } catch (pageError) {
+                console.log('❌ Erro na página do Puppeteer:', pageError.message);
+                throw new Error(`Página do WhatsApp não responde: ${pageError.message}`);
             }
             
             const { MessageMedia } = require('whatsapp-web.js');
@@ -153,24 +163,30 @@ class AudioSendService {
                 console.log('🔧 [DEBUG] Envio manual completou');
                 
             } 
-            // ✅ ESTRATÉGIA 3: sendMessage com options específicas para voz
+            // ✅ ESTRATÉGIA 3: Fallback inteligente com timeout
             else {
-                console.log(`🎯 [ESTRATÉGIA 3] sendMessage como audio com options`);
+                console.log(`🎯 [ESTRATÉGIA 3] Fallback inteligente com timeout`);
                 
-                console.log('🔧 [DEBUG] Preparando estratégia 3...');
+                console.log('🔧 [DEBUG] Preparando estratégia de fallback...');
                 const fileBuffer = fs.readFileSync(audioPath);
                 const base64Data = fileBuffer.toString('base64');
                 const fileName = `${originalFileName}.ogg`;
                 
-                console.log('🔧 [DEBUG] Criando MessageMedia para voz...');
+                console.log('🔧 [DEBUG] Criando MessageMedia para fallback...');
                 const media = new MessageMedia('audio/ogg', base64Data, fileName);
                 
-                console.log('🔧 [DEBUG] Enviando como mensagem de voz...');
-                // Enviar especificamente como mensagem de voz
-                result = await client.sendMessage(to, media, {
+                console.log('🔧 [DEBUG] Enviando com timeout personalizado...');
+                // Implementar timeout personalizado
+                const sendPromise = client.sendMessage(to, media, {
                     sendAudioAsVoice: true
                 });
-                console.log('🔧 [DEBUG] Envio como voz completou');
+                
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Timeout no envio de áudio')), 30000)
+                );
+                
+                result = await Promise.race([sendPromise, timeoutPromise]);
+                console.log('🔧 [DEBUG] Envio com timeout completou');
             }
             
             // ✅ DETECÇÃO REAL DE SUCESSO
@@ -213,10 +229,17 @@ class AudioSendService {
 
     getStats() {
         return {
-            version: 'v1.25.0+ APIs',
+            version: 'v21.0.0+ OTIMIZADO',
             maxRetries: this.maxRetries,
             supportedFormats: this.supportedFormats,
-            retryDelays: this.retryDelays
+            retryDelays: this.retryDelays,
+            maxFileSize: this.maxFileSize,
+            features: [
+                'timeout_personalizado',
+                'verificacao_estado_robusto',
+                'fallback_inteligente',
+                'limpeza_automatica_arquivos'
+            ]
         };
     }
 }
