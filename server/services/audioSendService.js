@@ -67,6 +67,20 @@ class AudioSendService {
         try {
             console.log(`📤 [TENTATIVA ${attempt}] APIs CORRETAS whatsapp-web.js...`);
             
+            // DEBUGGING AVANÇADO: Testar Puppeteer primeiro
+            console.log('🔧 [DEBUG] Testando comunicação Puppeteer...');
+            
+            try {
+                const puppeteerTest = await client.pupPage.evaluate(() => {
+                    console.log('🧪 Teste Puppeteer básico - OK');
+                    return { status: 'ok', timestamp: Date.now() };
+                });
+                console.log('🧪 Puppeteer funciona:', puppeteerTest);
+            } catch (puppeteerError) {
+                console.log('❌ Erro no Puppeteer básico:', puppeteerError.message);
+                throw new Error(`Puppeteer não responde: ${puppeteerError.message}`);
+            }
+            
             // Verificar cliente
             const state = await client.getState();
             console.log(`🔍 Estado do cliente: ${state}`);
@@ -83,6 +97,23 @@ class AudioSendService {
             const stats = fs.statSync(audioPath);
             console.log(`📊 Arquivo: ${Math.round(stats.size / 1024)}KB`);
             
+            // DEBUGGING: Verificar se MessageMedia está disponível no contexto
+            console.log('🔧 [DEBUG] Verificando disponibilidade de APIs...');
+            
+            try {
+                const apiCheck = await client.pupPage.evaluate(() => {
+                    return {
+                        hasWWebJS: typeof window.WWebJS !== 'undefined',
+                        hasMessageMedia: typeof window.WWebJS?.MessageMedia !== 'undefined',
+                        hasStore: typeof window.Store !== 'undefined',
+                        hasClient: typeof window.Store?.SendMessage !== 'undefined'
+                    };
+                });
+                console.log('🔧 [DEBUG] APIs disponíveis:', apiCheck);
+            } catch (apiError) {
+                console.log('❌ Erro ao verificar APIs:', apiError.message);
+            }
+            
             const { MessageMedia } = require('whatsapp-web.js');
             let result;
             
@@ -90,44 +121,56 @@ class AudioSendService {
             if (attempt === 1) {
                 console.log(`🎯 [ESTRATÉGIA 1] MessageMedia.fromFilePath() - API OFICIAL`);
                 
+                console.log('🔧 [DEBUG] Criando MessageMedia.fromFilePath...');
                 const media = MessageMedia.fromFilePath(audioPath);
                 console.log(`📦 MessageMedia criado:`, {
                     mimetype: media.mimetype,
                     filename: media.filename,
-                    hasData: !!media.data
+                    hasData: !!media.data,
+                    dataLength: media.data ? media.data.length : 0
                 });
                 
+                console.log('🔧 [DEBUG] Iniciando client.sendMessage...');
                 result = await client.sendMessage(to, media);
+                console.log('🔧 [DEBUG] client.sendMessage completou');
                 
             } 
             // ✅ ESTRATÉGIA 2: MessageMedia constructor com base64
             else if (attempt === 2) {
                 console.log(`🎯 [ESTRATÉGIA 2] MessageMedia constructor com base64`);
                 
+                console.log('🔧 [DEBUG] Lendo arquivo como base64...');
                 const fileBuffer = fs.readFileSync(audioPath);
                 const base64Data = fileBuffer.toString('base64');
                 const fileName = `${originalFileName}.ogg`;
                 
                 console.log(`📊 Base64: ${base64Data.length} chars, arquivo: ${fileName}`);
                 
+                console.log('🔧 [DEBUG] Criando MessageMedia manual...');
                 const media = new MessageMedia('audio/ogg', base64Data, fileName);
+                console.log('🔧 [DEBUG] MessageMedia manual criado, enviando...');
                 result = await client.sendMessage(to, media);
+                console.log('🔧 [DEBUG] Envio manual completou');
                 
             } 
             // ✅ ESTRATÉGIA 3: sendMessage com options específicas para voz
             else {
                 console.log(`🎯 [ESTRATÉGIA 3] sendMessage como audio com options`);
                 
+                console.log('🔧 [DEBUG] Preparando estratégia 3...');
                 const fileBuffer = fs.readFileSync(audioPath);
                 const base64Data = fileBuffer.toString('base64');
                 const fileName = `${originalFileName}.ogg`;
                 
+                console.log('🔧 [DEBUG] Criando MessageMedia para voz...');
                 const media = new MessageMedia('audio/ogg', base64Data, fileName);
                 
+                console.log('🔧 [DEBUG] Enviando como mensagem de voz...');
                 // Enviar especificamente como mensagem de voz
                 result = await client.sendMessage(to, media, {
                     sendAudioAsVoice: true
                 });
+                console.log('🔧 [DEBUG] Envio como voz completou');
             }
             
             // ✅ DETECÇÃO REAL DE SUCESSO
