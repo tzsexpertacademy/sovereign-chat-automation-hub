@@ -569,7 +569,8 @@ async function sendAudio(instanceId, to, audioFile) {
       console.log('🎵 Usando MessageMedia + sendAudioAsVoice (método comprovado)');
       console.log('📂 Caminho do arquivo:', audioFile);
       
-      // ✅ CORREÇÃO 1: Validar se arquivo existe
+      // ✅ CORREÇÃO 1: Validar se arquivo existe usando fs correto
+      const { fs, path } = require('./config');
       if (!fs.existsSync(audioFile)) {
         throw new Error(`Arquivo não encontrado: ${audioFile}`);
       }
@@ -628,9 +629,10 @@ async function sendAudio(instanceId, to, audioFile) {
   }
 }
 
-// ✅ CORREÇÃO 5: Helper Node.js para converter arquivo para base64
+// ✅ CORREÇÃO 5: Helper Node.js para converter arquivo para base64  
 async function fileToBase64NodeJS(file) {
   try {
+    const { fs } = require('./config');
     if (typeof file === 'string') {
       // É um caminho de arquivo
       const fileData = fs.readFileSync(file);

@@ -672,7 +672,7 @@ function setupApiRoutes(app, io) {
       });
       
       // Verificar se cliente existe e está ativo
-      const { getClientStatus } = require('./whatsapp-client');
+      const { getClientStatus, clients } = require('./whatsapp-client');
       const clientStatus = getClientStatus(instanceId);
       
       if (!clientStatus.exists || !clientStatus.isReady) {
@@ -709,8 +709,7 @@ function setupApiRoutes(app, io) {
         
         console.log(`🎵 CORREÇÃO DEFINITIVA: Usando AudioSendService com MessageMedia v1.25.0+`);
         
-        // Obter cliente
-        const { clients } = require('./whatsapp-client');
+        // Obter cliente do Map de clientes ativos
         const client = clients.get(instanceId);
         
         if (!client) {
@@ -835,7 +834,7 @@ function setupApiRoutes(app, io) {
         }
         
         // Verificar cliente
-        const { getClientStatus } = require('./whatsapp-client');
+        const { getClientStatus, clients } = require('./whatsapp-client');
         const clientStatus = getClientStatus(instanceId);
         
         if (!clientStatus.exists || !clientStatus.isReady) {
