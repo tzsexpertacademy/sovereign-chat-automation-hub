@@ -4,11 +4,13 @@
   "description": "Backend para sistema WhatsApp Multi-Cliente",
   "main": "whatsapp-multi-client-server.js",
   "scripts": {
-    "start": "node whatsapp-multi-client-server.js",
-    "dev": "nodemon whatsapp-multi-client-server.js",
-    "stop": "pkill -f whatsapp-multi-client-server.js",
-    "restart": "npm run stop && npm run start",
-    "clean-install": "rm -rf node_modules package-lock.json && npm install"
+    "start": "../scripts/production-start-whatsapp.sh",
+    "dev": "PORT=4001 node whatsapp-multi-client-server.js",
+    "dev-watch": "PORT=4001 nodemon whatsapp-multi-client-server.js",
+    "stop": "../scripts/production-stop-whatsapp.sh",
+    "restart": "npm run stop && sleep 2 && npm run start",
+    "clean-install": "rm -rf node_modules package-lock.json && npm install",
+    "force-stop": "../scripts/force-stop-whatsapp.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.0",
