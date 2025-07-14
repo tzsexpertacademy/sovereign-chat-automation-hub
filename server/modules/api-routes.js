@@ -847,10 +847,10 @@ function setupApiRoutes(app, io) {
    */
   app.post('/api/clients/:id/send-audio-direct', async (req, res) => {
     try {
-      console.log('🎵 ===== MÉTODO DIRETO SEM MESSAGEMEDIA =====');
+      console.log('🎵 ===== MÉTODO UNIFICADO COM AUDIOSENDSERVICE =====');
       const { id: instanceId } = req.params;
       
-      console.log('🔧 ENVIO DIRETO - Correção definitiva sem MessageMedia');
+      console.log('🔧 ENVIO UNIFICADO - Usando apenas AudioSendService');
       console.log(`📨 Instância: ${instanceId}`);
       
       // Parse do FormData
@@ -865,7 +865,7 @@ function setupApiRoutes(app, io) {
           });
         }
         
-        const { to, method = 'buffer' } = fields;
+        const { to } = fields;
         const audioFile = files.file;
         
         if (!audioFile || !to) {
@@ -886,18 +886,85 @@ function setupApiRoutes(app, io) {
           });
         }
         
-        console.log(`🎯 Método: ${method}, Arquivo: ${audioFile.originalFilename}`);
+        console.log(`🎯 Arquivo: ${audioFile.originalFilename}`);
         
         const fs = require('fs');
-        let tempFilePath = null;
+        const path = require('path');
+        const tempDir = path.join(__dirname, '../../temp');
+        
+        // Criar diretório temp se não existir
+        if (!fs.existsSync(tempDir)) {
+          fs.mkdirSync(tempDir, { recursive: true });
+        }
+        
+        const tempFileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.ogg`;
+        const tempFilePath = path.join(tempDir, tempFileName);
         
         try {
-          // ✅ MÉTODO DEFINITIVO: Envio direto por buffer (sem MessageMedia)
-          const audioBuffer = fs.readFileSync(audioFile.filepath);
+          // Copiar arquivo para temp
+          fs.copyFileSync(audioFile.filepath, tempFilePath);
           
-          console.log('📦 Enviando buffer direto (sem MessageMedia)...');
+          console.log(`📁 Arquivo copiado para: ${tempFilePath}`);
           
-          // Estratégia sem MessageMedia - apenas buffer + opções
+          // ✅ USAR APENAS AUDIOSENDSERVICE
+          const AudioSendService = require('../services/audioSendService');
+          const audioService = new AudioSendService();
+          
+          console.log(`🎵 Usando AudioSendService unificado`);
+          
+          // Obter cliente do Map de clientes ativos
+          const client = clients.get(instanceId);
+          
+          if (!client) {
+            throw new Error(`Cliente não encontrado: ${instanceId}`);
+          }
+          
+          const result = await audioService.sendAudioWithRetry(client, to, tempFilePath, audioFile.originalFilename || 'audio');
+          
+          // Limpar arquivo temporário
+          try {
+            if (fs.existsSync(tempFilePath)) {
+              fs.unlinkSync(tempFilePath);
+              console.log(`🗑️ Arquivo temporário removido: ${tempFilePath}`);
+            }
+          } catch (cleanupError) {
+            console.warn(`⚠️ Erro ao limpar arquivo temporário:`, cleanupError);
+          }
+          
+          if (result.success) {
+            console.log(`✅ Áudio enviado com sucesso:`, result);
+            res.json({
+              success: true,
+              message: result.message || 'Áudio enviado com sucesso',
+              details: {
+                format: result.format,
+                attempts: result.attempt,
+                method: 'audioSendService'
+              }
+            });
+          } else {
+            console.error(`❌ Falha no envio de áudio:`, result);
+            res.status(500).json({
+              success: false,
+              error: result.error,
+              details: {
+                attempts: result.attempts
+              }
+            });
+          }
+          
+        } catch (fileError) {
+          // Limpar arquivo em caso de erro
+          try {
+            if (fs.existsSync(tempFilePath)) {
+              fs.unlinkSync(tempFilePath);
+            }
+          } catch (cleanupError) {
+            console.warn(`⚠️ Erro ao limpar arquivo após falha:`, cleanupError);
+          }
+          
+          throw fileError;
+        }
           const result = await clientStatus.client.sendMessage(to, audioBuffer, {
             type: 'document',
             mimetype: 'audio/ogg', 
