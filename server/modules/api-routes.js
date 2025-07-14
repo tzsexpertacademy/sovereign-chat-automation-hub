@@ -954,6 +954,8 @@ function setupApiRoutes(app, io) {
           }
           
         } catch (fileError) {
+          console.error(`❌ Falha no audioSendService:`, fileError.message);
+          
           // Limpar arquivo em caso de erro
           try {
             if (fs.existsSync(tempFilePath)) {
@@ -962,38 +964,6 @@ function setupApiRoutes(app, io) {
           } catch (cleanupError) {
             console.warn(`⚠️ Erro ao limpar arquivo após falha:`, cleanupError);
           }
-          
-          throw fileError;
-        }
-          const result = await clientStatus.client.sendMessage(to, audioBuffer, {
-            type: 'document',
-            mimetype: 'audio/ogg', 
-            filename: audioFile.originalFilename || 'audio.ogg',
-            caption: '🎵 Mensagem de áudio'
-          });
-          
-          console.log('✅ BUFFER ENVIADO! ID:', result?.id?.id || result?.id || 'sem-id');
-          
-          // Limpar arquivo temporário
-          try {
-            fs.unlinkSync(audioFile.filepath);
-          } catch (cleanupError) {
-            console.warn('⚠️ Limpeza:', cleanupError.message);
-          }
-          
-          if (result && (result.id || result._data)) {
-            return res.json({
-              success: true,
-              message: 'Áudio enviado via buffer direto',
-              method: 'buffer-direct',
-              messageId: result.id?.id || result.id || 'buffer-success'
-            });
-          } else {
-            throw new Error('Sem resultado válido do buffer');
-          }
-          
-        } catch (bufferError) {
-          console.error(`❌ Buffer falhou: ${bufferError.message}`);
           
           // Fallback para AudioSendService original
           console.log('🔄 Fallback para AudioSendService...');
@@ -1033,7 +1003,7 @@ function setupApiRoutes(app, io) {
             
             return res.status(500).json({
               success: false,
-              error: `Buffer e fallback falharam: ${bufferError.message} | ${fallbackError.message}`
+              error: `Tentativas de envio falharam: ${fileError.message} | ${fallbackError.message}`
             });
           } finally {
             // Limpar arquivos temporários
