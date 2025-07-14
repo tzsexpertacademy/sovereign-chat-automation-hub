@@ -130,8 +130,8 @@ class AudioSendService {
                     dataLength: media.data ? media.data.length : 0
                 });
                 
-                console.log('🔧 [DEBUG] Iniciando client.sendMessage...');
-                result = await client.sendMessage(to, media);
+                console.log('🔧 [DEBUG] Iniciando client.sendMessage com sendAudioAsVoice...');
+                result = await client.sendMessage(to, media, { sendAudioAsVoice: true });
                 console.log('🔧 [DEBUG] client.sendMessage completou');
                 
             } 
@@ -148,8 +148,8 @@ class AudioSendService {
                 
                 console.log('🔧 [DEBUG] Criando MessageMedia manual...');
                 const media = new MessageMedia('audio/ogg', base64Data, fileName);
-                console.log('🔧 [DEBUG] MessageMedia manual criado, enviando...');
-                result = await client.sendMessage(to, media);
+                console.log('🔧 [DEBUG] MessageMedia manual criado, enviando com sendAudioAsVoice...');
+                result = await client.sendMessage(to, media, { sendAudioAsVoice: true });
                 console.log('🔧 [DEBUG] Envio manual completou');
                 
             } 

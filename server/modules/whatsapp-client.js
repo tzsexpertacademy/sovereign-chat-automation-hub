@@ -4,6 +4,30 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const { QRCode, fs, path } = require('./config');
 const { updateClientStatus, saveMessageToSupabase, syncChatToSupabase } = require('./database');
 
+// Função para detectar Chrome executável
+function detectChromeExecutable() {
+  const possiblePaths = [
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/opt/google/chrome/google-chrome'
+  ];
+  
+  for (const path of possiblePaths) {
+    try {
+      if (fs.existsSync(path)) {
+        console.log(`✅ Chrome encontrado: ${path}`);
+        return path;
+      }
+    } catch (error) {
+      console.warn(`⚠️ Erro ao verificar ${path}:`, error.message);
+    }
+  }
+  
+  console.error('❌ Nenhum executável Chrome encontrado');
+  return '/usr/bin/google-chrome-stable'; // Fallback padrão
+}
+
 // Armazenamento de clientes WhatsApp
 const clients = new Map();
 
@@ -137,7 +161,7 @@ async function createWhatsAppInstance(instanceId, io) {
           dataPath: sessionPath
         }),
         puppeteer: {
-          executablePath: '/opt/google/chrome/google-chrome',
+          executablePath: detectChromeExecutable(),
           headless: true,
           dumpio: true,
           timeout: 120000,
@@ -155,7 +179,8 @@ async function createWhatsAppInstance(instanceId, io) {
             '--autoplay-policy=no-user-gesture-required',
             '--allow-running-insecure-content',
             '--use-fake-ui-for-media-stream',
-            '--disable-features=AudioServiceOutOfProcess'
+            '--disable-features=AudioServiceOutOfProcess,VizDisplayCompositor',
+            '--disable-background-timer-throttling'
           ]
         }
       });
@@ -208,7 +233,7 @@ async function createWhatsAppInstance(instanceId, io) {
               dataPath: sessionPath
             }),
             puppeteer: {
-              executablePath: '/opt/google/chrome/google-chrome',
+              executablePath: detectChromeExecutable(),
               headless: true,
               dumpio: true,
               timeout: 120000,
@@ -226,7 +251,8 @@ async function createWhatsAppInstance(instanceId, io) {
                 '--autoplay-policy=no-user-gesture-required',
                 '--allow-running-insecure-content',
                 '--use-fake-ui-for-media-stream',
-                '--disable-features=AudioServiceOutOfProcess'
+                '--disable-features=AudioServiceOutOfProcess,VizDisplayCompositor',
+                '--disable-background-timer-throttling'
               ]
             }
           });
