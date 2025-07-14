@@ -180,15 +180,7 @@ async function createWhatsAppInstance(instanceId, io) {
             '--allow-running-insecure-content',
             '--use-fake-ui-for-media-stream',
             '--disable-features=AudioServiceOutOfProcess,VizDisplayCompositor',
-            '--disable-background-timer-throttling',
-            '--enable-features=NetworkService,NetworkServiceLogging',
-            '--disable-blink-features=AutomationControlled',
-            '--disable-extensions-except=',
-            '--disable-plugins-except=',
-            '--allow-file-access-from-files',
-            '--disable-web-security',
-            '--disable-features=TranslateUI',
-            '--disable-component-extensions-with-background-pages'
+            '--disable-background-timer-throttling'
           ]
         }
       });
@@ -260,15 +252,7 @@ async function createWhatsAppInstance(instanceId, io) {
                 '--allow-running-insecure-content',
                 '--use-fake-ui-for-media-stream',
                 '--disable-features=AudioServiceOutOfProcess,VizDisplayCompositor',
-                '--disable-background-timer-throttling',
-                '--enable-features=NetworkService,NetworkServiceLogging',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-extensions-except=',
-                '--disable-plugins-except=',
-                '--allow-file-access-from-files',
-                '--disable-web-security',
-                '--disable-features=TranslateUI',
-                '--disable-component-extensions-with-background-pages'
+                '--disable-background-timer-throttling'
               ]
             }
           });

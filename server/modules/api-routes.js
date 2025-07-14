@@ -847,10 +847,10 @@ function setupApiRoutes(app, io) {
    */
   app.post('/api/clients/:id/send-audio-direct', async (req, res) => {
     try {
-      console.log('🎵 ===== MÉTODO UNIFICADO COM AUDIOSENDSERVICE =====');
+      console.log('🎵 ===== MÉTODO DIRETO SEM MESSAGEMEDIA =====');
       const { id: instanceId } = req.params;
       
-      console.log('🔧 ENVIO UNIFICADO - Usando apenas AudioSendService');
+      console.log('🔧 ENVIO DIRETO - Correção definitiva sem MessageMedia');
       console.log(`📨 Instância: ${instanceId}`);
       
       // Parse do FormData
@@ -865,7 +865,7 @@ function setupApiRoutes(app, io) {
           });
         }
         
-        const { to } = fields;
+        const { to, method = 'buffer' } = fields;
         const audioFile = files.file;
         
         if (!audioFile || !to) {
@@ -886,84 +886,47 @@ function setupApiRoutes(app, io) {
           });
         }
         
-        console.log(`🎯 Arquivo: ${audioFile.originalFilename}`);
+        console.log(`🎯 Método: ${method}, Arquivo: ${audioFile.originalFilename}`);
         
         const fs = require('fs');
-        const path = require('path');
-        const tempDir = path.join(__dirname, '../../temp');
-        
-        // Criar diretório temp se não existir
-        if (!fs.existsSync(tempDir)) {
-          fs.mkdirSync(tempDir, { recursive: true });
-        }
-        
-        const tempFileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.ogg`;
-        const tempFilePath = path.join(tempDir, tempFileName);
+        let tempFilePath = null;
         
         try {
-          // Copiar arquivo para temp
-          fs.copyFileSync(audioFile.filepath, tempFilePath);
+          // ✅ MÉTODO DEFINITIVO: Envio direto por buffer (sem MessageMedia)
+          const audioBuffer = fs.readFileSync(audioFile.filepath);
           
-          console.log(`📁 Arquivo copiado para: ${tempFilePath}`);
+          console.log('📦 Enviando buffer direto (sem MessageMedia)...');
           
-          // ✅ USAR APENAS AUDIOSENDSERVICE
-          const AudioSendService = require('../services/audioSendService');
-          const audioService = new AudioSendService();
+          // Estratégia sem MessageMedia - apenas buffer + opções
+          const result = await clientStatus.client.sendMessage(to, audioBuffer, {
+            type: 'document',
+            mimetype: 'audio/ogg', 
+            filename: audioFile.originalFilename || 'audio.ogg',
+            caption: '🎵 Mensagem de áudio'
+          });
           
-          console.log(`🎵 Usando AudioSendService unificado`);
-          
-          // Obter cliente do Map de clientes ativos
-          const client = clients.get(instanceId);
-          
-          if (!client) {
-            throw new Error(`Cliente não encontrado: ${instanceId}`);
-          }
-          
-          const result = await audioService.sendAudioWithRetry(client, to, tempFilePath, audioFile.originalFilename || 'audio');
+          console.log('✅ BUFFER ENVIADO! ID:', result?.id?.id || result?.id || 'sem-id');
           
           // Limpar arquivo temporário
           try {
-            if (fs.existsSync(tempFilePath)) {
-              fs.unlinkSync(tempFilePath);
-              console.log(`🗑️ Arquivo temporário removido: ${tempFilePath}`);
-            }
+            fs.unlinkSync(audioFile.filepath);
           } catch (cleanupError) {
-            console.warn(`⚠️ Erro ao limpar arquivo temporário:`, cleanupError);
+            console.warn('⚠️ Limpeza:', cleanupError.message);
           }
           
-          if (result.success) {
-            console.log(`✅ Áudio enviado com sucesso:`, result);
-            res.json({
+          if (result && (result.id || result._data)) {
+            return res.json({
               success: true,
-              message: result.message || 'Áudio enviado com sucesso',
-              details: {
-                format: result.format,
-                attempts: result.attempt,
-                method: 'audioSendService'
-              }
+              message: 'Áudio enviado via buffer direto',
+              method: 'buffer-direct',
+              messageId: result.id?.id || result.id || 'buffer-success'
             });
           } else {
-            console.error(`❌ Falha no envio de áudio:`, result);
-            res.status(500).json({
-              success: false,
-              error: result.error,
-              details: {
-                attempts: result.attempts
-              }
-            });
+            throw new Error('Sem resultado válido do buffer');
           }
           
-        } catch (fileError) {
-          console.error(`❌ Falha no audioSendService:`, fileError.message);
-          
-          // Limpar arquivo em caso de erro
-          try {
-            if (fs.existsSync(tempFilePath)) {
-              fs.unlinkSync(tempFilePath);
-            }
-          } catch (cleanupError) {
-            console.warn(`⚠️ Erro ao limpar arquivo após falha:`, cleanupError);
-          }
+        } catch (bufferError) {
+          console.error(`❌ Buffer falhou: ${bufferError.message}`);
           
           // Fallback para AudioSendService original
           console.log('🔄 Fallback para AudioSendService...');
@@ -1003,7 +966,7 @@ function setupApiRoutes(app, io) {
             
             return res.status(500).json({
               success: false,
-              error: `Tentativas de envio falharam: ${fileError.message} | ${fallbackError.message}`
+              error: `Buffer e fallback falharam: ${bufferError.message} | ${fallbackError.message}`
             });
           } finally {
             // Limpar arquivos temporários
