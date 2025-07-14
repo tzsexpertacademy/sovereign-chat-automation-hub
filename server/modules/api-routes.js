@@ -530,14 +530,19 @@ function setupApiRoutes(app, io) {
       const { getClientStatus, clients } = require('./whatsapp-client');
       const clientStatus = getClientStatus(instanceId);
       
-      console.log(`📤 Status do cliente:`, clientStatus);
+      console.log(`📤 Status do cliente:`, {
+        exists: clientStatus.exists,
+        isReady: clientStatus.isReady,
+        state: clientStatus.state
+      });
       
       if (!clientStatus.exists || !clientStatus.isReady) {
-        console.log(`❌ Cliente não está pronto:`, clientStatus);
+        console.log(`❌ Cliente não está pronto: ${clientStatus.state}`);
         return res.status(400).json({
           success: false,
           error: 'Cliente não encontrado ou não está pronto',
-          clientStatus
+          status: clientStatus.state,
+          isReady: clientStatus.isReady
         });
       }
       
@@ -705,13 +710,18 @@ function setupApiRoutes(app, io) {
       const { getClientStatus, clients } = require('./whatsapp-client');
       const clientStatus = getClientStatus(instanceId);
       
-      console.log(`📤 Status do cliente:`, clientStatus);
+      console.log(`📤 Status do cliente:`, {
+        exists: clientStatus.exists,
+        isReady: clientStatus.isReady,
+        state: clientStatus.state
+      });
       
       if (!clientStatus.exists || !clientStatus.isReady) {
         return res.status(400).json({
           success: false,
           error: 'Cliente não encontrado ou não está pronto',
-          clientStatus
+          status: clientStatus.state,
+          isReady: clientStatus.isReady
         });
       }
       

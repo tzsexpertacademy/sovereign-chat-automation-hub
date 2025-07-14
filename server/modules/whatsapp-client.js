@@ -575,7 +575,8 @@ function getClientStatus(instanceId) {
     exists: true,
     state: initState || 'unknown',
     isReady: initState === 'ready',
-    client: client
+    phoneNumber: client.info?.me?.user || null,
+    status: client.info?.status || 'unknown'
   };
 }
 
