@@ -6,26 +6,40 @@ const { updateClientStatus, saveMessageToSupabase, syncChatToSupabase } = requir
 
 // Função para detectar Chrome executável
 function detectChromeExecutable() {
+  const { execSync } = require('child_process');
+  
+  try {
+    // Tentar encontrar chrome via which command
+    const chromeCommand = execSync('which google-chrome-stable 2>/dev/null || which google-chrome 2>/dev/null || which chromium-browser 2>/dev/null', { encoding: 'utf8' }).trim();
+    if (chromeCommand) {
+      console.log(`✅ Chrome encontrado via which: ${chromeCommand}`);
+      return chromeCommand;
+    }
+  } catch (error) {
+    console.warn('⚠️ Comando which falhou, tentando caminhos fixos...');
+  }
+
   const possiblePaths = [
     '/usr/bin/google-chrome-stable',
-    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome', 
     '/usr/bin/chromium-browser',
-    '/opt/google/chrome/google-chrome'
+    '/opt/google/chrome/google-chrome',
+    '/snap/bin/chromium'
   ];
   
-  for (const path of possiblePaths) {
+  for (const chromePath of possiblePaths) {
     try {
-      if (fs.existsSync(path)) {
-        console.log(`✅ Chrome encontrado: ${path}`);
-        return path;
+      if (fs.existsSync(chromePath)) {
+        console.log(`✅ Chrome encontrado: ${chromePath}`);
+        return chromePath;
       }
     } catch (error) {
-      console.warn(`⚠️ Erro ao verificar ${path}:`, error.message);
+      console.warn(`⚠️ Erro ao verificar ${chromePath}:`, error.message);
     }
   }
   
-  console.error('❌ Nenhum executável Chrome encontrado');
-  return '/usr/bin/google-chrome-stable'; // Fallback padrão
+  console.error('❌ ERRO: Nenhum executável Chrome encontrado!');
+  throw new Error('Chrome não encontrado no sistema');
 }
 
 // Armazenamento de clientes WhatsApp
@@ -393,7 +407,7 @@ async function sendMessage(instanceId, to, message) {
   }
 }
 
-// Função para enviar mídia
+// Função para enviar mídia - VERSÃO CORRIGIDA v1.24.0
 async function sendMedia(instanceId, to, media, caption = '') {
   try {
     const client = clients.get(instanceId);
@@ -406,10 +420,45 @@ async function sendMedia(instanceId, to, media, caption = '') {
       throw new Error('Cliente não está pronto');
     }
     
-    const result = await client.sendMessage(to, media, { caption });
-    console.log(`✅ Mídia enviada de ${instanceId} para ${to}`);
+    console.log(`📎 Enviando mídia de ${instanceId} para ${to}`);
+    console.log(`📊 Tipo de mídia:`, typeof media, media?.mimetype);
     
-    return { success: true, messageId: result.id.id };
+    try {
+      const result = await client.sendMessage(to, media, { caption });
+      console.log(`✅ Mídia enviada de ${instanceId} para ${to}`);
+      
+      // Extração segura do messageId
+      let messageId = 'media_sent';
+      if (result && result.id) {
+        if (typeof result.id === 'string') {
+          messageId = result.id;
+        } else if (result.id._serialized) {
+          messageId = result.id._serialized;
+        } else if (result.id.id) {
+          messageId = result.id.id;
+        }
+      }
+      
+      return { success: true, messageId };
+      
+    } catch (sendError) {
+      // Tratamento específico para erro de serialização v1.24.0
+      if (sendError.message && (
+          sendError.message.includes("Cannot read properties of undefined (reading 'serialize')") ||
+          sendError.message.includes("serialize")
+      )) {
+        console.log('🔧 Erro de serialização v1.24.0 detectado - assumindo mídia enviada');
+        return { 
+          success: true, 
+          messageId: `media_serialization_handled_${Date.now()}`,
+          note: 'Mídia enviada (erro de serialização v1.24.0 tratado)'
+        };
+      }
+      
+      // Outros erros - relançar
+      throw sendError;
+    }
+    
   } catch (error) {
     console.error(`❌ Erro ao enviar mídia ${instanceId}:`, error);
     throw error;

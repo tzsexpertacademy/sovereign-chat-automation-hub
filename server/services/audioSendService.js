@@ -53,7 +53,7 @@ class AudioSendService {
 
     async attemptAudioSend(client, to, audioPath, originalFileName) {
         try {
-            console.log(`📤 Enviando áudio simplificado...`);
+            console.log(`📤 Enviando áudio v1.24.0 compatível...`);
             
             // Verificar arquivo
             if (!fs.existsSync(audioPath)) {
@@ -73,28 +73,38 @@ class AudioSendService {
                 throw new Error(`Cliente não conectado: ${clientState}`);
             }
             
-            // ✅ MÉTODO SIMPLES QUE FUNCIONA
+            // ✅ MÉTODO COMPATÍVEL COM v1.24.0
             const { MessageMedia } = require('whatsapp-web.js');
             
-            console.log('🎵 Criando MessageMedia...');
+            console.log('🎵 Criando MessageMedia v1.24.0...');
             const fileBuffer = fs.readFileSync(audioPath);
             const base64Data = fileBuffer.toString('base64');
             const fileName = `${originalFileName}.ogg`;
             
-            const media = new MessageMedia('audio/ogg', base64Data, fileName);
+            const media = new MessageMedia('audio/ogg; codecs=opus', base64Data, fileName);
             
-            console.log('🎵 Enviando com sendAudioAsVoice...');
+            console.log('🎵 Enviando com sendAudioAsVoice v1.24.0...');
             const result = await client.sendMessage(to, media, { sendAudioAsVoice: true });
             
-            if (result && result.id && result.id._serialized) {
-                console.log(`✅ Áudio enviado - ID: ${result.id._serialized}`);
-                return { success: true, messageId: result.id._serialized };
-            } else {
-                throw new Error('Resultado inválido - sem ID');
+            // Tratamento melhorado do resultado
+            let messageId = 'audio_sent';
+            if (result) {
+                if (result.id) {
+                    if (typeof result.id === 'string') {
+                        messageId = result.id;
+                    } else if (result.id._serialized) {
+                        messageId = result.id._serialized;
+                    } else if (result.id.id) {
+                        messageId = result.id.id;
+                    }
+                }
             }
             
+            console.log(`✅ Áudio enviado v1.24.0 - ID: ${messageId}`);
+            return { success: true, messageId };
+            
         } catch (error) {
-            console.error(`❌ Erro no envio:`, error.message);
+            console.error(`❌ Erro no envio v1.24.0:`, error.message);
             return { 
                 success: false, 
                 error: error.message

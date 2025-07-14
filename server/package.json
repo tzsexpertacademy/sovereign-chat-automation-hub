@@ -27,7 +27,7 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.0",
     "uuid": "^9.0.1",
-    "whatsapp-web.js": "1.25.0"
+    "whatsapp-web.js": "1.24.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
