@@ -462,6 +462,8 @@ async function syncInitialChats(client, instanceId) {
 
 // Função para enviar mensagem
 async function sendMessage(instanceId, to, message) {
+  console.log(`📤 Verificando status do cliente ${instanceId}`);
+  
   try {
     const client = clients.get(instanceId);
     
@@ -473,12 +475,112 @@ async function sendMessage(instanceId, to, message) {
       throw new Error('Cliente não está pronto');
     }
     
-    const result = await client.sendMessage(to, message);
-    console.log(`✅ Mensagem enviada de ${instanceId} para ${to}`);
+    console.log(`📤 Status do cliente: {
+  client: <ref *1> Client {
+      clientId: '${instanceId}',
+      client: [Circular *1],
+    info: ClientInfo {`);
     
-    return { success: true, messageId: result.id.id };
+    console.log(`📤 Cliente validado, enviando mensagem de ${instanceId} para ${to}`);
+    
+    let result;
+    let messageId = null;
+    let messageDelivered = false;
+    
+    try {
+      // Tentar enviar mensagem normalmente
+      result = await client.sendMessage(to, message);
+      
+      // Tentar extrair messageId de forma segura
+      if (result && result.id) {
+        if (typeof result.id === 'string') {
+          messageId = result.id;
+        } else if (result.id.id) {
+          messageId = result.id.id;
+        } else if (result.id._serialized) {
+          messageId = result.id._serialized;
+        }
+      }
+      
+      messageDelivered = true;
+      console.log(`✅ Mensagem enviada de ${instanceId} para ${to}`);
+      
+    } catch (sendError) {
+      console.log(`❌ Erro ao enviar mensagem ${instanceId}:`, sendError);
+      
+      // ✅ TRATAMENTO ESPECÍFICO PARA ERRO DE SERIALIZAÇÃO
+      if (sendError.message && sendError.message.includes("Cannot read properties of undefined (reading 'serialize')")) {
+        console.log('🔧 Erro de serialização detectado - mensagem pode ter sido enviada');
+        
+        // Aguardar um momento para verificar se a mensagem foi entregue
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Verificar se a mensagem apareceu nos chats recentes
+        try {
+          const chats = await client.getChats();
+          const targetChat = chats.find(chat => chat.id._serialized === to);
+          
+          if (targetChat) {
+            const recentMessages = await targetChat.fetchMessages({ limit: 5 });
+            const sentMessage = recentMessages.find(msg => 
+              msg.fromMe && 
+              msg.body === message && 
+              (Date.now() - msg.timestamp * 1000) < 10000 // Últimos 10 segundos
+            );
+            
+            if (sentMessage) {
+              messageDelivered = true;
+              messageId = sentMessage.id._serialized || sentMessage.id.id || `delivered_${Date.now()}`;
+              console.log('✅ Mensagem confirmada como entregue apesar do erro de serialização');
+            }
+          }
+        } catch (verificationError) {
+          console.log('⚠️ Não foi possível verificar entrega da mensagem:', verificationError.message);
+        }
+        
+        if (messageDelivered) {
+          // Mensagem foi entregue, retornar sucesso
+          return { 
+            success: true, 
+            messageId: messageId || `serialization_success_${Date.now()}`,
+            note: 'Mensagem enviada com sucesso (erro de serialização tratado)'
+          };
+        } else {
+          // Tentar reenvio uma vez
+          console.log('🔄 Tentando reenvio após erro de serialização...');
+          try {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            result = await client.sendMessage(to, message);
+            
+            if (result && result.id) {
+              messageId = result.id._serialized || result.id.id || result.id;
+            }
+            
+            console.log('✅ Reenvio bem-sucedido após erro de serialização');
+            return { 
+              success: true, 
+              messageId: messageId || `retry_success_${Date.now()}`,
+              note: 'Mensagem reenviada com sucesso'
+            };
+          } catch (retryError) {
+            console.log('❌ Falha no reenvio:', retryError.message);
+            throw new Error('Falha no envio da mensagem após tentativas de recuperação');
+          }
+        }
+      } else {
+        // Outros tipos de erro - relançar
+        throw sendError;
+      }
+    }
+    
+    return { 
+      success: true, 
+      messageId: messageId || `success_${Date.now()}` 
+    };
+    
   } catch (error) {
-    console.error(`❌ Erro ao enviar mensagem ${instanceId}:`, error);
+    console.log(`❌ Erro crítico no endpoint /send:`, error);
+    console.log(`❌ Stack do erro:`, error.stack || 'Sem stack disponível');
     throw error;
   }
 }
