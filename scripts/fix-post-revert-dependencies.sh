@@ -69,12 +69,12 @@ cd server
 echo "📦 Instalando dependências base do servidor..."
 npm install express cors socket.io dotenv qrcode swagger-ui-express swagger-jsdoc uuid express-fileupload multer mime-types
 
-# Instalar whatsapp-web.js e puppeteer com versões estáveis
-echo "📱 Instalando whatsapp-web.js@1.23.0 (versão estável)..."
-npm install whatsapp-web.js@1.23.0
+# Instalar whatsapp-web.js e puppeteer com versões mais recentes
+echo "📱 Instalando whatsapp-web.js@1.25.0 (versão mais recente estável)..."
+npm install whatsapp-web.js@1.25.0
 
-echo "🤖 Instalando puppeteer@20.9.0 (compatível)..."
-npm install puppeteer@20.9.0
+echo "🤖 Instalando puppeteer@23.8.0 (compatível com 1.25+)..."
+npm install puppeteer@23.8.0
 
 # Verificar se instalação foi bem sucedida
 if [ $? -eq 0 ]; then
