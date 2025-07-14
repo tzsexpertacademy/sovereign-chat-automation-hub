@@ -52,10 +52,10 @@ async function generateQRCode(qrString) {
   }
 }
 
-// Função para criar instância do WhatsApp
+// Função para criar instância do WhatsApp - VERSÃO SIMPLIFICADA
 async function createWhatsAppInstance(instanceId, io) {
   try {
-    console.log(`🚀 Criando instância WhatsApp: ${instanceId}`);
+    console.log(`🎯 Iniciando criação do cliente WhatsApp para: ${instanceId}`);
     
     // Verificar se cliente já existe
     if (clients.has(instanceId)) {
@@ -63,269 +63,52 @@ async function createWhatsAppInstance(instanceId, io) {
       return { success: false, message: 'Cliente já existe' };
     }
 
-    // DIAGNÓSTICO DETALHADO - Verificar dependências do sistema
-    console.log('🔍 [DIAGNÓSTICO] Verificando dependências do sistema...');
-    
-    // 1. Verificar Node.js e memória
-    console.log(`🔧 Node.js versão: ${process.version}`);
-    console.log(`💾 Memória usada: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
-    console.log(`⚡ Uptime do processo: ${Math.round(process.uptime())} segundos`);
-    
-    // 2. Verificar espaço em disco
-    try {
-      const fs = require('fs');
-      const stats = fs.statSync('/tmp');
-      console.log(`💽 Diretório /tmp acessível: ${stats.isDirectory() ? 'SIM' : 'NÃO'}`);
-    } catch (diskError) {
-      console.warn(`⚠️ Problema com /tmp:`, diskError.message);
-    }
-
-    // 3. Verificar conexão com Supabase ANTES de inicializar Puppeteer
-    console.log('🔍 [DIAGNÓSTICO] Testando conexão Supabase...');
-    try {
-      const { data, error } = await updateClientStatus(instanceId, 'initializing');
-      if (error) {
-        console.error(`❌ Falha na conexão Supabase para ${instanceId}:`, error);
-        throw new Error(`Erro de conexão com banco de dados: ${error.message}`);
-      }
-      console.log(`✅ Conexão Supabase validada para ${instanceId}`);
-    } catch (supabaseError) {
-      console.error(`💥 Erro crítico Supabase para ${instanceId}:`, supabaseError);
-      return { 
-        success: false, 
-        error: `Falha na conexão com banco: ${supabaseError.message}`,
-        details: 'Verifique as credenciais do Supabase',
-        type: 'DatabaseConnectionError'
-      };
-    }
-
     // Marcar como inicializando
     clientInitStates.set(instanceId, 'initializing');
-
-    // 4. Configurar pasta de sessão COM VERIFICAÇÕES
-    console.log('🔍 [DIAGNÓSTICO] Configurando pasta de sessão...');
+    
+    // Configurar pasta de sessão
     const sessionPath = path.join(__dirname, '..', 'sessions', instanceId);
-    try {
-      if (!fs.existsSync(sessionPath)) {
-        fs.mkdirSync(sessionPath, { recursive: true });
-        console.log(`📁 Pasta de sessão criada: ${sessionPath}`);
-      } else {
-        console.log(`📁 Pasta de sessão existente: ${sessionPath}`);
-      }
-      
-      // Verificar permissões de escrita
-      fs.accessSync(sessionPath, fs.constants.W_OK);
-      console.log(`✅ Permissões de escrita OK: ${sessionPath}`);
-    } catch (sessionError) {
-      console.error(`❌ Erro na pasta de sessão:`, sessionError);
-      return {
-        success: false,
-        error: 'Falha ao configurar pasta de sessão',
-        details: sessionError.message,
-        type: 'SessionDirectoryError'
-      };
+    if (!fs.existsSync(sessionPath)) {
+      fs.mkdirSync(sessionPath, { recursive: true });
+      console.log(`📁 Pasta de sessão criada: ${sessionPath}`);
     }
 
-    // 5. TESTE DE PUPPETEER ANTES DE CRIAR O CLIENTE
-    console.log('🔍 [DIAGNÓSTICO] Testando disponibilidade do Puppeteer...');
-    let puppeteerTest = null;
-    try {
-      // Tentar importar puppeteer para verificar se está disponível
-      const puppeteer = require('puppeteer-core') || require('puppeteer');
-      console.log('✅ Puppeteer disponível');
-      
-      // Verificar se pode encontrar o Chrome
-      try {
-        const executablePath = puppeteer.executablePath();
-        console.log(`🌐 Chrome executável encontrado: ${executablePath}`);
-      } catch (chromeError) {
-        console.warn(`⚠️ Chrome não encontrado automaticamente:`, chromeError.message);
-      }
-    } catch (puppeteerError) {
-      console.error(`❌ Puppeteer não disponível:`, puppeteerError);
-      return {
-        success: false,
-        error: 'Puppeteer não está disponível no sistema',
-        details: puppeteerError.message,
-        type: 'PuppeteerUnavailableError'
-      };
-    }
-
-    // 6. Criar cliente WhatsApp COM TIMEOUT E MELHOR TRATAMENTO
     console.log('🔍 [DIAGNÓSTICO] Criando cliente WhatsApp...');
-    let client = null;
-    try {
-      client = new Client({
-        authStrategy: new LocalAuth({
-          clientId: instanceId,
-          dataPath: sessionPath
-        }),
-        puppeteer: {
-          executablePath: detectChromeExecutable(),
-          headless: true,
-          dumpio: true,
-          timeout: 120000,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-renderer-backgrounding',
-            '--disable-extensions',
-            '--disable-default-apps',
-            '--disable-sync',
-            '--no-default-browser-check',
-            '--no-first-run',
-            '--disable-web-security',
-            '--autoplay-policy=no-user-gesture-required',
-            '--allow-running-insecure-content',
-            '--use-fake-ui-for-media-stream',
-            '--disable-features=AudioServiceOutOfProcess,VizDisplayCompositor',
-            '--disable-background-timer-throttling',
-            '--enable-features=NetworkService,NetworkServiceLogging',
-            '--disable-blink-features=AutomationControlled',
-            '--disable-extensions-except=',
-            '--disable-plugins-except=',
-            '--allow-file-access-from-files',
-            '--disable-web-security',
-            '--disable-features=TranslateUI',
-            '--disable-component-extensions-with-background-pages'
-          ]
-        }
-      });
-      console.log('✅ Cliente WhatsApp criado com sucesso');
-    } catch (clientError) {
-      console.error(`❌ Erro ao criar cliente WhatsApp:`, clientError);
-      return {
-        success: false,
-        error: 'Falha ao criar cliente WhatsApp',
-        details: clientError.message,
-        type: 'ClientCreationError'
-      };
-    }
+    
+    // Criar cliente com configuração mínima funcional
+    const client = new Client({
+      authStrategy: new LocalAuth({
+        clientId: instanceId,
+        dataPath: sessionPath
+      }),
+      puppeteer: {
+        executablePath: detectChromeExecutable(),
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-extensions',
+          '--no-default-browser-check',
+          '--no-first-run'
+        ]
+      }
+    });
+    
+    console.log('✅ Cliente WhatsApp criado com sucesso');
 
-    // 7. Configurar event handlers
-    console.log('🔍 [DIAGNÓSTICO] Configurando event handlers...');
+    // Configurar event handlers
     setupClientEventHandlers(client, instanceId, io);
 
-    // 8. Armazenar cliente
+    // Armazenar cliente
     clients.set(instanceId, client);
 
-    // 9. Inicializar cliente COM TIMEOUT ESTENDIDO E RETRY
+    // Inicializar cliente
     console.log('🔍 [DIAGNÓSTICO] Inicializando cliente (timeout estendido para 180s)...');
-    const initStartTime = Date.now();
     
-    // Configurar timeout de 180 segundos (3 minutos) para dar mais tempo
-    const timeoutMs = 180000;
-    let initAttempt = 0;
-    const maxAttempts = 2;
+    await client.initialize();
     
-    while (initAttempt < maxAttempts) {
-      try {
-        initAttempt++;
-        console.log(`🔄 Tentativa ${initAttempt}/${maxAttempts} de inicialização...`);
-        
-        // Limpar cliente anterior se existir
-        if (initAttempt > 1) {
-          try {
-            if (client) {
-              await client.destroy();
-            }
-          } catch (cleanupError) {
-            console.warn(`⚠️ Aviso na limpeza da tentativa ${initAttempt}:`, cleanupError.message);
-          }
-          
-          // Recriar cliente para nova tentativa
-          client = new Client({
-            authStrategy: new LocalAuth({
-              clientId: instanceId,
-              dataPath: sessionPath
-            }),
-            puppeteer: {
-              executablePath: detectChromeExecutable(),
-              headless: true,
-              dumpio: true,
-              timeout: 120000,
-              args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-renderer-backgrounding',
-                '--disable-extensions',
-                '--disable-default-apps',
-                '--disable-sync',
-                '--no-default-browser-check',
-                '--no-first-run',
-                '--disable-web-security',
-                '--autoplay-policy=no-user-gesture-required',
-                '--allow-running-insecure-content',
-                '--use-fake-ui-for-media-stream',
-                '--disable-features=AudioServiceOutOfProcess,VizDisplayCompositor',
-                '--disable-background-timer-throttling',
-                '--enable-features=NetworkService,NetworkServiceLogging',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-extensions-except=',
-                '--disable-plugins-except=',
-                '--allow-file-access-from-files',
-                '--disable-web-security',
-                '--disable-features=TranslateUI',
-                '--disable-component-extensions-with-background-pages'
-              ]
-            }
-          });
-          
-          // Reconfigurar event handlers
-          setupClientEventHandlers(client, instanceId, io);
-          clients.set(instanceId, client);
-        }
-        
-        // Tentar inicializar com timeout estendido
-        const initPromise = client.initialize();
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
-            reject(new Error(`Timeout na inicialização do cliente (${timeoutMs/1000}s)`));
-          }, timeoutMs);
-        });
-        
-        await Promise.race([initPromise, timeoutPromise]);
-        
-        const initTime = Date.now() - initStartTime;
-        console.log(`✅ Cliente inicializado com sucesso em ${initTime}ms na tentativa ${initAttempt}`);
-        break; // Sucesso, sair do loop
-        
-      } catch (initError) {
-        console.error(`❌ Erro na tentativa ${initAttempt} de inicialização:`, initError);
-        
-        // Se for a última tentativa, retornar erro
-        if (initAttempt >= maxAttempts) {
-          // Limpar recursos em caso de falha final
-          try {
-            if (client) {
-              await client.destroy();
-            }
-          } catch (cleanupError) {
-            console.error(`❌ Erro na limpeza final:`, cleanupError);
-          }
-          
-          clients.delete(instanceId);
-          clientInitStates.delete(instanceId);
-          
-          return {
-            success: false,
-            error: 'Falha na inicialização do cliente WhatsApp após múltiplas tentativas',
-            details: `Tentativa ${initAttempt}: ${initError.message}`,
-            type: 'ClientInitializationError',
-            initTime: Date.now() - initStartTime,
-            attempts: initAttempt
-          };
-        }
-        
-        // Aguardar antes da próxima tentativa
-        console.log(`⏳ Aguardando 5s antes da próxima tentativa...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
-      }
-    }
-
-    console.log(`✅ Instância ${instanceId} criada com sucesso`);
+    console.log(`✅ Cliente WhatsApp criado com sucesso: ${instanceId}`);
     return { success: true, message: 'Instância criada com sucesso' };
 
   } catch (error) {
@@ -386,14 +169,18 @@ function setupClientEventHandlers(client, instanceId, io) {
   // Cliente pronto
   client.on('ready', async () => {
     try {
-      console.log(`✅ Cliente ${instanceId} conectado e pronto!`);
+      console.log(`✅ [EVENTO READY] Cliente ${instanceId} conectado e pronto!`);
       
       const clientInfo = client.info;
-      const phoneNumber = clientInfo.wid.user;
+      const phoneNumber = clientInfo?.wid?.user || 'unknown';
       
-      await updateClientStatus(instanceId, 'connected', phoneNumber, null, false, null);
+      console.log(`✅ [EVENTO READY] Definindo estado para 'ready'...`);
       clientInitStates.set(instanceId, 'ready');
       
+      console.log(`✅ [EVENTO READY] Atualizando status no banco...`);
+      await updateClientStatus(instanceId, 'connected', phoneNumber, null, false, null);
+      
+      console.log(`✅ [EVENTO READY] Emitindo eventos WebSocket...`);
       // Emitir status via WebSocket - MÚLTIPLOS EVENTOS
       io.emit('client_ready', {
         instanceId,
@@ -410,6 +197,8 @@ function setupClientEventHandlers(client, instanceId, io) {
         qrCode: null
       });
       
+      console.log(`✅ [EVENTO READY] Processamento completo para ${instanceId}`);
+      
       // Sincronizar chats iniciais
       await syncInitialChats(client, instanceId);
       
@@ -423,6 +212,50 @@ function setupClientEventHandlers(client, instanceId, io) {
     console.log(`🔐 Cliente ${instanceId} autenticado`);
     await updateClientStatus(instanceId, 'authenticated');
     clientInitStates.set(instanceId, 'authenticated');
+    
+    // ✅ DEBUG: Forçar verificação do estado pronto após 5s
+    setTimeout(async () => {
+      const currentState = clientInitStates.get(instanceId);
+      console.log(`🔍 [DEBUG] Estado após 5s: ${currentState}`);
+      
+      if (currentState === 'authenticated') {
+        console.log(`⚠️ [DEBUG] Ainda em 'authenticated' - verificando se cliente está ready...`);
+        
+        try {
+          const clientState = await client.getState();
+          console.log(`🔍 [DEBUG] Estado do cliente WhatsApp: ${clientState}`);
+          
+          if (clientState === 'CONNECTED') {
+            console.log(`✅ [DEBUG] Cliente conectado - forçando transição para 'ready'`);
+            clientInitStates.set(instanceId, 'ready');
+            
+            const clientInfo = client.info;
+            const phoneNumber = clientInfo?.wid?.user || 'unknown';
+            
+            await updateClientStatus(instanceId, 'connected', phoneNumber, null, false, null);
+            
+            // Emitir eventos de ready
+            io.emit('client_ready', {
+              instanceId,
+              phoneNumber,
+              status: 'connected'
+            });
+            
+            io.emit(`client_status_${instanceId}`, {
+              instanceId,
+              status: 'connected',
+              phoneNumber,
+              hasQrCode: false,
+              qrCode: null
+            });
+            
+            console.log(`✅ [DEBUG] Transição forçada para 'ready' completada`);
+          }
+        } catch (stateError) {
+          console.error(`❌ [DEBUG] Erro ao verificar estado:`, stateError);
+        }
+      }
+    }, 5000);
   });
 
   // Falha na autenticação
