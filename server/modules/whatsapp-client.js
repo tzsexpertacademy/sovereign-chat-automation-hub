@@ -138,7 +138,8 @@ async function createWhatsAppInstance(instanceId, io) {
         }),
         puppeteer: {
           executablePath: '/opt/google/chrome/google-chrome',
-          headless: true,
+          headless: false,
+          dumpio: true,
           timeout: 120000,
           args: [
             '--no-sandbox',
@@ -150,12 +151,12 @@ async function createWhatsAppInstance(instanceId, io) {
             '--disable-sync',
             '--no-default-browser-check',
             '--no-first-run',
-            '--disable-features=VizDisplayCompositor'
+            '--disable-web-security',
+            '--autoplay-policy=no-user-gesture-required',
+            '--allow-running-insecure-content',
+            '--use-fake-ui-for-media-stream',
+            '--disable-features=AudioServiceOutOfProcess'
           ]
-        },
-        webVersionCache: {
-          type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
         }
       });
       console.log('✅ Cliente WhatsApp criado com sucesso');
@@ -208,7 +209,8 @@ async function createWhatsAppInstance(instanceId, io) {
             }),
             puppeteer: {
               executablePath: '/opt/google/chrome/google-chrome',
-              headless: true,
+              headless: false,
+              dumpio: true,
               timeout: 120000,
               args: [
                 '--no-sandbox',
@@ -219,12 +221,13 @@ async function createWhatsAppInstance(instanceId, io) {
                 '--disable-default-apps',
                 '--disable-sync',
                 '--no-default-browser-check',
-                '--disable-features=VizDisplayCompositor'
+                '--no-first-run',
+                '--disable-web-security',
+                '--autoplay-policy=no-user-gesture-required',
+                '--allow-running-insecure-content',
+                '--use-fake-ui-for-media-stream',
+                '--disable-features=AudioServiceOutOfProcess'
               ]
-            },
-            webVersionCache: {
-              type: 'remote',
-              remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
             }
           });
           
@@ -621,12 +624,21 @@ async function sendAudio(instanceId, to, audioFile) {
       const fileName = path.basename(audioFile);
       
       console.log('🎵 Criando MessageMedia com base64...');
+      console.log('🔍 DEBUG: Base64 length:', base64Data.length);
+      console.log('🔍 DEBUG: File name:', fileName);
+      
       const media = new MessageMedia('audio/ogg', base64Data, fileName);
+      console.log('🔍 DEBUG: MessageMedia criado:', media.mimetype, media.filename);
       
       console.log('🎵 Enviando com sendAudioAsVoice: true (chave do sucesso)');
+      console.log('🔍 DEBUG: Cliente estado:', await client.getState());
+      console.log('🔍 DEBUG: Iniciando sendMessage...');
+      
       result = await client.sendMessage(to, media, {
         sendAudioAsVoice: true  // 🎵 ISTO FAZ O ÁUDIO CHEGAR COMO MENSAGEM DE VOZ
       });
+      
+      console.log('🔍 DEBUG: sendMessage completou com sucesso!');
       
       console.log('✅ ÁUDIO ENVIADO COMO VOZ! ID:', result?.id?.id || result?.id || 'sem-id');
       
