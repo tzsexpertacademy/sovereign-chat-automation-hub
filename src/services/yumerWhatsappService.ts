@@ -1,5 +1,5 @@
 // YUMER WhatsApp Backend Service - Integração completa com todas as APIs
-import { API_BASE_URL, SOCKET_URL } from '@/config/environment';
+import { API_BASE_URL, SOCKET_URL, getYumerGlobalApiKey } from '@/config/environment';
 import { io, Socket } from 'socket.io-client';
 
 // Interfaces para tipagem do YUMER Backend
@@ -78,8 +78,16 @@ class YumerWhatsAppService {
       'Accept': 'application/json',
     };
     
-    if (this.jwtToken) {
+    // Prioridade: Global API Key > JWT Token
+    const globalApiKey = getYumerGlobalApiKey();
+    if (globalApiKey) {
+      headers['X-API-Key'] = globalApiKey;
+      console.log('🔑 Usando Global API Key para autenticação YUMER');
+    } else if (this.jwtToken) {
       headers['Authorization'] = `Bearer ${this.jwtToken}`;
+      console.log('🔐 Usando JWT Token para autenticação YUMER');
+    } else {
+      console.log('⚠️ Nenhuma autenticação configurada para YUMER');
     }
     
     return headers;
@@ -236,9 +244,21 @@ class YumerWhatsAppService {
 
     console.log('🔌 Conectando WebSocket YUMER...', SOCKET_URL);
     
+    // Configurar autenticação para WebSocket
+    const globalApiKey = getYumerGlobalApiKey();
+    const authData: any = {};
+    
+    if (globalApiKey) {
+      authData.apiKey = globalApiKey;
+      console.log('🔑 Configurando WebSocket com Global API Key');
+    } else if (this.jwtToken) {
+      authData.token = this.jwtToken;
+      console.log('🔐 Configurando WebSocket com JWT Token');
+    }
+
     this.socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
-      auth: this.jwtToken ? { token: this.jwtToken } : undefined,
+      auth: Object.keys(authData).length > 0 ? authData : undefined,
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,

@@ -1,0 +1,181 @@
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Key, CheckCircle, XCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { toast } from 'sonner';
+import { 
+  getYumerGlobalApiKey, 
+  setYumerGlobalApiKey, 
+  clearYumerGlobalApiKey, 
+  hasYumerGlobalApiKey 
+} from '@/config/environment';
+
+export const YumerApiKeyConfig: React.FC = () => {
+  const [apiKey, setApiKey] = useState('');
+  const [isConfigured, setIsConfigured] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const currentKey = getYumerGlobalApiKey();
+    setIsConfigured(hasYumerGlobalApiKey());
+    if (currentKey) {
+      setApiKey(currentKey);
+    }
+  }, []);
+
+  const handleSaveApiKey = () => {
+    if (!apiKey.trim()) {
+      toast.error('Por favor, insira uma API Key válida');
+      return;
+    }
+
+    setIsLoading(true);
+    
+    try {
+      setYumerGlobalApiKey(apiKey.trim());
+      setIsConfigured(true);
+      toast.success('API Key configurada com sucesso!', {
+        description: 'A autenticação agora funcionará com o backend YUMER'
+      });
+    } catch (error) {
+      toast.error('Erro ao salvar API Key');
+      console.error('Error saving API key:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRemoveApiKey = () => {
+    setIsLoading(true);
+    
+    try {
+      clearYumerGlobalApiKey();
+      setApiKey('');
+      setIsConfigured(false);
+      toast.success('API Key removida com sucesso');
+    } catch (error) {
+      toast.error('Erro ao remover API Key');
+      console.error('Error removing API key:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleShowApiKey = () => {
+    setShowApiKey(!showApiKey);
+  };
+
+  const getStatusInfo = () => {
+    if (isConfigured) {
+      return {
+        icon: <CheckCircle className="h-4 w-4 text-green-500" />,
+        status: 'Configurada',
+        variant: 'default' as const,
+        description: 'API Key está configurada e funcionando'
+      };
+    } else {
+      return {
+        icon: <XCircle className="h-4 w-4 text-red-500" />,
+        status: 'Não Configurada',
+        variant: 'destructive' as const,
+        description: 'API Key necessária para acessar APIs do YUMER'
+      };
+    }
+  };
+
+  const statusInfo = getStatusInfo();
+
+  return (
+    <Card className="w-full">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Key className="h-5 w-5" />
+            <CardTitle>Configuração API Key YUMER</CardTitle>
+          </div>
+          <Badge variant={statusInfo.variant} className="flex items-center gap-1">
+            {statusInfo.icon}
+            {statusInfo.status}
+          </Badge>
+        </div>
+        <CardDescription>
+          Configure a API Key global para autenticação com o backend YUMER
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {!isConfigured && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>API Key necessária:</strong> O backend YUMER requer uma API Key global para funcionamento das APIs autenticadas e WebSocket.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-2">
+          <Label htmlFor="apiKey">Global API Key</Label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                id="apiKey"
+                type={showApiKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Insira a API Key global do YUMER"
+                className="pr-10"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="absolute right-0 top-0 h-full px-3"
+                onClick={toggleShowApiKey}
+              >
+                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </div>
+            <Button 
+              onClick={handleSaveApiKey}
+              disabled={!apiKey.trim() || isLoading}
+              className="shrink-0"
+            >
+              {isLoading ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </div>
+        </div>
+
+        {isConfigured && (
+          <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                API Key configurada e ativa
+              </span>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRemoveApiKey}
+              disabled={isLoading}
+              className="text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+            >
+              {isLoading ? 'Removendo...' : 'Remover'}
+            </Button>
+          </div>
+        )}
+
+        <div className="text-xs text-muted-foreground space-y-1">
+          <p>• A API Key será usada para todas as requisições autenticadas</p>
+          <p>• A configuração é salva localmente no navegador</p>
+          <p>• Reinicie a aplicação após configurar para garantir funcionamento completo</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};

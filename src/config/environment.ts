@@ -37,6 +37,26 @@ export const YUMER_SERVER_URL = `https://${YUMER_SERVER}`;
 export const YUMER_API_URL = `https://${YUMER_SERVER}`; // Para AdminOverview
 export { API_BASE_URL, SOCKET_URL };
 
+// ============ API KEY CONFIGURATION ============
+// Configuração da API Key global para YUMER Backend
+export const getYumerGlobalApiKey = (): string | null => {
+  return localStorage.getItem('yumer_global_api_key');
+};
+
+export const setYumerGlobalApiKey = (apiKey: string): void => {
+  localStorage.setItem('yumer_global_api_key', apiKey);
+  console.log('🔑 API Key global YUMER configurada');
+};
+
+export const clearYumerGlobalApiKey = (): void => {
+  localStorage.removeItem('yumer_global_api_key');
+  console.log('🗑️ API Key global YUMER removida');
+};
+
+export const hasYumerGlobalApiKey = (): boolean => {
+  return !!getYumerGlobalApiKey();
+};
+
 // Export additional config for YUMER Backend
 export const getServerConfig = () => ({
   SERVER_URL,
@@ -56,7 +76,9 @@ export const getServerConfig = () => ({
   yumerServer: YUMER_SERVER,
   yumerPort: 8083,
   directConnection: true, // Conexão direta ao YUMER
-  backendType: 'yumer' // Identificador do backend
+  backendType: 'yumer', // Identificador do backend
+  hasApiKey: hasYumerGlobalApiKey(),
+  getApiKey: getYumerGlobalApiKey
 });
 
 console.log('✅ Configuração YUMER Backend:', {

@@ -3,9 +3,10 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Wifi, WifiOff, RefreshCw, Activity } from "lucide-react";
-import { API_BASE_URL } from "@/config/environment";
+import { Wifi, WifiOff, RefreshCw, Activity, AlertTriangle } from "lucide-react";
+import { API_BASE_URL, hasYumerGlobalApiKey } from "@/config/environment";
 import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
+import { YumerApiKeyConfig } from "./YumerApiKeyConfig";
 import QRCodeTestHttps from "./QRCodeTestHttps";
 import SSLCertificateHelper from "./SSLCertificateHelper";
 import ConnectionDiagnostics from "./ConnectionDiagnostics";
@@ -206,7 +207,14 @@ const WebSocketStatusDebug = () => {
 
   return (
     <div className="space-y-4">
-      {/* SSL Certificate Helper - NOVO */}
+      {/* Configuração da API Key - CRITICAL */}
+      {!hasYumerGlobalApiKey() && (
+        <div className="border-2 border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20 rounded-lg p-1">
+          <YumerApiKeyConfig />
+        </div>
+      )}
+
+      {/* SSL Certificate Helper */}
       <SSLCertificateHelper />
 
       {/* Status Geral */}
@@ -222,8 +230,14 @@ const WebSocketStatusDebug = () => {
                 )}
                 <span>WebSocket via YUMER</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="flex items-center gap-2">
                 Monitor de conexão WebSocket do YUMER Backend
+                {!hasYumerGlobalApiKey() && (
+                  <div className="flex items-center gap-1 text-orange-600 font-medium">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span className="text-xs">API Key necessária</span>
+                  </div>
+                )}
               </CardDescription>
             </div>
             <div className="flex items-center space-x-2">
