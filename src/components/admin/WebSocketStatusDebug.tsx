@@ -207,12 +207,10 @@ const WebSocketStatusDebug = () => {
 
   return (
     <div className="space-y-4">
-      {/* Configuração da API Key - CRITICAL */}
-      {!hasYumerGlobalApiKey() && (
-        <div className="border-2 border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20 rounded-lg p-1">
-          <YumerApiKeyConfig />
-        </div>
-      )}
+      {/* Configuração da API Key - SEMPRE VISÍVEL */}
+      <div className="border-2 border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/20 rounded-lg p-1">
+        <YumerApiKeyConfig />
+      </div>
 
       {/* SSL Certificate Helper */}
       <SSLCertificateHelper />
