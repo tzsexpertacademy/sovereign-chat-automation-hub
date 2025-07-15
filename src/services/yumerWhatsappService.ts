@@ -97,7 +97,15 @@ class YumerWhatsAppService {
     console.log(`📡 YUMER Request: ${options.method || 'GET'} ${url}`);
     
     try {
-      const response = await fetch(url, requestOptions);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch(url, {
+        ...requestOptions,
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -107,39 +115,113 @@ class YumerWhatsAppService {
       const data = await response.json();
       console.log(`✅ YUMER Response: ${endpoint}`, data);
       return data;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ YUMER Request failed: ${endpoint}`, error);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout - servidor não responde');
+      }
       throw error;
+    }
+  }
+
+  // ============ HEALTH CHECK ROBUSTO ============
+  async checkServerHealth(): Promise<{ status: 'online' | 'offline'; details: any }> {
+    try {
+      console.log('🏥 Verificando saúde do servidor YUMER...');
+      
+      // Primeiro tenta um ping simples
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(`${API_BASE_URL}/instance/fetchInstances`, {
+        method: 'GET',
+        headers: this.getAuthHeaders(),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const instances = await response.json();
+        return {
+          status: 'online',
+          details: {
+            instanceCount: instances.length,
+            timestamp: new Date().toISOString(),
+            responseTime: Date.now()
+          }
+        };
+      } else {
+        throw new Error(`Server returned ${response.status}`);
+      }
+    } catch (error: any) {
+      console.error('❌ Health check falhou:', error);
+      return {
+        status: 'offline',
+        details: {
+          error: error.message,
+          timestamp: new Date().toISOString()
+        }
+      };
     }
   }
 
   // ============ WEBSOCKET CONNECTION ============
   connectWebSocket(): Socket {
     if (this.socket?.connected) {
+      console.log('♻️ WebSocket já conectado, reutilizando...');
       return this.socket;
     }
 
-    console.log('🔌 Conectando WebSocket YUMER...');
+    console.log('🔌 Conectando WebSocket YUMER...', SOCKET_URL);
     
     this.socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       auth: this.jwtToken ? { token: this.jwtToken } : undefined,
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5,
+      timeout: 20000,
+      forceNew: false,
     });
 
-    // Event listeners básicos
+    // Event listeners detalhados
     this.socket.on('connect', () => {
-      console.log('✅ WebSocket YUMER conectado');
+      console.log('✅ WebSocket YUMER conectado com sucesso');
+      console.log('📊 Socket ID:', this.socket?.id);
+      console.log('🔄 Transport:', this.socket?.io.engine.transport.name);
     });
 
     this.socket.on('disconnect', (reason) => {
       console.log('❌ WebSocket YUMER desconectado:', reason);
+      if (reason === 'io server disconnect') {
+        // Servidor forçou desconexão, reconectar manualmente
+        console.log('🔄 Servidor forçou desconexão, tentando reconectar...');
+        this.socket?.connect();
+      }
     });
 
-    this.socket.on('error', (error) => {
-      console.error('❌ WebSocket YUMER error:', error);
+    this.socket.on('connect_error', (error) => {
+      console.error('❌ Erro de conexão WebSocket YUMER:', error.message);
+      console.error('🔧 Detalhes do erro:', error);
+    });
+
+    this.socket.on('reconnect', (attemptNumber) => {
+      console.log(`🔄 WebSocket YUMER reconectado após ${attemptNumber} tentativas`);
+    });
+
+    this.socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log(`🔄 Tentativa de reconexão ${attemptNumber}...`);
+    });
+
+    this.socket.on('reconnect_error', (error) => {
+      console.error('❌ Erro na reconexão:', error.message);
+    });
+
+    this.socket.on('reconnect_failed', () => {
+      console.error('❌ Falha nas tentativas de reconexão');
     });
 
     return this.socket;

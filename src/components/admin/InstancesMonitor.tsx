@@ -38,26 +38,54 @@ const InstancesMonitor = () => {
   const checkSystemHealth = async () => {
     try {
       console.log('🔍 [MONITOR] Verificando saúde do sistema YUMER...');
-      // Check system health by fetching instances
-      const instances = await yumerWhatsAppService.fetchAllInstances();
-      const activeCount = instances.filter(i => i.status === 'connected' || i.status === 'ready').length;
       
-      setSystemHealth({
-        serverOnline: true,
-        lastCheck: new Date(),
-        serverInfo: {
-          activeClients: activeCount,
-          uptime: Date.now() / 1000 // Mock uptime in seconds
-        }
-      });
-      console.log('✅ [MONITOR] Sistema YUMER saudável, instâncias ativas:', activeCount);
-    } catch (error) {
+      // Use the robust health check
+      const healthCheck = await yumerWhatsAppService.checkServerHealth();
+      
+      if (healthCheck.status === 'online') {
+        // Get detailed instance data
+        const instances = await yumerWhatsAppService.fetchAllInstances();
+        const activeCount = instances.filter(i => 
+          i.status === 'connected' || 
+          i.status === 'ready' || 
+          i.status === 'qr_ready'
+        ).length;
+        
+        setSystemHealth({
+          serverOnline: true,
+          lastCheck: new Date(),
+          serverInfo: {
+            activeClients: activeCount,
+            totalInstances: instances.length,
+            responseTime: healthCheck.details.responseTime || 0,
+            uptime: new Date(healthCheck.details.timestamp).getTime() / 1000
+          }
+        });
+        
+        console.log('✅ [MONITOR] Sistema YUMER saudável:', {
+          active: activeCount,
+          total: instances.length,
+          details: healthCheck.details
+        });
+      } else {
+        throw new Error(healthCheck.details.error || 'Servidor offline');
+      }
+    } catch (error: any) {
       console.error('❌ [MONITOR] Sistema YUMER indisponível:', error);
       setSystemHealth({
         serverOnline: false,
         lastCheck: new Date(),
         serverInfo: null
       });
+      
+      // Show toast only on first failure or after being online
+      if (systemHealth.serverOnline !== false) {
+        toast({
+          title: "Servidor YUMER Offline",
+          description: error.message || "Não foi possível conectar ao servidor",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -207,12 +235,15 @@ const InstancesMonitor = () => {
                 </div>
               </div>
               {systemHealth.serverInfo && (
-                <div className="text-right">
+                <div className="text-right space-y-1">
                   <p className="text-sm font-medium">
-                    {systemHealth.serverInfo.activeClients} instâncias ativas
+                    {systemHealth.serverInfo.activeClients}/{systemHealth.serverInfo.totalInstances} instâncias ativas
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Uptime: {Math.floor(systemHealth.serverInfo.uptime / 60)} min
+                    Resposta: {systemHealth.serverInfo.responseTime}ms
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Uptime: {Math.floor((Date.now() - systemHealth.serverInfo.uptime * 1000) / 60000)} min
                   </p>
                 </div>
               )}
@@ -272,10 +303,24 @@ const InstancesMonitor = () => {
             </div>
             
             {!systemHealth.serverOnline && (
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
-                <p className="text-sm text-yellow-800">
-                  ⚠️ Servidor offline. Não é possível criar novas instâncias.
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 text-red-600" />
+                  <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                    Servidor YUMER Offline
+                  </p>
+                </div>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                  Não é possível criar novas instâncias. Verifique a conectividade e tente novamente.
                 </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={checkSystemHealth}
+                  className="mt-2"
+                >
+                  🔄 Tentar Reconectar
+                </Button>
               </div>
             )}
           </CardContent>
