@@ -37,33 +37,45 @@ const AdminOverview = () => {
   const checkServerHealth = async () => {
     try {
       setLoading(true);
-      console.log('🔍 [OVERVIEW] Verificando saúde do servidor YUMER...');
+      console.log('🔍 [OVERVIEW] Verificando saúde do servidor YUMER (rotas públicas)...');
       
-      // Use the robust health check
+      // Use the hierarchical health check
       const healthCheck = await yumerWhatsAppService.checkServerHealth();
       
       if (healthCheck.status === 'online') {
-        // Fetch detailed instance data
-        const instances = await yumerWhatsAppService.fetchAllInstances();
-        const activeCount = instances.filter(i => 
-          i.status === 'connected' || 
-          i.status === 'ready' || 
-          i.status === 'qr_ready'
-        ).length;
+        console.log('✅ [OVERVIEW] Servidor online, nível:', healthCheck.details.level);
+        
+        // Try to get detailed data if authenticated APIs work
+        let instanceCount = 0;
+        let activeCount = 0;
+        
+        if (healthCheck.details.level === 'authenticated') {
+          try {
+            const instances = await yumerWhatsAppService.fetchAllInstances();
+            instanceCount = instances.length;
+            activeCount = instances.filter(i => 
+              i.status === 'connected' || 
+              i.status === 'ready' || 
+              i.status === 'qr_ready'
+            ).length;
+          } catch (error) {
+            console.warn('⚠️ [OVERVIEW] Não foi possível carregar instâncias:', error);
+          }
+        }
         
         setStats(prev => ({
           ...prev,
           serverStatus: 'online',
           activeInstances: activeCount,
-          totalClients: instances.length || 0,
+          totalClients: instanceCount,
           totalMessages: Math.floor(Math.random() * 1000), // Mock data
           uptime: healthCheck.details.timestamp
         }));
         
-        console.log('✅ [OVERVIEW] Servidor YUMER saudável:', {
-          instances: instances.length,
-          active: activeCount,
-          details: healthCheck.details
+        console.log('✅ [OVERVIEW] Dados atualizados:', {
+          level: healthCheck.details.level,
+          instances: instanceCount,
+          active: activeCount
         });
       } else {
         throw new Error(healthCheck.details.error || 'Servidor offline');

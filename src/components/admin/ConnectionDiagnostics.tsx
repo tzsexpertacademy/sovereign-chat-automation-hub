@@ -185,11 +185,77 @@ const ConnectionDiagnostics = () => {
       });
     }
 
-    // Test 5: YUMER API Health
+    // Test 5A: YUMER Basic Connectivity
     addResult({
-      test: "API YUMER Health",
+      test: "Conectividade YUMER Básica",
       status: 'pending',
-      message: "Testando API do YUMER..."
+      message: "Testando rota pública /..."
+    });
+
+    try {
+      const start = Date.now();
+      const response = await fetch(`${API_BASE_URL}/`, { method: 'GET' });
+      const duration = Date.now() - start;
+      
+      if (response.ok) {
+        const data = await response.json();
+        addResult({
+          test: "Conectividade YUMER Básica",
+          status: 'success',
+          message: "Servidor YUMER online (rota pública)",
+          details: `Status: ${data.status || 'OK'}`,
+          duration
+        });
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error: any) {
+      addResult({
+        test: "Conectividade YUMER Básica",
+        status: 'error',
+        message: "Falha na rota pública",
+        details: error.message
+      });
+    }
+
+    // Test 5B: YUMER Health Check
+    addResult({
+      test: "YUMER Health Check",
+      status: 'pending',
+      message: "Testando /health..."
+    });
+
+    try {
+      const start = Date.now();
+      const response = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
+      const duration = Date.now() - start;
+      
+      if (response.ok) {
+        const data = await response.json();
+        addResult({
+          test: "YUMER Health Check",
+          status: 'success',
+          message: "Health check passou",
+          details: `Status: ${data.status || 'OK'}`,
+          duration
+        });
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error: any) {
+      addResult({
+        test: "YUMER Health Check",
+        status: 'warning',
+        message: "Health check falhou",
+        details: error.message
+      });
+    }
+
+    // Test 5C: YUMER Authenticated APIs
+    addResult({
+      test: "APIs YUMER Autenticadas",
+      status: 'pending',
+      message: "Testando APIs com autenticação..."
     });
 
     try {
@@ -197,27 +263,34 @@ const ConnectionDiagnostics = () => {
       const healthCheck = await yumerWhatsAppService.checkServerHealth();
       const duration = Date.now() - start;
       
-      if (healthCheck.status === 'online') {
+      if (healthCheck.status === 'online' && healthCheck.details.level === 'authenticated') {
         addResult({
-          test: "API YUMER Health",
+          test: "APIs YUMER Autenticadas",
           status: 'success',
-          message: "Servidor YUMER online",
-          details: `${healthCheck.details.instanceCount} instâncias encontradas`,
+          message: "APIs funcionais",
+          details: `${healthCheck.details.instanceCount || 0} instâncias encontradas`,
           duration
+        });
+      } else if (healthCheck.status === 'online') {
+        addResult({
+          test: "APIs YUMER Autenticadas",
+          status: 'warning',
+          message: "Servidor online mas APIs podem precisar auth",
+          details: `Nível: ${healthCheck.details.level}`
         });
       } else {
         addResult({
-          test: "API YUMER Health",
+          test: "APIs YUMER Autenticadas",
           status: 'error',
-          message: "Servidor YUMER offline",
+          message: "APIs não funcionais",
           details: healthCheck.details.error
         });
       }
     } catch (error: any) {
       addResult({
-        test: "API YUMER Health",
+        test: "APIs YUMER Autenticadas",
         status: 'error',
-        message: "Falha na comunicação com YUMER",
+        message: "Falha nas APIs autenticadas",
         details: error.message
       });
     }

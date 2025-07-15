@@ -124,38 +124,99 @@ class YumerWhatsAppService {
     }
   }
 
-  // ============ HEALTH CHECK ROBUSTO ============
+  // ============ HEALTH CHECK HIERÁRQUICO ============
   async checkServerHealth(): Promise<{ status: 'online' | 'offline'; details: any }> {
     try {
-      console.log('🏥 Verificando saúde do servidor YUMER...');
+      console.log('🏥 Verificando saúde do servidor YUMER (rotas públicas)...');
       
-      // Primeiro tenta um ping simples
+      const startTime = Date.now();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      const response = await fetch(`${API_BASE_URL}/instance/fetchInstances`, {
+      // NÍVEL 1: Teste básico na rota pública / (sem auth)
+      try {
+        const response = await fetch(`${API_BASE_URL}/`, {
+          method: 'GET',
+          signal: controller.signal,
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const responseTime = Date.now() - startTime;
+          
+          console.log('✅ Rota pública / respondeu:', data);
+          
+          return {
+            status: 'online',
+            details: {
+              level: 'public',
+              endpoint: '/',
+              data: data,
+              responseTime,
+              timestamp: new Date().toISOString()
+            }
+          };
+        }
+      } catch (error: any) {
+        console.log('⚠️ Rota / falhou, tentando /health...');
+      }
+      
+      // NÍVEL 2: Teste na rota /health (sem auth)
+      try {
+        const response = await fetch(`${API_BASE_URL}/health`, {
+          method: 'GET',
+          signal: controller.signal,
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const responseTime = Date.now() - startTime;
+          
+          console.log('✅ Rota pública /health respondeu:', data);
+          
+          return {
+            status: 'online',
+            details: {
+              level: 'health',
+              endpoint: '/health',
+              data: data,
+              responseTime,
+              timestamp: new Date().toISOString()
+            }
+          };
+        }
+      } catch (error: any) {
+        console.log('⚠️ Rota /health falhou, tentando APIs autenticadas...');
+      }
+      
+      clearTimeout(timeoutId);
+      
+      // NÍVEL 3: Teste nas APIs funcionais (com auth) - fallback
+      const authResponse = await fetch(`${API_BASE_URL}/instance/fetchInstances`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
         signal: controller.signal,
       });
       
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const instances = await response.json();
+      if (authResponse.ok) {
+        const instances = await authResponse.json();
+        const responseTime = Date.now() - startTime;
+        
         return {
           status: 'online',
           details: {
+            level: 'authenticated',
+            endpoint: '/instance/fetchInstances',
             instanceCount: instances.length,
-            timestamp: new Date().toISOString(),
-            responseTime: Date.now()
+            responseTime,
+            timestamp: new Date().toISOString()
           }
         };
       } else {
-        throw new Error(`Server returned ${response.status}`);
+        throw new Error(`Server returned ${authResponse.status}`);
       }
     } catch (error: any) {
-      console.error('❌ Health check falhou:', error);
+      console.error('❌ Health check falhou em todos os níveis:', error);
       return {
         status: 'offline',
         details: {

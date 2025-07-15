@@ -37,35 +37,48 @@ const InstancesMonitor = () => {
 
   const checkSystemHealth = async () => {
     try {
-      console.log('🔍 [MONITOR] Verificando saúde do sistema YUMER...');
+      console.log('🔍 [MONITOR] Verificando saúde do sistema YUMER (rotas públicas)...');
       
-      // Use the robust health check
+      // Use the hierarchical health check
       const healthCheck = await yumerWhatsAppService.checkServerHealth();
       
       if (healthCheck.status === 'online') {
-        // Get detailed instance data
-        const instances = await yumerWhatsAppService.fetchAllInstances();
-        const activeCount = instances.filter(i => 
-          i.status === 'connected' || 
-          i.status === 'ready' || 
-          i.status === 'qr_ready'
-        ).length;
+        console.log('✅ [MONITOR] Servidor online, nível:', healthCheck.details.level);
+        
+        // Try to get detailed data if authenticated APIs work
+        let activeCount = 0;
+        let totalInstances = 0;
+        
+        if (healthCheck.details.level === 'authenticated') {
+          try {
+            const instances = await yumerWhatsAppService.fetchAllInstances();
+            totalInstances = instances.length;
+            activeCount = instances.filter(i => 
+              i.status === 'connected' || 
+              i.status === 'ready' || 
+              i.status === 'qr_ready'
+            ).length;
+          } catch (error) {
+            console.warn('⚠️ [MONITOR] Não foi possível carregar instâncias:', error);
+          }
+        }
         
         setSystemHealth({
           serverOnline: true,
           lastCheck: new Date(),
           serverInfo: {
             activeClients: activeCount,
-            totalInstances: instances.length,
+            totalInstances: totalInstances,
             responseTime: healthCheck.details.responseTime || 0,
-            uptime: new Date(healthCheck.details.timestamp).getTime() / 1000
+            uptime: new Date(healthCheck.details.timestamp).getTime() / 1000,
+            level: healthCheck.details.level
           }
         });
         
-        console.log('✅ [MONITOR] Sistema YUMER saudável:', {
+        console.log('✅ [MONITOR] Sistema atualizado:', {
+          level: healthCheck.details.level,
           active: activeCount,
-          total: instances.length,
-          details: healthCheck.details
+          total: totalInstances
         });
       } else {
         throw new Error(healthCheck.details.error || 'Servidor offline');

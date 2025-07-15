@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Wifi, WifiOff, RefreshCw, Activity } from "lucide-react";
+import { API_BASE_URL } from "@/config/environment";
 import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
 import QRCodeTestHttps from "./QRCodeTestHttps";
 import SSLCertificateHelper from "./SSLCertificateHelper";
@@ -134,19 +135,40 @@ const WebSocketStatusDebug = () => {
 
   const testConnection = async () => {
     const timestamp = new Date().toLocaleTimeString();
-    setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 🧪 Iniciando teste de conectividade...`]);
+    setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 🧪 Iniciando teste hierárquico de conectividade...`]);
     
     try {
-      // Test 1: Health Check
+      // Test 1: Basic Public Route
+      setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 📡 Testando rota pública /...`]);
+      try {
+        const response = await fetch(`${API_BASE_URL}/`);
+        if (response.ok) {
+          const data = await response.json();
+          setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ✅ Rota pública: ${data.status || 'OK'}`]);
+        }
+      } catch (error: any) {
+        setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ⚠️ Rota pública falhou: ${error.message}`]);
+      }
+
+      // Test 2: Health Check
+      setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 🏥 Testando health check...`]);
       const healthCheck = await yumerWhatsAppService.checkServerHealth();
       if (healthCheck.status === 'online') {
-        setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ✅ Health check: Servidor online`]);
+        setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ✅ Health check: Servidor online (${healthCheck.details.level})`]);
         
-        // Test 2: API Call
-        const instances = await yumerWhatsAppService.fetchAllInstances();
-        setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ✅ API: ${instances.length} instâncias encontradas`]);
+        // Test 3: Authenticated APIs (if available)
+        if (healthCheck.details.level === 'authenticated') {
+          try {
+            const instances = await yumerWhatsAppService.fetchAllInstances();
+            setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ✅ APIs autenticadas: ${instances.length} instâncias`]);
+          } catch (error: any) {
+            setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ⚠️ APIs autenticadas falharam: ${error.message}`]);
+          }
+        } else {
+          setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ℹ️ APIs autenticadas não testadas (servidor online em nível ${healthCheck.details.level})`]);
+        }
         
-        // Test 3: WebSocket
+        // Test 4: WebSocket
         const socket = yumerWhatsAppService.getSocket();
         if (socket && socket.connected) {
           setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ✅ WebSocket: Conectado (${socket.id})`]);
@@ -158,13 +180,15 @@ const WebSocketStatusDebug = () => {
         setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ❌ Health check falhou: ${healthCheck.details.error}`]);
       }
     } catch (error: any) {
-      setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ❌ Teste falhou: ${error.message}`]);
+      setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ❌ Teste completo falhou: ${error.message}`]);
       
       // Diagnóstico detalhado
       if (error.message.includes('Failed to fetch')) {
         setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 🔧 Possível problema: CORS, SSL ou firewall`]);
       } else if (error.message.includes('timeout')) {
         setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 🔧 Possível problema: Servidor muito lento`]);
+      } else if (error.message.includes('ECONNREFUSED')) {
+        setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 🔧 Possível problema: Servidor não está rodando`]);
       }
     }
   };
