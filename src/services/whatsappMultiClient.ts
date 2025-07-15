@@ -77,9 +77,10 @@ class WhatsAppMultiClientService {
   }
 
   // WebSocket connection via YUMER service
-  connectSocket(): Socket {
+  async connectSocket(instanceName: string = 'default', event: string = 'MESSAGE_RECEIVED'): Promise<any> {
     console.log('🔌 Connecting via YUMER WebSocket service...');
-    return yumerWhatsAppService.connectWebSocket();
+    await yumerWhatsAppService.connectWebSocket(instanceName, event);
+    return yumerWhatsAppService.getSocket();
   }
 
   getSocket(): Socket | null {

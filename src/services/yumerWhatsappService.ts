@@ -1,6 +1,7 @@
 // YUMER WhatsApp Backend Service - Integração completa com todas as APIs
-import { API_BASE_URL, SOCKET_URL, getYumerGlobalApiKey } from '@/config/environment';
-import { io, Socket } from 'socket.io-client';
+import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
+import { yumerNativeWebSocketService, WebSocketConnectionOptions } from './yumerNativeWebSocketService';
+import { yumerJwtService } from './yumerJwtService';
 
 // Interfaces para tipagem do YUMER Backend
 export interface YumerInstance {
@@ -59,8 +60,8 @@ export interface YumerGroup {
 
 // Service principal para integração com YUMER Backend
 class YumerWhatsAppService {
-  private socket: Socket | null = null;
   private jwtToken: string | null = null;
+  private eventListeners: Map<string, Function[]> = new Map();
 
   constructor() {
     console.log('🚀 Inicializando YUMER WhatsApp Service...');
@@ -235,89 +236,51 @@ class YumerWhatsAppService {
     }
   }
 
-  // ============ WEBSOCKET CONNECTION ============
-  connectWebSocket(): Socket {
-    if (this.socket?.connected) {
-      console.log('♻️ WebSocket já conectado, reutilizando...');
-      return this.socket;
-    }
+  // ============ WEBSOCKET CONNECTION NATIVO ============
+  async connectWebSocket(instanceName: string, event: string = 'MESSAGE_RECEIVED', useSecureConnection?: boolean): Promise<void> {
+    const options: WebSocketConnectionOptions = {
+      instanceName,
+      event,
+      useSecureConnection,
+      autoReconnect: true,
+      maxReconnectAttempts: 10,
+    };
 
-    console.log('🔌 Conectando WebSocket YUMER...', SOCKET_URL);
-    
-    // Configurar autenticação para WebSocket
-    const globalApiKey = getYumerGlobalApiKey();
-    const authData: any = {};
-    
-    if (globalApiKey) {
-      authData.apiKey = globalApiKey;
-      console.log('🔑 Configurando WebSocket com Global API Key');
-    } else if (this.jwtToken) {
-      authData.token = this.jwtToken;
-      console.log('🔐 Configurando WebSocket com JWT Token');
-    }
-
-    this.socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
-      auth: Object.keys(authData).length > 0 ? authData : undefined,
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      randomizationFactor: 0.5,
-      timeout: 20000,
-      forceNew: false,
-    });
-
-    // Event listeners detalhados
-    this.socket.on('connect', () => {
-      console.log('✅ WebSocket YUMER conectado com sucesso');
-      console.log('📊 Socket ID:', this.socket?.id);
-      console.log('🔄 Transport:', this.socket?.io.engine.transport.name);
-    });
-
-    this.socket.on('disconnect', (reason) => {
-      console.log('❌ WebSocket YUMER desconectado:', reason);
-      if (reason === 'io server disconnect') {
-        // Servidor forçou desconexão, reconectar manualmente
-        console.log('🔄 Servidor forçou desconexão, tentando reconectar...');
-        this.socket?.connect();
-      }
-    });
-
-    this.socket.on('connect_error', (error) => {
-      console.error('❌ Erro de conexão WebSocket YUMER:', error.message);
-      console.error('🔧 Detalhes do erro:', error);
-    });
-
-    this.socket.on('reconnect', (attemptNumber) => {
-      console.log(`🔄 WebSocket YUMER reconectado após ${attemptNumber} tentativas`);
-    });
-
-    this.socket.on('reconnect_attempt', (attemptNumber) => {
-      console.log(`🔄 Tentativa de reconexão ${attemptNumber}...`);
-    });
-
-    this.socket.on('reconnect_error', (error) => {
-      console.error('❌ Erro na reconexão:', error.message);
-    });
-
-    this.socket.on('reconnect_failed', () => {
-      console.error('❌ Falha nas tentativas de reconexão');
-    });
-
-    return this.socket;
-  }
-
-  getSocket(): Socket | null {
-    return this.socket;
+    console.log('🔌 Conectando WebSocket nativo YUMER...', options);
+    await yumerNativeWebSocketService.connect(options);
   }
 
   disconnectWebSocket(): void {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-      console.log('🔌 WebSocket YUMER desconectado');
-    }
+    yumerNativeWebSocketService.disconnect();
+    yumerJwtService.reset();
+    console.log('🔌 WebSocket YUMER desconectado');
+  }
+
+  isWebSocketConnected(): boolean {
+    return yumerNativeWebSocketService.isConnected();
+  }
+
+  getWebSocketInfo(): any {
+    return yumerNativeWebSocketService.getConnectionInfo();
+  }
+
+  // ============ TESTE DE CONECTIVIDADE WEBSOCKET ============
+  async testWebSocketConnection(instanceName: string, event: string, useSecureConnection?: boolean): Promise<{ success: boolean; error?: string; details?: any }> {
+    return yumerNativeWebSocketService.testConnection({
+      instanceName,
+      event,
+      useSecureConnection,
+      autoReconnect: false,
+    });
+  }
+
+  // ============ GESTÃO DE EVENTOS JWT E WEBSOCKET ============
+  async getAvailableEvents(): Promise<string[]> {
+    return yumerJwtService.getAvailableEvents();
+  }
+
+  async generateWebSocketJWT(instanceName: string): Promise<string> {
+    return yumerJwtService.generateJWT(instanceName);
   }
 
   // ============ GERENCIAMENTO DE INSTÂNCIAS ============
@@ -689,90 +652,110 @@ class YumerWhatsAppService {
     return this.makeRequest(`/s3/media/url/${mediaId}/${instanceName}`);
   }
 
-  // ============ WEBSOCKET EVENT LISTENERS ============
+  // ============ WEBSOCKET EVENT LISTENERS (BRIDGE DE COMPATIBILIDADE) ============
+
+  // Compatibilidade com Socket.IO - usa nativo WebSocket internamente
+  getSocket(): any {
+    return {
+      connected: yumerNativeWebSocketService.isConnected(),
+      id: 'native-websocket',
+      on: (event: string, callback: (data: any) => void) => {
+        yumerNativeWebSocketService.on(event, callback);
+      },
+      off: (event: string, callback?: (data: any) => void) => {
+        yumerNativeWebSocketService.off(event, callback);
+      },
+      emit: (event: string, data: any) => {
+        yumerNativeWebSocketService.send({ event, data });
+      },
+      disconnect: () => {
+        yumerNativeWebSocketService.disconnect();
+      },
+    };
+  }
 
   onQRCodeGenerated(callback: (data: { qrCode: string; instanceName: string }) => void): void {
-    this.socket?.on('qr_code_generated', callback);
+    yumerNativeWebSocketService.on('qr_code_generated', callback);
   }
 
   onAuthenticated(callback: (data: { instanceName: string }) => void): void {
-    this.socket?.on('authenticated', callback);
+    yumerNativeWebSocketService.on('authenticated', callback);
   }
 
   onReady(callback: (data: { instanceName: string; phoneNumber: string }) => void): void {
-    this.socket?.on('ready', callback);
+    yumerNativeWebSocketService.on('ready', callback);
   }
 
   onDisconnected(callback: (data: { instanceName: string; reason: string }) => void): void {
-    this.socket?.on('disconnected', callback);
+    yumerNativeWebSocketService.on('disconnected', callback);
   }
 
   onAuthFailure(callback: (data: { instanceName: string; error: string }) => void): void {
-    this.socket?.on('auth_failure', callback);
+    yumerNativeWebSocketService.on('auth_failure', callback);
   }
 
   onStatusUpdate(callback: (data: { instanceName: string; status: string }) => void): void {
-    this.socket?.on('status_update', callback);
+    yumerNativeWebSocketService.on('status_update', callback);
   }
 
   onTypingStart(callback: (data: { instanceName: string; chatId: string; contactId: string }) => void): void {
-    this.socket?.on('typing_start', callback);
+    yumerNativeWebSocketService.on('typing_start', callback);
   }
 
   onTypingStop(callback: (data: { instanceName: string; chatId: string; contactId: string }) => void): void {
-    this.socket?.on('typing_stop', callback);
+    yumerNativeWebSocketService.on('typing_stop', callback);
   }
 
   onRecordingStart(callback: (data: { instanceName: string; chatId: string; contactId: string }) => void): void {
-    this.socket?.on('recording_start', callback);
+    yumerNativeWebSocketService.on('recording_start', callback);
   }
 
   onRecordingStop(callback: (data: { instanceName: string; chatId: string; contactId: string }) => void): void {
-    this.socket?.on('recording_stop', callback);
+    yumerNativeWebSocketService.on('recording_stop', callback);
   }
 
   onPresenceUpdate(callback: (data: { instanceName: string; chatId: string; presence: string }) => void): void {
-    this.socket?.on('presence_update', callback);
+    yumerNativeWebSocketService.on('presence_update', callback);
   }
 
   onMessageReceived(callback: (data: { instanceName: string; message: YumerMessage }) => void): void {
-    this.socket?.on('message_received', callback);
+    yumerNativeWebSocketService.on('message_received', callback);
   }
 
   onMessageSent(callback: (data: { instanceName: string; message: YumerMessage }) => void): void {
-    this.socket?.on('message_sent', callback);
+    yumerNativeWebSocketService.on('message_sent', callback);
   }
 
   onMessageDelivered(callback: (data: { instanceName: string; messageId: string }) => void): void {
-    this.socket?.on('message_delivered', callback);
+    yumerNativeWebSocketService.on('message_delivered', callback);
   }
 
   onMessageRead(callback: (data: { instanceName: string; messageId: string }) => void): void {
-    this.socket?.on('message_read', callback);
+    yumerNativeWebSocketService.on('message_read', callback);
   }
 
   onMessageReaction(callback: (data: { instanceName: string; messageId: string; reaction: string; contactId: string }) => void): void {
-    this.socket?.on('message_reaction', callback);
+    yumerNativeWebSocketService.on('message_reaction', callback);
   }
 
   onMessageDeleted(callback: (data: { instanceName: string; messageId: string }) => void): void {
-    this.socket?.on('message_deleted', callback);
+    yumerNativeWebSocketService.on('message_deleted', callback);
   }
 
   onChatCreated(callback: (data: { instanceName: string; chat: YumerChat }) => void): void {
-    this.socket?.on('chat_created', callback);
+    yumerNativeWebSocketService.on('chat_created', callback);
   }
 
   onChatArchived(callback: (data: { instanceName: string; chatId: string }) => void): void {
-    this.socket?.on('chat_archived', callback);
+    yumerNativeWebSocketService.on('chat_archived', callback);
   }
 
   onContactBlocked(callback: (data: { instanceName: string; contactId: string }) => void): void {
-    this.socket?.on('contact_blocked', callback);
+    yumerNativeWebSocketService.on('contact_blocked', callback);
   }
 
   onGroupUpdated(callback: (data: { instanceName: string; group: YumerGroup }) => void): void {
-    this.socket?.on('group_updated', callback);
+    yumerNativeWebSocketService.on('group_updated', callback);
   }
 }
 

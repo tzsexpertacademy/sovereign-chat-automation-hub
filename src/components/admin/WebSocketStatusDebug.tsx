@@ -21,10 +21,12 @@ const WebSocketStatusDebug = () => {
   useEffect(() => {
     let socket = yumerWhatsAppService.getSocket();
     
-    // Se não existe socket, tenta conectar
+    // Se não existe socket, usar status atual
     if (!socket) {
-      console.log('🔌 Iniciando conexão WebSocket...');
-      socket = yumerWhatsAppService.connectWebSocket();
+      console.log('🔌 WebSocket não conectado');
+      setWsConnected(false);
+    } else {
+      setWsConnected(socket.connected);
     }
 
     const addLog = (message: string) => {
@@ -174,8 +176,7 @@ const WebSocketStatusDebug = () => {
         if (socket && socket.connected) {
           setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ✅ WebSocket: Conectado (${socket.id})`]);
         } else {
-          setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ⚠️ WebSocket: Desconectado, tentando reconectar...`]);
-          yumerWhatsAppService.connectWebSocket();
+          setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ⚠️ WebSocket: Desconectado`]);
         }
       } else {
         setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] ❌ Health check falhou: ${healthCheck.details.error}`]);
@@ -199,10 +200,7 @@ const WebSocketStatusDebug = () => {
     setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 🔄 Forçando reconexão WebSocket...`]);
     
     yumerWhatsAppService.disconnectWebSocket();
-    setTimeout(() => {
-      yumerWhatsAppService.connectWebSocket();
-      setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 🔌 Nova conexão WebSocket iniciada`]);
-    }, 1000);
+    setConnectionLogs(prev => [...prev.slice(-19), `[${timestamp}] 🔌 WebSocket desconectado para nova configuração`]);
   };
 
   return (
@@ -325,6 +323,9 @@ const WebSocketStatusDebug = () => {
         </CardContent>
       </Card>
 
+      {/* Native WebSocket Debugger */}
+      {/* <NativeWebSocketDebugger /> */}
+      
       {/* Connection Diagnostics */}
       <ConnectionDiagnostics />
     </div>
