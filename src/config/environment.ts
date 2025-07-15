@@ -8,6 +8,8 @@ const isDevelopment = window.location.hostname === 'localhost';
 
 // YUMER Backend configuration - porta 8083
 const YUMER_SERVER = '146.59.227.248:8083';
+const YUMER_HOST = '146.59.227.248';
+const YUMER_PORT = '8083';
 
 // Configure URLs for YUMER Backend
 let SERVER_HOST: string;
