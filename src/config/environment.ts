@@ -32,6 +32,7 @@ if (isDevelopment) {
 export const SERVER_URL = SERVER_HOST;
 export const HTTPS_SERVER_URL = `https://${YUMER_SERVER}`; // Para compatibilidade
 export const YUMER_SERVER_URL = `https://${YUMER_SERVER}`;
+export const YUMER_API_URL = `https://${YUMER_SERVER}`; // Para AdminOverview
 export { API_BASE_URL, SOCKET_URL };
 
 // Export additional config for YUMER Backend

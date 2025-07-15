@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Wifi, WifiOff, RefreshCw, Activity } from "lucide-react";
-import whatsappService from "@/services/whatsappMultiClient";
+import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
 import QRCodeTestHttps from "./QRCodeTestHttps";
 import SSLCertificateHelper from "./SSLCertificateHelper";
 
@@ -14,7 +14,7 @@ const WebSocketStatusDebug = () => {
   const [instanceEvents, setInstanceEvents] = useState<any[]>([]);
 
   useEffect(() => {
-    const socket = whatsappService.getSocket();
+    const socket = yumerWhatsAppService.getSocket();
     
     if (socket) {
       const addLog = (message: string) => {
@@ -24,7 +24,7 @@ const WebSocketStatusDebug = () => {
 
       const handleConnect = () => {
         setWsConnected(true);
-        addLog("✅ WebSocket conectado via Nginx HTTPS");
+        addLog("✅ WebSocket conectado via YUMER");
       };
 
       const handleDisconnect = (reason: string) => {
@@ -71,10 +71,11 @@ const WebSocketStatusDebug = () => {
 
   const testConnection = async () => {
     try {
-      const result = await whatsappService.testConnection();
-      setConnectionLogs(prev => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Test Nginx: ${result.message}`]);
+      // Test connection by trying to fetch instances
+      const instances = await yumerWhatsAppService.fetchAllInstances();
+      setConnectionLogs(prev => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Test YUMER: Connected successfully, found ${instances.length} instances`]);
     } catch (error: any) {
-      setConnectionLogs(prev => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Test Nginx failed: ${error.message}`]);
+      setConnectionLogs(prev => [...prev.slice(-9), `[${new Date().toLocaleTimeString()}] Test YUMER failed: ${error.message}`]);
     }
   };
 
@@ -94,10 +95,10 @@ const WebSocketStatusDebug = () => {
                 ) : (
                   <WifiOff className="w-5 h-5 text-red-500" />
                 )}
-                <span>WebSocket via Nginx HTTPS</span>
+                <span>WebSocket via YUMER</span>
               </CardTitle>
               <CardDescription>
-                Monitor de conexão WebSocket via proxy Nginx
+                Monitor de conexão WebSocket do YUMER Backend
               </CardDescription>
             </div>
             <div className="flex items-center space-x-2">

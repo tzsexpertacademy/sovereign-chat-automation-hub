@@ -13,7 +13,8 @@ import {
   WifiOff,
   RefreshCw
 } from "lucide-react";
-import { SERVER_URL } from "@/config/environment";
+import { YUMER_API_URL } from "@/config/environment";
+import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
 
 interface SystemStats {
   totalClients: number;
@@ -36,21 +37,24 @@ const AdminOverview = () => {
   const checkServerHealth = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${SERVER_URL}/health`);
+      console.log('🔍 [OVERVIEW] Verificando saúde do servidor YUMER...');
       
-      if (response.ok) {
-        const data = await response.json();
-        setStats(prev => ({
-          ...prev,
-          serverStatus: 'online',
-          activeInstances: data.activeClients || 0,
-          uptime: formatUptime(data.uptime || 0)
-        }));
-      } else {
-        setStats(prev => ({ ...prev, serverStatus: 'offline' }));
-      }
+      // Fetch server status by getting instances count
+      const instances = await yumerWhatsAppService.fetchAllInstances();
+      const activeCount = instances.filter(i => i.status === 'connected' || i.status === 'ready').length;
+      
+      setStats(prev => ({
+        ...prev,
+        serverStatus: 'online',
+        activeInstances: activeCount,
+        totalClients: instances.length || 0,
+        totalMessages: 0, // This would need a separate API call
+        uptime: new Date().toISOString() // Mock uptime
+      }));
+      
+      console.log('✅ [OVERVIEW] Servidor YUMER saudável, instâncias ativas:', activeCount);
     } catch (error) {
-      console.error("Erro ao verificar servidor:", error);
+      console.error("❌ [OVERVIEW] Servidor YUMER indisponível:", error);
       setStats(prev => ({ ...prev, serverStatus: 'offline' }));
     } finally {
       setLoading(false);
@@ -111,7 +115,7 @@ const AdminOverview = () => {
               )}
             </div>
             <div className="text-sm text-gray-500">
-              URL: {SERVER_URL}
+              URL: {YUMER_API_URL}
             </div>
           </div>
         </CardContent>

@@ -7,10 +7,8 @@ import AdminHeader from "@/components/admin/AdminHeader";
 import AdminOverview from "@/components/admin/AdminOverview";
 import ClientsManagement from "@/components/admin/ClientsManagement";
 import InstancesMonitor from "@/components/admin/InstancesMonitor";
-import SystemLogs from "@/components/admin/SystemLogs";
+import SystemLogsImproved from "@/components/admin/SystemLogsImproved";
 import WebSocketStatusDebug from "@/components/admin/WebSocketStatusDebug";
-import HumanizationDashboard from "@/components/admin/HumanizationDashboard";
-
 const AdminDashboard = () => {
   return (
     <SidebarProvider>
@@ -24,9 +22,8 @@ const AdminDashboard = () => {
               <Route path="overview" element={<AdminOverview />} />
               <Route path="clients" element={<ClientsManagement />} />
               <Route path="instances" element={<InstancesMonitor />} />
-              <Route path="logs" element={<SystemLogs />} />
+              <Route path="logs" element={<SystemLogsImproved />} />
               <Route path="websocket" element={<WebSocketStatusDebug />} />
-              <Route path="humanization" element={<HumanizationDashboard clientId="admin_dashboard" />} />
             </Routes>
           </main>
         </div>

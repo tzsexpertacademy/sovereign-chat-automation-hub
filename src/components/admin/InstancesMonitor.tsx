@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import InstancesListFixed from "./InstancesListFixed";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { clientsService, ClientData } from "@/services/clientsService";
-import whatsappService from "@/services/whatsappMultiClient";
+import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
 import { InstanceManagerProvider } from "@/contexts/InstanceManagerContext";
 
 const InstancesMonitor = () => {
@@ -37,16 +37,22 @@ const InstancesMonitor = () => {
 
   const checkSystemHealth = async () => {
     try {
-      console.log('🔍 [MONITOR] Verificando saúde do sistema HTTPS...');
-      const health = await whatsappService.checkServerHealth();
+      console.log('🔍 [MONITOR] Verificando saúde do sistema YUMER...');
+      // Check system health by fetching instances
+      const instances = await yumerWhatsAppService.fetchAllInstances();
+      const activeCount = instances.filter(i => i.status === 'connected' || i.status === 'ready').length;
+      
       setSystemHealth({
         serverOnline: true,
         lastCheck: new Date(),
-        serverInfo: health
+        serverInfo: {
+          activeClients: activeCount,
+          uptime: Date.now() / 1000 // Mock uptime in seconds
+        }
       });
-      console.log('✅ [MONITOR] Sistema HTTPS saudável:', health);
+      console.log('✅ [MONITOR] Sistema YUMER saudável, instâncias ativas:', activeCount);
     } catch (error) {
-      console.error('❌ [MONITOR] Sistema HTTPS indisponível:', error);
+      console.error('❌ [MONITOR] Sistema YUMER indisponível:', error);
       setSystemHealth({
         serverOnline: false,
         lastCheck: new Date(),
@@ -58,7 +64,7 @@ const InstancesMonitor = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      console.log('📊 [MONITOR] Carregando dados HTTPS...');
+      console.log('📊 [MONITOR] Carregando dados YUMER...');
       
       const [clientsData, instancesData] = await Promise.all([
         clientsService.getAllClients(),
@@ -68,12 +74,12 @@ const InstancesMonitor = () => {
       setClients(clientsData);
       setInstances(instancesData);
       
-      console.log(`📊 [MONITOR] Carregadas ${instancesData.length} instâncias HTTPS no total`);
+      console.log(`📊 [MONITOR] Carregadas ${instancesData.length} instâncias YUMER no total`);
     } catch (error) {
       console.error('❌ [MONITOR] Erro ao carregar dados HTTPS:', error);
       toast({
         title: "Erro",
-        description: "Falha ao carregar dados do sistema HTTPS",
+        description: "Falha ao carregar dados do sistema YUMER",
         variant: "destructive",
       });
     } finally {
@@ -114,7 +120,7 @@ const InstancesMonitor = () => {
 
     try {
       setCreating(true);
-      console.log(`🚀 [MONITOR] Criando nova instância HTTPS: ${newInstanceName}`);
+      console.log(`🚀 [MONITOR] Criando nova instância YUMER: ${newInstanceName}`);
 
       const instanceId = `${selectedClientId}_${Date.now()}`;
       
@@ -126,8 +132,8 @@ const InstancesMonitor = () => {
       });
 
       toast({
-        title: "Instância Criada HTTPS",
-        description: "Nova instância WhatsApp criada com sucesso via HTTPS",
+        title: "Instância Criada",
+        description: "Nova instância WhatsApp criada com sucesso via YUMER",
       });
 
       setNewInstanceName("");
@@ -135,10 +141,10 @@ const InstancesMonitor = () => {
       await loadData();
       
     } catch (error) {
-      console.error('❌ [MONITOR] Erro ao criar instância HTTPS:', error);
+      console.error('❌ [MONITOR] Erro ao criar instância YUMER:', error);
       toast({
-        title: "Erro HTTPS",
-        description: "Falha ao criar nova instância via HTTPS",
+        title: "Erro",
+        description: "Falha ao criar nova instância via YUMER",
         variant: "destructive",
       });
     } finally {
@@ -163,7 +169,7 @@ const InstancesMonitor = () => {
       return "Verificando...";
     }
     
-    return systemHealth.serverOnline ? "Online HTTPS" : "Offline";
+    return systemHealth.serverOnline ? "Online" : "Offline";
   };
 
   return (
@@ -171,22 +177,22 @@ const InstancesMonitor = () => {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Monitor de Instâncias HTTPS</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Monitor de Instâncias</h1>
             <p className="text-muted-foreground">
-              Gerencie todas as instâncias WhatsApp via HTTPS do sistema
+              Gerencie todas as instâncias WhatsApp do sistema
             </p>
           </div>
         </div>
 
-        {/* Status do Sistema HTTPS */}
+        {/* Status do Sistema */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Server className="w-5 h-5" />
-              <span>Status do Sistema HTTPS</span>
+              <span>Status do Sistema</span>
             </CardTitle>
             <CardDescription>
-              Monitoramento em tempo real do servidor WhatsApp HTTPS
+              Monitoramento em tempo real do servidor WhatsApp
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -203,7 +209,7 @@ const InstancesMonitor = () => {
               {systemHealth.serverInfo && (
                 <div className="text-right">
                   <p className="text-sm font-medium">
-                    {systemHealth.serverInfo.activeClients} clientes ativos HTTPS
+                    {systemHealth.serverInfo.activeClients} instâncias ativas
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Uptime: {Math.floor(systemHealth.serverInfo.uptime / 60)} min
@@ -211,18 +217,18 @@ const InstancesMonitor = () => {
                 </div>
               )}
               <Button size="sm" onClick={checkSystemHealth}>
-                Verificar Status HTTPS
+                Verificar Status
               </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Criar Nova Instância HTTPS */}
+        {/* Criar Nova Instância */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Plus className="w-5 h-5" />
-              <span>Criar Nova Instância HTTPS</span>
+              <span>Criar Nova Instância</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -260,7 +266,7 @@ const InstancesMonitor = () => {
                   disabled={creating || !selectedClientId || !newInstanceName.trim() || !systemHealth.serverOnline}
                   className="w-full"
                 >
-                  {creating ? "Criando..." : "Criar Instância HTTPS"}
+                  {creating ? "Criando..." : "Criar Instância"}
                 </Button>
               </div>
             </div>
@@ -268,20 +274,20 @@ const InstancesMonitor = () => {
             {!systemHealth.serverOnline && (
               <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
                 <p className="text-sm text-yellow-800">
-                  ⚠️ Servidor HTTPS offline. Não é possível criar novas instâncias.
+                  ⚠️ Servidor offline. Não é possível criar novas instâncias.
                 </p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Lista de Instâncias HTTPS */}
+        {/* Lista de Instâncias */}
         {loading ? (
           <Card>
             <CardContent className="pt-6">
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-                <p className="mt-2 text-gray-600">Carregando instâncias HTTPS...</p>
+                <p className="mt-2 text-gray-600">Carregando instâncias...</p>
               </div>
             </CardContent>
           </Card>
