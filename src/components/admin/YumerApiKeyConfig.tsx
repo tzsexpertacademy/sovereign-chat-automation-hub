@@ -35,16 +35,23 @@ export const YumerApiKeyConfig: React.FC = () => {
     }
 
     setIsLoading(true);
+    console.log('🔄 Tentando salvar API Key:', apiKey.trim());
     
     try {
       setYumerGlobalApiKey(apiKey.trim());
+      
+      // Verificar se foi salvo
+      const savedKey = getYumerGlobalApiKey();
+      console.log('✅ API Key salva:', savedKey);
+      console.log('📋 LocalStorage yumer_global_api_key:', localStorage.getItem('yumer_global_api_key'));
+      
       setIsConfigured(true);
       toast.success('API Key configurada com sucesso!', {
         description: 'A autenticação agora funcionará com o backend YUMER'
       });
     } catch (error) {
       toast.error('Erro ao salvar API Key');
-      console.error('Error saving API key:', error);
+      console.error('❌ Error saving API key:', error);
     } finally {
       setIsLoading(false);
     }
