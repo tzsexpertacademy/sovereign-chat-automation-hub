@@ -1,65 +1,67 @@
 
-// Environment configuration for WhatsApp Multi-Client - CORREÇÃO DEFINITIVA SSL
-console.log('🔒 Configurando ambiente SSL CORRIGIDO...');
+// Environment configuration for YUMER WhatsApp Backend Integration
+console.log('🚀 Configurando ambiente YUMER Backend...');
 
 // Detect environment
 const isProduction = window.location.hostname.includes('lovableproject.com');
 const isDevelopment = window.location.hostname === 'localhost';
 
-// HTTPS Server configuration - SEM PORTA (usar Nginx proxy)
-const HTTPS_SERVER = '146.59.227.248';
+// YUMER Backend configuration - porta 8083
+const YUMER_SERVER = '146.59.227.248:8083';
 
-// Configure URLs - CORREÇÃO: usar porta 443 via Nginx, não 4000 direto
+// Configure URLs for YUMER Backend
 let SERVER_HOST: string;
 let API_BASE_URL: string;
 let SOCKET_URL: string;
 
 if (isDevelopment) {
-  // Development - use localhost with HTTP for local development
-  SERVER_HOST = 'http://localhost:4000';
-  API_BASE_URL = 'http://localhost:4000';
-  SOCKET_URL = 'ws://localhost:4000';
-  console.log('🛠️ Modo Desenvolvimento - Usando localhost HTTP');
+  // Development - ainda apontando para YUMER em desenvolvimento
+  SERVER_HOST = `https://${YUMER_SERVER}`;
+  API_BASE_URL = `https://${YUMER_SERVER}`;
+  SOCKET_URL = `wss://${YUMER_SERVER}`;
+  console.log('🛠️ Modo Desenvolvimento - Conectando ao YUMER Backend');
 } else {
-  // Production - HTTPS via Nginx (porta 443 padrão, sem especificar)
-  SERVER_HOST = `https://${HTTPS_SERVER}`;
-  API_BASE_URL = `https://${HTTPS_SERVER}`;
-  SOCKET_URL = `wss://${HTTPS_SERVER}`;
-  console.log('🔒 Modo Produção - HTTPS via Nginx proxy (porta 443)');
+  // Production - YUMER Backend HTTPS
+  SERVER_HOST = `https://${YUMER_SERVER}`;
+  API_BASE_URL = `https://${YUMER_SERVER}`;
+  SOCKET_URL = `wss://${YUMER_SERVER}`;
+  console.log('🔒 Modo Produção - YUMER Backend via HTTPS');
 }
 
 // Export the configured URLs
 export const SERVER_URL = SERVER_HOST;
-export const HTTPS_SERVER_URL = `https://${HTTPS_SERVER}`;
+export const HTTPS_SERVER_URL = `https://${YUMER_SERVER}`; // Para compatibilidade
+export const YUMER_SERVER_URL = `https://${YUMER_SERVER}`;
 export { API_BASE_URL, SOCKET_URL };
 
-// Export additional config
+// Export additional config for YUMER Backend
 export const getServerConfig = () => ({
   SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
   HTTPS_SERVER_URL,
+  YUMER_SERVER_URL,
   isProduction,
   isDevelopment,
-  isHttps: !isDevelopment,
-  protocol: isDevelopment ? 'http:' : 'https:',
+  isHttps: true, // YUMER sempre HTTPS
+  protocol: 'https:',
   serverUrl: SERVER_URL,
-  requiresHttps: !isDevelopment,
-  nginxProxy: !isDevelopment, // Usar Nginx proxy em produção
+  requiresHttps: true,
+  nginxProxy: false, // Para compatibilidade
   corsEnabled: true,
-  sslRequired: !isDevelopment,
-  httpsServer: HTTPS_SERVER,
-  useNginxProxy: !isDevelopment,
-  directConnection: isDevelopment, // Conexão direta apenas em dev
-  proxyConnection: !isDevelopment // Proxy via Nginx em produção
+  sslRequired: true,
+  yumerServer: YUMER_SERVER,
+  yumerPort: 8083,
+  directConnection: true, // Conexão direta ao YUMER
+  backendType: 'yumer' // Identificador do backend
 });
 
-console.log('✅ Configuração SSL CORRIGIDA:', {
+console.log('✅ Configuração YUMER Backend:', {
   SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
-  isHttps: !isDevelopment,
-  nginxProxy: !isDevelopment,
-  environment: isProduction ? 'production' : isDevelopment ? 'development' : 'https-production',
-  note: 'Usando Nginx proxy na porta 443 para produção'
+  isHttps: true,
+  backendType: 'yumer',
+  environment: isProduction ? 'production' : isDevelopment ? 'development' : 'yumer-production',
+  note: 'Conectando diretamente ao YUMER Backend na porta 8083'
 });
