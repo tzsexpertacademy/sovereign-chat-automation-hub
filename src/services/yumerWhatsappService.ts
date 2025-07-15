@@ -264,6 +264,7 @@ class YumerWhatsAppService {
     return yumerNativeWebSocketService.getConnectionInfo();
   }
 
+
   // ============ TESTE DE CONECTIVIDADE WEBSOCKET ============
   async testWebSocketConnection(instanceName: string, event: string, useSecureConnection?: boolean): Promise<{ success: boolean; error?: string; details?: any }> {
     return yumerNativeWebSocketService.testConnection({

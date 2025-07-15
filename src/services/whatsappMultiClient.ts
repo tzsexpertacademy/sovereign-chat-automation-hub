@@ -77,13 +77,40 @@ class WhatsAppMultiClientService {
   }
 
   // WebSocket connection via YUMER service
-  async connectSocket(instanceName: string = 'default', event: string = 'MESSAGE_RECEIVED'): Promise<any> {
+  connectSocket(instanceName: string = 'default', event: string = 'MESSAGE_RECEIVED'): any {
     console.log('🔌 Connecting via YUMER WebSocket service...');
-    await yumerWhatsAppService.connectWebSocket(instanceName, event);
-    return yumerWhatsAppService.getSocket();
+    
+    // Conectar assincronamente no background
+    yumerWhatsAppService.connectWebSocket(instanceName, event).catch(error => {
+      console.error('❌ Erro na conexão WebSocket:', error);
+    });
+    
+    // Retornar um objeto compatível com a interface Socket.IO
+    return {
+      on: (event: string, handler: Function) => {
+        if (event === 'connect') {
+          yumerWhatsAppService.onReady((data: any) => handler(data));
+        } else if (event === 'disconnect') {
+          yumerWhatsAppService.onDisconnected((data: any) => handler(data));
+        } else if (event === 'message') {
+          yumerWhatsAppService.onMessageReceived((data: any) => handler(data));
+        }
+      },
+      off: (event: string, handler?: Function) => {
+        // YUMER service não suporta remoção individual de listeners
+        console.log(`🔇 Removendo listener: ${event}`);
+      },
+      emit: (event: string, data: any) => {
+        console.log(`📤 Emitindo evento: ${event}`, data);
+      },
+      disconnect: () => {
+        yumerWhatsAppService.disconnectWebSocket();
+      },
+      connected: yumerWhatsAppService.isWebSocketConnected()
+    };
   }
 
-  getSocket(): Socket | null {
+  getSocket(): any {
     return yumerWhatsAppService.getSocket();
   }
 

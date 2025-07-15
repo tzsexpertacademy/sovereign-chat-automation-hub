@@ -314,33 +314,18 @@ const ConnectionDiagnostics = () => {
         });
       } else {
         // Try to connect
-        const newSocket = yumerWhatsAppService.connectWebSocket();
-        
-        // Wait for connection or timeout
-        const connectionPromise = new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error('Timeout na conexão WebSocket'));
-          }, 5000);
-
-          newSocket.on('connect', () => {
-            clearTimeout(timeout);
-            resolve(true);
+        try {
+          await yumerWhatsAppService.connectWebSocket('test-instance', 'MESSAGE_RECEIVED');
+          
+          addResult({
+            test: "Conexão WebSocket",
+            status: 'success',
+            message: "WebSocket conectado com sucesso",
+            details: `WebSocket nativo YUMER conectado`
           });
-
-          newSocket.on('connect_error', (error) => {
-            clearTimeout(timeout);
-            reject(error);
-          });
-        });
-
-        await connectionPromise;
-        
-        addResult({
-          test: "Conexão WebSocket",
-          status: 'success',
-          message: "WebSocket conectado com sucesso",
-          details: `Socket ID: ${newSocket.id}`
-        });
+        } catch (error: any) {
+          throw new Error(`Falha na conexão: ${error.message}`);
+        }
       }
     } catch (error: any) {
       addResult({
