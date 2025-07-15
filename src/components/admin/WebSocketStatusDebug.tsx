@@ -7,7 +7,7 @@ import { Wifi, WifiOff, RefreshCw, Activity, AlertTriangle } from "lucide-react"
 import { API_BASE_URL, hasYumerGlobalApiKey } from "@/config/environment";
 import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
 import { YumerApiKeyConfig } from "./YumerApiKeyConfig";
-import QRCodeTestHttps from "./QRCodeTestHttps";
+
 import SSLCertificateHelper from "./SSLCertificateHelper";
 import ConnectionDiagnostics from "./ConnectionDiagnostics";
 
@@ -329,9 +329,6 @@ const WebSocketStatusDebug = () => {
 
       {/* Connection Diagnostics */}
       <ConnectionDiagnostics />
-
-      {/* QR Code Test HTTPS */}
-      <QRCodeTestHttps />
     </div>
   );
 };

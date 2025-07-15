@@ -116,15 +116,6 @@ export const YumerApiKeyConfig: React.FC = () => {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {!isConfigured && (
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>API Key necessária:</strong> O backend YUMER requer uma API Key global para funcionamento das APIs autenticadas e WebSocket.
-            </AlertDescription>
-          </Alert>
-        )}
-
         <div className="space-y-2">
           <Label htmlFor="apiKey">Global API Key</Label>
           <div className="flex gap-2">
