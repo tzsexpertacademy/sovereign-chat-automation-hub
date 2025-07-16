@@ -318,12 +318,12 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         return;
       }
       
-      // Iniciar fallback polling
-      webhookQRService.startFallbackPolling(instanceId, codechatQRService, 30);
+      // Iniciar fallback polling com timeout menor para detectar instâncias mortas
+      webhookQRService.startFallbackPolling(instanceId, codechatQRService, 20); // 20 tentativas = 60 segundos
       
       toast({
         title: "⏳ Aguardando QR Code",
-        description: "Configurando webhook e iniciando fallback...",
+        description: "Sistema de fallback ativado com detecção de instâncias mortas...",
       });
       
       // Iniciar polling para status final

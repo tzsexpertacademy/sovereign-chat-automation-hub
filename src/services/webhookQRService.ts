@@ -110,9 +110,24 @@ class WebhookQRService {
           return;
         }
         
+        // Verificar status da instância para detectar instâncias mortas
+        const statusData = await codechatService.getInstanceStatus(instanceId);
+        
+        // Verificar se instância está "morta" (connecting + OFFLINE por muito tempo)
+        const isDeadInstance = (
+          statusData.state === 'connecting' && 
+          response.connectionStatus === 'OFFLINE' && 
+          attempts >= 10 // Após 10 tentativas (30 segundos)
+        );
+        
+        if (isDeadInstance) {
+          console.log(`💀 [WEBHOOK-FALLBACK] Instância morta detectada: state=${statusData.state}, status=${response.connectionStatus}`);
+          this.tryInstanceRestart(instanceId, codechatService);
+          return;
+        }
+        
         // Verificar se instância foi conectada
-        const status = await codechatService.getInstanceStatus(instanceId);
-        if (status.state === 'open') {
+        if (statusData.state === 'open') {
           console.log(`🎉 [WEBHOOK-FALLBACK] Instância conectada durante polling`);
           return;
         }
@@ -124,9 +139,12 @@ class WebhookQRService {
         } else {
           console.warn(`⚠️ [WEBHOOK-FALLBACK] Timeout após ${maxAttempts} tentativas`);
           
-          // Verificar se instância está "morta" e precisa ser reiniciada
-          if (status.state === 'connecting' && response.connectionStatus === 'OFFLINE') {
-            console.log(`🔄 [WEBHOOK-FALLBACK] Instância pode estar morta, tentando restart`);
+          // Se chegou ao limite, tentar restart da instância morta
+          const finalStatus = await codechatService.getInstanceStatus(instanceId);
+          const finalDetails = await codechatService.getInstanceDetails(instanceId);
+          
+          if (finalStatus.state === 'connecting' && finalDetails.connectionStatus === 'OFFLINE') {
+            console.log(`🔄 [WEBHOOK-FALLBACK] Forçando restart de instância morta após timeout`);
             this.tryInstanceRestart(instanceId, codechatService);
           }
         }
@@ -159,53 +177,90 @@ class WebhookQRService {
     try {
       console.log(`🔄 [RESTART] Tentando reiniciar instância morta: ${instanceId}`);
       
-      // Tentar deletar instância existente
+      // Parar polling atual
+      this.stopFallbackPolling(instanceId);
+      
+      toast({
+        title: "🔄 Reiniciando Instância",
+        description: "Detectada instância morta, reiniciando...",
+      });
+      
+      // Etapa 1: Tentar deletar instância existente
       try {
+        console.log(`🗑️ [RESTART] Deletando instância morta...`);
         await codechatService.deleteInstance(instanceId);
-        console.log(`🗑️ [RESTART] Instância deletada`);
+        console.log(`✅ [RESTART] Instância deletada`);
         
         // Aguardar um pouco antes de recriar
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
       } catch (deleteError) {
         console.warn(`⚠️ [RESTART] Erro ao deletar (pode não existir):`, deleteError);
       }
       
-      // Recriar instância
+      // Etapa 2: Recriar instância
+      console.log(`📝 [RESTART] Recriando instância...`);
       const createResult = await codechatService.createInstance(instanceId);
-      if (createResult.success || createResult.status === 'already_exists') {
-        console.log(`✅ [RESTART] Instância recriada`);
-        
-        // Reconectar
-        const connectResult = await codechatService.connectInstance(instanceId);
-        if (connectResult.success) {
-          console.log(`🔌 [RESTART] Instância reconectada`);
-          
-          // Reiniciar polling
-          this.startFallbackPolling(instanceId, codechatService, 20);
-          
-          toast({
-            title: "🔄 Instância Reiniciada",
-            description: "Tentando gerar novo QR Code...",
-          });
-        }
+      
+      if (!createResult.success && createResult.status !== 'already_exists') {
+        throw new Error(`Falha ao recriar: ${createResult.error}`);
       }
+      
+      console.log(`✅ [RESTART] Instância recriada`);
+      
+      // Aguardar mais um pouco antes de conectar
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Etapa 3: Reconectar
+      console.log(`🔌 [RESTART] Reconectando instância...`);
+      const connectResult = await codechatService.connectInstance(instanceId);
+      
+      if (!connectResult.success) {
+        throw new Error(`Falha na reconexão: ${connectResult.error}`);
+      }
+      
+      console.log(`🎉 [RESTART] Instância reconectada com sucesso`);
+      
+      // Etapa 4: Reiniciar polling com timeout menor
+      console.log(`🔍 [RESTART] Reiniciando polling otimizado...`);
+      this.startFallbackPolling(instanceId, codechatService, 20); // Menos tentativas
+      
+      toast({
+        title: "✅ Instância Reiniciada",
+        description: "Tentando gerar novo QR Code...",
+      });
       
     } catch (error) {
       console.error(`❌ [RESTART] Erro ao reiniciar instância:`, error);
       
       toast({
-        title: "Erro no Restart",
-        description: "Não foi possível reiniciar a instância",
+        title: "❌ Erro no Restart",
+        description: `Falha ao reiniciar: ${error.message}`,
         variant: "destructive",
       });
+      
+      // Se o restart falhou, limpar tudo
+      this.clearQRCode(instanceId);
     }
   }
 
-  // ============ EXTRAÇÃO DE QR CODE ============
+  // ============ EXTRAÇÃO DE QR CODE MELHORADA ============
   private extractQRFromResponse(response: any): string | null {
+    console.log(`🔍 [QR-EXTRACT] Analisando resposta:`, {
+      hasWhatsapp: !!response?.Whatsapp,
+      hasQrcode: !!response?.qrcode,
+      hasData: !!response?.data,
+      connectionStatus: response?.connectionStatus,
+      state: response?.Whatsapp?.connection?.state
+    });
+    
     // Verificar múltiplos campos onde QR Code pode estar
     const possiblePaths = [
+      // Campos principais do CodeChat
+      response?.Whatsapp?.qrcode?.base64,
+      response?.Whatsapp?.qrcode?.code,
+      response?.Whatsapp?.qr?.base64,
+      response?.Whatsapp?.qr,
       response?.qrcode?.base64,
       response?.qrcode?.code,
       response?.qr?.base64,
@@ -216,10 +271,15 @@ class WebhookQRService {
       response?.instance?.qr,
       response?.qrCode,
       response?.base64,
+      // Campos adicionais que podem existir
+      response?.Auth?.qrcode,
+      response?.Auth?.qr,
     ];
 
     for (const path of possiblePaths) {
       if (typeof path === 'string' && path.length > 50) {
+        console.log(`🎯 [QR-EXTRACT] QR Code encontrado, tamanho: ${path.length}`);
+        
         // Verificar se é base64 válido
         if (path.startsWith('data:image/') || path.includes('base64')) {
           return path;
@@ -231,6 +291,7 @@ class WebhookQRService {
       }
     }
 
+    console.log(`❌ [QR-EXTRACT] QR Code não encontrado na resposta`);
     return null;
   }
 
