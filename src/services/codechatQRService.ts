@@ -110,6 +110,13 @@ class CodeChatQRService {
       // Resposta pode conter QR Code diretamente conforme documentação
       // { "count": 1, "base64": "data:image/png;base64,iVBORw0KGgo...", "code": "2@WWDFM7QHaSH7i0BQQv12dUluv7PFYo ..." }
       const qrCode = data.base64 || data.qrCode || data.code;
+      
+      console.log(`🔍 [CODECHAT-API] Verificando campos de QR Code na resposta connect:`, {
+        base64: !!data.base64,
+        qrCode: !!data.qrCode,
+        code: !!data.code,
+        keys: Object.keys(data)
+      });
 
       if (qrCode) {
         console.log(`📱 [CODECHAT-API] QR Code recebido diretamente do connect!`);
