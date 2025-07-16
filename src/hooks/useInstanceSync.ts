@@ -19,8 +19,11 @@ export const useInstanceSync = (options: InstanceSyncOptions = {}) => {
 
     console.log('🔄 [SYNC] Configurando sync realtime do banco');
 
+    // Generate unique channel name to prevent multiple subscription errors
+    const channelName = `whatsapp_instances_changes_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     const channel = supabase
-      .channel('whatsapp_instances_changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
