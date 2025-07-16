@@ -43,6 +43,47 @@ class CodeChatQRService {
     return headers;
   }
 
+  // ============ CONFIGURAR WEBHOOK AUTOMATICAMENTE ============
+  async configureWebhook(instanceName: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log(`🔧 [CODECHAT-WEBHOOK] Configurando webhook para: ${instanceName}`);
+      
+      const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook';
+      
+      const url = `${this.getApiBaseUrl()}/webhook/set/${instanceName}`;
+      console.log(`🌐 [CODECHAT-WEBHOOK] PUT ${url}`);
+      
+      const requestBody = {
+        url: webhookUrl,
+        qrcodeUpdate: true,
+        enabled: true
+      };
+      
+      console.log(`📋 [CODECHAT-WEBHOOK] Request body:`, requestBody);
+      
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: await this.getAuthHeaders(instanceName),
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ [CODECHAT-WEBHOOK] Erro ${response.status}:`, errorText);
+        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+      }
+      
+      const data = await response.json();
+      console.log(`✅ [CODECHAT-WEBHOOK] Webhook configurado:`, data);
+      
+      return { success: true };
+      
+    } catch (error: any) {
+      console.error(`❌ [CODECHAT-WEBHOOK] Erro ao configurar webhook:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
 
   // ============ REMOVED: PROBLEMATIC QR CODE ENDPOINT ============
   // O endpoint /instance/qrcode/{instanceName} retorna HTML, não JSON

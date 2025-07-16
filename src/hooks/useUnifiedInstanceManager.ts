@@ -3,6 +3,7 @@ import { whatsappInstancesService } from '@/services/whatsappInstancesService';
 import { codechatQRService } from '@/services/codechatQRService';
 import { webhookQRService } from '@/services/webhookQRService';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface InstanceStatus {
   instanceId: string;
@@ -71,16 +72,65 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, []);
 
-  // ============ ATUALIZAR STATUS VIA REST API - SIMPLIFICADO ============
+  // ============ VERIFICAR QR CODE NO BANCO ============
+  const checkDatabaseForQRCode = useCallback(async (instanceId: string): Promise<{ qrCode?: string; hasQrCode: boolean }> => {
+    try {
+      console.log(`🔍 [UNIFIED-DB] Verificando QR Code no banco: ${instanceId}`);
+      
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .select('qr_code, has_qr_code, qr_expires_at')
+        .eq('instance_id', instanceId)
+        .maybeSingle();
+      
+      if (error) {
+        console.error(`❌ [UNIFIED-DB] Erro ao buscar no banco:`, error);
+        return { hasQrCode: false };
+      }
+      
+      if (!data) {
+        console.log(`📋 [UNIFIED-DB] Instância não encontrada no banco: ${instanceId}`);
+        return { hasQrCode: false };
+      }
+      
+      // Verificar se QR Code ainda é válido
+      if (data.has_qr_code && data.qr_code && data.qr_expires_at) {
+        const expiresAt = new Date(data.qr_expires_at);
+        const now = new Date();
+        
+        if (now < expiresAt) {
+          console.log(`✅ [UNIFIED-DB] QR Code válido encontrado no banco!`);
+          return { qrCode: data.qr_code, hasQrCode: true };
+        } else {
+          console.log(`⏰ [UNIFIED-DB] QR Code expirado no banco`);
+        }
+      }
+      
+      console.log(`📭 [UNIFIED-DB] Nenhum QR Code válido no banco`);
+      return { hasQrCode: false };
+      
+    } catch (error) {
+      console.error(`❌ [UNIFIED-DB] Erro ao verificar banco:`, error);
+      return { hasQrCode: false };
+    }
+  }, []);
+
+  // ============ ATUALIZAR STATUS VIA REST API + BANCO ============
   const refreshStatus = useCallback(async (instanceId: string) => {
     try {
       console.log(`🔄 [UNIFIED] Verificando status: ${instanceId}`);
       
+      // 1. Verificar QR Code no banco primeiro
+      const dbQrCheck = await checkDatabaseForQRCode(instanceId);
+      
+      // 2. Buscar status do CodeChat
       const statusData = await codechatQRService.getInstanceStatus(instanceId);
       console.log(`📊 [UNIFIED] Status response:`, statusData);
       
       let mappedStatus = 'disconnected';
       let phoneNumber = undefined;
+      let qrCode = dbQrCheck.qrCode;
+      let hasQrCode = dbQrCheck.hasQrCode;
       
       // Mapear estados do CodeChat
       if (statusData.state === 'open') {
@@ -95,11 +145,16 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       } else if (statusData.state === 'connecting') {
         mappedStatus = 'connecting';
+        
+        // Se está conectando e temos QR code no banco, usar status qr_ready
+        if (hasQrCode && qrCode) {
+          mappedStatus = 'qr_ready';
+        }
       } else if (statusData.state === 'close') {
         mappedStatus = 'disconnected';
       }
       
-      console.log(`📊 [UNIFIED] Status processado: ${statusData.state} → ${mappedStatus}`);
+      console.log(`📊 [UNIFIED] Status processado: ${statusData.state} → ${mappedStatus} (QR: ${hasQrCode})`);
       
       // Atualizar estado local
       setInstances(prev => ({
@@ -109,6 +164,8 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           instanceId,
           status: mappedStatus,
           phoneNumber: phoneNumber,
+          qrCode: qrCode,
+          hasQrCode: hasQrCode,
           lastUpdated: Date.now()
         }
       }));
@@ -155,7 +212,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       
       throw error;
     }
-  }, [toast, stopPollingForInstance]);
+  }, [toast, stopPollingForInstance, checkDatabaseForQRCode]);
 
   // ============ CONECTAR INSTÂNCIA - FLUXO CORRIGIDO: CHECK → CREATE/SKIP → CONNECT → QR → POLLING ============
   const connectInstance = useCallback(async (instanceId: string) => {
@@ -210,8 +267,18 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         console.log(`✅ [UNIFIED] Instância ${createResponse.success && createResponse.status === 'created' ? 'criada' : 'verificada'}`);
       }
 
+      // ============ ETAPA 1.5: CONFIGURAR WEBHOOK ============
+      console.log(`🔧 [UNIFIED] Etapa 1.5/5: Configurando webhook automático`);
+      
+      const webhookResult = await codechatQRService.configureWebhook(instanceId);
+      if (webhookResult.success) {
+        console.log(`✅ [UNIFIED] Webhook configurado com sucesso`);
+      } else {
+        console.warn(`⚠️ [UNIFIED] Falha no webhook (continuando):`, webhookResult.error);
+      }
+
       // ============ ETAPA 2: CONECTAR E GERAR QR CODE ============
-      console.log(`📡 [UNIFIED] Etapa 2/4: Conectando via /instance/connect`);
+      console.log(`📡 [UNIFIED] Etapa 2/5: Conectando via /instance/connect`);
       
       setInstances(prev => ({
         ...prev,
@@ -231,7 +298,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       console.log(`✅ [UNIFIED] Connect executado com sucesso`);
       
       // ============ ETAPA 3: VERIFICAR QR CODE IMEDIATO ============
-      console.log(`📱 [UNIFIED] Etapa 3/4: Verificando QR Code imediato`);
+      console.log(`📱 [UNIFIED] Etapa 3/5: Verificando QR Code imediato`);
       
       if (connectResponse.qrCode) {
         console.log(`📱 [UNIFIED] ✅ QR CODE RECEBIDO DIRETAMENTE!`);
@@ -264,8 +331,8 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         return;
       }
       
-      // ============ ETAPA 4: POLLING PARA QR CODE ============
-      console.log(`⏳ [UNIFIED] Etapa 4/4: QR Code não retornado, iniciando polling...`);
+      // ============ ETAPA 4: AGUARDAR WEBHOOK ============
+      console.log(`📡 [UNIFIED] Etapa 4/5: Aguardando QR Code via webhook...`);
       
       setInstances(prev => ({
         ...prev,
@@ -277,57 +344,114 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
       
-      // ============ SISTEMA WEBHOOK + FALLBACK POLLING ============
-      console.log(`📊 [UNIFIED] Configurando webhook e fallback para QR Code`);
+      // ============ ETAPA 5: POLLING DO BANCO + FALLBACK ============
+      console.log(`🔄 [UNIFIED] Etapa 5/5: Iniciando polling do banco + fallback`);
       
-      // Configurar listener de webhook
-      const qrCodeListener = (qrData: any) => {
-        console.log(`🎯 [UNIFIED] QR Code recebido via ${qrData.source}!`);
+      // Polling do banco para detectar QR Code salvo pelo webhook
+      let attempts = 0;
+      const maxAttempts = 30; // 30 tentativas = 90 segundos
+      const pollInterval = 3000; // 3 segundos
+      
+      const bankPollingInterval = setInterval(async () => {
+        attempts++;
+        console.log(`🔍 [UNIFIED-POLL] Tentativa ${attempts}/${maxAttempts} - verificando banco`);
         
-        setInstances(prev => ({
-          ...prev,
-          [instanceId]: {
-            ...prev[instanceId],
-            status: 'qr_ready',
-            qrCode: qrData.qrCode,
-            hasQrCode: true,
-            lastUpdated: Date.now()
+        try {
+          const dbQrCheck = await checkDatabaseForQRCode(instanceId);
+          
+          if (dbQrCheck.hasQrCode && dbQrCheck.qrCode) {
+            console.log(`🎉 [UNIFIED-POLL] QR Code encontrado no banco!`);
+            
+            clearInterval(bankPollingInterval);
+            
+            setInstances(prev => ({
+              ...prev,
+              [instanceId]: {
+                ...prev[instanceId],
+                status: 'qr_ready',
+                qrCode: dbQrCheck.qrCode,
+                hasQrCode: true,
+                lastUpdated: Date.now()
+              }
+            }));
+            
+            toast({
+              title: "📱 QR Code Pronto!",
+              description: "QR Code recebido via webhook",
+            });
+            
+            // Iniciar polling para status final
+            startPollingForInstance(instanceId);
+            return;
           }
-        }));
-        
-        whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
-          has_qr_code: true,
-          qr_code: qrData.qrCode,
-          updated_at: new Date().toISOString()
-        });
-        
-        toast({
-          title: "📱 QR Code Pronto!",
-          description: `QR Code recebido via ${qrData.source === 'webhook' ? 'webhook' : 'polling'}`,
-        });
-      };
-      
-      // Adicionar listener
-      webhookQRService.addQRCodeListener(instanceId, qrCodeListener);
-      
-      // Verificar se já temos QR Code
-      const existingQR = webhookQRService.getQRCode(instanceId);
-      if (existingQR) {
-        console.log(`✅ [UNIFIED] QR Code já disponível`);
-        qrCodeListener(existingQR);
-        return;
-      }
-      
-      // Iniciar fallback polling com timeout menor para detectar instâncias mortas
-      webhookQRService.startFallbackPolling(instanceId, codechatQRService, 20); // 20 tentativas = 60 segundos
+          
+          // Se passou do tempo limite, tentar fallback
+          if (attempts >= maxAttempts) {
+            console.warn(`⏰ [UNIFIED-POLL] Timeout atingido - tentando fallback REST`);
+            clearInterval(bankPollingInterval);
+            
+            // Fallback: tentar buscar QR Code via REST API
+            try {
+              const qrResponse = await codechatQRService.getQRCode(instanceId);
+              if (qrResponse.success && qrResponse.qrCode) {
+                console.log(`✅ [UNIFIED-FALLBACK] QR Code obtido via REST`);
+                
+                setInstances(prev => ({
+                  ...prev,
+                  [instanceId]: {
+                    ...prev[instanceId],
+                    status: 'qr_ready',
+                    qrCode: qrResponse.qrCode,
+                    hasQrCode: true,
+                    lastUpdated: Date.now()
+                  }
+                }));
+                
+                // Salvar no banco
+                await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
+                  has_qr_code: true,
+                  qr_code: qrResponse.qrCode,
+                  updated_at: new Date().toISOString()
+                });
+                
+                toast({
+                  title: "📱 QR Code Pronto!",
+                  description: "QR Code obtido via fallback",
+                });
+                
+                startPollingForInstance(instanceId);
+              } else {
+                throw new Error('Timeout: QR Code não gerado');
+              }
+            } catch (fallbackError) {
+              console.error(`❌ [UNIFIED-FALLBACK] Falha no fallback:`, fallbackError);
+              
+              setInstances(prev => ({
+                ...prev,
+                [instanceId]: {
+                  ...prev[instanceId],
+                  status: 'error',
+                  lastUpdated: Date.now()
+                }
+              }));
+              
+              toast({
+                title: "Timeout",
+                description: "QR Code não foi gerado. Tente novamente.",
+                variant: "destructive",
+              });
+            }
+          }
+          
+        } catch (error) {
+          console.error(`❌ [UNIFIED-POLL] Erro no polling:`, error);
+        }
+      }, pollInterval);
       
       toast({
         title: "⏳ Aguardando QR Code",
-        description: "Sistema de fallback ativado com detecção de instâncias mortas...",
+        description: "Sistema híbrido webhook + polling ativado...",
       });
-      
-      // Iniciar polling para status final
-      startPollingForInstance(instanceId);
       
     } catch (error: any) {
       console.error(`❌ [UNIFIED] Erro ao conectar ${instanceId}:`, error);
