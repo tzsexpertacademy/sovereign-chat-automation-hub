@@ -91,12 +91,11 @@ class CodeChatQRService {
       console.log(`🚀 [CODECHAT-API] Conectando via /instance/connect/${instanceName}`);
       
       const url = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;
-      console.log(`🌐 [CODECHAT-API] POST ${url}`);
+      console.log(`🌐 [CODECHAT-API] GET ${url}`);
       
       const response = await fetch(url, {
-        method: 'POST', // Usar POST conforme documentação
+        method: 'GET', // Corrigido: GET conforme API CodeChat real
         headers: await this.getAuthHeaders(instanceName),
-        body: JSON.stringify({}), // Body vazio mas válido
       });
 
       if (!response.ok) {
