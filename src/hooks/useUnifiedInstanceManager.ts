@@ -158,7 +158,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, [toast, stopPollingForInstance]);
 
-  // ============ CONECTAR INSTÂNCIA - FLUXO CORRIGIDO: CREATE → CONNECT → QR → POLLING ============
+  // ============ CONECTAR INSTÂNCIA - FLUXO CORRIGIDO: CHECK → CREATE/SKIP → CONNECT → QR → POLLING ============
   const connectInstance = useCallback(async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
@@ -169,25 +169,59 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         ...prev,
         [instanceId]: {
           instanceId,
-          status: 'creating',
+          status: 'checking',
           hasQrCode: false,
           lastUpdated: Date.now()
         }
       }));
 
-      // ============ ETAPA 1: CRIAR INSTÂNCIA ============
-      console.log(`📝 [UNIFIED] Etapa 1/3: Criando instância no servidor`);
+      // ============ ETAPA 0: VERIFICAR SE INSTÂNCIA JÁ EXISTE ============
+      console.log(`🔍 [UNIFIED] Etapa 0/4: Verificando se instância existe`);
       
-      const createResponse = await codechatQRService.createInstance(instanceId, `Instance: ${instanceId}`);
+      const existsCheck = await codechatQRService.checkInstanceExists(instanceId);
       
-      if (!createResponse.success && createResponse.status !== 'already_exists') {
-        throw new Error(`Falha ao criar instância: ${createResponse.error}`);
+      if (existsCheck.exists) {
+        console.log(`✅ [UNIFIED] Instância já existe - pulando criação`);
+        
+        // Se já existe e está conectada, não precisamos fazer nada
+        if (existsCheck.status === 'open') {
+          console.log(`🎉 [UNIFIED] Instância já está conectada!`);
+          await refreshStatus(instanceId);
+          return;
+        }
+      } else {
+        console.log(`📝 [UNIFIED] Instância não existe - criando...`);
+        
+        // ============ ETAPA 1: CRIAR INSTÂNCIA (SE NÃO EXISTIR) ============
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            status: 'creating',
+            lastUpdated: Date.now()
+          }
+        }));
+        
+        const createResponse = await codechatQRService.createInstance(instanceId, `Instance: ${instanceId}`);
+        
+        if (!createResponse.success && createResponse.status !== 'already_exists') {
+          throw new Error(`Falha ao criar instância: ${createResponse.error}`);
+        }
+        
+        console.log(`✅ [UNIFIED] Instância ${createResponse.success && createResponse.status === 'created' ? 'criada' : 'verificada'}`);
       }
-      
-      console.log(`✅ [UNIFIED] Instância ${createResponse.success ? 'criada' : 'já existe'}`);
 
       // ============ ETAPA 2: CONECTAR E GERAR QR CODE ============
-      console.log(`📡 [UNIFIED] Etapa 2/3: Conectando via /instance/connect`);
+      console.log(`📡 [UNIFIED] Etapa 2/4: Conectando via /instance/connect`);
+      
+      setInstances(prev => ({
+        ...prev,
+        [instanceId]: {
+          ...prev[instanceId],
+          status: 'connecting',
+          lastUpdated: Date.now()
+        }
+      }));
       
       const connectResponse = await codechatQRService.connectInstance(instanceId);
       
@@ -198,6 +232,8 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       console.log(`✅ [UNIFIED] Connect executado com sucesso`);
       
       // ============ ETAPA 3: VERIFICAR QR CODE IMEDIATO ============
+      console.log(`📱 [UNIFIED] Etapa 3/4: Verificando QR Code imediato`);
+      
       if (connectResponse.qrCode) {
         console.log(`📱 [UNIFIED] ✅ QR CODE RECEBIDO DIRETAMENTE!`);
         
@@ -230,7 +266,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       }
       
       // ============ ETAPA 4: POLLING PARA QR CODE ============
-      console.log(`⏳ [UNIFIED] QR Code não retornado, iniciando polling...`);
+      console.log(`⏳ [UNIFIED] Etapa 4/4: QR Code não retornado, iniciando polling...`);
       
       setInstances(prev => ({
         ...prev,
@@ -244,8 +280,10 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       
       // Polling por QR Code usando fetchInstance
       let qrFound = false;
-      for (let attempt = 1; attempt <= 10; attempt++) {
-        console.log(`🔍 [UNIFIED] Tentativa ${attempt}/10 - Procurando QR Code`);
+      const maxAttempts = 15; // Aumentado para 30 segundos (15 * 2s)
+      
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        console.log(`🔍 [UNIFIED] Tentativa ${attempt}/${maxAttempts} - Procurando QR Code`);
         
         try {
           const details = await codechatQRService.getInstanceDetails(instanceId);
@@ -279,17 +317,35 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             qrFound = true;
             break;
           }
+          
+          // Verificar se já foi conectado durante o polling
+          const status = await codechatQRService.getInstanceStatus(instanceId);
+          if (status.state === 'open') {
+            console.log(`🎉 [UNIFIED] Instância conectada durante polling!`);
+            await refreshStatus(instanceId);
+            return;
+          }
+          
         } catch (error) {
           console.warn(`⚠️ [UNIFIED] Erro na tentativa ${attempt}:`, error);
         }
         
-        if (attempt < 10) {
+        if (attempt < maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
       
       if (!qrFound) {
-        throw new Error('QR Code não foi gerado após 10 tentativas');
+        console.warn(`⚠️ [UNIFIED] QR Code não gerado após ${maxAttempts} tentativas`);
+        
+        // Tentar o polling mais uma vez
+        toast({
+          title: "⏳ Aguardando QR Code",
+          description: "Continuando tentativas em segundo plano...",
+        });
+        
+        startPollingForInstance(instanceId);
+        return;
       }
       
       // Iniciar polling para status final

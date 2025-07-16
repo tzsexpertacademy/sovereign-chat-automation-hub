@@ -54,6 +54,9 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
       case 'connected': return 'bg-green-500';
       case 'qr_ready': return 'bg-blue-500';
       case 'connecting': return 'bg-yellow-500';
+      case 'checking': return 'bg-purple-500';
+      case 'creating': return 'bg-indigo-500';
+      case 'waiting_qr': return 'bg-orange-500';
       case 'awaiting_qr': return 'bg-orange-500';
       case 'authenticated': return 'bg-cyan-500';
       case 'disconnected': return 'bg-gray-500';
@@ -68,6 +71,9 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
       case 'connected': return 'Conectado';
       case 'qr_ready': return 'QR Pronto';
       case 'connecting': return 'Conectando';
+      case 'checking': return 'Verificando';
+      case 'creating': return 'Criando';
+      case 'waiting_qr': return 'Aguardando QR';
       case 'awaiting_qr': return 'Aguardando QR';
       case 'websocket_connected': return 'WebSocket OK';
       case 'authenticated': return 'Autenticado';
@@ -89,32 +95,21 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
-  // Handlers simplificados HTTPS
+  // Handler de conexão simplificado
   const handleConnectInstance = async (instanceId: string) => {
-    console.log(`🔗 [ADMIN] FORÇANDO CONEXÃO: ${instanceId}`);
+    console.log(`🔗 [ADMIN] CONECTANDO INSTÂNCIA: ${instanceId}`);
     setSelectedInstanceForQR(instanceId);
     
     try {
       await connectInstance(instanceId);
+      console.log(`✅ [ADMIN] Conexão iniciada com sucesso`);
     } catch (error) {
-      console.error(`❌ [ADMIN] Erro na conexão via hook:`, error);
-      
-      // Fallback: chamar connect diretamente
-      console.log(`🔄 [ADMIN] Tentando fallback direto para connect...`);
-      try {
-        await codechatQRService.connectInstance(instanceId);
-        toast({
-          title: "Conectando...",
-          description: "Instância sendo conectada via fallback",
-        });
-      } catch (fallbackError) {
-        console.error(`❌ [ADMIN] Fallback também falhou:`, fallbackError);
-        toast({
-          title: "Erro na Conexão",
-          description: "Falha ao conectar instância",
-          variant: "destructive",
-        });
-      }
+      console.error(`❌ [ADMIN] Erro na conexão:`, error);
+      toast({
+        title: "Erro na Conexão",
+        description: error?.message || "Falha ao conectar instância",
+        variant: "destructive",
+      });
     }
     
     onInstanceUpdated();

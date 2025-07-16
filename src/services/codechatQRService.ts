@@ -349,6 +349,33 @@ class CodeChatQRService {
     }
   }
 
+  // ============ VERIFICAR SE INSTÂNCIA EXISTE ============
+  async checkInstanceExists(instanceName: string): Promise<{ exists: boolean; status?: string; error?: string }> {
+    try {
+      console.log(`🔍 [CODECHAT] Verificando existência: ${instanceName}`);
+      
+      const details = await this.getInstanceDetails(instanceName);
+      console.log(`✅ [CODECHAT] Instância existe:`, details);
+      
+      return { 
+        exists: true, 
+        status: details.state || 'unknown' 
+      };
+      
+    } catch (error: any) {
+      if (error.message?.includes('404')) {
+        console.log(`📋 [CODECHAT] Instância não existe: ${instanceName}`);
+        return { exists: false };
+      } else {
+        console.error(`❌ [CODECHAT] Erro ao verificar existência:`, error);
+        return { 
+          exists: false, 
+          error: error.message 
+        };
+      }
+    }
+  }
+
   // ============ CREATE INSTANCE ============
   async createInstance(instanceName: string, description?: string): Promise<QRCodeResponse> {
     try {
@@ -386,14 +413,30 @@ class CodeChatQRService {
         const errorText = await response.text();
         console.error('❌ [CODECHAT] Erro na resposta:', errorText);
         
-        // Verificar se é erro 409 (instância já existe)
-        const is409Conflict = response.status === 409;
+        // Verificar se é erro 403/400/409 (instância já existe)
+        const isConflict = response.status === 409 || response.status === 403 || response.status === 400;
+        const isAlreadyExists = isConflict && (
+          errorText.includes('already in use') || 
+          errorText.includes('already exists') ||
+          errorText.includes('Instance already exists')
+        );
+        
+        if (isAlreadyExists) {
+          console.log('ℹ️ [CODECHAT] Instância já existe - continuando com conexão');
+          return {
+            success: true,
+            qrCode: null,
+            status: 'already_exists',
+            error: null,
+            instanceName
+          };
+        }
         
         return {
           success: false,
           qrCode: null,
-          status: is409Conflict ? 'already_exists' : 'error',
-          error: is409Conflict ? 'Instance already exists' : `HTTP ${response.status}: ${errorText}`,
+          status: 'error',
+          error: `HTTP ${response.status}: ${errorText}`,
           instanceName
         };
       }
