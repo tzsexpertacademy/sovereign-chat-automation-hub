@@ -22,6 +22,8 @@ class YumerNativeWebSocketService {
   private maxReconnectAttempts = 10;
   private reconnectDelay = 1000;
   private isManualDisconnect = false;
+  private restPollingFallback = false;
+  private restPollingInterval: NodeJS.Timeout | null = null;
 
   // ============ CONEXÃO WEBSOCKET NATIVA ============
   async connect(options: WebSocketConnectionOptions): Promise<void> {

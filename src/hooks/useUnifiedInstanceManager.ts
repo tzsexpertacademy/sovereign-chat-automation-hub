@@ -152,56 +152,87 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       console.log(`🔄 [UNIFIED] Atualizando status via CodeChat API: ${instanceId}`);
       
       // Usar CodeChat API para buscar status atual
-      const response = await codechatQRService.getInstanceStatus(instanceId);
+      const statusData = await codechatQRService.getInstanceStatus(instanceId);
       
-      if (response.success && response.data) {
-        const { connectionStatus, ownerJid, profilePicUrl } = response.data;
+      console.log(`📊 [UNIFIED] Status response:`, statusData);
+      
+      // Estrutura da resposta: { state: 'open'|'close', statusReason: 200|400 }
+      let mappedStatus = 'disconnected';
+      let phoneNumber = undefined;
+      
+      if (statusData.state) {
+        mappedStatus = statusData.state === 'open' ? 'connected' : 
+                     statusData.state === 'close' ? 'disconnected' : 
+                     statusData.state === 'connecting' ? 'connecting' : 
+                     'unknown';
+      }
+      
+      // Tentar buscar detalhes completos da instância se conectada
+      if (mappedStatus === 'connected') {
+        try {
+          const details = await codechatQRService.getInstanceDetails(instanceId);
+          if (details.ownerJid) {
+            phoneNumber = details.ownerJid;
+          }
+        } catch (error) {
+          console.warn(`⚠️ [UNIFIED] Não foi possível buscar detalhes da instância:`, error);
+        }
+      }
+      
+      console.log(`📊 [UNIFIED] Status processado: ${statusData.state} → ${mappedStatus}`);
+      
+      // Atualizar estado local
+      setInstances(prev => ({
+        ...prev,
+        [instanceId]: {
+          ...prev[instanceId],
+          instanceId,
+          status: mappedStatus,
+          phoneNumber: phoneNumber,
+          lastUpdated: Date.now()
+        }
+      }));
+      
+      // Sincronizar com banco
+      await whatsappInstancesService.updateInstanceStatus(instanceId, mappedStatus, {
+        phone_number: phoneNumber,
+        updated_at: new Date().toISOString()
+      });
+      
+      console.log(`✅ [UNIFIED] Status sincronizado para ${instanceId}: ${mappedStatus}`);
+      
+      // Se conectado, parar polling e notificar sucesso
+      if (mappedStatus === 'connected') {
+        stopPollingForInstance(instanceId);
         
-        // Mapear status CodeChat para interno
-        const mappedStatus = connectionStatus === 'ONLINE' ? 'connected' : 
-                            connectionStatus === 'OFFLINE' ? 'disconnected' : 
-                            connectionStatus || 'unknown';
-        
-        console.log(`📊 [UNIFIED] Status obtido: ${connectionStatus} → ${mappedStatus}`);
-        
-        // Atualizar estado local
+        toast({
+          title: "✅ WhatsApp Conectado!",
+          description: `Conectado com sucesso${phoneNumber ? `: ${phoneNumber}` : ''}`,
+        });
+      }
+      
+    } catch (error) {
+      console.error(`❌ [UNIFIED] Erro ao atualizar status de ${instanceId}:`, error);
+      
+      // Em caso de erro 404, a instância não existe
+      if (error.message?.includes('404')) {
+        console.log(`📋 [UNIFIED] Instância ${instanceId} não encontrada no servidor`);
         setInstances(prev => ({
           ...prev,
           [instanceId]: {
             ...prev[instanceId],
             instanceId,
-            status: mappedStatus,
-            phoneNumber: ownerJid,
+            status: 'not_found',
             lastUpdated: Date.now()
           }
         }));
-        
-        // Sincronizar com banco
-        await whatsappInstancesService.updateInstanceStatus(instanceId, mappedStatus, {
-          phone_number: ownerJid,
-          updated_at: new Date().toISOString()
-        });
-        
-        console.log(`✅ [UNIFIED] Status sincronizado para ${instanceId}`);
-        
-        // Se conectado, parar polling
-        if (mappedStatus === 'connected') {
-          stopPollingForInstance(instanceId);
-          
-          toast({
-            title: "✅ WhatsApp Conectado!",
-            description: `Conectado com sucesso: ${ownerJid}`,
-          });
-        }
       }
       
-    } catch (error) {
-      console.error(`❌ [UNIFIED] Erro ao atualizar status de ${instanceId}:`, error);
       throw error;
     }
-  }, [toast]);
+  }, [toast, stopPollingForInstance]);
 
-  // ============ CONECTAR INSTÂNCIA - REST-FIRST ============
+  // ============ CONECTAR INSTÂNCIA - REST-FIRST COM CREATE → CONNECT ============
   const connectInstance = useCallback(async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
@@ -218,7 +249,23 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
 
-      // ============ ETAPA 1: CONECTAR VIA CODECHAT API ============
+      // ============ ETAPA 1: CRIAR INSTÂNCIA PRIMEIRO ============
+      console.log(`📝 [UNIFIED] Criando instância no servidor: ${instanceId}`);
+      
+      const createResponse = await codechatQRService.createInstance(instanceId, `Instance: ${instanceId}`);
+      
+      if (!createResponse.success && createResponse.status !== 'already_exists') {
+        // Se não foi erro 409 (já existe), é erro real
+        throw new Error(`Falha ao criar instância: ${createResponse.error}`);
+      }
+      
+      if (createResponse.success) {
+        console.log(`✅ [UNIFIED] Instância criada com sucesso`);
+      } else if (createResponse.status === 'already_exists') {
+        console.log(`ℹ️ [UNIFIED] Instância já existe, continuando...`);
+      }
+
+      // ============ ETAPA 2: CONECTAR VIA CODECHAT API ============
       console.log(`📡 [UNIFIED] Iniciando conexão via CodeChat REST API`);
       
       const connectResponse = await codechatQRService.connectInstance(instanceId);
@@ -226,8 +273,14 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       if (connectResponse.success) {
         console.log(`✅ [UNIFIED] Conexão iniciada com sucesso`);
         
-        // ============ ETAPA 2: BUSCAR QR CODE ============
-        const qrResponse = await codechatQRService.getQRCode(instanceId);
+        // ============ ETAPA 3: BUSCAR QR CODE ============
+        let qrResponse = connectResponse;
+        
+        // Se não veio QR Code direto do connect, buscar via endpoint específico
+        if (!qrResponse.qrCode) {
+          console.log(`🔍 [UNIFIED] Buscando QR Code via endpoint específico...`);
+          qrResponse = await codechatQRService.getQRCode(instanceId);
+        }
         
         if (qrResponse.success && qrResponse.qrCode) {
           console.log(`✅ [UNIFIED] QR Code obtido com sucesso`);
@@ -256,7 +309,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             description: "Escaneie o QR Code para conectar ao WhatsApp",
           });
           
-          // ============ ETAPA 3: INICIAR POLLING PARA STATUS ============
+          // ============ ETAPA 4: INICIAR POLLING PARA STATUS ============
           startPollingForInstance(instanceId);
           console.log(`🔄 [UNIFIED] Polling iniciado para ${instanceId}`);
           

@@ -315,11 +315,14 @@ class CodeChatQRService {
         const errorText = await response.text();
         console.error('❌ [CODECHAT] Erro na resposta:', errorText);
         
+        // Verificar se é erro 409 (instância já existe)
+        const is409Conflict = response.status === 409;
+        
         return {
           success: false,
           qrCode: null,
-          status: 'error',
-          error: `HTTP ${response.status}: ${errorText}`,
+          status: is409Conflict ? 'already_exists' : 'error',
+          error: is409Conflict ? 'Instance already exists' : `HTTP ${response.status}: ${errorText}`,
           instanceName
         };
       }

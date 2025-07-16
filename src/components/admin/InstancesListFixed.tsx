@@ -68,6 +68,8 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
       case 'websocket_connected': return 'WebSocket OK';
       case 'authenticated': return 'Autenticado';
       case 'disconnected': return 'Desconectado';
+      case 'not_found': return 'Não Encontrada';
+      case 'error': return 'Erro';
       default: return 'Desconhecido';
     }
   };
