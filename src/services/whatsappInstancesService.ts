@@ -49,26 +49,38 @@ export class WhatsAppInstancesService {
     return data;
   }
 
-  async updateInstance(instanceId: string, updates: WhatsAppInstanceUpdate): Promise<WhatsAppInstanceData> {
+  async updateInstance(instanceId: string, updates: WhatsAppInstanceUpdate): Promise<WhatsAppInstanceData | null> {
     console.log('🔄 Atualizando instância por instance_id:', { instanceId, updates });
+    
+    // Verificar se a instância existe antes de tentar atualizar
+    const existing = await this.getInstanceByInstanceId(instanceId);
+    if (!existing) {
+      console.warn(`⚠️ Instância não encontrada no BD: ${instanceId}`);
+      return null;
+    }
     
     const { data, error } = await supabase
       .from("whatsapp_instances")
       .update(updates)
       .eq("instance_id", instanceId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('❌ Erro ao atualizar instância:', error);
       throw error;
     }
 
+    if (!data) {
+      console.warn('⚠️ Nenhuma instância foi atualizada');
+      return null;
+    }
+
     console.log('✅ Instância atualizada:', data);
     return data;
   }
 
-  async updateInstanceById(id: string, updates: WhatsAppInstanceUpdate): Promise<WhatsAppInstanceData> {
+  async updateInstanceById(id: string, updates: WhatsAppInstanceUpdate): Promise<WhatsAppInstanceData | null> {
     console.log('🔄 Atualizando instância por ID:', { id, updates });
     
     const { data, error } = await supabase
@@ -76,11 +88,16 @@ export class WhatsAppInstancesService {
       .update(updates)
       .eq("id", id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('❌ Erro ao atualizar instância por ID:', error);
       throw error;
+    }
+
+    if (!data) {
+      console.warn('⚠️ Nenhuma instância foi atualizada por ID');
+      return null;
     }
 
     console.log('✅ Instância atualizada por ID:', data);
@@ -117,9 +134,9 @@ export class WhatsAppInstancesService {
       .from("whatsapp_instances")
       .select("*")
       .eq("instance_id", instanceId)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.error('❌ Erro ao buscar instância:', error);
       throw error;
     }
@@ -134,7 +151,10 @@ export class WhatsAppInstancesService {
       ...additionalData
     };
 
-    await this.updateInstance(instanceId, updates);
+    const result = await this.updateInstance(instanceId, updates);
+    if (!result) {
+      console.warn(`⚠️ Falha ao atualizar status de ${instanceId} - instância pode ter sido removida`);
+    }
   }
 }
 

@@ -42,22 +42,41 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
   }, []);
 
   // ============ QR CODE VIA REST ============
+  const qrCodeAttempts = useState<Record<string, number>>({})[0];
+  const MAX_QR_ATTEMPTS = 10;
+  
   const fetchQRCodeViaRest = useCallback(async (instanceId: string) => {
+    // Verificar se já excedeu tentativas
+    const currentAttempts = qrCodeAttempts[instanceId] || 0;
+    if (currentAttempts >= MAX_QR_ATTEMPTS) {
+      console.log(`⏰ [UNIFIED] Timeout: máximo de tentativas de QR Code atingido para ${instanceId}`);
+      return false;
+    }
+    
+    qrCodeAttempts[instanceId] = currentAttempts + 1;
     try {
       console.log(`📸 [UNIFIED] Buscando QR Code via fetchInstance: ${instanceId}`);
       
       // Usar fetchInstance para obter detalhes completos incluindo QR Code
       const instanceDetails = await codechatQRService.getInstanceDetails(instanceId);
       
+      console.log(`🔍 [UNIFIED] Estrutura completa da resposta fetchInstance:`, JSON.stringify(instanceDetails, null, 2));
+      
       // Extrair QR Code de possíveis campos
       const qrCode = instanceDetails?.qrCode || 
                    instanceDetails?.base64 || 
                    instanceDetails?.code ||
                    instanceDetails?.Whatsapp?.qrCode ||
-                   instanceDetails?.Whatsapp?.base64;
+                   instanceDetails?.Whatsapp?.base64 ||
+                   instanceDetails?.qr_code ||
+                   instanceDetails?.instance?.qrCode ||
+                   instanceDetails?.instance?.base64;
       
       if (qrCode) {
         console.log(`✅ [UNIFIED] QR Code encontrado via fetchInstance: ${instanceId}`);
+        
+        // Resetar contador de tentativas quando encontra QR Code
+        qrCodeAttempts[instanceId] = 0;
         
         setInstances(prev => ({
           ...prev,
@@ -78,7 +97,17 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         
         return true;
       } else {
-        console.log(`⏳ [UNIFIED] QR Code ainda não disponível via fetchInstance: ${instanceId}`);
+        console.log(`⏳ [UNIFIED] QR Code ainda não disponível via fetchInstance: ${instanceId} (tentativa ${qrCodeAttempts[instanceId]}/${MAX_QR_ATTEMPTS})`);
+        
+        // Se chegou no limite, notificar usuário
+        if (qrCodeAttempts[instanceId] >= MAX_QR_ATTEMPTS) {
+          toast({
+            title: "⏰ Timeout QR Code",
+            description: "QR Code não foi gerado após várias tentativas. Tente reconectar.",
+            variant: "destructive",
+          });
+        }
+        
         return false;
       }
       
@@ -140,6 +169,18 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       if (mappedStatus === 'connecting') {
         console.log(`🔍 [UNIFIED] Status "connecting" - verificando QR Code via fetchInstance...`);
         await fetchQRCodeViaRest(instanceId);
+      }
+      
+      // Se instância foi fechada ou está com status 'close', parar polling e limpar
+      if (mappedStatus === 'disconnected' && statusData.state === 'close') {
+        console.log(`🔄 [UNIFIED] Instância com status 'close' - parando polling: ${instanceId}`);
+        stopPollingForInstance(instanceId);
+        
+        // Aguardar um pouco antes de limpar para dar tempo de outras operações
+        setTimeout(() => {
+          console.log(`🧹 [UNIFIED] Limpando instância desconectada: ${instanceId}`);
+          cleanup(instanceId);
+        }, 5000);
       }
       
       // Tentar buscar detalhes completos da instância se conectada
@@ -408,6 +449,15 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
   // Limpar instância
   const cleanup = useCallback((instanceId: string) => {
     console.log(`🧹 [UNIFIED] Limpando instância: ${instanceId}`);
+    
+    // Parar polling se estiver ativo
+    stopPollingForInstance(instanceId);
+    
+    // Limpar contador de tentativas de QR Code
+    if (qrCodeAttempts[instanceId]) {
+      delete qrCodeAttempts[instanceId];
+    }
+    
     setInstances(prev => {
       const newInstances = { ...prev };
       delete newInstances[instanceId];
