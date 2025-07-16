@@ -1,5 +1,5 @@
 // REST API fallback para QR Codes do CodeChat
-import { SOCKET_URL } from '@/config/environment';
+import { SOCKET_URL, getYumerGlobalApiKey } from '@/config/environment';
 import { yumerJwtService } from './yumerJwtService';
 
 interface QRCodeResponse {
@@ -19,13 +19,38 @@ class CodeChatQRService {
     return SOCKET_URL.replace(/^wss?:/, 'https:');
   }
 
+  // ============ AUTENTICAÇÃO CENTRALIZADA ============
+  private async getAuthHeaders(instanceName: string): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+
+    // Prioridade 1: Global API Key (requerido pelo CodeChat API v1.3.3)
+    const globalApiKey = getYumerGlobalApiKey();
+    if (globalApiKey) {
+      console.log(`🔑 [CODECHAT-AUTH] Usando Global API Key: ${globalApiKey.substring(0, 8)}...`);
+      headers['X-API-Key'] = globalApiKey;
+    } else {
+      console.warn(`⚠️ [CODECHAT-AUTH] Global API Key não configurada, tentando JWT...`);
+    }
+
+    // Prioridade 2: JWT como backup
+    try {
+      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
+      headers['Authorization'] = `Bearer ${jwt}`;
+      console.log(`🔐 [CODECHAT-AUTH] JWT adicionado como backup`);
+    } catch (error) {
+      console.error(`❌ [CODECHAT-AUTH] Erro ao gerar JWT:`, error);
+    }
+
+    return headers;
+  }
+
   // ============ CODECHAT API v1.3.3 - BUSCAR QR CODE ============
   async getQRCode(instanceName: string): Promise<QRCodeResponse> {
     try {
       console.log(`📱 [CODECHAT-API] Buscando QR Code via /instance/qrcode/${instanceName}`);
-      
-      // Gerar JWT compatível com CodeChat
-      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
       
       // URL exata conforme documentação CodeChat API v1.3.3
       const url = `${this.getApiBaseUrl()}/instance/qrcode/${instanceName}`;
@@ -34,10 +59,7 @@ class CodeChatQRService {
       
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(instanceName),
       });
 
       if (!response.ok) {
@@ -78,9 +100,6 @@ class CodeChatQRService {
     try {
       console.log(`🚀 [CODECHAT-API] Conectando via /instance/connect/${instanceName}`);
       
-      // Gerar JWT compatível com CodeChat
-      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
-      
       // URL exata conforme documentação CodeChat API v1.3.3
       const url = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;
       
@@ -88,10 +107,7 @@ class CodeChatQRService {
       
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(instanceName),
       });
 
       if (!response.ok) {
@@ -165,9 +181,6 @@ class CodeChatQRService {
     try {
       console.log(`📊 [CODECHAT-API] Buscando status via /instance/connectionState/${instanceName}`);
       
-      // Gerar JWT compatível com CodeChat
-      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
-      
       // URL exata conforme documentação CodeChat API v1.3.3
       const url = `${this.getApiBaseUrl()}/instance/connectionState/${instanceName}`;
       
@@ -175,10 +188,7 @@ class CodeChatQRService {
       
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(instanceName),
       });
 
       if (!response.ok) {
@@ -203,9 +213,6 @@ class CodeChatQRService {
     try {
       console.log(`📋 [CODECHAT-API] Buscando detalhes via /instance/fetchInstance/${instanceName}`);
       
-      // Gerar JWT compatível com CodeChat
-      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
-      
       // URL conforme documentação CodeChat API v1.3.3
       const url = `${this.getApiBaseUrl()}/instance/fetchInstance/${instanceName}`;
       
@@ -213,10 +220,7 @@ class CodeChatQRService {
       
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(instanceName),
       });
 
       if (!response.ok) {
@@ -241,20 +245,12 @@ class CodeChatQRService {
     try {
       console.log(`🔌 [CODECHAT] Desconectando instância: ${instanceName}`);
       
-      // Gerar JWT compatível com CodeChat API v1.3.3
-      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
-      console.log('🔐 [CODECHAT] JWT compatível gerado com sucesso');
-      
       const url = `${this.getApiBaseUrl()}/instance/logout/${instanceName}`;
       console.log(`📡 [CODECHAT] URL de desconexão: ${url}`);
       
       const response = await fetch(url, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
+        headers: await this.getAuthHeaders(instanceName)
       });
       
       console.log(`📊 [CODECHAT] Response status: ${response.status}`);
@@ -298,10 +294,6 @@ class CodeChatQRService {
     try {
       console.log(`📝 [CODECHAT] Criando instância: ${instanceName}`);
       
-      // Gerar JWT compatível com CodeChat API v1.3.3
-      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
-      console.log('🔐 [CODECHAT] JWT compatível gerado com sucesso');
-      
       const url = `${this.getApiBaseUrl()}/instance/create`;
       console.log(`📡 [CODECHAT] URL de criação: ${url}`);
       
@@ -312,11 +304,7 @@ class CodeChatQRService {
       
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers: await this.getAuthHeaders(instanceName),
         body: JSON.stringify(requestBody)
       });
       
