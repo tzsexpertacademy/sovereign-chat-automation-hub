@@ -26,10 +26,11 @@ class YumerJwtService {
   // ============ GERAÇÃO LOCAL DE JWT ============
   async generateLocalJWT(jwtSecret: string, instanceName: string): Promise<string> {
     try {
-      console.log('🔐 Gerando JWT local para WebSocket...', instanceName);
+      console.log('🔐 Gerando JWT local para WebSocket...', { instanceName });
       
+      // CRÍTICO: usar o instanceId real como instanceName no payload
       const payload = {
-        instanceName: instanceName
+        instanceName: instanceName // Este deve ser o instanceId completo ex: 35f36a03-39b2-412c-bba6-01fdd45c2dd3_1752625816838
       };
       
       // Converter secret para Uint8Array
@@ -45,7 +46,8 @@ class YumerJwtService {
       this.tokenExpiry = null; // Token nunca expira
       
       console.log('✅ JWT local gerado com sucesso');
-      console.log('📋 Payload:', payload);
+      console.log('📋 Payload final:', payload);
+      console.log('🔑 Token JWT:', token.substring(0, 50) + '...');
       
       return token;
     } catch (error: any) {

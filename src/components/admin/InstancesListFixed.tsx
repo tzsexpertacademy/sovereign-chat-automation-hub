@@ -196,9 +196,13 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           </span>
                         </div>
                       </div>
-                      <p className="text-sm text-blue-800">
-                        Status atual HTTPS: {getInstanceStatus(instance.instance_id).status}
-                      </p>
+                       <div className="text-sm text-blue-800 space-y-1">
+                         <div>Status: {getInstanceStatus(instance.instance_id).status}</div>
+                         <div>JWT: {jwtConfigured ? '✅ Configurado' : '❌ Não configurado'}</div>
+                         <div className="text-xs text-muted-foreground">
+                           Modo: WebSocket Puro (sem REST API)
+                         </div>
+                       </div>
                     </div>
                   )}
 

@@ -10,7 +10,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, CheckCircle, Wifi, WifiOff, Clock, Zap } from 'lucide-react';
-import { yumerWhatsAppService } from '@/services/yumerWhatsappService';
+import { yumerNativeWebSocketService } from '@/services/yumerNativeWebSocketService';
+import { yumerJwtService } from '@/services/yumerJwtService';
 import { toast } from 'sonner';
 
 interface ConnectionLog {
@@ -54,14 +55,14 @@ export const NativeWebSocketDebugger: React.FC = () => {
     // Cleanup na desmontagem
     return () => {
       if (isConnected) {
-        yumerWhatsAppService.disconnectWebSocket();
+        yumerNativeWebSocketService.disconnect();
       }
     };
   }, []);
 
   const loadAvailableEvents = async () => {
     try {
-      const events = await yumerWhatsAppService.getAvailableEvents();
+      const events = await yumerJwtService.getAvailableEvents();
       setAvailableEvents(events);
       addLog('success', 'Eventos disponíveis carregados', { count: events.length, events });
     } catch (error: any) {
@@ -70,8 +71,8 @@ export const NativeWebSocketDebugger: React.FC = () => {
   };
 
   const checkCurrentStatus = () => {
-    const connected = yumerWhatsAppService.isWebSocketConnected();
-    const info = yumerWhatsAppService.getWebSocketInfo();
+    const connected = yumerNativeWebSocketService.isConnected();
+    const info = yumerNativeWebSocketService.getConnectionInfo();
     
     setIsConnected(connected);
     setConnectionInfo(info);
@@ -80,7 +81,7 @@ export const NativeWebSocketDebugger: React.FC = () => {
     if (info) {
       setInstanceName(info.instanceName || '');
       setSelectedEvent(info.event || 'MESSAGE_RECEIVED');
-      setUseSecureConnection(info.isSecure !== false);
+      setUseSecureConnection(info.useSecureConnection !== false);
     }
   };
 
@@ -125,12 +126,23 @@ export const NativeWebSocketDebugger: React.FC = () => {
       // Configurar listeners antes de conectar
       setupEventListeners();
 
-      await yumerWhatsAppService.connectWebSocket(instanceName, selectedEvent, useSecureConnection);
+      // Gerar JWT local com instanceId real
+      const JWT_SECRET = 'sfdgs8152g5s1s5';
+      const jwt = await yumerJwtService.generateLocalJWT(JWT_SECRET, instanceName);
+      addLog('success', 'JWT gerado com sucesso', { instanceName, jwt: jwt.substring(0, 50) + '...' });
+
+      await yumerNativeWebSocketService.connect({
+        instanceName,
+        event: selectedEvent,
+        useSecureConnection,
+        autoReconnect: true,
+        maxReconnectAttempts: 10
+      });
       
       setIsConnected(true);
       setConnectionStatus('connected');
       
-      const info = yumerWhatsAppService.getWebSocketInfo();
+      const info = yumerNativeWebSocketService.getConnectionInfo();
       setConnectionInfo(info);
       
       addLog('success', 'WebSocket conectado com sucesso!', info);
@@ -145,7 +157,7 @@ export const NativeWebSocketDebugger: React.FC = () => {
 
   const handleDisconnect = () => {
     try {
-      yumerWhatsAppService.disconnectWebSocket();
+      yumerNativeWebSocketService.disconnect();
       setIsConnected(false);
       setConnectionStatus('disconnected');
       setConnectionInfo(null);
@@ -158,20 +170,27 @@ export const NativeWebSocketDebugger: React.FC = () => {
   };
 
   const setupEventListeners = () => {
-    // Listener genérico para capturar todos os eventos
-    const socket = yumerWhatsAppService.getSocket();
-    
-    // Capturar eventos específicos
-    yumerWhatsAppService.onMessageReceived((data) => {
+    // Configurar listeners para eventos específicos
+    yumerNativeWebSocketService.on('message_received', (data) => {
       addEvent('message_received', data);
+      addLog('info', 'Mensagem recebida via WebSocket', data);
     });
     
-    yumerWhatsAppService.onStatusUpdate((data) => {
-      addEvent('status_update', data);
+    yumerNativeWebSocketService.on('instance_status', (data) => {
+      addEvent('instance_status', data);
+      addLog('info', 'Status da instância atualizado', data);
     });
     
-    yumerWhatsAppService.onQRCodeGenerated((data) => {
-      addEvent('qr_code_generated', data);
+    yumerNativeWebSocketService.on('qr_code', (data) => {
+      addEvent('qr_code', data);
+      addLog('success', 'QR Code recebido!', { hasQrCode: !!data.qrCode });
+    });
+
+    // Listener para mudanças de status de conexão
+    yumerNativeWebSocketService.onStatus((status) => {
+      addLog('info', `Status da conexão: ${status}`, { status });
+      setConnectionStatus(status as any);
+      setIsConnected(status === 'connected');
     });
   };
 
@@ -193,18 +212,22 @@ export const NativeWebSocketDebugger: React.FC = () => {
       });
 
       // Teste com protocolo seguro
-      const secureTest = await yumerWhatsAppService.testWebSocketConnection(
+      const secureTest = await yumerNativeWebSocketService.testConnection({
         instanceName, 
-        selectedEvent, 
-        true
-      );
+        event: selectedEvent, 
+        useSecureConnection: true,
+        autoReconnect: false,
+        maxReconnectAttempts: 1
+      });
       
       // Teste com protocolo inseguro se o seguro falhar
-      const insecureTest = secureTest.success ? null : await yumerWhatsAppService.testWebSocketConnection(
+      const insecureTest = secureTest.success ? null : await yumerNativeWebSocketService.testConnection({
         instanceName, 
-        selectedEvent, 
-        false
-      );
+        event: selectedEvent, 
+        useSecureConnection: false,
+        autoReconnect: false,
+        maxReconnectAttempts: 1
+      });
 
       const results = {
         secure: secureTest,

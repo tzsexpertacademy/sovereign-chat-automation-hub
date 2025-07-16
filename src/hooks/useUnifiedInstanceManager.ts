@@ -59,7 +59,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       setWebsocketConnected(status === 'connected');
     });
 
-    // Configurar handler de eventos
+    // Configurar handler de eventos - eventos corretos
     yumerNativeWebSocketService.on('instance_status', (data) => {
       console.log('📱 [UNIFIED] Instance status received:', data);
       handleInstanceStatusUpdate(data);
@@ -68,6 +68,15 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     yumerNativeWebSocketService.on('qr_code', (data) => {
       console.log('📱 [UNIFIED] QR Code received:', data);
       handleQRCodeUpdate(data);
+    });
+
+    // Listeners adicionais para debug
+    yumerNativeWebSocketService.on('message_received', (data) => {
+      console.log('📨 [UNIFIED] Message received:', data);
+    });
+
+    yumerNativeWebSocketService.on('connection_update', (data) => {
+      console.log('🔌 [UNIFIED] Connection update:', data);
     });
 
     return () => {
