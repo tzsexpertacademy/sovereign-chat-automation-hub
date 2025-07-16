@@ -23,7 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { clientsService, ClientData } from "@/services/clientsService";
-import { useInstanceManager } from "@/hooks/useInstanceManager";
+import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 
 interface MultipleInstancesManagerProps {
   clientId: string;
@@ -45,9 +45,9 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
     disconnectInstance,
     getInstanceStatus,
     isLoading,
-    websocketConnected,
+    restMode,
     cleanup
-  } = useInstanceManager();
+  } = useUnifiedInstanceManager();
 
   useEffect(() => {
     loadInstances();

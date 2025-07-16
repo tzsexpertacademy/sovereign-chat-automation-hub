@@ -33,14 +33,13 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Hook unificado com JWT puro WebSocket
+  // Hook unificado REST-only
   const { 
     connectInstance, 
     disconnectInstance,
     getInstanceStatus,
     isLoading,
-    websocketConnected,
-    jwtConfigured,
+    restMode,
     cleanup
   } = useUnifiedInstanceManager();
 
@@ -154,7 +153,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Instâncias WhatsApp JWT ({instances.length}) - {jwtConfigured ? '🔐 JWT OK' : '❌ JWT ERRO'}</CardTitle>
+          <CardTitle>Instâncias WhatsApp REST ({instances.length}) - {restMode ? '🔄 Modo REST' : '❌ Erro'}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid lg:grid-cols-2 gap-6">
@@ -170,7 +169,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         Cliente: {getClientName(instance.client_id)}
                       </p>
                       <p className="text-sm text-gray-500">
-                        {instance.phone_number || 'Não conectado via HTTPS'}
+                        {instance.phone_number || 'Não conectado via REST'}
                       </p>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -186,27 +185,21 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                 </CardHeader>
                 <CardContent className="space-y-4">
                   
-                  {/* Status WebSocket HTTPS */}
+                  {/* Status REST Mode */}
                   {selectedInstanceForQR === instance.instance_id && (
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Status WebSocket HTTPS:</span>
+                        <span className="text-sm font-medium">Status REST API:</span>
                         <div className="flex items-center space-x-1">
-                          {websocketConnected ? (
-                            <Wifi className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <WifiOff className="w-4 h-4 text-red-500" />
-                          )}
-                          <span className="text-xs">
-                            {websocketConnected ? 'WebSocket Conectado' : 'WebSocket Desconectado'}
-                          </span>
+                          <RefreshCw className="w-4 h-4 text-blue-500" />
+                          <span className="text-xs">Modo REST Ativo</span>
                         </div>
                       </div>
                        <div className="text-sm text-blue-800 space-y-1">
                          <div>Status: {getInstanceStatus(instance.instance_id).status}</div>
-                         <div>JWT: {jwtConfigured ? '✅ Configurado' : '❌ Não configurado'}</div>
+                         <div>Polling: {restMode ? '✅ Ativo' : '❌ Inativo'}</div>
                          <div className="text-xs text-muted-foreground">
-                           Modo: WebSocket Puro (sem REST API)
+                           Modo: 100% REST API CodeChat v1.3.3
                          </div>
                        </div>
                     </div>
@@ -216,28 +209,28 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                   {selectedInstanceForQR === instance.instance_id && 
                    getInstanceStatus(instance.instance_id).hasQrCode && 
                    getInstanceStatus(instance.instance_id).qrCode && (
-                    <div className="space-y-3">
-                      <div className="text-center">
-                        <h4 className="font-medium mb-2">QR Code HTTPS Disponível!</h4>
-                        <div className="bg-white p-4 rounded border">
-                          <img 
-                            src={getInstanceStatus(instance.instance_id).qrCode} 
-                            alt="QR Code WhatsApp HTTPS"
-                            className="mx-auto max-w-[200px]"
-                          />
+                      <div className="space-y-3">
+                        <div className="text-center">
+                          <h4 className="font-medium mb-2">QR Code REST Disponível!</h4>
+                          <div className="bg-white p-4 rounded border">
+                            <img 
+                              src={getInstanceStatus(instance.instance_id).qrCode} 
+                              alt="QR Code WhatsApp REST"
+                              className="mx-auto max-w-[200px]"
+                            />
+                          </div>
+                          <p className="text-xs text-green-600 mt-2">
+                            ✅ Escaneie com seu WhatsApp para conectar via REST
+                          </p>
                         </div>
-                        <p className="text-xs text-green-600 mt-2">
-                          ✅ Escaneie com seu WhatsApp para conectar via HTTPS
-                        </p>
                       </div>
-                    </div>
                   )}
 
                   {/* Connected Info */}
                   {instance.status === 'connected' && (
                     <div className="p-3 bg-green-50 border border-green-200 rounded">
                       <p className="text-sm text-green-800">
-                        ✅ WhatsApp conectado via HTTPS e funcionando
+                        ✅ WhatsApp conectado via REST e funcionando
                       </p>
                     </div>
                   )}
@@ -255,7 +248,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
                         >
                           <Pause className="w-4 h-4 mr-1" />
-                          Pausar HTTPS
+                          Pausar REST
                         </Button>
                         <Button 
                           size="sm" 
@@ -263,7 +256,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           className="bg-green-600 hover:bg-green-700 text-white"
                         >
                           <MessageSquare className="w-4 h-4 mr-1" />
-                          Chat HTTPS
+                          Chat REST
                         </Button>
                       </>
                     ) : (
@@ -276,12 +269,12 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         {isLoading(instance.instance_id) ? (
                           <>
                             <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                            Conectando HTTPS...
+                            Conectando REST...
                           </>
                         ) : (
                           <>
                             <Play className="w-4 h-4 mr-1" />
-                            Conectar HTTPS
+                            Conectar REST
                           </>
                         )}
                       </Button>
@@ -294,7 +287,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                       disabled={isLoading(instance.instance_id)}
                     >
                       <Eye className="w-4 h-4 mr-1" />
-                      QR HTTPS
+                      QR REST
                     </Button>
 
                     <Button 

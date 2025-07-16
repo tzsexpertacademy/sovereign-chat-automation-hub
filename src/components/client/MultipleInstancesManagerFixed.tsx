@@ -20,12 +20,13 @@ import {
   Pause,
   Wifi,
   WifiOff,
-  MessageSquare
+  MessageSquare,
+  RefreshCw
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { clientsService, ClientData } from "@/services/clientsService";
-import { useInstanceManager } from "@/contexts/InstanceManagerContext";
+import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 import { useNavigate } from "react-router-dom";
 
 interface MultipleInstancesManagerFixedProps {
@@ -50,9 +51,9 @@ const MultipleInstancesManagerFixed = ({ clientId, client, onInstancesUpdate }: 
     disconnectInstance,
     getInstanceStatus,
     isLoading,
-    websocketConnected,
+    restMode,
     cleanup
-  } = useInstanceManager();
+  } = useUnifiedInstanceManager();
 
   useEffect(() => {
     loadInstances();
@@ -364,15 +365,15 @@ const MultipleInstancesManagerFixed = ({ clientId, client, onInstancesUpdate }: 
                       {selectedForQR === instance.instance_id && (
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium">Status WebSocket:</span>
+                            <span className="text-sm font-medium">Status REST:</span>
                             <div className="flex items-center space-x-1">
-                              {websocketConnected ? (
-                                <Wifi className="w-4 h-4 text-green-500" />
+                              {restMode ? (
+                                <RefreshCw className="w-4 h-4 text-blue-500" />
                               ) : (
                                 <WifiOff className="w-4 h-4 text-red-500" />
                               )}
                               <span className="text-xs">
-                                {websocketConnected ? 'Conectado' : 'Desconectado'}
+                                {restMode ? 'REST Mode' : 'Offline'}
                               </span>
                             </div>
                           </div>

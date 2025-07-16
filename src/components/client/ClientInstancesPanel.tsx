@@ -49,8 +49,7 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
     disconnectInstance,
     getInstanceStatus,
     isLoading: isInstanceLoading,
-    websocketConnected,
-    jwtConfigured,
+    restMode,
     cleanup,
     refreshStatus
   } = useUnifiedInstanceManager();
@@ -278,24 +277,24 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
             </div>
             <div className="flex items-center space-x-2">
               <div className="flex items-center space-x-1 text-right">
-                {jwtConfigured ? (
+                {restMode ? (
                   <div className="flex items-center space-x-1">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-xs text-green-600">JWT OK</span>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span className="text-xs text-blue-600">REST OK</span>
                   </div>
                 ) : (
                   <div className="flex items-center space-x-1">
                     <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <span className="text-xs text-red-600">JWT Error</span>
+                    <span className="text-xs text-red-600">REST Error</span>
                   </div>
                 )}
-                {websocketConnected ? (
-                  <Wifi className="w-4 h-4 text-green-500" />
+                {restMode ? (
+                  <RefreshCw className="w-4 h-4 text-blue-500" />
                 ) : (
                   <WifiOff className="w-4 h-4 text-red-500" />
                 )}
                 <span className="text-xs">
-                  {websocketConnected ? 'Online' : 'Offline'}
+                  {restMode ? 'REST Mode' : 'Offline'}
                 </span>
               </div>
               <div className="text-sm text-gray-600">
@@ -434,7 +433,7 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
                                 Escaneie com seu WhatsApp para conectar
                               </p>
                               <div className="text-xs text-blue-600">
-                                ✅ JWT Configurado • WebSocket {websocketConnected ? 'Conectado' : 'Desconectado'}
+                                ✅ REST Configurado • Modo {restMode ? 'REST Ativo' : 'Offline'}
                               </div>
                             </div>
                           </div>
@@ -494,7 +493,7 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
                             <Button 
                               size="sm"
                               onClick={() => handleConnectInstance(instance.instance_id)}
-                              disabled={loading || !jwtConfigured}
+                              disabled={loading || !restMode}
                               className="bg-green-600 hover:bg-green-700"
                             >
                               {loading ? (
@@ -502,10 +501,10 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
                                   <Clock className="w-4 h-4 mr-1 animate-spin" />
                                   Conectando...
                                 </>
-                              ) : !jwtConfigured ? (
+                              ) : !restMode ? (
                                 <>
                                   <AlertCircle className="w-4 h-4 mr-1" />
-                                  JWT Necessário
+                                  REST Necessário
                                 </>
                               ) : (
                                 <>

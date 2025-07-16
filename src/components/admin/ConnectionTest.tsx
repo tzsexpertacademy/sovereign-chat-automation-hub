@@ -145,7 +145,7 @@ const ConnectionTest = () => {
               <ol className="text-orange-600 text-sm list-decimal list-inside space-y-1">
                 <li>Clique no botão "Aceitar Certificado" acima</li>
                 <li>Na nova aba, clique em "Avançado"</li>
-                <li>Clique em "Prosseguir para 146.59.227.248"</li>
+                <li>Clique em "Prosseguir para yumer.yumerflow.app"</li>
                 <li>Volte aqui e teste novamente</li>
               </ol>
             </div>

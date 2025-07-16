@@ -37,7 +37,7 @@ const EnhancedInstancesManager = () => {
     disconnectInstance,
     getInstanceStatus,
     isLoading,
-    websocketConnected,
+    restMode,
     refreshStatus
   } = useUnifiedInstanceManager();
 
@@ -230,8 +230,8 @@ const EnhancedInstancesManager = () => {
       <Alert>
         <Activity className="h-4 w-4" />
         <AlertDescription>
-          {websocketConnected ? (
-            <span className="text-green-600">✅ Sistema conectado - Auto-recuperação ativa</span>
+          {restMode ? (
+            <span className="text-blue-600">🔄 Sistema em modo REST - Auto-recuperação ativa</span>
           ) : (
             <span className="text-yellow-600">⚠️ Conectando ao sistema...</span>
           )}

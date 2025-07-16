@@ -27,8 +27,8 @@ const InstancesMonitor = () => {
   });
   const { toast } = useToast();
   
-  // Hook para status JWT/WebSocket
-  const { websocketConnected, jwtConfigured } = useUnifiedInstanceManager();
+  // Hook para status REST
+  const { restMode } = useUnifiedInstanceManager();
 
   useEffect(() => {
     loadData();
@@ -230,10 +230,10 @@ const InstancesMonitor = () => {
           </div>
         </div>
 
-        {/* JWT Status Indicator */}
+        {/* REST Status Indicator */}
         <JwtStatusIndicator 
-          jwtConfigured={jwtConfigured}
-          websocketConnected={websocketConnected}
+          jwtConfigured={restMode}
+          websocketConnected={restMode}
         />
 
         {/* Status do Sistema */}

@@ -71,7 +71,7 @@ const SSLCertificateHelper = () => {
             <li>Clique no botão "Aceitar Certificado SSL" abaixo</li>
             <li>Uma nova aba será aberta com aviso de segurança</li>
             <li>Clique em <strong>"Avançado"</strong></li>
-            <li>Clique em <strong>"Prosseguir para 146.59.227.248"</strong></li>
+            <li>Clique em <strong>"Prosseguir para yumer.yumerflow.app"</strong></li>
             <li>Volte aqui e clique em "Testar SSL"</li>
           </ol>
         </div>

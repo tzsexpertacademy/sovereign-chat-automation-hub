@@ -42,7 +42,7 @@ const UnifiedInstancesManager = () => {
     disconnectInstance,
     getInstanceStatus,
     isLoading: isInstanceLoading,
-    websocketConnected,
+    restMode,
     refreshStatus
   } = useUnifiedInstanceManager();
 
@@ -282,13 +282,13 @@ const UnifiedInstancesManager = () => {
         </div>
         <div className="flex items-center space-x-2">
           <div className="flex items-center space-x-1">
-            {websocketConnected ? (
-              <Wifi className="w-4 h-4 text-green-500" />
+            {restMode ? (
+              <RefreshCw className="w-4 h-4 text-blue-500" />
             ) : (
               <WifiOff className="w-4 h-4 text-red-500" />
             )}
             <span className="text-xs">
-              {websocketConnected ? 'Online' : 'Offline'}
+              {restMode ? 'REST Mode' : 'Offline'}
             </span>
           </div>
           <Button onClick={loadData} disabled={loading}>

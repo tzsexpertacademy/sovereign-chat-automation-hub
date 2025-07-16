@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { yumerNativeWebSocketService } from '@/services/yumerNativeWebSocketService';
-import { yumerJwtService } from '@/services/yumerJwtService';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
 import { codechatQRService } from '@/services/codechatQRService';
 import { useToast } from '@/hooks/use-toast';
@@ -17,8 +15,7 @@ interface InstanceStatus {
 interface UseUnifiedInstanceManagerReturn {
   instances: Record<string, InstanceStatus>;
   loading: Record<string, boolean>;
-  websocketConnected: boolean;
-  jwtConfigured: boolean;
+  restMode: boolean;
   connectInstance: (instanceId: string) => Promise<void>;
   disconnectInstance: (instanceId: string) => Promise<void>;
   getInstanceStatus: (instanceId: string) => InstanceStatus;
@@ -32,91 +29,53 @@ interface UseUnifiedInstanceManagerReturn {
 export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => {
   const [instances, setInstances] = useState<Record<string, InstanceStatus>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
-  const [websocketConnected, setWebsocketConnected] = useState(false);
-  const [jwtConfigured, setJwtConfigured] = useState(false);
   const { toast } = useToast();
 
-  // Configuração JWT
-  const JWT_SECRET = 'sfdgs8152g5s1s5';
-
-  // Verificar se JWT está configurado
+  // ============ REST-ONLY INITIALIZATION ============
   useEffect(() => {
-    const checkJwtConfig = () => {
-      setJwtConfigured(!!JWT_SECRET);
-    };
-    checkJwtConfig();
-  }, []);
-
-  // ============ REST-FIRST INITIALIZATION ============
-  useEffect(() => {
-    console.log('🔧 [UNIFIED] Inicializando REST-first Instance Manager');
-    console.log('📡 [UNIFIED] Foco em CodeChat API v1.3.3 via REST');
-    
-    // WebSocket é opcional para eventos em tempo real
-    setWebsocketConnected(false);
+    console.log('🔧 [UNIFIED] Inicializando REST-only Instance Manager');
+    console.log('📡 [UNIFIED] CodeChat API v1.3.3 - 100% REST Polling');
     
     return () => {
       console.log('🧹 [UNIFIED] Cleanup do manager');
     };
   }, []);
 
-  // Handlers para updates do WebSocket
-  const handleInstanceStatusUpdate = useCallback((data: any) => {
-    const { instanceName, status, phoneNumber } = data;
-    const timestamp = Date.now();
-    
-    console.log(`📱 [UNIFIED] Status update para ${instanceName}:`, { status, phoneNumber });
-    
-    setInstances(prev => ({
-      ...prev,
-      [instanceName]: {
-        instanceId: instanceName,
-        status: status || 'disconnected',
-        phoneNumber: phoneNumber,
-        hasQrCode: false,
-        lastUpdated: timestamp
+  // ============ QR CODE VIA REST ============
+  const fetchQRCodeViaRest = useCallback(async (instanceId: string) => {
+    try {
+      console.log(`📸 [UNIFIED] Buscando QR Code via REST: ${instanceId}`);
+      
+      const qrResponse = await codechatQRService.getQRCode(instanceId);
+      
+      if (qrResponse.success && qrResponse.qrCode) {
+        console.log(`✅ [UNIFIED] QR Code obtido via REST: ${instanceId}`);
+        
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            instanceId,
+            status: 'qr_ready',
+            qrCode: qrResponse.qrCode,
+            hasQrCode: true,
+            lastUpdated: Date.now()
+          }
+        }));
+
+        toast({
+          title: "📱 QR Code Disponível!",
+          description: "Escaneie para conectar via REST",
+        });
+        
+        return true;
       }
-    }));
-
-    // Sync com banco de dados
-    if (status && status !== 'connecting') {
-      const updateData = phoneNumber ? { phone_number: phoneNumber } : undefined;
-      whatsappInstancesService.updateInstanceStatus(instanceName, status, updateData)
-        .then(() => console.log(`✅ [UNIFIED] Banco sincronizado para ${instanceName}`))
-        .catch((error) => console.error(`❌ [UNIFIED] Erro ao sincronizar:`, error));
+      
+      return false;
+    } catch (error) {
+      console.error(`❌ [UNIFIED] Erro ao buscar QR Code via REST:`, error);
+      return false;
     }
-
-    // Notificação de sucesso
-    if (status === 'connected' && phoneNumber) {
-      toast({
-        title: "✅ WhatsApp Conectado!",
-        description: `Conectado com sucesso: ${phoneNumber}`,
-      });
-    }
-  }, [toast]);
-
-  const handleQRCodeUpdate = useCallback((data: any) => {
-    const { instanceName, qrCode } = data;
-    const timestamp = Date.now();
-    
-    console.log(`📱 [UNIFIED] QR Code update para ${instanceName}`);
-    
-    setInstances(prev => ({
-      ...prev,
-      [instanceName]: {
-        ...prev[instanceName],
-        instanceId: instanceName,
-        status: 'qr_ready',
-        qrCode: qrCode,
-        hasQrCode: true,
-        lastUpdated: timestamp
-      }
-    }));
-
-    toast({
-      title: "📱 QR Code Disponível!",
-      description: "Escaneie o QR Code para conectar",
-    });
   }, [toast]);
 
   // ============ POLLING PARA STATUS ============
@@ -273,7 +232,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       if (connectResponse.success) {
         console.log(`✅ [UNIFIED] Conexão iniciada com sucesso`);
         
-        // ============ ETAPA 3: INICIAR POLLING REST (SEM ENDPOINT HTML) ============
+        // ============ ETAPA 3: INICIAR POLLING REST ============
         console.log(`🔄 [UNIFIED] Iniciando polling REST para ${instanceId}`);
         
         // Atualizar estado para "aguardando QR Code"
@@ -287,64 +246,44 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           }
         }));
         
-        // Usar polling via REST (evita endpoint HTML problemático)
-        const pollingResponse = await codechatQRService.pollInstanceStatus(instanceId, 20, 3000);
+        // Tentar buscar QR Code diretamente
+        const qrFound = await fetchQRCodeViaRest(instanceId);
         
-        if (pollingResponse.success) {
-          if (pollingResponse.qrCode) {
-            console.log(`✅ [UNIFIED] QR Code obtido via polling REST`);
-            
-            // Atualizar estado com QR Code
-            setInstances(prev => ({
-              ...prev,
-              [instanceId]: {
-                ...prev[instanceId],
-                status: 'qr_ready',
-                qrCode: pollingResponse.qrCode,
-                hasQrCode: true,
-                lastUpdated: Date.now()
-              }
-            }));
-            
-            // Sincronizar com banco
-            await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
-              qr_code: pollingResponse.qrCode,
-              has_qr_code: true,
-              updated_at: new Date().toISOString()
-            });
-            
-            toast({
-              title: "✅ QR Code Disponível!",
-              description: "Escaneie o QR Code para conectar ao WhatsApp",
-            });
-            
-            // ============ ETAPA 4: INICIAR POLLING PARA STATUS FINAL ============
-            startPollingForInstance(instanceId);
-            console.log(`🔄 [UNIFIED] Polling iniciado para ${instanceId}`);
-            
-            return;
-          } else if (pollingResponse.status === 'connected') {
-            console.log(`✅ [UNIFIED] Instância já conectada!`);
-            
-            // Atualizar estado como conectado
-            setInstances(prev => ({
-              ...prev,
-              [instanceId]: {
-                ...prev[instanceId],
-                status: 'connected',
-                phoneNumber: pollingResponse.data?.phoneNumber,
-                hasQrCode: false,
-                lastUpdated: Date.now()
-              }
-            }));
-            
-            toast({
-              title: "✅ WhatsApp Conectado!",
-              description: `Conectado${pollingResponse.data?.phoneNumber ? `: ${pollingResponse.data.phoneNumber}` : ''}`,
-            });
-            
-            return;
-          }
+        if (qrFound) {
+          // Sincronizar com banco
+          await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
+            has_qr_code: true,
+            updated_at: new Date().toISOString()
+          });
+          
+          // ============ ETAPA 4: INICIAR POLLING PARA STATUS FINAL ============
+          startPollingForInstance(instanceId);
+          console.log(`🔄 [UNIFIED] Polling iniciado para ${instanceId}`);
+          
+          return;
+        }
+        
+        // Se não encontrou QR Code, verificar se já está conectada
+        const statusData = await codechatQRService.getInstanceStatus(instanceId);
+        if (statusData.state === 'open') {
+          console.log(`✅ [UNIFIED] Instância já conectada!`);
+          
+          setInstances(prev => ({
+            ...prev,
+            [instanceId]: {
+              ...prev[instanceId],
+              status: 'connected',
+              hasQrCode: false,
+              lastUpdated: Date.now()
+            }
+          }));
+          
+          toast({
+            title: "✅ WhatsApp Conectado!",
+            description: "Instância já conectada",
+          });
+          
+          return;
         }
       }
       
@@ -372,7 +311,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     } finally {
       setLoading(prev => ({ ...prev, [instanceId]: false }));
     }
-  }, [toast, startPollingForInstance]);
+  }, [toast, startPollingForInstance, fetchQRCodeViaRest]);
 
   // ============ DESCONECTAR INSTÂNCIA ============
   const disconnectInstance = useCallback(async (instanceId: string) => {
@@ -457,8 +396,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
   return {
     instances,
     loading,
-    websocketConnected,
-    jwtConfigured,
+    restMode: true,
     connectInstance,
     disconnectInstance,
     getInstanceStatus,
