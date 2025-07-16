@@ -19,27 +19,21 @@ class CodeChatQRService {
     return SOCKET_URL.replace(/^wss?:/, 'https:');
   }
 
-  // ============ AUTENTICAÇÃO CENTRALIZADA ============
+  // ============ AUTENTICAÇÃO CENTRALIZADA (SEM CORS) ============
   private async getAuthHeaders(instanceName: string): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
 
-    // Prioridade 1: Global API Key (requerido pelo CodeChat API v1.3.3)
-    const globalApiKey = getYumerGlobalApiKey();
-    if (globalApiKey) {
-      console.log(`🔑 [CODECHAT-AUTH] Usando Global API Key: ${globalApiKey.substring(0, 8)}...`);
-      headers['X-API-Key'] = globalApiKey;
-    } else {
-      console.warn(`⚠️ [CODECHAT-AUTH] Global API Key não configurada, tentando JWT...`);
-    }
+    // Removido X-API-Key header para evitar CORS
+    // Global API Key será enviada via query parameter
 
-    // Prioridade 2: JWT como backup
+    // JWT como backup via Authorization header (permitido por CORS)
     try {
       const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
       headers['Authorization'] = `Bearer ${jwt}`;
-      console.log(`🔐 [CODECHAT-AUTH] JWT adicionado como backup`);
+      console.log(`🔐 [CODECHAT-AUTH] JWT adicionado via header`);
     } catch (error) {
       console.error(`❌ [CODECHAT-AUTH] Erro ao gerar JWT:`, error);
     }
@@ -47,15 +41,31 @@ class CodeChatQRService {
     return headers;
   }
 
+  // ============ CONSTRUIR URL COM API KEY (CONTORNAR CORS) ============
+  private buildUrlWithApiKey(baseUrl: string): string {
+    const globalApiKey = getYumerGlobalApiKey();
+    
+    if (globalApiKey) {
+      const separator = baseUrl.includes('?') ? '&' : '?';
+      const finalUrl = `${baseUrl}${separator}apikey=${globalApiKey}`;
+      console.log(`🔑 [CODECHAT-AUTH] URL com API Key: ${baseUrl}${separator}apikey=${globalApiKey.substring(0, 8)}...`);
+      return finalUrl;
+    } else {
+      console.warn(`⚠️ [CODECHAT-AUTH] Global API Key não configurada, usando apenas JWT`);
+      return baseUrl;
+    }
+  }
+
   // ============ CODECHAT API v1.3.3 - BUSCAR QR CODE ============
   async getQRCode(instanceName: string): Promise<QRCodeResponse> {
     try {
       console.log(`📱 [CODECHAT-API] Buscando QR Code via /instance/qrcode/${instanceName}`);
       
-      // URL exata conforme documentação CodeChat API v1.3.3
-      const url = `${this.getApiBaseUrl()}/instance/qrcode/${instanceName}`;
+      // URL com API Key via query parameter (contorna CORS)
+      const baseUrl = `${this.getApiBaseUrl()}/instance/qrcode/${instanceName}`;
+      const url = this.buildUrlWithApiKey(baseUrl);
       
-      console.log(`🌐 [CODECHAT-API] GET ${url}`);
+      console.log(`🌐 [CODECHAT-API] GET ${baseUrl}?apikey=***`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -100,10 +110,11 @@ class CodeChatQRService {
     try {
       console.log(`🚀 [CODECHAT-API] Conectando via /instance/connect/${instanceName}`);
       
-      // URL exata conforme documentação CodeChat API v1.3.3
-      const url = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;
+      // URL com API Key via query parameter (contorna CORS)
+      const baseUrl = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;
+      const url = this.buildUrlWithApiKey(baseUrl);
       
-      console.log(`🌐 [CODECHAT-API] GET ${url}`);
+      console.log(`🌐 [CODECHAT-API] GET ${baseUrl}?apikey=***`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -181,10 +192,11 @@ class CodeChatQRService {
     try {
       console.log(`📊 [CODECHAT-API] Buscando status via /instance/connectionState/${instanceName}`);
       
-      // URL exata conforme documentação CodeChat API v1.3.3
-      const url = `${this.getApiBaseUrl()}/instance/connectionState/${instanceName}`;
+      // URL com API Key via query parameter (contorna CORS)
+      const baseUrl = `${this.getApiBaseUrl()}/instance/connectionState/${instanceName}`;
+      const url = this.buildUrlWithApiKey(baseUrl);
       
-      console.log(`🌐 [CODECHAT-API] GET ${url}`);
+      console.log(`🌐 [CODECHAT-API] GET ${baseUrl}?apikey=***`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -213,10 +225,11 @@ class CodeChatQRService {
     try {
       console.log(`📋 [CODECHAT-API] Buscando detalhes via /instance/fetchInstance/${instanceName}`);
       
-      // URL conforme documentação CodeChat API v1.3.3
-      const url = `${this.getApiBaseUrl()}/instance/fetchInstance/${instanceName}`;
+      // URL com API Key via query parameter (contorna CORS)
+      const baseUrl = `${this.getApiBaseUrl()}/instance/fetchInstance/${instanceName}`;
+      const url = this.buildUrlWithApiKey(baseUrl);
       
-      console.log(`🌐 [CODECHAT-API] GET ${url}`);
+      console.log(`🌐 [CODECHAT-API] GET ${baseUrl}?apikey=***`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -245,8 +258,9 @@ class CodeChatQRService {
     try {
       console.log(`🔌 [CODECHAT] Desconectando instância: ${instanceName}`);
       
-      const url = `${this.getApiBaseUrl()}/instance/logout/${instanceName}`;
-      console.log(`📡 [CODECHAT] URL de desconexão: ${url}`);
+      const baseUrl = `${this.getApiBaseUrl()}/instance/logout/${instanceName}`;
+      const url = this.buildUrlWithApiKey(baseUrl);
+      console.log(`📡 [CODECHAT] URL de desconexão: ${baseUrl}?apikey=***`);
       
       const response = await fetch(url, {
         method: 'DELETE',
@@ -294,8 +308,9 @@ class CodeChatQRService {
     try {
       console.log(`📝 [CODECHAT] Criando instância: ${instanceName}`);
       
-      const url = `${this.getApiBaseUrl()}/instance/create`;
-      console.log(`📡 [CODECHAT] URL de criação: ${url}`);
+      const baseUrl = `${this.getApiBaseUrl()}/instance/create`;
+      const url = this.buildUrlWithApiKey(baseUrl);
+      console.log(`📡 [CODECHAT] URL de criação: ${baseUrl}?apikey=***`);
       
       const requestBody = {
         instanceName,
