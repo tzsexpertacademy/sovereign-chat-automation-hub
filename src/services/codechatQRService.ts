@@ -19,17 +19,23 @@ class CodeChatQRService {
     return SOCKET_URL.replace(/^wss?:/, 'https:');
   }
 
-  // ============ AUTENTICAÇÃO CENTRALIZADA (SEM CORS) ============
+  // ============ AUTENTICAÇÃO CENTRALIZADA (HEADER APIKEY) ============
   private async getAuthHeaders(instanceName: string): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
 
-    // Removido X-API-Key header para evitar CORS
-    // Global API Key será enviada via query parameter
+    // Global API Key via header apikey (formato correto do servidor)
+    const globalApiKey = getYumerGlobalApiKey();
+    if (globalApiKey) {
+      headers['apikey'] = globalApiKey;
+      console.log(`🔑 [CODECHAT-AUTH] API Key adicionada via header apikey`);
+    } else {
+      console.warn(`⚠️ [CODECHAT-AUTH] Global API Key não configurada`);
+    }
 
-    // JWT como backup via Authorization header (permitido por CORS)
+    // JWT como backup via Authorization header
     try {
       const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
       headers['Authorization'] = `Bearer ${jwt}`;
@@ -41,31 +47,14 @@ class CodeChatQRService {
     return headers;
   }
 
-  // ============ CONSTRUIR URL COM API KEY (CONTORNAR CORS) ============
-  private buildUrlWithApiKey(baseUrl: string): string {
-    const globalApiKey = getYumerGlobalApiKey();
-    
-    if (globalApiKey) {
-      const separator = baseUrl.includes('?') ? '&' : '?';
-      const finalUrl = `${baseUrl}${separator}apikey=${globalApiKey}`;
-      console.log(`🔑 [CODECHAT-AUTH] URL com API Key: ${baseUrl}${separator}apikey=${globalApiKey.substring(0, 8)}...`);
-      return finalUrl;
-    } else {
-      console.warn(`⚠️ [CODECHAT-AUTH] Global API Key não configurada, usando apenas JWT`);
-      return baseUrl;
-    }
-  }
 
   // ============ CODECHAT API v1.3.3 - BUSCAR QR CODE ============
   async getQRCode(instanceName: string): Promise<QRCodeResponse> {
     try {
       console.log(`📱 [CODECHAT-API] Buscando QR Code via /instance/qrcode/${instanceName}`);
       
-      // URL com API Key via query parameter (contorna CORS)
-      const baseUrl = `${this.getApiBaseUrl()}/instance/qrcode/${instanceName}`;
-      const url = this.buildUrlWithApiKey(baseUrl);
-      
-      console.log(`🌐 [CODECHAT-API] GET ${baseUrl}?apikey=***`);
+      const url = `${this.getApiBaseUrl()}/instance/qrcode/${instanceName}`;
+      console.log(`🌐 [CODECHAT-API] GET ${url}`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -110,11 +99,8 @@ class CodeChatQRService {
     try {
       console.log(`🚀 [CODECHAT-API] Conectando via /instance/connect/${instanceName}`);
       
-      // URL com API Key via query parameter (contorna CORS)
-      const baseUrl = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;
-      const url = this.buildUrlWithApiKey(baseUrl);
-      
-      console.log(`🌐 [CODECHAT-API] GET ${baseUrl}?apikey=***`);
+      const url = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;
+      console.log(`🌐 [CODECHAT-API] GET ${url}`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -192,11 +178,8 @@ class CodeChatQRService {
     try {
       console.log(`📊 [CODECHAT-API] Buscando status via /instance/connectionState/${instanceName}`);
       
-      // URL com API Key via query parameter (contorna CORS)
-      const baseUrl = `${this.getApiBaseUrl()}/instance/connectionState/${instanceName}`;
-      const url = this.buildUrlWithApiKey(baseUrl);
-      
-      console.log(`🌐 [CODECHAT-API] GET ${baseUrl}?apikey=***`);
+      const url = `${this.getApiBaseUrl()}/instance/connectionState/${instanceName}`;
+      console.log(`🌐 [CODECHAT-API] GET ${url}`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -225,11 +208,8 @@ class CodeChatQRService {
     try {
       console.log(`📋 [CODECHAT-API] Buscando detalhes via /instance/fetchInstance/${instanceName}`);
       
-      // URL com API Key via query parameter (contorna CORS)
-      const baseUrl = `${this.getApiBaseUrl()}/instance/fetchInstance/${instanceName}`;
-      const url = this.buildUrlWithApiKey(baseUrl);
-      
-      console.log(`🌐 [CODECHAT-API] GET ${baseUrl}?apikey=***`);
+      const url = `${this.getApiBaseUrl()}/instance/fetchInstance/${instanceName}`;
+      console.log(`🌐 [CODECHAT-API] GET ${url}`);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -258,9 +238,8 @@ class CodeChatQRService {
     try {
       console.log(`🔌 [CODECHAT] Desconectando instância: ${instanceName}`);
       
-      const baseUrl = `${this.getApiBaseUrl()}/instance/logout/${instanceName}`;
-      const url = this.buildUrlWithApiKey(baseUrl);
-      console.log(`📡 [CODECHAT] URL de desconexão: ${baseUrl}?apikey=***`);
+      const url = `${this.getApiBaseUrl()}/instance/logout/${instanceName}`;
+      console.log(`📡 [CODECHAT] URL de desconexão: ${url}`);
       
       const response = await fetch(url, {
         method: 'DELETE',
@@ -308,9 +287,8 @@ class CodeChatQRService {
     try {
       console.log(`📝 [CODECHAT] Criando instância: ${instanceName}`);
       
-      const baseUrl = `${this.getApiBaseUrl()}/instance/create`;
-      const url = this.buildUrlWithApiKey(baseUrl);
-      console.log(`📡 [CODECHAT] URL de criação: ${baseUrl}?apikey=***`);
+      const url = `${this.getApiBaseUrl()}/instance/create`;
+      console.log(`📡 [CODECHAT] URL de criação: ${url}`);
       
       const requestBody = {
         instanceName,
