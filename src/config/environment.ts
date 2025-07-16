@@ -6,9 +6,9 @@ console.log('🚀 Configurando ambiente YUMER Backend...');
 const isProduction = window.location.hostname.includes('lovableproject.com');
 const isDevelopment = window.location.hostname === 'localhost';
 
-// YUMER Backend configuration - porta 8083
-const YUMER_SERVER = '146.59.227.248:8083';
-const YUMER_HOST = '146.59.227.248';
+// YUMER Backend configuration - porta 8083 com domínio válido
+const YUMER_SERVER = 'yumer.yumerflow.app:8083';
+const YUMER_HOST = 'yumer.yumerflow.app';
 const YUMER_PORT = '8083';
 
 // Configure URLs for YUMER Backend
