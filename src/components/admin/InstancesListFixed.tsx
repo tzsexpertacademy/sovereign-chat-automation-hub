@@ -54,8 +54,11 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
       case 'connected': return 'bg-green-500';
       case 'qr_ready': return 'bg-blue-500';
       case 'connecting': return 'bg-yellow-500';
+      case 'awaiting_qr': return 'bg-orange-500';
       case 'authenticated': return 'bg-cyan-500';
       case 'disconnected': return 'bg-gray-500';
+      case 'not_found': return 'bg-red-500';
+      case 'error': return 'bg-red-600';
       default: return 'bg-gray-500';
     }
   };
@@ -65,6 +68,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
       case 'connected': return 'Conectado';
       case 'qr_ready': return 'QR Pronto';
       case 'connecting': return 'Conectando';
+      case 'awaiting_qr': return 'Aguardando QR';
       case 'websocket_connected': return 'WebSocket OK';
       case 'authenticated': return 'Autenticado';
       case 'disconnected': return 'Desconectado';

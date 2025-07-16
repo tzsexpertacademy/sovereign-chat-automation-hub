@@ -44,44 +44,39 @@ class CodeChatQRService {
   }
 
 
-  // ============ CODECHAT API v1.3.3 - BUSCAR QR CODE ============
+  // ============ REMOVED: PROBLEMATIC QR CODE ENDPOINT ============
+  // O endpoint /instance/qrcode/{instanceName} retorna HTML, não JSON
+  // Usaremos apenas polling via /instance/fetchInstance e WebSocket
   async getQRCode(instanceName: string): Promise<QRCodeResponse> {
+    console.warn(`⚠️ [CODECHAT-API] QR Code endpoint desabilitado (retorna HTML)`);
+    console.log(`🔄 [CODECHAT-API] Redirecionando para fetchInstance...`);
+    
     try {
-      console.log(`📱 [CODECHAT-API] Buscando QR Code via /instance/qrcode/${instanceName}`);
+      // Usar endpoint fetchInstance que retorna JSON válido
+      const details = await this.getInstanceDetails(instanceName);
       
-      const url = `${this.getApiBaseUrl()}/instance/qrcode/${instanceName}`;
-      console.log(`🌐 [CODECHAT-API] GET ${url}`);
+      // Verificar se há QR Code nos detalhes da instância
+      const qrCode = details.qrCode || details.base64 || details.code;
       
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: await this.getAuthHeaders(instanceName),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ [CODECHAT-API] HTTP ${response.status}:`, errorText);
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (qrCode) {
+        console.log(`✅ [CODECHAT-API] QR Code encontrado via fetchInstance`);
+        return {
+          success: true,
+          qrCode: qrCode,
+          status: 'qr_ready',
+          instanceName
+        };
+      } else {
+        console.log(`ℹ️ [CODECHAT-API] QR Code não disponível ainda`);
+        return {
+          success: false,
+          error: 'QR Code não disponível ainda',
+          instanceName
+        };
       }
-
-      const data = await response.json();
-      console.log(`✅ [CODECHAT-API] QR Code response:`, data);
-
-      // QR Code pode vir em diferentes formatos conforme documentação
-      const qrCode = data.base64 || data.qrCode || data.code;
-
-      if (!qrCode) {
-        throw new Error('QR Code não encontrado na resposta');
-      }
-
-      return {
-        success: true,
-        qrCode: qrCode,
-        status: 'qr_ready',
-        instanceName
-      };
-
+      
     } catch (error: any) {
-      console.error(`❌ [CODECHAT-API] Erro ao buscar QR Code:`, error);
+      console.error(`❌ [CODECHAT-API] Erro ao buscar QR Code via fetchInstance:`, error);
       return {
         success: false,
         error: error.message,
@@ -125,10 +120,14 @@ class CodeChatQRService {
           instanceName
         };
       } else {
-        console.log(`⏳ [CODECHAT-API] Connect realizado, buscando QR Code...`);
-        // Aguardar um pouco e buscar QR Code via endpoint específico
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        return await this.getQRCode(instanceName);
+        console.log(`⏳ [CODECHAT-API] Connect realizado, aguardando QR Code via polling...`);
+        // Retornar sucesso e deixar o polling REST handle o QR Code
+        return {
+          success: true,
+          qrCode: undefined,
+          status: 'connecting',
+          instanceName
+        };
       }
 
     } catch (error: any) {
@@ -141,18 +140,61 @@ class CodeChatQRService {
     }
   }
 
-  // ============ POLLING PARA QR CODE ============
-  async pollQRCode(instanceName: string, maxAttempts: number = 10, interval: number = 3000): Promise<QRCodeResponse> {
-    console.log(`🔄 [CODECHAT-REST] Iniciando polling para QR Code: ${instanceName}`);
+  // ============ POLLING PARA STATUS E QR CODE VIA REST ============
+  async pollInstanceStatus(instanceName: string, maxAttempts: number = 20, interval: number = 3000): Promise<QRCodeResponse> {
+    console.log(`🔄 [CODECHAT-REST] Iniciando polling para status e QR Code: ${instanceName}`);
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       console.log(`🔍 [CODECHAT-REST] Tentativa ${attempt}/${maxAttempts}`);
       
-      const result = await this.getQRCode(instanceName);
-      
-      if (result.success && result.qrCode) {
-        console.log(`✅ [CODECHAT-REST] QR Code encontrado na tentativa ${attempt}`);
-        return result;
+      try {
+        // Buscar detalhes completos da instância
+        const details = await this.getInstanceDetails(instanceName);
+        
+        console.log(`📊 [CODECHAT-REST] Detalhes da instância:`, details);
+        
+        // Verificar se há QR Code
+        const qrCode = details.qrCode || details.base64 || details.code;
+        if (qrCode) {
+          console.log(`✅ [CODECHAT-REST] QR Code encontrado na tentativa ${attempt}`);
+          return {
+            success: true,
+            qrCode: qrCode,
+            status: 'qr_ready',
+            instanceName
+          };
+        }
+        
+        // Verificar se já está conectado
+        if (details.ownerJid || details.phoneNumber) {
+          console.log(`✅ [CODECHAT-REST] Instância já conectada: ${details.ownerJid || details.phoneNumber}`);
+          return {
+            success: true,
+            qrCode: undefined,
+            status: 'connected',
+            instanceName,
+            data: { phoneNumber: details.ownerJid || details.phoneNumber }
+          };
+        }
+        
+        // Verificar status de conexão
+        try {
+          const status = await this.getInstanceStatus(instanceName);
+          if (status.state === 'open') {
+            console.log(`✅ [CODECHAT-REST] Instância conectada via status check`);
+            return {
+              success: true,
+              qrCode: undefined,
+              status: 'connected',
+              instanceName
+            };
+          }
+        } catch (statusError) {
+          console.warn(`⚠️ [CODECHAT-REST] Erro ao verificar status:`, statusError);
+        }
+        
+      } catch (error) {
+        console.warn(`⚠️ [CODECHAT-REST] Erro na tentativa ${attempt}:`, error);
       }
       
       if (attempt < maxAttempts) {
@@ -161,10 +203,10 @@ class CodeChatQRService {
       }
     }
     
-    console.log(`❌ [CODECHAT-REST] QR Code não encontrado após ${maxAttempts} tentativas`);
+    console.log(`❌ [CODECHAT-REST] Polling finalizado sem sucesso após ${maxAttempts} tentativas`);
     return {
       success: false,
-      error: `QR Code não encontrado após ${maxAttempts} tentativas`,
+      error: `QR Code ou conexão não estabelecida após ${maxAttempts} tentativas`,
       instanceName
     };
   }
@@ -215,7 +257,21 @@ class CodeChatQRService {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`❌ [CODECHAT-API] Instance details error ${response.status}:`, errorText);
+        
+        // Se HTML detectado, logar para debug
+        if (errorText.includes('<!DOCTYPE') || errorText.includes('<html')) {
+          console.error(`🚨 [CODECHAT-API] HTML response detected! Server may be returning error page instead of JSON`);
+        }
+        
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Verificar se response é JSON válido antes de fazer parse
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error(`🚨 [CODECHAT-API] Non-JSON response:`, text);
+        throw new Error('Server returned non-JSON response');
       }
 
       const data = await response.json();

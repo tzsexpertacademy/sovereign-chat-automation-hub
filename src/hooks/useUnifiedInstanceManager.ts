@@ -273,47 +273,78 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       if (connectResponse.success) {
         console.log(`✅ [UNIFIED] Conexão iniciada com sucesso`);
         
-        // ============ ETAPA 3: BUSCAR QR CODE ============
-        let qrResponse = connectResponse;
+        // ============ ETAPA 3: INICIAR POLLING REST (SEM ENDPOINT HTML) ============
+        console.log(`🔄 [UNIFIED] Iniciando polling REST para ${instanceId}`);
         
-        // Se não veio QR Code direto do connect, buscar via endpoint específico
-        if (!qrResponse.qrCode) {
-          console.log(`🔍 [UNIFIED] Buscando QR Code via endpoint específico...`);
-          qrResponse = await codechatQRService.getQRCode(instanceId);
-        }
+        // Atualizar estado para "aguardando QR Code"
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            status: 'awaiting_qr',
+            hasQrCode: false,
+            lastUpdated: Date.now()
+          }
+        }));
         
-        if (qrResponse.success && qrResponse.qrCode) {
-          console.log(`✅ [UNIFIED] QR Code obtido com sucesso`);
-          
-          // Atualizar estado com QR Code
-          setInstances(prev => ({
-            ...prev,
-            [instanceId]: {
-              ...prev[instanceId],
-              status: 'qr_ready',
-              qrCode: qrResponse.qrCode,
-              hasQrCode: true,
-              lastUpdated: Date.now()
-            }
-          }));
-          
-          // Sincronizar com banco
-          await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
-            qr_code: qrResponse.qrCode,
-            has_qr_code: true,
-            updated_at: new Date().toISOString()
-          });
-          
-          toast({
-            title: "✅ QR Code Disponível!",
-            description: "Escaneie o QR Code para conectar ao WhatsApp",
-          });
-          
-          // ============ ETAPA 4: INICIAR POLLING PARA STATUS ============
-          startPollingForInstance(instanceId);
-          console.log(`🔄 [UNIFIED] Polling iniciado para ${instanceId}`);
-          
-          return;
+        // Usar polling via REST (evita endpoint HTML problemático)
+        const pollingResponse = await codechatQRService.pollInstanceStatus(instanceId, 20, 3000);
+        
+        if (pollingResponse.success) {
+          if (pollingResponse.qrCode) {
+            console.log(`✅ [UNIFIED] QR Code obtido via polling REST`);
+            
+            // Atualizar estado com QR Code
+            setInstances(prev => ({
+              ...prev,
+              [instanceId]: {
+                ...prev[instanceId],
+                status: 'qr_ready',
+                qrCode: pollingResponse.qrCode,
+                hasQrCode: true,
+                lastUpdated: Date.now()
+              }
+            }));
+            
+            // Sincronizar com banco
+            await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
+              qr_code: pollingResponse.qrCode,
+              has_qr_code: true,
+              updated_at: new Date().toISOString()
+            });
+            
+            toast({
+              title: "✅ QR Code Disponível!",
+              description: "Escaneie o QR Code para conectar ao WhatsApp",
+            });
+            
+            // ============ ETAPA 4: INICIAR POLLING PARA STATUS FINAL ============
+            startPollingForInstance(instanceId);
+            console.log(`🔄 [UNIFIED] Polling iniciado para ${instanceId}`);
+            
+            return;
+          } else if (pollingResponse.status === 'connected') {
+            console.log(`✅ [UNIFIED] Instância já conectada!`);
+            
+            // Atualizar estado como conectado
+            setInstances(prev => ({
+              ...prev,
+              [instanceId]: {
+                ...prev[instanceId],
+                status: 'connected',
+                phoneNumber: pollingResponse.data?.phoneNumber,
+                hasQrCode: false,
+                lastUpdated: Date.now()
+              }
+            }));
+            
+            toast({
+              title: "✅ WhatsApp Conectado!",
+              description: `Conectado${pollingResponse.data?.phoneNumber ? `: ${pollingResponse.data.phoneNumber}` : ''}`,
+            });
+            
+            return;
+          }
         }
       }
       
