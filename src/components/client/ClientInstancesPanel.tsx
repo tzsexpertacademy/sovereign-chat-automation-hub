@@ -50,6 +50,7 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
     getInstanceStatus,
     isLoading: isInstanceLoading,
     websocketConnected,
+    jwtConfigured,
     cleanup,
     refreshStatus
   } = useUnifiedInstanceManager();
@@ -277,6 +278,17 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
             </div>
             <div className="flex items-center space-x-2">
               <div className="flex items-center space-x-1 text-right">
+                {jwtConfigured ? (
+                  <div className="flex items-center space-x-1">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-xs text-green-600">JWT OK</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-1">
+                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                    <span className="text-xs text-red-600">JWT Error</span>
+                  </div>
+                )}
                 {websocketConnected ? (
                   <Wifi className="w-4 h-4 text-green-500" />
                 ) : (
@@ -394,6 +406,18 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
                           </div>
                         </div>
 
+                        {/* Status de Conexão */}
+                        {instanceStatus.status === 'connecting' && (
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                            <div className="flex items-center space-x-2">
+                              <Clock className="w-4 h-4 text-yellow-600 animate-spin" />
+                              <p className="text-yellow-800 text-sm font-medium">
+                                Iniciando conexão WebSocket...
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
                         {/* QR Code Display */}
                         {instanceStatus.status === 'qr_ready' && hasQrCode && (
                           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -409,17 +433,27 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
                               <p className="text-sm text-blue-700">
                                 Escaneie com seu WhatsApp para conectar
                               </p>
+                              <div className="text-xs text-blue-600">
+                                ✅ JWT Configurado • WebSocket {websocketConnected ? 'Conectado' : 'Desconectado'}
+                              </div>
                             </div>
                           </div>
                         )}
                         
-                        {/* Status de Conexão */}
+                        {/* Status de Sucesso */}
                         {instanceStatus.status === 'connected' && (
                           <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                             <div className="flex items-center justify-between">
-                              <p className="text-green-800 text-sm font-medium">
-                                ✅ WhatsApp conectado e funcionando!
-                              </p>
+                              <div>
+                                <p className="text-green-800 text-sm font-medium">
+                                  ✅ WhatsApp conectado e funcionando!
+                                </p>
+                                {instanceStatus.phoneNumber && (
+                                  <p className="text-green-600 text-xs">
+                                    📱 {instanceStatus.phoneNumber}
+                                  </p>
+                                )}
+                              </div>
                               <Button 
                                 size="sm"
                                 onClick={() => navigate(`/client/${clientId}/chat`)}
@@ -428,6 +462,18 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
                                 <MessageSquare className="w-4 h-4 mr-1" />
                                 Ir para Chat
                               </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Status de Erro */}
+                        {instanceStatus.status === 'error' && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                            <div className="flex items-center space-x-2">
+                              <AlertCircle className="w-4 h-4 text-red-600" />
+                              <p className="text-red-800 text-sm font-medium">
+                                Erro na conexão. Tente novamente.
+                              </p>
                             </div>
                           </div>
                         )}
@@ -448,13 +494,18 @@ const ClientInstancesPanel = ({ clientId, client, onInstancesUpdate }: ClientIns
                             <Button 
                               size="sm"
                               onClick={() => handleConnectInstance(instance.instance_id)}
-                              disabled={loading}
+                              disabled={loading || !jwtConfigured}
                               className="bg-green-600 hover:bg-green-700"
                             >
                               {loading ? (
                                 <>
                                   <Clock className="w-4 h-4 mr-1 animate-spin" />
                                   Conectando...
+                                </>
+                              ) : !jwtConfigured ? (
+                                <>
+                                  <AlertCircle className="w-4 h-4 mr-1" />
+                                  JWT Necessário
                                 </>
                               ) : (
                                 <>

@@ -6,9 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Plus, Server, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import InstancesListFixed from "./InstancesListFixed";
+import JwtStatusIndicator from "./JwtStatusIndicator";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
+import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 import { InstanceManagerProvider } from "@/contexts/InstanceManagerContext";
 
 const InstancesMonitor = () => {
@@ -24,6 +26,9 @@ const InstancesMonitor = () => {
     serverInfo: null as any
   });
   const { toast } = useToast();
+  
+  // Hook para status JWT/WebSocket
+  const { websocketConnected, jwtConfigured } = useUnifiedInstanceManager();
 
   useEffect(() => {
     loadData();
@@ -224,6 +229,12 @@ const InstancesMonitor = () => {
             </p>
           </div>
         </div>
+
+        {/* JWT Status Indicator */}
+        <JwtStatusIndicator 
+          jwtConfigured={jwtConfigured}
+          websocketConnected={websocketConnected}
+        />
 
         {/* Status do Sistema */}
         <Card>
