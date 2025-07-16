@@ -23,37 +23,53 @@ class YumerJwtService {
   private tokenExpiry: number | null = null;
   private renewalTimer: NodeJS.Timeout | null = null;
 
-  // ============ GERAÇÃO LOCAL DE JWT ============
+  // ============ GERAÇÃO LOCAL DE JWT PARA CODECHAT API v1.3.3 ============
   async generateLocalJWT(jwtSecret: string, instanceName: string): Promise<string> {
     try {
-      console.log('🔐 Gerando JWT local para WebSocket...', { instanceName });
+      console.log('🔐 [CODECHAT] Gerando JWT compatível com CodeChat API v1.3.3...', { instanceName });
       
-      // CRÍTICO: usar o instanceId real como instanceName no payload
+      // Payload compatível com CodeChat API conforme documentação
       const payload = {
-        instanceName: instanceName // Este deve ser o instanceId completo ex: 35f36a03-39b2-412c-bba6-01fdd45c2dd3_1752625816838
+        instanceName: instanceName,
+        apiName: "whatsapp-api", // Conforme documentação CodeChat
+        tokenId: this.generateTokenId(), // ID único do token
+        iat: Math.floor(Date.now() / 1000), // Issued at
+        exp: Math.floor(Date.now() / 1000) + (4 * 60 * 60), // Expira em 4 horas
+        sub: "g-t" // Subject conforme exemplo da documentação
       };
       
       // Converter secret para Uint8Array
       const secret = new TextEncoder().encode(jwtSecret);
       
-      // Criar JWT sem expiração usando jose
+      // Criar JWT usando jose com estrutura CodeChat
       const token = await new SignJWT(payload)
-        .setProtectedHeader({ alg: 'HS256' })
+        .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
         .setIssuedAt()
+        .setExpirationTime('4h')
+        .setSubject('g-t')
         .sign(secret);
       
       this.currentToken = token;
-      this.tokenExpiry = null; // Token nunca expira
+      this.tokenExpiry = payload.exp * 1000; // Converter para milliseconds
       
-      console.log('✅ JWT local gerado com sucesso');
-      console.log('📋 Payload final:', payload);
-      console.log('🔑 Token JWT:', token.substring(0, 50) + '...');
+      console.log('✅ [CODECHAT] JWT compatível gerado com sucesso');
+      console.log('📋 [CODECHAT] Payload final:', payload);
+      console.log('🔑 [CODECHAT] Token JWT:', token.substring(0, 50) + '...');
       
       return token;
     } catch (error: any) {
-      console.error('❌ Erro ao gerar JWT local:', error);
+      console.error('❌ [CODECHAT] Erro ao gerar JWT:', error);
       throw error;
     }
+  }
+
+  // Gerar ID único para o token
+  private generateTokenId(): string {
+    return 'xxxx-xxxx-4xxx-yxxx-xxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 
   // ============ GERAÇÃO DE JWT (MÉTODO LEGADO - ENDPOINT) ============  

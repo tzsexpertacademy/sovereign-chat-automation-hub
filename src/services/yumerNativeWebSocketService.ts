@@ -110,40 +110,103 @@ class YumerNativeWebSocketService {
     };
   }
 
-  // ============ PROCESSAMENTO CODECHAT ============
+  // ============ PROCESSAMENTO CODECHAT API v1.3.3 ============
   private processCodeChatMessage(data: any): void {
-    console.log('🔍 [CODECHAT] Processando mensagem:', data);
-    
-    // Detectar tipo de evento pelo conteúdo da mensagem
-    if (data.event) {
-      // Formato padrão: { event: 'qrcode.updated', data: {...} }
-      const eventType = data.event;
-      const eventData = data.data || data;
+    try {
+      console.log('📨 [CODECHAT] Processando mensagem CodeChat API v1.3.3:', data);
       
-      console.log(`📡 [CODECHAT] Evento detectado: ${eventType}`, eventData);
-      this.notifyEventHandlers(eventType, eventData);
+      // Identificar tipo de evento baseado na estrutura CodeChat
+      let eventType = 'unknown';
+      let eventData = data;
       
-      // Mapear eventos específicos
-      if (eventType === 'qrcode.updated' || eventType === 'qr_code') {
-        this.notifyEventHandlers('qr_code', eventData);
-      } else if (eventType === 'connection.update' || eventType === 'instance_status') {
-        this.notifyEventHandlers('instance_status', eventData);
-      } else if (eventType === 'message.upsert' || eventType === 'message_received') {
-        this.notifyEventHandlers('message_received', eventData);
+      // Estrutura baseada na documentação CodeChat API v1.3.3
+      if (data.event) {
+        // Eventos webhook padrão CodeChat
+        const codechatEvents: Record<string, string> = {
+          'qrcodeUpdated': 'qr_code',
+          'connectionUpdated': 'instance_status', 
+          'statusInstance': 'instance_status',
+          'messagesUpsert': 'message_received',
+          'messagesUpdated': 'message_updated',
+          'chatsUpsert': 'chat_update',
+          'contactsUpsert': 'contact_update'
+        };
+        
+        eventType = codechatEvents[data.event] || data.event;
+        eventData = {
+          instanceName: this.connectionOptions?.instanceName,
+          originalEvent: data.event,
+          ...data.data,
+          ...data
+        };
+        
+        console.log(`🎯 [CODECHAT] Evento mapeado: ${data.event} → ${eventType}`);
+      } 
+      // QR Code direto da resposta /instance/connect
+      else if (data.base64 || data.qrCode || data.code) {
+        eventType = 'qr_code';
+        eventData = {
+          instanceName: this.connectionOptions?.instanceName,
+          qrCode: data.base64 || data.qrCode || data.code,
+          count: data.count
+        };
+        console.log(`📱 [CODECHAT] QR Code recebido via connect response`);
       }
-    } else if (data.qrCode || data.qr) {
-      // QR Code direto
-      console.log('📱 [CODECHAT] QR Code detectado');
-      this.notifyEventHandlers('qr_code', data);
-    } else if (data.status || data.state) {
-      // Status de conexão
-      console.log('🔌 [CODECHAT] Status detectado');
-      this.notifyEventHandlers('instance_status', data);
-    } else {
-      // Evento genérico
-      console.log('📨 [CODECHAT] Evento genérico');
-      this.notifyEventHandlers('message', data);
+      // Status de conexão da resposta /instance/connectionState
+      else if (data.state !== undefined) {
+        eventType = 'instance_status';
+        eventData = {
+          instanceName: this.connectionOptions?.instanceName,
+          status: this.mapCodeChatStatus(data.state),
+          statusReason: data.statusReason,
+          rawState: data.state
+        };
+        console.log(`🔌 [CODECHAT] Status de conexão: ${data.state}`);
+      }
+      // Instância com conexão Whatsapp
+      else if (data.Whatsapp?.connection) {
+        eventType = 'instance_status';
+        eventData = {
+          instanceName: this.connectionOptions?.instanceName,
+          status: this.mapCodeChatStatus(data.Whatsapp.connection.state),
+          statusReason: data.Whatsapp.connection.statusReason,
+          phoneNumber: data.ownerJid,
+          profilePicUrl: data.profilePicUrl
+        };
+        console.log(`📱 [CODECHAT] Instância conectada: ${data.Whatsapp.connection.state}`);
+      }
+      
+      console.log(`🎯 [CODECHAT] Evento processado: ${eventType}`, eventData);
+      
+      // Notificar handlers registrados para o evento específico
+      if (this.eventHandlers.has(eventType)) {
+        console.log(`📢 [CODECHAT] Notificando ${this.eventHandlers.get(eventType)!.length} handlers para ${eventType}`);
+        this.notifyEventHandlers(eventType, eventData);
+      }
+      
+      // Fallback - notificar como message_received para debug
+      if (eventType !== 'message_received') {
+        this.notifyEventHandlers('message_received', { type: eventType, data: eventData, original: data });
+      }
+      
+    } catch (error) {
+      console.error('❌ [CODECHAT] Erro ao processar mensagem:', error);
     }
+  }
+
+  // Mapear status CodeChat para nossos status internos
+  private mapCodeChatStatus(state: string): string {
+    const statusMap: Record<string, string> = {
+      'open': 'connected',
+      'close': 'disconnected',
+      'connecting': 'connecting',
+      'CONNECTED': 'connected',
+      'DISCONNECTED': 'disconnected',
+      'CONNECTING': 'connecting',
+      'qr': 'qr_ready'
+    };
+    
+    return statusMap[state] || state;
   }
 
   // ============ RECONEXÃO AUTOMÁTICA ============

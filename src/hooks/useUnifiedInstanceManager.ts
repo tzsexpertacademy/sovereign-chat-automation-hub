@@ -176,12 +176,41 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, []);
 
-  // Buscar status atual de uma instância via API direta
+  // Buscar status atual de uma instância via CodeChat API
   const refreshStatus = useCallback(async (instanceId: string) => {
     try {
-      console.log(`🔄 [UNIFIED] Buscando status atual: ${instanceId}`);
+      console.log(`🔄 [UNIFIED] Buscando status atual via CodeChat API: ${instanceId}`);
       
-      // Para simular refresh, vamos atualizar o timestamp
+      // Buscar status via CodeChat API REST
+      const statusData = await codechatQRService.getInstanceStatus(instanceId);
+      
+      // Mapear resposta da API para nosso formato interno
+      const mappedStatus = statusData.state === 'open' ? 'connected' : 
+                          statusData.state === 'close' ? 'disconnected' : 
+                          statusData.state || 'unknown';
+      
+      console.log(`📊 [UNIFIED] Status da API: ${statusData.state} → ${mappedStatus}`);
+      
+      // Atualizar status local
+      setInstances(prev => ({
+        ...prev,
+        [instanceId]: {
+          ...prev[instanceId],
+          instanceId: instanceId,
+          status: mappedStatus,
+          lastUpdated: Date.now()
+        }
+      }));
+      
+      // Sincronizar com banco
+      await whatsappInstancesService.updateInstanceStatus(instanceId, mappedStatus);
+      
+      console.log(`✅ [UNIFIED] Status atualizado para ${instanceId}: ${mappedStatus}`);
+      
+    } catch (error) {
+      console.error(`❌ [UNIFIED] Erro ao buscar status ${instanceId}:`, error);
+      
+      // Manter o status atual em caso de erro
       setInstances(prev => {
         if (prev[instanceId]) {
           return {
@@ -195,14 +224,11 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         return prev;
       });
       
-      console.log(`📊 [UNIFIED] Status atualizado para ${instanceId}`);
-    } catch (error) {
-      console.error(`❌ [UNIFIED] Erro ao buscar status ${instanceId}:`, error);
       throw error;
     }
   }, []);
 
-  // Conectar instância
+  // Conectar instância - PRIORIZAR REST API CodeChat v1.3.3
   const connectInstance = useCallback(async (instanceId: string) => {
     if (!jwtConfigured) {
       toast({
@@ -215,7 +241,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
 
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
-      console.log(`🚀 [UNIFIED] Conectando instância: ${instanceId}`);
+      console.log(`🚀 [UNIFIED] Conectando instância via CodeChat API v1.3.3: ${instanceId}`);
       
       // Definir status como connecting
       setInstances(prev => ({
@@ -228,23 +254,16 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
 
-      // Conectar WebSocket - isso vai gerar o JWT correto e conectar
-      await connectWebSocketForInstance(instanceId);
+      // ============ MÉTODO PRINCIPAL: REST API CodeChat ============
+      console.log(`📡 [UNIFIED] Usando REST API como método principal`);
       
-      // Aguardar conexão WebSocket estabilizar
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      console.log(`📱 [UNIFIED] WebSocket conectado, iniciando fallback REST para ${instanceId}`);
-      
-      // Iniciar conexão via REST API como fallback
       try {
-        console.log(`🔄 [UNIFIED] Tentando conectar via REST API: ${instanceId}`);
         const restResult = await codechatQRService.connectInstance(instanceId);
         
         if (restResult.success && restResult.qrCode) {
-          console.log(`✅ [UNIFIED] QR Code obtido via REST API!`);
+          console.log(`✅ [UNIFIED] Sucesso via REST API CodeChat!`);
           
-          // Atualizar com QR Code do REST
+          // Atualizar com QR Code obtido via REST
           setInstances(prev => ({
             ...prev,
             [instanceId]: {
@@ -258,34 +277,51 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           
           toast({
             title: "✅ QR Code Disponível!",
-            description: "QR Code obtido via REST API - escaneie para conectar",
+            description: "Conectado via CodeChat API - escaneie o QR Code",
           });
+
+          // ============ OPCIONAL: WebSocket para eventos em tempo real ============
+          try {
+            console.log(`🔌 [UNIFIED] Conectando WebSocket para notificações...`);
+            await connectWebSocketForInstance(instanceId);
+            console.log(`✅ [UNIFIED] WebSocket opcional conectado para ${instanceId}`);
+          } catch (wsError) {
+            console.warn(`⚠️ [UNIFIED] WebSocket opcional falhou, mas REST funciona:`, wsError);
+            // Não é erro crítico - REST API está funcionando
+          }
+
+          return; // Sucesso com REST API
         } else {
-          console.log(`⚠️ [UNIFIED] REST API não retornou QR Code, aguardando WebSocket...`);
+          throw new Error(`REST API não retornou QR Code: ${restResult.error}`);
+        }
+        
+      } catch (restError) {
+        console.error(`❌ [UNIFIED] REST API falhou:`, restError);
+        
+        // ============ FALLBACK: Tentar só WebSocket ============
+        console.log(`🔄 [UNIFIED] Tentando fallback com WebSocket apenas...`);
+        
+        try {
+          await connectWebSocketForInstance(instanceId);
+          
+          setInstances(prev => ({
+            ...prev,
+            [instanceId]: {
+              ...prev[instanceId],
+              status: 'websocket_connected',
+              lastUpdated: Date.now()
+            }
+          }));
           
           toast({
-            title: "Conectando...",
-            description: "WebSocket conectado, aguardando QR Code...",
+            title: "WebSocket Conectado",
+            description: "Aguardando QR Code via WebSocket...",
           });
+          
+        } catch (wsError) {
+          throw new Error(`Tanto REST quanto WebSocket falharam. REST: ${restError.message}, WS: ${wsError.message}`);
         }
-      } catch (restError) {
-        console.error(`❌ [UNIFIED] Fallback REST falhou:`, restError);
-        
-        toast({
-          title: "Conectando...",
-          description: "WebSocket conectado, aguardando QR Code...",
-        });
       }
-      
-      // Atualizar status para conectado via WebSocket
-      setInstances(prev => ({
-        ...prev,
-        [instanceId]: {
-          ...prev[instanceId],
-          status: prev[instanceId]?.qrCode ? 'qr_ready' : 'websocket_connected',
-          lastUpdated: Date.now()
-        }
-      }));
       
     } catch (error: any) {
       console.error('❌ [UNIFIED] Erro ao conectar:', error);
