@@ -1,5 +1,6 @@
 // YUMER JWT Service - Gerencia autenticação JWT para WebSockets
 import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
+import jwt from 'jsonwebtoken';
 
 export interface YumerJwtResponse {
   token: string;
@@ -12,12 +13,42 @@ export interface YumerEventsList {
   description: Record<string, string>;
 }
 
+export interface JwtConfig {
+  secret: string;
+  instanceName: string;
+}
+
 class YumerJwtService {
   private currentToken: string | null = null;
   private tokenExpiry: number | null = null;
   private renewalTimer: NodeJS.Timeout | null = null;
 
-  // ============ GERAÇÃO DE JWT ============
+  // ============ GERAÇÃO LOCAL DE JWT ============
+  generateLocalJWT(jwtSecret: string, instanceName: string): string {
+    try {
+      console.log('🔐 Gerando JWT local para WebSocket...', instanceName);
+      
+      const payload = {
+        instanceName: instanceName
+      };
+      
+      // EXPIRES_IN=0 significa que o token nunca expira
+      const token = jwt.sign(payload, jwtSecret);
+      
+      this.currentToken = token;
+      this.tokenExpiry = null; // Token nunca expira
+      
+      console.log('✅ JWT local gerado com sucesso');
+      console.log('📋 Payload:', payload);
+      
+      return token;
+    } catch (error: any) {
+      console.error('❌ Erro ao gerar JWT local:', error);
+      throw error;
+    }
+  }
+
+  // ============ GERAÇÃO DE JWT (MÉTODO LEGADO - ENDPOINT) ============  
   async generateJWT(instanceName: string): Promise<string> {
     const globalApiKey = getYumerGlobalApiKey();
     if (!globalApiKey) {
@@ -25,7 +56,7 @@ class YumerJwtService {
     }
 
     try {
-      console.log('🔐 Gerando JWT para WebSocket...', instanceName);
+      console.log('🔐 Tentando gerar JWT via endpoint...', instanceName);
       
       const response = await fetch(`${API_BASE_URL}/auth/jwt`, {
         method: 'POST',
@@ -37,21 +68,21 @@ class YumerJwtService {
       });
 
       if (!response.ok) {
-        throw new Error(`Erro ao gerar JWT: ${response.status}`);
+        throw new Error(`Endpoint /auth/jwt não disponível: ${response.status}`);
       }
 
       const data: YumerJwtResponse = await response.json();
       this.currentToken = data.token;
       this.tokenExpiry = Date.now() + (data.expiresIn * 1000);
       
-      console.log('✅ JWT gerado com sucesso, expira em:', new Date(this.tokenExpiry));
+      console.log('✅ JWT via endpoint gerado com sucesso');
       
       // Agendar renovação automática (renovar 30 segundos antes de expirar)
       this.scheduleRenewal(instanceName, data.expiresIn - 30);
       
       return data.token;
     } catch (error: any) {
-      console.error('❌ Erro ao gerar JWT:', error);
+      console.error('❌ Erro ao gerar JWT via endpoint:', error);
       throw error;
     }
   }
