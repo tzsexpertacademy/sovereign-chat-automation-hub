@@ -376,6 +376,66 @@ class CodeChatQRService {
     }
   }
 
+  // ============ DELETE INSTANCE ============
+  async deleteInstance(instanceName: string): Promise<QRCodeResponse> {
+    try {
+      console.log(`🗑️ [CODECHAT] Deletando instância: ${instanceName}`);
+      
+      const url = `${this.getApiBaseUrl()}/instance/delete/${instanceName}`;
+      console.log(`📡 [CODECHAT] URL de deleção: ${url}`);
+      
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: await this.getAuthHeaders(instanceName),
+      });
+      
+      console.log(`📊 [CODECHAT] Delete response status: ${response.status}`);
+      
+      if (response.ok) {
+        console.log('✅ [CODECHAT] Instância deletada com sucesso');
+        return {
+          success: true,
+          qrCode: null,
+          status: 'deleted',
+          error: null,
+          instanceName
+        };
+      } else {
+        const errorText = await response.text();
+        console.warn('⚠️ [CODECHAT] Erro ao deletar (pode não existir):', errorText);
+        
+        // 404 ou 400 pode ser normal se instância não existir
+        if (response.status === 404 || response.status === 400) {
+          return {
+            success: true,
+            qrCode: null,
+            status: 'not_found',
+            error: null,
+            instanceName
+          };
+        }
+        
+        return {
+          success: false,
+          qrCode: null,
+          status: 'error',
+          error: `HTTP ${response.status}: ${errorText}`,
+          instanceName
+        };
+      }
+      
+    } catch (error: any) {
+      console.error('❌ [CODECHAT] Erro ao deletar instância:', error);
+      return {
+        success: false,
+        qrCode: null,
+        status: 'error',
+        error: error.message,
+        instanceName
+      };
+    }
+  }
+
   // ============ CREATE INSTANCE ============
   async createInstance(instanceName: string, description?: string): Promise<QRCodeResponse> {
     try {

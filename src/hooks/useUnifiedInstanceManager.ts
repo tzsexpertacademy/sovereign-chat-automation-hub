@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
 import { codechatQRService } from '@/services/codechatQRService';
+import { webhookQRService } from '@/services/webhookQRService';
 import { useToast } from '@/hooks/use-toast';
 
 interface InstanceStatus {
@@ -38,12 +39,10 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     
     return () => {
       console.log('🧹 [UNIFIED] Cleanup do manager');
+      // Cleanup global do webhook service
+      webhookQRService.cleanup();
     };
   }, []);
-
-  // ============ REMOVIDA: FUNÇÃO INCORRETA fetchQRCodeViaRest ============
-  // NOTA: O endpoint /instance/fetchInstance NÃO retorna QR Code
-  // O QR Code vem APENAS do endpoint /instance/connect
 
   // ============ POLLING PARA STATUS ============
   const pollingIntervals = useState<Map<string, NodeJS.Timeout>>(new Map())[0];
@@ -278,75 +277,54 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
       
-      // Polling por QR Code usando fetchInstance
-      let qrFound = false;
-      const maxAttempts = 15; // Aumentado para 30 segundos (15 * 2s)
+      // ============ SISTEMA WEBHOOK + FALLBACK POLLING ============
+      console.log(`📊 [UNIFIED] Configurando webhook e fallback para QR Code`);
       
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        console.log(`🔍 [UNIFIED] Tentativa ${attempt}/${maxAttempts} - Procurando QR Code`);
+      // Configurar listener de webhook
+      const qrCodeListener = (qrData: any) => {
+        console.log(`🎯 [UNIFIED] QR Code recebido via ${qrData.source}!`);
         
-        try {
-          const details = await codechatQRService.getInstanceDetails(instanceId);
-          const qrCode = details.qrCode || details.base64 || details.code;
-          
-          if (qrCode) {
-            console.log(`📱 [UNIFIED] ✅ QR CODE ENCONTRADO na tentativa ${attempt}!`);
-            
-            setInstances(prev => ({
-              ...prev,
-              [instanceId]: {
-                ...prev[instanceId],
-                status: 'qr_ready',
-                qrCode: qrCode,
-                hasQrCode: true,
-                lastUpdated: Date.now()
-              }
-            }));
-            
-            await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
-              has_qr_code: true,
-              qr_code: qrCode,
-              updated_at: new Date().toISOString()
-            });
-            
-            toast({
-              title: "📱 QR Code Pronto!",
-              description: "Escaneie o QR Code para conectar o WhatsApp",
-            });
-            
-            qrFound = true;
-            break;
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            status: 'qr_ready',
+            qrCode: qrData.qrCode,
+            hasQrCode: true,
+            lastUpdated: Date.now()
           }
-          
-          // Verificar se já foi conectado durante o polling
-          const status = await codechatQRService.getInstanceStatus(instanceId);
-          if (status.state === 'open') {
-            console.log(`🎉 [UNIFIED] Instância conectada durante polling!`);
-            await refreshStatus(instanceId);
-            return;
-          }
-          
-        } catch (error) {
-          console.warn(`⚠️ [UNIFIED] Erro na tentativa ${attempt}:`, error);
-        }
+        }));
         
-        if (attempt < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      }
-      
-      if (!qrFound) {
-        console.warn(`⚠️ [UNIFIED] QR Code não gerado após ${maxAttempts} tentativas`);
-        
-        // Tentar o polling mais uma vez
-        toast({
-          title: "⏳ Aguardando QR Code",
-          description: "Continuando tentativas em segundo plano...",
+        whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
+          has_qr_code: true,
+          qr_code: qrData.qrCode,
+          updated_at: new Date().toISOString()
         });
         
-        startPollingForInstance(instanceId);
+        toast({
+          title: "📱 QR Code Pronto!",
+          description: `QR Code recebido via ${qrData.source === 'webhook' ? 'webhook' : 'polling'}`,
+        });
+      };
+      
+      // Adicionar listener
+      webhookQRService.addQRCodeListener(instanceId, qrCodeListener);
+      
+      // Verificar se já temos QR Code
+      const existingQR = webhookQRService.getQRCode(instanceId);
+      if (existingQR) {
+        console.log(`✅ [UNIFIED] QR Code já disponível`);
+        qrCodeListener(existingQR);
         return;
       }
+      
+      // Iniciar fallback polling
+      webhookQRService.startFallbackPolling(instanceId, codechatQRService, 30);
+      
+      toast({
+        title: "⏳ Aguardando QR Code",
+        description: "Configurando webhook e iniciando fallback...",
+      });
       
       // Iniciar polling para status final
       startPollingForInstance(instanceId);
@@ -373,7 +351,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     } finally {
       setLoading(prev => ({ ...prev, [instanceId]: false }));
     }
-  }, [toast, startPollingForInstance]);
+  }, [toast, startPollingForInstance, refreshStatus]);
 
   // ============ DESCONECTAR INSTÂNCIA ============
   const disconnectInstance = useCallback(async (instanceId: string) => {
@@ -452,14 +430,15 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     // Parar polling se estiver ativo
     stopPollingForInstance(instanceId);
     
-    // Cleanup completo da instância
+    // Limpar webhook service
+    webhookQRService.clearQRCode(instanceId);
     
     setInstances(prev => {
       const newInstances = { ...prev };
       delete newInstances[instanceId];
       return newInstances;
     });
-  }, []);
+  }, [stopPollingForInstance]);
 
   return {
     instances,
