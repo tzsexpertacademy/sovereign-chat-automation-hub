@@ -31,7 +31,15 @@ export const YumerApiKeyConfig: React.FC = () => {
 
   useEffect(() => {
     const currentKey = getYumerGlobalApiKey();
-    setIsConfigured(hasYumerGlobalApiKey());
+    const directCheck = localStorage.getItem('yumer_global_api_key');
+    const hasKey = hasYumerGlobalApiKey();
+    
+    console.log('🔄 [API-KEY-CONFIG] Estado inicial:');
+    console.log('📋 getYumerGlobalApiKey():', currentKey);
+    console.log('📋 localStorage direto:', directCheck);
+    console.log('📋 hasYumerGlobalApiKey():', hasKey);
+    
+    setIsConfigured(hasKey && !!currentKey);
     if (currentKey) {
       setApiKey(currentKey);
     }
@@ -44,23 +52,30 @@ export const YumerApiKeyConfig: React.FC = () => {
     }
 
     setIsLoading(true);
-    console.log('🔄 Tentando salvar API Key:', apiKey.trim());
+    console.log('🔄 [API-KEY-CONFIG] Tentando salvar API Key:', apiKey.trim());
     
     try {
       setYumerGlobalApiKey(apiKey.trim());
       
-      // Verificar se foi salvo
+      // Verificar se foi salvo corretamente
       const savedKey = getYumerGlobalApiKey();
-      console.log('✅ API Key salva:', savedKey);
-      console.log('📋 LocalStorage yumer_global_api_key:', localStorage.getItem('yumer_global_api_key'));
+      const directCheck = localStorage.getItem('yumer_global_api_key');
       
-      setIsConfigured(true);
-      toast.success('API Key configurada com sucesso!', {
-        description: 'A autenticação agora funcionará com o backend YUMER'
-      });
+      console.log('✅ [API-KEY-CONFIG] API Key salva via função:', savedKey);
+      console.log('📋 [API-KEY-CONFIG] LocalStorage direto:', directCheck);
+      console.log('🔍 [API-KEY-CONFIG] Função hasYumerGlobalApiKey():', hasYumerGlobalApiKey());
+      
+      if (savedKey === apiKey.trim() && directCheck === apiKey.trim()) {
+        setIsConfigured(true);
+        toast.success('API Key configurada com sucesso!', {
+          description: `Key ${apiKey.trim()} salva e verificada`
+        });
+      } else {
+        throw new Error('Verificação falhou - key não foi salva corretamente');
+      }
     } catch (error) {
+      console.error('❌ [API-KEY-CONFIG] Erro ao salvar:', error);
       toast.error('Erro ao salvar API Key');
-      console.error('❌ Error saving API key:', error);
     } finally {
       setIsLoading(false);
     }

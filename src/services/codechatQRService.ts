@@ -19,7 +19,7 @@ class CodeChatQRService {
     return SOCKET_URL.replace(/^wss?:/, 'https:');
   }
 
-  // ============ AUTENTICAÇÃO CENTRALIZADA (HEADER APIKEY) ============
+  // ============ AUTENTICAÇÃO SIMPLIFICADA (APENAS HEADER APIKEY) ============
   private async getAuthHeaders(instanceName: string): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -30,19 +30,15 @@ class CodeChatQRService {
     const globalApiKey = getYumerGlobalApiKey();
     if (globalApiKey) {
       headers['apikey'] = globalApiKey;
-      console.log(`🔑 [CODECHAT-AUTH] API Key adicionada via header apikey`);
+      console.log(`🔑 [CODECHAT-AUTH] API Key adicionada via header apikey: ${globalApiKey}`);
+      console.log(`📋 [CODECHAT-AUTH] Headers finais:`, headers);
     } else {
-      console.warn(`⚠️ [CODECHAT-AUTH] Global API Key não configurada`);
+      console.error(`❌ [CODECHAT-AUTH] Global API Key NÃO CONFIGURADA - requests falharão`);
+      console.log(`📋 [CODECHAT-AUTH] LocalStorage check:`, localStorage.getItem('yumer_global_api_key'));
     }
 
-    // JWT como backup via Authorization header
-    try {
-      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
-      headers['Authorization'] = `Bearer ${jwt}`;
-      console.log(`🔐 [CODECHAT-AUTH] JWT adicionado via header`);
-    } catch (error) {
-      console.error(`❌ [CODECHAT-AUTH] Erro ao gerar JWT:`, error);
-    }
+    // REMOVIDO: JWT via Authorization header para evitar conflitos CORS
+    // Usando apenas apikey header conforme funciona no CURL
 
     return headers;
   }
