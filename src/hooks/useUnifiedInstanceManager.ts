@@ -292,6 +292,35 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       if (connectResponse.success) {
         console.log(`✅ [UNIFIED] Conexão iniciada com sucesso`);
         
+        // Verificar se o connect retornou QR Code diretamente
+        if (connectResponse.qrCode) {
+          console.log(`📱 [UNIFIED] QR Code recebido diretamente do connect!`);
+          
+          setInstances(prev => ({
+            ...prev,
+            [instanceId]: {
+              ...prev[instanceId],
+              status: 'qr_ready',
+              qrCode: connectResponse.qrCode,
+              hasQrCode: true,
+              lastUpdated: Date.now()
+            }
+          }));
+          
+          // Sincronizar com banco
+          await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
+            has_qr_code: true,
+            qr_code: connectResponse.qrCode,
+            updated_at: new Date().toISOString()
+          });
+          
+          // ============ ETAPA 4: INICIAR POLLING PARA STATUS FINAL ============
+          startPollingForInstance(instanceId);
+          console.log(`🔄 [UNIFIED] Polling iniciado para ${instanceId}`);
+          
+          return;
+        }
+        
         // ============ ETAPA 3: INICIAR POLLING REST ============
         console.log(`🔄 [UNIFIED] Iniciando polling REST para ${instanceId}`);
         
@@ -306,7 +335,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           }
         }));
         
-        // Tentar buscar QR Code diretamente
+        // Tentar buscar QR Code via polling
         const qrFound = await fetchQRCodeViaRest(instanceId);
         
         if (qrFound) {
