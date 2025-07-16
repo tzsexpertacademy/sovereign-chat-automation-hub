@@ -288,9 +288,12 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           
           return;
         }
+        
+        // Se não está conectada e não tem QR Code, aguardar
+        console.log(`⏳ [UNIFIED] QR Code ainda não disponível, continuando polling...`);
+        startPollingForInstance(instanceId);
+        return;
       }
-      
-      throw new Error('Falha na conexão via CodeChat API');
       
     } catch (error: any) {
       console.error(`❌ [UNIFIED] Erro ao conectar ${instanceId}:`, error);

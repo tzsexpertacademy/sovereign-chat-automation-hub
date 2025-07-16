@@ -315,7 +315,7 @@ const ConnectionDiagnostics = () => {
       } else {
         // Try to connect
         try {
-          await yumerWhatsAppService.connectWebSocket('test-instance', 'MESSAGE_RECEIVED');
+          await yumerWhatsAppService.connectWebSocket();
           
           addResult({
             test: "Conexão WebSocket",

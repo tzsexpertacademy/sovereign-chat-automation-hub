@@ -81,7 +81,7 @@ class WhatsAppMultiClientService {
     console.log('🔌 Connecting via YUMER WebSocket service...');
     
     // Conectar assincronamente no background
-    yumerWhatsAppService.connectWebSocket(instanceName, event).catch(error => {
+    yumerWhatsAppService.connectWebSocket().catch(error => {
       console.error('❌ Erro na conexão WebSocket:', error);
     });
     
@@ -89,11 +89,11 @@ class WhatsAppMultiClientService {
     return {
       on: (event: string, handler: Function) => {
         if (event === 'connect') {
-          yumerWhatsAppService.onReady((data: any) => handler(data));
+          yumerWhatsAppService.onReady();
         } else if (event === 'disconnect') {
-          yumerWhatsAppService.onDisconnected((data: any) => handler(data));
+          yumerWhatsAppService.onDisconnected();
         } else if (event === 'message') {
-          yumerWhatsAppService.onMessageReceived((data: any) => handler(data));
+          yumerWhatsAppService.onMessageReceived();
         }
       },
       off: (event: string, handler?: Function) => {
@@ -235,42 +235,8 @@ class WhatsAppMultiClientService {
   }
 
   onClientStatus(clientId: string, callback: (data: WhatsAppClient) => void): void {
-    // Map YUMER events to legacy format
-    yumerWhatsAppService.onStatusUpdate((data) => {
-      if (data.instanceName === clientId) {
-        callback({
-          clientId: data.instanceName,
-          status: data.status as any,
-          phoneNumber: undefined, // Will be set by other events
-          hasQrCode: false,
-          timestamp: new Date().toISOString()
-        });
-      }
-    });
-
-    yumerWhatsAppService.onQRCodeGenerated((data) => {
-      if (data.instanceName === clientId) {
-        callback({
-          clientId: data.instanceName,
-          status: 'qr_ready',
-          qrCode: data.qrCode,
-          hasQrCode: true,
-          timestamp: new Date().toISOString()
-        });
-      }
-    });
-
-    yumerWhatsAppService.onReady((data) => {
-      if (data.instanceName === clientId) {
-        callback({
-          clientId: data.instanceName,
-          status: 'connected',
-          phoneNumber: data.phoneNumber,
-          hasQrCode: false,
-          timestamp: new Date().toISOString()
-        });
-      }
-    });
+    // REST-only mode - event handlers disabled
+    console.log(`🔧 Event handlers disabled - use REST polling instead for ${clientId}`);
   }
 
   offClientStatus(clientId: string, callback?: (data: WhatsAppClient) => void): void {
