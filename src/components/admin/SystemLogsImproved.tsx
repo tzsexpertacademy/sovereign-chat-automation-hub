@@ -40,7 +40,7 @@ const SystemLogsImproved = () => {
           component: "YUMER Instance",
           instanceId: "instance_001",
           message: "Instância conectada com sucesso via YUMER",
-          details: "Session estabelecida no servidor 146.59.227.248:8083"
+          details: "Session estabelecida no servidor yumer.yumerflow.app:8083"
         },
         {
           id: "2", 

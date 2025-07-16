@@ -146,7 +146,7 @@ const SimpleConnectionStatus = () => {
                     <p className="font-medium text-red-800">2. Abra uma NOVA ABA e cole a URL</p>
                     <p className="text-red-700 text-xs">- O navegador mostrará um aviso de segurança</p>
                     <p className="text-red-700 text-xs">- Clique em "Avançado" ou "Advanced"</p>
-                    <p className="text-red-700 text-xs">- Clique em "Prosseguir para 146.59.227.248"</p>
+                    <p className="text-red-700 text-xs">- Clique em "Prosseguir para yumer.yumerflow.app"</p>
                   </div>
                   
                   <div className="space-y-2">
@@ -198,7 +198,7 @@ const SimpleConnectionStatus = () => {
                 <div className="mt-2 text-xs text-red-600 space-y-1">
                   <p><strong>Comandos para verificar:</strong></p>
                   <code className="block p-1 bg-red-100 rounded">pm2 status</code>
-                  <code className="block p-1 bg-red-100 rounded">curl -k https://146.59.227.248/health</code>
+                  <code className="block p-1 bg-red-100 rounded">curl -k https://yumer.yumerflow.app:8083/health</code>
                 </div>
               </div>
             </div>

@@ -259,11 +259,11 @@ export const JwtWebSocketDebugger: React.FC = () => {
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                URL WebSocket: <code className="font-mono bg-muted px-1 rounded">
-                  wss://146.59.227.248:8083/ws/events?event={eventType}&token={generatedJWT.substring(0, 20)}...
-                </code>
-              </p>
+               <p className="text-xs text-muted-foreground">
+                 URL WebSocket: <code className="font-mono bg-muted px-1 rounded">
+                   wss://yumer.yumerflow.app:8083/ws/events?event={eventType}&token={generatedJWT.substring(0, 20)}...
+                 </code>
+               </p>
             </div>
           )}
         </CardContent>

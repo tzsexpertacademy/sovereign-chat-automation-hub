@@ -321,7 +321,7 @@ export const YumerApiKeyConfig: React.FC = () => {
               </div>
               <div className="text-xs text-muted-foreground">
                 <p>• Este JWT nunca expira (EXPIRES_IN=0)</p>
-                <p>• Use na URL: <code className="font-mono bg-muted px-1 rounded">wss://146.59.227.248:8083/ws/events?event=MESSAGE_RECEIVED&token=SEU_JWT</code></p>
+                <p>• Use na URL: <code className="font-mono bg-muted px-1 rounded">wss://yumer.yumerflow.app:8083/ws/events?event=MESSAGE_RECEIVED&token=SEU_JWT</code></p>
               </div>
             </div>
           )}

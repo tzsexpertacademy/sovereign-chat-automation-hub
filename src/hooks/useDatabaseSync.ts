@@ -29,7 +29,7 @@ export const useDatabaseSync = (): UseDatabaseSyncReturn => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('https://146.59.227.248/sync/status', {
+      const response = await fetch('https://yumer.yumerflow.app:8083/sync/status', {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -65,7 +65,7 @@ export const useDatabaseSync = (): UseDatabaseSyncReturn => {
       
       console.log('🔄 [SYNC-HOOK] Executando sincronização...');
       
-      const response = await fetch('https://146.59.227.248/sync/database', {
+      const response = await fetch('https://yumer.yumerflow.app:8083/sync/database', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',

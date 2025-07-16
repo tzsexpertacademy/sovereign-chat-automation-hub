@@ -62,7 +62,7 @@ const UnifiedInstancesManager = () => {
 
   const checkServer = async () => {
     try {
-      const result = await fetch('https://146.59.227.248/health');
+      const result = await fetch('https://yumer.yumerflow.app:8083/health');
       const isOnline = result.ok;
       setServerOnline(isOnline);
       

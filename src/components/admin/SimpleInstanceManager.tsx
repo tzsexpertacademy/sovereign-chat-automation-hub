@@ -314,7 +314,7 @@ const SimpleInstanceManager = () => {
                     <p className="font-medium">Soluções:</p>
                     <ol className="list-decimal list-inside text-sm space-y-1">
                       <li>Execute: <code>sudo ./scripts/fix-nginx-complete.sh</code></li>
-                      <li>Aceite o certificado SSL em: <code>https://146.59.227.248/health</code></li>
+                      <li>Aceite o certificado SSL em: <code>https://yumer.yumerflow.app:8083/health</code></li>
                       <li>Verifique se PM2 está rodando: <code>pm2 status</code></li>
                     </ol>
                   </div>

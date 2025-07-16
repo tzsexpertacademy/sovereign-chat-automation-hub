@@ -414,13 +414,13 @@ export const ticketsService = {
       let totalErrors = 0;
 
       // URLs possíveis do servidor WhatsApp (incluindo a URL do servidor externo)
-      const possibleUrls = [
-        'https://146.59.227.248', // URL do servidor externo baseado nos logs
-        'http://localhost:3001',
-        'http://127.0.0.1:3001',
-        'https://whatsapp-server.yourdomain.com',
-        'http://192.168.1.100:3001'
-      ];
+       const possibleUrls = [
+         'https://yumer.yumerflow.app:8083', // URL do servidor YUMER com certificado válido
+         'http://localhost:3001',
+         'http://127.0.0.1:3001',
+         'https://whatsapp-server.yourdomain.com',
+         'http://192.168.1.100:3001'
+       ];
 
       for (const instance of instances) {
         console.log(`📱 Processando instância: ${instance.instance_id}`);

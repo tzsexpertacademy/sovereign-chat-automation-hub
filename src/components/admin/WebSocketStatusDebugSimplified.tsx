@@ -40,7 +40,7 @@ const WebSocketStatusDebugSimplified = () => {
       // Teste único: Endpoint mais simples (GET status)
       try {
         addLog('📊 Testando conectividade com endpoint básico...');
-        addLog(`🌐 URL: https://146.59.227.248:8083/instance/connectionState/${testInstanceName}`);
+        addLog(`🌐 URL: https://yumer.yumerflow.app:8083/instance/connectionState/${testInstanceName}`);
         addLog(`🔑 Header apikey: ${apiKey}`);
         
         const statusResponse = await codechatQRService.getInstanceStatus(testInstanceName);
