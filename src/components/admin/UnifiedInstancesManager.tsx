@@ -24,6 +24,7 @@ import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
+import { useInstanceCleanup } from "@/hooks/useInstanceCleanup";
 
 const UnifiedInstancesManager = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -45,6 +46,9 @@ const UnifiedInstancesManager = () => {
     restMode,
     refreshStatus
   } = useUnifiedInstanceManager();
+  
+  // Limpeza automática
+  useInstanceCleanup();
 
   useEffect(() => {
     loadData();
