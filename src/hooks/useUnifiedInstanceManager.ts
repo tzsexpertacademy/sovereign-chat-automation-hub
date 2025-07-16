@@ -252,7 +252,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
   const connectInstance = useCallback(async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
-      console.log(`🚀 [UNIFIED] Conectando via CodeChat API v1.3.3: ${instanceId}`);
+      console.log(`🚀 [UNIFIED] INICIANDO CONEXÃO: ${instanceId}`);
       
       // Status inicial
       setInstances(prev => ({

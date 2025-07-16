@@ -20,6 +20,7 @@ import { useNavigate } from "react-router-dom";
 import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
+import { codechatQRService } from "@/services/codechatQRService";
 
 interface InstancesListFixedProps {
   instances: WhatsAppInstanceData[];
@@ -90,8 +91,32 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
 
   // Handlers simplificados HTTPS
   const handleConnectInstance = async (instanceId: string) => {
+    console.log(`🔗 [ADMIN] FORÇANDO CONEXÃO: ${instanceId}`);
     setSelectedInstanceForQR(instanceId);
-    await connectInstance(instanceId);
+    
+    try {
+      await connectInstance(instanceId);
+    } catch (error) {
+      console.error(`❌ [ADMIN] Erro na conexão via hook:`, error);
+      
+      // Fallback: chamar connect diretamente
+      console.log(`🔄 [ADMIN] Tentando fallback direto para connect...`);
+      try {
+        await codechatQRService.connectInstance(instanceId);
+        toast({
+          title: "Conectando...",
+          description: "Instância sendo conectada via fallback",
+        });
+      } catch (fallbackError) {
+        console.error(`❌ [ADMIN] Fallback também falhou:`, fallbackError);
+        toast({
+          title: "Erro na Conexão",
+          description: "Falha ao conectar instância",
+          variant: "destructive",
+        });
+      }
+    }
+    
     onInstanceUpdated();
   };
 
