@@ -44,12 +44,20 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
   // ============ QR CODE VIA REST ============
   const fetchQRCodeViaRest = useCallback(async (instanceId: string) => {
     try {
-      console.log(`📸 [UNIFIED] Buscando QR Code via REST: ${instanceId}`);
+      console.log(`📸 [UNIFIED] Buscando QR Code via fetchInstance: ${instanceId}`);
       
-      const qrResponse = await codechatQRService.getQRCode(instanceId);
+      // Usar fetchInstance para obter detalhes completos incluindo QR Code
+      const instanceDetails = await codechatQRService.getInstanceDetails(instanceId);
       
-      if (qrResponse.success && qrResponse.qrCode) {
-        console.log(`✅ [UNIFIED] QR Code obtido via REST: ${instanceId}`);
+      // Extrair QR Code de possíveis campos
+      const qrCode = instanceDetails?.qrCode || 
+                   instanceDetails?.base64 || 
+                   instanceDetails?.code ||
+                   instanceDetails?.Whatsapp?.qrCode ||
+                   instanceDetails?.Whatsapp?.base64;
+      
+      if (qrCode) {
+        console.log(`✅ [UNIFIED] QR Code encontrado via fetchInstance: ${instanceId}`);
         
         setInstances(prev => ({
           ...prev,
@@ -57,7 +65,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             ...prev[instanceId],
             instanceId,
             status: 'qr_ready',
-            qrCode: qrResponse.qrCode,
+            qrCode: qrCode,
             hasQrCode: true,
             lastUpdated: Date.now()
           }
@@ -65,15 +73,17 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
 
         toast({
           title: "📱 QR Code Disponível!",
-          description: "Escaneie para conectar via REST",
+          description: "Escaneie para conectar via WhatsApp",
         });
         
         return true;
+      } else {
+        console.log(`⏳ [UNIFIED] QR Code ainda não disponível via fetchInstance: ${instanceId}`);
+        return false;
       }
       
-      return false;
     } catch (error) {
-      console.error(`❌ [UNIFIED] Erro ao buscar QR Code via REST:`, error);
+      console.error(`❌ [UNIFIED] Erro ao buscar QR Code via fetchInstance:`, error);
       return false;
     }
   }, [toast]);
@@ -124,6 +134,12 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
                      statusData.state === 'close' ? 'disconnected' : 
                      statusData.state === 'connecting' ? 'connecting' : 
                      'unknown';
+      }
+      
+      // Se ainda está conectando, tentar buscar QR Code via fetchInstance
+      if (mappedStatus === 'connecting') {
+        console.log(`🔍 [UNIFIED] Status "connecting" - verificando QR Code via fetchInstance...`);
+        await fetchQRCodeViaRest(instanceId);
       }
       
       // Tentar buscar detalhes completos da instância se conectada
