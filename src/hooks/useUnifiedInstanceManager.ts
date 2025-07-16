@@ -381,7 +381,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       
       // Configuração de polling otimizada
       let attempts = 0;
-      const maxAttempts = 40; // 40 tentativas = 80 segundos
+      const maxAttempts = 20; // 20 tentativas = 40 segundos (reduzido)
       const pollInterval = 2000; // 2 segundos (mais rápido)
       
       const hybridPollingInterval = setInterval(async () => {
@@ -389,6 +389,32 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         console.log(`🔍 [UNIFIED-POLL] Tentativa ${attempts}/${maxAttempts} - verificando banco`);
         
         try {
+          // ============ VERIFICAR STATUS DA INSTÂNCIA PRIMEIRO ============
+          const statusData = await codechatQRService.getInstanceStatus(instanceId);
+          console.log(`📊 [UNIFIED-POLL] Status atual: ${statusData.state}`);
+          
+          // Se instância está OFFLINE, parar polling e mostrar erro
+          if (statusData.state === 'close' || statusData.state === 'offline') {
+            console.error(`❌ [UNIFIED-POLL] Instância está OFFLINE - parando polling`);
+            clearInterval(hybridPollingInterval);
+            
+            setInstances(prev => ({
+              ...prev,
+              [instanceId]: {
+                ...prev[instanceId],
+                status: 'error',
+                lastUpdated: Date.now()
+              }
+            }));
+            
+            toast({
+              title: "❌ Instância Desconectada",
+              description: "A instância está offline. Tente reconectar.",
+              variant: "destructive",
+            });
+            return;
+          }
+          
           // ============ PRIORIDADE 1: VERIFICAR BANCO (WEBHOOK) ============
           const dbQrCheck = await checkDatabaseForQRCode(instanceId);
           
@@ -418,9 +444,9 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             return;
           }
           
-          // ============ PRIORIDADE 2: FALLBACK REST (TENTATIVAS 5, 10, 15, 20...) ============
-          if (attempts % 5 === 0 && attempts <= 30) {
-            console.log(`🔄 [UNIFIED-FALLBACK] Tentativa REST ${attempts}/30...`);
+          // ============ PRIORIDADE 2: FALLBACK REST (TENTATIVAS 3, 6, 9, 12...) ============
+          if (attempts % 3 === 0 && attempts <= 15) {
+            console.log(`🔄 [UNIFIED-FALLBACK] Tentativa REST ${attempts}/15...`);
             
             try {
               const qrResponse = await codechatQRService.getQRCode(instanceId);
@@ -477,7 +503,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             
             toast({
               title: "⏰ Timeout",
-              description: "QR Code não foi gerado em 80s. Sistema pode estar sobrecarregado.",
+              description: "QR Code não foi gerado em 40s. Verifique se a instância está conectando.",
               variant: "destructive",
             });
           }

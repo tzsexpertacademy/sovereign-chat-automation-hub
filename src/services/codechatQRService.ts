@@ -162,6 +162,27 @@ class CodeChatQRService {
     try {
       console.log(`🚀 [CODECHAT-API] Conectando via /instance/connect/${instanceName}`);
       
+      // ============ ETAPA 1: VERIFICAR STATUS ATUAL ============
+      try {
+        const currentStatus = await this.getInstanceStatus(instanceName);
+        console.log(`📊 [CODECHAT-API] Status atual antes da conexão:`, currentStatus);
+        
+        // Se já está conectado, não precisa conectar novamente
+        if (currentStatus.state === 'open') {
+          console.log(`✅ [CODECHAT-API] Instância já conectada!`);
+          return {
+            success: true,
+            qrCode: undefined,
+            status: 'connected',
+            instanceName,
+            data: currentStatus
+          };
+        }
+      } catch (statusError) {
+        console.log(`⚠️ [CODECHAT-API] Erro ao verificar status atual (continuando):`, statusError);
+      }
+      
+      // ============ ETAPA 2: EXECUTAR CONEXÃO ============
       const url = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;
       console.log(`🌐 [CODECHAT-API] GET ${url}`);
       
