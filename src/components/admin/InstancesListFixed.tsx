@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
-import { useInstanceManager } from "@/contexts/InstanceManagerContext";
+import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 
 interface InstancesListFixedProps {
   instances: WhatsAppInstanceData[];
@@ -33,15 +33,16 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Hook simplificado para HTTPS
+  // Hook unificado com JWT puro WebSocket
   const { 
     connectInstance, 
     disconnectInstance,
     getInstanceStatus,
     isLoading,
     websocketConnected,
+    jwtConfigured,
     cleanup
-  } = useInstanceManager();
+  } = useUnifiedInstanceManager();
 
   const getClientName = (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
@@ -61,10 +62,11 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'connected': return 'Conectado HTTPS';
-      case 'qr_ready': return 'QR Pronto HTTPS';
-      case 'connecting': return 'Conectando HTTPS';
-      case 'authenticated': return 'Autenticado HTTPS';
+      case 'connected': return 'Conectado';
+      case 'qr_ready': return 'QR Pronto';
+      case 'connecting': return 'Conectando';
+      case 'websocket_connected': return 'WebSocket OK';
+      case 'authenticated': return 'Autenticado';
       case 'disconnected': return 'Desconectado';
       default: return 'Desconhecido';
     }
@@ -146,7 +148,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Instâncias WhatsApp HTTPS ({instances.length}) - CORRIGIDO</CardTitle>
+          <CardTitle>Instâncias WhatsApp JWT ({instances.length}) - {jwtConfigured ? '🔐 JWT OK' : '❌ JWT ERRO'}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid lg:grid-cols-2 gap-6">
@@ -190,7 +192,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                             <WifiOff className="w-4 h-4 text-red-500" />
                           )}
                           <span className="text-xs">
-                            {websocketConnected ? 'Conectado HTTPS' : 'Desconectado'}
+                            {websocketConnected ? 'WebSocket Conectado' : 'WebSocket Desconectado'}
                           </span>
                         </div>
                       </div>

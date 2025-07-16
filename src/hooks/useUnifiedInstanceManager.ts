@@ -146,13 +146,17 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         return;
       }
 
-      // Conectar com as opções corretas
+      // Gerar JWT com o instanceId correto
+      const jwt = await yumerJwtService.generateLocalJWT(JWT_SECRET, instanceId);
+      console.log(`🔐 [UNIFIED] JWT gerado para ${instanceId}:`, jwt.substring(0, 50) + '...');
+
+      // Conectar com as opções corretas usando o instanceId real
       await yumerNativeWebSocketService.connect({
         instanceName: instanceId,
-        event: 'instance_status',
+        event: 'MESSAGE_RECEIVED',
         useSecureConnection: true,
         autoReconnect: true,
-        maxReconnectAttempts: 5
+        maxReconnectAttempts: 10
       });
 
       console.log(`✅ [UNIFIED] WebSocket conectado para ${instanceId}`);
@@ -214,38 +218,28 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
 
-      // Conectar WebSocket se necessário
+      // Conectar WebSocket - isso vai gerar o JWT correto e conectar
       await connectWebSocketForInstance(instanceId);
       
-      // Aguardar um momento para estabilizar a conexão
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Aguardar conexão WebSocket estabilizar
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // Simular processo de conexão (substituir por chamada real à API)
-      console.log(`📱 [UNIFIED] Iniciando processo de conexão para ${instanceId}`);
+      console.log(`📱 [UNIFIED] WebSocket conectado, aguardando eventos para ${instanceId}`);
       
       toast({
         title: "Conectando...",
-        description: "Aguarde o QR Code aparecer",
+        description: "WebSocket conectado, aguardando QR Code...",
       });
       
-      // Simular QR Code após 3 segundos
-      setTimeout(() => {
-        setInstances(prev => ({
-          ...prev,
-          [instanceId]: {
-            ...prev[instanceId],
-            status: 'qr_ready',
-            hasQrCode: true,
-            qrCode: `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==`,
-            lastUpdated: Date.now()
-          }
-        }));
-        
-        toast({
-          title: "📱 QR Code Disponível!",
-          description: "Escaneie o QR Code para conectar",
-        });
-      }, 3000);
+      // Atualizar status para conectado via WebSocket
+      setInstances(prev => ({
+        ...prev,
+        [instanceId]: {
+          ...prev[instanceId],
+          status: 'websocket_connected',
+          lastUpdated: Date.now()
+        }
+      }));
       
     } catch (error: any) {
       console.error('❌ [UNIFIED] Erro ao conectar:', error);
