@@ -35,8 +35,13 @@ export const NativeWebSocketDebugger: React.FC = () => {
   
   // Parâmetros de conexão
   const [instanceName, setInstanceName] = useState('');
-  const [selectedEvent, setSelectedEvent] = useState('MESSAGE_RECEIVED');
-  const [availableEvents, setAvailableEvents] = useState<string[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState('qrcode.updated');
+  const [availableEvents, setAvailableEvents] = useState<string[]>([
+    'qrcode.updated',
+    'connection.update',
+    'message.upsert',
+    'MESSAGE_RECEIVED'
+  ]);
   const [useSecureConnection, setUseSecureConnection] = useState(true);
   
   // Logs e eventos
@@ -61,13 +66,16 @@ export const NativeWebSocketDebugger: React.FC = () => {
   }, []);
 
   const loadAvailableEvents = async () => {
-    try {
-      const events = await yumerJwtService.getAvailableEvents();
-      setAvailableEvents(events);
-      addLog('success', 'Eventos disponíveis carregados', { count: events.length, events });
-    } catch (error: any) {
-      addLog('error', 'Erro ao carregar eventos', error.message);
-    }
+    // Eventos padrão do CodeChat
+    const codechatEvents = [
+      'qrcode.updated',
+      'connection.update', 
+      'message.upsert',
+      'MESSAGE_RECEIVED'
+    ];
+    
+    setAvailableEvents(codechatEvents);
+    addLog('success', 'Eventos CodeChat carregados', { count: codechatEvents.length, events: codechatEvents });
   };
 
   const checkCurrentStatus = () => {
@@ -80,7 +88,7 @@ export const NativeWebSocketDebugger: React.FC = () => {
     
     if (info) {
       setInstanceName(info.instanceName || '');
-      setSelectedEvent(info.event || 'MESSAGE_RECEIVED');
+      setSelectedEvent(info.event || 'qrcode.updated');
       setUseSecureConnection(info.useSecureConnection !== false);
     }
   };
@@ -170,20 +178,42 @@ export const NativeWebSocketDebugger: React.FC = () => {
   };
 
   const setupEventListeners = () => {
-    // Configurar listeners para eventos específicos
-    yumerNativeWebSocketService.on('message_received', (data) => {
-      addEvent('message_received', data);
-      addLog('info', 'Mensagem recebida via WebSocket', data);
+    // Configurar listeners para eventos CodeChat
+    yumerNativeWebSocketService.on('qrcode.updated', (data) => {
+      addEvent('qrcode.updated', data);
+      addLog('success', 'QR Code CodeChat recebido!', { hasQrCode: !!data.qrCode || !!data.qr });
+    });
+    
+    yumerNativeWebSocketService.on('connection.update', (data) => {
+      addEvent('connection.update', data);
+      addLog('info', 'Status de conexão CodeChat atualizado', data);
+    });
+    
+    yumerNativeWebSocketService.on('message.upsert', (data) => {
+      addEvent('message.upsert', data);
+      addLog('info', 'Mensagem CodeChat recebida', data);
+    });
+
+    // Listeners para eventos mapeados
+    yumerNativeWebSocketService.on('qr_code', (data) => {
+      addEvent('qr_code', data);
+      addLog('success', 'QR Code mapeado recebido!', { hasQrCode: !!data.qrCode || !!data.qr });
     });
     
     yumerNativeWebSocketService.on('instance_status', (data) => {
       addEvent('instance_status', data);
-      addLog('info', 'Status da instância atualizado', data);
+      addLog('info', 'Status da instância mapeado', data);
     });
     
-    yumerNativeWebSocketService.on('qr_code', (data) => {
-      addEvent('qr_code', data);
-      addLog('success', 'QR Code recebido!', { hasQrCode: !!data.qrCode });
+    yumerNativeWebSocketService.on('message_received', (data) => {
+      addEvent('message_received', data);
+      addLog('info', 'Mensagem mapeada recebida', data);
+    });
+
+    // Listener para eventos genéricos
+    yumerNativeWebSocketService.on('message', (data) => {
+      addEvent('message', data);
+      addLog('info', 'Evento genérico recebido', data);
     });
 
     // Listener para mudanças de status de conexão

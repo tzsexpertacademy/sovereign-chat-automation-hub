@@ -85,8 +85,10 @@ class YumerNativeWebSocketService {
     this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('📨 Mensagem recebida:', data);
-        this.notifyEventHandlers('message', data);
+        console.log('📨 [CODECHAT] Mensagem recebida:', data);
+        
+        // Processar evento baseado na estrutura do CodeChat
+        this.processCodeChatMessage(data);
       } catch (error) {
         console.error('❌ Erro ao processar mensagem:', error);
         console.log('📦 Dados brutos:', event.data);
@@ -106,6 +108,42 @@ class YumerNativeWebSocketService {
       console.error('❌ Erro no WebSocket:', error);
       this.notifyStatus('error');
     };
+  }
+
+  // ============ PROCESSAMENTO CODECHAT ============
+  private processCodeChatMessage(data: any): void {
+    console.log('🔍 [CODECHAT] Processando mensagem:', data);
+    
+    // Detectar tipo de evento pelo conteúdo da mensagem
+    if (data.event) {
+      // Formato padrão: { event: 'qrcode.updated', data: {...} }
+      const eventType = data.event;
+      const eventData = data.data || data;
+      
+      console.log(`📡 [CODECHAT] Evento detectado: ${eventType}`, eventData);
+      this.notifyEventHandlers(eventType, eventData);
+      
+      // Mapear eventos específicos
+      if (eventType === 'qrcode.updated' || eventType === 'qr_code') {
+        this.notifyEventHandlers('qr_code', eventData);
+      } else if (eventType === 'connection.update' || eventType === 'instance_status') {
+        this.notifyEventHandlers('instance_status', eventData);
+      } else if (eventType === 'message.upsert' || eventType === 'message_received') {
+        this.notifyEventHandlers('message_received', eventData);
+      }
+    } else if (data.qrCode || data.qr) {
+      // QR Code direto
+      console.log('📱 [CODECHAT] QR Code detectado');
+      this.notifyEventHandlers('qr_code', data);
+    } else if (data.status || data.state) {
+      // Status de conexão
+      console.log('🔌 [CODECHAT] Status detectado');
+      this.notifyEventHandlers('instance_status', data);
+    } else {
+      // Evento genérico
+      console.log('📨 [CODECHAT] Evento genérico');
+      this.notifyEventHandlers('message', data);
+    }
   }
 
   // ============ RECONEXÃO AUTOMÁTICA ============

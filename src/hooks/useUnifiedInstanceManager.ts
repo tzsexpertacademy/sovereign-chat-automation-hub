@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { yumerNativeWebSocketService } from '@/services/yumerNativeWebSocketService';
 import { yumerJwtService } from '@/services/yumerJwtService';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
+import { codechatQRService } from '@/services/codechatQRService';
 import { useToast } from '@/hooks/use-toast';
 
 interface InstanceStatus {
@@ -159,10 +160,10 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       const jwt = await yumerJwtService.generateLocalJWT(JWT_SECRET, instanceId);
       console.log(`🔐 [UNIFIED] JWT gerado para ${instanceId}:`, jwt.substring(0, 50) + '...');
 
-      // Conectar com as opções corretas usando o instanceId real
+      // Conectar com evento correto para QR Code CodeChat
       await yumerNativeWebSocketService.connect({
         instanceName: instanceId,
-        event: 'MESSAGE_RECEIVED',
+        event: 'qrcode.updated', // Evento correto para CodeChat
         useSecureConnection: true,
         autoReconnect: true,
         maxReconnectAttempts: 10
@@ -233,19 +234,55 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       // Aguardar conexão WebSocket estabilizar
       await new Promise(resolve => setTimeout(resolve, 3000));
       
-      console.log(`📱 [UNIFIED] WebSocket conectado, aguardando eventos para ${instanceId}`);
+      console.log(`📱 [UNIFIED] WebSocket conectado, iniciando fallback REST para ${instanceId}`);
       
-      toast({
-        title: "Conectando...",
-        description: "WebSocket conectado, aguardando QR Code...",
-      });
+      // Iniciar conexão via REST API como fallback
+      try {
+        console.log(`🔄 [UNIFIED] Tentando conectar via REST API: ${instanceId}`);
+        const restResult = await codechatQRService.connectInstance(instanceId);
+        
+        if (restResult.success && restResult.qrCode) {
+          console.log(`✅ [UNIFIED] QR Code obtido via REST API!`);
+          
+          // Atualizar com QR Code do REST
+          setInstances(prev => ({
+            ...prev,
+            [instanceId]: {
+              ...prev[instanceId],
+              status: 'qr_ready',
+              qrCode: restResult.qrCode,
+              hasQrCode: true,
+              lastUpdated: Date.now()
+            }
+          }));
+          
+          toast({
+            title: "✅ QR Code Disponível!",
+            description: "QR Code obtido via REST API - escaneie para conectar",
+          });
+        } else {
+          console.log(`⚠️ [UNIFIED] REST API não retornou QR Code, aguardando WebSocket...`);
+          
+          toast({
+            title: "Conectando...",
+            description: "WebSocket conectado, aguardando QR Code...",
+          });
+        }
+      } catch (restError) {
+        console.error(`❌ [UNIFIED] Fallback REST falhou:`, restError);
+        
+        toast({
+          title: "Conectando...",
+          description: "WebSocket conectado, aguardando QR Code...",
+        });
+      }
       
       // Atualizar status para conectado via WebSocket
       setInstances(prev => ({
         ...prev,
         [instanceId]: {
           ...prev[instanceId],
-          status: 'websocket_connected',
+          status: prev[instanceId]?.qrCode ? 'qr_ready' : 'websocket_connected',
           lastUpdated: Date.now()
         }
       }));
