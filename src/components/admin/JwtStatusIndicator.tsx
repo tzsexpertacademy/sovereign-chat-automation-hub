@@ -10,7 +10,7 @@ import {
   WifiOff,
   Settings
 } from "lucide-react";
-import { yumerNativeWebSocketService } from '@/services/yumerNativeWebSocketService';
+
 import { useNavigate } from 'react-router-dom';
 
 interface JwtStatusIndicatorProps {
@@ -33,8 +33,7 @@ const JwtStatusIndicator: React.FC<JwtStatusIndicatorProps> = ({
   };
 
   const getConnectionDetails = () => {
-    const info = yumerNativeWebSocketService.getConnectionInfo();
-    return info;
+    return { mode: 'REST-only', protocol: 'HTTPS' };
   };
 
   return (
@@ -117,8 +116,8 @@ const JwtStatusIndicator: React.FC<JwtStatusIndicatorProps> = ({
           {websocketConnected && (
             <div className="text-xs text-gray-500">
               <p>JWT Secret: sfdgs8152g5s1s5 (Hardcoded)</p>
-              <p>WebSocket: {getConnectionDetails()?.url || 'N/A'}</p>
-              <p>Status: {yumerNativeWebSocketService.isConnected() ? 'Connected' : 'Disconnected'}</p>
+              <p>WebSocket: REST Mode (No WebSocket)</p>
+              <p>Status: REST Mode (100% API)</p>
             </div>
           )}
         </div>

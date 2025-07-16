@@ -213,9 +213,12 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       
       const createResponse = await codechatQRService.createInstance(instanceId, `Instance: ${instanceId}`);
       
-      if (!createResponse.success && createResponse.status !== 'already_exists') {
-        // Se não foi erro 409 (já existe), é erro real
-        throw new Error(`Falha ao criar instância: ${createResponse.error}`);
+      if (!createResponse.success) {
+        if (createResponse.status === 'already_exists' || createResponse.error?.includes('already in use')) {
+          console.log(`ℹ️ [UNIFIED] Instância já existe: ${instanceId}`);
+        } else {
+          throw new Error(`Falha ao criar instância: ${createResponse.error}`);
+        }
       }
       
       if (createResponse.success) {

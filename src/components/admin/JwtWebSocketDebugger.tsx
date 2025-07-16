@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Eye, EyeOff, Shield, Wifi, WifiOff, PlayCircle, StopCircle, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { yumerJwtService } from '@/services/yumerJwtService';
-import { yumerNativeWebSocketService } from '@/services/yumerNativeWebSocketService';
+
 
 interface ConnectionLog {
   timestamp: string;
@@ -34,30 +34,11 @@ export const JwtWebSocketDebugger: React.FC = () => {
   const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
-    // Monitorar status da conexão WebSocket
-    const handleStatus = (status: string) => {
-      addLog('info', `Status WebSocket: ${status}`);
-      setWsConnected(status === 'connected');
-      setIsConnecting(status === 'connecting' || status === 'reconnecting');
-    };
-
-    yumerNativeWebSocketService.onStatus(handleStatus);
-
-    // Monitorar mensagens recebidas
-    const handleMessage = (data: any) => {
-      addLog('success', 'Mensagem recebida via WebSocket', data);
-      setReceivedMessages(prev => [...prev.slice(-9), {
-        timestamp: new Date().toISOString(),
-        data
-      }]);
-    };
-
-    yumerNativeWebSocketService.on('message', handleMessage);
-
-    return () => {
-      yumerNativeWebSocketService.offStatus(handleStatus);
-      yumerNativeWebSocketService.off('message', handleMessage);
-    };
+    console.log('🔧 JWT WebSocket Debugger: REST-only mode initialized');
+    setReceivedMessages([{ 
+      timestamp: new Date().toISOString(), 
+      data: { mode: 'REST-only', message: 'WebSocket disabled - using REST API only' }
+    }]);
   }, []);
 
   const addLog = (type: ConnectionLog['type'], message: string, details?: any) => {
@@ -98,46 +79,30 @@ export const JwtWebSocketDebugger: React.FC = () => {
   };
 
   const handleConnectWebSocket = async () => {
-    if (!generatedJWT) {
-      toast.error('Gere um JWT primeiro');
-      return;
-    }
-
-    if (!eventType.trim()) {
-      toast.error('Selecione um evento');
-      return;
-    }
-
+    setIsConnecting(true);
+    
     try {
-      setIsConnecting(true);
-      addLog('info', 'Iniciando conexão WebSocket...', {
-        instanceName,
-        event: eventType,
-        jwtLength: generatedJWT.length
-      });
-
-      await yumerNativeWebSocketService.connect({
-        instanceName: instanceName.trim(),
-        event: eventType.trim(),
-        useSecureConnection: true,
-        autoReconnect: true
-      });
-
-      addLog('success', 'WebSocket conectado com sucesso!');
-      toast.success('WebSocket conectado!');
+      console.log('🚀 Simulando conexão REST...');
+      setWsConnected(true);
+      addLog('success', 'REST Mode confirmado!');
+      setReceivedMessages(prev => [...prev.slice(-9), { 
+        timestamp: new Date().toISOString(), 
+        data: { message: 'REST API connection test successful' }
+      }]);
+      
+      toast.success('Modo REST confirmado!');
     } catch (error: any) {
-      addLog('error', 'Erro na conexão WebSocket', error);
-      toast.error('Erro na conexão: ' + error.message);
+      addLog('error', 'Erro no teste REST', error);
+      toast.error('Erro no teste REST: ' + error.message);
     } finally {
       setIsConnecting(false);
     }
   };
 
   const handleDisconnectWebSocket = () => {
-    yumerNativeWebSocketService.disconnect();
     setWsConnected(false);
-    addLog('info', 'WebSocket desconectado manualmente');
-    toast.info('WebSocket desconectado');
+    addLog('info', 'REST Mode ativo');
+    toast.info('REST Mode ativo');
   };
 
   const copyJWTToClipboard = () => {

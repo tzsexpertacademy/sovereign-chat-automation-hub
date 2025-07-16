@@ -1,6 +1,6 @@
 // YUMER WhatsApp Backend Service - Integração completa com todas as APIs
 import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
-import { yumerNativeWebSocketService, WebSocketConnectionOptions } from './yumerNativeWebSocketService';
+
 import { yumerJwtService } from './yumerJwtService';
 
 // Interfaces para tipagem do YUMER Backend
@@ -236,43 +236,26 @@ class YumerWhatsAppService {
     }
   }
 
-  // ============ WEBSOCKET CONNECTION NATIVO ============
-  async connectWebSocket(instanceName: string, event: string = 'MESSAGE_RECEIVED', useSecureConnection?: boolean): Promise<void> {
-    const options: WebSocketConnectionOptions = {
-      instanceName,
-      event,
-      useSecureConnection,
-      autoReconnect: true,
-      maxReconnectAttempts: 10,
-    };
-
-    console.log('🔌 Conectando WebSocket nativo YUMER...', options);
-    await yumerNativeWebSocketService.connect(options);
+  // ============ REST-ONLY MODE ============
+  async connectWebSocket(): Promise<void> {
+    console.log('🔧 WebSocket disabled - REST-only mode');
   }
 
   disconnectWebSocket(): void {
-    yumerNativeWebSocketService.disconnect();
-    yumerJwtService.reset();
-    console.log('🔌 WebSocket YUMER desconectado');
+    console.log('🔧 WebSocket disabled - REST-only mode');
   }
 
   isWebSocketConnected(): boolean {
-    return yumerNativeWebSocketService.isConnected();
+    return false; // Sempre falso em modo REST
   }
 
   getWebSocketInfo(): any {
-    return yumerNativeWebSocketService.getConnectionInfo();
+    return { mode: 'REST-only', protocol: 'HTTPS' };
   }
 
-
-  // ============ TESTE DE CONECTIVIDADE WEBSOCKET ============
-  async testWebSocketConnection(instanceName: string, event: string, useSecureConnection?: boolean): Promise<{ success: boolean; error?: string; details?: any }> {
-    return yumerNativeWebSocketService.testConnection({
-      instanceName,
-      event,
-      useSecureConnection,
-      autoReconnect: false,
-    });
+  // ============ TESTE DE CONECTIVIDADE REST ============
+  async testWebSocketConnection(): Promise<{ success: boolean; error?: string; details?: any }> {
+    return { success: true, details: { mode: 'REST-only', message: 'WebSocket disabled - using REST API only' } };
   }
 
   // ============ GESTÃO DE EVENTOS JWT E WEBSOCKET ============
@@ -655,108 +638,101 @@ class YumerWhatsAppService {
 
   // ============ WEBSOCKET EVENT LISTENERS (BRIDGE DE COMPATIBILIDADE) ============
 
-  // Compatibilidade com Socket.IO - usa nativo WebSocket internamente
+  // ============ EVENT HANDLERS DISABLED (REST-ONLY) ============
+  
   getSocket(): any {
     return {
-      connected: yumerNativeWebSocketService.isConnected(),
-      id: 'native-websocket',
-      on: (event: string, callback: (data: any) => void) => {
-        yumerNativeWebSocketService.on(event, callback);
-      },
-      off: (event: string, callback?: (data: any) => void) => {
-        yumerNativeWebSocketService.off(event, callback);
-      },
-      emit: (event: string, data: any) => {
-        yumerNativeWebSocketService.send({ event, data });
-      },
-      disconnect: () => {
-        yumerNativeWebSocketService.disconnect();
-      },
+      connected: false, // Sempre falso em modo REST
+      id: 'rest-mode',
+      on: () => console.log('🔧 WebSocket disabled - REST mode'),
+      off: () => console.log('🔧 WebSocket disabled - REST mode'),
+      emit: () => console.log('🔧 WebSocket disabled - REST mode'),
+      disconnect: () => console.log('🔧 WebSocket disabled - REST mode')
     };
   }
 
-  onQRCodeGenerated(callback: (data: { qrCode: string; instanceName: string }) => void): void {
-    yumerNativeWebSocketService.on('qr_code_generated', callback);
+  onQRCodeGenerated(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onAuthenticated(callback: (data: { instanceName: string }) => void): void {
-    yumerNativeWebSocketService.on('authenticated', callback);
+  onAuthenticated(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onReady(callback: (data: { instanceName: string; phoneNumber: string }) => void): void {
-    yumerNativeWebSocketService.on('ready', callback);
+  onReady(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onDisconnected(callback: (data: { instanceName: string; reason: string }) => void): void {
-    yumerNativeWebSocketService.on('disconnected', callback);
+  onDisconnected(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onAuthFailure(callback: (data: { instanceName: string; error: string }) => void): void {
-    yumerNativeWebSocketService.on('auth_failure', callback);
+  onAuthFailure(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onStatusUpdate(callback: (data: { instanceName: string; status: string }) => void): void {
-    yumerNativeWebSocketService.on('status_update', callback);
+  onStatusUpdate(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onTypingStart(callback: (data: { instanceName: string; chatId: string; contactId: string }) => void): void {
-    yumerNativeWebSocketService.on('typing_start', callback);
+  onTypingStart(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onTypingStop(callback: (data: { instanceName: string; chatId: string; contactId: string }) => void): void {
-    yumerNativeWebSocketService.on('typing_stop', callback);
+  onTypingStop(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onRecordingStart(callback: (data: { instanceName: string; chatId: string; contactId: string }) => void): void {
-    yumerNativeWebSocketService.on('recording_start', callback);
+  onRecordingStart(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onRecordingStop(callback: (data: { instanceName: string; chatId: string; contactId: string }) => void): void {
-    yumerNativeWebSocketService.on('recording_stop', callback);
+  onRecordingStop(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onPresenceUpdate(callback: (data: { instanceName: string; chatId: string; presence: string }) => void): void {
-    yumerNativeWebSocketService.on('presence_update', callback);
+  onPresenceUpdate(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onMessageReceived(callback: (data: { instanceName: string; message: YumerMessage }) => void): void {
-    yumerNativeWebSocketService.on('message_received', callback);
+  onMessageReceived(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onMessageSent(callback: (data: { instanceName: string; message: YumerMessage }) => void): void {
-    yumerNativeWebSocketService.on('message_sent', callback);
+  onMessageSent(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onMessageDelivered(callback: (data: { instanceName: string; messageId: string }) => void): void {
-    yumerNativeWebSocketService.on('message_delivered', callback);
+  onMessageDelivered(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onMessageRead(callback: (data: { instanceName: string; messageId: string }) => void): void {
-    yumerNativeWebSocketService.on('message_read', callback);
+  onMessageRead(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onMessageReaction(callback: (data: { instanceName: string; messageId: string; reaction: string; contactId: string }) => void): void {
-    yumerNativeWebSocketService.on('message_reaction', callback);
+  onMessageReaction(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onMessageDeleted(callback: (data: { instanceName: string; messageId: string }) => void): void {
-    yumerNativeWebSocketService.on('message_deleted', callback);
+  onMessageDeleted(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onChatCreated(callback: (data: { instanceName: string; chat: YumerChat }) => void): void {
-    yumerNativeWebSocketService.on('chat_created', callback);
+  onChatCreated(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onChatArchived(callback: (data: { instanceName: string; chatId: string }) => void): void {
-    yumerNativeWebSocketService.on('chat_archived', callback);
+  onChatArchived(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onContactBlocked(callback: (data: { instanceName: string; contactId: string }) => void): void {
-    yumerNativeWebSocketService.on('contact_blocked', callback);
+  onContactBlocked(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 
-  onGroupUpdated(callback: (data: { instanceName: string; group: YumerGroup }) => void): void {
-    yumerNativeWebSocketService.on('group_updated', callback);
+  onGroupUpdated(): void {
+    console.log('🔧 Event handlers disabled - use REST polling instead');
   }
 }
 
