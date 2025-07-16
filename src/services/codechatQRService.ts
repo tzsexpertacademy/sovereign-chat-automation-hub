@@ -4,10 +4,11 @@ import { yumerJwtService } from './yumerJwtService';
 
 interface QRCodeResponse {
   success: boolean;
-  qrCode?: string;
+  qrCode?: string | null;
   status?: string;
-  error?: string;
+  error?: string | null;
   instanceName?: string;
+  data?: any;
 }
 
 class CodeChatQRService {
@@ -232,6 +233,129 @@ class CodeChatQRService {
     } catch (error: any) {
       console.error(`❌ [CODECHAT-API] Erro ao buscar detalhes:`, error);
       throw error;
+    }
+  }
+
+  // ============ DISCONNECT INSTANCE ============
+  async disconnectInstance(instanceName: string): Promise<QRCodeResponse> {
+    try {
+      console.log(`🔌 [CODECHAT] Desconectando instância: ${instanceName}`);
+      
+      // Gerar JWT compatível com CodeChat API v1.3.3
+      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
+      console.log('🔐 [CODECHAT] JWT compatível gerado com sucesso');
+      
+      const url = `${this.getApiBaseUrl()}/instance/logout/${instanceName}`;
+      console.log(`📡 [CODECHAT] URL de desconexão: ${url}`);
+      
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+      
+      console.log(`📊 [CODECHAT] Response status: ${response.status}`);
+      
+      if (response.ok) {
+        console.log('✅ [CODECHAT] Instância desconectada com sucesso');
+        return {
+          success: true,
+          qrCode: null,
+          status: 'disconnected',
+          error: null,
+          instanceName
+        };
+      } else {
+        const errorText = await response.text();
+        console.error('❌ [CODECHAT] Erro na resposta:', errorText);
+        
+        return {
+          success: false,
+          qrCode: null,
+          status: 'error',
+          error: `HTTP ${response.status}: ${errorText}`,
+          instanceName
+        };
+      }
+      
+    } catch (error: any) {
+      console.error('❌ [CODECHAT] Erro ao desconectar instância:', error);
+      return {
+        success: false,
+        qrCode: null,
+        status: 'error', 
+        error: error.message,
+        instanceName
+      };
+    }
+  }
+
+  // ============ CREATE INSTANCE ============
+  async createInstance(instanceName: string, description?: string): Promise<QRCodeResponse> {
+    try {
+      console.log(`📝 [CODECHAT] Criando instância: ${instanceName}`);
+      
+      // Gerar JWT compatível com CodeChat API v1.3.3
+      const jwt = await yumerJwtService.generateLocalJWT(this.JWT_SECRET, instanceName);
+      console.log('🔐 [CODECHAT] JWT compatível gerado com sucesso');
+      
+      const url = `${this.getApiBaseUrl()}/instance/create`;
+      console.log(`📡 [CODECHAT] URL de criação: ${url}`);
+      
+      const requestBody = {
+        instanceName,
+        description: description || `Instance: ${instanceName}`
+      };
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      console.log(`📊 [CODECHAT] Response status: ${response.status}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ [CODECHAT] Instância criada com sucesso:', data);
+        
+        return {
+          success: true,
+          qrCode: null,
+          status: 'created',
+          error: null,
+          instanceName,
+          data
+        };
+      } else {
+        const errorText = await response.text();
+        console.error('❌ [CODECHAT] Erro na resposta:', errorText);
+        
+        return {
+          success: false,
+          qrCode: null,
+          status: 'error',
+          error: `HTTP ${response.status}: ${errorText}`,
+          instanceName
+        };
+      }
+      
+    } catch (error: any) {
+      console.error('❌ [CODECHAT] Erro ao criar instância:', error);
+      return {
+        success: false,
+        qrCode: null,
+        status: 'error',
+        error: error.message,
+        instanceName
+      };
     }
   }
 }

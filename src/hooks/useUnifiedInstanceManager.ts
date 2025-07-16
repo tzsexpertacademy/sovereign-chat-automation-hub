@@ -25,6 +25,8 @@ interface UseUnifiedInstanceManagerReturn {
   isLoading: (instanceId: string) => boolean;
   cleanup: (instanceId: string) => void;
   refreshStatus: (instanceId: string) => Promise<void>;
+  startPollingForInstance: (instanceId: string) => void;
+  stopPollingForInstance: (instanceId: string) => void;
 }
 
 export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => {
@@ -45,46 +47,18 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     checkJwtConfig();
   }, []);
 
-  // Conectar Native WebSocket uma única vez
+  // ============ REST-FIRST INITIALIZATION ============
   useEffect(() => {
-    if (!jwtConfigured) {
-      console.log('⚠️ [UNIFIED] JWT não configurado, aguardando...');
-      return;
-    }
-
-    console.log('🔧 [UNIFIED] Inicializando Native WebSocket Manager');
+    console.log('🔧 [UNIFIED] Inicializando REST-first Instance Manager');
+    console.log('📡 [UNIFIED] Foco em CodeChat API v1.3.3 via REST');
     
-    // Configurar handlers de status
-    yumerNativeWebSocketService.onStatus((status) => {
-      console.log(`🔌 [UNIFIED] WebSocket Status: ${status}`);
-      setWebsocketConnected(status === 'connected');
-    });
-
-    // Configurar handler de eventos - eventos corretos
-    yumerNativeWebSocketService.on('instance_status', (data) => {
-      console.log('📱 [UNIFIED] Instance status received:', data);
-      handleInstanceStatusUpdate(data);
-    });
-
-    yumerNativeWebSocketService.on('qr_code', (data) => {
-      console.log('📱 [UNIFIED] QR Code received:', data);
-      handleQRCodeUpdate(data);
-    });
-
-    // Listeners adicionais para debug
-    yumerNativeWebSocketService.on('message_received', (data) => {
-      console.log('📨 [UNIFIED] Message received:', data);
-    });
-
-    yumerNativeWebSocketService.on('connection_update', (data) => {
-      console.log('🔌 [UNIFIED] Connection update:', data);
-    });
-
+    // WebSocket é opcional para eventos em tempo real
+    setWebsocketConnected(false);
+    
     return () => {
-      console.log('🧹 [UNIFIED] Limpando Native WebSocket');
-      yumerNativeWebSocketService.disconnect();
+      console.log('🧹 [UNIFIED] Cleanup do manager');
     };
-  }, [jwtConfigured]);
+  }, []);
 
   // Handlers para updates do WebSocket
   const handleInstanceStatusUpdate = useCallback((data: any) => {
@@ -145,105 +119,95 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     });
   }, [toast]);
 
-  // Conectar ao WebSocket para uma instância específica
-  const connectWebSocketForInstance = useCallback(async (instanceId: string) => {
-    try {
-      console.log(`🔌 [UNIFIED] Conectando WebSocket para: ${instanceId}`);
-      
-      // Verificar se já está conectado
-      if (yumerNativeWebSocketService.isConnected()) {
-        console.log('✅ [UNIFIED] WebSocket já conectado, reutilizando conexão');
-        return;
+  // ============ POLLING PARA STATUS ============
+  const pollingIntervals = useState<Map<string, NodeJS.Timeout>>(new Map())[0];
+  
+  const startPollingForInstance = useCallback((instanceId: string) => {
+    if (pollingIntervals.has(instanceId)) return;
+    
+    console.log(`🔄 [UNIFIED] Iniciando polling para ${instanceId}`);
+    const interval = setInterval(async () => {
+      try {
+        await refreshStatus(instanceId);
+      } catch (error) {
+        console.error(`❌ [UNIFIED] Erro no polling de ${instanceId}:`, error);
       }
-
-      // Gerar JWT com o instanceId correto
-      const jwt = await yumerJwtService.generateLocalJWT(JWT_SECRET, instanceId);
-      console.log(`🔐 [UNIFIED] JWT gerado para ${instanceId}:`, jwt.substring(0, 50) + '...');
-
-      // Conectar com evento correto para QR Code CodeChat
-      await yumerNativeWebSocketService.connect({
-        instanceName: instanceId,
-        event: 'qrcode.updated', // Evento correto para CodeChat
-        useSecureConnection: true,
-        autoReconnect: true,
-        maxReconnectAttempts: 10
-      });
-
-      console.log(`✅ [UNIFIED] WebSocket conectado para ${instanceId}`);
-    } catch (error) {
-      console.error(`❌ [UNIFIED] Erro ao conectar WebSocket:`, error);
-      throw error;
+    }, 3000); // Poll a cada 3 segundos
+    
+    pollingIntervals.set(instanceId, interval);
+  }, []);
+  
+  const stopPollingForInstance = useCallback((instanceId: string) => {
+    const interval = pollingIntervals.get(instanceId);
+    if (interval) {
+      clearInterval(interval);
+      pollingIntervals.delete(instanceId);
+      console.log(`⏹️ [UNIFIED] Polling interrompido para ${instanceId}`);
     }
   }, []);
 
-  // Buscar status atual de uma instância via CodeChat API
+  // ============ ATUALIZAR STATUS VIA REST API ============
   const refreshStatus = useCallback(async (instanceId: string) => {
     try {
-      console.log(`🔄 [UNIFIED] Buscando status atual via CodeChat API: ${instanceId}`);
+      console.log(`🔄 [UNIFIED] Atualizando status via CodeChat API: ${instanceId}`);
       
-      // Buscar status via CodeChat API REST
-      const statusData = await codechatQRService.getInstanceStatus(instanceId);
+      // Usar CodeChat API para buscar status atual
+      const response = await codechatQRService.getInstanceStatus(instanceId);
       
-      // Mapear resposta da API para nosso formato interno
-      const mappedStatus = statusData.state === 'open' ? 'connected' : 
-                          statusData.state === 'close' ? 'disconnected' : 
-                          statusData.state || 'unknown';
-      
-      console.log(`📊 [UNIFIED] Status da API: ${statusData.state} → ${mappedStatus}`);
-      
-      // Atualizar status local
-      setInstances(prev => ({
-        ...prev,
-        [instanceId]: {
-          ...prev[instanceId],
-          instanceId: instanceId,
-          status: mappedStatus,
-          lastUpdated: Date.now()
+      if (response.success && response.data) {
+        const { connectionStatus, ownerJid, profilePicUrl } = response.data;
+        
+        // Mapear status CodeChat para interno
+        const mappedStatus = connectionStatus === 'ONLINE' ? 'connected' : 
+                            connectionStatus === 'OFFLINE' ? 'disconnected' : 
+                            connectionStatus || 'unknown';
+        
+        console.log(`📊 [UNIFIED] Status obtido: ${connectionStatus} → ${mappedStatus}`);
+        
+        // Atualizar estado local
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            instanceId,
+            status: mappedStatus,
+            phoneNumber: ownerJid,
+            lastUpdated: Date.now()
+          }
+        }));
+        
+        // Sincronizar com banco
+        await whatsappInstancesService.updateInstanceStatus(instanceId, mappedStatus, {
+          phone_number: ownerJid,
+          updated_at: new Date().toISOString()
+        });
+        
+        console.log(`✅ [UNIFIED] Status sincronizado para ${instanceId}`);
+        
+        // Se conectado, parar polling
+        if (mappedStatus === 'connected') {
+          stopPollingForInstance(instanceId);
+          
+          toast({
+            title: "✅ WhatsApp Conectado!",
+            description: `Conectado com sucesso: ${ownerJid}`,
+          });
         }
-      }));
-      
-      // Sincronizar com banco
-      await whatsappInstancesService.updateInstanceStatus(instanceId, mappedStatus);
-      
-      console.log(`✅ [UNIFIED] Status atualizado para ${instanceId}: ${mappedStatus}`);
+      }
       
     } catch (error) {
-      console.error(`❌ [UNIFIED] Erro ao buscar status ${instanceId}:`, error);
-      
-      // Manter o status atual em caso de erro
-      setInstances(prev => {
-        if (prev[instanceId]) {
-          return {
-            ...prev,
-            [instanceId]: {
-              ...prev[instanceId],
-              lastUpdated: Date.now()
-            }
-          };
-        }
-        return prev;
-      });
-      
+      console.error(`❌ [UNIFIED] Erro ao atualizar status de ${instanceId}:`, error);
       throw error;
     }
-  }, []);
+  }, [toast]);
 
-  // Conectar instância - PRIORIZAR REST API CodeChat v1.3.3
+  // ============ CONECTAR INSTÂNCIA - REST-FIRST ============
   const connectInstance = useCallback(async (instanceId: string) => {
-    if (!jwtConfigured) {
-      toast({
-        title: "Configuração Necessária",
-        description: "JWT não configurado. Verifique as configurações.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
-      console.log(`🚀 [UNIFIED] Conectando instância via CodeChat API v1.3.3: ${instanceId}`);
+      console.log(`🚀 [UNIFIED] Conectando via CodeChat API v1.3.3: ${instanceId}`);
       
-      // Definir status como connecting
+      // Status inicial
       setInstances(prev => ({
         ...prev,
         [instanceId]: {
@@ -254,77 +218,57 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
 
-      // ============ MÉTODO PRINCIPAL: REST API CodeChat ============
-      console.log(`📡 [UNIFIED] Usando REST API como método principal`);
+      // ============ ETAPA 1: CONECTAR VIA CODECHAT API ============
+      console.log(`📡 [UNIFIED] Iniciando conexão via CodeChat REST API`);
       
-      try {
-        const restResult = await codechatQRService.connectInstance(instanceId);
+      const connectResponse = await codechatQRService.connectInstance(instanceId);
+      
+      if (connectResponse.success) {
+        console.log(`✅ [UNIFIED] Conexão iniciada com sucesso`);
         
-        if (restResult.success && restResult.qrCode) {
-          console.log(`✅ [UNIFIED] Sucesso via REST API CodeChat!`);
+        // ============ ETAPA 2: BUSCAR QR CODE ============
+        const qrResponse = await codechatQRService.getQRCode(instanceId);
+        
+        if (qrResponse.success && qrResponse.qrCode) {
+          console.log(`✅ [UNIFIED] QR Code obtido com sucesso`);
           
-          // Atualizar com QR Code obtido via REST
+          // Atualizar estado com QR Code
           setInstances(prev => ({
             ...prev,
             [instanceId]: {
               ...prev[instanceId],
               status: 'qr_ready',
-              qrCode: restResult.qrCode,
+              qrCode: qrResponse.qrCode,
               hasQrCode: true,
               lastUpdated: Date.now()
             }
           }));
           
+          // Sincronizar com banco
+          await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
+            qr_code: qrResponse.qrCode,
+            has_qr_code: true,
+            updated_at: new Date().toISOString()
+          });
+          
           toast({
             title: "✅ QR Code Disponível!",
-            description: "Conectado via CodeChat API - escaneie o QR Code",
-          });
-
-          // ============ OPCIONAL: WebSocket para eventos em tempo real ============
-          try {
-            console.log(`🔌 [UNIFIED] Conectando WebSocket para notificações...`);
-            await connectWebSocketForInstance(instanceId);
-            console.log(`✅ [UNIFIED] WebSocket opcional conectado para ${instanceId}`);
-          } catch (wsError) {
-            console.warn(`⚠️ [UNIFIED] WebSocket opcional falhou, mas REST funciona:`, wsError);
-            // Não é erro crítico - REST API está funcionando
-          }
-
-          return; // Sucesso com REST API
-        } else {
-          throw new Error(`REST API não retornou QR Code: ${restResult.error}`);
-        }
-        
-      } catch (restError) {
-        console.error(`❌ [UNIFIED] REST API falhou:`, restError);
-        
-        // ============ FALLBACK: Tentar só WebSocket ============
-        console.log(`🔄 [UNIFIED] Tentando fallback com WebSocket apenas...`);
-        
-        try {
-          await connectWebSocketForInstance(instanceId);
-          
-          setInstances(prev => ({
-            ...prev,
-            [instanceId]: {
-              ...prev[instanceId],
-              status: 'websocket_connected',
-              lastUpdated: Date.now()
-            }
-          }));
-          
-          toast({
-            title: "WebSocket Conectado",
-            description: "Aguardando QR Code via WebSocket...",
+            description: "Escaneie o QR Code para conectar ao WhatsApp",
           });
           
-        } catch (wsError) {
-          throw new Error(`Tanto REST quanto WebSocket falharam. REST: ${restError.message}, WS: ${wsError.message}`);
+          // ============ ETAPA 3: INICIAR POLLING PARA STATUS ============
+          startPollingForInstance(instanceId);
+          console.log(`🔄 [UNIFIED] Polling iniciado para ${instanceId}`);
+          
+          return;
         }
       }
       
+      throw new Error('Falha na conexão via CodeChat API');
+      
     } catch (error: any) {
-      console.error('❌ [UNIFIED] Erro ao conectar:', error);
+      console.error(`❌ [UNIFIED] Erro ao conectar ${instanceId}:`, error);
+      
       setInstances(prev => ({
         ...prev,
         [instanceId]: {
@@ -339,19 +283,35 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         description: error.message || "Falha ao conectar instância",
         variant: "destructive",
       });
+      
       throw error;
     } finally {
       setLoading(prev => ({ ...prev, [instanceId]: false }));
     }
-  }, [jwtConfigured, connectWebSocketForInstance, toast]);
+  }, [toast, startPollingForInstance]);
 
-  // Desconectar instância
+  // ============ DESCONECTAR INSTÂNCIA ============
   const disconnectInstance = useCallback(async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
       console.log(`🔌 [UNIFIED] Desconectando instância: ${instanceId}`);
       
-      // Atualizar status local
+      // Parar polling
+      stopPollingForInstance(instanceId);
+      
+      // Tentar desconectar via CodeChat API
+      try {
+        const disconnectResponse = await codechatQRService.disconnectInstance(instanceId);
+        if (disconnectResponse.success) {
+          console.log(`✅ [UNIFIED] Desconectado via CodeChat API`);
+        } else {
+          console.warn(`⚠️ [UNIFIED] CodeChat disconnect falhou:`, disconnectResponse.error);
+        }
+      } catch (error) {
+        console.warn(`⚠️ [UNIFIED] Erro na API disconnect:`, error);
+      }
+      
+      // Atualizar estado local
       setInstances(prev => ({
         ...prev,
         [instanceId]: {
@@ -364,8 +324,13 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
 
-      // Sync com banco de dados
-      await whatsappInstancesService.updateInstanceStatus(instanceId, 'disconnected');
+      // Sincronizar com banco
+      await whatsappInstancesService.updateInstanceStatus(instanceId, 'disconnected', {
+        qr_code: null,
+        has_qr_code: false,
+        phone_number: null,
+        updated_at: new Date().toISOString()
+      });
 
       toast({
         title: "Desconectado",
@@ -373,7 +338,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       });
       
     } catch (error: any) {
-      console.error('❌ [UNIFIED] Erro ao desconectar:', error);
+      console.error(`❌ [UNIFIED] Erro ao desconectar ${instanceId}:`, error);
       toast({
         title: "Erro",
         description: error.message || "Falha ao desconectar instância",
@@ -383,7 +348,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     } finally {
       setLoading(prev => ({ ...prev, [instanceId]: false }));
     }
-  }, [toast]);
+  }, [toast, stopPollingForInstance]);
 
   // Obter status de uma instância
   const getInstanceStatus = useCallback((instanceId: string): InstanceStatus => {
@@ -415,6 +380,8 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     getInstanceStatus,
     isLoading,
     cleanup,
-    refreshStatus
+    refreshStatus,
+    startPollingForInstance,
+    stopPollingForInstance
   };
 };
