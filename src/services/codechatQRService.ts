@@ -75,21 +75,25 @@ class CodeChatQRService {
         console.log(`⚠️ [CODECHAT] Erro ao verificar webhook (continuando):`, checkError);
       }
       
-      // ============ ETAPA 2: CONFIGURAR NOVO WEBHOOK ============
+      // ============ ETAPA 2: CONFIGURAR WEBHOOK API v2 ============
       const webhookUrl = "https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook";
       
-      console.log(`🔧 [CODECHAT] Configurando novo webhook...`);
+      console.log(`🔧 [CODECHAT] Configurando webhook API v2...`);
       console.log(`📡 [CODECHAT] URL do webhook: ${webhookUrl}`);
-      console.log(`📋 [CODECHAT] Eventos: qrcodeUpdate=true, enabled=true`);
+      console.log(`📋 [CODECHAT] Usando instanceId: 1 (fixo conforme doc)`);
       
-      const response = await fetch(`${this.getApiBaseUrl()}/webhook/set/${instanceName}`, {
-        method: 'PUT',
+      const response = await fetch(`${this.getApiBaseUrl()}/api/v2/instance/1/webhook`, {
+        method: 'POST',
         headers: await this.getAuthHeaders(instanceName),
         body: JSON.stringify({
+          name: "supabase-codechat",
           url: webhookUrl,
-          qrcodeUpdate: true,
           enabled: true,
-          events: ['qrcode.updated', 'connection.update'] // Eventos específicos
+          headers: { "apikey": "df1afd525fs5f15" },
+          WebhookEvents: { 
+            qrcodeUpdate: true, 
+            connectionUpdate: true 
+          }
         })
       });
 

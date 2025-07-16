@@ -610,11 +610,20 @@ class YumerWhatsAppService {
 
   // ============ WEBHOOK / S3 / MÍDIA ============
 
-  // PUT /webhook/set/:instanceName
+  // POST /api/v2/instance/:instanceId/webhook (API v2)
   async setWebhook(instanceName: string, webhookUrl: string, events: string[]): Promise<{ success: boolean }> {
-    return this.makeRequest(`/webhook/set/${instanceName}`, {
-      method: 'PUT',
-      body: JSON.stringify({ webhookUrl, events }),
+    return this.makeRequest(`/api/v2/instance/1/webhook`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: "supabase-codechat",
+        url: webhookUrl,
+        enabled: true,
+        headers: { "apikey": "df1afd525fs5f15" },
+        WebhookEvents: { 
+          qrcodeUpdate: true, 
+          connectionUpdate: true 
+        }
+      }),
     });
   }
 
