@@ -4,6 +4,7 @@ import { codechatQRService } from '@/services/codechatQRService';
 import { webhookQRService } from '@/services/webhookQRService';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useInstanceSync } from '@/hooks/useInstanceSync';
 
 interface InstanceStatus {
   instanceId: string;
@@ -33,6 +34,37 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
+  // ============ SYNC REALTIME DO BANCO ============
+  const { manualSync } = useInstanceSync({
+    onQRCodeUpdate: (instanceId, qrCode) => {
+      console.log(`📱 [UNIFIED-SYNC] QR Code recebido via sync: ${instanceId}`);
+      setInstances(prev => ({
+        ...prev,
+        [instanceId]: {
+          ...prev[instanceId],
+          instanceId,
+          status: 'qr_ready',
+          qrCode,
+          hasQrCode: true,
+          lastUpdated: Date.now()
+        }
+      }));
+    },
+    onInstanceUpdate: (instanceId, status) => {
+      console.log(`📊 [UNIFIED-SYNC] Status atualizado via sync: ${instanceId} → ${status}`);
+      setInstances(prev => ({
+        ...prev,
+        [instanceId]: {
+          ...prev[instanceId],
+          instanceId,
+          status,
+          lastUpdated: Date.now()
+        }
+      }));
+    },
+    enabled: true
+  });
+
   // ============ REST-ONLY INITIALIZATION ============
   useEffect(() => {
     console.log('🔧 [UNIFIED] Inicializando REST-only Instance Manager');
@@ -58,7 +90,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       } catch (error) {
         console.error(`❌ [UNIFIED] Erro no polling de ${instanceId}:`, error);
       }
-    }, 3000); // Poll a cada 3 segundos
+    }, 5000); // Poll a cada 5 segundos (menos agressivo para status)
     
     pollingIntervals.set(instanceId, interval);
   }, []);
@@ -344,25 +376,26 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
       
-      // ============ ETAPA 5: POLLING DO BANCO + FALLBACK ============
-      console.log(`🔄 [UNIFIED] Etapa 5/5: Iniciando polling do banco + fallback`);
+      // ============ ETAPA 5: POLLING HÍBRIDO OTIMIZADO (BANCO + FALLBACK) ============
+      console.log(`🔄 [UNIFIED] Etapa 5/5: Iniciando polling híbrido otimizado`);
       
-      // Polling do banco para detectar QR Code salvo pelo webhook
+      // Configuração de polling otimizada
       let attempts = 0;
-      const maxAttempts = 30; // 30 tentativas = 90 segundos
-      const pollInterval = 3000; // 3 segundos
+      const maxAttempts = 40; // 40 tentativas = 80 segundos
+      const pollInterval = 2000; // 2 segundos (mais rápido)
       
-      const bankPollingInterval = setInterval(async () => {
+      const hybridPollingInterval = setInterval(async () => {
         attempts++;
         console.log(`🔍 [UNIFIED-POLL] Tentativa ${attempts}/${maxAttempts} - verificando banco`);
         
         try {
+          // ============ PRIORIDADE 1: VERIFICAR BANCO (WEBHOOK) ============
           const dbQrCheck = await checkDatabaseForQRCode(instanceId);
           
           if (dbQrCheck.hasQrCode && dbQrCheck.qrCode) {
-            console.log(`🎉 [UNIFIED-POLL] QR Code encontrado no banco!`);
+            console.log(`🎉 [UNIFIED-POLL] ✅ QR Code encontrado no banco!`);
             
-            clearInterval(bankPollingInterval);
+            clearInterval(hybridPollingInterval);
             
             setInstances(prev => ({
               ...prev,
@@ -377,7 +410,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             
             toast({
               title: "📱 QR Code Pronto!",
-              description: "QR Code recebido via webhook",
+              description: "Recebido via webhook instantâneo",
             });
             
             // Iniciar polling para status final
@@ -385,16 +418,16 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             return;
           }
           
-          // Se passou do tempo limite, tentar fallback
-          if (attempts >= maxAttempts) {
-            console.warn(`⏰ [UNIFIED-POLL] Timeout atingido - tentando fallback REST`);
-            clearInterval(bankPollingInterval);
+          // ============ PRIORIDADE 2: FALLBACK REST (TENTATIVAS 5, 10, 15, 20...) ============
+          if (attempts % 5 === 0 && attempts <= 30) {
+            console.log(`🔄 [UNIFIED-FALLBACK] Tentativa REST ${attempts}/30...`);
             
-            // Fallback: tentar buscar QR Code via REST API
             try {
               const qrResponse = await codechatQRService.getQRCode(instanceId);
               if (qrResponse.success && qrResponse.qrCode) {
-                console.log(`✅ [UNIFIED-FALLBACK] QR Code obtido via REST`);
+                console.log(`✅ [UNIFIED-FALLBACK] QR Code obtido via REST!`);
+                
+                clearInterval(hybridPollingInterval);
                 
                 setInstances(prev => ({
                   ...prev,
@@ -407,40 +440,46 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
                   }
                 }));
                 
-                // Salvar no banco
+                // Salvar no banco para sincronizar
                 await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
                   has_qr_code: true,
                   qr_code: qrResponse.qrCode,
+                  qr_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 min
                   updated_at: new Date().toISOString()
                 });
                 
                 toast({
                   title: "📱 QR Code Pronto!",
-                  description: "QR Code obtido via fallback",
+                  description: "Obtido via API REST",
                 });
                 
                 startPollingForInstance(instanceId);
-              } else {
-                throw new Error('Timeout: QR Code não gerado');
+                return;
               }
             } catch (fallbackError) {
-              console.error(`❌ [UNIFIED-FALLBACK] Falha no fallback:`, fallbackError);
-              
-              setInstances(prev => ({
-                ...prev,
-                [instanceId]: {
-                  ...prev[instanceId],
-                  status: 'error',
-                  lastUpdated: Date.now()
-                }
-              }));
-              
-              toast({
-                title: "Timeout",
-                description: "QR Code não foi gerado. Tente novamente.",
-                variant: "destructive",
-              });
+              console.warn(`⚠️ [UNIFIED-FALLBACK] Tentativa ${attempts} falhou:`, fallbackError);
             }
+          }
+          
+          // ============ TIMEOUT FINAL ============
+          if (attempts >= maxAttempts) {
+            console.error(`⏰ [UNIFIED-POLL] Timeout final atingido`);
+            clearInterval(hybridPollingInterval);
+            
+            setInstances(prev => ({
+              ...prev,
+              [instanceId]: {
+                ...prev[instanceId],
+                status: 'error',
+                lastUpdated: Date.now()
+              }
+            }));
+            
+            toast({
+              title: "⏰ Timeout",
+              description: "QR Code não foi gerado em 80s. Sistema pode estar sobrecarregado.",
+              variant: "destructive",
+            });
           }
           
         } catch (error) {
@@ -449,8 +488,8 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       }, pollInterval);
       
       toast({
-        title: "⏳ Aguardando QR Code",
-        description: "Sistema híbrido webhook + polling ativado...",
+        title: "⏳ Sistema Híbrido Ativo",
+        description: "Aguardando QR Code via webhook + polling otimizado...",
       });
       
     } catch (error: any) {

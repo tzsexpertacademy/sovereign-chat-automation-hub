@@ -43,44 +43,75 @@ class CodeChatQRService {
     return headers;
   }
 
-  // ============ CONFIGURAR WEBHOOK AUTOMATICAMENTE ============
+  // ============ CONFIGURAR WEBHOOK INTELIGENTE ============
   async configureWebhook(instanceName: string): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log(`🔧 [CODECHAT-WEBHOOK] Configurando webhook para: ${instanceName}`);
+      console.log(`🔧 [CODECHAT] Configurando webhook para ${instanceName}`);
       
-      const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook';
-      
-      const url = `${this.getApiBaseUrl()}/webhook/set/${instanceName}`;
-      console.log(`🌐 [CODECHAT-WEBHOOK] PUT ${url}`);
-      
-      const requestBody = {
-        url: webhookUrl,
-        qrcodeUpdate: true,
-        enabled: true
-      };
-      
-      console.log(`📋 [CODECHAT-WEBHOOK] Request body:`, requestBody);
-      
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: await this.getAuthHeaders(instanceName),
-        body: JSON.stringify(requestBody)
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ [CODECHAT-WEBHOOK] Erro ${response.status}:`, errorText);
-        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+      // ============ ETAPA 1: VERIFICAR SE WEBHOOK JÁ EXISTE ============
+      try {
+        console.log(`🔍 [CODECHAT] Verificando webhook existente...`);
+        const checkResponse = await fetch(`${this.getApiBaseUrl()}/webhook/find/${instanceName}`, {
+          method: 'GET',
+          headers: await this.getAuthHeaders(instanceName)
+        });
+
+        if (checkResponse.ok) {
+          const existingWebhook = await checkResponse.json();
+          console.log(`✅ [CODECHAT] Webhook já existe:`, existingWebhook);
+          
+          // Verificar se é o mesmo URL que queremos
+          const webhookUrl = "https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook";
+          if (existingWebhook.url === webhookUrl && existingWebhook.enabled) {
+            console.log(`🎉 [CODECHAT] Webhook correto já configurado - pulando configuração`);
+            return { success: true };
+          }
+        } else {
+          console.log(`📋 [CODECHAT] Webhook não existe - será criado`);
+        }
+      } catch (checkError) {
+        console.log(`⚠️ [CODECHAT] Erro ao verificar webhook (continuando):`, checkError);
       }
       
-      const data = await response.json();
-      console.log(`✅ [CODECHAT-WEBHOOK] Webhook configurado:`, data);
+      // ============ ETAPA 2: CONFIGURAR NOVO WEBHOOK ============
+      const webhookUrl = "https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook";
       
+      console.log(`🔧 [CODECHAT] Configurando novo webhook...`);
+      const response = await fetch(`${this.getApiBaseUrl()}/webhook/set/${instanceName}`, {
+        method: 'PUT',
+        headers: await this.getAuthHeaders(instanceName),
+        body: JSON.stringify({
+          url: webhookUrl,
+          qrcodeUpdate: true,
+          enabled: true
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        // Se webhook já existe mas com dados diferentes, considerar sucesso
+        if (response.status === 400 && data.message?.some?.((m: any) => m.property === "instance")) {
+          console.log(`⚠️ [CODECHAT] Webhook pode já existir - tentando continuar`);
+          return { success: true };
+        }
+        
+        console.error(`❌ [CODECHAT] Erro webhook:`, data);
+        return { 
+          success: false, 
+          error: data.message || `HTTP ${response.status}` 
+        };
+      }
+
+      console.log(`✅ [CODECHAT] Webhook configurado:`, data);
       return { success: true };
       
     } catch (error: any) {
-      console.error(`❌ [CODECHAT-WEBHOOK] Erro ao configurar webhook:`, error);
-      return { success: false, error: error.message };
+      console.error(`❌ [CODECHAT] Erro webhook:`, error);
+      return { 
+        success: false, 
+        error: error.message || 'Erro desconhecido' 
+      };
     }
   }
 
