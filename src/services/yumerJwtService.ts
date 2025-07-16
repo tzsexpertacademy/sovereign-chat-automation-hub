@@ -1,6 +1,6 @@
 // YUMER JWT Service - Gerencia autenticação JWT para WebSockets
 import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
-import jwt from 'jsonwebtoken';
+import { SignJWT } from 'jose';
 
 export interface YumerJwtResponse {
   token: string;
@@ -24,7 +24,7 @@ class YumerJwtService {
   private renewalTimer: NodeJS.Timeout | null = null;
 
   // ============ GERAÇÃO LOCAL DE JWT ============
-  generateLocalJWT(jwtSecret: string, instanceName: string): string {
+  async generateLocalJWT(jwtSecret: string, instanceName: string): Promise<string> {
     try {
       console.log('🔐 Gerando JWT local para WebSocket...', instanceName);
       
@@ -32,8 +32,14 @@ class YumerJwtService {
         instanceName: instanceName
       };
       
-      // EXPIRES_IN=0 significa que o token nunca expira
-      const token = jwt.sign(payload, jwtSecret);
+      // Converter secret para Uint8Array
+      const secret = new TextEncoder().encode(jwtSecret);
+      
+      // Criar JWT sem expiração usando jose
+      const token = await new SignJWT(payload)
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuedAt()
+        .sign(secret);
       
       this.currentToken = token;
       this.tokenExpiry = null; // Token nunca expira

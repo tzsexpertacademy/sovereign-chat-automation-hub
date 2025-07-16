@@ -70,19 +70,19 @@ export const JwtWebSocketDebugger: React.FC = () => {
     setConnectionLogs(prev => [...prev.slice(-19), newLog]);
   };
 
-  const handleGenerateJWT = () => {
+  const handleGenerateJWT = async () => {
     if (!jwtSecret.trim()) {
       toast.error('Por favor, insira a JWT Secret');
       return;
     }
-
+    
     if (!instanceName.trim()) {
       toast.error('Por favor, insira o Instance Name');
       return;
     }
 
     try {
-      const token = yumerJwtService.generateLocalJWT(jwtSecret.trim(), instanceName.trim());
+      const token = await yumerJwtService.generateLocalJWT(jwtSecret.trim(), instanceName.trim());
       setGeneratedJWT(token);
       
       addLog('success', 'JWT gerado com sucesso', {

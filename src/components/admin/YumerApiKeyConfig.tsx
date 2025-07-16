@@ -90,7 +90,7 @@ export const YumerApiKeyConfig: React.FC = () => {
     setShowJwtSecret(!showJwtSecret);
   };
 
-  const handleGenerateJWT = () => {
+  const handleGenerateJWT = async () => {
     if (!jwtSecret.trim()) {
       toast.error('Por favor, insira a JWT Secret');
       return;
@@ -104,7 +104,7 @@ export const YumerApiKeyConfig: React.FC = () => {
     setJwtLoading(true);
     
     try {
-      const token = yumerJwtService.generateLocalJWT(jwtSecret.trim(), instanceName.trim());
+      const token = await yumerJwtService.generateLocalJWT(jwtSecret.trim(), instanceName.trim());
       setGeneratedJWT(token);
       
       toast.success('JWT gerado com sucesso!', {

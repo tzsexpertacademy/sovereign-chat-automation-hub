@@ -43,7 +43,7 @@ class YumerNativeWebSocketService {
 
       // Gerar JWT para autenticação (local - sem endpoint)
       const jwtSecret = 'sfdgs8152g5s1s5'; // Secret hardcoded conforme backend
-      const jwt = yumerJwtService.generateLocalJWT(jwtSecret, this.connectionOptions.instanceName);
+      const jwt = await yumerJwtService.generateLocalJWT(jwtSecret, this.connectionOptions.instanceName);
       
       // Construir URL com parâmetros obrigatórios
       const url = new URL('/ws/events', SOCKET_URL);
