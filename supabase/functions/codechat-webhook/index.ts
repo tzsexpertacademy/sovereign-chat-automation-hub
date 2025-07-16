@@ -102,7 +102,7 @@ serve(async (req) => {
           .update({
             qr_code: qrCode,
             has_qr_code: true,
-            qr_expires_at: new Date(Date.now() + 2 * 60 * 1000), // 2 minutos
+            qr_expires_at: new Date(Date.now() + 5 * 60 * 1000), // 5 minutos
             status: 'qr_ready',
             updated_at: new Date().toISOString()
           })
@@ -117,12 +117,59 @@ serve(async (req) => {
         console.error('❌ [WEBHOOK] Erro de banco:', dbError);
       }
 
-      console.log(`🎉 [WEBHOOK] Webhook processado com sucesso`);
+      console.log(`🎉 [WEBHOOK] Webhook QR Code processado com sucesso`);
 
       return new Response(
         JSON.stringify({ 
           success: true, 
           message: 'QR Code webhook processed',
+          instanceName,
+          timestamp: new Date().toISOString()
+        }), 
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Verificar webhooks de conexão 
+    if (webhookData.event === 'connection.update') {
+      console.log('📡 [WEBHOOK] Connection update webhook detectado');
+      
+      const instanceName = webhookData.instance?.name;
+      const connectionData = webhookData.data;
+      
+      console.log(`📊 [WEBHOOK] Connection update para ${instanceName}:`, connectionData);
+      
+      // Salvar atualização de status no banco
+      try {
+        let status = 'disconnected';
+        if (connectionData?.state === 'open') {
+          status = 'connected';
+        } else if (connectionData?.state === 'connecting') {
+          status = 'connecting';
+        } else if (connectionData?.state === 'close') {
+          status = 'disconnected';
+        }
+        
+        await supabase
+          .from('whatsapp_instances')
+          .update({
+            status: status,
+            updated_at: new Date().toISOString()
+          })
+          .eq('instance_id', instanceName);
+          
+        console.log(`💾 [WEBHOOK] Status atualizado para ${instanceName}: ${status}`);
+      } catch (dbError) {
+        console.error('❌ [WEBHOOK] Erro ao atualizar status:', dbError);
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Connection webhook processed',
           instanceName,
           timestamp: new Date().toISOString()
         }), 

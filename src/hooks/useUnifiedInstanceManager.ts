@@ -391,11 +391,57 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         try {
           // ============ VERIFICAR STATUS DA INSTÂNCIA PRIMEIRO ============
           const statusData = await codechatQRService.getInstanceStatus(instanceId);
-          console.log(`📊 [UNIFIED-POLL] Status atual: ${statusData.state}`);
+          const instanceDetails = await codechatQRService.getInstanceDetails(instanceId);
           
-          // Se instância está OFFLINE, parar polling e mostrar erro
-          if (statusData.state === 'close' || statusData.state === 'offline') {
-            console.error(`❌ [UNIFIED-POLL] Instância está OFFLINE - parando polling`);
+          console.log(`📊 [UNIFIED-POLL] Status: ${statusData.state}, ConnectionStatus: ${instanceDetails.connectionStatus}`);
+          
+          // ============ DETECTAR INSTÂNCIA TRAVADA EM "CONNECTING" ============
+          if (statusData.state === 'connecting' && instanceDetails.connectionStatus === 'OFFLINE' && attempts > 5) {
+            console.warn(`🚨 [UNIFIED-POLL] Instância travada em connecting/offline - forçando reconfiguração`);
+            
+            try {
+              // Tentar desconectar e reconectar
+              console.log(`🔄 [UNIFIED-POLL] Tentando desconectar instância travada...`);
+              await codechatQRService.disconnectInstance(instanceId);
+              
+              // Aguardar 2 segundos
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              
+              // Reconectar
+              console.log(`🔄 [UNIFIED-POLL] Reconectando instância...`);
+              const reconnectResponse = await codechatQRService.connectInstance(instanceId);
+              
+              if (reconnectResponse.qrCode) {
+                console.log(`🎉 [UNIFIED-POLL] QR Code obtido na reconexão!`);
+                clearInterval(hybridPollingInterval);
+                
+                setInstances(prev => ({
+                  ...prev,
+                  [instanceId]: {
+                    ...prev[instanceId],
+                    status: 'qr_ready',
+                    qrCode: reconnectResponse.qrCode,
+                    hasQrCode: true,
+                    lastUpdated: Date.now()
+                  }
+                }));
+                
+                toast({
+                  title: "📱 QR Code Pronto!",
+                  description: "Obtido após reconexão",
+                });
+                
+                startPollingForInstance(instanceId);
+                return;
+              }
+            } catch (reconnectError) {
+              console.error(`❌ [UNIFIED-POLL] Erro na reconexão:`, reconnectError);
+            }
+          }
+          
+          // Se instância está OFFLINE definitivamente, parar polling e mostrar erro
+          if (statusData.state === 'close' || (statusData.state === 'connecting' && instanceDetails.connectionStatus === 'OFFLINE' && attempts > 10)) {
+            console.error(`❌ [UNIFIED-POLL] Instância em estado irrecuperável - parando polling`);
             clearInterval(hybridPollingInterval);
             
             setInstances(prev => ({
@@ -408,8 +454,8 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             }));
             
             toast({
-              title: "❌ Instância Desconectada",
-              description: "A instância está offline. Tente reconectar.",
+              title: "❌ Falha na Conexão",
+              description: "Instância não conseguiu gerar QR Code. Tente criar uma nova instância.",
               variant: "destructive",
             });
             return;
@@ -515,7 +561,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       
       toast({
         title: "⏳ Sistema Híbrido Ativo",
-        description: "Aguardando QR Code via webhook + polling otimizado...",
+        description: "Aguardando QR Code (webhook + polling)",
       });
       
     } catch (error: any) {

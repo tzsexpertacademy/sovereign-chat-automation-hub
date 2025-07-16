@@ -65,6 +65,8 @@ class CodeChatQRService {
           if (existingWebhook.url === webhookUrl && existingWebhook.enabled) {
             console.log(`🎉 [CODECHAT] Webhook correto já configurado - pulando configuração`);
             return { success: true };
+          } else {
+            console.log(`🔄 [CODECHAT] Webhook existe mas URL/estado incorreto - reconfigurando`);
           }
         } else {
           console.log(`📋 [CODECHAT] Webhook não existe - será criado`);
@@ -77,13 +79,17 @@ class CodeChatQRService {
       const webhookUrl = "https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook";
       
       console.log(`🔧 [CODECHAT] Configurando novo webhook...`);
+      console.log(`📡 [CODECHAT] URL do webhook: ${webhookUrl}`);
+      console.log(`📋 [CODECHAT] Eventos: qrcodeUpdate=true, enabled=true`);
+      
       const response = await fetch(`${this.getApiBaseUrl()}/webhook/set/${instanceName}`, {
         method: 'PUT',
         headers: await this.getAuthHeaders(instanceName),
         body: JSON.stringify({
           url: webhookUrl,
           qrcodeUpdate: true,
-          enabled: true
+          enabled: true,
+          events: ['qrcode.updated', 'connection.update'] // Eventos específicos
         })
       });
 
@@ -103,7 +109,8 @@ class CodeChatQRService {
         };
       }
 
-      console.log(`✅ [CODECHAT] Webhook configurado:`, data);
+      console.log(`✅ [CODECHAT] Webhook configurado com sucesso:`, data);
+      console.log(`🎯 [CODECHAT] Webhook será chamado quando QR Code for gerado`);
       return { success: true };
       
     } catch (error: any) {
