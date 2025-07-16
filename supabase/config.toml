@@ -1,1 +1,4 @@
 project_id = "ymygyagbvbsdfkduxmgu"
+
+[functions.codechat-webhook]
+verify_jwt = false

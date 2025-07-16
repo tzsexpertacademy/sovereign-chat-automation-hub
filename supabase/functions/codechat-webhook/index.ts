@@ -1,4 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
+
+// Initialize Supabase client
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -89,13 +95,28 @@ serve(async (req) => {
       console.log(`✅ [WEBHOOK] QR Code recebido para instância: ${instanceName}`);
       console.log(`📊 [WEBHOOK] QR Code tamanho: ${qrCode.length} caracteres`);
 
-      // Aqui você pode processar o QR Code:
-      // 1. Salvar no banco de dados
-      // 2. Enviar para WebSocket
-      // 3. Notificar via Server-Sent Events
-      // 4. Armazenar em cache (Redis, etc.)
+      // Salvar QR Code no banco de dados
+      try {
+        const { data, error } = await supabase
+          .from('whatsapp_instances')
+          .update({
+            qr_code: qrCode,
+            has_qr_code: true,
+            qr_expires_at: new Date(Date.now() + 2 * 60 * 1000), // 2 minutos
+            status: 'qr_ready',
+            updated_at: new Date().toISOString()
+          })
+          .eq('instance_id', instanceName);
 
-      // Por enquanto, apenas loggar sucesso
+        if (error) {
+          console.error('❌ [WEBHOOK] Erro ao salvar QR Code:', error);
+        } else {
+          console.log(`💾 [WEBHOOK] QR Code salvo no banco para instância: ${instanceName}`);
+        }
+      } catch (dbError) {
+        console.error('❌ [WEBHOOK] Erro de banco:', dbError);
+      }
+
       console.log(`🎉 [WEBHOOK] Webhook processado com sucesso`);
 
       return new Response(
