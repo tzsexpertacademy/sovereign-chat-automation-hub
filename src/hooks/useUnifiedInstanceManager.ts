@@ -55,15 +55,32 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     },
     onInstanceUpdate: (instanceId, status) => {
       console.log(`📊 [UNIFIED-SYNC] Status atualizado via sync: ${instanceId} → ${status}`);
-      setInstances(prev => ({
-        ...prev,
-        [instanceId]: {
-          ...prev[instanceId],
-          instanceId,
-          status,
-          lastUpdated: Date.now()
+      setInstances(prev => {
+        const current = prev[instanceId];
+        
+        // Se já temos QR code válido e o status é disconnected, manter qr_ready
+        if (current?.hasQrCode && current?.qrCode && status === 'disconnected') {
+          console.log(`🔒 [UNIFIED-SYNC] Preservando QR code válido para ${instanceId}`);
+          return {
+            ...prev,
+            [instanceId]: {
+              ...current,
+              status: 'qr_ready', // Manter como qr_ready quando tem QR válido
+              lastUpdated: Date.now()
+            }
+          };
         }
-      }));
+        
+        return {
+          ...prev,
+          [instanceId]: {
+            ...current,
+            instanceId,
+            status,
+            lastUpdated: Date.now()
+          }
+        };
+      });
     },
     enabled: true
   });
