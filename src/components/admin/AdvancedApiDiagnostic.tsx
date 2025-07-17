@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { SERVER_URL, getYumerGlobalApiKey } from "@/config/environment";
 import { useToast } from "@/hooks/use-toast";
+import InstanceStatusChecker from "./InstanceStatusChecker";
 
 interface TestResult {
   status: 'idle' | 'testing' | 'success' | 'error' | 'warning';
@@ -208,6 +209,8 @@ const AdvancedApiDiagnostic = () => {
       // Para testes individuais, buscar uma instância existente primeiro
       if (endpoint.requiresInstance && instanceName === 'test_single') {
         try {
+          console.log(`🔍 [API-TEST] Buscando instâncias existentes...`);
+          
           // Buscar instâncias existentes primeiro
           const instancesResponse = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
             headers: { 'apikey': apiKey || '', 'Content-Type': 'application/json' }
@@ -215,13 +218,40 @@ const AdvancedApiDiagnostic = () => {
           
           if (instancesResponse.ok) {
             const instances = await instancesResponse.json();
+            console.log(`📊 [API-TEST] Resposta fetchInstances:`, instances);
+            
+            // Verificar se temos instâncias
             if (Array.isArray(instances) && instances.length > 0) {
-              instanceName = instances[0].name || instances[0].instanceName;
+              // Tentar diferentes campos para o nome da instância
+              const firstInstance = instances[0];
+              instanceName = firstInstance.name || firstInstance.instanceName || firstInstance.id?.toString();
               console.log(`🎯 [API-TEST] Usando instância existente: ${instanceName}`);
+            } else if (instances && typeof instances === 'object') {
+              // Se não for array, pode ser objeto único
+              instanceName = instances.name || instances.instanceName || instances.id?.toString();
+              console.log(`🎯 [API-TEST] Usando instância única: ${instanceName}`);
+            } else {
+              console.log(`⚠️ [API-TEST] Nenhuma instância encontrada:`, instances);
+              // Se não há instâncias, vamos falhar com mensagem clara
+              return {
+                status: 'warning',
+                message: 'Nenhuma instância disponível - crie uma instância primeiro',
+                details: { 
+                  fetchInstancesResponse: instances,
+                  suggestion: 'Use o endpoint "Create Instance" para criar uma instância primeiro'
+                },
+                duration: Date.now() - startTime,
+                endpoint: endpoint.url,
+                method: endpoint.method
+              };
             }
+          } else {
+            console.warn(`⚠️ [API-TEST] Erro ao buscar instâncias: ${instancesResponse.status}`);
+            instanceName = 'test_single'; // Fallback para nome original
           }
         } catch (error) {
           console.warn(`⚠️ [API-TEST] Erro ao buscar instâncias existentes:`, error);
+          instanceName = 'test_single'; // Fallback para nome original
         }
       }
       
@@ -372,20 +402,34 @@ const AdvancedApiDiagnostic = () => {
   const testCategory = async (category: string) => {
     const categoryEndpoints = endpoints.filter(e => e.category === category);
     
-    // Para categoria de instâncias, primeiro buscar instâncias existentes
+    // Para categoria de instâncias, primeiro verificar se há instâncias disponíveis
     let existingInstanceName = 'test_category_instance';
+    let hasInstances = false;
     
     if (category === 'instance') {
       try {
+        console.log(`🔍 [CATEGORY-TEST] Verificando instâncias disponíveis...`);
+        
         const response = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
           headers: { 'apikey': apiKey || '', 'Content-Type': 'application/json' }
         });
         
         if (response.ok) {
           const instances = await response.json();
+          console.log(`📊 [CATEGORY-TEST] Resposta fetchInstances:`, instances);
+          
           if (Array.isArray(instances) && instances.length > 0) {
-            existingInstanceName = instances[0].name || instances[0].instanceName;
+            const firstInstance = instances[0];
+            existingInstanceName = firstInstance.name || firstInstance.instanceName || firstInstance.id?.toString();
+            hasInstances = true;
             console.log(`🎯 [CATEGORY-TEST] Usando instância existente: ${existingInstanceName}`);
+          } else if (instances && typeof instances === 'object' && (instances.name || instances.instanceName)) {
+            existingInstanceName = instances.name || instances.instanceName || instances.id?.toString();
+            hasInstances = true;
+            console.log(`🎯 [CATEGORY-TEST] Usando instância única: ${existingInstanceName}`);
+          } else {
+            console.log(`⚠️ [CATEGORY-TEST] Nenhuma instância encontrada`);
+            hasInstances = false;
           }
         }
       } catch (error) {
@@ -395,7 +439,22 @@ const AdvancedApiDiagnostic = () => {
     
     for (const endpoint of categoryEndpoints) {
       if (endpoint.requiresInstance) {
-        await executeTest(endpoint, existingInstanceName);
+        if (hasInstances || category !== 'instance') {
+          await executeTest(endpoint, existingInstanceName);
+        } else {
+          // Se não há instâncias, marcar como warning em vez de tentar testar
+          const testKey = `${endpoint.category}-${endpoint.name}`;
+          setTestResults(prev => ({
+            ...prev,
+            [testKey]: {
+              status: 'warning',
+              message: 'Nenhuma instância disponível - crie uma instância primeiro',
+              details: { suggestion: 'Use "Create Instance" antes de testar outros endpoints' },
+              endpoint: endpoint.url,
+              method: endpoint.method
+            }
+          }));
+        }
       } else {
         await executeTest(endpoint);
       }
@@ -515,7 +574,9 @@ const AdvancedApiDiagnostic = () => {
           )}
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <InstanceStatusChecker />
+          
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="p-3 border rounded">
               <p className="text-sm font-medium">Servidor YUMER</p>
               <p className="text-xs text-muted-foreground">{SERVER_URL}</p>
