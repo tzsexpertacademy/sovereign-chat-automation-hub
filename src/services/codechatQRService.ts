@@ -98,6 +98,36 @@ class CodeChatQRService {
     }
   }
 
+  // ============ SALVAR QR CODE NO BANCO ============
+  private async saveQRCodeToDatabase(instanceName: string, qrCode: string): Promise<void> {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      // Definir expiração em 60 segundos
+      const expiresAt = new Date();
+      expiresAt.setSeconds(expiresAt.getSeconds() + 60);
+      
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .update({ 
+          qr_code: qrCode,
+          has_qr_code: true,
+          qr_expires_at: expiresAt.toISOString(),
+          status: 'qr_ready',
+          updated_at: new Date().toISOString()
+        })
+        .eq('instance_id', instanceName);
+
+      if (error) {
+        console.error(`❌ [CODECHAT-QR] Erro ao salvar QR no banco:`, error);
+      } else {
+        console.log(`✅ [CODECHAT-QR] QR Code salvo no banco para ${instanceName}`);
+      }
+    } catch (error) {
+      console.error(`❌ [CODECHAT-QR] Erro ao salvar QR:`, error);
+    }
+  }
+
   // ============ REMOVER: MÉTODO QUE USA ROTA INEXISTENTE ============
   // O endpoint /api/v2/instance/find/ não existe no YUMER
   // Usando fetchInstance para obter instanceId quando necessário
@@ -544,6 +574,10 @@ class CodeChatQRService {
         
         if (qrCode) {
           console.log(`✅ [CODECHAT-API] QR obtido via endpoint QR JSON`);
+          
+          // 🔑 SALVAR QR CODE NO BANCO IMEDIATAMENTE
+          await this.saveQRCodeToDatabase(instanceName, qrCode);
+          
           return {
             success: true,
             qrCode: qrCode,
@@ -558,9 +592,14 @@ class CodeChatQRService {
         
         if (text && (text.startsWith('data:image') || text.length > 100)) {
           console.log(`✅ [CODECHAT-API] QR obtido via endpoint QR texto`);
+          const finalQrCode = text.startsWith('data:image') ? text : `data:image/png;base64,${text}`;
+          
+          // 🔑 SALVAR QR CODE NO BANCO IMEDIATAMENTE
+          await this.saveQRCodeToDatabase(instanceName, finalQrCode);
+          
           return {
             success: true,
-            qrCode: text.startsWith('data:image') ? text : `data:image/png;base64,${text}`,
+            qrCode: finalQrCode,
             status: 'qr_ready',
             instanceName
           };
