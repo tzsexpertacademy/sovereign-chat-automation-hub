@@ -831,11 +831,11 @@ class CodeChatQRService {
   }
 
   private async connectQRWebSocket(instanceName: string): Promise<QRCodeResponse> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       console.log(`🔌 [CODECHAT-WS] Iniciando WebSocket para QR: ${instanceName}`);
 
-      // Busca o token da instância
-      const token = this.getInstanceAuthToken(instanceName);
+      // Busca o token da instância (await para resolver a Promise)
+      const token = await this.getInstanceAuthToken(instanceName);
       if (!token) {
         console.warn(`⚠️ [CODECHAT-WS] Token não encontrado para ${instanceName}`);
         return reject(new Error('Token not found for WebSocket connection'));
