@@ -203,29 +203,54 @@ const InstanceStatusChecker = () => {
     }
   };
 
-  // Limpeza força bruta - Remove tudo do Supabase
+  // Limpeza força bruta - Remove tudo da API YUMER E Supabase
   const forceCleanupAll = async () => {
     setLoading(true);
     setError('');
     
     try {
-      console.log(`💀 [FORCE-CLEANUP] Iniciando limpeza força bruta...`);
+      console.log(`💀 [FORCE-CLEANUP] Iniciando extermínio total...`);
       
-      const result = await cleanupInstancesService.forceCleanupAll();
-      
-      console.log(`💀 [FORCE-CLEANUP] Resultado:`, result);
-      
-      // Recarregar lista após limpeza
-      await fetchInstances();
-      
-      // Mostrar resultado
-      if (result.success) {
-        console.log(`✅ [FORCE-CLEANUP] ${result.message}`);
+      // 1. Deletar TODAS as instâncias da API YUMER primeiro
+      let deletedFromAPI = 0;
+      for (const instance of instances) {
+        try {
+          const instanceName = instance.name || instance.instanceName;
+          console.log(`💀 [API-DELETE] Deletando: ${instanceName}`);
+          
+          const response = await fetch(`${SERVER_URL}/instance/delete/${instanceName}`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': apiKey || '',
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            deletedFromAPI++;
+            console.log(`✅ [API-DELETE] Sucesso: ${instanceName}`);
+          } else {
+            console.warn(`⚠️ [API-DELETE] Falhou: ${instanceName} (${response.status})`);
+          }
+        } catch (error) {
+          console.error(`❌ [API-DELETE] Erro:`, error);
+        }
       }
       
+      // 2. Deletar TUDO do Supabase também
+      const supabaseResult = await cleanupInstancesService.forceCleanupAll();
+      
+      console.log(`💀 [EXTERMÍNIO] API YUMER: ${deletedFromAPI} deletadas`);
+      console.log(`💀 [EXTERMÍNIO] Supabase: ${supabaseResult.deletedCount} deletadas`);
+      
+      // 3. Recarregar lista
+      await fetchInstances();
+      
+      console.log(`✅ [EXTERMÍNIO] Completo! Total processado: ${deletedFromAPI + (supabaseResult.deletedCount || 0)}`);
+      
     } catch (error: any) {
-      console.error('❌ [FORCE-CLEANUP] Erro:', error);
-      setError(`Erro na limpeza força bruta: ${error.message}`);
+      console.error('❌ [EXTERMÍNIO] Erro geral:', error);
+      setError(`Erro no extermínio: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -243,6 +268,7 @@ const InstanceStatusChecker = () => {
       console.log(`   ID: ${instance.id} (tipo: ${typeof instance.id})`);
       console.log(`   Status: ${instance.connectionStatus}`);
       console.log(`   WhatsApp: ${instance.ownerJid ? 'Conectado' : 'Desconectado'}`);
+      console.log(`   Fonte: API YUMER (não Supabase)`);
     });
   };
 
@@ -392,10 +418,10 @@ const InstanceStatusChecker = () => {
                   variant="destructive" 
                   size="sm"
                   disabled={loading}
-                  className="bg-red-600 hover:bg-red-700 border-red-600"
+                  className="bg-red-800 hover:bg-red-900 border-red-800"
                 >
                   <Trash2 className="w-3 h-3 mr-1" />
-                  💀 FORÇA BRUTA
+                  💀 EXTERMÍNIO TOTAL
                 </Button>
 
                 <Button 
