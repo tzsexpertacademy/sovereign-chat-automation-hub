@@ -9,6 +9,7 @@ import ClientsManagement from "@/components/admin/ClientsManagement";
 import InstancesMonitor from "@/components/admin/InstancesMonitor";
 import SystemLogsImproved from "@/components/admin/SystemLogsImproved";
 import WebSocketStatusDebugSimplified from "@/components/admin/WebSocketStatusDebugSimplified";
+import ConnectionDiagnostics from "@/components/admin/ConnectionDiagnostics";
 const AdminDashboard = () => {
   return (
     <SidebarProvider>
@@ -22,6 +23,7 @@ const AdminDashboard = () => {
               <Route path="overview" element={<AdminOverview />} />
               <Route path="clients" element={<ClientsManagement />} />
               <Route path="instances" element={<InstancesMonitor />} />
+              <Route path="diagnostics" element={<ConnectionDiagnostics />} />
               <Route path="logs" element={<SystemLogsImproved />} />
               <Route path="websocket" element={<WebSocketStatusDebugSimplified />} />
             </Routes>
