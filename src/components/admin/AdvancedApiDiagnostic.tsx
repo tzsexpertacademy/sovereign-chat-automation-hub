@@ -374,13 +374,12 @@ const AdvancedApiDiagnostic = () => {
       const instanceEndpoints = endpoints.filter(e => e.category === 'instance');
       const connectionEndpoints = endpoints.filter(e => e.category === 'connection');
       
-      // Ordem específica para instâncias (criar primeiro, deletar por último)
+      // Ordem específica para instâncias (criar primeiro, deletar por ÚLTIMO)
       const orderedInstanceEndpoints = [
         'Create Instance',
         'Fetch All Instances',
         'Fetch Single Instance',
-        'Update Instance',
-        'Delete Instance'
+        'Update Instance'
       ].map(name => instanceEndpoints.find(e => e.name === name)).filter(Boolean);
       
       // Ordem específica para conexão 
@@ -391,11 +390,15 @@ const AdvancedApiDiagnostic = () => {
         'Logout Instance'
       ].map(name => connectionEndpoints.find(e => e.name === name)).filter(Boolean);
       
-      // Sequência completa: Básicos → Instâncias → Conexão
+      // Delete Instance deve ser o ÚLTIMO de todos
+      const deleteEndpoint = instanceEndpoints.find(e => e.name === 'Delete Instance');
+      
+      // Sequência completa: Básicos → Instâncias → Conexão → Delete
       const allEndpoints = [
         ...basicEndpoints,
         ...orderedInstanceEndpoints,
-        ...orderedConnectionEndpoints
+        ...orderedConnectionEndpoints,
+        ...(deleteEndpoint ? [deleteEndpoint] : [])
       ];
       
       console.log(`🔄 [SEQUENTIAL] Iniciando teste sequencial com ${allEndpoints.length} endpoints`);
