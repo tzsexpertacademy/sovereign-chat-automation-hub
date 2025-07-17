@@ -203,6 +203,34 @@ const InstanceStatusChecker = () => {
     }
   };
 
+  // Limpeza força bruta - Remove tudo do Supabase
+  const forceCleanupAll = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      console.log(`💀 [FORCE-CLEANUP] Iniciando limpeza força bruta...`);
+      
+      const result = await cleanupInstancesService.forceCleanupAll();
+      
+      console.log(`💀 [FORCE-CLEANUP] Resultado:`, result);
+      
+      // Recarregar lista após limpeza
+      await fetchInstances();
+      
+      // Mostrar resultado
+      if (result.success) {
+        console.log(`✅ [FORCE-CLEANUP] ${result.message}`);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ [FORCE-CLEANUP] Erro:', error);
+      setError(`Erro na limpeza força bruta: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchInstances();
   }, []);
@@ -343,6 +371,19 @@ const InstanceStatusChecker = () => {
                   <Shield className="w-3 h-3 mr-1" />
                   Excluir TODAS ({cleanupStats.total})
                 </Button>
+                
+                {cleanupStats.total > 0 && (
+                  <Button 
+                    onClick={forceCleanupAll} 
+                    variant="destructive" 
+                    size="sm"
+                    disabled={loading}
+                    className="bg-red-600 hover:bg-red-700 border-red-600"
+                  >
+                    <Trash2 className="w-3 h-3 mr-1" />
+                    💀 FORÇA BRUTA
+                  </Button>
+                )}
               </div>
             )}
           </div>

@@ -170,6 +170,35 @@ export const cleanupInstancesService = {
       console.error(`❌ [SUPABASE-CLEANUP] Erro ao obter estatísticas:`, error);
       return { total: 0, test: 0, offline: 0 };
     }
+  },
+
+  // Limpeza FORÇA BRUTA - Remove TUDO do Supabase
+  async forceCleanupAll() {
+    try {
+      console.log(`💀 [FORCE-CLEANUP] Iniciando limpeza força bruta...`);
+      
+      // Deletar TODAS as instâncias do Supabase sem exceção
+      const { error, count } = await supabase
+        .from('whatsapp_instances')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all (usando condição que sempre é verdadeira)
+
+      if (error) {
+        throw error;
+      }
+
+      console.log(`💀 [FORCE-CLEANUP] TODAS as instâncias removidas do Supabase. Total: ${count}`);
+      
+      return { 
+        success: true, 
+        deletedCount: count,
+        message: `Limpeza força bruta concluída. ${count} registros removidos do Supabase.`
+      };
+
+    } catch (error) {
+      console.error(`❌ [FORCE-CLEANUP] Erro na limpeza força bruta:`, error);
+      throw error;
+    }
   }
 };
 
