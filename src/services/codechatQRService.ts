@@ -185,10 +185,10 @@ class CodeChatQRService {
     }
   }
 
-  // ============ CODECHAT API v1.3.3 - CONECTAR INSTÂNCIA E GERAR QR (CORRIGIDO) ============
+  // ============ CODECHAT API v1.3.3 - CONECTAR INSTÂNCIA COM RETRY MELHORADO ============
   async connectInstance(instanceName: string): Promise<QRCodeResponse> {
     try {
-      console.log(`🚀 [CODECHAT-API] Conectando via /instance/connect/${instanceName}`);
+      console.log(`🚀 [CODECHAT-API] Conectando com retry melhorado: ${instanceName}`);
       
       // ============ ETAPA 1: VERIFICAR STATUS ATUAL ============
       try {
@@ -209,6 +209,10 @@ class CodeChatQRService {
       } catch (statusError) {
         console.log(`⚠️ [CODECHAT-API] Erro ao verificar status atual (continuando):`, statusError);
       }
+
+      // ============ ETAPA 1.5: AGUARDAR INSTÂNCIA PROCESSAR ANTES DE CONECTAR ============
+      console.log(`⏳ [CODECHAT-API] Aguardando 2 segundos antes de conectar...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // ============ ETAPA 2: EXECUTAR CONEXÃO E AGUARDAR QR CODE ============
       const url = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;

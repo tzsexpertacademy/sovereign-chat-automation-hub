@@ -5,6 +5,7 @@ import { webhookQRService } from '@/services/webhookQRService';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useInstanceSync } from '@/hooks/useInstanceSync';
+import { useRetryWithBackoff } from '@/hooks/useRetryWithBackoff';
 
 interface InstanceStatus {
   instanceId: string;
@@ -33,6 +34,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
   const [instances, setInstances] = useState<Record<string, InstanceStatus>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
+  const { retryWithBackoff } = useRetryWithBackoff();
 
   // ============ SYNC REALTIME DO BANCO ============
   const { manualSync } = useInstanceSync({
@@ -246,11 +248,11 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, [toast, stopPollingForInstance, checkDatabaseForQRCode]);
 
-  // ============ CONECTAR INSTÂNCIA - FLUXO CORRIGIDO: CHECK → CREATE/SKIP → CONNECT → QR → POLLING ============
+  // ============ CONECTAR INSTÂNCIA - FLUXO CORRIGIDO COM DELAYS ============
   const connectInstance = useCallback(async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
-      console.log(`🚀 [UNIFIED] INICIANDO CONEXÃO CORRETA: ${instanceId}`);
+      console.log(`🚀 [UNIFIED] INICIANDO CONEXÃO MELHORADA: ${instanceId}`);
       
       // Status inicial
       setInstances(prev => ({
@@ -264,23 +266,34 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       }));
 
       // ============ ETAPA 0: VERIFICAR SE INSTÂNCIA JÁ EXISTE ============
-      console.log(`🔍 [UNIFIED] Etapa 0/4: Verificando se instância existe`);
+      console.log(`🔍 [UNIFIED] Etapa 0/6: Verificando se instância existe`);
       
-      const existsCheck = await codechatQRService.checkInstanceExists(instanceId);
+      let instanceExists = false;
+      let isConnected = false;
       
-      if (existsCheck.exists) {
-        console.log(`✅ [UNIFIED] Instância já existe - pulando criação`);
+      try {
+        const existsCheck = await codechatQRService.checkInstanceExists(instanceId);
+        instanceExists = existsCheck.exists;
+        isConnected = existsCheck.status === 'open';
         
-        // Se já existe e está conectada, não precisamos fazer nada
-        if (existsCheck.status === 'open') {
-          console.log(`🎉 [UNIFIED] Instância já está conectada!`);
+        if (instanceExists && isConnected) {
+          console.log(`🎉 [UNIFIED] Instância já conectada!`);
           await refreshStatus(instanceId);
           return;
         }
-      } else {
+        
+        if (instanceExists) {
+          console.log(`✅ [UNIFIED] Instância já existe - pulando criação`);
+        }
+      } catch (error) {
+        console.log(`⚠️ [UNIFIED] Erro ao verificar existência (assumindo que não existe):`, error);
+        instanceExists = false;
+      }
+
+      // ============ ETAPA 1: CRIAR INSTÂNCIA (SE NÃO EXISTIR) ============
+      if (!instanceExists) {
         console.log(`📝 [UNIFIED] Instância não existe - criando...`);
         
-        // ============ ETAPA 1: CRIAR INSTÂNCIA (SE NÃO EXISTIR) ============
         setInstances(prev => ({
           ...prev,
           [instanceId]: {
@@ -297,16 +310,29 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
         
         console.log(`✅ [UNIFIED] Instância ${createResponse.success && createResponse.status === 'created' ? 'criada' : 'verificada'}`);
+        
+        // ============ DELAY PÓS-CRIAÇÃO (CRÍTICO) ============
+        console.log(`⏳ [UNIFIED] Aguardando 5 segundos para instância processar...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
 
-      // ============ ETAPA 1.5: CONFIGURAR WEBHOOK ============
-      console.log(`🔧 [UNIFIED] Etapa 1.5/5: Configurando webhook automático`);
+      // ============ ETAPA 1.5: CONFIGURAR WEBHOOK COM RETRY ============
+      console.log(`🔧 [UNIFIED] Etapa 1.5/6: Configurando webhook com retry`);
       
-      const webhookResult = await codechatQRService.configureWebhook(instanceId);
-      if (webhookResult.success) {
-        console.log(`✅ [UNIFIED] Webhook configurado com sucesso`);
-      } else {
-        console.warn(`⚠️ [UNIFIED] Falha no webhook (continuando):`, webhookResult.error);
+      try {
+        const webhookResult = await retryWithBackoff(
+          () => codechatQRService.configureWebhook(instanceId),
+          { maxAttempts: 3, initialDelay: 1000, maxDelay: 5000, backoffMultiplier: 2 },
+          `Configurar webhook ${instanceId}`
+        );
+        
+        if (webhookResult.success) {
+          console.log(`✅ [UNIFIED] Webhook configurado com sucesso`);
+        } else {
+          console.warn(`⚠️ [UNIFIED] Webhook falhou mas continuando:`, webhookResult.error);
+        }
+      } catch (webhookError) {
+        console.warn(`⚠️ [UNIFIED] Webhook configuração falhou completamente (continuando):`, webhookError);
       }
 
       // ============ ETAPA 2: CONECTAR E GERAR QR CODE ============
@@ -376,8 +402,8 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         return;
       }
       
-      // ============ ETAPA 4: AGUARDAR WEBHOOK ============
-      console.log(`📡 [UNIFIED] Etapa 4/5: Aguardando QR Code via webhook...`);
+      // ============ ETAPA 4: AGUARDAR QR CODE ============
+      console.log(`📡 [UNIFIED] Etapa 4/6: Aguardando QR Code via múltiplos canais...`);
       
       setInstances(prev => ({
         ...prev,
@@ -389,8 +415,27 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
       
-      // ============ ETAPA 5: POLLING HÍBRIDO OTIMIZADO (BANCO + FALLBACK) ============
-      console.log(`🔄 [UNIFIED] Etapa 5/5: Iniciando polling híbrido otimizado`);
+      // ============ ETAPA 5: POLLING HÍBRIDO MELHORADO ============
+      console.log(`🔄 [UNIFIED] Etapa 5/6: Iniciando polling híbrido melhorado`);
+      
+      // ============ ETAPA 6: IMPLEMENTAR FALLBACK MANUAL ============
+      setTimeout(() => {
+        console.log(`🔧 [UNIFIED] Ativando fallback manual após 15 segundos`);
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            status: 'manual_fallback_available',
+            lastUpdated: Date.now()
+          }
+        }));
+        
+        toast({
+          title: "🔧 Fallback Manual Disponível",
+          description: "Clique em 'Fallback Manual' se o QR não aparecer",
+          duration: 10000,
+        });
+      }, 15000);
       
       // Configuração de polling otimizada
       let attempts = 0;

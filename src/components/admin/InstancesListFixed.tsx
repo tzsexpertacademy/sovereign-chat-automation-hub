@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { QRCodeManualFallback } from '@/components/admin/QRCodeManualFallback';
 import { 
   Play, 
   Pause, 
@@ -246,14 +247,26 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                       </div>
                   )}
 
-                  {/* Connected Info */}
-                  {instance.status === 'connected' && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded">
-                      <p className="text-sm text-green-800">
-                        ✅ WhatsApp conectado via REST e funcionando
-                      </p>
-                    </div>
-                  )}
+                   {/* Connected Info */}
+                   {instance.status === 'connected' && (
+                     <div className="p-3 bg-green-50 border border-green-200 rounded">
+                       <p className="text-sm text-green-800">
+                         ✅ WhatsApp conectado via REST e funcionando
+                       </p>
+                     </div>
+                   )}
+
+                   {/* Manual Fallback */}
+                   {(getInstanceStatus(instance.instance_id).status === 'manual_fallback_available' || 
+                     getInstanceStatus(instance.instance_id).status === 'waiting_qr') && 
+                    selectedInstanceForQR === instance.instance_id && (
+                     <QRCodeManualFallback 
+                       instanceId={instance.instance_id}
+                       onQRCodeFound={(qrCode) => {
+                         console.log('QR Code encontrado via fallback manual:', qrCode);
+                       }}
+                     />
+                   )}
 
                    {/* Action Buttons HTTPS */}
                    <div className="flex space-x-2 pt-2 flex-wrap">
