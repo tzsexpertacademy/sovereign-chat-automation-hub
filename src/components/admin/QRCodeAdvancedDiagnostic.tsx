@@ -438,6 +438,165 @@ const QRCodeAdvancedDiagnostic = () => {
     }
   };
 
+  // Novo: Teste de múltiplas URLs WebSocket
+  const runWebSocketUrlTest = async () => {
+    setIsRunningTest(true);
+    setTestResults({});
+    
+    const testInstanceName = `ws_test_${Date.now()}`;
+    setCurrentInstance(testInstanceName);
+    
+    // URLs alternativas para testar (exatamente como implementei no codechatQRService)
+    const webSocketUrls = [
+      `/events?event=qrcode.updated`,
+      `/websocket?event=qrcode.updated`, 
+      `/socket?event=qrcode.updated`,
+      `/instance/${testInstanceName}/events`,
+      `/?event=qrcode.updated`,
+      `/ws/events?event=qrcode.updated` // Original como fallback
+    ];
+    
+    try {
+      // Primeiro, criar uma instância para ter o token
+      console.log('🔧 Criando instância para teste WebSocket...');
+      const createResult = await executeQRTest(
+        qrEndpoints.find(e => e.name === 'Create Instance')!, 
+        testInstanceName
+      );
+      
+      if (createResult.status === 'error') {
+        toast({
+          title: "Erro",
+          description: "Falha ao criar instância para teste WebSocket",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Aguardar criação
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Agora testar cada URL WebSocket
+      for (let i = 0; i < webSocketUrls.length; i++) {
+        const wsPath = webSocketUrls[i];
+        const testKey = `WebSocket URL ${i + 1}`;
+        
+        console.log(`🌐 Testando WebSocket: wss://yumer.yumerflow.app:8083${wsPath}`);
+        
+        setTestResults(prev => ({
+          ...prev,
+          [testKey]: {
+            status: 'testing',
+            message: `Testando WebSocket: ${wsPath}`,
+            endpoint: wsPath,
+            method: 'WebSocket'
+          }
+        }));
+        
+        try {
+          const wsUrl = `wss://yumer.yumerflow.app:8083${wsPath}&token=test_token`;
+          const result = await testWebSocketConnection(wsUrl, 5000); // 5s timeout
+          
+          setTestResults(prev => ({
+            ...prev,
+            [testKey]: {
+              status: result.success ? 'success' : 'error',
+              message: result.message,
+              details: { url: wsUrl, error: result.error },
+              endpoint: wsPath,
+              method: 'WebSocket'
+            }
+          }));
+          
+        } catch (error: any) {
+          setTestResults(prev => ({
+            ...prev,
+            [testKey]: {
+              status: 'error',
+              message: `Erro WebSocket: ${error.message}`,
+              details: { error: error.message },
+              endpoint: wsPath,
+              method: 'WebSocket'
+            }
+          }));
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      // Limpar instância de teste
+      await executeQRTest(
+        qrEndpoints.find(e => e.name === 'Delete Instance')!, 
+        testInstanceName
+      );
+      
+      toast({
+        title: "Teste WebSocket Concluído",
+        description: `Testadas ${webSocketUrls.length} URLs diferentes. Verifique os resultados.`
+      });
+      
+    } finally {
+      setIsRunningTest(false);
+      setCurrentInstance('');
+    }
+  };
+  
+  // Função auxiliar para testar conexão WebSocket
+  const testWebSocketConnection = (url: string, timeout: number = 5000): Promise<{success: boolean, message: string, error?: string}> => {
+    return new Promise((resolve) => {
+      const ws = new WebSocket(url);
+      let resolved = false;
+      
+      const timeoutId = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          ws.close();
+          resolve({
+            success: false,
+            message: `Timeout após ${timeout}ms`,
+            error: 'Connection timeout'
+          });
+        }
+      }, timeout);
+      
+      ws.onopen = () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeoutId);
+          ws.close();
+          resolve({
+            success: true,
+            message: '✅ Conexão WebSocket estabelecida com sucesso!'
+          });
+        }
+      };
+      
+      ws.onerror = (error) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeoutId);
+          resolve({
+            success: false,
+            message: `❌ Erro na conexão WebSocket`,
+            error: 'Connection failed'
+          });
+        }
+      };
+      
+      ws.onclose = (event) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeoutId);
+          resolve({
+            success: false,
+            message: `❌ WebSocket fechou: ${event.code} - ${event.reason || 'Sem motivo específico'}`,
+            error: `Close code: ${event.code}`
+          });
+        }
+      };
+    });
+  };
+
   // Teste com instância manual
   const testWithManualInstance = async () => {
     if (!manualInstance.trim()) {
@@ -561,6 +720,19 @@ const QRCodeAdvancedDiagnostic = () => {
             <Button onClick={clearResults} variant="outline" size="sm">
               <Trash2 className="w-4 h-4 mr-1" />
               Limpar
+            </Button>
+            <Button onClick={runWebSocketUrlTest} disabled={isRunningTest || !apiKey} variant="secondary">
+              {isRunningTest ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Testando URLs...
+                </>
+              ) : (
+                <>
+                  <QrCode className="w-4 h-4 mr-2" />
+                  Teste WebSocket URLs
+                </>
+              )}
             </Button>
             <Button onClick={runQRCodeFullTest} disabled={isRunningTest || !apiKey}>
               {isRunningTest ? (
