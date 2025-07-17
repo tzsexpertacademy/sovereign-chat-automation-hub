@@ -272,6 +272,8 @@ const QRCodeAdvancedDiagnostic = () => {
         status = 'success';
         if (qrCode) {
           message += ' - QR Code encontrado!';
+        } else if (endpoint.name === 'QR Code Direct' && typeof responseData === 'string' && responseData.includes('Generate QRCode')) {
+          message = `${endpoint.method} ${response.status} - Página QR carregada (interface disponível)`;
         }
       } else {
         // Para endpoints que esperam erro quando não conectado
@@ -280,6 +282,9 @@ const QRCodeAdvancedDiagnostic = () => {
             responseText.includes('not connected')) {
           status = 'warning';
           message += ' (Comportamento esperado - instância não conectada)';
+        } else if (endpoint.name === 'Connect Instance' && response.status === 404) {
+          status = 'warning';
+          message += ' (Instância ainda não pronta - normal após criação)';
         } else if (response.status === 403) {
           message += ' (Sem permissão - verificar API Key)';
         } else if (response.status === 404) {
