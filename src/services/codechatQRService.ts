@@ -61,6 +61,7 @@ class CodeChatQRService {
   // ============ BUSCAR AUTH TOKEN DA INSTÂNCIA ============
   private async getInstanceAuthToken(instanceName: string): Promise<string | null> {
     try {
+      console.log(`🔍 [CODECHAT-TOKEN] Buscando token no banco para: ${instanceName}`);
       const { supabase } = await import('@/integrations/supabase/client');
       const { data, error } = await supabase
         .from('whatsapp_instances')
@@ -68,14 +69,17 @@ class CodeChatQRService {
         .eq('instance_id', instanceName)
         .single();
 
+      console.log(`🔍 [CODECHAT-TOKEN] Query result - data:`, data, 'error:', error);
+
       if (error || !data?.auth_token) {
-        console.log(`ℹ️ [CODECHAT-AUTH] Token não encontrado para ${instanceName}`);
+        console.log(`⚠️ [CODECHAT-TOKEN] Token não encontrado ou erro:`, error);
         return null;
       }
 
+      console.log(`✅ [CODECHAT-TOKEN] Token encontrado para ${instanceName}`);
       return data.auth_token;
     } catch (error) {
-      console.error(`❌ [CODECHAT-AUTH] Erro ao buscar token:`, error);
+      console.error(`❌ [CODECHAT-TOKEN] Erro ao buscar token:`, error);
       return null;
     }
   }
