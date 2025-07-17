@@ -19,28 +19,74 @@ class CodeChatQRService {
     return SOCKET_URL.replace(/^wss?:/, 'https:');
   }
 
-  // ============ AUTENTICAÇÃO SIMPLIFICADA (APENAS HEADER APIKEY) ============
-  private async getAuthHeaders(instanceName: string): Promise<Record<string, string>> {
+  // ============ AUTENTICAÇÃO CORRETA CONFORME API DOCUMENTATION ============
+  private async getAuthHeaders(instanceName: string, useInstanceToken: boolean = true): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
 
-    // Global API Key via header apikey (formato correto do servidor)
+    // 1. Tentar usar Bearer token da instância (padrão correto)
+    if (useInstanceToken) {
+      const instanceToken = await this.getInstanceAuthToken(instanceName);
+      if (instanceToken) {
+        headers['Authorization'] = `Bearer ${instanceToken}`;
+        console.log(`🔑 [CODECHAT-AUTH] Bearer token da instância adicionado`);
+        return headers;
+      }
+    }
+
+    // 2. Fallback: Global API Key via header apikey
     const globalApiKey = getYumerGlobalApiKey();
     if (globalApiKey) {
       headers['apikey'] = globalApiKey;
-      console.log(`🔑 [CODECHAT-AUTH] API Key adicionada via header apikey: ${globalApiKey}`);
-      console.log(`📋 [CODECHAT-AUTH] Headers finais:`, headers);
+      console.log(`🔑 [CODECHAT-AUTH] API Key global adicionada via header apikey`);
     } else {
-      console.error(`❌ [CODECHAT-AUTH] Global API Key NÃO CONFIGURADA - requests falharão`);
-      console.log(`📋 [CODECHAT-AUTH] LocalStorage check:`, localStorage.getItem('yumer_global_api_key'));
+      console.error(`❌ [CODECHAT-AUTH] Nenhuma autenticação disponível - requests falharão`);
     }
 
-    // REMOVIDO: JWT via Authorization header para evitar conflitos CORS
-    // Usando apenas apikey header conforme funciona no CURL
-
     return headers;
+  }
+
+  // ============ BUSCAR AUTH TOKEN DA INSTÂNCIA ============
+  private async getInstanceAuthToken(instanceName: string): Promise<string | null> {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .select('auth_token')
+        .eq('instance_id', instanceName)
+        .single();
+
+      if (error || !data?.auth_token) {
+        console.log(`ℹ️ [CODECHAT-AUTH] Token não encontrado para ${instanceName}`);
+        return null;
+      }
+
+      return data.auth_token;
+    } catch (error) {
+      console.error(`❌ [CODECHAT-AUTH] Erro ao buscar token:`, error);
+      return null;
+    }
+  }
+
+  // ============ SALVAR AUTH TOKEN DA INSTÂNCIA ============
+  private async saveInstanceAuthToken(instanceName: string, authToken: string): Promise<void> {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .update({ auth_token: authToken })
+        .eq('instance_id', instanceName);
+
+      if (error) {
+        console.error(`❌ [CODECHAT-AUTH] Erro ao salvar token:`, error);
+      } else {
+        console.log(`✅ [CODECHAT-AUTH] Token salvo para ${instanceName}`);
+      }
+    } catch (error) {
+      console.error(`❌ [CODECHAT-AUTH] Erro ao salvar token:`, error);
+    }
   }
 
   // ============ REMOVER: MÉTODO QUE USA ROTA INEXISTENTE ============
@@ -185,17 +231,16 @@ class CodeChatQRService {
     }
   }
 
-  // ============ CODECHAT API v1.3.3 - CONECTAR INSTÂNCIA COM RETRY MELHORADO ============
+  // ============ CONNECT INSTANCE - PADRÃO CORRETO DA API ============
   async connectInstance(instanceName: string): Promise<QRCodeResponse> {
     try {
-      console.log(`🚀 [CODECHAT-API] Conectando com retry melhorado: ${instanceName}`);
+      console.log(`🚀 [CODECHAT-API] Conectando instância (padrão correto): ${instanceName}`);
       
-      // ============ ETAPA 1: VERIFICAR STATUS ATUAL ============
+      // ============ ETAPA 1: VERIFICAR SE JÁ ESTÁ CONECTADO ============
       try {
         const currentStatus = await this.getInstanceStatus(instanceName);
-        console.log(`📊 [CODECHAT-API] Status atual antes da conexão:`, currentStatus);
+        console.log(`📊 [CODECHAT-API] Status atual:`, currentStatus);
         
-        // Se já está conectado, não precisa conectar novamente
         if (currentStatus.state === 'open') {
           console.log(`✅ [CODECHAT-API] Instância já conectada!`);
           return {
@@ -207,20 +252,16 @@ class CodeChatQRService {
           };
         }
       } catch (statusError) {
-        console.log(`⚠️ [CODECHAT-API] Erro ao verificar status atual (continuando):`, statusError);
+        console.log(`ℹ️ [CODECHAT-API] Status check failed (continuando):`, statusError);
       }
-
-      // ============ ETAPA 1.5: AGUARDAR INSTÂNCIA PROCESSAR ANTES DE CONECTAR ============
-      console.log(`⏳ [CODECHAT-API] Aguardando 2 segundos antes de conectar...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // ============ ETAPA 2: EXECUTAR CONEXÃO E AGUARDAR QR CODE ============
+      // ============ ETAPA 2: CONECTAR E OBTER QR CODE ============
       const url = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;
       console.log(`🌐 [CODECHAT-API] GET ${url}`);
       
       const response = await fetch(url, {
         method: 'GET',
-        headers: await this.getAuthHeaders(instanceName),
+        headers: await this.getAuthHeaders(instanceName), // Usa Bearer token da instância
       });
 
       if (!response.ok) {
@@ -230,25 +271,13 @@ class CodeChatQRService {
       }
 
       const data = await response.json();
-      console.log(`✅ [CODECHAT-API] Connect response completa:`, data);
+      console.log(`✅ [CODECHAT-API] Connect response:`, data);
 
-      // ============ ETAPA 3: VERIFICAR QR CODE IMEDIATO ============
-      const qrCode = data.base64 || data.qrCode || data.code || data.qr || data.qr_code;
+      // ============ ETAPA 3: EXTRAIR QR CODE DA RESPOSTA ============
+      const qrCode = data.base64 || data.qrCode || data.code;
       
-      console.log(`🔍 [CODECHAT-API] Análise QR Code:`, {
-        hasBase64: !!data.base64,
-        hasQrCode: !!data.qrCode,
-        hasCode: !!data.code,
-        hasQr: !!data.qr,
-        hasQrCodeField: !!data.qr_code,
-        count: data.count,
-        foundQrCode: !!qrCode
-      });
-
       if (qrCode) {
-        console.log(`📱 [CODECHAT-API] ✅ QR CODE ENCONTRADO NO CONNECT!`);
-        console.log(`📱 [CODECHAT-API] QR Code length: ${qrCode.length} chars`);
-        
+        console.log(`📱 [CODECHAT-API] ✅ QR CODE RECEBIDO!`);
         return {
           success: true,
           qrCode: qrCode,
@@ -258,69 +287,8 @@ class CodeChatQRService {
         };
       }
 
-      // ============ ETAPA 4: SE NÃO TEM QR IMEDIATO, FAZER POLLING COM QR ENDPOINT ============
-      console.log(`🔄 [CODECHAT-API] QR não encontrado no connect - tentando endpoint QR específico`);
-      
-      // Tentar /instance/qrcode/{instanceName} como fallback
-      try {
-        const qrResponse = await this.getQRCodeDirectly(instanceName);
-        if (qrResponse.success && qrResponse.qrCode) {
-          console.log(`📱 [CODECHAT-API] ✅ QR CODE OBTIDO VIA ENDPOINT QR!`);
-          return qrResponse;
-        }
-      } catch (qrError) {
-        console.warn(`⚠️ [CODECHAT-API] Endpoint QR falhou:`, qrError);
-      }
-
-      // ============ ETAPA 5: POLLING VIA FETCHINSTANCE ============
-      console.log(`🔄 [CODECHAT-API] Iniciando polling via fetchInstance...`);
-      
-      let attempts = 0;
-      const maxAttempts = 15; // 30 segundos
-      const interval = 2000; // 2 segundos
-      
-      while (attempts < maxAttempts) {
-        attempts++;
-        console.log(`🔍 [CODECHAT-API] Polling tentativa ${attempts}/${maxAttempts}`);
-        
-        try {
-          await new Promise(resolve => setTimeout(resolve, interval));
-          
-          const details = await this.getInstanceDetails(instanceName);
-          console.log(`📊 [CODECHAT-API] Details polling:`, details);
-          
-          // Verificar QR code nos detalhes (incluindo dentro de Whatsapp object)
-          const polledQr = details.qrCode || details.base64 || details.code || details.qr || 
-                           details.Whatsapp?.qrCode || details.Whatsapp?.base64;
-          if (polledQr) {
-            console.log(`📱 [CODECHAT-API] ✅ QR CODE ENCONTRADO VIA POLLING!`);
-            return {
-              success: true,
-              qrCode: polledQr,
-              status: 'qr_ready',
-              instanceName,
-              data: details
-            };
-          }
-          
-          // Verificar se já conectou
-          if (details.ownerJid || details.phoneNumber) {
-            console.log(`✅ [CODECHAT-API] Instância conectada durante polling!`);
-            return {
-              success: true,
-              qrCode: undefined,
-              status: 'connected',
-              instanceName,
-              data: details
-            };
-          }
-          
-        } catch (pollError) {
-          console.warn(`⚠️ [CODECHAT-API] Erro no polling ${attempts}:`, pollError);
-        }
-      }
-      
-      console.log(`⏰ [CODECHAT-API] Polling finalizado sem QR code`);
+      // ============ FALLBACK: Se não tem QR, assume que está conectando ============
+      console.log(`🔄 [CODECHAT-API] QR não disponível - instância pode estar conectando`);
       return {
         success: true,
         qrCode: undefined,
@@ -757,30 +725,42 @@ class CodeChatQRService {
     }
   }
 
-  // ============ CREATE INSTANCE ============
+  // ============ CREATE INSTANCE - PADRÃO CORRETO DA API ============
   async createInstance(instanceName: string, description?: string): Promise<QRCodeResponse> {
     try {
-      console.log(`📝 [CODECHAT] Criando instância: ${instanceName}`);
+      console.log(`📝 [CODECHAT-API] Criando instância (padrão correto): ${instanceName}`);
       
       const url = `${this.getApiBaseUrl()}/instance/create`;
-      console.log(`📡 [CODECHAT] URL de criação: ${url}`);
+      console.log(`🌐 [CODECHAT-API] POST ${url}`);
       
       const requestBody = {
         instanceName,
         description: description || `Instance: ${instanceName}`
       };
       
+      console.log(`📋 [CODECHAT-API] Request body:`, requestBody);
+      
+      // Usar autenticação global para criar instância (não temos token ainda)
       const response = await fetch(url, {
         method: 'POST',
-        headers: await this.getAuthHeaders(instanceName),
+        headers: await this.getAuthHeaders(instanceName, false), // false = não usar instance token
         body: JSON.stringify(requestBody)
       });
       
-      console.log(`📊 [CODECHAT] Response status: ${response.status}`);
+      console.log(`📊 [CODECHAT-API] Response status: ${response.status}`);
       
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ [CODECHAT] Instância criada com sucesso:', data);
+        console.log('✅ [CODECHAT-API] Instância criada:', data);
+        
+        // ============ EXTRAIR E SALVAR AUTH TOKEN (CRÍTICO) ============
+        const authToken = data.Auth?.token;
+        if (authToken) {
+          console.log(`🔐 [CODECHAT-API] ✅ Auth token extraído da resposta!`);
+          await this.saveInstanceAuthToken(instanceName, authToken);
+        } else {
+          console.warn(`⚠️ [CODECHAT-API] Auth token não encontrado na resposta:`, data);
+        }
         
         return {
           success: true,
@@ -788,11 +768,14 @@ class CodeChatQRService {
           status: 'created',
           error: null,
           instanceName,
-          data
+          data: {
+            ...data,
+            authTokenSaved: !!authToken
+          }
         };
       } else {
         const errorText = await response.text();
-        console.error('❌ [CODECHAT] Erro na resposta:', errorText);
+        console.error('❌ [CODECHAT-API] Erro na criação:', errorText);
         
         // Verificar se é erro 403/400/409 (instância já existe)
         const isConflict = response.status === 409 || response.status === 403 || response.status === 400;
@@ -803,7 +786,7 @@ class CodeChatQRService {
         );
         
         if (isAlreadyExists) {
-          console.log('ℹ️ [CODECHAT] Instância já existe - continuando com conexão');
+          console.log('ℹ️ [CODECHAT-API] Instância já existe - continuando');
           return {
             success: true,
             qrCode: null,
@@ -823,7 +806,7 @@ class CodeChatQRService {
       }
       
     } catch (error: any) {
-      console.error('❌ [CODECHAT] Erro ao criar instância:', error);
+      console.error('❌ [CODECHAT-API] Erro ao criar instância:', error);
       return {
         success: false,
         qrCode: null,

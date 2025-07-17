@@ -28,10 +28,10 @@ export class InstancesUnifiedService {
   }
 
   /**
-   * Criar nova instância com sincronização automática
+   * Criar nova instância seguindo o padrão correto da API
    */
   async createInstanceForClient(clientId: string, customName?: string) {
-    console.log('🚀 [UNIFIED-SERVICE] Criando instância para cliente:', clientId);
+    console.log('🚀 [UNIFIED-SERVICE] Criando instância seguindo padrão correto da API:', clientId);
     
     try {
       // 1. Verificar se cliente pode criar mais instâncias
@@ -55,12 +55,50 @@ export class InstancesUnifiedService {
       });
 
       console.log('✅ [UNIFIED-SERVICE] Instância criada no banco:', newInstance);
+
+      // 4. Criar instância no YUMER seguindo padrão correto (POST /instance/create)
+      console.log('🔗 [UNIFIED-SERVICE] Criando instância no YUMER...');
+      const yumerResult = await codechatQRService.createInstance(instanceId, customName);
       
-      // 4. O trigger sincronizará automaticamente com clients table
+      if (!yumerResult.success) {
+        console.warn('⚠️ [UNIFIED-SERVICE] Falha ao criar no YUMER:', yumerResult.error);
+        // Não vamos falhar o processo, apenas logar
+      } else {
+        console.log('✅ [UNIFIED-SERVICE] Instância criada no YUMER com Bearer token salvo');
+      }
+      
+      // 5. O trigger sincronizará automaticamente com clients table
       
       return newInstance;
     } catch (error) {
       console.error('❌ [UNIFIED-SERVICE] Erro ao criar instância:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Conectar instância seguindo padrão correto da API
+   */
+  async connectInstance(instanceId: string) {
+    console.log('🔗 [UNIFIED-SERVICE] Conectando instância seguindo padrão correto:', instanceId);
+    
+    try {
+      // Usar connectInstance que agora segue o padrão correto com Bearer token
+      const result = await codechatQRService.connectInstance(instanceId);
+      
+      if (result.success) {
+        // Atualizar status no banco
+        const updateData: any = { status: result.status };
+        if (result.data?.phoneNumber) {
+          updateData.phone_number = result.data.phoneNumber;
+        }
+        
+        await whatsappInstancesService.updateInstanceStatus(instanceId, result.status, updateData);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('❌ [UNIFIED-SERVICE] Erro ao conectar instância:', error);
       throw error;
     }
   }

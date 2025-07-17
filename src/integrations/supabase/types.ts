@@ -1237,6 +1237,7 @@ export type Database = {
       }
       whatsapp_instances: {
         Row: {
+          auth_token: string | null
           client_id: string | null
           created_at: string
           custom_name: string | null
@@ -1250,6 +1251,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auth_token?: string | null
           client_id?: string | null
           created_at?: string
           custom_name?: string | null
@@ -1263,6 +1265,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auth_token?: string | null
           client_id?: string | null
           created_at?: string
           custom_name?: string | null
