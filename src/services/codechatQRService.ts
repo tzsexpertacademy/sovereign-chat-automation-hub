@@ -559,24 +559,11 @@ class CodeChatQRService {
         // Tentar extrair base64 do HTML
         let qrCode = null;
         
-        // Procurar por base64 no HTML
-        const base64Match = text.match(/data:image\/[^;]+;base64,[A-Za-z0-9+\/=]+/);
+        // VERSÃO SIMPLES: buscar qualquer string base64 longa (FUNCIONAVA ANTES)
+        const base64Match = text.match(/[A-Za-z0-9+\/]{100,}={0,2}/);
         if (base64Match) {
-          qrCode = base64Match[0];
-          console.log(`✅ [CODECHAT-API] QR extraído do HTML via regex`);
-        }
-        // Procurar por src de img
-        else if (text.includes('<img')) {
-          const imgSrcMatch = text.match(/src="([^"]+)"/);
-          if (imgSrcMatch && imgSrcMatch[1].includes('base64')) {
-            qrCode = imgSrcMatch[1];
-            console.log(`✅ [CODECHAT-API] QR extraído do src da imagem`);
-          }
-        }
-        // Se é texto puro e parece base64
-        else if (text && text.length > 100 && !text.includes('<')) {
-          qrCode = text.startsWith('data:image') ? text : `data:image/png;base64,${text}`;
-          console.log(`✅ [CODECHAT-API] QR obtido como texto puro`);
+          qrCode = `data:image/png;base64,${base64Match[0]}`;
+          console.log(`✅ [CODECHAT-API] QR extraído via regex simples`);
         }
         
         if (qrCode) {
