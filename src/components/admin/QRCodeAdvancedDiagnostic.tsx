@@ -162,7 +162,7 @@ const QRCodeAdvancedDiagnostic = () => {
     }
   };
 
-  // Executar teste único
+  // Executar teste único com debug detalhado
   const executeQRTest = async (endpoint: QREndpoint, instanceName?: string): Promise<QRTestResult> => {
     const startTime = Date.now();
     const testKey = endpoint.name;
@@ -196,14 +196,26 @@ const QRCodeAdvancedDiagnostic = () => {
         };
       }
 
-      console.log(`🧪 [QR-TEST] ${endpoint.method} ${url}`, body ? { body } : '');
+      // 🔍 DEBUG DETALHADO DOS HEADERS
+      const currentApiKey = getYumerGlobalApiKey();
+      console.log(`🔑 [API-KEY-DEBUG] API Key atual:`, currentApiKey ? `${currentApiKey.substring(0, 8)}***` : 'NÃO ENCONTRADA');
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        ...endpoint.headers
+      };
+
+      console.log(`🧪 [QR-TEST] ${endpoint.method} ${url}`);
+      console.log(`📋 [HEADERS-DEBUG] Headers enviados:`, headers);
+      
+      if (body) {
+        console.log(`📦 [BODY-DEBUG] Body enviado:`, body);
+      }
 
       const response = await fetch(url, {
         method: endpoint.method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...endpoint.headers
-        },
+        headers,
         body: body ? JSON.stringify(body) : undefined,
         mode: 'cors'
       });
@@ -216,6 +228,16 @@ const QRCodeAdvancedDiagnostic = () => {
         responseData = JSON.parse(responseText);
       } catch {
         responseData = responseText;
+      }
+
+      console.log(`📊 [RESPONSE-DEBUG] Status: ${response.status}`);
+      console.log(`📄 [RESPONSE-DEBUG] Data:`, responseData);
+
+      // 🔍 ANÁLISE ESPECÍFICA DO ERRO 403
+      if (response.status === 403) {
+        const apiKeyFromHeaders = headers['apikey'] || headers['apiKey'] || headers['x-api-key'];
+        console.error(`🚨 [403-DEBUG] API Key no header:`, apiKeyFromHeaders ? `${apiKeyFromHeaders.substring(0, 8)}***` : 'AUSENTE');
+        console.error(`🚨 [403-DEBUG] Headers de resposta:`, Object.fromEntries(response.headers.entries()));
       }
 
       // Análise inteligente dos resultados baseada no comportamento esperado
@@ -548,7 +570,22 @@ const QRCodeAdvancedDiagnostic = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Alert de API Key */}
+        {/* DEBUG: Status da API Key */}
+        <div className="bg-gray-50 border rounded-lg p-4">
+          <h3 className="font-medium mb-2">🔍 Debug API Key</h3>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span>API Key configurada:</span>
+              <span className={apiKey ? 'text-green-600' : 'text-red-600'}>
+                {apiKey ? `${apiKey.substring(0, 8)}***` : 'Não encontrada'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Servidor YUMER:</span>
+              <span className="text-blue-600">{SERVER_URL}</span>
+            </div>
+          </div>
+        </div>
         {!apiKey && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-center space-x-2">
