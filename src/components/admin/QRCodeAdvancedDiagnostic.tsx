@@ -308,34 +308,36 @@ const QRCodeAdvancedDiagnostic = () => {
     try {
       console.log(`🔄 [QR-DIAGNOSTIC] Iniciando teste completo com instância: ${testInstanceName}`);
 
-      // SEQUÊNCIA OTIMIZADA PARA QR CODE
+      // SEQUÊNCIA OTIMIZADA PARA QR CODE - ORDEM CRÍTICA
       const orderedTests = [
-        // 1. Verificar infraestrutura
-        'Health Check',
+        // 1. 🏥 VERIFICAR INFRAESTRUTURA
+        'Health Check',              // Garantir que API está online
         
-        // 2. Criar instância de teste
-        'Create Instance',
+        // 2. 📱 CRIAR INSTÂNCIA DE TESTE  
+        'Create Instance',           // Criar nova instância limpa
         
-        // 3. Verificar se foi criada
-        'Fetch All Instances',
+        // 3. ✅ CONFIRMAR CRIAÇÃO
+        'Fetch All Instances',       // Verificar se aparece na lista
         
-        // 4. CONECTAR - passo mais importante para QR
-        'Connect Instance',
+        // 4. 🔌 CONECTAR INSTÂNCIA (MOMENTO CRÍTICO PARA QR)
+        'Connect Instance',          // AQUI É ONDE O QR DEVE SER GERADO!
         
-        // 5. Verificar estado da conexão
-        'Connection State',
+        // 5. 📊 VERIFICAR ESTADO APÓS CONNECT
+        'Connection State',          // Ver se mudou para 'connecting' ou 'open'
         
-        // 6. Tentar obter QR diretamente
-        'QR Code Direct',
+        // 6. 🎯 BUSCAR QR DIRETAMENTE (BACKUP)
+        'QR Code Direct',            // Caso o connect não retorne QR, buscar aqui
         
-        // 7. Testes de estado (podem falhar se não conectado - esperado)
-        'Fetch Single Instance',
+        // 7. 🔍 TESTES DE DETALHES (podem falhar - esperado)
+        'Fetch Single Instance',     // Detalhes da instância (400 = esperado)
         
-        // 8. Limpeza
-        'Logout Instance',
-        'Delete Instance'
+        // 8. 🧹 LIMPEZA FINAL
+        'Logout Instance',           // Desconectar (400 = esperado se não conectou)
+        'Delete Instance'            // Remover instância de teste
       ];
 
+      let qrCodeFound = false;
+      
       for (let i = 0; i < orderedTests.length; i++) {
         const testName = orderedTests[i];
         const endpoint = qrEndpoints.find(e => e.name === testName);
@@ -347,23 +349,37 @@ const QRCodeAdvancedDiagnostic = () => {
         const instanceToUse = endpoint.requiresInstance ? testInstanceName : undefined;
         const result = await executeQRTest(endpoint, instanceToUse);
         
-        // Pausas estratégicas aumentadas para QR
+        // 🎯 VERIFICAR SE QR FOI ENCONTRADO
+        if (result.qrCode && !qrCodeFound) {
+          qrCodeFound = true;
+          console.log(`🎉 [QR-DIAGNOSTIC] QR CODE ENCONTRADO em: ${endpoint.name}!`);
+          toast({
+            title: "QR Code Encontrado!",
+            description: `QR gerado com sucesso no teste: ${endpoint.name}`,
+          });
+        }
+        
+        // ⏱️ PAUSAS ESTRATÉGICAS AUMENTADAS PARA QR
         if (endpoint.name === 'Create Instance') {
-          console.log(`⏱️ [QR-DIAGNOSTIC] Aguardando 5s após criação da instância...`);
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          console.log(`⏱️ [QR-DIAGNOSTIC] Aguardando 6s após criação da instância...`);
+          await new Promise(resolve => setTimeout(resolve, 6000));
         } else if (endpoint.name === 'Connect Instance') {
-          console.log(`⏱️ [QR-DIAGNOSTIC] Aguardando 7s após connect para QR gerar...`);
-          await new Promise(resolve => setTimeout(resolve, 7000));
-        } else if (['QR Code Direct', 'Connection State'].includes(endpoint.name)) {
-          console.log(`⏱️ [QR-DIAGNOSTIC] Aguardando 3s após ${endpoint.name}...`);
+          console.log(`⏱️ [QR-DIAGNOSTIC] Aguardando 10s após connect para QR gerar...`);
+          // PAUSA LONGA AQUI - MOMENTO CRÍTICO PARA QR
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        } else if (endpoint.name === 'QR Code Direct') {
+          console.log(`⏱️ [QR-DIAGNOSTIC] Aguardando 5s após QR direto...`);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } else if (endpoint.name === 'Connection State') {
+          console.log(`⏱️ [QR-DIAGNOSTIC] Aguardando 3s após verificação de estado...`);
           await new Promise(resolve => setTimeout(resolve, 3000));
         } else {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
         
         setProgress(((i + 1) / orderedTests.length) * 100);
         
-        // Se criação falhar, interromper
+        // ❌ INTERROMPER SE CRIAÇÃO FALHAR
         if (endpoint.name === 'Create Instance' && result.status === 'error') {
           console.error(`❌ [QR-DIAGNOSTIC] Falha crítica na criação da instância`);
           toast({
@@ -372,11 +388,6 @@ const QRCodeAdvancedDiagnostic = () => {
             variant: "destructive"
           });
           break;
-        }
-        
-        // Se QR foi encontrado, destacar no log
-        if (result.qrCode) {
-          console.log(`🎯 [QR-DIAGNOSTIC] QR CODE ENCONTRADO no teste: ${endpoint.name}!`);
         }
       }
 
