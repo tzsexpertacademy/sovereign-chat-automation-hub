@@ -306,7 +306,7 @@ const InstanceStatusChecker = () => {
               </div>
             </div>
             
-            {(cleanupStats.test > 0 || cleanupStats.offline > 5) && (
+            {cleanupStats.total > 0 && (
               <div className="flex space-x-2">
                 {cleanupStats.test > 0 && (
                   <Button 
