@@ -9,6 +9,7 @@ import ClientsManagement from "@/components/admin/ClientsManagement";
 import InstancesMonitor from "@/components/admin/InstancesMonitor";
 import SystemLogsImproved from "@/components/admin/SystemLogsImproved";
 import WebSocketStatusDebugSimplified from "@/components/admin/WebSocketStatusDebugSimplified";
+import YumerApiKeyConfig from "@/components/admin/YumerApiKeyConfig";
 import ConnectionDiagnostics from "@/components/admin/ConnectionDiagnostics";
 const AdminDashboard = () => {
   return (
@@ -20,7 +21,7 @@ const AdminDashboard = () => {
           <main className="flex-1 p-6">
             <Routes>
               <Route path="/" element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<AdminOverview />} />
+              <Route path="overview" element={<div className="space-y-6"><YumerApiKeyConfig /><AdminOverview /></div>} />
               <Route path="clients" element={<ClientsManagement />} />
               <Route path="instances" element={<InstancesMonitor />} />
               <Route path="diagnostics" element={<ConnectionDiagnostics />} />

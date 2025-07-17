@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Wifi, WifiOff, RefreshCw, Activity, AlertTriangle } from "lucide-react";
 import { API_BASE_URL, hasYumerGlobalApiKey } from "@/config/environment";
 import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
-import { YumerApiKeyConfig } from "./YumerApiKeyConfig";
+import YumerApiKeyConfig from "./YumerApiKeyConfig";
 
 import SSLCertificateHelper from "./SSLCertificateHelper";
 import ConnectionDiagnostics from "./ConnectionDiagnostics";

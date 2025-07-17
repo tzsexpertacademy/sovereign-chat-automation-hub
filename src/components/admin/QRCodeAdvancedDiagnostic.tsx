@@ -520,7 +520,7 @@ const QRCodeAdvancedDiagnostic = () => {
               <Trash2 className="w-4 h-4 mr-1" />
               Limpar
             </Button>
-            <Button onClick={runQRCodeFullTest} disabled={isRunningTest}>
+            <Button onClick={runQRCodeFullTest} disabled={isRunningTest || !apiKey}>
               {isRunningTest ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -529,7 +529,7 @@ const QRCodeAdvancedDiagnostic = () => {
               ) : (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2" />
-                  Teste Completo
+                  {!apiKey ? 'Configure API Key' : 'Teste Completo'}
                 </>
               )}
             </Button>
@@ -537,6 +537,21 @@ const QRCodeAdvancedDiagnostic = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Alert de API Key */}
+        {!apiKey && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              <div>
+                <p className="font-medium text-red-700">API Key não configurada!</p>
+                <p className="text-sm text-red-600 mt-1">
+                  Configure a API Key do YUMER para executar os testes. Vá para as configurações do sistema.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isRunningTest && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
@@ -557,15 +572,22 @@ const QRCodeAdvancedDiagnostic = () => {
               placeholder="Nome da instância existente"
               value={manualInstance}
               onChange={(e) => setManualInstance(e.target.value)}
+              disabled={isRunningTest}
             />
             <Button onClick={() => setManualInstance(`qr_test_${Date.now()}`)} variant="outline">
               Gerar
             </Button>
-            <Button onClick={testWithManualInstance} disabled={isRunningTest}>
+            <Button 
+              onClick={testWithManualInstance} 
+              disabled={isRunningTest || !manualInstance.trim() || !apiKey}
+            >
               <Smartphone className="w-4 h-4 mr-1" />
               Testar QR
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Use esta opção para testar QR code com uma instância já existente no YUMER
+          </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

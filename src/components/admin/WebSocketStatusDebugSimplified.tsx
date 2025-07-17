@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Activity, RefreshCw, Globe, CheckCircle, XCircle } from "lucide-react";
 import { codechatQRService } from "@/services/codechatQRService";
-import { YumerApiKeyConfig } from "./YumerApiKeyConfig";
+import YumerApiKeyConfig from "./YumerApiKeyConfig";
 
 const WebSocketStatusDebugSimplified = () => {
   const [connectionLogs, setConnectionLogs] = useState<string[]>([]);

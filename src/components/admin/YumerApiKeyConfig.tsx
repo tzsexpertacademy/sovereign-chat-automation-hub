@@ -1,332 +1,210 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Key, CheckCircle, XCircle, AlertTriangle, Eye, EyeOff, Shield } from 'lucide-react';
-import { toast } from 'sonner';
-import { 
-  getYumerGlobalApiKey, 
-  setYumerGlobalApiKey, 
-  clearYumerGlobalApiKey, 
-  hasYumerGlobalApiKey 
-} from '@/config/environment';
-import { yumerJwtService } from '@/services/yumerJwtService';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { AlertTriangle, Key, Eye, EyeOff, CheckCircle, XCircle } from "lucide-react";
+import { getYumerGlobalApiKey, setYumerGlobalApiKey, clearYumerGlobalApiKey } from "@/config/environment";
+import { useToast } from '@/hooks/use-toast';
 
-export const YumerApiKeyConfig: React.FC = () => {
+const YumerApiKeyConfig = () => {
   const [apiKey, setApiKey] = useState('');
   const [isConfigured, setIsConfigured] = useState(false);
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  
-  // JWT Configuration
-  const [jwtSecret, setJwtSecret] = useState('');
-  const [instanceName, setInstanceName] = useState('yumer01');
-  const [showJwtSecret, setShowJwtSecret] = useState(false);
-  const [generatedJWT, setGeneratedJWT] = useState('');
-  const [jwtLoading, setJwtLoading] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [isTestingKey, setIsTestingKey] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     const currentKey = getYumerGlobalApiKey();
-    const directCheck = localStorage.getItem('yumer_global_api_key');
-    const hasKey = hasYumerGlobalApiKey();
-    
-    console.log('🔄 [API-KEY-CONFIG] Estado inicial:');
-    console.log('📋 getYumerGlobalApiKey():', currentKey);
-    console.log('📋 localStorage direto:', directCheck);
-    console.log('📋 hasYumerGlobalApiKey():', hasKey);
-    
-    setIsConfigured(hasKey && !!currentKey);
     if (currentKey) {
       setApiKey(currentKey);
+      setIsConfigured(true);
     }
   }, []);
 
   const handleSaveApiKey = () => {
     if (!apiKey.trim()) {
-      toast.error('Por favor, insira uma API Key válida');
+      toast({
+        title: "API Key Inválida",
+        description: "Digite uma API Key válida",
+        variant: "destructive"
+      });
       return;
     }
 
-    setIsLoading(true);
-    console.log('🔄 [API-KEY-CONFIG] Tentando salvar API Key:', apiKey.trim());
+    setYumerGlobalApiKey(apiKey.trim());
+    setIsConfigured(true);
+    
+    toast({
+      title: "API Key Configurada",
+      description: "API Key do YUMER salva com sucesso",
+    });
+  };
+
+  const handleClearApiKey = () => {
+    clearYumerGlobalApiKey();
+    setApiKey('');
+    setIsConfigured(false);
+    
+    toast({
+      title: "API Key Removida",
+      description: "API Key do YUMER foi removida",
+    });
+  };
+
+  const testApiKey = async () => {
+    if (!apiKey.trim()) {
+      toast({
+        title: "API Key Necessária",
+        description: "Configure uma API Key antes de testar",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsTestingKey(true);
     
     try {
-      setYumerGlobalApiKey(apiKey.trim());
-      
-      // Verificar se foi salvo corretamente
-      const savedKey = getYumerGlobalApiKey();
-      const directCheck = localStorage.getItem('yumer_global_api_key');
-      
-      console.log('✅ [API-KEY-CONFIG] API Key salva via função:', savedKey);
-      console.log('📋 [API-KEY-CONFIG] LocalStorage direto:', directCheck);
-      console.log('🔍 [API-KEY-CONFIG] Função hasYumerGlobalApiKey():', hasYumerGlobalApiKey());
-      
-      if (savedKey === apiKey.trim() && directCheck === apiKey.trim()) {
-        setIsConfigured(true);
-        toast.success('API Key configurada com sucesso!', {
-          description: `Key ${apiKey.trim()} salva e verificada`
+      const response = await fetch('https://yumer.yumerflow.app:8083/instance/fetchInstances', {
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': apiKey.trim()
+        }
+      });
+
+      if (response.ok) {
+        toast({
+          title: "API Key Válida",
+          description: "API Key testada com sucesso - conectando ao YUMER",
+        });
+      } else if (response.status === 403) {
+        toast({
+          title: "API Key Inválida",
+          description: "A API Key não tem permissões ou está incorreta",
+          variant: "destructive"
         });
       } else {
-        throw new Error('Verificação falhou - key não foi salva corretamente');
+        toast({
+          title: "Erro no Teste",
+          description: `HTTP ${response.status} - Verificar servidor YUMER`,
+          variant: "destructive"
+        });
       }
     } catch (error) {
-      console.error('❌ [API-KEY-CONFIG] Erro ao salvar:', error);
-      toast.error('Erro ao salvar API Key');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleRemoveApiKey = () => {
-    setIsLoading(true);
-    
-    try {
-      clearYumerGlobalApiKey();
-      setApiKey('');
-      setIsConfigured(false);
-      toast.success('API Key removida com sucesso');
-    } catch (error) {
-      toast.error('Erro ao remover API Key');
-      console.error('Error removing API key:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const toggleShowApiKey = () => {
-    setShowApiKey(!showApiKey);
-  };
-
-  const toggleShowJwtSecret = () => {
-    setShowJwtSecret(!showJwtSecret);
-  };
-
-  const handleGenerateJWT = async () => {
-    if (!jwtSecret.trim()) {
-      toast.error('Por favor, insira a JWT Secret');
-      return;
-    }
-    
-    if (!instanceName.trim()) {
-      toast.error('Por favor, insira o Instance Name');
-      return;
-    }
-
-    setJwtLoading(true);
-    
-    try {
-      const token = await yumerJwtService.generateLocalJWT(jwtSecret.trim(), instanceName.trim());
-      setGeneratedJWT(token);
-      
-      toast.success('JWT gerado com sucesso!', {
-        description: 'Token JWT pronto para uso no WebSocket'
+      toast({
+        title: "Erro de Conexão",
+        description: "Não foi possível conectar ao servidor YUMER",
+        variant: "destructive"
       });
-    } catch (error: any) {
-      toast.error('Erro ao gerar JWT');
-      console.error('❌ Erro ao gerar JWT:', error);
     } finally {
-      setJwtLoading(false);
+      setIsTestingKey(false);
     }
   };
 
-  const copyJWTToClipboard = () => {
-    navigator.clipboard.writeText(generatedJWT);
-    toast.success('JWT copiado para a área de transferência');
-  };
-
-  const getStatusInfo = () => {
-    if (isConfigured) {
-      return {
-        icon: <CheckCircle className="h-4 w-4 text-green-500" />,
-        status: 'Configurada',
-        variant: 'default' as const,
-        description: 'API Key está configurada e funcionando'
-      };
-    } else {
-      return {
-        icon: <XCircle className="h-4 w-4 text-red-500" />,
-        status: 'Não Configurada',
-        variant: 'destructive' as const,
-        description: 'API Key necessária para acessar APIs do YUMER'
-      };
-    }
-  };
-
-  const statusInfo = getStatusInfo();
+  const maskedApiKey = apiKey ? `${apiKey.substring(0, 8)}${'*'.repeat(Math.max(0, apiKey.length - 12))}${apiKey.substring(Math.max(8, apiKey.length - 4))}` : '';
 
   return (
-    <Card className="w-full">
+    <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Key className="h-5 w-5" />
-            <CardTitle>Configuração API Key YUMER</CardTitle>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Key className="w-5 h-5" />
+            <span>Configuração API Key YUMER</span>
           </div>
-          <Badge variant={statusInfo.variant} className="flex items-center gap-1">
-            {statusInfo.icon}
-            {statusInfo.status}
-          </Badge>
-        </div>
-        <CardDescription>
-          Configure a API Key global para autenticação com o backend YUMER
-        </CardDescription>
+          {isConfigured ? (
+            <Badge className="bg-green-500">
+              <CheckCircle className="w-3 h-3 mr-1" />
+              Configurada
+            </Badge>
+          ) : (
+            <Badge variant="destructive">
+              <XCircle className="w-3 h-3 mr-1" />
+              Não Configurada
+            </Badge>
+          )}
+        </CardTitle>
       </CardHeader>
-
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="apiKey">Global API Key</Label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
+        {!isConfigured && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-5 h-5 text-yellow-500" />
+              <div>
+                <p className="font-medium text-yellow-700">API Key necessária</p>
+                <p className="text-sm text-yellow-600 mt-1">
+                  Configure sua API Key do YUMER para usar os recursos de WhatsApp
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div className="flex items-center space-x-2">
+            <div className="flex-1 relative">
               <Input
-                id="apiKey"
-                type={showApiKey ? 'text' : 'password'}
+                type={showKey ? "text" : "password"}
+                placeholder="Digite sua API Key do YUMER..."
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Insira a API Key global do YUMER"
                 className="pr-10"
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="absolute right-0 top-0 h-full px-3"
-                onClick={toggleShowApiKey}
+                className="absolute right-1 top-1/2 -translate-y-1/2"
+                onClick={() => setShowKey(!showKey)}
               >
-                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </Button>
             </div>
-            <Button 
-              onClick={handleSaveApiKey}
-              disabled={!apiKey.trim() || isLoading}
-              className="shrink-0"
-            >
-              {isLoading ? 'Salvando...' : 'Salvar'}
+          </div>
+
+          <div className="flex space-x-2">
+            <Button onClick={handleSaveApiKey} disabled={!apiKey.trim()}>
+              Salvar API Key
             </Button>
+            
+            <Button 
+              onClick={testApiKey} 
+              variant="outline" 
+              disabled={!apiKey.trim() || isTestingKey}
+            >
+              {isTestingKey ? 'Testando...' : 'Testar'}
+            </Button>
+            
+            {isConfigured && (
+              <Button onClick={handleClearApiKey} variant="destructive">
+                Remover
+              </Button>
+            )}
           </div>
         </div>
 
         {isConfigured && (
-          <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span className="text-sm font-medium text-green-700 dark:text-green-300">
-                API Key configurada e ativa
-              </span>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleRemoveApiKey}
-              disabled={isLoading}
-              className="text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
-            >
-              {isLoading ? 'Removendo...' : 'Remover'}
-            </Button>
+          <div className="bg-gray-50 rounded p-3">
+            <p className="text-sm text-muted-foreground">
+              <strong>API Key atual:</strong> {showKey ? apiKey : maskedApiKey}
+            </p>
           </div>
         )}
 
         <div className="text-xs text-muted-foreground space-y-1">
-          <p>• A API Key será usada para todas as requisições autenticadas</p>
-          <p>• A configuração é salva localmente no navegador</p>
-          <p>• Reinicie a aplicação após configurar para garantir funcionamento completo</p>
-        </div>
-
-        <Separator className="my-6" />
-
-        {/* Seção de Configuração JWT */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Shield className="h-5 w-5 text-blue-500" />
-            <h3 className="text-lg font-semibold">Configuração JWT para WebSocket</h3>
-          </div>
-          
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              O backend YUMER espera um JWT válido no WebSocket. Use a secret: <code className="font-mono bg-muted px-1 rounded">sfdgs8152g5s1s5</code>
-            </AlertDescription>
-          </Alert>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* JWT Secret */}
-            <div className="space-y-2">
-              <Label htmlFor="jwtSecret">JWT Secret</Label>
-              <div className="relative">
-                <Input
-                  id="jwtSecret"
-                  type={showJwtSecret ? 'text' : 'password'}
-                  value={jwtSecret}
-                  onChange={(e) => setJwtSecret(e.target.value)}
-                  placeholder="sfdgs8152g5s1s5"
-                  className="pr-10"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3"
-                  onClick={toggleShowJwtSecret}
-                >
-                  {showJwtSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-
-            {/* Instance Name */}
-            <div className="space-y-2">
-              <Label htmlFor="instanceName">Instance Name</Label>
-              <Input
-                id="instanceName"
-                type="text"
-                value={instanceName}
-                onChange={(e) => setInstanceName(e.target.value)}
-                placeholder="yumer01"
-              />
-            </div>
-          </div>
-
-          {/* Gerar JWT */}
-          <div className="flex gap-2">
-            <Button 
-              onClick={handleGenerateJWT}
-              disabled={!jwtSecret.trim() || !instanceName.trim() || jwtLoading}
-              className="shrink-0"
-            >
-              {jwtLoading ? 'Gerando...' : 'Gerar JWT'}
-            </Button>
-          </div>
-
-          {/* JWT Gerado */}
-          {generatedJWT && (
-            <div className="space-y-2">
-              <Label>JWT Gerado</Label>
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={generatedJWT}
-                  className="font-mono text-xs"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={copyJWTToClipboard}
-                  className="shrink-0"
-                >
-                  Copiar
-                </Button>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                <p>• Este JWT nunca expira (EXPIRES_IN=0)</p>
-                <p>• Use na URL: <code className="font-mono bg-muted px-1 rounded">wss://yumer.yumerflow.app:8083/ws/events?event=MESSAGE_RECEIVED&token=SEU_JWT</code></p>
-              </div>
-            </div>
-          )}
+          <p><strong>Como obter sua API Key:</strong></p>
+          <ol className="list-decimal list-inside space-y-1 ml-2">
+            <li>Acesse o painel administrativo do YUMER</li>
+            <li>Vá para configurações de API</li>
+            <li>Gere ou copie sua API Key</li>
+            <li>Cole aqui e clique em "Salvar"</li>
+          </ol>
+          <p className="mt-2">
+            <strong>Nota:</strong> A API Key é armazenada localmente no seu navegador.
+          </p>
         </div>
       </CardContent>
     </Card>
   );
 };
+
+export default YumerApiKeyConfig;
