@@ -68,7 +68,7 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/create', 
       method: 'POST',
       description: 'Criar instância para teste de QR',
-      headers: { 'apikey': apiKey || '' },
+      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       body: { instanceName: '', description: 'QR Diagnostic Test Instance' },
       expectedBehavior: 'success'
     },
@@ -77,7 +77,7 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/fetchInstances', 
       method: 'GET',
       description: 'Verificar se instância foi criada',
-      headers: { 'apikey': apiKey || '' },
+      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       expectedBehavior: 'success'
     },
     
@@ -87,7 +87,7 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/connect/{instance}', 
       method: 'GET',
       description: 'Conectar instância e tentar obter QR',
-      headers: { 'apikey': apiKey || '' },
+      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'creates_qr'
     },
@@ -96,7 +96,7 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/connectionState/{instance}', 
       method: 'GET',
       description: 'Verificar estado da conexão',
-      headers: { 'apikey': apiKey || '' },
+      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'success'
     },
@@ -105,7 +105,7 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/qrcode/{instance}', 
       method: 'GET',
       description: 'Obter QR code via endpoint direto',
-      headers: { 'apikey': apiKey || '' },
+      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'creates_qr'
     },
@@ -116,7 +116,7 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/fetchInstance/{instance}', 
       method: 'GET',
       description: 'Buscar detalhes da instância (pode falhar se não conectada)',
-      headers: { 'apikey': apiKey || '' },
+      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'warning_if_not_connected'
     },
@@ -127,7 +127,7 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/logout/{instance}', 
       method: 'DELETE',
       description: 'Desconectar instância',
-      headers: { 'apikey': apiKey || '' },
+      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'warning_if_not_connected'
     },
@@ -136,7 +136,7 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/delete/{instance}', 
       method: 'DELETE',
       description: 'Deletar instância de teste',
-      headers: { 'apikey': apiKey || '' },
+      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'success'
     }
@@ -239,8 +239,8 @@ const QRCodeAdvancedDiagnostic = () => {
 
       // 🔍 ANÁLISE ESPECÍFICA DO ERRO 403
       if (response.status === 403) {
-        const apiKeyFromHeaders = headers['apikey'] || headers['apiKey'] || headers['x-api-key'];
-        console.error(`🚨 [403-DEBUG] API Key no header:`, apiKeyFromHeaders ? `${apiKeyFromHeaders.substring(0, 8)}***` : 'AUSENTE');
+        const authHeader = headers['Authorization'] || headers['apikey'] || headers['apiKey'] || headers['x-api-key'];
+        console.error(`🚨 [403-DEBUG] Authorization header:`, authHeader ? `${authHeader.substring(0, 20)}***` : 'AUSENTE');
         console.error(`🚨 [403-DEBUG] Headers de resposta:`, Object.fromEntries(response.headers.entries()));
       }
 

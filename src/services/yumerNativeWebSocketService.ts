@@ -1,5 +1,5 @@
 // YUMER Native WebSocket Service - Substituição completa do Socket.IO
-import { SOCKET_URL } from '@/config/environment';
+import { SOCKET_URL, getYumerGlobalApiKey } from '@/config/environment';
 import { yumerJwtService } from './yumerJwtService';
 
 export interface WebSocketConnectionOptions {
@@ -43,13 +43,25 @@ class YumerNativeWebSocketService {
       this.notifyStatus('connecting');
       console.log('🔌 Conectando WebSocket nativo YUMER...');
 
-      // Gerar JWT para autenticação (local - sem endpoint)
-      const jwt = await yumerJwtService.generateLocalJWT(this.connectionOptions.instanceName);
+      // Preferir JWT local válido, mas fallback para API key Bearer se necessário
+      let authToken: string;
+      try {
+        authToken = await yumerJwtService.generateLocalJWT(this.connectionOptions.instanceName);
+        console.log('🎯 [WS-AUTH] Usando JWT local válido');
+      } catch (jwtError) {
+        console.warn('⚠️ [WS-AUTH] Falha no JWT local, tentando Bearer token:', jwtError);
+        const apiKey = getYumerGlobalApiKey();
+        if (!apiKey) {
+          throw new Error('Nem JWT nem API key disponíveis para autenticação WebSocket');
+        }
+        authToken = apiKey;
+        console.log('🔑 [WS-AUTH] Usando Bearer token como fallback');
+      }
       
       // Construir URL com parâmetros obrigatórios
       const url = new URL('/ws/events', SOCKET_URL);
       url.searchParams.set('event', this.connectionOptions.event);
-      url.searchParams.set('token', jwt);
+      url.searchParams.set('token', authToken);
 
       // Determinar protocolo (ws:// ou wss://)
       const protocol = this.connectionOptions.useSecureConnection !== false ? 'wss:' : 'ws:';
