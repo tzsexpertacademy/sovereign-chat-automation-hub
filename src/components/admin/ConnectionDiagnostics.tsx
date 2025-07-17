@@ -20,6 +20,7 @@ import {
 import { SERVER_URL, getServerConfig, getYumerGlobalApiKey } from "@/config/environment";
 import { supabase } from "@/integrations/supabase/client";
 import QRCodeDiagnostic from "./QRCodeDiagnostic";
+import QRCodeAdvancedDiagnostic from "./QRCodeAdvancedDiagnostic";
 import AdvancedQRDiagnostic from "./AdvancedQRDiagnostic";
 import AdvancedApiDiagnostic from "./AdvancedApiDiagnostic";
 
@@ -591,6 +592,7 @@ const ConnectionDiagnostics = () => {
             </TabsContent>
 
             <TabsContent value="qr" className="space-y-4">
+              <QRCodeAdvancedDiagnostic />
               <QRCodeDiagnostic />
               <AdvancedQRDiagnostic />
             </TabsContent>
