@@ -679,6 +679,40 @@ class CodeChatQRService {
     }
   }
 
+  // ============ LOGOUT INSTANCE ============
+  async logoutInstance(instanceName: string): Promise<QRCodeResponse> {
+    try {
+      console.log('🚪 [CODECHAT-API] Fazendo logout da instância:', instanceName);
+      
+      const response = await fetch(`${this.getApiBaseUrl()}/instance/logout/${instanceName}`, {
+        method: 'DELETE',
+        headers: await this.getAuthHeaders(instanceName),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ [CODECHAT-API] Logout realizado:', data);
+
+      return {
+        success: true,
+        data,
+        status: 'logout_success',
+        instanceName
+      };
+    } catch (error: any) {
+      console.error('❌ [CODECHAT-API] Erro ao fazer logout:', error);
+      return {
+        success: false,
+        error: error.message,
+        instanceName
+      };
+    }
+  }
+
   // ============ CREATE INSTANCE ============
   async createInstance(instanceName: string, description?: string): Promise<QRCodeResponse> {
     try {

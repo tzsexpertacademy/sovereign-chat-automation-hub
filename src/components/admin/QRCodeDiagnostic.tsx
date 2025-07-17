@@ -85,47 +85,107 @@ const QRCodeDiagnostic = () => {
     }
   };
 
-  // Teste 2: Conectar e obter QR
+  // Teste 2: Conectar e obter QR (melhorado)
   const testConnectAndQR = async () => {
-    setConnectTest({ status: 'testing', message: 'Conectando e obtendo QR Code...' });
+    setConnectTest({ status: 'testing', message: 'Verificando status da instância...' });
     const startTime = Date.now();
 
     try {
-      const result = await codechatQRService.connectInstance(instanceName);
-      const duration = Date.now() - startTime;
-
-      if (result.success) {
-        if (result.qrCode) {
+      // Primeiro, verificar se a instância já está conectada
+      console.log('🔍 [QR-DIAGNOSTIC] Verificando status da instância:', instanceName);
+      const statusResponse = await codechatQRService.getInstanceDetails(instanceName);
+      
+      if (statusResponse.success && statusResponse.data) {
+        const instance = statusResponse.data;
+        console.log('📊 [QR-DIAGNOSTIC] Status atual:', instance.connectionStatus, 'Estado:', instance.Whatsapp?.connection?.state);
+        
+        // Se já está conectado, não precisa de QR
+        if (instance.connectionStatus === 'ONLINE' || instance.Whatsapp?.connection?.state === 'open') {
+          const duration = Date.now() - startTime;
           setConnectTest({
             status: 'success',
-            message: 'QR Code obtido com sucesso!',
-            qrCode: result.qrCode,
-            details: result,
+            message: 'Instância já está conectada - QR não necessário',
+            details: { alreadyConnected: true, instance },
             duration
           });
-        } else if (result.status === 'connected') {
-          setConnectTest({
-            status: 'warning',
-            message: 'Instância já conectada (sem QR necessário)',
-            details: result,
-            duration
-          });
-        } else {
-          setConnectTest({
-            status: 'warning',
-            message: 'Connect OK, mas QR não encontrado - aguarde webhook',
-            details: result,
-            duration
-          });
+          return;
         }
-      } else {
+        
+        // Se tem sessão mas está offline, tentar logout primeiro
+        if (instance.ownerJid && instance.connectionStatus === 'OFFLINE') {
+          console.log('🔄 [QR-DIAGNOSTIC] Instância tem sessão salva mas está offline, fazendo logout...');
+          setConnectTest({ status: 'testing', message: 'Limpando sessão anterior...' });
+          
+          try {
+            await codechatQRService.logoutInstance(instanceName);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar logout
+          } catch (logoutError) {
+            console.warn('⚠️ [QR-DIAGNOSTIC] Erro no logout (continuando):', logoutError);
+          }
+        }
+      }
+      
+      setConnectTest({ status: 'testing', message: 'Conectando instância...' });
+      
+      console.log('🔌 [QR-DIAGNOSTIC] Tentando conectar instância:', instanceName);
+      const connectResponse = await codechatQRService.connectInstance(instanceName);
+      
+      if (connectResponse.success && connectResponse.qrCode) {
+        const duration = Date.now() - startTime;
         setConnectTest({
-          status: 'error',
-          message: result.error || 'Erro ao conectar',
-          details: result,
+          status: 'success',
+          message: 'QR code obtido via connect',
+          qrCode: connectResponse.qrCode,
+          details: connectResponse,
           duration
         });
+        return;
       }
+      
+      // Se não teve QR no connect, verificar se está realmente gerando
+      console.log('⏳ [QR-DIAGNOSTIC] Connect OK, verificando se QR será gerado...');
+      setConnectTest({ status: 'testing', message: 'Aguardando geração de QR...' });
+      
+      // Polling mais agressivo para capturar QR
+      for (let i = 0; i < 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const qrResponse = await codechatQRService.getQRCodeDirectly(instanceName);
+        if (qrResponse.success && qrResponse.qrCode) {
+          const duration = Date.now() - startTime;
+          setConnectTest({
+            status: 'success',
+            message: `QR code obtido via polling (tentativa ${i + 1})`,
+            qrCode: qrResponse.qrCode,
+            details: qrResponse,
+            duration
+          });
+          return;
+        }
+        
+        // Verificar se mudou para conectado
+        const newStatus = await codechatQRService.getInstanceDetails(instanceName);
+        if (newStatus.success && newStatus.data?.connectionStatus === 'ONLINE') {
+          const duration = Date.now() - startTime;
+          setConnectTest({
+            status: 'success',
+            message: 'Instância conectou automaticamente - QR não necessário',
+            details: { autoConnected: true, instance: newStatus.data },
+            duration
+          });
+          return;
+        }
+        
+        console.log(`🔄 [QR-DIAGNOSTIC] Tentativa ${i + 1}/10 - ainda aguardando QR...`);
+      }
+      
+      const duration = Date.now() - startTime;
+      setConnectTest({
+        status: 'warning',
+        message: 'Instância conectou mas não gerou QR - possivelmente já tinha sessão',
+        details: connectResponse,
+        duration
+      });
     } catch (error: any) {
       const duration = Date.now() - startTime;
       setConnectTest({
