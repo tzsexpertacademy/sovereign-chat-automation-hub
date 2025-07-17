@@ -466,32 +466,32 @@ const QRCodeAdvancedDiagnostic = () => {
         return;
       }
       
-      // Extrair JWT da resposta da criação da instância
-      if (createResult.details?.data?.Auth?.token) {
-        realJwtToken = createResult.details.data.Auth.token;
-        console.log('🎯 [WS-REAL-TEST] JWT extraído da resposta:', realJwtToken.substring(0, 20) + '...');
-        
-        // Salvar na base de dados via serviço
-        const { whatsappInstancesService } = await import('@/services/whatsappInstancesService');
-        try {
-          await whatsappInstancesService.createInstance({
-            instance_id: testInstanceName,
-            auth_token: realJwtToken,
-            status: 'created',
-            yumer_instance_name: testInstanceName
-          });
-          console.log('💾 [WS-REAL-TEST] JWT salvo na base de dados');
-        } catch (dbError) {
-          console.warn('⚠️ [WS-REAL-TEST] Erro ao salvar na BD (prosseguindo):', dbError);
+      // Gerar JWT com o secret correto do servidor usando nosso serviço
+      const { yumerJwtService } = await import('@/services/yumerJwtService');
+      try {
+        realJwtToken = await yumerJwtService.generateLocalJWT(testInstanceName);
+        console.log('🎯 [WS-REAL-TEST] JWT gerado com secret correto:', realJwtToken.substring(0, 20) + '...');
+      } catch (jwtError) {
+        console.error('❌ [WS-REAL-TEST] Erro ao gerar JWT:', jwtError);
+        // Fallback: usar JWT da resposta da API
+        if (createResult.details?.data?.Auth?.token) {
+          realJwtToken = createResult.details.data.Auth.token;
+          console.log('⚠️ [WS-REAL-TEST] Usando JWT da API como fallback:', realJwtToken.substring(0, 20) + '...');
         }
-      } else {
-        console.error('❌ [WS-REAL-TEST] JWT não encontrado na resposta da criação!', createResult.details);
-        toast({
-          title: "❌ JWT Não Encontrado",
-          description: "Instância criada mas JWT não retornado - verificar resposta da API",
-          variant: "destructive"
+      }
+      
+      // Salvar na base de dados via serviço
+      const { whatsappInstancesService } = await import('@/services/whatsappInstancesService');
+      try {
+        await whatsappInstancesService.createInstance({
+          instance_id: testInstanceName,
+          auth_token: realJwtToken,
+          status: 'created',
+          yumer_instance_name: testInstanceName
         });
-        return;
+        console.log('💾 [WS-REAL-TEST] JWT salvo na base de dados');
+      } catch (dbError) {
+        console.warn('⚠️ [WS-REAL-TEST] Erro ao salvar na base:', dbError);
       }
       
       console.log('⏳ [WS-REAL-TEST] ETAPA 2: Aguardando 5s para instância ficar pronta...');
