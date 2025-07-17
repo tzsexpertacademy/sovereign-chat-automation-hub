@@ -162,8 +162,8 @@ const QRCodeAdvancedDiagnostic = () => {
     }
   };
 
-  // Executar teste único com debug detalhado
-  const executeQRTest = async (endpoint: QREndpoint, instanceName?: string): Promise<QRTestResult> => {
+  // Executar teste único com debug detalhado e fallback de autenticação
+  const executeQRTest = async (endpoint: QREndpoint, instanceName?: string, retryWithApiKey = false): Promise<QRTestResult> => {
     const startTime = Date.now();
     const testKey = endpoint.name;
     
@@ -172,7 +172,7 @@ const QRCodeAdvancedDiagnostic = () => {
       ...prev,
       [testKey]: { 
         status: 'testing', 
-        message: 'Executando...', 
+        message: retryWithApiKey ? 'Tentando com apikey...' : 'Executando...', 
         endpoint: endpoint.url,
         method: endpoint.method 
       }
@@ -204,11 +204,27 @@ const QRCodeAdvancedDiagnostic = () => {
       const currentApiKey = getYumerGlobalApiKey();
       console.log(`🔑 [API-KEY-DEBUG] API Key atual:`, currentApiKey ? `${currentApiKey.substring(0, 8)}***` : 'NÃO ENCONTRADA');
       
-      const headers = {
+      // 🔄 ESTRATÉGIA HÍBRIDA DE AUTENTICAÇÃO
+      const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        ...endpoint.headers
+        'Accept': 'application/json'
       };
+
+      // Adicionar autenticação baseado no retry
+      if (retryWithApiKey) {
+        // Tentar com apikey (método antigo)
+        headers['apikey'] = currentApiKey || '';
+        console.log(`🔑 [AUTH-STRATEGY] Usando apikey header`);
+      } else {
+        // Tentar com Authorization Bearer (método padrão)
+        headers['Authorization'] = `Bearer ${currentApiKey || ''}`;
+        console.log(`🔑 [AUTH-STRATEGY] Usando Authorization Bearer`);
+      }
+
+      // Adicionar headers do endpoint se existirem
+      if (endpoint.headers) {
+        Object.assign(headers, endpoint.headers);
+      }
 
       console.log(`🧪 [QR-TEST] ${endpoint.method} ${url}`);
       console.log(`📋 [HEADERS-DEBUG] Headers enviados:`, headers);
@@ -237,9 +253,14 @@ const QRCodeAdvancedDiagnostic = () => {
       console.log(`📊 [RESPONSE-DEBUG] Status: ${response.status}`);
       console.log(`📄 [RESPONSE-DEBUG] Data:`, responseData);
 
-      // 🔍 ANÁLISE ESPECÍFICA DO ERRO 403
-      if (response.status === 403) {
+      // 🔍 ANÁLISE ESPECÍFICA DO ERRO 403 COM FALLBACK
+      if (response.status === 403 && !retryWithApiKey) {
+        console.warn(`⚠️ [403-FALLBACK] Bearer falhou, tentando com apikey...`);
+        // Tentar novamente com apikey
+        return await executeQRTest(endpoint, instanceName, true);
+      } else if (response.status === 403) {
         const authHeader = headers['Authorization'] || headers['apikey'] || headers['apiKey'] || headers['x-api-key'];
+        console.error(`🚨 [403-DEBUG] Método ${retryWithApiKey ? 'apikey' : 'Bearer'} falhou`);
         console.error(`🚨 [403-DEBUG] Authorization header:`, authHeader ? `${authHeader.substring(0, 20)}***` : 'AUSENTE');
         console.error(`🚨 [403-DEBUG] Headers de resposta:`, Object.fromEntries(response.headers.entries()));
       }
@@ -275,6 +296,13 @@ const QRCodeAdvancedDiagnostic = () => {
         } else if (endpoint.name === 'QR Code Direct' && typeof responseData === 'string' && responseData.includes('Generate QRCode')) {
           message = `${endpoint.method} ${response.status} - Página QR carregada (interface disponível)`;
         }
+        
+        // Indicar qual método de auth funcionou
+        if (retryWithApiKey) {
+          message += ' (✅ apikey funcionou)';
+        } else {
+          message += ' (✅ Bearer funcionou)';
+        }
       } else {
         // Para endpoints que esperam erro quando não conectado
         if (endpoint.expectedBehavior === 'warning_if_not_connected' && 
@@ -286,7 +314,7 @@ const QRCodeAdvancedDiagnostic = () => {
           status = 'warning';
           message += ' (Instância ainda não pronta - normal após criação)';
         } else if (response.status === 403) {
-          message += ' (Sem permissão - verificar API Key)';
+          message += ` (Sem permissão - ${retryWithApiKey ? 'apikey' : 'Bearer'} rejeitado)`;
         } else if (response.status === 404) {
           message += ' (Instância não encontrada)';
         }
@@ -300,7 +328,8 @@ const QRCodeAdvancedDiagnostic = () => {
           data: responseData,
           url: url,
           usedInstance: finalInstanceName || 'N/A',
-          responseSize: responseText.length
+          responseSize: responseText.length,
+          authMethod: retryWithApiKey ? 'apikey' : 'Bearer'
         },
         duration,
         endpoint: endpoint.url,
@@ -316,7 +345,7 @@ const QRCodeAdvancedDiagnostic = () => {
       const result: QRTestResult = {
         status: 'error',
         message: `Erro: ${error.message}`,
-        details: { error: error.message, url: `${SERVER_URL}${endpoint.url}` },
+        details: { error: error.message, url: `${SERVER_URL}${endpoint.url}`, authMethod: retryWithApiKey ? 'apikey' : 'Bearer' },
         duration,
         endpoint: endpoint.url,
         method: endpoint.method
