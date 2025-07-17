@@ -610,21 +610,38 @@ class YumerWhatsAppService {
 
   // ============ WEBHOOK / S3 / MÍDIA ============
 
-  // POST /api/v2/instance/:instanceId/webhook (API v2)
+  // POST /api/v2/instance/:instanceId/webhook (API v2 com descoberta dinâmica)
   async setWebhook(instanceName: string, webhookUrl: string, events: string[]): Promise<{ success: boolean }> {
-    return this.makeRequest(`/api/v2/instance/1/webhook`, {
-      method: 'POST',
-      body: JSON.stringify({
-        name: "supabase-codechat",
-        url: webhookUrl,
-        enabled: true,
-        headers: { "apikey": "df1afd525fs5f15" },
-        WebhookEvents: { 
-          qrcodeUpdate: true, 
-          connectionUpdate: true 
-        }
-      }),
-    });
+    try {
+      // Descobrir instanceId real
+      const discovery = await this.makeRequest(`/api/v2/instance/find/${instanceName}`, {
+        method: 'GET'
+      });
+      
+      if (!discovery.id) {
+        throw new Error('InstanceId não encontrado na resposta de discovery');
+      }
+      
+      const realInstanceId = discovery.id.toString();
+      console.log(`🎯 [YUMER-API] Usando instanceId real: ${realInstanceId} para webhook`);
+      
+      return this.makeRequest(`/api/v2/instance/${realInstanceId}/webhook`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: "supabase-codechat",
+          url: webhookUrl,
+          enabled: true,
+          headers: { "apikey": "df1afd525fs5f15" },
+          WebhookEvents: { 
+            qrcodeUpdate: true, 
+            connectionUpdate: true 
+          }
+        }),
+      });
+    } catch (error) {
+      console.error(`❌ [YUMER-API] Erro ao configurar webhook:`, error);
+      return { success: false };
+    }
   }
 
   // GET /webhook/find/:instanceName

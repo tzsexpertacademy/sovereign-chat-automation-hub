@@ -397,45 +397,76 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           
           // ============ DETECTAR INSTÂNCIA TRAVADA EM "CONNECTING" ============
           if (statusData.state === 'connecting' && instanceDetails.connectionStatus === 'OFFLINE' && attempts > 5) {
-            console.warn(`🚨 [UNIFIED-POLL] Instância travada em connecting/offline - forçando reconfiguração`);
+            console.warn(`🚨 [UNIFIED-POLL] Instância travada em connecting/offline - aplicando limpeza completa`);
             
             try {
-              // Tentar desconectar e reconectar
-              console.log(`🔄 [UNIFIED-POLL] Tentando desconectar instância travada...`);
-              await codechatQRService.disconnectInstance(instanceId);
+              // Etapa 1: Deletar instância completamente
+              console.log(`🗑️ [UNIFIED-POLL] Deletando instância travada: ${instanceId}`);
+              await codechatQRService.deleteInstance(instanceId);
               
-              // Aguardar 2 segundos
-              await new Promise(resolve => setTimeout(resolve, 2000));
+              // Etapa 2: Limpar do banco
+              console.log(`🗑️ [UNIFIED-POLL] Limpando do banco: ${instanceId}`);
+              await whatsappInstancesService.deleteInstance(instanceId);
               
-              // Reconectar
-              console.log(`🔄 [UNIFIED-POLL] Reconectando instância...`);
-              const reconnectResponse = await codechatQRService.connectInstance(instanceId);
+              // Aguardar 3 segundos para garantir limpeza
+              await new Promise(resolve => setTimeout(resolve, 3000));
               
-              if (reconnectResponse.qrCode) {
-                console.log(`🎉 [UNIFIED-POLL] QR Code obtido na reconexão!`);
-                clearInterval(hybridPollingInterval);
-                
-                setInstances(prev => ({
-                  ...prev,
-                  [instanceId]: {
-                    ...prev[instanceId],
-                    status: 'qr_ready',
-                    qrCode: reconnectResponse.qrCode,
-                    hasQrCode: true,
-                    lastUpdated: Date.now()
-                  }
-                }));
-                
-                toast({
-                  title: "📱 QR Code Pronto!",
-                  description: "Obtido após reconexão",
+              // Etapa 3: Criar nova instância com nome mais simples
+              const newInstanceName = `${instanceId.split('_')[0]}_${Date.now()}`;
+              console.log(`📝 [UNIFIED-POLL] Criando nova instância limpa: ${newInstanceName}`);
+              
+              const createResponse = await codechatQRService.createInstance(newInstanceName, `Clean Instance: ${newInstanceName}`);
+              
+              if (createResponse.success) {
+                // Etapa 4: Atualizar no banco
+                await whatsappInstancesService.updateInstanceStatus(instanceId, 'disconnected', {
+                  instance_id: newInstanceName,
+                  updated_at: new Date().toISOString()
                 });
                 
-                startPollingForInstance(instanceId);
-                return;
+                // Etapa 5: Conectar nova instância
+                console.log(`🔄 [UNIFIED-POLL] Conectando nova instância: ${newInstanceName}`);
+                const connectResponse = await codechatQRService.connectInstance(newInstanceName);
+                
+                if (connectResponse.qrCode) {
+                  console.log(`🎉 [UNIFIED-POLL] QR Code obtido na nova instância!`);
+                  clearInterval(hybridPollingInterval);
+                  
+                  setInstances(prev => ({
+                    ...prev,
+                    [instanceId]: {
+                      ...prev[instanceId],
+                      instanceId: newInstanceName, // Atualizar instanceId
+                      status: 'qr_ready',
+                      qrCode: connectResponse.qrCode,
+                      hasQrCode: true,
+                      lastUpdated: Date.now()
+                    }
+                  }));
+                  
+                  // Salvar no banco
+                  await whatsappInstancesService.updateInstanceStatus(newInstanceName, 'qr_ready', {
+                    has_qr_code: true,
+                    qr_code: connectResponse.qrCode,
+                    updated_at: new Date().toISOString()
+                  });
+                  
+                  toast({
+                    title: "📱 QR Code Pronto!",
+                    description: "Nova instância criada e funcionando",
+                  });
+                  
+                  startPollingForInstance(newInstanceName);
+                  return;
+                } else {
+                  console.log(`🔄 [UNIFIED-POLL] Nova instância criada, aguardando QR via webhook`);
+                  // Continuar polling com nova instância
+                  instanceId = newInstanceName; // Atualizar instanceId para próximas tentativas
+                }
               }
-            } catch (reconnectError) {
-              console.error(`❌ [UNIFIED-POLL] Erro na reconexão:`, reconnectError);
+              
+            } catch (cleanupError) {
+              console.error(`❌ [UNIFIED-POLL] Erro na limpeza completa:`, cleanupError);
             }
           }
           
@@ -556,6 +587,59 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           
         } catch (error) {
           console.error(`❌ [UNIFIED-POLL] Erro no polling:`, error);
+          
+          // Se instância não existe, tentar recriar automaticamente
+          if (error.message?.includes('400') && error.message?.includes('does not exist')) {
+            console.log(`🔄 [UNIFIED-POLL] Instância não existe - tentando recriar automaticamente`);
+            
+            try {
+              // Criar nova instância automaticamente
+              const newInstanceName = `${instanceId.split('_')[0]}_${Date.now()}`;
+              console.log(`📝 [UNIFIED-POLL] Criando instância de substituição: ${newInstanceName}`);
+              
+              const createResponse = await codechatQRService.createInstance(newInstanceName, `Auto-created: ${newInstanceName}`);
+              
+              if (createResponse.success) {
+                // Atualizar no banco
+                await whatsappInstancesService.updateInstanceStatus(instanceId, 'disconnected', {
+                  instance_id: newInstanceName,
+                  updated_at: new Date().toISOString()
+                });
+                
+                // Conectar nova instância
+                const connectResponse = await codechatQRService.connectInstance(newInstanceName);
+                
+                if (connectResponse.qrCode) {
+                  console.log(`🎉 [UNIFIED-POLL] Nova instância criada e QR obtido!`);
+                  clearInterval(hybridPollingInterval);
+                  
+                  setInstances(prev => ({
+                    ...prev,
+                    [instanceId]: {
+                      ...prev[instanceId],
+                      instanceId: newInstanceName,
+                      status: 'qr_ready',
+                      qrCode: connectResponse.qrCode,
+                      hasQrCode: true,
+                      lastUpdated: Date.now()
+                    }
+                  }));
+                  
+                  toast({
+                    title: "✅ Nova Instância Criada",
+                    description: "Instância recriada automaticamente com QR Code",
+                  });
+                  
+                  startPollingForInstance(newInstanceName);
+                  return;
+                } else {
+                  console.log(`🔄 [UNIFIED-POLL] Nova instância criada, continuando polling...`);
+                }
+              }
+            } catch (createError) {
+              console.error(`❌ [UNIFIED-POLL] Erro ao recriar instância:`, createError);
+            }
+          }
         }
       }, pollInterval);
       

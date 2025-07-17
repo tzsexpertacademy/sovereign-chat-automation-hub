@@ -43,15 +43,61 @@ class CodeChatQRService {
     return headers;
   }
 
+  // ============ DESCOBRIR INSTANCE ID REAL ============
+  async discoverInstanceId(instanceName: string): Promise<{ instanceId: string | null; error?: string }> {
+    try {
+      console.log(`🔍 [CODECHAT-API] Descobrindo instanceId real para: ${instanceName}`);
+      
+      const response = await fetch(`${this.getApiBaseUrl()}/api/v2/instance/find/${instanceName}`, {
+        method: 'GET',
+        headers: await this.getAuthHeaders(instanceName)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ [CODECHAT-API] Erro ao descobrir instanceId:`, errorText);
+        return { instanceId: null, error: `HTTP ${response.status}: ${errorText}` };
+      }
+
+      const data = await response.json();
+      console.log(`✅ [CODECHAT-API] Instance data:`, data);
+      
+      // O instanceId real vem no campo "id" da resposta
+      const realInstanceId = data.id?.toString();
+      
+      if (realInstanceId) {
+        console.log(`🎯 [CODECHAT-API] InstanceId real descoberto: ${realInstanceId}`);
+        return { instanceId: realInstanceId };
+      } else {
+        console.error(`❌ [CODECHAT-API] InstanceId não encontrado na resposta:`, data);
+        return { instanceId: null, error: 'InstanceId não encontrado na resposta' };
+      }
+    } catch (error: any) {
+      console.error(`❌ [CODECHAT-API] Erro ao descobrir instanceId:`, error);
+      return { instanceId: null, error: error.message };
+    }
+  }
+
   // ============ CONFIGURAR WEBHOOK INTELIGENTE ============
   async configureWebhook(instanceName: string): Promise<{ success: boolean; error?: string }> {
     try {
       console.log(`🔧 [CODECHAT] Configurando webhook para ${instanceName}`);
       
+      // ============ ETAPA 0: DESCOBRIR INSTANCE ID REAL ============
+      const discovery = await this.discoverInstanceId(instanceName);
+      
+      if (!discovery.instanceId) {
+        console.error(`❌ [CODECHAT] Não foi possível descobrir instanceId real:`, discovery.error);
+        return { success: false, error: discovery.error };
+      }
+      
+      const realInstanceId = discovery.instanceId;
+      console.log(`🎯 [CODECHAT] Usando instanceId real: ${realInstanceId}`);
+      
       // ============ ETAPA 1: VERIFICAR SE WEBHOOK JÁ EXISTE ============
       try {
-        console.log(`🔍 [CODECHAT] Verificando webhook existente...`);
-        const checkResponse = await fetch(`${this.getApiBaseUrl()}/webhook/find/${instanceName}`, {
+        console.log(`🔍 [CODECHAT] Verificando webhook existente para instanceId: ${realInstanceId}`);
+        const checkResponse = await fetch(`${this.getApiBaseUrl()}/api/v2/instance/${realInstanceId}/webhook`, {
           method: 'GET',
           headers: await this.getAuthHeaders(instanceName)
         });
@@ -80,9 +126,9 @@ class CodeChatQRService {
       
       console.log(`🔧 [CODECHAT] Configurando webhook API v2...`);
       console.log(`📡 [CODECHAT] URL do webhook: ${webhookUrl}`);
-      console.log(`📋 [CODECHAT] Usando instanceId: 1 (fixo conforme doc)`);
+      console.log(`📋 [CODECHAT] Usando instanceId real: ${realInstanceId}`);
       
-      const response = await fetch(`${this.getApiBaseUrl()}/api/v2/instance/1/webhook`, {
+      const response = await fetch(`${this.getApiBaseUrl()}/api/v2/instance/${realInstanceId}/webhook`, {
         method: 'POST',
         headers: await this.getAuthHeaders(instanceName),
         body: JSON.stringify({
