@@ -152,7 +152,7 @@ const InstanceStatusChecker = () => {
           
           // Tentar deletar via API YUMER primeiro
           try {
-            const response = await fetch(`${SERVER_URL}/instance/delete/${instanceName}`, {
+            const response = await fetch(`${SERVER_URL}/instance/delete/${instanceName}?force=true`, {
               method: 'DELETE',
               headers: {
                 'apikey': apiKey || '',
@@ -218,7 +218,7 @@ const InstanceStatusChecker = () => {
           const instanceName = instance.name || instance.instanceName;
           console.log(`💀 [API-DELETE] Deletando: ${instanceName}`);
           
-          const response = await fetch(`${SERVER_URL}/instance/delete/${instanceName}`, {
+          const response = await fetch(`${SERVER_URL}/instance/delete/${instanceName}?force=true`, {
             method: 'DELETE',
             headers: {
               'apikey': apiKey || '',
