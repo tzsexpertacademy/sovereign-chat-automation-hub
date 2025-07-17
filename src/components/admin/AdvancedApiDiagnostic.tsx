@@ -205,67 +205,88 @@ const AdvancedApiDiagnostic = () => {
 
     try {
       let url = `${SERVER_URL}${endpoint.url}`;
+      let finalInstanceName = instanceName;
       
-      // Para testes individuais, buscar uma instância existente primeiro
-      if (endpoint.requiresInstance && instanceName === 'test_single') {
-        try {
-          console.log(`🔍 [API-TEST] Buscando instâncias existentes...`);
-          
-          // Buscar instâncias existentes primeiro
-          const instancesResponse = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
-            headers: { 'apikey': apiKey || '', 'Content-Type': 'application/json' }
-          });
-          
-          if (instancesResponse.ok) {
-            const instances = await instancesResponse.json();
-            console.log(`📊 [API-TEST] Resposta fetchInstances:`, instances);
+      // Para testes que precisam de instância, garantir que temos uma disponível
+      if (endpoint.requiresInstance) {
+        // Se não foi fornecido instanceName ou é um placeholder
+        if (!finalInstanceName || finalInstanceName === 'test_single') {
+          try {
+            console.log(`🔍 [API-TEST] Buscando instâncias existentes para ${endpoint.name}...`);
             
-            // Verificar se temos instâncias
-            if (Array.isArray(instances) && instances.length > 0) {
-              // Tentar diferentes campos para o nome da instância
-              const firstInstance = instances[0];
-              instanceName = firstInstance.name || firstInstance.instanceName || firstInstance.id?.toString();
-              console.log(`🎯 [API-TEST] Usando instância existente: ${instanceName}`);
-            } else if (instances && typeof instances === 'object') {
-              // Se não for array, pode ser objeto único
-              instanceName = instances.name || instances.instanceName || instances.id?.toString();
-              console.log(`🎯 [API-TEST] Usando instância única: ${instanceName}`);
+            // Buscar instâncias existentes primeiro
+            const instancesResponse = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
+              headers: { 'apikey': apiKey || '', 'Content-Type': 'application/json' }
+            });
+            
+            if (instancesResponse.ok) {
+              const instances = await instancesResponse.json();
+              console.log(`📊 [API-TEST] Resposta fetchInstances:`, instances);
+              
+              // Verificar se temos instâncias
+              if (Array.isArray(instances) && instances.length > 0) {
+                // Tentar diferentes campos para o nome da instância
+                const firstInstance = instances[0];
+                finalInstanceName = firstInstance.name || firstInstance.instanceName || firstInstance.id?.toString();
+                console.log(`🎯 [API-TEST] Usando instância existente: ${finalInstanceName}`);
+              } else if (instances && typeof instances === 'object' && (instances.name || instances.instanceName || instances.id)) {
+                // Se não for array, pode ser objeto único
+                finalInstanceName = instances.name || instances.instanceName || instances.id?.toString();
+                console.log(`🎯 [API-TEST] Usando instância única: ${finalInstanceName}`);
+              } else {
+                console.log(`⚠️ [API-TEST] Nenhuma instância encontrada:`, instances);
+                // Se não há instâncias, vamos falhar com mensagem clara
+                return {
+                  status: 'warning',
+                  message: 'Nenhuma instância disponível - crie uma instância primeiro',
+                  details: { 
+                    fetchInstancesResponse: instances,
+                    suggestion: 'Use o endpoint "Create Instance" para criar uma instância primeiro'
+                  },
+                  duration: Date.now() - startTime,
+                  endpoint: endpoint.url,
+                  method: endpoint.method
+                };
+              }
             } else {
-              console.log(`⚠️ [API-TEST] Nenhuma instância encontrada:`, instances);
-              // Se não há instâncias, vamos falhar com mensagem clara
-              return {
-                status: 'warning',
-                message: 'Nenhuma instância disponível - crie uma instância primeiro',
-                details: { 
-                  fetchInstancesResponse: instances,
-                  suggestion: 'Use o endpoint "Create Instance" para criar uma instância primeiro'
-                },
-                duration: Date.now() - startTime,
-                endpoint: endpoint.url,
-                method: endpoint.method
-              };
+              console.warn(`⚠️ [API-TEST] Erro ao buscar instâncias: ${instancesResponse.status}`);
+              // Se busca falhou mas temos um nome, usar ele
+              finalInstanceName = instanceName || 'default_instance';
             }
-          } else {
-            console.warn(`⚠️ [API-TEST] Erro ao buscar instâncias: ${instancesResponse.status}`);
-            instanceName = 'test_single'; // Fallback para nome original
+          } catch (error) {
+            console.warn(`⚠️ [API-TEST] Erro ao buscar instâncias existentes:`, error);
+            // Se erro, usar o nome fornecido ou fallback
+            finalInstanceName = instanceName || 'default_instance';
           }
-        } catch (error) {
-          console.warn(`⚠️ [API-TEST] Erro ao buscar instâncias existentes:`, error);
-          instanceName = 'test_single'; // Fallback para nome original
         }
-      }
-      
-      // Substituir placeholder de instância
-      if (endpoint.requiresInstance && instanceName) {
-        url = url.replace('{instance}', instanceName);
+        
+        // Validar se temos um nome válido de instância
+        if (!finalInstanceName || finalInstanceName === 'test_single') {
+          return {
+            status: 'error',
+            message: 'Falha ao obter nome de instância válido',
+            details: { 
+              error: 'Não foi possível determinar uma instância para usar no teste',
+              providedInstanceName: instanceName,
+              endpoint: endpoint.url
+            },
+            duration: Date.now() - startTime,
+            endpoint: endpoint.url,
+            method: endpoint.method
+          };
+        }
+        
+        // Substituir placeholder de instância
+        url = url.replace('{instance}', finalInstanceName);
+        console.log(`🔗 [API-TEST] URL final: ${url}`);
       }
 
       // Preparar body para create instance
       let body = endpoint.body;
-      if (endpoint.name === 'Create Instance' && instanceName) {
+      if (endpoint.name === 'Create Instance' && finalInstanceName) {
         body = { 
-          instanceName: instanceName,
-          description: `Test Instance: ${instanceName}` 
+          instanceName: finalInstanceName,
+          description: `Test Instance: ${finalInstanceName}` 
         };
       }
 
