@@ -231,6 +231,21 @@ const InstanceStatusChecker = () => {
     }
   };
 
+  // Diagnóstico de sincronização
+  const diagnoseSyncIssues = () => {
+    console.log(`🔍 [DIAGNÓSTICO] Analisando problemas de sincronização...`);
+    console.log(`📊 API YUMER: ${instances.length} instâncias`);
+    console.log(`🗃️ Supabase: Verificando consistência...`);
+    
+    // Log detalhado das instâncias
+    instances.forEach((instance, index) => {
+      console.log(`📝 [${index + 1}] Nome: ${instance.name}`);
+      console.log(`   ID: ${instance.id} (tipo: ${typeof instance.id})`);
+      console.log(`   Status: ${instance.connectionStatus}`);
+      console.log(`   WhatsApp: ${instance.ownerJid ? 'Conectado' : 'Desconectado'}`);
+    });
+  };
+
   useEffect(() => {
     fetchInstances();
   }, []);
@@ -372,18 +387,26 @@ const InstanceStatusChecker = () => {
                   Excluir TODAS ({cleanupStats.total})
                 </Button>
                 
-                {cleanupStats.total > 0 && (
-                  <Button 
-                    onClick={forceCleanupAll} 
-                    variant="destructive" 
-                    size="sm"
-                    disabled={loading}
-                    className="bg-red-600 hover:bg-red-700 border-red-600"
-                  >
-                    <Trash2 className="w-3 h-3 mr-1" />
-                    💀 FORÇA BRUTA
-                  </Button>
-                )}
+                <Button 
+                  onClick={forceCleanupAll} 
+                  variant="destructive" 
+                  size="sm"
+                  disabled={loading}
+                  className="bg-red-600 hover:bg-red-700 border-red-600"
+                >
+                  <Trash2 className="w-3 h-3 mr-1" />
+                  💀 FORÇA BRUTA
+                </Button>
+
+                <Button 
+                  onClick={diagnoseSyncIssues} 
+                  variant="outline" 
+                  size="sm"
+                  disabled={loading}
+                  className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                >
+                  🔍 Diagnóstico
+                </Button>
               </div>
             )}
           </div>
