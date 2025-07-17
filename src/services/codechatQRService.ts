@@ -586,20 +586,32 @@ class CodeChatQRService {
           };
         }
       } else {
-        // Se retornar texto/HTML, pode ser base64 direto
+        // Se retornar texto/HTML, verificar se é HTML da página de QR
         const text = await response.text();
         console.log(`🔍 [CODECHAT-DEBUG] Response text (primeiros 200 chars):`, text.substring(0, 200));
+        console.log(`🔍 [CODECHAT-DEBUG] Content-Type:`, response.headers.get('content-type'));
         
-        if (text && (text.startsWith('data:image') || text.length > 100)) {
+        // Se for HTML, não é um QR code válido
+        if (text.includes('<!DOCTYPE html>') || text.includes('<html')) {
+          console.log(`⚠️ [CODECHAT-API] Endpoint retornou HTML ao invés de QR Code`);
+          console.log(`🔄 [CODECHAT-API] QR Code deve ser obtido via WebSocket ou polling`);
+          return {
+            success: false,
+            error: 'Endpoint retornou HTML ao invés de QR Code',
+            instanceName
+          };
+        }
+        
+        // Se for base64 direto
+        if (text && text.startsWith('data:image')) {
           console.log(`✅ [CODECHAT-API] QR obtido via endpoint QR texto`);
-          const finalQrCode = text.startsWith('data:image') ? text : `data:image/png;base64,${text}`;
           
           // 🔑 SALVAR QR CODE NO BANCO IMEDIATAMENTE
-          await this.saveQRCodeToDatabase(instanceName, finalQrCode);
+          await this.saveQRCodeToDatabase(instanceName, text);
           
           return {
             success: true,
-            qrCode: finalQrCode,
+            qrCode: text,
             status: 'qr_ready',
             instanceName
           };
