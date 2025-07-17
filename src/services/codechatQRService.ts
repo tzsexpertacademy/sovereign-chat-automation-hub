@@ -36,6 +36,16 @@ class CodeChatQRService {
       'Accept': 'application/json'
     };
 
+    // Para criação de instância, SEMPRE usar apikey
+    if (instanceName === 'create') {
+      const globalApiKey = getYumerGlobalApiKey();
+      if (globalApiKey) {
+        headers['apikey'] = globalApiKey;
+        console.log(`🔑 [CODECHAT-AUTH] API Key global adicionada via header apikey (create)`);
+        return headers;
+      }
+    }
+
     // 1. Tentar usar Bearer token da instância (padrão correto)
     if (useInstanceToken) {
       const instanceToken = await this.getInstanceAuthToken(instanceName);

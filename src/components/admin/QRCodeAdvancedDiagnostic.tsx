@@ -68,7 +68,6 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/create', 
       method: 'POST',
       description: 'Criar instância para teste de QR',
-      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       body: { instanceName: '', description: 'QR Diagnostic Test Instance' },
       expectedBehavior: 'success'
     },
@@ -77,7 +76,6 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/fetchInstances', 
       method: 'GET',
       description: 'Verificar se instância foi criada',
-      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       expectedBehavior: 'success'
     },
     
@@ -87,7 +85,6 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/connect/{instance}', 
       method: 'GET',
       description: 'Conectar instância e tentar obter QR',
-      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'creates_qr'
     },
@@ -96,7 +93,6 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/connectionState/{instance}', 
       method: 'GET',
       description: 'Verificar estado da conexão',
-      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'success'
     },
@@ -105,7 +101,6 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/qrcode/{instance}', 
       method: 'GET',
       description: 'Obter QR code via endpoint direto',
-      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'creates_qr'
     },
@@ -116,7 +111,6 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/fetchInstance/{instance}', 
       method: 'GET',
       description: 'Buscar detalhes da instância (pode falhar se não conectada)',
-      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'warning_if_not_connected'
     },
@@ -127,7 +121,6 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/logout/{instance}', 
       method: 'DELETE',
       description: 'Desconectar instância',
-      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'warning_if_not_connected'
     },
@@ -136,7 +129,6 @@ const QRCodeAdvancedDiagnostic = () => {
       url: '/instance/delete/{instance}', 
       method: 'DELETE',
       description: 'Deletar instância de teste',
-      headers: { 'Authorization': `Bearer ${apiKey || ''}` },
       requiresInstance: true,
       expectedBehavior: 'success'
     }
@@ -204,21 +196,28 @@ const QRCodeAdvancedDiagnostic = () => {
       const currentApiKey = getYumerGlobalApiKey();
       console.log(`🔑 [API-KEY-DEBUG] API Key atual:`, currentApiKey ? `${currentApiKey.substring(0, 8)}***` : 'NÃO ENCONTRADA');
       
-      // 🔄 ESTRATÉGIA HÍBRIDA DE AUTENTICAÇÃO
+      // 🔄 ESTRATÉGIA ESPECÍFICA DE AUTENTICAÇÃO POR ENDPOINT
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       };
 
-      // Adicionar autenticação baseado no retry
-      if (retryWithApiKey) {
-        // Tentar com apikey (método antigo)
+      // Sempre usar apikey para criação de instância
+      if (endpoint.name === 'Create Instance') {
+        // Para Create Instance, SEMPRE usar apikey no header
         headers['apikey'] = currentApiKey || '';
-        console.log(`🔑 [AUTH-STRATEGY] Usando apikey header`);
+        console.log(`🔑 [AUTH-STRATEGY] Create Instance - Usando apikey header (obrigatório)`);
       } else {
-        // Tentar com Authorization Bearer (método padrão)
-        headers['Authorization'] = `Bearer ${currentApiKey || ''}`;
-        console.log(`🔑 [AUTH-STRATEGY] Usando Authorization Bearer`);
+        // Adicionar autenticação baseado no retry para outros endpoints
+        if (retryWithApiKey) {
+          // Tentar com apikey (método alternativo)
+          headers['apikey'] = currentApiKey || '';
+          console.log(`🔑 [AUTH-STRATEGY] Usando apikey header`);
+        } else {
+          // Tentar com Authorization Bearer (método padrão para JWT)
+          headers['Authorization'] = `Bearer ${currentApiKey || ''}`;
+          console.log(`🔑 [AUTH-STRATEGY] Usando Authorization Bearer`);
+        }
       }
 
       // Adicionar headers do endpoint se existirem
@@ -253,16 +252,22 @@ const QRCodeAdvancedDiagnostic = () => {
       console.log(`📊 [RESPONSE-DEBUG] Status: ${response.status}`);
       console.log(`📄 [RESPONSE-DEBUG] Data:`, responseData);
 
-      // 🔍 ANÁLISE ESPECÍFICA DO ERRO 403 COM FALLBACK
-      if (response.status === 403 && !retryWithApiKey) {
-        console.warn(`⚠️ [403-FALLBACK] Bearer falhou, tentando com apikey...`);
-        // Tentar novamente com apikey
+      // 🔍 ANÁLISE ESPECÍFICA DO ERRO 403/401 COM FALLBACK
+      // Para criar instância, sempre usar apikey
+      if (endpoint.name === 'Create Instance' && response.status >= 400 && !retryWithApiKey) {
+        console.warn(`⚠️ [403-FALLBACK] Bearer falhou para Create Instance, tentando com apikey...`);
         return await executeQRTest(endpoint, instanceName, true);
-      } else if (response.status === 403) {
+      } 
+      // Para outros endpoints, usar o JWT retornado da criação da instância
+      else if ((response.status === 403 || response.status === 401) && !retryWithApiKey) {
+        console.warn(`⚠️ [${response.status}-FALLBACK] Bearer falhou, tentando com apikey...`);
+        return await executeQRTest(endpoint, instanceName, true);
+      } 
+      else if (response.status === 403 || response.status === 401) {
         const authHeader = headers['Authorization'] || headers['apikey'] || headers['apiKey'] || headers['x-api-key'];
-        console.error(`🚨 [403-DEBUG] Método ${retryWithApiKey ? 'apikey' : 'Bearer'} falhou`);
-        console.error(`🚨 [403-DEBUG] Authorization header:`, authHeader ? `${authHeader.substring(0, 20)}***` : 'AUSENTE');
-        console.error(`🚨 [403-DEBUG] Headers de resposta:`, Object.fromEntries(response.headers.entries()));
+        console.error(`🚨 [${response.status}-DEBUG] Método ${retryWithApiKey ? 'apikey' : 'Bearer'} falhou`);
+        console.error(`🚨 [${response.status}-DEBUG] Authorization header:`, authHeader ? `${authHeader.substring(0, 20)}***` : 'AUSENTE');
+        console.error(`🚨 [${response.status}-DEBUG] Headers de resposta:`, Object.fromEntries(response.headers.entries()));
       }
 
       // Análise inteligente dos resultados baseada no comportamento esperado
