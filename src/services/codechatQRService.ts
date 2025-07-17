@@ -8,6 +8,15 @@ interface QRCodeResponse {
   status?: string;
   error?: string | null;
   instanceName?: string;
+  actualName?: string; // Nome real retornado pelo YUMER
+  data?: any;
+}
+
+interface CreateInstanceResult {
+  success: boolean;
+  error?: string;
+  instanceName: string;
+  actualName?: string; // Nome real retornado pelo YUMER
   data?: any;
 }
 
@@ -236,9 +245,16 @@ class CodeChatQRService {
     try {
       console.log(`🚀 [CODECHAT-API] Conectando instância (padrão correto): ${instanceName}`);
       
+      // ============ VERIFICAR NOME REAL NO BANCO ============
+      const realInstanceName = await this.getRealYumerInstanceName(instanceName);
+      console.log(`🔍 [CODECHAT-DEBUG] Nome original: ${instanceName}`);
+      console.log(`🔍 [CODECHAT-DEBUG] Nome real no YUMER: ${realInstanceName}`);
+      
+      const nameToUse = realInstanceName || instanceName;
+      
       // ============ ETAPA 1: VERIFICAR SE JÁ ESTÁ CONECTADO ============
       try {
-        const currentStatus = await this.getInstanceStatus(instanceName);
+        const currentStatus = await this.getInstanceStatus(nameToUse);
         console.log(`📊 [CODECHAT-API] Status atual:`, currentStatus);
         
         if (currentStatus.state === 'open') {
@@ -247,7 +263,7 @@ class CodeChatQRService {
             success: true,
             qrCode: undefined,
             status: 'connected',
-            instanceName,
+            instanceName: nameToUse,
             data: currentStatus
           };
         }
@@ -850,8 +866,30 @@ class CodeChatQRService {
     }
   }
 
+  // ============ BUSCAR NOME REAL NO YUMER SALVO NO BANCO ============
+  private async getRealYumerInstanceName(instanceId: string): Promise<string | null> {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .select('yumer_instance_name')
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (error || !data?.yumer_instance_name) {
+        console.log(`ℹ️ [CODECHAT-DEBUG] Nome real não encontrado para ${instanceId}`);
+        return null;
+      }
+
+      return data.yumer_instance_name;
+    } catch (error) {
+      console.error(`❌ [CODECHAT-DEBUG] Erro ao buscar nome real:`, error);
+      return null;
+    }
+  }
+
   // ============ CREATE INSTANCE - PADRÃO CORRETO DA API ============
-  async createInstance(instanceName: string, description?: string): Promise<QRCodeResponse> {
+  async createInstance(instanceName: string, description?: string): Promise<CreateInstanceResult> {
     try {
       console.log(`📝 [CODECHAT-API] Criando instância (padrão correto): ${instanceName}`);
       
@@ -878,21 +916,28 @@ class CodeChatQRService {
         const data = await response.json();
         console.log('✅ [CODECHAT-API] Instância criada:', data);
         
+        // ============ INVESTIGAR E EXTRAIR NOME REAL ============
+        const yumerInstanceName = data.instance?.instanceName || data.instanceName || data.name;
+        console.log(`🔍 [CODECHAT-DEBUG] Nome enviado: ${instanceName}`);
+        console.log(`🔍 [CODECHAT-DEBUG] Nome retornado pelo YUMER: ${yumerInstanceName}`);
+        console.log(`🔍 [CODECHAT-DEBUG] Response completa:`, JSON.stringify(data, null, 2));
+        
         // ============ EXTRAIR E SALVAR AUTH TOKEN (CRÍTICO) ============
-        const authToken = data.Auth?.token;
+        const authToken = data.Auth?.token || data.hash || data.auth_token || data.token;
+        const correctInstanceName = yumerInstanceName || instanceName;
+        
         if (authToken) {
           console.log(`🔐 [CODECHAT-API] ✅ Auth token extraído da resposta!`);
-          await this.saveInstanceAuthToken(instanceName, authToken);
+          await this.saveInstanceAuthToken(correctInstanceName, authToken);
+          console.log(`🔑 [CODECHAT-DEBUG] Token salvo para: ${correctInstanceName}`);
         } else {
           console.warn(`⚠️ [CODECHAT-API] Auth token não encontrado na resposta:`, data);
         }
         
         return {
           success: true,
-          qrCode: null,
-          status: 'created',
-          error: null,
-          instanceName,
+          instanceName: correctInstanceName,
+          actualName: yumerInstanceName,
           data: {
             ...data,
             authTokenSaved: !!authToken
@@ -923,8 +968,6 @@ class CodeChatQRService {
         
         return {
           success: false,
-          qrCode: null,
-          status: 'error',
           error: `HTTP ${response.status}: ${errorText}`,
           instanceName
         };
@@ -934,8 +977,6 @@ class CodeChatQRService {
       console.error('❌ [CODECHAT-API] Erro ao criar instância:', error);
       return {
         success: false,
-        qrCode: null,
-        status: 'error',
         error: error.message,
         instanceName
       };

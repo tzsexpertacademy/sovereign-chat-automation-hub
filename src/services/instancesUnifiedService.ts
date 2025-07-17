@@ -65,6 +65,21 @@ export class InstancesUnifiedService {
         // Não vamos falhar o processo, apenas logar
       } else {
         console.log('✅ [UNIFIED-SERVICE] Instância criada no YUMER com Bearer token salvo');
+        
+        // ============ VERIFICAR E CORRIGIR NOMENCLATURA ============
+        if (yumerResult.actualName && yumerResult.actualName !== instanceId) {
+          console.log(`🔄 [UNIFIED-SERVICE] YUMER retornou nome diferente!`);
+          console.log(`📝 [UNIFIED-SERVICE] Nome enviado: ${instanceId}`);
+          console.log(`📝 [UNIFIED-SERVICE] Nome real no YUMER: ${yumerResult.actualName}`);
+          
+          // Atualizar o banco com o nome real que o YUMER está usando
+          await whatsappInstancesService.updateInstanceByInstanceId(instanceId, {
+            yumer_instance_name: yumerResult.actualName,
+            updated_at: new Date().toISOString()
+          });
+          
+          console.log(`✅ [UNIFIED-SERVICE] Nome real salvo no banco: ${yumerResult.actualName}`);
+        }
       }
       
       // 5. O trigger sincronizará automaticamente com clients table
