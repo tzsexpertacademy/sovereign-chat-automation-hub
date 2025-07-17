@@ -871,18 +871,24 @@ class CodeChatQRService {
     try {
       console.log(`🚀 [CODECHAT-HYBRID] Iniciando conexão híbrida: ${instanceName}`);
       
-      // 1. Verificar se já existe QR via webhook
-      const webhookResult = await this.checkQRFromWebhook(instanceName);
-      if (webhookResult.success && webhookResult.qrCode) {
-        console.log(`✅ [CODECHAT-HYBRID] QR encontrado via webhook!`);
-        return webhookResult;
-      }
-
-      // 2. Conectar via API e aguardar QR (webhook ou polling)
+      // 1. Conectar via API primeiro
       console.log(`🔗 [CODECHAT-HYBRID] Conectando via API...`);
       await this.connectWithRetry(instanceName, 1);
 
-      // 3. Estratégia híbrida: polling de endpoints + verificação webhook
+      // 2. Tentar WebSocket para QR Code (método principal)
+      console.log(`🔌 [CODECHAT-HYBRID] Iniciando WebSocket para QR...`);
+      try {
+        const wsResult = await this.connectQRWebSocket(instanceName);
+        if (wsResult.success && wsResult.qrCode) {
+          console.log(`✅ [CODECHAT-HYBRID] QR obtido via WebSocket!`);
+          return wsResult;
+        }
+      } catch (wsError) {
+        console.warn(`⚠️ [CODECHAT-HYBRID] WebSocket falhou, usando fallback REST:`, wsError);
+      }
+
+      // 3. Fallback: estratégia híbrida REST + webhook
+      console.log(`🔄 [CODECHAT-HYBRID] Fallback: polling REST + webhook...`);
       return await this.hybridQRStrategy(instanceName);
 
     } catch (error: any) {
@@ -893,6 +899,86 @@ class CodeChatQRService {
         instanceName
       };
     }
+  }
+
+  private async connectQRWebSocket(instanceName: string): Promise<QRCodeResponse> {
+    return new Promise((resolve, reject) => {
+      console.log(`🔌 [CODECHAT-WS] Iniciando WebSocket para QR: ${instanceName}`);
+
+      // Busca o token da instância
+      const token = this.getInstanceAuthToken(instanceName);
+      if (!token) {
+        console.warn(`⚠️ [CODECHAT-WS] Token não encontrado para ${instanceName}`);
+        return reject(new Error('Token not found for WebSocket connection'));
+      }
+
+      // Conecta no WebSocket do YUMER
+      const wsUrl = `wss://yumer.yumerflow.app:8083/ws/events?event=qrcode.updated&token=${token}`;
+      console.log(`🌐 [CODECHAT-WS] Conectando: ${wsUrl}`);
+
+      const ws = new WebSocket(wsUrl);
+      let timeoutId: NodeJS.Timeout;
+
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close();
+        }
+      };
+
+      // Timeout de 30 segundos para WebSocket
+      timeoutId = setTimeout(() => {
+        console.warn(`⏰ [CODECHAT-WS] Timeout no WebSocket para ${instanceName}`);
+        cleanup();
+        reject(new Error('WebSocket timeout for QR code'));
+      }, 30000);
+
+      ws.onopen = () => {
+        console.log(`✅ [CODECHAT-WS] WebSocket conectado para ${instanceName}`);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log(`📨 [CODECHAT-WS] Mensagem recebida:`, data);
+
+          if (data.event === 'qrcode.updated' && data.msg?.base64) {
+            console.log(`🎯 [CODECHAT-WS] QR Code recebido via WebSocket!`);
+            
+            const qrCode = data.msg.base64;
+            // Garante que tem o prefixo data:image
+            const fullQRCode = qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`;
+            
+            // Salva no banco também
+            this.saveQRCodeToDatabase(instanceName, fullQRCode).catch(console.error);
+            
+            cleanup();
+            resolve({
+              success: true,
+              qrCode: fullQRCode,
+              status: 'qr_ready',
+              instanceName,
+              data: { base64: fullQRCode }
+            });
+          }
+        } catch (error) {
+          console.error(`❌ [CODECHAT-WS] Erro ao processar mensagem:`, error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error(`❌ [CODECHAT-WS] Erro no WebSocket:`, error);
+        cleanup();
+        reject(new Error('WebSocket connection error'));
+      };
+
+      ws.onclose = (event) => {
+        console.log(`🔌 [CODECHAT-WS] WebSocket fechado: ${event.code} - ${event.reason}`);
+        cleanup();
+        if (!timeoutId) return; // Já foi resolvido
+        reject(new Error('WebSocket connection closed unexpectedly'));
+      };
+    });
   }
 
   // ============ ESTRATÉGIA HÍBRIDA POLLING + WEBHOOK ============
