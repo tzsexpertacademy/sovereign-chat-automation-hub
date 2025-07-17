@@ -92,14 +92,14 @@ export class InstancesUnifiedService {
   }
 
   /**
-   * Conectar instância seguindo padrão correto da API
+   * Conectar instância usando estratégia híbrida (REST + Webhook)
    */
   async connectInstance(instanceId: string) {
     console.log('🔗 [UNIFIED-SERVICE] Conectando instância seguindo padrão correto:', instanceId);
     
     try {
-      // Usar connectInstance que agora segue o padrão correto com Bearer token
-      const result = await codechatQRService.connectInstance(instanceId);
+      // Usar nova estratégia híbrida que combina polling REST + webhook
+      const result = await codechatQRService.connectInstanceHybrid(instanceId);
       
       if (result.success) {
         // Atualizar status no banco
@@ -109,6 +109,7 @@ export class InstancesUnifiedService {
         }
         
         await whatsappInstancesService.updateInstanceStatus(instanceId, result.status, updateData);
+        console.log(`✅ [UNIFIED-SERVICE] Status atualizado no banco: ${result.status}`);
       }
       
       return result;

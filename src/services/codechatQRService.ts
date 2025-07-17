@@ -240,7 +240,7 @@ class CodeChatQRService {
     }
   }
 
-  // ============ CONNECT INSTANCE COM RETRY LOGIC ============
+  // ============ CONNECT INSTANCE COM ESTRATÉGIA HÍBRIDA ============
   async connectInstance(instanceName: string): Promise<QRCodeResponse> {
     try {
       console.log(`🚀 [CODECHAT-API] Conectando instância (padrão correto): ${instanceName}`);
@@ -259,11 +259,11 @@ class CodeChatQRService {
         
         if (currentStatus.state === 'open') {
           console.log(`✅ [CODECHAT-API] Instância já conectada!`);
-            return {
-              success: true,
-              qrCode: undefined,
-              status: 'connected',
-              instanceName: nameToUse,
+          return {
+            success: true,
+            qrCode: undefined,
+            status: 'connected',
+            instanceName: nameToUse,
             data: currentStatus
           };
         }
@@ -271,15 +271,9 @@ class CodeChatQRService {
         console.log(`ℹ️ [CODECHAT-API] Status check failed (continuando):`, statusError);
       }
       
-      // ============ ETAPA 2: CONECTAR E OBTER QR CODE ============
-      const connectResult = await this.connectWithRetry(instanceName);
-      if (connectResult.success && connectResult.qrCode) {
-        return connectResult;
-      }
-
-      // ============ ETAPA 3: RETRY COM POLLING SE NÃO CONSEGUIU QR ============
-      console.log(`🔄 [CODECHAT-API] Iniciando polling para QR Code...`);
-      return await this.pollForQRCode(instanceName);
+      // ============ ETAPA 2: ESTRATÉGIA HÍBRIDA (POLLING + WEBHOOK) ============
+      console.log(`🔄 [CODECHAT-HYBRID] Iniciando estratégia híbrida...`);
+      return await this.connectInstanceHybrid(nameToUse);
 
     } catch (error: any) {
       console.error(`❌ [CODECHAT-API] Erro ao conectar:`, error);
@@ -412,6 +406,7 @@ class CodeChatQRService {
     const endpoints = [
       () => this.getInstanceDetails(instanceName),
       () => this.getQRCodeDirectly(instanceName),
+      () => this.getQRFromAlternativeEndpoints(instanceName),
       () => this.connectWithRetry(instanceName, 1)
     ];
 
@@ -448,6 +443,74 @@ class CodeChatQRService {
     };
   }
 
+  // ============ ENDPOINTS ALTERNATIVOS DE QR CODE ============
+  async getQRFromAlternativeEndpoints(instanceName: string): Promise<QRCodeResponse> {
+    const alternativeEndpoints = [
+      `/api/v2/instance/${instanceName}/connect`,
+      `/instance/connect/${instanceName}?format=json`,
+      `/instance/qr/${instanceName}`,
+      `/whatsapp/qrcode/${instanceName}`,
+    ];
+
+    for (const endpoint of alternativeEndpoints) {
+      try {
+        console.log(`📱 [CODECHAT-ALT] Testando endpoint alternativo: ${endpoint}`);
+        
+        const url = `${this.getApiBaseUrl()}${endpoint}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: await this.getAuthHeaders(instanceName),
+        });
+
+        if (!response.ok) {
+          console.log(`❌ [CODECHAT-ALT] ${endpoint} retornou ${response.status}`);
+          continue;
+        }
+
+        const contentType = response.headers.get('content-type');
+        let data: any;
+
+        if (contentType?.includes('application/json')) {
+          data = await response.json();
+        } else {
+          const text = await response.text();
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = { text };
+          }
+        }
+
+        console.log(`🔍 [CODECHAT-ALT] Response de ${endpoint}:`, data);
+
+        // Buscar QR em múltiplos campos possíveis
+        const qrCode = data.base64 || data.qrCode || data.code || data.qr || 
+                      data.data?.base64 || data.data?.qrCode || data.data?.code ||
+                      data.qrcode?.base64 || data.qrcode?.code || data.text;
+
+        if (qrCode && (qrCode.startsWith('data:image') || qrCode.length > 100)) {
+          console.log(`✅ [CODECHAT-ALT] QR encontrado em ${endpoint}!`);
+          return {
+            success: true,
+            qrCode: qrCode.startsWith('data:image') ? qrCode : `data:image/png;base64,${qrCode}`,
+            status: 'qr_ready',
+            instanceName
+          };
+        }
+
+      } catch (error: any) {
+        console.warn(`⚠️ [CODECHAT-ALT] Erro em ${endpoint}:`, error.message);
+        continue;
+      }
+    }
+
+    return {
+      success: false,
+      error: 'Nenhum endpoint alternativo retornou QR Code',
+      instanceName
+    };
+  }
+
   // ============ NOVO: ENDPOINT QR CODE DIRETO (FALLBACK) ============
   async getQRCodeDirectly(instanceName: string): Promise<QRCodeResponse> {
     try {
@@ -459,19 +522,28 @@ class CodeChatQRService {
         headers: await this.getAuthHeaders(instanceName),
       });
 
+      console.log(`🔍 [CODECHAT-DEBUG] Response status: ${response.status}`);
+      console.log(`🔍 [CODECHAT-DEBUG] Response headers:`, Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       // Verificar se é JSON ou texto
       const contentType = response.headers.get('content-type');
+      console.log(`🔍 [CODECHAT-DEBUG] Content-Type: ${contentType}`);
       
       if (contentType?.includes('application/json')) {
         const data = await response.json();
-        const qrCode = data.base64 || data.qrCode || data.code || data.qr;
+        console.log(`🔍 [CODECHAT-DEBUG] Response JSON:`, data);
+        
+        // Mais campos possíveis para QR Code
+        const qrCode = data.base64 || data.qrCode || data.code || data.qr || 
+                      data.data?.base64 || data.data?.qrCode || data.data?.code || 
+                      data.qrcode?.base64 || data.qrcode?.code;
         
         if (qrCode) {
-          console.log(`📱 [CODECHAT-API] QR obtido via endpoint QR JSON`);
+          console.log(`✅ [CODECHAT-API] QR obtido via endpoint QR JSON`);
           return {
             success: true,
             qrCode: qrCode,
@@ -482,11 +554,13 @@ class CodeChatQRService {
       } else {
         // Se retornar texto/HTML, pode ser base64 direto
         const text = await response.text();
-        if (text && text.startsWith('data:image')) {
-          console.log(`📱 [CODECHAT-API] QR obtido via endpoint QR texto`);
+        console.log(`🔍 [CODECHAT-DEBUG] Response text (primeiros 200 chars):`, text.substring(0, 200));
+        
+        if (text && (text.startsWith('data:image') || text.length > 100)) {
+          console.log(`✅ [CODECHAT-API] QR obtido via endpoint QR texto`);
           return {
             success: true,
-            qrCode: text,
+            qrCode: text.startsWith('data:image') ? text : `data:image/png;base64,${text}`,
             status: 'qr_ready',
             instanceName
           };
@@ -503,6 +577,140 @@ class CodeChatQRService {
         instanceName
       };
     }
+  }
+
+  // ============ VERIFICAR QR VIA WEBHOOK NO BANCO ============
+  async checkQRFromWebhook(instanceName: string): Promise<QRCodeResponse> {
+    try {
+      console.log(`🔍 [CODECHAT-WEBHOOK] Verificando QR via webhook no banco: ${instanceName}`);
+      
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .select('qr_code, has_qr_code, qr_expires_at, status')
+        .eq('instance_id', instanceName)
+        .single();
+
+      if (error) {
+        console.error('❌ [CODECHAT-WEBHOOK] Erro ao buscar QR no banco:', error);
+        return { success: false, error: error.message, instanceName };
+      }
+
+      if (data?.has_qr_code && data?.qr_code) {
+        // Verificar se QR não expirou
+        const expiresAt = data.qr_expires_at ? new Date(data.qr_expires_at) : null;
+        const now = new Date();
+        
+        if (!expiresAt || expiresAt > now) {
+          console.log(`✅ [CODECHAT-WEBHOOK] QR Code encontrado via webhook!`);
+          return {
+            success: true,
+            qrCode: data.qr_code,
+            status: data.status || 'qr_ready',
+            instanceName
+          };
+        } else {
+          console.log(`⏰ [CODECHAT-WEBHOOK] QR Code expirado`);
+        }
+      }
+
+      return { success: false, error: 'QR não encontrado via webhook', instanceName };
+    } catch (error: any) {
+      console.error(`❌ [CODECHAT-WEBHOOK] Erro:`, error);
+      return { success: false, error: error.message, instanceName };
+    }
+  }
+
+  // ============ ESTRATÉGIA HÍBRIDA: POLLING + WEBHOOK ============
+  async connectInstanceHybrid(instanceName: string): Promise<QRCodeResponse> {
+    try {
+      console.log(`🚀 [CODECHAT-HYBRID] Iniciando conexão híbrida: ${instanceName}`);
+      
+      // 1. Verificar se já existe QR via webhook
+      const webhookResult = await this.checkQRFromWebhook(instanceName);
+      if (webhookResult.success && webhookResult.qrCode) {
+        console.log(`✅ [CODECHAT-HYBRID] QR encontrado via webhook!`);
+        return webhookResult;
+      }
+
+      // 2. Conectar via API e aguardar QR (webhook ou polling)
+      console.log(`🔗 [CODECHAT-HYBRID] Conectando via API...`);
+      await this.connectWithRetry(instanceName, 1);
+
+      // 3. Estratégia híbrida: polling de endpoints + verificação webhook
+      return await this.hybridQRStrategy(instanceName);
+
+    } catch (error: any) {
+      console.error(`❌ [CODECHAT-HYBRID] Erro:`, error);
+      return {
+        success: false,
+        error: error.message,
+        instanceName
+      };
+    }
+  }
+
+  // ============ ESTRATÉGIA HÍBRIDA POLLING + WEBHOOK ============
+  private async hybridQRStrategy(instanceName: string, maxAttempts: number = 20): Promise<QRCodeResponse> {
+    console.log(`🔄 [CODECHAT-HYBRID] Iniciando estratégia híbrida para: ${instanceName}`);
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`🔍 [CODECHAT-HYBRID] Tentativa ${attempt}/${maxAttempts}`);
+      
+      try {
+        // 1. Verificar via webhook primeiro (mais rápido)
+        const webhookResult = await this.checkQRFromWebhook(instanceName);
+        if (webhookResult.success && webhookResult.qrCode) {
+          console.log(`✅ [CODECHAT-HYBRID] QR encontrado via webhook na tentativa ${attempt}!`);
+          return webhookResult;
+        }
+
+        // 2. Tentar múltiplos endpoints REST
+        const restResult = await this.tryMultipleQREndpoints(instanceName);
+        if (restResult.success && restResult.qrCode) {
+          console.log(`✅ [CODECHAT-HYBRID] QR encontrado via REST na tentativa ${attempt}!`);
+          return restResult;
+        }
+
+        // 3. Verificar se já conectou
+        try {
+          const status = await this.getInstanceStatus(instanceName);
+          if (status.state === 'open') {
+            console.log(`✅ [CODECHAT-HYBRID] Instância conectada durante tentativa ${attempt}!`);
+            return {
+              success: true,
+              qrCode: undefined,
+              status: 'connected',
+              instanceName,
+              data: status
+            };
+          }
+        } catch (statusError) {
+          // Ignorar erro de status
+        }
+
+        if (attempt < maxAttempts) {
+          // Intervalos menores no início, maiores depois
+          const delay = attempt <= 5 ? 3000 : attempt <= 10 ? 5000 : 7000;
+          console.log(`⏳ [CODECHAT-HYBRID] Aguardando ${delay}ms antes da próxima tentativa...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+      } catch (error: any) {
+        console.warn(`⚠️ [CODECHAT-HYBRID] Erro na tentativa ${attempt}:`, error.message);
+        
+        if (attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+    }
+    
+    console.log(`❌ [CODECHAT-HYBRID] Estratégia híbrida finalizada sem sucesso após ${maxAttempts} tentativas`);
+    return {
+      success: false,
+      error: `QR Code não encontrado após ${maxAttempts} tentativas (híbrido)`,
+      instanceName
+    };
   }
 
   // ============ POLLING PARA STATUS E QR CODE VIA REST ============
