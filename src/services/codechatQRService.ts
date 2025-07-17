@@ -841,12 +841,47 @@ class CodeChatQRService {
         return reject(new Error('Token not found for WebSocket connection'));
       }
 
-      // Conecta no WebSocket do YUMER
-      const wsUrl = `wss://yumer.yumerflow.app:8083/ws/events?event=qrcode.updated&token=${token}`;
-      console.log(`🌐 [CODECHAT-WS] Conectando: ${wsUrl}`);
+      // Lista de URLs alternativas para testar
+      const alternativeUrls = [
+        `wss://yumer.yumerflow.app:8083/events?event=qrcode.updated&token=${token}`,
+        `wss://yumer.yumerflow.app:8083/websocket?event=qrcode.updated&token=${token}`,
+        `wss://yumer.yumerflow.app:8083/socket?event=qrcode.updated&token=${token}`,
+        `wss://yumer.yumerflow.app:8083/instance/${instanceName}/events?token=${token}`,
+        `wss://yumer.yumerflow.app:8083?event=qrcode.updated&token=${token}`,
+        `wss://yumer.yumerflow.app:8083/ws/events?event=qrcode.updated&token=${token}` // Original como fallback
+      ];
 
+      let lastError: any = null;
+
+      // Tenta conectar em cada URL alternativa
+      for (const wsUrl of alternativeUrls) {
+        try {
+          console.log(`🌐 [CODECHAT-WS] Testando URL: ${wsUrl}`);
+          const result = await this.tryWebSocketConnection(wsUrl, instanceName, resolve, reject);
+          if (result) return; // Se conectou com sucesso, para aqui
+        } catch (error: any) {
+          console.warn(`❌ [CODECHAT-WS] Falha na URL ${wsUrl}:`, error.message);
+          lastError = error;
+          continue; // Tenta próxima URL
+        }
+      }
+
+      // Se chegou aqui, nenhuma URL funcionou
+      console.error(`❌ [CODECHAT-WS] Todas as URLs falharam. Último erro:`, lastError);
+      reject(lastError || new Error('All WebSocket URLs failed'));
+    });
+  }
+
+  private async tryWebSocketConnection(
+    wsUrl: string, 
+    instanceName: string, 
+    resolve: Function, 
+    reject: Function
+  ): Promise<boolean> {
+    return new Promise((resolveConnection, rejectConnection) => {
       const ws = new WebSocket(wsUrl);
       let timeoutId: NodeJS.Timeout;
+      let connectionResolved = false;
 
       const cleanup = () => {
         if (timeoutId) clearTimeout(timeoutId);
@@ -855,57 +890,72 @@ class CodeChatQRService {
         }
       };
 
-      // Timeout de 30 segundos para WebSocket
+      // Timeout de 10 segundos para cada tentativa (mais rápido para testar múltiplas URLs)
       timeoutId = setTimeout(() => {
-        console.warn(`⏰ [CODECHAT-WS] Timeout no WebSocket para ${instanceName}`);
-        cleanup();
-        reject(new Error('WebSocket timeout for QR code'));
-      }, 30000);
+        if (!connectionResolved) {
+          console.warn(`⏰ [CODECHAT-WS] Timeout na URL: ${wsUrl}`);
+          cleanup();
+          rejectConnection(new Error(`WebSocket timeout for URL: ${wsUrl}`));
+        }
+      }, 10000);
 
       ws.onopen = () => {
-        console.log(`✅ [CODECHAT-WS] WebSocket conectado para ${instanceName}`);
-      };
+        console.log(`✅ [CODECHAT-WS] WebSocket conectado: ${wsUrl}`);
+        connectionResolved = true;
+        clearTimeout(timeoutId);
+        
+        // Agora aguarda pelo QR code com timeout maior
+        const qrTimeout = setTimeout(() => {
+          console.warn(`⏰ [CODECHAT-WS] Timeout aguardando QR para ${instanceName}`);
+          cleanup();
+          reject(new Error('QR code timeout'));
+        }, 30000);
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log(`📨 [CODECHAT-WS] Mensagem recebida:`, data);
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log(`📨 [CODECHAT-WS] Mensagem recebida:`, data);
 
-          if (data.event === 'qrcode.updated' && data.msg?.base64) {
-            console.log(`🎯 [CODECHAT-WS] QR Code recebido via WebSocket!`);
-            
-            const qrCode = data.msg.base64;
-            // Garante que tem o prefixo data:image
-            const fullQRCode = qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`;
-            
-            // Salva no banco também
-            this.saveQRCodeToDatabase(instanceName, fullQRCode).catch(console.error);
-            
-            cleanup();
-            resolve({
-              success: true,
-              qrCode: fullQRCode,
-              status: 'qr_ready',
-              instanceName,
-              data: { base64: fullQRCode }
-            });
+            if (data.event === 'qrcode.updated' && data.msg?.base64) {
+              console.log(`🎯 [CODECHAT-WS] QR Code recebido via WebSocket!`);
+              
+              const qrCode = data.msg.base64;
+              const fullQRCode = qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`;
+              
+              this.saveQRCodeToDatabase(instanceName, fullQRCode).catch(console.error);
+              
+              clearTimeout(qrTimeout);
+              cleanup();
+              resolve({
+                success: true,
+                qrCode: fullQRCode,
+                status: 'qr_ready',
+                instanceName,
+                data: { base64: fullQRCode }
+              });
+            }
+          } catch (error) {
+            console.error(`❌ [CODECHAT-WS] Erro ao processar mensagem:`, error);
           }
-        } catch (error) {
-          console.error(`❌ [CODECHAT-WS] Erro ao processar mensagem:`, error);
-        }
+        };
+
+        resolveConnection(true); // Conexão estabelecida com sucesso
       };
 
       ws.onerror = (error) => {
-        console.error(`❌ [CODECHAT-WS] Erro no WebSocket:`, error);
+        console.error(`❌ [CODECHAT-WS] Erro na URL ${wsUrl}:`, error);
+        connectionResolved = true;
         cleanup();
-        reject(new Error('WebSocket connection error'));
+        rejectConnection(new Error(`WebSocket error for URL: ${wsUrl}`));
       };
 
       ws.onclose = (event) => {
-        console.log(`🔌 [CODECHAT-WS] WebSocket fechado: ${event.code} - ${event.reason}`);
-        cleanup();
-        if (!timeoutId) return; // Já foi resolvido
-        reject(new Error('WebSocket connection closed unexpectedly'));
+        console.log(`🔌 [CODECHAT-WS] WebSocket fechado (${wsUrl}): ${event.code} - ${event.reason}`);
+        if (!connectionResolved) {
+          connectionResolved = true;
+          cleanup();
+          rejectConnection(new Error(`WebSocket closed (${event.code}): ${event.reason}`));
+        }
       };
     });
   }
