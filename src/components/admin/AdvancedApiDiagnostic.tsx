@@ -369,49 +369,86 @@ const AdvancedApiDiagnostic = () => {
     setCurrentTestInstance(testInstanceName);
     
     try {
-      const sequentialEndpoints = [
+      // Organizar endpoints por ordem de execução
+      const basicEndpoints = endpoints.filter(e => e.category === 'basic');
+      const instanceEndpoints = endpoints.filter(e => e.category === 'instance');
+      const connectionEndpoints = endpoints.filter(e => e.category === 'connection');
+      
+      // Ordem específica para instâncias (criar primeiro, deletar por último)
+      const orderedInstanceEndpoints = [
         'Create Instance',
-        'Fetch Single Instance', 
+        'Fetch All Instances',
+        'Fetch Single Instance',
         'Update Instance',
-        'Connect Instance',
-        'Connection State',
-        'QR Code Direct',
-        'Logout Instance',
         'Delete Instance'
+      ].map(name => instanceEndpoints.find(e => e.name === name)).filter(Boolean);
+      
+      // Ordem específica para conexão 
+      const orderedConnectionEndpoints = [
+        'Connect Instance',
+        'Connection State', 
+        'QR Code Direct',
+        'Logout Instance'
+      ].map(name => connectionEndpoints.find(e => e.name === name)).filter(Boolean);
+      
+      // Sequência completa: Básicos → Instâncias → Conexão
+      const allEndpoints = [
+        ...basicEndpoints,
+        ...orderedInstanceEndpoints,
+        ...orderedConnectionEndpoints
       ];
+      
+      console.log(`🔄 [SEQUENTIAL] Iniciando teste sequencial com ${allEndpoints.length} endpoints`);
+      console.log(`📝 [SEQUENTIAL] Sequência:`, allEndpoints.map(e => `${e.category}/${e.name}`));
 
-      for (let i = 0; i < sequentialEndpoints.length; i++) {
-        const endpointName = sequentialEndpoints[i];
-        const endpoint = endpoints.find(e => e.name === endpointName);
+      for (let i = 0; i < allEndpoints.length; i++) {
+        const endpoint = allEndpoints[i];
         
-        if (endpoint) {
-          console.log(`🔄 [SEQUENTIAL] Executando: ${endpointName}`);
-          
-          const result = await executeTest(endpoint, testInstanceName);
-          
-          // Para alguns endpoints, aguardar um pouco
-          if (['Create Instance', 'Connect Instance'].includes(endpointName)) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-          
-          setProgress(((i + 1) / sequentialEndpoints.length) * 100);
-          
-          // Se criação falhar, parar o teste
-          if (endpointName === 'Create Instance' && result.status === 'error') {
-            toast({
-              title: "Teste Sequencial Interrompido",
-              description: "Falha ao criar instância de teste",
-              variant: "destructive"
-            });
-            break;
-          }
+        console.log(`🔄 [SEQUENTIAL] (${i+1}/${allEndpoints.length}) Executando: ${endpoint.category}/${endpoint.name}`);
+        
+        // Para endpoints básicos, não usar instanceName
+        const instanceToUse = endpoint.category === 'basic' ? undefined : testInstanceName;
+        
+        const result = await executeTest(endpoint, instanceToUse);
+        
+        // Pausas estratégicas para operações que precisam de tempo
+        if (['Create Instance', 'Connect Instance'].includes(endpoint.name)) {
+          console.log(`⏱️ [SEQUENTIAL] Aguardando 2s após ${endpoint.name}...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } else {
+          // Pausa menor entre testes para não sobrecarregar
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        setProgress(((i + 1) / allEndpoints.length) * 100);
+        
+        // Se criação da instância falhar, interromper teste
+        if (endpoint.name === 'Create Instance' && result.status === 'error') {
+          console.error(`❌ [SEQUENTIAL] Falha crítica na criação da instância`);
+          toast({
+            title: "Teste Sequencial Interrompido",
+            description: "Falha ao criar instância de teste - verificar API Key e permissões",
+            variant: "destructive"
+          });
+          break;
+        }
+        
+        // Se algum endpoint básico falhar, continuar mas avisar
+        if (endpoint.category === 'basic' && result.status === 'error') {
+          console.warn(`⚠️ [SEQUENTIAL] Endpoint básico falhou: ${endpoint.name}`);
         }
       }
 
+      const successCount = Object.values(testResults).filter(r => r.status === 'success').length;
+      const errorCount = Object.values(testResults).filter(r => r.status === 'error').length;
+      const warningCount = Object.values(testResults).filter(r => r.status === 'warning').length;
+
       toast({
         title: "Teste Sequencial Concluído",
-        description: `Testados ${sequentialEndpoints.length} endpoints`,
+        description: `✅ ${successCount} sucessos, ❌ ${errorCount} erros, ⚠️ ${warningCount} avisos`,
       });
+
+      console.log(`🏁 [SEQUENTIAL] Teste concluído: ${successCount}/${allEndpoints.length} sucessos`);
 
     } finally {
       setIsRunningSequential(false);
