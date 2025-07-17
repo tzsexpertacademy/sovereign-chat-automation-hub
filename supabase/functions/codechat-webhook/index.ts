@@ -69,12 +69,13 @@ serve(async (req) => {
 
     console.log('📨 [WEBHOOK] Dados recebidos:', JSON.stringify(webhookData, null, 2));
 
-    // Verificar se é webhook de QR Code
-    if (webhookData.event === 'qrcode.updated') {
+    // Verificar se é webhook de QR Code - CORRIGIDO: sem ponto
+    if (webhookData.event === 'qrcodeUpdated' || webhookData.event === 'qrcode.updated') {
       console.log('🎯 [WEBHOOK] QR Code webhook detectado');
+      console.log('📋 [WEBHOOK] Evento:', webhookData.event);
       
       const instanceName = webhookData.instance?.name;
-      const qrCode = webhookData.date?.qrcode?.base64;
+      const qrCode = webhookData.date?.qrcode?.base64 || webhookData.qr || webhookData.base64;
       
       if (!instanceName) {
         console.warn('⚠️ [WEBHOOK] Nome da instância não encontrado');

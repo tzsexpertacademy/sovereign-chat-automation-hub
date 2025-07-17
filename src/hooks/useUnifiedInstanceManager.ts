@@ -350,6 +350,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
           has_qr_code: true,
           qr_code: connectResponse.qrCode,
+          qr_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutos
           updated_at: new Date().toISOString()
         });
         
@@ -360,6 +361,18 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         
         // Iniciar polling para detectar quando usuário escanear
         startPollingForInstance(instanceId);
+        return;
+      }
+      
+      // ============ ETAPA 3.5: SE CONNECT RETORNOU 'CONNECTED', FINALIZAR ============
+      if (connectResponse.status === 'connected') {
+        console.log(`🎉 [UNIFIED] Instância já conectada após connect!`);
+        await refreshStatus(instanceId);
+        
+        toast({
+          title: "✅ WhatsApp Conectado!",
+          description: "Instância conectada com sucesso",
+        });
         return;
       }
       

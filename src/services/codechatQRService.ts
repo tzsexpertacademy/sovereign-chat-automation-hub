@@ -137,8 +137,8 @@ class CodeChatQRService {
           enabled: true,
           headers: { "apikey": "df1afd525fs5f15" },
           WebhookEvents: { 
-            qrcodeUpdate: true, 
-            connectionUpdate: true 
+            qrcodeUpdated: true,  // CORRIGIDO: sem ponto
+            connectionUpdated: true  // CORRIGIDO: sem ponto
           }
         })
       });
@@ -214,7 +214,7 @@ class CodeChatQRService {
     }
   }
 
-  // ============ CODECHAT API v1.3.3 - CONECTAR INSTÂNCIA E GERAR QR ============
+  // ============ CODECHAT API v1.3.3 - CONECTAR INSTÂNCIA E GERAR QR (CORRIGIDO) ============
   async connectInstance(instanceName: string): Promise<QRCodeResponse> {
     try {
       console.log(`🚀 [CODECHAT-API] Conectando via /instance/connect/${instanceName}`);
@@ -239,12 +239,12 @@ class CodeChatQRService {
         console.log(`⚠️ [CODECHAT-API] Erro ao verificar status atual (continuando):`, statusError);
       }
       
-      // ============ ETAPA 2: EXECUTAR CONEXÃO ============
+      // ============ ETAPA 2: EXECUTAR CONEXÃO E AGUARDAR QR CODE ============
       const url = `${this.getApiBaseUrl()}/instance/connect/${instanceName}`;
       console.log(`🌐 [CODECHAT-API] GET ${url}`);
       
       const response = await fetch(url, {
-        method: 'GET', // Corrigido: GET conforme API CodeChat real
+        method: 'GET',
         headers: await this.getAuthHeaders(instanceName),
       });
 
@@ -257,17 +257,16 @@ class CodeChatQRService {
       const data = await response.json();
       console.log(`✅ [CODECHAT-API] Connect response completa:`, data);
 
-      // Verificar todos os campos possíveis para QR Code
+      // ============ ETAPA 3: VERIFICAR QR CODE IMEDIATO ============
       const qrCode = data.base64 || data.qrCode || data.code || data.qr || data.qr_code;
       
-      console.log(`🔍 [CODECHAT-API] Análise detalhada da resposta:`, {
+      console.log(`🔍 [CODECHAT-API] Análise QR Code:`, {
         hasBase64: !!data.base64,
         hasQrCode: !!data.qrCode,
         hasCode: !!data.code,
         hasQr: !!data.qr,
         hasQrCodeField: !!data.qr_code,
-        totalKeys: Object.keys(data).length,
-        allKeys: Object.keys(data),
+        count: data.count,
         foundQrCode: !!qrCode
       });
 
@@ -282,21 +281,137 @@ class CodeChatQRService {
           instanceName,
           data: data
         };
-      } else {
-        console.log(`⚠️ [CODECHAT-API] Connect executado mas QR Code não encontrado na resposta`);
-        console.log(`🔍 [CODECHAT-API] Será necessário polling via fetchInstance`);
-        
-        return {
-          success: true,
-          qrCode: undefined,
-          status: 'connecting',
-          instanceName,
-          data: data
-        };
       }
+
+      // ============ ETAPA 4: SE NÃO TEM QR IMEDIATO, FAZER POLLING COM QR ENDPOINT ============
+      console.log(`🔄 [CODECHAT-API] QR não encontrado no connect - tentando endpoint QR específico`);
+      
+      // Tentar /instance/qrcode/{instanceName} como fallback
+      try {
+        const qrResponse = await this.getQRCodeDirectly(instanceName);
+        if (qrResponse.success && qrResponse.qrCode) {
+          console.log(`📱 [CODECHAT-API] ✅ QR CODE OBTIDO VIA ENDPOINT QR!`);
+          return qrResponse;
+        }
+      } catch (qrError) {
+        console.warn(`⚠️ [CODECHAT-API] Endpoint QR falhou:`, qrError);
+      }
+
+      // ============ ETAPA 5: POLLING VIA FETCHINSTANCE ============
+      console.log(`🔄 [CODECHAT-API] Iniciando polling via fetchInstance...`);
+      
+      let attempts = 0;
+      const maxAttempts = 15; // 30 segundos
+      const interval = 2000; // 2 segundos
+      
+      while (attempts < maxAttempts) {
+        attempts++;
+        console.log(`🔍 [CODECHAT-API] Polling tentativa ${attempts}/${maxAttempts}`);
+        
+        try {
+          await new Promise(resolve => setTimeout(resolve, interval));
+          
+          const details = await this.getInstanceDetails(instanceName);
+          console.log(`📊 [CODECHAT-API] Details polling:`, details);
+          
+          // Verificar QR code nos detalhes
+          const polledQr = details.qrCode || details.base64 || details.code || details.qr;
+          if (polledQr) {
+            console.log(`📱 [CODECHAT-API] ✅ QR CODE ENCONTRADO VIA POLLING!`);
+            return {
+              success: true,
+              qrCode: polledQr,
+              status: 'qr_ready',
+              instanceName,
+              data: details
+            };
+          }
+          
+          // Verificar se já conectou
+          if (details.ownerJid || details.phoneNumber) {
+            console.log(`✅ [CODECHAT-API] Instância conectada durante polling!`);
+            return {
+              success: true,
+              qrCode: undefined,
+              status: 'connected',
+              instanceName,
+              data: details
+            };
+          }
+          
+        } catch (pollError) {
+          console.warn(`⚠️ [CODECHAT-API] Erro no polling ${attempts}:`, pollError);
+        }
+      }
+      
+      console.log(`⏰ [CODECHAT-API] Polling finalizado sem QR code`);
+      return {
+        success: true,
+        qrCode: undefined,
+        status: 'connecting',
+        instanceName,
+        data: data
+      };
 
     } catch (error: any) {
       console.error(`❌ [CODECHAT-API] Erro ao conectar:`, error);
+      return {
+        success: false,
+        error: error.message,
+        instanceName
+      };
+    }
+  }
+
+  // ============ NOVO: ENDPOINT QR CODE DIRETO (FALLBACK) ============
+  async getQRCodeDirectly(instanceName: string): Promise<QRCodeResponse> {
+    try {
+      console.log(`📱 [CODECHAT-API] Tentando QR via /instance/qrcode/${instanceName}`);
+      
+      const url = `${this.getApiBaseUrl()}/instance/qrcode/${instanceName}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: await this.getAuthHeaders(instanceName),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Verificar se é JSON ou texto
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType?.includes('application/json')) {
+        const data = await response.json();
+        const qrCode = data.base64 || data.qrCode || data.code || data.qr;
+        
+        if (qrCode) {
+          console.log(`📱 [CODECHAT-API] QR obtido via endpoint QR JSON`);
+          return {
+            success: true,
+            qrCode: qrCode,
+            status: 'qr_ready',
+            instanceName
+          };
+        }
+      } else {
+        // Se retornar texto/HTML, pode ser base64 direto
+        const text = await response.text();
+        if (text && text.startsWith('data:image')) {
+          console.log(`📱 [CODECHAT-API] QR obtido via endpoint QR texto`);
+          return {
+            success: true,
+            qrCode: text,
+            status: 'qr_ready',
+            instanceName
+          };
+        }
+      }
+      
+      throw new Error('QR Code não encontrado na resposta');
+      
+    } catch (error: any) {
+      console.error(`❌ [CODECHAT-API] Erro endpoint QR direto:`, error);
       return {
         success: false,
         error: error.message,

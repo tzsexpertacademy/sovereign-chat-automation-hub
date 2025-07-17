@@ -14,10 +14,12 @@ import {
   Network, 
   Database,
   Webhook,
-  Users
+  Users,
+  QrCode
 } from "lucide-react";
 import { SERVER_URL, getServerConfig, getYumerGlobalApiKey } from "@/config/environment";
 import { supabase } from "@/integrations/supabase/client";
+import QRCodeDiagnostic from "./QRCodeDiagnostic";
 
 interface TestResult {
   status: 'idle' | 'testing' | 'success' | 'error' | 'warning';
@@ -405,7 +407,7 @@ const ConnectionDiagnostics = () => {
           </div>
 
           <Tabs defaultValue="cors" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="cors" className="flex items-center space-x-2">
                 <Shield className="w-4 h-4" />
                 <span>CORS</span>
@@ -417,6 +419,10 @@ const ConnectionDiagnostics = () => {
               <TabsTrigger value="webhook" className="flex items-center space-x-2">
                 <Webhook className="w-4 h-4" />
                 <span>Webhook</span>
+              </TabsTrigger>
+              <TabsTrigger value="qr" className="flex items-center space-x-2">
+                <QrCode className="w-4 h-4" />
+                <span>QR Code</span>
               </TabsTrigger>
               <TabsTrigger value="instances" className="flex items-center space-x-2">
                 <Users className="w-4 h-4" />
@@ -572,6 +578,10 @@ const ConnectionDiagnostics = () => {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="qr" className="space-y-4">
+              <QRCodeDiagnostic />
             </TabsContent>
 
             <TabsContent value="supabase" className="space-y-4">
