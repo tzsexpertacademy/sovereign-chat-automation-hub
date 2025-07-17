@@ -166,31 +166,32 @@ const InstancesMonitor = () => {
 
     try {
       setCreating(true);
-      console.log(`🚀 [MONITOR] Criando nova instância YUMER: ${newInstanceName}`);
+      console.log(`🚀 [MONITOR] Criando nova instância via fluxo correto: ${newInstanceName}`);
 
-      const instanceId = `${selectedClientId}_${Date.now()}`;
+      // Importar e usar instancesUnifiedService para fluxo correto
+      const { instancesUnifiedService } = await import('@/services/instancesUnifiedService');
       
-      await whatsappInstancesService.createInstance({
-        client_id: selectedClientId,
-        instance_id: instanceId,
-        status: 'disconnected',
-        custom_name: newInstanceName
-      });
+      const result = await instancesUnifiedService.createInstanceForClient(
+        selectedClientId, 
+        newInstanceName
+      );
+
+      console.log('✅ [MONITOR] Instância criada com sucesso:', result);
 
       toast({
         title: "Instância Criada",
-        description: "Nova instância WhatsApp criada com sucesso via YUMER",
+        description: "Nova instância WhatsApp criada com sucesso no YUMER",
       });
 
       setNewInstanceName("");
       setSelectedClientId("");
       await loadData();
       
-    } catch (error) {
-      console.error('❌ [MONITOR] Erro ao criar instância YUMER:', error);
+    } catch (error: any) {
+      console.error('❌ [MONITOR] Erro ao criar instância:', error);
       toast({
         title: "Erro",
-        description: "Falha ao criar nova instância via YUMER",
+        description: error.message || "Falha ao criar nova instância",
         variant: "destructive",
       });
     } finally {

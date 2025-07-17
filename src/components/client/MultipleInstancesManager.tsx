@@ -105,15 +105,17 @@ const MultipleInstancesManager = ({ clientId, client, onInstancesUpdate }: Multi
       }
 
       setCreating(true);
-      const instanceId = `${clientId}_${Date.now()}`;
       const customName = `Instância ${instances.length + 1}`;
       
-      await whatsappInstancesService.createInstance({
-        client_id: clientId,
-        instance_id: instanceId,
-        status: 'disconnected',
-        custom_name: customName
-      });
+      // Usar instancesUnifiedService para fluxo correto
+      const { instancesUnifiedService } = await import('@/services/instancesUnifiedService');
+      
+      const result = await instancesUnifiedService.createInstanceForClient(
+        clientId, 
+        customName
+      );
+
+      console.log('✅ [MULTIPLE] Instância criada com sucesso:', result);
 
       toast({
         title: "Instância Criada",

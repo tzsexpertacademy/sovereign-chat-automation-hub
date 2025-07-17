@@ -163,22 +163,20 @@ const WhatsAppConnection = () => {
       setConnecting(true);
       console.log('🚀 Criando nova instância...');
       
-      // Gerar um instanceId único
-      const newInstanceId = `${clientId}_${Date.now()}`;
+      // Usar instancesUnifiedService para fluxo correto
+      const { instancesUnifiedService } = await import('@/services/instancesUnifiedService');
       
-      const result = await whatsappService.connectClient(newInstanceId);
-      console.log('✅ Instância criada:', result);
+      const customName = `Conexão ${instances.length + 1}`;
+      const result = await instancesUnifiedService.createInstanceForClient(
+        clientId, 
+        customName
+      );
       
-      // Criar instância no Supabase
-      await whatsappInstancesService.createInstance({
-        client_id: clientId,
-        instance_id: newInstanceId,
-        status: 'connecting'
-      });
+      console.log('✅ [WHATSAPP] Instância criada com sucesso:', result);
 
       // Atualizar cliente se for a primeira instância
-      if (instances.length === 0) {
-        await clientsService.updateClientInstance(clientId, newInstanceId, 'connecting');
+      if (instances.length === 0 && result.instance_id) {
+        await clientsService.updateClientInstance(clientId, result.instance_id, 'connecting');
       }
       
       toast({

@@ -14,7 +14,8 @@ import {
   Eye,
   MessageSquare,
   RefreshCw,
-  Trash2
+  Trash2,
+  AlertCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -96,7 +97,51 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
-  // Handler de conexão simplificado
+  // Verificar se instância é órfã (existe no Supabase mas não no YUMER)
+  const isOrphanedInstance = (instance: WhatsAppInstanceData) => {
+    return !instance.auth_token || instance.auth_token === null;
+  };
+
+  // Handler para recriar instância órfã
+  const handleRecreateInstance = async (instance: WhatsAppInstanceData) => {
+    if (!confirm('Esta instância está órfã (não existe no servidor YUMER). Deseja recriá-la? Isso irá gerar um novo QR Code.')) {
+      return;
+    }
+
+    try {
+      console.log(`🔄 [ADMIN] Recriando instância órfã: ${instance.instance_id}`);
+      
+      const { instancesUnifiedService } = await import('@/services/instancesUnifiedService');
+      
+      // Deletar instância órfã do banco
+      await instancesUnifiedService.deleteInstance(instance.instance_id);
+      
+      // Recriar com o mesmo nome
+      const customName = instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
+      const result = await instancesUnifiedService.createInstanceForClient(
+        instance.client_id!, 
+        customName
+      );
+
+      console.log('✅ [ADMIN] Instância recriada com sucesso:', result);
+
+      toast({
+        title: "Instância Recriada",
+        description: "Instância órfã foi recriada com sucesso no servidor YUMER",
+      });
+
+      onInstanceUpdated();
+    } catch (error: any) {
+      console.error(`❌ [ADMIN] Erro ao recriar instância:`, error);
+      toast({
+        title: "Erro ao Recriar",
+        description: error.message || "Falha ao recriar instância órfã",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handler de conexão simplificado com detecção de 404
   const handleConnectInstance = async (instanceId: string) => {
     console.log(`🔗 [ADMIN] CONECTANDO INSTÂNCIA: ${instanceId}`);
     setSelectedInstanceForQR(instanceId);
@@ -104,13 +149,23 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     try {
       await connectInstance(instanceId);
       console.log(`✅ [ADMIN] Conexão iniciada com sucesso`);
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ [ADMIN] Erro na conexão:`, error);
-      toast({
-        title: "Erro na Conexão",
-        description: error?.message || "Falha ao conectar instância",
-        variant: "destructive",
-      });
+      
+      // Detectar erro 404 (instância não encontrada no YUMER)
+      if (error.message?.includes('404') || error.message?.includes('Not Found')) {
+        toast({
+          title: "Instância Órfã Detectada",
+          description: "Esta instância existe no banco de dados mas não no servidor YUMER. Use o botão 'Recriar' para resolver.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro na Conexão",
+          description: error?.message || "Falha ao conectar instância",
+          variant: "destructive",
+        });
+      }
     }
     
     onInstanceUpdated();
@@ -206,25 +261,48 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                 </CardHeader>
                 <CardContent className="space-y-4">
                   
-                  {/* Status REST Mode */}
-                  {selectedInstanceForQR === instance.instance_id && (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Status REST API:</span>
-                        <div className="flex items-center space-x-1">
-                          <RefreshCw className="w-4 h-4 text-blue-500" />
-                          <span className="text-xs">Modo REST Ativo</span>
-                        </div>
-                      </div>
-                       <div className="text-sm text-blue-800 space-y-1">
-                         <div>Status: {getInstanceStatus(instance.instance_id).status}</div>
-                         <div>Polling: {restMode ? '✅ Ativo' : '❌ Inativo'}</div>
-                         <div className="text-xs text-muted-foreground">
-                           Modo: 100% REST API CodeChat v1.3.3
+                   {/* Alerta de Instância Órfã */}
+                   {isOrphanedInstance(instance) && (
+                     <div className="p-3 bg-orange-50 border border-orange-200 rounded">
+                       <div className="flex items-center justify-between">
+                         <div className="flex items-center space-x-2">
+                           <AlertCircle className="w-4 h-4 text-orange-500" />
+                           <span className="text-sm font-medium text-orange-900">Instância Órfã</span>
+                         </div>
+                         <Button
+                           size="sm"
+                           onClick={() => handleRecreateInstance(instance)}
+                           className="bg-orange-600 hover:bg-orange-700 text-white"
+                         >
+                           <RefreshCw className="w-4 h-4 mr-1" />
+                           Recriar
+                         </Button>
+                       </div>
+                       <p className="text-sm text-orange-700 mt-1">
+                         Esta instância existe no banco de dados mas não no servidor YUMER (auth_token: NULL)
+                       </p>
+                     </div>
+                   )}
+
+                   {/* Status REST Mode */}
+                   {selectedInstanceForQR === instance.instance_id && (
+                     <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+                       <div className="flex items-center justify-between mb-2">
+                         <span className="text-sm font-medium">Status REST API:</span>
+                         <div className="flex items-center space-x-1">
+                           <RefreshCw className="w-4 h-4 text-blue-500" />
+                           <span className="text-xs">Modo REST Ativo</span>
                          </div>
                        </div>
-                    </div>
-                  )}
+                        <div className="text-sm text-blue-800 space-y-1">
+                          <div>Status: {getInstanceStatus(instance.instance_id).status}</div>
+                          <div>Polling: {restMode ? '✅ Ativo' : '❌ Inativo'}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Modo: 100% REST API CodeChat v1.3.3
+                          </div>
+                        </div>
+                     </div>
+                   )}
 
                   {/* QR Code Display HTTPS */}
                   {selectedInstanceForQR === instance.instance_id && 
