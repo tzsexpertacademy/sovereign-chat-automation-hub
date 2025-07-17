@@ -156,6 +156,25 @@ export class WhatsAppInstancesService {
       console.warn(`⚠️ Falha ao atualizar status de ${instanceId} - instância pode ter sido removida`);
     }
   }
+
+  async updateInstanceByInstanceId(instanceId: string, updates: WhatsAppInstanceUpdate): Promise<WhatsAppInstanceData> {
+    console.log(`🔄 Atualizando instância por instance_id: ${instanceId}`, updates);
+    
+    const { data, error } = await supabase
+      .from("whatsapp_instances")
+      .update(updates)
+      .eq("instance_id", instanceId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Erro ao atualizar instância:', error);
+      throw error;
+    }
+
+    console.log('✅ Instância atualizada:', data);
+    return data;
+  }
 }
 
 export const whatsappInstancesService = new WhatsAppInstancesService();

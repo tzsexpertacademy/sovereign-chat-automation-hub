@@ -1249,6 +1249,7 @@ export type Database = {
           qr_expires_at: string | null
           status: string | null
           updated_at: string
+          yumer_instance_name: string | null
         }
         Insert: {
           auth_token?: string | null
@@ -1263,6 +1264,7 @@ export type Database = {
           qr_expires_at?: string | null
           status?: string | null
           updated_at?: string
+          yumer_instance_name?: string | null
         }
         Update: {
           auth_token?: string | null
@@ -1277,6 +1279,7 @@ export type Database = {
           qr_expires_at?: string | null
           status?: string | null
           updated_at?: string
+          yumer_instance_name?: string | null
         }
         Relationships: [
           {

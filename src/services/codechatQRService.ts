@@ -259,11 +259,11 @@ class CodeChatQRService {
         
         if (currentStatus.state === 'open') {
           console.log(`✅ [CODECHAT-API] Instância já conectada!`);
-          return {
-            success: true,
-            qrCode: undefined,
-            status: 'connected',
-            instanceName: nameToUse,
+            return {
+              success: true,
+              qrCode: undefined,
+              status: 'connected',
+              instanceName: nameToUse,
             data: currentStatus
           };
         }
@@ -959,10 +959,11 @@ class CodeChatQRService {
           console.log('ℹ️ [CODECHAT-API] Instância já existe - continuando');
           return {
             success: true,
-            qrCode: null,
-            status: 'already_exists',
-            error: null,
-            instanceName
+            instanceName,
+            actualName: instanceName, // Se já existe, usar o nome fornecido
+            data: {
+              alreadyExists: true
+            }
           };
         }
         
