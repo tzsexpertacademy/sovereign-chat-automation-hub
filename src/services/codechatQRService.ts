@@ -356,78 +356,7 @@ class CodeChatQRService {
     }
   }
 
-  // ============ CONNECT QR WEBSOCKET ============
-  private async connectQRWebSocket(instanceName: string, authToken: string): Promise<QRCodeResponse> {
-    return new Promise((resolve) => {
-      console.log(`🔌 [CODECHAT-WS] Conectando WebSocket para ${instanceName}`);
-      
-      try {
-        yumerNativeWebSocketService.connect({
-          instanceName,
-          event: 'qr_code',
-          useSecureConnection: true,
-          autoReconnect: false
-        });
-
-        const handleQRCode = (data: any) => {
-          console.log(`📱 [CODECHAT-WS] QR Code recebido via WebSocket:`, data);
-          
-          if (data && data.base64) {
-            this.saveQRCodeToDatabase(instanceName, data.base64);
-            yumerNativeWebSocketService.off('qr_code', handleQRCode);
-            yumerNativeWebSocketService.disconnect();
-            
-            resolve({
-              success: true,
-              qrCode: data.base64,
-              status: 'qr_ready',
-              instanceName
-            });
-          }
-        };
-
-        const handleConnection = (data: any) => {
-          if (data && data.state === 'open') {
-            console.log(`✅ [CODECHAT-WS] Instância conectada via WebSocket`);
-            yumerNativeWebSocketService.off('qr_code', handleQRCode);
-            yumerNativeWebSocketService.off('connection_update', handleConnection);
-            yumerNativeWebSocketService.disconnect();
-            
-            resolve({
-              success: true,
-              qrCode: undefined,
-              status: 'connected',
-              instanceName
-            });
-          }
-        };
-
-        yumerNativeWebSocketService.on('qr_code', handleQRCode);
-        yumerNativeWebSocketService.on('connection_update', handleConnection);
-
-        // Timeout após 30 segundos
-        setTimeout(() => {
-          yumerNativeWebSocketService.off('qr_code', handleQRCode);
-          yumerNativeWebSocketService.off('connection_update', handleConnection);
-          yumerNativeWebSocketService.disconnect();
-          
-          resolve({
-            success: false,
-            error: 'WebSocket timeout - fallback para REST',
-            instanceName
-          });
-        }, 30000);
-
-      } catch (error: any) {
-        console.error(`❌ [CODECHAT-WS] Erro WebSocket:`, error);
-        resolve({
-          success: false,
-          error: `WebSocket error: ${error.message}`,
-          instanceName
-        });
-      }
-    });
-  }
+  // ============ FUNÇÃO CONECTAR QR WEBSOCKET REMOVIDA (duplicada) ============
 
   // ============ CONNECT INSTANCE COM ESTRATÉGIA HÍBRIDA ============
   async connectInstance(instanceName: string): Promise<QRCodeResponse> {
@@ -467,7 +396,7 @@ class CodeChatQRService {
       
       if (authToken) {
         console.log(`🔌 [CODECHAT-API] Tentando WebSocket primeiro...`);
-        const wsResult = await this.connectQRWebSocket(nameToUse, authToken);
+        const wsResult = await this.connectQRWebSocket(nameToUse);
         
         if (wsResult.success) {
           return wsResult;
