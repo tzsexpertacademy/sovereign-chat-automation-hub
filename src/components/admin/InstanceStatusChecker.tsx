@@ -129,10 +129,8 @@ const InstanceStatusChecker = () => {
           );
           break;
         case 'all':
-          instancesToDelete = instances.filter(i => 
-            isTestInstance(i) || 
-            (i.connectionStatus?.toLowerCase() === 'offline' && !i.ownerJid)
-          );
+          // Excluir TODAS as instâncias
+          instancesToDelete = instances;
           break;
       }
 
@@ -336,17 +334,15 @@ const InstanceStatusChecker = () => {
                   </Button>
                 )}
                 
-                {(cleanupStats.test + cleanupStats.offline) > 10 && (
-                  <Button 
-                    onClick={() => cleanupInstances('all')} 
-                    variant="destructive" 
-                    size="sm"
-                    disabled={loading}
-                  >
-                    <Trash2 className="w-3 h-3 mr-1" />
-                    Limpeza Geral
-                  </Button>
-                )}
+                <Button 
+                  onClick={() => cleanupInstances('all')} 
+                  variant="destructive" 
+                  size="sm"
+                  disabled={loading}
+                >
+                  <Shield className="w-3 h-3 mr-1" />
+                  Excluir TODAS ({cleanupStats.total})
+                </Button>
               </div>
             )}
           </div>
