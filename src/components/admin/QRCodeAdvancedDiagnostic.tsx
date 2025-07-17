@@ -189,11 +189,15 @@ const QRCodeAdvancedDiagnostic = () => {
 
       // Preparar body para create instance
       let body = endpoint.body;
-      if (endpoint.name === 'Create Instance' && finalInstanceName) {
+      if (endpoint.name === 'Create Instance') {
+        // Garantir que sempre temos um nome de instância válido
+        const validInstanceName = finalInstanceName || `qr_diagnostic_${Date.now()}`;
         body = { 
-          instanceName: finalInstanceName,
-          description: `QR Diagnostic: ${finalInstanceName}` 
+          instanceName: validInstanceName,
+          description: `QR Diagnostic: ${validInstanceName}` 
         };
+        // Atualizar finalInstanceName para uso posterior
+        finalInstanceName = validInstanceName;
       }
 
       // 🔍 DEBUG DETALHADO DOS HEADERS
