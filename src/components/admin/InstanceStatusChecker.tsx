@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { SERVER_URL, getYumerGlobalApiKey } from "@/config/environment";
 import cleanupInstancesService from "@/services/cleanupInstancesService";
+import instancesUnifiedService from "@/services/instancesUnifiedService";
 
 interface Instance {
   id?: number;
@@ -34,38 +35,34 @@ const InstanceStatusChecker = () => {
   const [error, setError] = useState<string>('');
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [cleanupStats, setCleanupStats] = useState<{total: number, test: number, offline: number} | null>(null);
+  const [syncResult, setSyncResult] = useState<any>(null);
 
   const apiKey = getYumerGlobalApiKey();
 
+  // ============ NOVO: BUSCAR INSTÂNCIAS E DIAGNOSTICAR SINCRONIZAÇÃO ============
   const fetchInstances = async () => {
     setLoading(true);
     setError('');
     
     try {
-      console.log('🔍 [INSTANCES] Buscando instâncias...');
+      console.log('🔍 [INSTANCES] Buscando instâncias com diagnóstico unificado...');
       
-      const response = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
-        headers: {
-          'apikey': apiKey || '',
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('📊 [INSTANCES] Resposta completa:', data);
-
+      // 1. PRIMEIRO: Fazer diagnóstico de consistência
+      const diagnosis = await instancesUnifiedService.diagnoseSyncConsistency();
+      setSyncResult(diagnosis);
+      
+      console.log('📊 [SYNC-DIAG] Resultado do diagnóstico:', diagnosis);
+      
+      // 2. SEGUNDA: Buscar instâncias da YUMER (para exibição)
+      const yumerInstances = await instancesUnifiedService.getAllYumerInstances();
+      
       // Normalizar resposta para array
       let instancesList: Instance[] = [];
       
-      if (Array.isArray(data)) {
-        instancesList = data;
-      } else if (data && typeof data === 'object') {
-        // Se for objeto único, colocar em array
-        instancesList = [data];
+      if (Array.isArray(yumerInstances)) {
+        instancesList = yumerInstances;
+      } else if (yumerInstances && typeof yumerInstances === 'object') {
+        instancesList = [yumerInstances];
       }
 
       setInstances(instancesList);
@@ -83,11 +80,18 @@ const InstanceStatusChecker = () => {
       
       console.log(`✅ [INSTANCES] ${instancesList.length} instâncias encontradas`);
       console.log(`🧹 [CLEANUP] ${testInstances.length} instâncias de teste, ${offlineInstances.length} offline`);
+      console.log(`🔄 [SYNC] ${diagnosis.orphanedInYumer.length} órfãs na YUMER, ${diagnosis.orphanedInSupabase.length} órfãs no Supabase`);
+      
+      // 3. TERCEIRA: Se houver órfãs, mostrar aviso
+      if (!diagnosis.synchronized) {
+        setError(`⚠️ SISTEMA DESINCRONIZADO: ${diagnosis.orphanedInYumer.length} órfãs na YUMER, ${diagnosis.orphanedInSupabase.length} órfãs no Supabase. Use "🔄 SINCRONIZAR" para corrigir.`);
+      }
       
     } catch (err: any) {
       console.error('❌ [INSTANCES] Erro:', err);
       setError(err.message);
       setInstances([]);
+      setSyncResult(null);
     } finally {
       setLoading(false);
     }
@@ -203,54 +207,87 @@ const InstanceStatusChecker = () => {
     }
   };
 
-  // Limpeza força bruta - Remove tudo da API YUMER E Supabase
+  // ============ NOVO: EXTERMÍNIO TOTAL DEFINITIVO ============
   const forceCleanupAll = async () => {
     setLoading(true);
     setError('');
     
     try {
-      console.log(`💀 [FORCE-CLEANUP] Iniciando extermínio total...`);
+      console.log(`💀 [TOTAL-EXTERMINATION] Usando serviço unificado...`);
       
-      // 1. Deletar TODAS as instâncias da API YUMER primeiro
-      let deletedFromAPI = 0;
-      for (const instance of instances) {
-        try {
-          const instanceName = instance.name || instance.instanceName;
-          console.log(`💀 [API-DELETE] Deletando: ${instanceName}`);
-          
-          const response = await fetch(`${SERVER_URL}/instance/delete/${instanceName}?force=true`, {
-            method: 'DELETE',
-            headers: {
-              'apikey': apiKey || '',
-              'Content-Type': 'application/json'
-            }
-          });
-
-          if (response.ok) {
-            deletedFromAPI++;
-            console.log(`✅ [API-DELETE] Sucesso: ${instanceName}`);
-          } else {
-            console.warn(`⚠️ [API-DELETE] Falhou: ${instanceName} (${response.status})`);
-          }
-        } catch (error) {
-          console.error(`❌ [API-DELETE] Erro:`, error);
-        }
+      const result = await instancesUnifiedService.totalExtermination();
+      
+      console.log(`💀 [EXTERMÍNIO] YUMER: ${result.yumerDeleted} deletadas`);
+      console.log(`💀 [EXTERMÍNIO] Supabase: ${result.supabaseDeleted} deletadas`);
+      
+      if (result.errors.length > 0) {
+        setError(`Alguns erros ocorreram: ${result.errors.slice(0, 3).join('; ')}${result.errors.length > 3 ? '...' : ''}`);
       }
       
-      // 2. Deletar TUDO do Supabase também
-      const supabaseResult = await cleanupInstancesService.forceCleanupAll();
-      
-      console.log(`💀 [EXTERMÍNIO] API YUMER: ${deletedFromAPI} deletadas`);
-      console.log(`💀 [EXTERMÍNIO] Supabase: ${supabaseResult.deletedCount} deletadas`);
-      
-      // 3. Recarregar lista
+      // Recarregar lista
       await fetchInstances();
-      
-      console.log(`✅ [EXTERMÍNIO] Completo! Total processado: ${deletedFromAPI + (supabaseResult.deletedCount || 0)}`);
       
     } catch (error: any) {
       console.error('❌ [EXTERMÍNIO] Erro geral:', error);
       setError(`Erro no extermínio: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============ NOVO: SINCRONIZAÇÃO FORÇADA ============
+  const forceSynchronization = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      console.log(`🔄 [SYNC] Iniciando sincronização forçada...`);
+      
+      const result = await instancesUnifiedService.forceSyncFromSupabase();
+      
+      console.log(`🔄 [SYNC] Criadas: ${result.created}, Deletadas: ${result.deleted}`);
+      
+      if (result.errors.length > 0) {
+        setError(`Alguns erros na sincronização: ${result.errors.slice(0, 3).join('; ')}${result.errors.length > 3 ? '...' : ''}`);
+      } else {
+        setError(''); // Limpar erro se sync foi bem-sucedida
+      }
+      
+      // Recarregar lista
+      await fetchInstances();
+      
+    } catch (error: any) {
+      console.error('❌ [SYNC] Erro geral:', error);
+      setError(`Erro na sincronização: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============ NOVO: LIMPEZA AUTOMÁTICA DE ÓRFÃS ============
+  const cleanupOrphans = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      console.log(`🧹 [ORPHANS] Limpando instâncias órfãs...`);
+      
+      const result = await instancesUnifiedService.cleanupOrphanedInstances();
+      
+      console.log(`🧹 [ORPHANS] ${result.cleaned} órfãs removidas`);
+      
+      if (result.errors.length > 0) {
+        setError(`Alguns erros na limpeza: ${result.errors.slice(0, 3).join('; ')}${result.errors.length > 3 ? '...' : ''}`);
+      } else {
+        setError(''); // Limpar erro se limpeza foi bem-sucedida
+      }
+      
+      // Recarregar lista
+      await fetchInstances();
+      
+    } catch (error: any) {
+      console.error('❌ [ORPHANS] Erro geral:', error);
+      setError(`Erro na limpeza de órfãs: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -433,6 +470,31 @@ const InstanceStatusChecker = () => {
                 >
                   🔍 Diagnóstico
                 </Button>
+                
+                {/* Novos botões de correção */}
+                {syncResult && !syncResult.synchronized && (
+                  <>
+                    <Button 
+                      onClick={cleanupOrphans} 
+                      variant="outline" 
+                      size="sm"
+                      disabled={loading}
+                      className="text-purple-600 border-purple-600 hover:bg-purple-50"
+                    >
+                      🧹 Limpar Órfãs ({syncResult.orphanedInYumer.length + syncResult.orphanedInSupabase.length})
+                    </Button>
+                    
+                    <Button 
+                      onClick={forceSynchronization} 
+                      variant="outline" 
+                      size="sm"
+                      disabled={loading}
+                      className="text-green-600 border-green-600 hover:bg-green-50"
+                    >
+                      🔄 SINCRONIZAR
+                    </Button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -452,7 +514,7 @@ const InstanceStatusChecker = () => {
           </div>
         )}
 
-        {!loading && !error && instances.length === 0 && (
+        {!loading && instances.length === 0 && (
           <div className="text-center py-8 text-muted-foreground">
             <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
             <h3 className="text-lg font-medium mb-2">Nenhuma Instância Encontrada</h3>
