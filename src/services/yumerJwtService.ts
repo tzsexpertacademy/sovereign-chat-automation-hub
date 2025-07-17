@@ -2,6 +2,9 @@
 import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
 import { SignJWT } from 'jose';
 
+// JWT Secret do servidor YUMER (deve coincidir com AUTHENTICATION_JWT_SECRET no .env)
+const YUMER_JWT_SECRET = 'sfdgs8152g5s1s5';
+
 export interface YumerJwtResponse {
   token: string;
   expiresIn: number;
@@ -24,9 +27,10 @@ class YumerJwtService {
   private renewalTimer: NodeJS.Timeout | null = null;
 
   // ============ GERAÇÃO LOCAL DE JWT PARA CODECHAT API v1.3.3 ============
-  async generateLocalJWT(jwtSecret: string, instanceName: string): Promise<string> {
+  async generateLocalJWT(instanceName: string, customSecret?: string): Promise<string> {
+    const jwtSecret = customSecret || YUMER_JWT_SECRET;
     try {
-      console.log('🔐 [CODECHAT] Gerando JWT compatível com CodeChat API v1.3.3...', { instanceName });
+      console.log('🔐 [CODECHAT] Gerando JWT compatível com CodeChat API v1.3.3...', { instanceName, secretUsed: jwtSecret.substring(0, 8) + '...' });
       
       // Payload compatível com CodeChat API conforme documentação
       const payload = {
