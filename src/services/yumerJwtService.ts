@@ -28,6 +28,8 @@ class YumerJwtService {
 
   // ============ GERAÇÃO LOCAL DE JWT PARA CODECHAT API v1.3.3 ============
   async generateLocalJWT(instanceName: string, customSecret?: string): Promise<string> {
+    // SECRET OBRIGATORIAMENTE DEVE SER CONSTANTE DO .ENV DO SERVIDOR
+    // É o AUTHENTICATION_JWT_SECRET no .env do backend YUMER
     const jwtSecret = customSecret || YUMER_JWT_SECRET;
     try {
       console.log('🔐 [CODECHAT] Gerando JWT compatível com CodeChat API v1.3.3...', { instanceName, secretUsed: jwtSecret.substring(0, 8) + '...' });
@@ -38,7 +40,7 @@ class YumerJwtService {
         apiName: "whatsapp-api", // Conforme documentação CodeChat
         tokenId: this.generateTokenId(), // ID único do token
         iat: Math.floor(Date.now() / 1000), // Issued at
-        exp: Math.floor(Date.now() / 1000) + (4 * 60 * 60), // Expira em 4 horas
+        exp: Math.floor(Date.now() / 1000) + (4 * 60 * 60), // Expira em 4 horas (NUNCA usar expiração igual a iat!)
         sub: "g-t" // Subject conforme exemplo da documentação
       };
       
@@ -49,7 +51,7 @@ class YumerJwtService {
       const token = await new SignJWT(payload)
         .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
         .setIssuedAt()
-        .setExpirationTime('4h')
+        .setExpirationTime('4h') // CRÍTICO: Garantir que tenha expiração correta
         .setSubject('g-t')
         .sign(secret);
       

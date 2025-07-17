@@ -438,7 +438,7 @@ const QRCodeAdvancedDiagnostic = () => {
     }
   };
 
-  // Novo: Teste WebSocket com instância real (JWT válido)
+  // Novo: Teste WebSocket com instância real (JWT válido) - VERSÃO MELHORADA
   const runWebSocketRealTest = async () => {
     setIsRunningTest(true);
     setTestResults({});
@@ -452,10 +452,10 @@ const QRCodeAdvancedDiagnostic = () => {
     try {
       console.log('🔧 [WS-REAL-TEST] ETAPA 1: Criando instância real para ter JWT válido...');
       
-      // ETAPA 1: Criar instância real e extrair JWT
+      // ETAPA 1: Criar instância real
       const createEndpoint = qrEndpoints.find(e => e.name === 'Create Instance')!;
       const createResult = await executeQRTest(createEndpoint, testInstanceName);
-      setProgress(25);
+      setProgress(15);
       
       if (createResult.status === 'error') {
         toast({
@@ -466,21 +466,17 @@ const QRCodeAdvancedDiagnostic = () => {
         return;
       }
       
-      // Gerar JWT com o secret correto do servidor usando nosso serviço
+      // ETAPA 2: Gerar JWT local com secret correto (NUNCA usar JWT da API!)
       const { yumerJwtService } = await import('@/services/yumerJwtService');
       try {
         realJwtToken = await yumerJwtService.generateLocalJWT(testInstanceName);
-        console.log('🎯 [WS-REAL-TEST] JWT gerado com secret correto:', realJwtToken.substring(0, 20) + '...');
+        console.log('🎯 [WS-REAL-TEST] JWT gerado localmente com secret correto:', realJwtToken.substring(0, 20) + '...');
       } catch (jwtError) {
-        console.error('❌ [WS-REAL-TEST] Erro ao gerar JWT:', jwtError);
-        // Fallback: usar JWT da resposta da API
-        if (createResult.details?.data?.Auth?.token) {
-          realJwtToken = createResult.details.data.Auth.token;
-          console.log('⚠️ [WS-REAL-TEST] Usando JWT da API como fallback:', realJwtToken.substring(0, 20) + '...');
-        }
+        console.error('❌ [WS-REAL-TEST] Erro ao gerar JWT local:', jwtError);
+        throw new Error('Falha crítica: não foi possível gerar JWT local');
       }
       
-      // Salvar na base de dados via serviço
+      // Salvar na base de dados
       const { whatsappInstancesService } = await import('@/services/whatsappInstancesService');
       try {
         await whatsappInstancesService.createInstance({
@@ -489,18 +485,58 @@ const QRCodeAdvancedDiagnostic = () => {
           status: 'created',
           yumer_instance_name: testInstanceName
         });
-        console.log('💾 [WS-REAL-TEST] JWT salvo na base de dados');
+        console.log('💾 [WS-REAL-TEST] Instância salva na base de dados');
       } catch (dbError) {
         console.warn('⚠️ [WS-REAL-TEST] Erro ao salvar na base:', dbError);
       }
       
-      console.log('⏳ [WS-REAL-TEST] ETAPA 2: Aguardando 5s para instância ficar pronta...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      setProgress(50);
+      setProgress(30);
       
-      console.log('🔌 [WS-REAL-TEST] ETAPA 3: Testando WebSocket com JWT válido...');
+      // ETAPA 3: Aguardar mais tempo e verificar se instância está pronta
+      console.log('⏳ [WS-REAL-TEST] ETAPA 3: Aguardando 15s para instância ficar pronta...');
+      await new Promise(resolve => setTimeout(resolve, 15000));
+      setProgress(45);
       
-      // ETAPA 3: Tentar conectar WebSocket com JWT real na rota correta
+      // ETAPA 4: Verificar estado da instância antes de conectar WebSocket
+      console.log('🔍 [WS-REAL-TEST] ETAPA 4: Verificando estado da instância...');
+      const connectionStateEndpoint = qrEndpoints.find(e => e.name === 'Connection State')!;
+      let instanceReady = false;
+      
+      // Tentar verificar estado até 5 vezes
+      for (let i = 0; i < 5; i++) {
+        const stateResult = await executeQRTest(connectionStateEndpoint, testInstanceName);
+        console.log(`🔍 [WS-REAL-TEST] Tentativa ${i+1}/5 - Estado:`, stateResult.details?.data?.state || 'unknown');
+        
+        if (stateResult.status !== 'error') {
+          instanceReady = true;
+          break;
+        }
+        
+        if (i < 4) { // Não esperar na última tentativa
+          console.log('⏳ [WS-REAL-TEST] Aguardando mais 5s...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
+      
+      if (!instanceReady) {
+        console.warn('⚠️ [WS-REAL-TEST] Instância não está pronta, mas vamos tentar WebSocket mesmo assim');
+      }
+      
+      setProgress(60);
+      
+      // ETAPA 5: Tentar conectar via connect endpoint primeiro (pode gerar QR)
+      console.log('🔌 [WS-REAL-TEST] ETAPA 5: Tentando connect da instância...');
+      const connectEndpoint = qrEndpoints.find(e => e.name === 'Connect Instance')!;
+      await executeQRTest(connectEndpoint, testInstanceName);
+      
+      // Aguardar um pouco após connect
+      console.log('⏳ [WS-REAL-TEST] Aguardando 8s após connect...');
+      await new Promise(resolve => setTimeout(resolve, 8000));
+      setProgress(75);
+      
+      // ETAPA 6: Testar WebSocket
+      console.log('🔌 [WS-REAL-TEST] ETAPA 6: Testando WebSocket com JWT válido...');
+      
       const wsUrl = `wss://yumer.yumerflow.app:8083/ws/events?event=qrcode.updated&token=${realJwtToken}`;
       
       const wsTestResult = await new Promise<{success: boolean, message: string, error?: string}>((resolve) => {
@@ -515,21 +551,22 @@ const QRCodeAdvancedDiagnostic = () => {
             ws.close();
             resolve({
               success: false, 
-              message: 'Timeout - WebSocket não conectou em 10s',
+              message: 'Timeout - WebSocket não conectou em 15s',
               error: 'TIMEOUT'
             });
           }
-        }, 10000);
+        }, 15000); // Aumentado para 15s
         
         ws.onopen = () => {
           console.log('✅ [WS-REAL-TEST] WebSocket CONECTADO com sucesso!');
           if (!resolved) {
             resolved = true;
             clearTimeout(timeout);
-            ws.close();
+            // Manter conexão por 3s para teste completo
+            setTimeout(() => ws.close(), 3000);
             resolve({
               success: true,
-              message: 'WebSocket conectou com sucesso usando JWT real!'
+              message: 'WebSocket conectou com sucesso usando JWT local!'
             });
           }
         };
@@ -541,7 +578,7 @@ const QRCodeAdvancedDiagnostic = () => {
             clearTimeout(timeout);
             resolve({
               success: false,
-              message: 'Erro de conexão WebSocket',
+              message: 'Erro de conexão WebSocket - possível problema de autenticação',
               error: 'CONNECTION_ERROR'
             });
           }
@@ -554,14 +591,18 @@ const QRCodeAdvancedDiagnostic = () => {
             clearTimeout(timeout);
             resolve({
               success: false,
-              message: `WebSocket fechado: ${event.code} - ${event.reason || 'Sem motivo'}`,
+              message: `WebSocket fechado: ${event.code} - ${event.reason || 'Sem motivo específico'}`,
               error: `CLOSE_${event.code}`
             });
           }
         };
+        
+        ws.onmessage = (event) => {
+          console.log('📨 [WS-REAL-TEST] Mensagem recebida:', event.data);
+        };
       });
       
-      setProgress(75);
+      setProgress(85);
       
       // Registrar resultado do teste WebSocket
       setTestResults(prev => ({
@@ -579,7 +620,7 @@ const QRCodeAdvancedDiagnostic = () => {
         }
       }));
       
-      console.log('🧹 [WS-REAL-TEST] ETAPA 4: Limpeza - deletando instância de teste...');
+      console.log('🧹 [WS-REAL-TEST] ETAPA 7: Limpeza - deletando instância de teste...');
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // ETAPA 4: Limpar instância de teste
@@ -590,7 +631,7 @@ const QRCodeAdvancedDiagnostic = () => {
       toast({
         title: wsTestResult.success ? "🎉 WebSocket Funcionou!" : "❌ WebSocket Falhou",
         description: wsTestResult.success 
-          ? "Conexão WebSocket estabelecida com JWT real!" 
+          ? "Conexão WebSocket estabelecida com JWT local!" 
           : `Falha: ${wsTestResult.message}`,
         variant: wsTestResult.success ? "default" : "destructive"
       });
