@@ -1,332 +1,486 @@
 import { supabase } from "@/integrations/supabase/client";
-import { codechatQRService } from "@/services/codechatQRService";
-import { whatsappInstancesService } from "@/services/whatsappInstancesService";
-import cleanupInstancesService from "@/services/cleanupInstancesService";
-import { SERVER_URL, getYumerGlobalApiKey } from "@/config/environment";
+import { whatsappInstancesService } from "./whatsappInstancesService";
+import { clientsService } from "./clientsService";
+import { codechatQRService } from "./codechatQRService";
 
-// ============ SERVIÇO UNIFICADO PARA GESTÃO DE INSTÂNCIAS ============
-// Este serviço garante que Supabase seja sempre a fonte de verdade
-// e mantém a YUMER API sincronizada
-
-interface InstanceSyncResult {
-  supabaseInstances: number;
-  yumerInstances: number;
-  orphanedInYumer: string[];
-  orphanedInSupabase: string[];
-  synchronized: boolean;
-}
-
-export const instancesUnifiedService = {
+/**
+ * Serviço Unificado de Instâncias
+ * Corrige problemas de arquitetura e sincronização entre tabelas
+ */
+export class InstancesUnifiedService {
   
-  // ============ MÉTODO PRIVADO: BUSCAR TODAS AS INSTÂNCIAS DA YUMER ============
-  async getAllYumerInstances(): Promise<any[]> {
+  /**
+   * Buscar todas as instâncias de um cliente de forma unificada
+   */
+  async getClientInstances(clientId: string) {
+    console.log('🔍 [UNIFIED-SERVICE] Buscando instâncias para cliente:', clientId);
+    
     try {
-      console.log('📋 [YUMER-FETCH] Buscando todas as instâncias da YUMER API...');
+      // SEMPRE buscar da tabela whatsapp_instances (source of truth)
+      const instances = await whatsappInstancesService.getInstancesByClientId(clientId);
       
-      const apiKey = getYumerGlobalApiKey();
-      
-      const response = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
-        headers: {
-          'apikey': apiKey || '',
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log(`📊 [YUMER-FETCH] Encontradas ${data.length} instâncias`);
-      
-      return Array.isArray(data) ? data : [];
-      
+      console.log('✅ [UNIFIED-SERVICE] Instâncias encontradas:', instances.length);
+      return instances;
     } catch (error) {
-      console.error('❌ [YUMER-FETCH] Erro ao buscar instâncias:', error);
-      return [];
-    }
-  },
-  
-  // ============ DIAGNÓSTICO DE CONSISTÊNCIA ============
-  async diagnoseSyncConsistency(): Promise<InstanceSyncResult> {
-    try {
-      console.log('🔍 [UNIFIED-DIAG] Iniciando diagnóstico de consistência...');
-      
-      // 1. Buscar instâncias do Supabase (fonte de verdade)
-      const { data: supabaseInstances, error: supabaseError } = await supabase
-        .from('whatsapp_instances')
-        .select('instance_id, status, client_id, created_at');
-      
-      if (supabaseError) throw supabaseError;
-      
-      // 2. Buscar instâncias da YUMER API
-      let yumerInstances: any[] = [];
-      try {
-        yumerInstances = await this.getAllYumerInstances();
-      } catch (error) {
-        console.warn('⚠️ [UNIFIED-DIAG] Erro ao buscar YUMER API:', error);
-        yumerInstances = [];
-      }
-      
-      // 3. Identificar órfãs
-      const supabaseInstanceIds = new Set(supabaseInstances?.map(i => i.instance_id) || []);
-      const yumerInstanceIds = new Set(yumerInstances.map(i => i.name || i.instanceName));
-      
-      const orphanedInYumer = Array.from(yumerInstanceIds).filter(id => !supabaseInstanceIds.has(id));
-      const orphanedInSupabase = Array.from(supabaseInstanceIds).filter(id => !yumerInstanceIds.has(id));
-      
-      const result: InstanceSyncResult = {
-        supabaseInstances: supabaseInstances?.length || 0,
-        yumerInstances: yumerInstances.length,
-        orphanedInYumer,
-        orphanedInSupabase,
-        synchronized: orphanedInYumer.length === 0 && orphanedInSupabase.length === 0
-      };
-      
-      console.log('📊 [UNIFIED-DIAG] Resultado do diagnóstico:', result);
-      return result;
-      
-    } catch (error) {
-      console.error('❌ [UNIFIED-DIAG] Erro no diagnóstico:', error);
+      console.error('❌ [UNIFIED-SERVICE] Erro ao buscar instâncias:', error);
       throw error;
     }
-  },
-  
-  // ============ LIMPEZA AUTOMÁTICA DE ÓRFÃS ============
-  async cleanupOrphanedInstances(): Promise<{cleaned: number, errors: string[]}> {
+  }
+
+  /**
+   * Criar nova instância com sincronização automática
+   */
+  async createInstanceForClient(clientId: string, customName?: string) {
+    console.log('🚀 [UNIFIED-SERVICE] Criando instância para cliente:', clientId);
+    
     try {
-      console.log('🧹 [UNIFIED-CLEANUP] Iniciando limpeza automática de órfãs...');
-      
-      const diagnosis = await this.diagnoseSyncConsistency();
-      const errors: string[] = [];
-      let cleaned = 0;
-      
-      // 1. Remover órfãs da YUMER API (não existem no Supabase)
-      for (const orphanedId of diagnosis.orphanedInYumer) {
-        try {
-          console.log(`🗑️ [UNIFIED-CLEANUP] Removendo órfã da YUMER: ${orphanedId}`);
-          await codechatQRService.deleteInstance(orphanedId);
-          cleaned++;
-        } catch (error) {
-          const errorMsg = `Erro ao remover ${orphanedId} da YUMER: ${error.message}`;
-          errors.push(errorMsg);
-          console.error('❌ [UNIFIED-CLEANUP]', errorMsg);
-        }
+      // 1. Verificar se cliente pode criar mais instâncias
+      const canCreate = await clientsService.canCreateInstance(clientId);
+      if (!canCreate) {
+        throw new Error('Cliente atingiu o limite de instâncias');
       }
-      
-      // 2. Para órfãs no Supabase, verificar se realmente não existem na YUMER
-      for (const orphanedId of diagnosis.orphanedInSupabase) {
-        try {
-          console.log(`🔍 [UNIFIED-CLEANUP] Verificando órfã do Supabase: ${orphanedId}`);
-          
-          // Tentar buscar na YUMER para confirmar que não existe
-          const exists = await codechatQRService.checkInstanceExists(orphanedId);
-          
-          if (!exists.exists) {
-            console.log(`🗑️ [UNIFIED-CLEANUP] Removendo órfã do Supabase: ${orphanedId}`);
-            await whatsappInstancesService.deleteInstance(orphanedId);
-            cleaned++;
-          } else {
-            console.log(`✅ [UNIFIED-CLEANUP] Instância ${orphanedId} existe na YUMER, mantendo no Supabase`);
-          }
-        } catch (error) {
-          const errorMsg = `Erro ao verificar ${orphanedId}: ${error.message}`;
-          errors.push(errorMsg);
-          console.error('❌ [UNIFIED-CLEANUP]', errorMsg);
-        }
-      }
-      
-      console.log(`✅ [UNIFIED-CLEANUP] Limpeza concluída. ${cleaned} órfãs removidas, ${errors.length} erros`);
-      return { cleaned, errors };
-      
-    } catch (error) {
-      console.error('❌ [UNIFIED-CLEANUP] Erro na limpeza automática:', error);
-      throw error;
-    }
-  },
-  
-  // ============ SINCRONIZAÇÃO FORÇADA - SUPABASE COMO FONTE DE VERDADE ============
-  async forceSyncFromSupabase(): Promise<{created: number, deleted: number, errors: string[]}> {
-    try {
-      console.log('🔄 [UNIFIED-SYNC] Iniciando sincronização forçada (Supabase → YUMER)...');
-      
-      // 1. Buscar todas as instâncias do Supabase
-      const { data: supabaseInstances, error: supabaseError } = await supabase
-        .from('whatsapp_instances')
-        .select('instance_id, status, client_id');
-      
-      if (supabaseError) throw supabaseError;
-      
-      // 2. Buscar todas as instâncias da YUMER
-      const yumerInstances = await this.getAllYumerInstances();
-      const yumerInstanceIds = new Set(yumerInstances.map(i => i.name || i.instanceName));
-      
-      const errors: string[] = [];
-      let created = 0;
-      let deleted = 0;
-      
-      // 3. Deletar da YUMER todas que não estão no Supabase
-      for (const yumerInstance of yumerInstances) {
-        const instanceId = yumerInstance.name || yumerInstance.instanceName;
-        const existsInSupabase = supabaseInstances?.some(s => s.instance_id === instanceId);
-        
-        if (!existsInSupabase) {
-          try {
-            console.log(`🗑️ [UNIFIED-SYNC] Deletando da YUMER (não existe no Supabase): ${instanceId}`);
-            await codechatQRService.deleteInstance(instanceId);
-            deleted++;
-          } catch (error) {
-            errors.push(`Erro ao deletar ${instanceId}: ${error.message}`);
-          }
-        }
-      }
-      
-      // 4. Criar na YUMER todas que estão no Supabase mas não na YUMER
-      for (const supabaseInstance of (supabaseInstances || [])) {
-        if (!yumerInstanceIds.has(supabaseInstance.instance_id)) {
-          try {
-            console.log(`📝 [UNIFIED-SYNC] Criando na YUMER (existe no Supabase): ${supabaseInstance.instance_id}`);
-            const result = await codechatQRService.createInstance(
-              supabaseInstance.instance_id, 
-              `Synced from Supabase: ${supabaseInstance.instance_id}`
-            );
-            
-            if (result.success) {
-              created++;
-            } else {
-              errors.push(`Erro ao criar ${supabaseInstance.instance_id}: ${result.error}`);
-            }
-          } catch (error) {
-            errors.push(`Erro ao criar ${supabaseInstance.instance_id}: ${error.message}`);
-          }
-        }
-      }
-      
-      console.log(`✅ [UNIFIED-SYNC] Sincronização concluída. Criadas: ${created}, Deletadas: ${deleted}, Erros: ${errors.length}`);
-      return { created, deleted, errors };
-      
-    } catch (error) {
-      console.error('❌ [UNIFIED-SYNC] Erro na sincronização forçada:', error);
-      throw error;
-    }
-  },
-  
-  // ============ EXTERMÍNIO TOTAL DEFINITIVO ============
-  async totalExtermination(): Promise<{yumerDeleted: number, supabaseDeleted: number, errors: string[]}> {
-    try {
-      console.log('💀 [TOTAL-EXTERMINATION] INICIANDO EXTERMÍNIO TOTAL DEFINITIVO...');
-      
-      const errors: string[] = [];
-      let yumerDeleted = 0;
-      let supabaseDeleted = 0;
-      
-      // 1. PRIMEIRO: Buscar TODAS as instâncias da YUMER
-      let yumerInstances: any[] = [];
-      try {
-        yumerInstances = await this.getAllYumerInstances();
-        console.log(`💀 [TOTAL-EXTERMINATION] Encontradas ${yumerInstances.length} instâncias na YUMER`);
-      } catch (error) {
-        console.warn('⚠️ [TOTAL-EXTERMINATION] Erro ao buscar YUMER (continuando):', error);
-      }
-      
-      // 2. DELETAR TODAS da YUMER API com force=true
-      for (const instance of yumerInstances) {
-        try {
-          const instanceId = instance.name || instance.instanceName;
-          console.log(`💀 [YUMER-DELETE] Deletando: ${instanceId}`);
-          
-          await codechatQRService.deleteInstance(instanceId);
-          yumerDeleted++;
-          
-          // Pequena pausa para evitar sobrecarga
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-        } catch (error) {
-          const instanceId = instance.name || instance.instanceName || 'unknown';
-          errors.push(`YUMER ${instanceId}: ${error.message}`);
-          console.error(`❌ [YUMER-DELETE] Erro:`, error);
-        }
-      }
-      
-      // 3. DELETAR TODAS do Supabase
-      try {
-        console.log(`💀 [SUPABASE-DELETE] Deletando TODAS as instâncias do Supabase...`);
-        const result = await cleanupInstancesService.forceCleanupAll();
-        supabaseDeleted = result.deletedCount || 0;
-        console.log(`💀 [SUPABASE-DELETE] ${supabaseDeleted} instâncias deletadas`);
-      } catch (error) {
-        errors.push(`Erro no Supabase: ${error.message}`);
-        console.error(`❌ [SUPABASE-DELETE] Erro:`, error);
-      }
-      
-      // 4. VERIFICAÇÃO FINAL
-      try {
-        console.log(`🔍 [VERIFICATION] Verificando se alguma instância sobreviveu...`);
-        
-        const remainingYumer = await this.getAllYumerInstances();
-        const { data: remainingSupabase } = await supabase
-          .from('whatsapp_instances')
-          .select('instance_id');
-        
-        console.log(`📊 [VERIFICATION] YUMER restantes: ${remainingYumer.length}`);
-        console.log(`📊 [VERIFICATION] Supabase restantes: ${remainingSupabase?.length || 0}`);
-        
-        if (remainingYumer.length > 0 || (remainingSupabase?.length || 0) > 0) {
-          console.warn(`⚠️ [VERIFICATION] Ainda existem instâncias! Pode ser necessária uma segunda rodada.`);
-        } else {
-          console.log(`✅ [VERIFICATION] EXTERMÍNIO COMPLETO! Nenhuma instância encontrada.`);
-        }
-        
-      } catch (error) {
-        console.warn(`⚠️ [VERIFICATION] Erro na verificação final:`, error);
-      }
-      
-      console.log(`💀 [TOTAL-EXTERMINATION] CONCLUÍDO!`);
-      console.log(`   🔥 YUMER: ${yumerDeleted} deletadas`);
-      console.log(`   🔥 Supabase: ${supabaseDeleted} deletadas`);
-      console.log(`   ⚠️ Erros: ${errors.length}`);
-      
-      return { yumerDeleted, supabaseDeleted, errors };
-      
-    } catch (error) {
-      console.error('❌ [TOTAL-EXTERMINATION] Erro crítico:', error);
-      throw error;
-    }
-  },
-  
-  // ============ CRIAÇÃO LIMPA DE INSTÂNCIA ============
-  async createCleanInstance(clientId: string, customName?: string): Promise<{instanceId: string, success: boolean, error?: string}> {
-    try {
+
+      // 2. Gerar instance_id único
       const timestamp = Date.now();
       const instanceId = `${clientId}_${timestamp}`;
-      const description = customName || `Clean Instance: ${instanceId}`;
       
-      console.log(`📝 [CLEAN-CREATE] Criando instância limpa: ${instanceId}`);
-      
-      // 1. Criar na YUMER API
-      const yumerResult = await codechatQRService.createInstance(instanceId, description);
-      
-      if (!yumerResult.success) {
-        throw new Error(`Falha na YUMER: ${yumerResult.error}`);
-      }
-      
-      // 2. Registrar no Supabase
-      await whatsappInstancesService.createInstance({
+      // 3. Criar no banco de dados primeiro (source of truth)
+      const newInstance = await whatsappInstancesService.createInstance({
         instance_id: instanceId,
         client_id: clientId,
         custom_name: customName,
         status: 'disconnected',
-        has_qr_code: false
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       });
+
+      console.log('✅ [UNIFIED-SERVICE] Instância criada no banco:', newInstance);
       
-      console.log(`✅ [CLEAN-CREATE] Instância criada com sucesso: ${instanceId}`);
-      return { instanceId, success: true };
+      // 4. O trigger sincronizará automaticamente com clients table
       
+      return newInstance;
     } catch (error) {
-      console.error('❌ [CLEAN-CREATE] Erro:', error);
-      return { instanceId: '', success: false, error: error.message };
+      console.error('❌ [UNIFIED-SERVICE] Erro ao criar instância:', error);
+      throw error;
     }
   }
-};
 
-export default instancesUnifiedService;
+  /**
+   * Remover instância com sincronização automática
+   */
+  async deleteInstance(instanceId: string) {
+    console.log('🗑️ [UNIFIED-SERVICE] Removendo instância:', instanceId);
+    
+    try {
+      // 1. Buscar instância para validar cliente
+      const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
+      if (!instance) {
+        console.warn('⚠️ [UNIFIED-SERVICE] Instância não encontrada no banco');
+        return;
+      }
+
+      // 2. Tentar desconectar no YUMER (se possível)
+      try {
+        await codechatQRService.deleteInstance(instanceId);
+        console.log('✅ [UNIFIED-SERVICE] Instância removida do YUMER');
+      } catch (error) {
+        console.warn('⚠️ [UNIFIED-SERVICE] Erro ao remover do YUMER (continuando):', error);
+      }
+
+      // 3. Remover do banco (trigger sincronizará clients automaticamente)
+      await whatsappInstancesService.deleteInstance(instanceId);
+      
+      console.log('✅ [UNIFIED-SERVICE] Instância removida com sucesso');
+    } catch (error) {
+      console.error('❌ [UNIFIED-SERVICE] Erro ao remover instância:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verificar se instância existe (usando busca na lista)
+   */
+  async checkInstanceExists(instanceId: string): Promise<{ exists: boolean; inDatabase: boolean; inYumer: boolean }> {
+    console.log('🔍 [UNIFIED-SERVICE] Verificando existência de instância:', instanceId);
+    
+    try {
+      // 1. Verificar no banco de dados
+      const dbInstance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
+      const inDatabase = !!dbInstance;
+      
+      // 2. Verificar no YUMER usando fetchInstances (lista)
+      let inYumer = false;
+      try {
+        const yumerCheck = await codechatQRService.checkInstanceExists(instanceId);
+        inYumer = yumerCheck.exists;
+      } catch (error) {
+        console.warn('⚠️ [UNIFIED-SERVICE] Erro ao verificar YUMER:', error);
+        inYumer = false;
+      }
+      
+      const exists = inDatabase || inYumer;
+      
+      console.log('📊 [UNIFIED-SERVICE] Status de existência:', {
+        instanceId,
+        exists,
+        inDatabase,
+        inYumer
+      });
+      
+      return { exists, inDatabase, inYumer };
+    } catch (error) {
+      console.error('❌ [UNIFIED-SERVICE] Erro ao verificar existência:', error);
+      return { exists: false, inDatabase: false, inYumer: false };
+    }
+  }
+
+  /**
+   * Sincronizar status entre YUMER e banco
+   */
+  async syncInstanceStatus(instanceId: string) {
+    console.log('🔄 [UNIFIED-SERVICE] Sincronizando status:', instanceId);
+    
+    try {
+      // 1. Buscar status no YUMER
+      const yumerStatus = await codechatQRService.getInstanceStatus(instanceId);
+      
+      // 2. Mapear status
+      let mappedStatus = 'disconnected';
+      if (yumerStatus.state === 'open') {
+        mappedStatus = 'connected';
+      } else if (yumerStatus.state === 'connecting') {
+        mappedStatus = 'connecting';
+      } else if (yumerStatus.state === 'close') {
+        mappedStatus = 'disconnected';
+      }
+      
+      // 3. Buscar detalhes se conectado
+      let phoneNumber = undefined;
+      if (mappedStatus === 'connected') {
+        try {
+          const details = await codechatQRService.getInstanceDetails(instanceId);
+          phoneNumber = details.ownerJid;
+        } catch (error) {
+          console.warn('⚠️ [UNIFIED-SERVICE] Erro ao buscar detalhes:', error);
+        }
+      }
+      
+      // 4. Atualizar banco (trigger sincronizará clients)
+      await whatsappInstancesService.updateInstanceStatus(instanceId, mappedStatus, {
+        phone_number: phoneNumber,
+        updated_at: new Date().toISOString()
+      });
+      
+      console.log('✅ [UNIFIED-SERVICE] Status sincronizado:', {
+        instanceId,
+        status: mappedStatus,
+        phoneNumber
+      });
+      
+      return { status: mappedStatus, phoneNumber };
+    } catch (error) {
+      console.error('❌ [UNIFIED-SERVICE] Erro ao sincronizar status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Dashboard de saúde do sistema
+   */
+  async getSystemHealth() {
+    try {
+      // 1. Estatísticas do banco
+      const { data: dbStats, error } = await supabase
+        .from('whatsapp_instances')
+        .select('status, client_id')
+        .not('client_id', 'is', null);
+
+      if (error) throw error;
+
+      // 2. Estatísticas por status
+      const statusCounts = dbStats.reduce((acc, instance) => {
+        acc[instance.status] = (acc[instance.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // 3. Estatísticas por cliente
+      const clientCounts = dbStats.reduce((acc, instance) => {
+        acc[instance.client_id] = (acc[instance.client_id] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      return {
+        totalInstances: dbStats.length,
+        statusBreakdown: statusCounts,
+        clientsWithInstances: Object.keys(clientCounts).length,
+        averageInstancesPerClient: dbStats.length / Math.max(Object.keys(clientCounts).length, 1),
+        lastCheck: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('❌ [UNIFIED-SERVICE] Erro ao verificar saúde:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Operação de limpeza e sincronização
+   */
+  async cleanupAndSync() {
+    console.log('🧹 [UNIFIED-SERVICE] Iniciando limpeza e sincronização');
+    
+    try {
+      // 1. Limpar QR codes expirados
+      const { data: expiredQRs, error } = await supabase
+        .from('whatsapp_instances')
+        .update({
+          qr_code: null,
+          has_qr_code: false,
+          qr_expires_at: null
+        })
+        .lt('qr_expires_at', new Date().toISOString())
+        .select('instance_id');
+
+      if (error) throw error;
+
+      console.log('🧹 [UNIFIED-SERVICE] QR codes expirados limpos:', expiredQRs?.length || 0);
+
+      // 2. Verificar consistência de dados
+      const health = await this.getSystemHealth();
+      
+      return {
+        expiredQRsCleared: expiredQRs?.length || 0,
+        systemHealth: health
+      };
+    } catch (error) {
+      console.error('❌ [UNIFIED-SERVICE] Erro na limpeza:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Diagnóstico de consistência entre banco e YUMER
+   */
+  async diagnoseSyncConsistency() {
+    try {
+      // 1. Buscar instâncias do banco
+      const { data: dbInstances, error } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, client_id, status')
+        .not('client_id', 'is', null);
+
+      if (error) throw error;
+
+      // 2. Buscar instâncias do YUMER
+      let yumerInstances: any[] = [];
+      try {
+        const yumerResponse = await codechatQRService.getAllInstances();
+        yumerInstances = Array.isArray(yumerResponse) ? yumerResponse : [];
+      } catch (error) {
+        console.warn('⚠️ [UNIFIED-SERVICE] Erro ao buscar instâncias YUMER:', error);
+      }
+
+      // 3. Identificar órfãs
+      const dbInstanceIds = dbInstances.map(i => i.instance_id);
+      const yumerInstanceIds = yumerInstances.map(i => i.name || i.instanceName);
+
+      const orphanedInSupabase = dbInstances.filter(
+        db => !yumerInstanceIds.includes(db.instance_id)
+      );
+
+      const orphanedInYumer = yumerInstances.filter(
+        yumer => !dbInstanceIds.includes(yumer.name || yumer.instanceName)
+      );
+
+      const synchronized = orphanedInSupabase.length === 0 && orphanedInYumer.length === 0;
+
+      return {
+        synchronized,
+        dbInstances: dbInstances.length,
+        yumerInstances: yumerInstances.length,
+        orphanedInSupabase,
+        orphanedInYumer,
+        lastCheck: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('❌ [UNIFIED-SERVICE] Erro no diagnóstico:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Buscar todas as instâncias do YUMER
+   */
+  async getAllYumerInstances() {
+    try {
+      return await codechatQRService.getAllInstances();
+    } catch (error) {
+      console.error('❌ [UNIFIED-SERVICE] Erro ao buscar instâncias YUMER:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Extermínio total - remover todas as instâncias
+   */
+  async totalExtermination() {
+    console.log('💀 [UNIFIED-SERVICE] INICIANDO EXTERMÍNIO TOTAL');
+    
+    const errors: string[] = [];
+    let yumerDeleted = 0;
+    let supabaseDeleted = 0;
+
+    try {
+      // 1. Buscar todas as instâncias do YUMER
+      let yumerInstances: any[] = [];
+      try {
+        const yumerResponse = await codechatQRService.getAllInstances();
+        yumerInstances = Array.isArray(yumerResponse) ? yumerResponse : [];
+      } catch (error) {
+        console.warn('⚠️ [EXTERMÍNIO] Erro ao buscar YUMER:', error);
+      }
+
+      // 2. Deletar do YUMER
+      for (const instance of yumerInstances) {
+        try {
+          const instanceName = instance.name || instance.instanceName;
+          if (instanceName) {
+            await codechatQRService.deleteInstance(instanceName);
+            yumerDeleted++;
+            console.log(`💀 [EXTERMÍNIO] YUMER deletado: ${instanceName}`);
+          }
+        } catch (error: any) {
+          errors.push(`YUMER ${instance.name}: ${error.message}`);
+        }
+      }
+
+      // 3. Deletar do Supabase
+      try {
+        const { error } = await supabase
+          .from('whatsapp_instances')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000'); // Deletar todos
+
+        if (error) throw error;
+
+        const { count } = await supabase
+          .from('whatsapp_instances')
+          .select('id', { count: 'exact', head: true });
+
+        supabaseDeleted = count || 0;
+        console.log(`💀 [EXTERMÍNIO] Supabase: todas as instâncias removidas`);
+      } catch (error: any) {
+        errors.push(`Supabase: ${error.message}`);
+      }
+
+      return {
+        yumerDeleted,
+        supabaseDeleted,
+        errors
+      };
+    } catch (error: any) {
+      console.error('❌ [EXTERMÍNIO] Erro geral:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sincronização forçada a partir do Supabase
+   */
+  async forceSyncFromSupabase() {
+    console.log('🔄 [UNIFIED-SERVICE] Sincronização forçada do Supabase');
+    
+    const errors: string[] = [];
+    let created = 0;
+    let deleted = 0;
+
+    try {
+      // 1. Buscar instâncias do banco
+      const { data: dbInstances, error } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, custom_name')
+        .not('client_id', 'is', null);
+
+      if (error) throw error;
+
+      // 2. Para cada instância do banco, garantir que existe no YUMER
+      for (const dbInstance of dbInstances) {
+        try {
+          const exists = await codechatQRService.checkInstanceExists(dbInstance.instance_id);
+          
+          if (!exists.exists) {
+            // Criar no YUMER
+            const createResponse = await codechatQRService.createInstance(
+              dbInstance.instance_id,
+              dbInstance.custom_name || `Synced: ${dbInstance.instance_id}`
+            );
+            
+            if (createResponse.success) {
+              created++;
+              console.log(`🔄 [SYNC] Criado no YUMER: ${dbInstance.instance_id}`);
+            }
+          }
+        } catch (error: any) {
+          errors.push(`${dbInstance.instance_id}: ${error.message}`);
+        }
+      }
+
+      return {
+        created,
+        deleted,
+        errors
+      };
+    } catch (error: any) {
+      console.error('❌ [SYNC] Erro geral:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Limpeza de instâncias órfãs
+   */
+  async cleanupOrphanedInstances() {
+    console.log('🧹 [UNIFIED-SERVICE] Limpando instâncias órfãs');
+    
+    const errors: string[] = [];
+    let cleaned = 0;
+
+    try {
+      const diagnosis = await this.diagnoseSyncConsistency();
+
+      // 1. Remover órfãs do YUMER
+      for (const orphan of diagnosis.orphanedInYumer) {
+        try {
+          const instanceName = orphan.name || orphan.instanceName;
+          if (instanceName) {
+            await codechatQRService.deleteInstance(instanceName);
+            cleaned++;
+            console.log(`🧹 [ORPHANS] YUMER órfã removida: ${instanceName}`);
+          }
+        } catch (error: any) {
+          errors.push(`YUMER ${orphan.name}: ${error.message}`);
+        }
+      }
+
+      // 2. Remover órfãs do Supabase
+      for (const orphan of diagnosis.orphanedInSupabase) {
+        try {
+          await whatsappInstancesService.deleteInstance(orphan.instance_id);
+          cleaned++;
+          console.log(`🧹 [ORPHANS] Supabase órfã removida: ${orphan.instance_id}`);
+        } catch (error: any) {
+          errors.push(`Supabase ${orphan.instance_id}: ${error.message}`);
+        }
+      }
+
+      return {
+        cleaned,
+        errors
+      };
+    } catch (error: any) {
+      console.error('❌ [ORPHANS] Erro geral:', error);
+      throw error;
+    }
+  }
+}
+
+export const instancesUnifiedService = new InstancesUnifiedService();

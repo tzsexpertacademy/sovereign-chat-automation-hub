@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useInstanceSync } from '@/hooks/useInstanceSync';
 import { useRetryWithBackoff } from '@/hooks/useRetryWithBackoff';
+import { instancesUnifiedService } from '@/services/instancesUnifiedService';
 
 interface InstanceStatus {
   instanceId: string;
@@ -448,8 +449,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         
         try {
           // ============ VERIFICAR SE INSTÂNCIA EXISTE NO BANCO PRIMEIRO ============
-          const dbInstances = await whatsappInstancesService.getInstancesByClientId(instanceId.split('_')[0]);
-          const dbInstance = dbInstances.find(inst => inst.instance_id === instanceId);
+          const dbInstance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
           
           if (!dbInstance) {
             console.warn(`🛑 [UNIFIED-POLL] Instância ${instanceId} não encontrada no banco - parando polling`);

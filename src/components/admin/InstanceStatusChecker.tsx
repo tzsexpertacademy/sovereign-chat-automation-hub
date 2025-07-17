@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { SERVER_URL, getYumerGlobalApiKey } from "@/config/environment";
 import cleanupInstancesService from "@/services/cleanupInstancesService";
-import instancesUnifiedService from "@/services/instancesUnifiedService";
+import { instancesUnifiedService } from "@/services/instancesUnifiedService";
 
 interface Instance {
   id?: number;

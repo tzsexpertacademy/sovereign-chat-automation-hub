@@ -623,6 +623,46 @@ class CodeChatQRService {
     }
   }
 
+  // ============ GET ALL INSTANCES ============
+  async getAllInstances(): Promise<any[]> {
+    try {
+      console.log('📋 [CODECHAT] Buscando todas as instâncias');
+      
+      const url = `${this.getApiBaseUrl()}/instance/fetchInstances`;
+      console.log(`📡 [CODECHAT-API] GET ${url}`);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: await this.getAuthHeaders('fetchInstances'),
+      });
+      
+      console.log(`📊 [CODECHAT-API] Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log(`✅ [CODECHAT] Instâncias encontradas:`, data);
+      
+      // Normalizar resposta - pode ser array ou objeto com array
+      if (Array.isArray(data)) {
+        return data;
+      } else if (data && data.instances && Array.isArray(data.instances)) {
+        return data.instances;
+      } else if (data && typeof data === 'object') {
+        return [data]; // Instância única
+      }
+      
+      return [];
+      
+    } catch (error: any) {
+      console.error('❌ [CODECHAT] Erro ao buscar instâncias:', error);
+      throw error;
+    }
+  }
+
   // ============ DELETE INSTANCE ============
   async deleteInstance(instanceName: string): Promise<QRCodeResponse> {
     try {
