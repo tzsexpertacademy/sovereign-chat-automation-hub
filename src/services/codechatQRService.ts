@@ -98,6 +98,91 @@ class CodeChatQRService {
     }
   }
 
+  // ============ EXTRAIR QR CODE DO HTML ============
+  private extractQRFromHTML(htmlContent: string): string | null {
+    try {
+      console.log(`🔍 [CODECHAT-HTML] Tentando extrair QR code do HTML...`);
+      
+      // Padrões para buscar QR code base64 no HTML
+      const patterns = [
+        // Atributo src de img tag
+        /src="(data:image\/[^"]+)"/gi,
+        /src='(data:image\/[^']+)'/gi,
+        
+        // JavaScript variáveis
+        /qrCode\s*[=:]\s*["'](data:image\/[^"']+)["']/gi,
+        /qr\s*[=:]\s*["'](data:image\/[^"']+)["']/gi,
+        /base64\s*[=:]\s*["'](data:image\/[^"']+)["']/gi,
+        
+        // Canvas toDataURL
+        /toDataURL\(\).*?["'](data:image\/[^"']+)["']/gi,
+        
+        // Padrão genérico para qualquer data:image
+        /(data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+\/=]+)/gi
+      ];
+      
+      for (const pattern of patterns) {
+        const matches = htmlContent.match(pattern);
+        if (matches) {
+          for (const match of matches) {
+            // Extrair apenas a parte do data:image
+            const dataMatch = match.match(/(data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+\/=]+)/);
+            if (dataMatch && dataMatch[1]) {
+              const qrCode = dataMatch[1];
+              console.log(`✅ [CODECHAT-HTML] QR code encontrado via padrão: ${pattern.source}`);
+              console.log(`🔍 [CODECHAT-HTML] QR extraído (primeiros 50 chars): ${qrCode.substring(0, 50)}...`);
+              
+              // Validar se é um base64 válido
+              if (this.isValidBase64Image(qrCode)) {
+                return qrCode;
+              }
+            }
+          }
+        }
+      }
+      
+      console.log(`⚠️ [CODECHAT-HTML] Nenhum QR code encontrado no HTML`);
+      console.log(`🔍 [CODECHAT-HTML] HTML snippet (primeiros 500 chars):`, htmlContent.substring(0, 500));
+      return null;
+      
+    } catch (error) {
+      console.error(`❌ [CODECHAT-HTML] Erro ao extrair QR do HTML:`, error);
+      return null;
+    }
+  }
+
+  // ============ VALIDAR BASE64 DE IMAGEM ============
+  private isValidBase64Image(str: string): boolean {
+    try {
+      // Verificar se começa com data:image
+      if (!str.startsWith('data:image/')) {
+        return false;
+      }
+      
+      // Extrair a parte base64
+      const base64Part = str.split(',')[1];
+      if (!base64Part) {
+        return false;
+      }
+      
+      // Verificar se é base64 válido (deve ser múltiplo de 4 quando padded)
+      const base64Regex = /^[A-Za-z0-9+\/]*={0,2}$/;
+      if (!base64Regex.test(base64Part)) {
+        return false;
+      }
+      
+      // Verificar tamanho mínimo (QR codes são geralmente grandes)
+      if (base64Part.length < 1000) {
+        console.log(`⚠️ [CODECHAT-HTML] Base64 muito pequeno para ser QR code: ${base64Part.length} chars`);
+        return false;
+      }
+      
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ============ SALVAR QR CODE NO BANCO ============
   private async saveQRCodeToDatabase(instanceName: string, qrCode: string): Promise<void> {
     try {
@@ -591,15 +676,32 @@ class CodeChatQRService {
         console.log(`🔍 [CODECHAT-DEBUG] Response text (primeiros 200 chars):`, text.substring(0, 200));
         console.log(`🔍 [CODECHAT-DEBUG] Content-Type:`, response.headers.get('content-type'));
         
-        // Se for HTML, não é um QR code válido
+        // Se for HTML, tentar extrair QR code
         if (text.includes('<!DOCTYPE html>') || text.includes('<html')) {
-          console.log(`⚠️ [CODECHAT-API] Endpoint retornou HTML ao invés de QR Code`);
-          console.log(`🔄 [CODECHAT-API] QR Code deve ser obtido via WebSocket ou polling`);
-          return {
-            success: false,
-            error: 'Endpoint retornou HTML ao invés de QR Code',
-            instanceName
-          };
+          console.log(`📄 [CODECHAT-API] Endpoint retornou HTML, tentando extrair QR Code...`);
+          
+          const extractedQR = this.extractQRFromHTML(text);
+          if (extractedQR) {
+            console.log(`✅ [CODECHAT-API] QR Code extraído do HTML com sucesso`);
+            
+            // 🔑 SALVAR QR CODE NO BANCO IMEDIATAMENTE
+            await this.saveQRCodeToDatabase(instanceName, extractedQR);
+            
+            return {
+              success: true,
+              qrCode: extractedQR,
+              status: 'qr_ready',
+              instanceName
+            };
+          } else {
+            console.log(`⚠️ [CODECHAT-API] Não foi possível extrair QR Code do HTML`);
+            console.log(`🔄 [CODECHAT-API] QR Code deve ser obtido via WebSocket ou polling`);
+            return {
+              success: false,
+              error: 'Não foi possível extrair QR Code do HTML',
+              instanceName
+            };
+          }
         }
         
         // Se for base64 direto
