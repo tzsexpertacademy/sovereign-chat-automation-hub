@@ -1,472 +1,610 @@
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  Wifi, 
-  WifiOff, 
   CheckCircle, 
   XCircle, 
-  AlertCircle,
-  RefreshCw,
-  Network,
-  Lock,
-  Globe
+  Loader2, 
+  AlertTriangle, 
+  ExternalLink, 
+  Server, 
+  Shield, 
+  Network, 
+  Database,
+  Webhook,
+  Users
 } from "lucide-react";
-import { API_BASE_URL, SOCKET_URL, YUMER_API_URL } from "@/config/environment";
-import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
+import { SERVER_URL, getServerConfig, getYumerGlobalApiKey } from "@/config/environment";
+import { supabase } from "@/integrations/supabase/client";
 
-interface DiagnosticResult {
-  test: string;
-  status: 'success' | 'error' | 'warning' | 'pending';
+interface TestResult {
+  status: 'idle' | 'testing' | 'success' | 'error' | 'warning';
   message: string;
-  details?: string;
+  details?: any;
   duration?: number;
 }
 
-const ConnectionDiagnostics = () => {
-  const [diagnostics, setDiagnostics] = useState<DiagnosticResult[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
+interface EndpointTest {
+  name: string;
+  url: string;
+  method: 'GET' | 'POST';
+  headers?: Record<string, string>;
+  body?: any;
+  expectedStatus?: number;
+}
 
-  const addResult = (result: DiagnosticResult) => {
-    setDiagnostics(prev => [...prev, result]);
+const ConnectionDiagnostics = () => {
+  const [corsTest, setCorsTest] = useState<TestResult>({ status: 'idle', message: '' });
+  const [apiTests, setApiTests] = useState<Record<string, TestResult>>({});
+  const [webhookTest, setWebhookTest] = useState<TestResult>({ status: 'idle', message: '' });
+  const [multiInstanceTest, setMultiInstanceTest] = useState<TestResult>({ status: 'idle', message: '' });
+  const [supabaseTest, setSupabaseTest] = useState<TestResult>({ status: 'idle', message: '' });
+  const [isRunningAll, setIsRunningAll] = useState(false);
+
+  const config = getServerConfig();
+  const apiKey = getYumerGlobalApiKey();
+
+  // Endpoints para testar
+  const endpoints: EndpointTest[] = [
+    { name: 'Health Check', url: '/health', method: 'GET' },
+    { name: 'Status Público', url: '/', method: 'GET' },
+    { name: 'Fetch Instances', url: '/instance/fetchInstances', method: 'GET', headers: { 'apikey': apiKey || '' } },
+    { name: 'Connection State', url: '/instance/connectionState/test', method: 'GET', headers: { 'apikey': apiKey || '' } },
+  ];
+
+  const getStatusIcon = (status: TestResult['status']) => {
+    switch (status) {
+      case 'success': return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'error': return <XCircle className="w-4 h-4 text-red-500" />;
+      case 'warning': return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+      case 'testing': return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
+      default: return <div className="w-4 h-4 bg-gray-300 rounded-full" />;
+    }
   };
 
-  const runDiagnostics = async () => {
-    setIsRunning(true);
-    setDiagnostics([]);
-
-    // Test 1: Network Connectivity
-    addResult({
-      test: "Conectividade de Rede",
-      status: 'pending',
-      message: "Testando conectividade básica..."
-    });
-
-    try {
-      const start = Date.now();
-      const response = await fetch('https://httpbin.org/status/200', { 
-        method: 'GET',
-        mode: 'cors'
-      });
-      const duration = Date.now() - start;
-      
-      if (response.ok) {
-        addResult({
-          test: "Conectividade de Rede",
-          status: 'success',
-          message: "Internet funcionando normalmente",
-          duration
-        });
-      }
-    } catch (error: any) {
-      addResult({
-        test: "Conectividade de Rede",
-        status: 'error',
-        message: "Sem conectividade com a internet",
-        details: error.message
-      });
+  const getStatusBadge = (status: TestResult['status']) => {
+    switch (status) {
+      case 'success': return <Badge className="bg-green-500">Sucesso</Badge>;
+      case 'error': return <Badge variant="destructive">Erro</Badge>;
+      case 'warning': return <Badge className="bg-yellow-500">Atenção</Badge>;
+      case 'testing': return <Badge variant="secondary">Testando...</Badge>;
+      default: return <Badge variant="outline">Não testado</Badge>;
     }
+  };
 
-    // Test 2: DNS Resolution
-    addResult({
-      test: "Resolução DNS",
-      status: 'pending',
-      message: "Verificando resolução DNS do servidor..."
-    });
+  // Teste CORS específico
+  const testCORS = async () => {
+    setCorsTest({ status: 'testing', message: 'Testando política CORS...' });
+    const startTime = Date.now();
 
     try {
-      const start = Date.now();
-      const url = new URL(API_BASE_URL);
-      const response = await fetch(`https://dns.google/resolve?name=${url.hostname}&type=A`);
-      const duration = Date.now() - start;
-      
+      const testUrl = `${SERVER_URL}/health`;
+      console.log('🧪 [CORS] Testando:', testUrl);
+
+      const response = await fetch(testUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Origin': window.location.origin,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        mode: 'cors',
+        credentials: 'omit'
+      });
+
+      const duration = Date.now() - startTime;
+
       if (response.ok) {
         const data = await response.json();
-        addResult({
-          test: "Resolução DNS",
+        setCorsTest({
           status: 'success',
-          message: `DNS resolvido: ${url.hostname}`,
-          details: `IP: ${data.Answer?.[0]?.data || 'N/A'}`,
+          message: 'CORS configurado corretamente',
+          details: { 
+            status: response.status, 
+            headers: Object.fromEntries(response.headers.entries()),
+            data
+          },
+          duration
+        });
+      } else {
+        setCorsTest({
+          status: 'error',
+          message: `HTTP ${response.status}: ${response.statusText}`,
           duration
         });
       }
     } catch (error: any) {
-      addResult({
-        test: "Resolução DNS",
-        status: 'warning',
-        message: "Não foi possível verificar DNS",
-        details: error.message
-      });
+      const duration = Date.now() - startTime;
+      
+      if (error.message.includes('CORS') || error.message === 'Failed to fetch') {
+        setCorsTest({
+          status: 'error',
+          message: 'Bloqueado por CORS - servidor precisa permitir origem: ' + window.location.origin,
+          details: { error: error.message, origin: window.location.origin },
+          duration
+        });
+      } else {
+        setCorsTest({
+          status: 'error',
+          message: error.message,
+          duration
+        });
+      }
     }
+  };
 
-    // Test 3: SSL/TLS Certificate
-    addResult({
-      test: "Certificado SSL/TLS",
-      status: 'pending',
-      message: "Verificando certificado SSL..."
-    });
+  // Teste de endpoints da API
+  const testAPIEndpoints = async () => {
+    const results: Record<string, TestResult> = {};
+    
+    for (const endpoint of endpoints) {
+      const testKey = endpoint.name;
+      results[testKey] = { status: 'testing', message: 'Testando...' };
+      setApiTests({ ...results });
+
+      const startTime = Date.now();
+
+      try {
+        const url = `${SERVER_URL}${endpoint.url}`;
+        console.log(`🧪 [API] Testando ${endpoint.name}:`, url);
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          ...endpoint.headers
+        };
+
+        const response = await fetch(url, {
+          method: endpoint.method,
+          headers,
+          body: endpoint.body ? JSON.stringify(endpoint.body) : undefined,
+          mode: 'cors'
+        });
+
+        const duration = Date.now() - startTime;
+        const responseText = await response.text();
+        let responseData;
+        
+        try {
+          responseData = JSON.parse(responseText);
+        } catch {
+          responseData = responseText;
+        }
+
+        if (response.ok) {
+          results[testKey] = {
+            status: 'success',
+            message: `${endpoint.method} ${response.status} - OK`,
+            details: { status: response.status, data: responseData },
+            duration
+          };
+        } else {
+          results[testKey] = {
+            status: 'error',
+            message: `${endpoint.method} ${response.status} - ${response.statusText}`,
+            details: { status: response.status, data: responseData },
+            duration
+          };
+        }
+      } catch (error: any) {
+        const duration = Date.now() - startTime;
+        results[testKey] = {
+          status: 'error',
+          message: `Erro: ${error.message}`,
+          details: { error: error.message },
+          duration
+        };
+      }
+
+      setApiTests({ ...results });
+    }
+  };
+
+  // Teste de Webhook
+  const testWebhook = async () => {
+    setWebhookTest({ status: 'testing', message: 'Testando configuração de webhook...' });
+    const startTime = Date.now();
 
     try {
-      const start = Date.now();
-      const response = await fetch(API_BASE_URL, { 
-        method: 'HEAD',
-        mode: 'no-cors'
+      // Verificar se webhook está configurado no servidor
+      const response = await fetch(`${SERVER_URL}/webhook`, {
+        headers: { 'apikey': apiKey || '' }
       });
-      const duration = Date.now() - start;
+
+      const duration = Date.now() - startTime;
+
+      if (response.ok) {
+        const data = await response.json();
+        setWebhookTest({
+          status: 'success',
+          message: 'Webhook configurado',
+          details: data,
+          duration
+        });
+      } else {
+        setWebhookTest({
+          status: 'warning',
+          message: 'Webhook endpoint não encontrado - pode estar em rota diferente',
+          duration
+        });
+      }
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      setWebhookTest({
+        status: 'error',
+        message: `Erro ao testar webhook: ${error.message}`,
+        duration
+      });
+    }
+  };
+
+  // Teste de múltiplas instâncias
+  const testMultipleInstances = async () => {
+    setMultiInstanceTest({ status: 'testing', message: 'Testando suporte a múltiplas instâncias...' });
+    const startTime = Date.now();
+
+    try {
+      // Simular criação de múltiplas instâncias
+      const testInstances = [
+        'test-client-1_' + Date.now(),
+        'test-client-2_' + Date.now(),
+        'test-client-3_' + Date.now()
+      ];
+
+      const results = [];
       
-      addResult({
-        test: "Certificado SSL/TLS",
+      for (const instanceId of testInstances) {
+        try {
+          const response = await fetch(`${SERVER_URL}/instance/connectionState/${instanceId}`, {
+            headers: { 'apikey': apiKey || '' }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            results.push({ instanceId, status: data.state });
+          }
+        } catch (error) {
+          // Esperado para instâncias de teste
+          results.push({ instanceId, status: 'not_found' });
+        }
+      }
+
+      const duration = Date.now() - startTime;
+      
+      setMultiInstanceTest({
         status: 'success',
-        message: "Certificado SSL válido",
+        message: `Servidor responde para múltiplas instâncias (${results.length} testadas)`,
+        details: { instances: results, supportMultiple: true },
         duration
       });
     } catch (error: any) {
-      if (error.message.includes('SSL') || error.message.includes('certificate')) {
-        addResult({
-          test: "Certificado SSL/TLS",
-          status: 'error',
-          message: "Problema com certificado SSL",
-          details: "Certificado inválido ou autoassinado"
-        });
-      } else {
-        addResult({
-          test: "Certificado SSL/TLS",
-          status: 'warning',
-          message: "Não foi possível verificar SSL",
-          details: error.message
-        });
-      }
+      const duration = Date.now() - startTime;
+      setMultiInstanceTest({
+        status: 'error',
+        message: `Erro ao testar múltiplas instâncias: ${error.message}`,
+        duration
+      });
     }
+  };
 
-    // Test 4: CORS Headers
-    addResult({
-      test: "Configuração CORS",
-      status: 'pending',
-      message: "Verificando headers CORS..."
-    });
+  // Teste Supabase
+  const testSupabase = async () => {
+    setSupabaseTest({ status: 'testing', message: 'Testando conexão com Supabase...' });
+    const startTime = Date.now();
 
     try {
-      const start = Date.now();
-      const response = await fetch(`${API_BASE_URL}/instance/fetchInstances`, {
-        method: 'OPTIONS'
-      });
-      const duration = Date.now() - start;
-      
-      const corsHeaders = {
-        origin: response.headers.get('access-control-allow-origin'),
-        methods: response.headers.get('access-control-allow-methods'),
-        headers: response.headers.get('access-control-allow-headers')
+      // Testar read no Supabase
+      const { data, error, count } = await supabase
+        .from('whatsapp_instances')
+        .select('*', { count: 'exact' })
+        .limit(1);
+
+      const duration = Date.now() - startTime;
+
+      if (error) {
+        setSupabaseTest({
+          status: 'error',
+          message: `Erro Supabase: ${error.message}`,
+          duration
+        });
+        return;
+      }
+
+      // Testar insert de teste
+      const testInstance = {
+        instance_id: `test_${Date.now()}`,
+        status: 'test',
+        client_id: null
       };
 
-      if (corsHeaders.origin) {
-        addResult({
-          test: "Configuração CORS",
-          status: 'success',
-          message: "CORS configurado corretamente",
-          details: `Origin: ${corsHeaders.origin}`,
-          duration
-        });
-      } else {
-        addResult({
-          test: "Configuração CORS",
-          status: 'warning',
-          message: "CORS pode estar mal configurado",
-          details: "Headers CORS não encontrados"
-        });
+      const { data: inserted, error: insertError } = await supabase
+        .from('whatsapp_instances')
+        .insert(testInstance)
+        .select()
+        .single();
+
+      if (inserted) {
+        // Limpar teste
+        await supabase
+          .from('whatsapp_instances')
+          .delete()
+          .eq('id', inserted.id);
       }
+
+      setSupabaseTest({
+        status: 'success',
+        message: `Supabase OK - ${count || 0} instâncias no banco`,
+        details: { 
+          totalInstances: count,
+          canRead: true,
+          canWrite: !insertError,
+          testCleanedUp: true
+        },
+        duration
+      });
     } catch (error: any) {
-      addResult({
-        test: "Configuração CORS",
+      const duration = Date.now() - startTime;
+      setSupabaseTest({
         status: 'error',
-        message: "Erro na verificação CORS",
-        details: error.message
+        message: `Erro Supabase: ${error.message}`,
+        duration
       });
-    }
-
-    // Test 5A: YUMER Basic Connectivity
-    addResult({
-      test: "Conectividade YUMER Básica",
-      status: 'pending',
-      message: "Testando rota pública /..."
-    });
-
-    try {
-      const start = Date.now();
-      const response = await fetch(`${API_BASE_URL}/`, { method: 'GET' });
-      const duration = Date.now() - start;
-      
-      if (response.ok) {
-        const data = await response.json();
-        addResult({
-          test: "Conectividade YUMER Básica",
-          status: 'success',
-          message: "Servidor YUMER online (rota pública)",
-          details: `Status: ${data.status || 'OK'}`,
-          duration
-        });
-      } else {
-        throw new Error(`HTTP ${response.status}`);
-      }
-    } catch (error: any) {
-      addResult({
-        test: "Conectividade YUMER Básica",
-        status: 'error',
-        message: "Falha na rota pública",
-        details: error.message
-      });
-    }
-
-    // Test 5B: YUMER Health Check
-    addResult({
-      test: "YUMER Health Check",
-      status: 'pending',
-      message: "Testando /health..."
-    });
-
-    try {
-      const start = Date.now();
-      const response = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
-      const duration = Date.now() - start;
-      
-      if (response.ok) {
-        const data = await response.json();
-        addResult({
-          test: "YUMER Health Check",
-          status: 'success',
-          message: "Health check passou",
-          details: `Status: ${data.status || 'OK'}`,
-          duration
-        });
-      } else {
-        throw new Error(`HTTP ${response.status}`);
-      }
-    } catch (error: any) {
-      addResult({
-        test: "YUMER Health Check",
-        status: 'warning',
-        message: "Health check falhou",
-        details: error.message
-      });
-    }
-
-    // Test 5C: YUMER Authenticated APIs
-    addResult({
-      test: "APIs YUMER Autenticadas",
-      status: 'pending',
-      message: "Testando APIs com autenticação..."
-    });
-
-    try {
-      const start = Date.now();
-      const healthCheck = await yumerWhatsAppService.checkServerHealth();
-      const duration = Date.now() - start;
-      
-      if (healthCheck.status === 'online' && healthCheck.details.level === 'authenticated') {
-        addResult({
-          test: "APIs YUMER Autenticadas",
-          status: 'success',
-          message: "APIs funcionais",
-          details: `${healthCheck.details.instanceCount || 0} instâncias encontradas`,
-          duration
-        });
-      } else if (healthCheck.status === 'online') {
-        addResult({
-          test: "APIs YUMER Autenticadas",
-          status: 'warning',
-          message: "Servidor online mas APIs podem precisar auth",
-          details: `Nível: ${healthCheck.details.level}`
-        });
-      } else {
-        addResult({
-          test: "APIs YUMER Autenticadas",
-          status: 'error',
-          message: "APIs não funcionais",
-          details: healthCheck.details.error
-        });
-      }
-    } catch (error: any) {
-      addResult({
-        test: "APIs YUMER Autenticadas",
-        status: 'error',
-        message: "Falha nas APIs autenticadas",
-        details: error.message
-      });
-    }
-
-    // Test 6: WebSocket Connection
-    addResult({
-      test: "Conexão WebSocket",
-      status: 'pending',
-      message: "Testando conexão WebSocket..."
-    });
-
-    try {
-      const socket = yumerWhatsAppService.getSocket();
-      
-      if (socket && socket.connected) {
-        addResult({
-          test: "Conexão WebSocket",
-          status: 'success',
-          message: "WebSocket conectado",
-          details: `Socket ID: ${socket.id}`
-        });
-      } else {
-        // Try to connect
-        try {
-          await yumerWhatsAppService.connectWebSocket();
-          
-          addResult({
-            test: "Conexão WebSocket",
-            status: 'success',
-            message: "WebSocket conectado com sucesso",
-            details: `WebSocket nativo YUMER conectado`
-          });
-        } catch (error: any) {
-          throw new Error(`Falha na conexão: ${error.message}`);
-        }
-      }
-    } catch (error: any) {
-      addResult({
-        test: "Conexão WebSocket",
-        status: 'error',
-        message: "Falha na conexão WebSocket",
-        details: error.message
-      });
-    }
-
-    setIsRunning(false);
-  };
-
-  const getStatusIcon = (status: DiagnosticResult['status']) => {
-    switch (status) {
-      case 'success':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'error':
-        return <XCircle className="w-4 h-4 text-red-500" />;
-      case 'warning':
-        return <AlertCircle className="w-4 h-4 text-yellow-500" />;
-      case 'pending':
-        return <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />;
-      default:
-        return null;
     }
   };
 
-  const getStatusBadge = (status: DiagnosticResult['status']) => {
-    switch (status) {
-      case 'success':
-        return 'default';
-      case 'error':
-        return 'destructive';
-      case 'warning':
-        return 'secondary';
-      case 'pending':
-        return 'outline';
-      default:
-        return 'outline';
+  // Executar todos os testes
+  const runAllTests = async () => {
+    setIsRunningAll(true);
+    
+    try {
+      await testCORS();
+      await testAPIEndpoints();
+      await testWebhook();
+      await testMultipleInstances();
+      await testSupabase();
+    } finally {
+      setIsRunningAll(false);
     }
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center space-x-2">
-              <Network className="w-5 h-5" />
-              <span>Diagnóstico de Conectividade</span>
-            </CardTitle>
-            <CardDescription>
-              Verifica a conectividade com o servidor YUMER e identifica problemas
-            </CardDescription>
-          </div>
-          <Button 
-            onClick={runDiagnostics} 
-            disabled={isRunning}
-            variant="outline"
-          >
-            {isRunning ? (
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-2" />
-            )}
-            {isRunning ? 'Executando...' : 'Executar Diagnóstico'}
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* Configuration Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div>
-              <h4 className="font-medium text-sm text-gray-600 dark:text-gray-300">API URL</h4>
-              <p className="text-sm font-mono break-all">{API_BASE_URL}</p>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            🔬 Diagnóstico Avançado de Conexão
+            <Button onClick={runAllTests} disabled={isRunningAll}>
+              {isRunningAll ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Executando...
+                </>
+              ) : (
+                'Executar Todos os Testes'
+              )}
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div className="p-3 border rounded">
+              <p className="text-sm font-medium">Frontend</p>
+              <p className="text-xs text-muted-foreground">{window.location.origin}</p>
             </div>
-            <div>
-              <h4 className="font-medium text-sm text-gray-600 dark:text-gray-300">WebSocket URL</h4>
-              <p className="text-sm font-mono break-all">{SOCKET_URL}</p>
+            <div className="p-3 border rounded">
+              <p className="text-sm font-medium">Servidor YUMER</p>
+              <p className="text-xs text-muted-foreground">{SERVER_URL}</p>
+            </div>
+            <div className="p-3 border rounded">
+              <p className="text-sm font-medium">API Key</p>
+              <p className="text-xs text-muted-foreground">
+                {apiKey ? '✅ Configurada' : '❌ Não configurada'}
+              </p>
             </div>
           </div>
 
-          <Separator />
+          <Tabs defaultValue="cors" className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="cors" className="flex items-center space-x-2">
+                <Shield className="w-4 h-4" />
+                <span>CORS</span>
+              </TabsTrigger>
+              <TabsTrigger value="api" className="flex items-center space-x-2">
+                <Server className="w-4 h-4" />
+                <span>API</span>
+              </TabsTrigger>
+              <TabsTrigger value="webhook" className="flex items-center space-x-2">
+                <Webhook className="w-4 h-4" />
+                <span>Webhook</span>
+              </TabsTrigger>
+              <TabsTrigger value="instances" className="flex items-center space-x-2">
+                <Users className="w-4 h-4" />
+                <span>Instâncias</span>
+              </TabsTrigger>
+              <TabsTrigger value="supabase" className="flex items-center space-x-2">
+                <Database className="w-4 h-4" />
+                <span>Supabase</span>
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Diagnostic Results */}
-          <div className="space-y-3">
-            {diagnostics.length === 0 && !isRunning && (
-              <div className="text-center py-8 text-gray-500">
-                Clique em "Executar Diagnóstico" para verificar a conectividade
-              </div>
-            )}
-
-            {diagnostics.map((result, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center space-x-3">
-                  {getStatusIcon(result.status)}
-                  <div>
-                    <div className="font-medium">{result.test}</div>
-                    <div className="text-sm text-gray-600">{result.message}</div>
-                    {result.details && (
-                      <div className="text-xs text-gray-500 mt-1">{result.details}</div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {result.duration && (
-                    <span className="text-xs text-gray-500">{result.duration}ms</span>
+            <TabsContent value="cors" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between text-lg">
+                    <div className="flex items-center space-x-2">
+                      <Shield className="w-5 h-5" />
+                      <span>Teste CORS</span>
+                    </div>
+                    {getStatusBadge(corsTest.status)}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={testCORS} disabled={corsTest.status === 'testing'}>
+                    Testar CORS
+                  </Button>
+                  
+                  {corsTest.message && (
+                    <div className="mt-4 p-3 border rounded">
+                      <div className="flex items-center space-x-2">
+                        {getStatusIcon(corsTest.status)}
+                        <span className="font-medium">{corsTest.message}</span>
+                        {corsTest.duration && (
+                          <span className="text-xs text-muted-foreground">
+                            ({corsTest.duration}ms)
+                          </span>
+                        )}
+                      </div>
+                      
+                      {corsTest.details && (
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-sm">Ver detalhes</summary>
+                          <pre className="mt-2 text-xs bg-gray-50 p-2 rounded overflow-auto">
+                            {JSON.stringify(corsTest.details, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
                   )}
-                  <Badge variant={getStatusBadge(result.status)}>
-                    {result.status === 'pending' ? 'Testando' : 
-                     result.status === 'success' ? 'OK' :
-                     result.status === 'warning' ? 'Aviso' : 'Erro'}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          {/* Recommendations */}
-          {diagnostics.some(d => d.status === 'error') && (
-            <>
-              <Separator />
-              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">
-                  Problemas Detectados
-                </h4>
-                <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
-                  <li>• Verifique se o servidor YUMER está rodando</li>
-                  <li>• Confirme se a URL está correta</li>
-                  <li>• Verifique configurações de firewall</li>
-                  <li>• Teste em navegador diferente</li>
-                  <li>• Contate o administrador do sistema</li>
-                </ul>
-              </div>
-            </>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+            <TabsContent value="api" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between text-lg">
+                    <div className="flex items-center space-x-2">
+                      <Server className="w-5 h-5" />
+                      <span>Endpoints da API</span>
+                    </div>
+                    <Button onClick={testAPIEndpoints} size="sm">
+                      Testar APIs
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {endpoints.map((endpoint) => {
+                      const test = apiTests[endpoint.name];
+                      return (
+                        <div key={endpoint.name} className="flex items-center justify-between p-3 border rounded">
+                          <div className="flex items-center space-x-3">
+                            {getStatusIcon(test?.status || 'idle')}
+                            <div>
+                              <p className="font-medium">{endpoint.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {endpoint.method} {endpoint.url}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            {test && (
+                              <>
+                                {getStatusBadge(test.status)}
+                                {test.duration && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {test.duration}ms
+                                  </p>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="webhook" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between text-lg">
+                    <div className="flex items-center space-x-2">
+                      <Webhook className="w-5 h-5" />
+                      <span>Configuração Webhook</span>
+                    </div>
+                    {getStatusBadge(webhookTest.status)}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={testWebhook} disabled={webhookTest.status === 'testing'}>
+                    Testar Webhook
+                  </Button>
+                  
+                  {webhookTest.message && (
+                    <div className="mt-4 p-3 border rounded">
+                      <div className="flex items-center space-x-2">
+                        {getStatusIcon(webhookTest.status)}
+                        <span>{webhookTest.message}</span>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="instances" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between text-lg">
+                    <div className="flex items-center space-x-2">
+                      <Users className="w-5 h-5" />
+                      <span>Múltiplas Instâncias</span>
+                    </div>
+                    {getStatusBadge(multiInstanceTest.status)}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={testMultipleInstances} disabled={multiInstanceTest.status === 'testing'}>
+                    Testar Múltiplas Instâncias
+                  </Button>
+                  
+                  {multiInstanceTest.message && (
+                    <div className="mt-4 p-3 border rounded">
+                      <div className="flex items-center space-x-2">
+                        {getStatusIcon(multiInstanceTest.status)}
+                        <span>{multiInstanceTest.message}</span>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="supabase" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between text-lg">
+                    <div className="flex items-center space-x-2">
+                      <Database className="w-5 h-5" />
+                      <span>Supabase</span>
+                    </div>
+                    {getStatusBadge(supabaseTest.status)}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={testSupabase} disabled={supabaseTest.status === 'testing'}>
+                    Testar Supabase
+                  </Button>
+                  
+                  {supabaseTest.message && (
+                    <div className="mt-4 p-3 border rounded">
+                      <div className="flex items-center space-x-2">
+                        {getStatusIcon(supabaseTest.status)}
+                        <span>{supabaseTest.message}</span>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 

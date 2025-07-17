@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Plus, 
   Pause, 
@@ -25,6 +26,7 @@ import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 import { useInstanceCleanup } from "@/hooks/useInstanceCleanup";
+import ConnectionDiagnostics from "./ConnectionDiagnostics";
 
 const UnifiedInstancesManager = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -308,8 +310,17 @@ const UnifiedInstancesManager = () => {
         </div>
       </div>
 
-      {/* Status do Servidor */}
-      <Card>
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="instances">Instâncias</TabsTrigger>
+          <TabsTrigger value="diagnostics">Diagnóstico</TabsTrigger>
+          <TabsTrigger value="logs">Logs</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          {/* Status do Servidor */}
+          <Card>
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -374,9 +385,11 @@ const UnifiedInstancesManager = () => {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
-      {/* Lista de Instâncias */}
-      {instances.length > 0 ? (
+        <TabsContent value="instances" className="space-y-6">
+          {/* Lista de Instâncias */}
+          {instances.length > 0 ? (
         <div className="grid gap-4">
           {instances.map(instance => {
             const client = clients.find(c => c.id === instance.client_id);
@@ -500,6 +513,24 @@ const UnifiedInstancesManager = () => {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        <TabsContent value="diagnostics">
+          <ConnectionDiagnostics />
+        </TabsContent>
+
+        <TabsContent value="logs" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Logs do Sistema</CardTitle>
+              <CardDescription>Logs e eventos do sistema em tempo real</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600">Em desenvolvimento...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* QR Code Modal */}
       {qrModal.show && qrModal.instanceId && (
