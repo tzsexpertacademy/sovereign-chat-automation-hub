@@ -96,6 +96,7 @@ const UnifiedInstancesManager = () => {
     try {
       const allInstances: WhatsAppInstanceData[] = [];
       
+      // ============ VERIFICAR SE EXISTE ALGUMA INSTÂNCIA NO BANCO ============
       // Carregar instâncias de todos os clientes
       for (const client of clients) {
         const clientInstances = await whatsappInstancesService.getInstancesByClientId(client.id);
@@ -104,6 +105,11 @@ const UnifiedInstancesManager = () => {
       
       setInstances(allInstances);
       console.log(`📊 [ADMIN] Carregadas ${allInstances.length} instâncias no total`);
+      
+      // ============ NOTIFICAR SE NÃO HOUVER INSTÂNCIAS ============
+      if (allInstances.length === 0) {
+        console.log(`ℹ️ [ADMIN] Nenhuma instância encontrada no banco - banco limpo`);
+      }
     } catch (error) {
       console.error('Erro ao carregar instâncias:', error);
     }

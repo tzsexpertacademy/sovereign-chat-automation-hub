@@ -389,7 +389,30 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         console.log(`🔍 [UNIFIED-POLL] Tentativa ${attempts}/${maxAttempts} - verificando banco`);
         
         try {
-          // ============ VERIFICAR STATUS DA INSTÂNCIA PRIMEIRO ============
+          // ============ VERIFICAR SE INSTÂNCIA EXISTE NO BANCO PRIMEIRO ============
+          const dbInstances = await whatsappInstancesService.getInstancesByClientId(instanceId.split('_')[0]);
+          const dbInstance = dbInstances.find(inst => inst.instance_id === instanceId);
+          
+          if (!dbInstance) {
+            console.warn(`🛑 [UNIFIED-POLL] Instância ${instanceId} não encontrada no banco - parando polling`);
+            clearInterval(hybridPollingInterval);
+            
+            // Limpar estado no frontend
+            setInstances(prev => {
+              const newState = { ...prev };
+              delete newState[instanceId];
+              return newState;
+            });
+            
+            toast({
+              title: "Instância Removida",
+              description: "A instância foi removida. Crie uma nova instância.",
+              variant: "default",
+            });
+            return;
+          }
+
+          // ============ VERIFICAR STATUS DA INSTÂNCIA ============
           const statusData = await codechatQRService.getInstanceStatus(instanceId);
           const instanceDetails = await codechatQRService.getInstanceDetails(instanceId);
           
@@ -585,60 +608,51 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             });
           }
           
-        } catch (error) {
+        } catch (error: any) {
           console.error(`❌ [UNIFIED-POLL] Erro no polling:`, error);
           
-          // Se instância não existe, tentar recriar automaticamente
-          if (error.message?.includes('400') && error.message?.includes('does not exist')) {
-            console.log(`🔄 [UNIFIED-POLL] Instância não existe - tentando recriar automaticamente`);
+          // ============ DETECTAR ERROS DE INSTÂNCIA NÃO ENCONTRADA ============
+          if (error.message?.includes('Instance not found') || error.message?.includes('400')) {
+            console.warn(`🛑 [UNIFIED-POLL] Instância ${instanceId} não existe no servidor - parando polling`);
+            clearInterval(hybridPollingInterval);
             
+            // Tentar limpar do banco se ainda existir
             try {
-              // Criar nova instância automaticamente
-              const newInstanceName = `${instanceId.split('_')[0]}_${Date.now()}`;
-              console.log(`📝 [UNIFIED-POLL] Criando instância de substituição: ${newInstanceName}`);
-              
-              const createResponse = await codechatQRService.createInstance(newInstanceName, `Auto-created: ${newInstanceName}`);
-              
-              if (createResponse.success) {
-                // Atualizar no banco
-                await whatsappInstancesService.updateInstanceStatus(instanceId, 'disconnected', {
-                  instance_id: newInstanceName,
-                  updated_at: new Date().toISOString()
-                });
-                
-                // Conectar nova instância
-                const connectResponse = await codechatQRService.connectInstance(newInstanceName);
-                
-                if (connectResponse.qrCode) {
-                  console.log(`🎉 [UNIFIED-POLL] Nova instância criada e QR obtido!`);
-                  clearInterval(hybridPollingInterval);
-                  
-                  setInstances(prev => ({
-                    ...prev,
-                    [instanceId]: {
-                      ...prev[instanceId],
-                      instanceId: newInstanceName,
-                      status: 'qr_ready',
-                      qrCode: connectResponse.qrCode,
-                      hasQrCode: true,
-                      lastUpdated: Date.now()
-                    }
-                  }));
-                  
-                  toast({
-                    title: "✅ Nova Instância Criada",
-                    description: "Instância recriada automaticamente com QR Code",
-                  });
-                  
-                  startPollingForInstance(newInstanceName);
-                  return;
-                } else {
-                  console.log(`🔄 [UNIFIED-POLL] Nova instância criada, continuando polling...`);
-                }
-              }
-            } catch (createError) {
-              console.error(`❌ [UNIFIED-POLL] Erro ao recriar instância:`, createError);
+              await whatsappInstancesService.deleteInstance(instanceId);
+              console.log(`🗑️ [UNIFIED-POLL] Instância removida do banco: ${instanceId}`);
+            } catch (dbError) {
+              console.log(`ℹ️ [UNIFIED-POLL] Instância já não existia no banco: ${instanceId}`);
             }
+            
+            // Limpar estado no frontend
+            setInstances(prev => {
+              const newState = { ...prev };
+              delete newState[instanceId];
+              return newState;
+            });
+            
+            toast({
+              title: "Instância Não Encontrada",
+              description: "A instância foi removida do servidor. Crie uma nova.",
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          // Se chegou ao máximo de tentativas, para o polling
+          if (attempts >= maxAttempts) {
+            console.warn(`⚠️ [UNIFIED-POLL] Máximo de tentativas atingido (${maxAttempts}), parando polling`);
+            clearInterval(hybridPollingInterval);
+            
+            // Marcar como erro no estado
+            setInstances(prev => ({
+              ...prev,
+              [instanceId]: {
+                ...prev[instanceId],
+                status: 'error',
+                lastUpdated: Date.now()
+              }
+            }));
           }
         }
       }, pollInterval);

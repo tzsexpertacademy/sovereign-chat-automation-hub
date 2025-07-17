@@ -428,6 +428,11 @@ class CodeChatQRService {
           console.error(`🚨 [CODECHAT-API] HTML response detected! Server may be returning error page instead of JSON`);
         }
         
+        // Detectar especificamente erro de instância não encontrada
+        if (response.status === 400 && errorText.includes('Instance not found')) {
+          throw new Error('Instance not found');
+        }
+        
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
