@@ -438,7 +438,189 @@ const QRCodeAdvancedDiagnostic = () => {
     }
   };
 
-  // Novo: Teste de múltiplas URLs WebSocket
+  // Novo: Teste WebSocket com instância real (JWT válido)
+  const runWebSocketRealTest = async () => {
+    setIsRunningTest(true);
+    setTestResults({});
+    setProgress(0);
+    
+    const testInstanceName = `ws_real_test_${Date.now()}`;
+    setCurrentInstance(testInstanceName);
+    
+    let realJwtToken = '';
+    
+    try {
+      console.log('🔧 [WS-REAL-TEST] ETAPA 1: Criando instância real para ter JWT válido...');
+      
+      // ETAPA 1: Criar instância real e extrair JWT
+      const createEndpoint = qrEndpoints.find(e => e.name === 'Create Instance')!;
+      const createResult = await executeQRTest(createEndpoint, testInstanceName);
+      setProgress(25);
+      
+      if (createResult.status === 'error') {
+        toast({
+          title: "❌ Erro Crítico",
+          description: "Falha ao criar instância - não conseguimos prosseguir com WebSocket",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Extrair JWT da resposta da criação da instância
+      if (createResult.details?.data?.Auth?.token) {
+        realJwtToken = createResult.details.data.Auth.token;
+        console.log('🎯 [WS-REAL-TEST] JWT extraído da resposta:', realJwtToken.substring(0, 20) + '...');
+        
+        // Salvar na base de dados via serviço
+        const { whatsappInstancesService } = await import('@/services/whatsappInstancesService');
+        try {
+          await whatsappInstancesService.createInstance({
+            instance_id: testInstanceName,
+            auth_token: realJwtToken,
+            status: 'created',
+            yumer_instance_name: testInstanceName
+          });
+          console.log('💾 [WS-REAL-TEST] JWT salvo na base de dados');
+        } catch (dbError) {
+          console.warn('⚠️ [WS-REAL-TEST] Erro ao salvar na BD (prosseguindo):', dbError);
+        }
+      } else {
+        console.error('❌ [WS-REAL-TEST] JWT não encontrado na resposta da criação!', createResult.details);
+        toast({
+          title: "❌ JWT Não Encontrado",
+          description: "Instância criada mas JWT não retornado - verificar resposta da API",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      console.log('⏳ [WS-REAL-TEST] ETAPA 2: Aguardando 5s para instância ficar pronta...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      setProgress(50);
+      
+      console.log('🔌 [WS-REAL-TEST] ETAPA 3: Testando WebSocket com JWT válido...');
+      
+      // ETAPA 3: Tentar conectar WebSocket com JWT real na rota correta
+      const wsUrl = `wss://yumer.yumerflow.app:8083/ws/events?event=qrcode.updated&token=${realJwtToken}`;
+      
+      const wsTestResult = await new Promise<{success: boolean, message: string, error?: string}>((resolve) => {
+        console.log('🌐 [WS-REAL-TEST] Conectando em:', wsUrl);
+        
+        const ws = new WebSocket(wsUrl);
+        let resolved = false;
+        
+        const timeout = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            ws.close();
+            resolve({
+              success: false, 
+              message: 'Timeout - WebSocket não conectou em 10s',
+              error: 'TIMEOUT'
+            });
+          }
+        }, 10000);
+        
+        ws.onopen = () => {
+          console.log('✅ [WS-REAL-TEST] WebSocket CONECTADO com sucesso!');
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            ws.close();
+            resolve({
+              success: true,
+              message: 'WebSocket conectou com sucesso usando JWT real!'
+            });
+          }
+        };
+        
+        ws.onerror = (error) => {
+          console.error('❌ [WS-REAL-TEST] Erro WebSocket:', error);
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            resolve({
+              success: false,
+              message: 'Erro de conexão WebSocket',
+              error: 'CONNECTION_ERROR'
+            });
+          }
+        };
+        
+        ws.onclose = (event) => {
+          console.log('🔒 [WS-REAL-TEST] WebSocket fechado:', event.code, event.reason);
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            resolve({
+              success: false,
+              message: `WebSocket fechado: ${event.code} - ${event.reason || 'Sem motivo'}`,
+              error: `CLOSE_${event.code}`
+            });
+          }
+        };
+      });
+      
+      setProgress(75);
+      
+      // Registrar resultado do teste WebSocket
+      setTestResults(prev => ({
+        ...prev,
+        'WebSocket Real Test': {
+          status: wsTestResult.success ? 'success' : 'error',
+          message: wsTestResult.message,
+          details: { 
+            wsUrl,
+            jwtUsed: realJwtToken.substring(0, 20) + '...',
+            error: wsTestResult.error
+          },
+          endpoint: '/ws/events',
+          method: 'WebSocket'
+        }
+      }));
+      
+      console.log('🧹 [WS-REAL-TEST] ETAPA 4: Limpeza - deletando instância de teste...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // ETAPA 4: Limpar instância de teste
+      const deleteEndpoint = qrEndpoints.find(e => e.name === 'Delete Instance')!;
+      await executeQRTest(deleteEndpoint, testInstanceName);
+      setProgress(100);
+      
+      toast({
+        title: wsTestResult.success ? "🎉 WebSocket Funcionou!" : "❌ WebSocket Falhou",
+        description: wsTestResult.success 
+          ? "Conexão WebSocket estabelecida com JWT real!" 
+          : `Falha: ${wsTestResult.message}`,
+        variant: wsTestResult.success ? "default" : "destructive"
+      });
+      
+    } catch (error: any) {
+      console.error('💥 [WS-REAL-TEST] Erro geral:', error);
+      setTestResults(prev => ({
+        ...prev,
+        'WebSocket Real Test': {
+          status: 'error',
+          message: `Erro geral: ${error.message}`,
+          details: { error: error.message },
+          endpoint: '/ws/events',
+          method: 'WebSocket'
+        }
+      }));
+      
+      toast({
+        title: "💥 Erro no Teste WebSocket",
+        description: `Erro: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setIsRunningTest(false);
+      setCurrentInstance('');
+      setProgress(0);
+    }
+  };
+
+  // Teste de múltiplas URLs WebSocket (mantido para compatibilidade)
   const runWebSocketUrlTest = async () => {
     setIsRunningTest(true);
     setTestResults({});
@@ -720,6 +902,19 @@ const QRCodeAdvancedDiagnostic = () => {
             <Button onClick={clearResults} variant="outline" size="sm">
               <Trash2 className="w-4 h-4 mr-1" />
               Limpar
+            </Button>
+            <Button onClick={runWebSocketRealTest} disabled={isRunningTest || !apiKey} className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white">
+              {isRunningTest ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Testando WS Real...
+                </>
+              ) : (
+                <>
+                  <Server className="w-4 h-4 mr-2" />
+                  🚀 Teste WebSocket REAL
+                </>
+              )}
             </Button>
             <Button onClick={runWebSocketUrlTest} disabled={isRunningTest || !apiKey} variant="secondary">
               {isRunningTest ? (
