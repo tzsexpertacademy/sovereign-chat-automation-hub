@@ -461,7 +461,9 @@ class CodeChatQRService {
       }
       
       // ============ ETAPA 2: BUSCAR TOKEN PARA WEBSOCKET ============
+      console.log(`🔍 [CODECHAT-DEBUG] Buscando token para instância: ${nameToUse}`);
       const authToken = await this.getInstanceAuthToken(nameToUse);
+      console.log(`🔍 [CODECHAT-DEBUG] Token encontrado:`, authToken ? 'SIM' : 'NÃO');
       
       if (authToken) {
         console.log(`🔌 [CODECHAT-API] Tentando WebSocket primeiro...`);
