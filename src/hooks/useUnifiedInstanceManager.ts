@@ -24,7 +24,6 @@ interface UseUnifiedInstanceManagerReturn {
   connectInstance: (instanceId: string) => Promise<void>;
   disconnectInstance: (instanceId: string) => Promise<void>;
   getInstanceStatus: (instanceId: string) => InstanceStatus;
-  fetchQRCodeForInstance: (instanceId: string) => Promise<void>;
   isLoading: (instanceId: string) => boolean;
   cleanup: (instanceId: string) => void;
   refreshStatus: (instanceId: string) => Promise<void>;
@@ -151,42 +150,6 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, []);
 
-  // ============ BUSCAR QR CODE ATIVO PARA INSTÂNCIA ============
-  const fetchQRCodeForInstance = useCallback(async (instanceId: string): Promise<void> => {
-    try {
-      console.log(`🔍 [UNIFIED-FETCH] Buscando QR ativo para ${instanceId}`);
-      const dbQr = await checkDatabaseForQRCode(instanceId);
-      
-      if (dbQr.hasQrCode && dbQr.qrCode) {
-        console.log(`📱 [UNIFIED-FETCH] QR encontrado no banco!`);
-        
-        // Atualizar estado local
-        setInstances(prev => ({
-          ...prev,
-          [instanceId]: {
-            ...prev[instanceId],
-            qrCode: dbQr.qrCode,
-            hasQrCode: true,
-            lastUpdated: Date.now()
-          }
-        }));
-      }
-    } catch (error) {
-      console.warn(`⚠️ [UNIFIED-FETCH] Erro ao buscar QR:`, error);
-    }
-  }, [checkDatabaseForQRCode]);
-
-  // ============ AUTO-FETCH QR QUANDO STATUS MUDA ============
-  useEffect(() => {
-    // Buscar QR para todas as instâncias com status qr_ready que não têm QR
-    Object.values(instances).forEach(instance => {
-      if (instance.status === 'qr_ready' && !instance.qrCode) {
-        console.log(`🔍 [UNIFIED-AUTO] Auto-buscando QR para ${instance.instanceId}`);
-        fetchQRCodeForInstance(instance.instanceId);
-      }
-    });
-  }, [instances, fetchQRCodeForInstance]);
-
   // ============ ATUALIZAR STATUS VIA REST API + BANCO ============
   const refreshStatus = useCallback(async (instanceId: string) => {
     try {
@@ -221,21 +184,6 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         // Se está conectando e temos QR code no banco, usar status qr_ready
         if (hasQrCode && qrCode) {
           mappedStatus = 'qr_ready';
-          console.log(`📱 [UNIFIED] Status ajustado para qr_ready - QR disponível!`);
-        } else {
-          // Tentar buscar QR novamente se status é connecting
-          console.log(`🔍 [UNIFIED] Reconectando - tentando buscar QR novamente...`);
-          try {
-            const freshQrCheck = await checkDatabaseForQRCode(instanceId);
-            if (freshQrCheck.hasQrCode && freshQrCheck.qrCode) {
-              qrCode = freshQrCheck.qrCode;
-              hasQrCode = true;
-              mappedStatus = 'qr_ready';
-              console.log(`📱 [UNIFIED] QR encontrado na nova busca!`);
-            }
-          } catch (error) {
-            console.warn(`⚠️ [UNIFIED] Erro ao rebuscar QR:`, error);
-          }
         }
       } else if (statusData.state === 'close') {
         mappedStatus = 'disconnected';
@@ -435,18 +383,10 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, [toast, stopPollingForInstance]);
 
-  // ============ OBTER STATUS DE INSTÂNCIA ============
+  // Obter status de uma instância
   const getInstanceStatus = useCallback((instanceId: string): InstanceStatus => {
-    const current = instances[instanceId] || { instanceId, status: 'disconnected' };
-    
-    // Se status é qr_ready mas não temos QR, disparar busca assíncrona em background
-    if (current.status === 'qr_ready' && !current.qrCode) {
-      // Fazer fetch em background sem bloquear
-      fetchQRCodeForInstance(instanceId);
-    }
-    
-    return current;
-  }, [instances, fetchQRCodeForInstance]);
+    return instances[instanceId] || { instanceId, status: 'disconnected' };
+  }, [instances]);
 
   // Verificar se está carregando
   const isLoading = useCallback((instanceId: string): boolean => {
@@ -477,7 +417,6 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     connectInstance,
     disconnectInstance,
     getInstanceStatus,
-    fetchQRCodeForInstance,
     isLoading,
     cleanup,
     refreshStatus,

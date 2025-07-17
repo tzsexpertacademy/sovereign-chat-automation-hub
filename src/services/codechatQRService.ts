@@ -552,25 +552,15 @@ class CodeChatQRService {
           };
         }
       } else {
-        // Se retornar texto/HTML, pode ser base64 direto ou conter QR
+        // Se retornar texto/HTML, pode ser base64 direto
         const text = await response.text();
         console.log(`🔍 [CODECHAT-DEBUG] Response text (primeiros 200 chars):`, text.substring(0, 200));
         
-        // Tentar extrair base64 do HTML
-        let qrCode = null;
-        
-        // VERSÃO SIMPLES: buscar qualquer string base64 longa (FUNCIONAVA ANTES)
-        const base64Match = text.match(/[A-Za-z0-9+\/]{100,}={0,2}/);
-        if (base64Match) {
-          qrCode = `data:image/png;base64,${base64Match[0]}`;
-          console.log(`✅ [CODECHAT-API] QR extraído via regex simples`);
-        }
-        
-        if (qrCode) {
+        if (text && (text.startsWith('data:image') || text.length > 100)) {
           console.log(`✅ [CODECHAT-API] QR obtido via endpoint QR texto`);
           return {
             success: true,
-            qrCode: qrCode,
+            qrCode: text.startsWith('data:image') ? text : `data:image/png;base64,${text}`,
             status: 'qr_ready',
             instanceName
           };
