@@ -21,6 +21,7 @@ import { SERVER_URL, getServerConfig, getYumerGlobalApiKey } from "@/config/envi
 import { supabase } from "@/integrations/supabase/client";
 import QRCodeDiagnostic from "./QRCodeDiagnostic";
 import AdvancedQRDiagnostic from "./AdvancedQRDiagnostic";
+import AdvancedApiDiagnostic from "./AdvancedApiDiagnostic";
 
 interface TestResult {
   status: 'idle' | 'testing' | 'success' | 'error' | 'warning';
@@ -408,7 +409,7 @@ const ConnectionDiagnostics = () => {
           </div>
 
           <Tabs defaultValue="cors" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="cors" className="flex items-center space-x-2">
                 <Shield className="w-4 h-4" />
                 <span>CORS</span>
@@ -416,6 +417,10 @@ const ConnectionDiagnostics = () => {
               <TabsTrigger value="api" className="flex items-center space-x-2">
                 <Server className="w-4 h-4" />
                 <span>API</span>
+              </TabsTrigger>
+              <TabsTrigger value="advanced-api" className="flex items-center space-x-2">
+                <Network className="w-4 h-4" />
+                <span>API Avançada</span>
               </TabsTrigger>
               <TabsTrigger value="webhook" className="flex items-center space-x-2">
                 <Webhook className="w-4 h-4" />
@@ -475,6 +480,10 @@ const ConnectionDiagnostics = () => {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="advanced-api" className="space-y-4">
+              <AdvancedApiDiagnostic />
             </TabsContent>
 
             <TabsContent value="api" className="space-y-4">
