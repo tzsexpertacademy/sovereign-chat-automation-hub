@@ -205,6 +205,26 @@ const AdvancedApiDiagnostic = () => {
     try {
       let url = `${SERVER_URL}${endpoint.url}`;
       
+      // Para testes individuais, buscar uma instância existente primeiro
+      if (endpoint.requiresInstance && instanceName === 'test_single') {
+        try {
+          // Buscar instâncias existentes primeiro
+          const instancesResponse = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
+            headers: { 'apikey': apiKey || '', 'Content-Type': 'application/json' }
+          });
+          
+          if (instancesResponse.ok) {
+            const instances = await instancesResponse.json();
+            if (Array.isArray(instances) && instances.length > 0) {
+              instanceName = instances[0].name || instances[0].instanceName;
+              console.log(`🎯 [API-TEST] Usando instância existente: ${instanceName}`);
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ [API-TEST] Erro ao buscar instâncias existentes:`, error);
+        }
+      }
+      
       // Substituir placeholder de instância
       if (endpoint.requiresInstance && instanceName) {
         url = url.replace('{instance}', instanceName);
@@ -241,13 +261,29 @@ const AdvancedApiDiagnostic = () => {
         responseData = responseText;
       }
 
+      // Análise inteligente dos resultados
+      let status: TestResult['status'] = response.ok ? 'success' : 'error';
+      let message = `${endpoint.method} ${response.status} - ${response.ok ? 'OK' : response.statusText}`;
+      
+      // Adicionar contexto específico para erros comuns
+      if (!response.ok) {
+        if (response.status === 403) {
+          message += ' (Sem permissão - verificar API Key ou plano)';
+        } else if (response.status === 400 && endpoint.requiresInstance) {
+          message += ' (Instância não encontrada - usar instância existente)';
+        } else if (response.status === 401) {
+          message += ' (Não autorizado - verificar autenticação)';
+        }
+      }
+
       const result: TestResult = {
-        status: response.ok ? 'success' : 'error',
-        message: `${endpoint.method} ${response.status} - ${response.ok ? 'OK' : response.statusText}`,
+        status,
+        message,
         details: { 
           status: response.status, 
           data: responseData,
-          url: url 
+          url: url,
+          usedInstance: instanceName || 'N/A'
         },
         duration,
         endpoint: endpoint.url,
@@ -262,7 +298,7 @@ const AdvancedApiDiagnostic = () => {
       const result: TestResult = {
         status: 'error',
         message: `Erro: ${error.message}`,
-        details: { error: error.message },
+        details: { error: error.message, url: `${SERVER_URL}${endpoint.url}` },
         duration,
         endpoint: endpoint.url,
         method: endpoint.method
@@ -336,13 +372,36 @@ const AdvancedApiDiagnostic = () => {
   const testCategory = async (category: string) => {
     const categoryEndpoints = endpoints.filter(e => e.category === category);
     
+    // Para categoria de instâncias, primeiro buscar instâncias existentes
+    let existingInstanceName = 'test_category_instance';
+    
+    if (category === 'instance') {
+      try {
+        const response = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
+          headers: { 'apikey': apiKey || '', 'Content-Type': 'application/json' }
+        });
+        
+        if (response.ok) {
+          const instances = await response.json();
+          if (Array.isArray(instances) && instances.length > 0) {
+            existingInstanceName = instances[0].name || instances[0].instanceName;
+            console.log(`🎯 [CATEGORY-TEST] Usando instância existente: ${existingInstanceName}`);
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ [CATEGORY-TEST] Erro ao buscar instâncias:`, error);
+      }
+    }
+    
     for (const endpoint of categoryEndpoints) {
       if (endpoint.requiresInstance) {
-        // Para endpoints que precisam de instância, usar uma fake
-        await executeTest(endpoint, 'test_category_instance');
+        await executeTest(endpoint, existingInstanceName);
       } else {
         await executeTest(endpoint);
       }
+      
+      // Pequena pausa entre testes
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   };
 
