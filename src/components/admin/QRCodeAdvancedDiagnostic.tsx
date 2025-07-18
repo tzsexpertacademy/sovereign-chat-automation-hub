@@ -243,7 +243,7 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
           addLog('success', '🗑️ [QR-COMPLETE-TEST] Instância deletada do servidor');
           
           if (createdInstanceId) {
-            await whatsappInstancesService.deleteInstanceById(createdInstanceId);
+            await whatsappInstancesService.deleteInstance(createdInstanceId);
             addLog('success', '🗑️ [QR-COMPLETE-TEST] Instância removida da base de dados');
           }
         } catch (cleanupError: any) {

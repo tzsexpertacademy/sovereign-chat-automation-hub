@@ -20,7 +20,7 @@ import {
 import { SERVER_URL, getServerConfig, getYumerGlobalApiKey } from "@/config/environment";
 import { supabase } from "@/integrations/supabase/client";
 
-import QRCodeAdvancedDiagnostic from "./QRCodeAdvancedDiagnostic";
+import { QRCodeAdvancedDiagnostic } from "./QRCodeAdvancedDiagnostic";
 import AdvancedQRDiagnostic from "./AdvancedQRDiagnostic";
 import AdvancedApiDiagnostic from "./AdvancedApiDiagnostic";
 

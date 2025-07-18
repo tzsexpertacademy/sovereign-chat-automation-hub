@@ -138,6 +138,23 @@ export class CodechatQRService {
       return { success: false, error: error.message };
     }
   }
+
+  async checkInstanceExists(instanceName: string) {
+    console.log(`🔍 [CODECHAT-QR] Verificando existência: ${instanceName}`);
+    
+    try {
+      const details = await this.getInstanceDetails(instanceName);
+      return { exists: true, details };
+    } catch (error: any) {
+      return { exists: false, error: error.message };
+    }
+  }
+
+  async getAllInstances() {
+    console.log(`📋 [CODECHAT-QR] Buscando todas as instâncias`);
+    
+    return this.makeRequest('/instance/fetchInstances');
+  }
 }
 
 export const codechatQRService = new CodechatQRService();

@@ -99,7 +99,7 @@ export class InstancesUnifiedService {
     
     try {
       // Usar nova estratégia híbrida que combina polling REST + webhook
-      const result = await codechatQRService.connectInstanceHybrid(instanceId);
+      const result = await codechatQRService.connectInstance(instanceId);
       
       if (result.success) {
         // Atualizar status no banco
