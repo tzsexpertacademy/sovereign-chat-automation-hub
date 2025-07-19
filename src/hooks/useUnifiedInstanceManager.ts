@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
 import { codechatQRService } from '@/services/codechatQRService';
@@ -65,7 +66,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             ...prev,
             [instanceId]: {
               ...current,
-              status: 'qr_ready', // Manter como qr_ready quando tem QR válido
+              status: 'qr_ready',
               lastUpdated: Date.now()
             }
           };
@@ -266,7 +267,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, [toast, stopPollingForInstance, checkDatabaseForQRCode]);
 
-  // ============ CONECTAR INSTÂNCIA - PADRÃO CORRETO DA API ============
+  // ============ CONECTAR INSTÂNCIA - CORRIGIDA A LINHA 316 ============
   const connectInstance = useCallback(async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
@@ -283,38 +284,89 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
 
-      // ============ USAR SERVIÇO UNIFICADO COM PADRÃO CORRETO ============
-      const result = await instancesUnifiedService.connectInstance(instanceId);
+      // ============ USAR LÓGICA QUE FUNCIONOU NO DIAGNÓSTICO ============
+      console.log(`🔌 [UNIFIED] Conectando via codechatQRService.connectInstance...`);
+      const connectResult = await codechatQRService.connectInstance(instanceId);
       
-      if (result.success) {
+      console.log(`✅ [UNIFIED] Connect executado:`, connectResult);
+      
+      // CORREÇÃO CRÍTICA: API retorna {count, base64, code} e não {qrCode}
+      if (connectResult?.base64) {
+        console.log(`🎯 [UNIFIED] QR Code obtido DIRETAMENTE do connect!`);
+        
+        // Salvar QR Code no banco com expiração
+        const expiresAt = new Date();
+        expiresAt.setMinutes(expiresAt.getMinutes() + 3); // QR expira em 3 minutos
+        
+        await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
+          qr_code: connectResult.base64,
+          has_qr_code: true,
+          qr_expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString()
+        });
+        
         setInstances(prev => ({
           ...prev,
           [instanceId]: {
             ...prev[instanceId],
-            status: result.status || 'connecting',
-            qrCode: result.qrCode,
-            hasQrCode: !!result.qrCode,
+            status: 'qr_ready',
+            qrCode: connectResult.base64,
+            hasQrCode: true,
             lastUpdated: Date.now()
           }
         }));
 
-        if (result.qrCode) {
-          toast({
-            title: "📱 QR Code Disponível!",
-            description: "Escaneie o QR Code para conectar o WhatsApp",
-          });
-          
-          // Iniciar polling para detectar quando usuário escanear
-          startPollingForInstance(instanceId);
-        } else if (result.status === 'connected') {
-          toast({
-            title: "✅ WhatsApp Conectado!",
-            description: "Instância conectada com sucesso",
-          });
-        }
-      } else {
-        throw new Error(result.error || 'Erro desconhecido');
+        toast({
+          title: "📱 QR Code Disponível!",
+          description: "Escaneie o QR Code para conectar o WhatsApp",
+        });
+        
+        // Iniciar polling para detectar quando usuário escanear
+        startPollingForInstance(instanceId);
+        return;
       }
+
+      // FALLBACK: Se não veio no connect, aguardar e buscar
+      console.log(`⏳ [UNIFIED] QR não veio no connect, aguardando 12s...`);
+      await new Promise(resolve => setTimeout(resolve, 12000));
+      
+      const qrResult = await codechatQRService.getQRCodeSimple(instanceId);
+      
+      if (qrResult.success && qrResult.qrCode) {
+        console.log(`✅ [UNIFIED] QR Code obtido via fetchInstance!`);
+        
+        // Salvar QR Code no banco
+        const expiresAt = new Date();
+        expiresAt.setMinutes(expiresAt.getMinutes() + 3);
+        
+        await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
+          qr_code: qrResult.qrCode,
+          has_qr_code: true,
+          qr_expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString()
+        });
+        
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            status: 'qr_ready',
+            qrCode: qrResult.qrCode,
+            hasQrCode: true,
+            lastUpdated: Date.now()
+          }
+        }));
+
+        toast({
+          title: "📱 QR Code Disponível!",
+          description: "Escaneie o QR Code para conectar",
+        });
+        
+        startPollingForInstance(instanceId);
+        return;
+      }
+
+      throw new Error('QR Code não disponível após tentativas');
       
     } catch (error: any) {
       console.error(`❌ [UNIFIED] Erro ao conectar ${instanceId}:`, error);
@@ -338,7 +390,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     } finally {
       setLoading(prev => ({ ...prev, [instanceId]: false }));
     }
-  }, [toast, startPollingForInstance, instancesUnifiedService]);
+  }, [toast, startPollingForInstance]);
 
   // ============ DESCONECTAR INSTÂNCIA ============
   const disconnectInstance = useCallback(async (instanceId: string) => {

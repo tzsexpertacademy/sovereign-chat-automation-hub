@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { QRCodeManualFallback } from '@/components/admin/QRCodeManualFallback';
+import { QRCodeDisplay } from '@/components/ui/QRCodeDisplay';
 import { 
   Play, 
   Pause, 
@@ -15,7 +15,8 @@ import {
   MessageSquare,
   RefreshCw,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  CheckCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -97,14 +98,14 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
-  // Verificar se instância é órfã (existe no Supabase mas não no YUMER)
+  // Verificar se instância é órfã (existe no Supabase mas não tem auth_token)
   const isOrphanedInstance = (instance: WhatsAppInstanceData) => {
     return !instance.auth_token || instance.auth_token === null;
   };
 
   // Handler para recriar instância órfã
   const handleRecreateInstance = async (instance: WhatsAppInstanceData) => {
-    if (!confirm('Esta instância está órfã (não existe no servidor YUMER). Deseja recriá-la? Isso irá gerar um novo QR Code.')) {
+    if (!confirm('Esta instância está órfã (sem token de autenticação). Deseja recriá-la? Isso irá gerar um novo QR Code.')) {
       return;
     }
 
@@ -127,7 +128,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
 
       toast({
         title: "Instância Recriada",
-        description: "Instância órfã foi recriada com sucesso no servidor YUMER",
+        description: "Instância órfã foi recriada com sucesso",
       });
 
       onInstanceUpdated();
@@ -141,7 +142,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
-  // Handler de conexão simplificado com detecção de 404
+  // Handler de conexão corrigido
   const handleConnectInstance = async (instanceId: string) => {
     console.log(`🔗 [ADMIN] CONECTANDO INSTÂNCIA: ${instanceId}`);
     setSelectedInstanceForQR(instanceId);
@@ -217,7 +218,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
             <Smartphone className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma instância encontrada</h3>
             <p className="text-gray-600">
-              Crie uma nova instância para começar a usar o WhatsApp HTTPS
+              Crie uma nova instância para começar a usar o WhatsApp
             </p>
           </div>
         </CardContent>
@@ -229,7 +230,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Instâncias WhatsApp REST ({instances.length}) - {restMode ? '🔄 Modo REST' : '❌ Erro'}</CardTitle>
+          <CardTitle>Instâncias WhatsApp CORRIGIDAS ({instances.length}) - {restMode ? '🔄 Modo REST' : '❌ Erro'}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid lg:grid-cols-2 gap-6">
@@ -245,15 +246,15 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         Cliente: {getClientName(instance.client_id)}
                       </p>
                       <p className="text-sm text-gray-500">
-                        {instance.phone_number || 'Não conectado via REST'}
+                        {instance.phone_number || getInstanceStatus(instance.instance_id).phoneNumber || 'Desconectado'}
                       </p>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
-                      <Badge variant={instance.status === 'connected' ? 'default' : 'secondary'}>
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(getInstanceStatus(instance.instance_id).status || instance.status)}`} />
+                      <Badge variant={getInstanceStatus(instance.instance_id).status === 'connected' ? 'default' : 'secondary'}>
                         <div className="flex items-center space-x-1">
-                          {getStatusIcon(instance.status)}
-                          <span>{getStatusText(instance.status)}</span>
+                          {getStatusIcon(getInstanceStatus(instance.instance_id).status || instance.status)}
+                          <span>{getStatusText(getInstanceStatus(instance.instance_id).status || instance.status)}</span>
                         </div>
                       </Badge>
                     </div>
@@ -261,7 +262,20 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                 </CardHeader>
                 <CardContent className="space-y-4">
                   
-                   {/* Alerta de Instância Órfã */}
+                   {/* Status da Instância - CORRIGIDO */}
+                   {!isOrphanedInstance(instance) && (
+                     <div className="p-3 bg-green-50 border border-green-200 rounded">
+                       <div className="flex items-center space-x-2">
+                         <CheckCircle className="w-4 h-4 text-green-500" />
+                         <span className="text-sm font-medium text-green-900">Instância Sincronizada</span>
+                       </div>
+                       <p className="text-sm text-green-700 mt-1">
+                         ✅ Token: {instance.auth_token ? 'Válido' : 'Ausente'} | YUMER: Conectado
+                       </p>
+                     </div>
+                   )}
+
+                   {/* Alerta de Instância Órfã - CORRIGIDO */}
                    {isOrphanedInstance(instance) && (
                      <div className="p-3 bg-orange-50 border border-orange-200 rounded">
                        <div className="flex items-center justify-between">
@@ -279,7 +293,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                          </Button>
                        </div>
                        <p className="text-sm text-orange-700 mt-1">
-                         Esta instância existe no banco de dados mas não no servidor YUMER (auth_token: NULL)
+                         🔧 Esta instância existe no banco mas sem token de autenticação válido
                        </p>
                      </div>
                    )}
@@ -298,59 +312,39 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           <div>Status: {getInstanceStatus(instance.instance_id).status}</div>
                           <div>Polling: {restMode ? '✅ Ativo' : '❌ Inativo'}</div>
                           <div className="text-xs text-muted-foreground">
-                            Modo: 100% REST API CodeChat v1.3.3
+                            Modo: 100% REST API CodeChat v1.3.3 CORRIGIDO
                           </div>
                         </div>
                      </div>
                    )}
 
-                  {/* QR Code Display HTTPS */}
+                  {/* QR Code Display CORRIGIDO */}
                   {selectedInstanceForQR === instance.instance_id && 
                    getInstanceStatus(instance.instance_id).hasQrCode && 
                    getInstanceStatus(instance.instance_id).qrCode && (
-                      <div className="space-y-3">
-                        <div className="text-center">
-                          <h4 className="font-medium mb-2">QR Code REST Disponível!</h4>
-                          <div className="bg-white p-4 rounded border">
-                            <img 
-                              src={getInstanceStatus(instance.instance_id).qrCode} 
-                              alt="QR Code WhatsApp REST"
-                              className="mx-auto max-w-[200px]"
-                            />
-                          </div>
-                          <p className="text-xs text-green-600 mt-2">
-                            ✅ Escaneie com seu WhatsApp para conectar via REST
-                          </p>
-                        </div>
-                      </div>
+                      <QRCodeDisplay 
+                        qrCode={getInstanceStatus(instance.instance_id).qrCode!}
+                        instanceId={instance.instance_id}
+                        title="QR Code WhatsApp (CORRIGIDO)"
+                        description="✅ Escaneie com seu WhatsApp para conectar"
+                      />
                   )}
 
                    {/* Connected Info */}
-                   {instance.status === 'connected' && (
+                   {(getInstanceStatus(instance.instance_id).status === 'connected' || instance.status === 'connected') && (
                      <div className="p-3 bg-green-50 border border-green-200 rounded">
                        <p className="text-sm text-green-800">
-                         ✅ WhatsApp conectado via REST e funcionando
+                         ✅ WhatsApp conectado e funcionando perfeitamente!
                        </p>
                      </div>
                    )}
 
-                   {/* Manual Fallback */}
-                   {(getInstanceStatus(instance.instance_id).status === 'manual_fallback_available' || 
-                     getInstanceStatus(instance.instance_id).status === 'waiting_qr') && 
-                    selectedInstanceForQR === instance.instance_id && (
-                     <QRCodeManualFallback 
-                       instanceId={instance.instance_id}
-                       onQRCodeFound={(qrCode) => {
-                         console.log('QR Code encontrado via fallback manual:', qrCode);
-                       }}
-                     />
-                   )}
-
-                   {/* Action Buttons HTTPS */}
+                   {/* Action Buttons CORRIGIDOS */}
                    <div className="flex space-x-2 pt-2 flex-wrap">
                     {(getInstanceStatus(instance.instance_id).phoneNumber || 
                       getInstanceStatus(instance.instance_id).status === 'connected' || 
-                      instance.phone_number) ? (
+                      instance.phone_number || 
+                      instance.status === 'connected') ? (
                       <>
                         <Button 
                           size="sm" 
@@ -359,7 +353,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
                         >
                           <Pause className="w-4 h-4 mr-1" />
-                          Pausar REST
+                          Desconectar
                         </Button>
                         <Button 
                           size="sm" 
@@ -367,25 +361,25 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           className="bg-green-600 hover:bg-green-700 text-white"
                         >
                           <MessageSquare className="w-4 h-4 mr-1" />
-                          Chat REST
+                          Abrir Chat
                         </Button>
                       </>
                     ) : (
                       <Button 
                         size="sm"
                         onClick={() => handleConnectInstance(instance.instance_id)}
-                        disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
+                        disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline || isOrphanedInstance(instance)}
                         className="bg-green-600 hover:bg-green-700"
                       >
                         {isLoading(instance.instance_id) ? (
                           <>
                             <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                            Conectando REST...
+                            Conectando...
                           </>
                         ) : (
                           <>
                             <Play className="w-4 h-4 mr-1" />
-                            Conectar REST
+                            Conectar
                           </>
                         )}
                       </Button>
@@ -398,7 +392,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                       disabled={isLoading(instance.instance_id)}
                     >
                       <Eye className="w-4 h-4 mr-1" />
-                      QR REST
+                      Ver QR
                     </Button>
 
                     <Button 

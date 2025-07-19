@@ -58,31 +58,25 @@ export class InstancesUnifiedService {
 
       // 4. Criar instância no YUMER seguindo padrão correto (POST /instance/create)
       console.log('🔗 [UNIFIED-SERVICE] Criando instância no YUMER...');
-      const yumerResult = await codechatQRService.createInstance(instanceId, customName);
       
-      if (!yumerResult.success) {
-        console.warn('⚠️ [UNIFIED-SERVICE] Falha ao criar no YUMER:', yumerResult.error);
-        // Não vamos falhar o processo, apenas logar
-      } else {
-        console.log('✅ [UNIFIED-SERVICE] Instância criada no YUMER com Bearer token salvo');
+      try {
+        const yumerResult = await codechatQRService.createInstance(instanceId, customName);
+        console.log('✅ [UNIFIED-SERVICE] Instância criada no YUMER:', yumerResult);
         
-        // ============ VERIFICAR E CORRIGIR NOMENCLATURA ============
-        if (yumerResult.actualName && yumerResult.actualName !== instanceId) {
-          console.log(`🔄 [UNIFIED-SERVICE] YUMER retornou nome diferente!`);
-          console.log(`📝 [UNIFIED-SERVICE] Nome enviado: ${instanceId}`);
-          console.log(`📝 [UNIFIED-SERVICE] Nome real no YUMER: ${yumerResult.actualName}`);
-          
-          // Atualizar o banco com o nome real que o YUMER está usando
+        // Salvar auth_token se veio na resposta
+        if (yumerResult?.Auth?.token) {
           await whatsappInstancesService.updateInstanceByInstanceId(instanceId, {
-            yumer_instance_name: yumerResult.actualName,
+            auth_token: yumerResult.Auth.token,
+            yumer_instance_name: yumerResult.name || instanceId,
             updated_at: new Date().toISOString()
           });
-          
-          console.log(`✅ [UNIFIED-SERVICE] Nome real salvo no banco: ${yumerResult.actualName}`);
+          console.log('✅ [UNIFIED-SERVICE] Auth token salvo no banco');
         }
+        
+      } catch (error) {
+        console.warn('⚠️ [UNIFIED-SERVICE] Falha ao criar no YUMER (instância criada no banco):', error);
+        // Não vamos falhar o processo, apenas logar
       }
-      
-      // 5. O trigger sincronizará automaticamente com clients table
       
       return newInstance;
     } catch (error) {
@@ -92,30 +86,45 @@ export class InstancesUnifiedService {
   }
 
   /**
-   * Conectar instância usando estratégia híbrida (REST + Webhook)
+   * Conectar instância usando estratégia corrigida
    */
   async connectInstance(instanceId: string) {
     console.log('🔗 [UNIFIED-SERVICE] Conectando instância seguindo padrão correto:', instanceId);
     
     try {
-      // Usar nova estratégia híbrida que combina polling REST + webhook
+      // Usar lógica corrigida que trata a resposta real da API
       const result = await codechatQRService.connectInstance(instanceId);
       
-      if (result.success) {
-        // Atualizar status no banco
-        const updateData: any = { status: result.status };
-        if (result.data?.phoneNumber) {
-          updateData.phone_number = result.data.phoneNumber;
-        }
+      if (result?.base64) {
+        // Salvar QR code no banco
+        const expiresAt = new Date();
+        expiresAt.setMinutes(expiresAt.getMinutes() + 3);
         
-        await whatsappInstancesService.updateInstanceStatus(instanceId, result.status, updateData);
-        console.log(`✅ [UNIFIED-SERVICE] Status atualizado no banco: ${result.status}`);
+        await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
+          qr_code: result.base64,
+          has_qr_code: true,
+          qr_expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString()
+        });
+        
+        return {
+          success: true,
+          status: 'qr_ready',
+          qrCode: result.base64
+        };
       }
       
-      return result;
+      return {
+        success: true,
+        status: 'connecting'
+      };
+      
     } catch (error) {
       console.error('❌ [UNIFIED-SERVICE] Erro ao conectar instância:', error);
-      throw error;
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 
@@ -162,13 +171,13 @@ export class InstancesUnifiedService {
       const dbInstance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
       const inDatabase = !!dbInstance;
       
-      // 2. Verificar no YUMER usando fetchInstances (lista)
+      // 2. Verificar no YUMER usando fetchInstance
       let inYumer = false;
       try {
-        const yumerCheck = await codechatQRService.checkInstanceExists(instanceId);
-        inYumer = yumerCheck.exists;
+        await codechatQRService.getInstanceDetails(instanceId);
+        inYumer = true;
       } catch (error) {
-        console.warn('⚠️ [UNIFIED-SERVICE] Erro ao verificar YUMER:', error);
+        console.warn('⚠️ [UNIFIED-SERVICE] Instância não encontrada no YUMER:', error);
         inYumer = false;
       }
       
@@ -333,7 +342,7 @@ export class InstancesUnifiedService {
         console.warn('⚠️ [UNIFIED-SERVICE] Erro ao buscar instâncias YUMER:', error);
       }
 
-      // 3. Identificar órfãs
+      // 3. Identificar órfãos
       const dbInstanceIds = dbInstances.map(i => i.instance_id);
       const yumerInstanceIds = yumerInstances.map(i => i.name || i.instanceName);
 
