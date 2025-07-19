@@ -21,7 +21,7 @@ import {
 import { toast } from 'sonner';
 import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
-import { yumerJwtService } from '@/services/yumerJwtService';
+import { codechatQRService } from '@/services/codechatQRService';
 
 interface TestLog {
   timestamp: string;
@@ -35,6 +35,7 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [testResults, setTestResults] = useState<any>(null);
   const [customInstanceName, setCustomInstanceName] = useState('');
+  const [qrCode, setQrCode] = useState<string | null>(null);
 
   const addLog = (type: TestLog['type'], message: string, details?: any) => {
     const log: TestLog = {
@@ -48,113 +49,25 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
     console.log(`🔧 [QR-DIAGNOSTIC] ${type.toUpperCase()}: ${message}`, details || '');
   };
 
-  // Função simplificada para fazer requisições REST com auth correta
-  const executeQRTest = async (endpoint: string, options: RequestInit = {}) => {
-    const apiKey = getYumerGlobalApiKey();
-    if (!apiKey) {
-      throw new Error('API Key não configurada');
-    }
-
-    addLog('info', `🔑 [API-KEY-DEBUG] API Key atual: ${apiKey.substring(0, 8)}***`);
-    
-    // Para endpoints de instância, usar SEMPRE apenas apikey header
-    const headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'apikey': apiKey, // NUNCA usar Authorization Bearer para esses endpoints
-      ...options.headers
-    };
-
-    addLog('info', `🔑 [AUTH-STRATEGY] Usando APENAS apikey header (sem Bearer)`);
-    addLog('info', `🧪 [QR-TEST] ${options.method || 'GET'} ${endpoint}`);
-    addLog('info', `📋 [HEADERS-DEBUG] Headers enviados:`, headers);
-    
-    if (options.body) {
-      addLog('info', `📦 [BODY-DEBUG] Body enviado:`, JSON.parse(options.body as string));
-    }
-
-    const response = await fetch(endpoint, {
-      ...options,
-      headers
-    });
-
-    addLog('info', `📊 [RESPONSE-DEBUG] Status: ${response.status}`);
-    
-    const data = await response.json();
-    addLog('info', `📄 [RESPONSE-DEBUG] Data:`, data);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${data.error || data.message || 'Unknown error'}`);
-    }
-
-    return data;
-  };
-
-  // Aguardar instância ficar em estado adequado
-  const waitForInstanceReady = async (instanceName: string, maxAttempts = 10): Promise<any> => {
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      addLog('info', `🔍 [INSTANCE-STATE] Tentativa ${attempt}/${maxAttempts} - Verificando estado...`);
-      
-      try {
-        const stateData = await executeQRTest(
-          `${API_BASE_URL}/instance/connectionState/${instanceName}`
-        );
-        
-        addLog('info', `📊 [INSTANCE-STATE] Estado atual: ${stateData.state}, Reason: ${stateData.statusReason}`);
-        
-        // Estados adequados para WebSocket
-        if (stateData.state === 'open') {
-          addLog('success', `✅ [INSTANCE-STATE] Instância ONLINE! Estado: ${stateData.state}`);
-          return stateData;
-        } else if (stateData.state === 'qr' || stateData.state === 'connecting') {
-          addLog('success', `📱 [INSTANCE-STATE] Instância pronta para QR! Estado: ${stateData.state}`);
-          return stateData;
-        } else if (stateData.state === 'close') {
-          // Se statusReason for 200, pode estar inicializando
-          if (stateData.statusReason === 200) {
-            addLog('warning', `⏳ [INSTANCE-STATE] Instância inicializando... Aguardando mais tempo`);
-          } else {
-            addLog('warning', `⚠️ [INSTANCE-STATE] Instância fechada (reason: ${stateData.statusReason})`);
-          }
-        }
-        
-      } catch (error: any) {
-        addLog('error', `❌ [INSTANCE-STATE] Erro ao verificar estado: ${error.message}`);
-      }
-      
-      if (attempt < maxAttempts) {
-        addLog('info', `⏳ [INSTANCE-STATE] Aguardando 5s antes da próxima tentativa...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
-      }
-    }
-    
-    throw new Error('Instância não ficou pronta após múltiplas tentativas');
-  };
-
-  const runCompleteQRTest = async () => {
+  // NOVO FLUXO SIMPLIFICADO - BASEADO NA SUA IMAGEM
+  const runSimplifiedQRTest = async () => {
     setIsRunning(true);
     setTestLogs([]);
     setTestResults(null);
+    setQrCode(null);
     
     let testInstanceName = '';
     let createdInstanceId = '';
 
     try {
-      addLog('info', '🔧 [QR-COMPLETE-TEST] Iniciando teste completo de QR Code...');
+      addLog('info', '🚀 [QR-SIMPLIFIED] Iniciando teste SIMPLIFICADO de QR Code...');
       
-      // ETAPA 1: Criar instância real
-      testInstanceName = customInstanceName.trim() || `qr_test_${Date.now()}`;
-      addLog('info', `🔧 [QR-COMPLETE-TEST] ETAPA 1: Criando instância: ${testInstanceName}`);
+      // ETAPA 1: Criar instância
+      testInstanceName = customInstanceName.trim() || `qr_simple_${Date.now()}`;
+      addLog('info', `📝 [QR-SIMPLIFIED] ETAPA 1: Criando instância: ${testInstanceName}`);
       
-      const createData = await executeQRTest(`${API_BASE_URL}/instance/create`, {
-        method: 'POST',
-        body: JSON.stringify({
-          instanceName: testInstanceName,
-          description: `QR Test: ${testInstanceName}`
-        })
-      });
-      
-      addLog('success', `✅ [QR-COMPLETE-TEST] Instância criada:`, createData);
+      const createData = await codechatQRService.createInstance(testInstanceName, `QR Simplified Test: ${testInstanceName}`);
+      addLog('success', `✅ [QR-SIMPLIFIED] Instância criada com sucesso!`, createData);
       
       // Salvar na base de dados
       const dbInstance = await whatsappInstancesService.createInstance({
@@ -165,66 +78,76 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
       });
       
       createdInstanceId = dbInstance.id;
-      addLog('success', '💾 [QR-COMPLETE-TEST] Instância salva na base de dados');
+      addLog('success', '💾 [QR-SIMPLIFIED] Instância salva na base de dados');
       
-      // ETAPA 2: Aguardar 10 segundos para instância se inicializar
-      addLog('info', '⏳ [QR-COMPLETE-TEST] ETAPA 2: Aguardando 10s para inicialização...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      // ETAPA 2: Aguardar inicialização (15-20 segundos como sugerido)
+      addLog('info', '⏳ [QR-SIMPLIFIED] ETAPA 2: Aguardando 18s para inicialização completa...');
+      await new Promise(resolve => setTimeout(resolve, 18000));
       
-      // ETAPA 3: Verificar estado e aguardar ficar pronta
-      addLog('info', '🔍 [QR-COMPLETE-TEST] ETAPA 3: Verificando estado da instância...');
-      await waitForInstanceReady(testInstanceName, 8);
+      // ETAPA 3: Conectar instância
+      addLog('info', '🔌 [QR-SIMPLIFIED] ETAPA 3: Conectando instância...');
+      const connectResult = await codechatQRService.connectInstance(testInstanceName);
+      addLog('success', '📡 [QR-SIMPLIFIED] Connect executado', connectResult);
       
-      // ETAPA 4: Tentar connect para gerar QR
-      addLog('info', '🔌 [QR-COMPLETE-TEST] ETAPA 4: Iniciando conexão para QR...');
+      // ETAPA 4: Aguardar estabilização pós-connect
+      addLog('info', '⏳ [QR-SIMPLIFIED] ETAPA 4: Aguardando 12s após connect...');
+      await new Promise(resolve => setTimeout(resolve, 12000));
       
-      const connectData = await executeQRTest(`${API_BASE_URL}/instance/connect/${testInstanceName}`);
-      addLog('success', '📱 [QR-COMPLETE-TEST] Connect executado:', connectData);
+      // ETAPA 5: Buscar QR Code diretamente - MÉTODO SIMPLIFICADO
+      addLog('info', '📱 [QR-SIMPLIFIED] ETAPA 5: Buscando QR Code via fetchInstance...');
       
-      // ETAPA 5: Aguardar e verificar QR
-      addLog('info', '⏳ [QR-COMPLETE-TEST] ETAPA 5: Aguardando 8s após connect...');
-      await new Promise(resolve => setTimeout(resolve, 8000));
+      const qrResult = await codechatQRService.getQRCodeSimple(testInstanceName);
       
-      // ETAPA 6: Tentar WebSocket com JWT correto
-      addLog('info', '🔌 [QR-COMPLETE-TEST] ETAPA 6: Testando WebSocket...');
-      
-      const jwt = await yumerJwtService.generateLocalJWT('sfdgs8152g5s1s5', testInstanceName);
-      addLog('success', '🎯 [QR-COMPLETE-TEST] JWT gerado para WebSocket');
-      
-      const wsTest = await testWebSocketConnection(testInstanceName, jwt);
-      addLog(wsTest.success ? 'success' : 'warning', 
-        `🌐 [QR-COMPLETE-TEST] WebSocket: ${wsTest.success ? 'Sucesso' : 'Falha'}`, wsTest);
-      
-      // ETAPA 7: Fallback - buscar QR via REST se WebSocket falhou
-      if (!wsTest.success) {
-        addLog('info', '🔄 [QR-COMPLETE-TEST] ETAPA 7: Fallback - buscando QR via REST...');
+      if (qrResult.success && qrResult.qrCode) {
+        addLog('success', '🎉 [QR-SIMPLIFIED] QR Code obtido com SUCESSO!');
+        setQrCode(qrResult.qrCode);
         
-        try {
-          const instanceDetails = await executeQRTest(`${API_BASE_URL}/instance/fetchInstance/${testInstanceName}`);
-          addLog('info', '📋 [QR-COMPLETE-TEST] Detalhes da instância:', instanceDetails);
+        setTestResults({
+          success: true,
+          instanceName: testInstanceName,
+          qrCodeFound: true,
+          method: 'fetchInstance_direct',
+          timestamp: new Date().toISOString()
+        });
+        
+        toast.success('🎉 QR Code obtido com sucesso!');
+        
+      } else {
+        addLog('warning', `⚠️ [QR-SIMPLIFIED] QR Code não encontrado: ${qrResult.error}`);
+        
+        // ETAPA 6: Retry único após mais 10s
+        addLog('info', '🔄 [QR-SIMPLIFIED] ETAPA 6: Retry após 10s adicionais...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        
+        const retryResult = await codechatQRService.getQRCodeSimple(testInstanceName);
+        
+        if (retryResult.success && retryResult.qrCode) {
+          addLog('success', '🎉 [QR-SIMPLIFIED] QR Code obtido no RETRY!');
+          setQrCode(retryResult.qrCode);
           
-          // Verificar se tem QR code disponível
-          if (instanceDetails.qrCode || (instanceDetails.Whatsapp?.qr)) {
-            addLog('success', '📱 [QR-COMPLETE-TEST] QR Code encontrado via REST!');
-          } else {
-            addLog('warning', '⚠️ [QR-COMPLETE-TEST] QR Code não encontrado via REST');
-          }
-        } catch (error: any) {
-          addLog('error', `❌ [QR-COMPLETE-TEST] Erro no fallback REST: ${error.message}`);
+          setTestResults({
+            success: true,
+            instanceName: testInstanceName,
+            qrCodeFound: true,
+            method: 'fetchInstance_retry',
+            timestamp: new Date().toISOString()
+          });
+          
+        } else {
+          addLog('error', `❌ [QR-SIMPLIFIED] QR Code não obtido após retry: ${retryResult.error}`);
+          
+          setTestResults({
+            success: false,
+            instanceName: testInstanceName,
+            qrCodeFound: false,
+            error: retryResult.error,
+            timestamp: new Date().toISOString()
+          });
         }
       }
       
-      setTestResults({
-        success: true,
-        instanceName: testInstanceName,
-        webSocketSuccess: wsTest.success,
-        timestamp: new Date().toISOString()
-      });
-      
-      toast.success('Teste de QR Code concluído com sucesso!');
-      
     } catch (error: any) {
-      addLog('error', `❌ [QR-COMPLETE-TEST] Erro no teste: ${error.message}`);
+      addLog('error', `❌ [QR-SIMPLIFIED] Erro no teste: ${error.message}`);
       setTestResults({
         success: false,
         error: error.message,
@@ -233,72 +156,24 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
       });
       toast.error(`Erro no teste: ${error.message}`);
     } finally {
-      // ETAPA FINAL: Limpeza
+      // LIMPEZA
       if (testInstanceName) {
-        addLog('info', '🧹 [QR-COMPLETE-TEST] ETAPA FINAL: Limpeza...');
+        addLog('info', '🧹 [QR-SIMPLIFIED] Iniciando limpeza...');
         try {
-          await executeQRTest(`${API_BASE_URL}/instance/delete/${testInstanceName}`, {
-            method: 'DELETE'
-          });
-          addLog('success', '🗑️ [QR-COMPLETE-TEST] Instância deletada do servidor');
+          await codechatQRService.deleteInstance(testInstanceName);
+          addLog('success', '🗑️ [QR-SIMPLIFIED] Instância deletada do servidor');
           
           if (createdInstanceId) {
             await whatsappInstancesService.deleteInstance(createdInstanceId);
-            addLog('success', '🗑️ [QR-COMPLETE-TEST] Instância removida da base de dados');
+            addLog('success', '🗑️ [QR-SIMPLIFIED] Instância removida da base de dados');
           }
         } catch (cleanupError: any) {
-          addLog('warning', `⚠️ [QR-COMPLETE-TEST] Erro na limpeza: ${cleanupError.message}`);
+          addLog('warning', `⚠️ [QR-SIMPLIFIED] Erro na limpeza: ${cleanupError.message}`);
         }
       }
       
       setIsRunning(false);
     }
-  };
-
-  const testWebSocketConnection = (instanceName: string, jwt: string): Promise<{success: boolean; error?: string}> => {
-    return new Promise((resolve) => {
-      const wsUrl = `wss://yumer.yumerflow.app:8083/ws/events?event=qrcode.updated&token=${jwt}`;
-      addLog('info', `🌐 [WS-TEST] Conectando em: ${wsUrl.substring(0, 100)}...`);
-      
-      const ws = new WebSocket(wsUrl);
-      let resolved = false;
-      
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          ws.close();
-          addLog('warning', '⏰ [WS-TEST] Timeout na conexão WebSocket');
-          resolve({ success: false, error: 'Timeout' });
-        }
-      }, 15000);
-      
-      ws.onopen = () => {
-        if (!resolved) {
-          addLog('success', '✅ [WS-TEST] WebSocket conectado com sucesso!');
-          clearTimeout(timeout);
-          resolved = true;
-          ws.close();
-          resolve({ success: true });
-        }
-      };
-      
-      ws.onerror = (error) => {
-        if (!resolved) {
-          addLog('error', '❌ [WS-TEST] Erro WebSocket:', error);
-          clearTimeout(timeout);
-          resolved = true;
-          resolve({ success: false, error: 'Connection failed' });
-        }
-      };
-      
-      ws.onclose = (event) => {
-        addLog('info', `🔒 [WS-TEST] WebSocket fechado: ${event.code} ${event.reason}`);
-      };
-      
-      ws.onmessage = (event) => {
-        addLog('success', `📨 [WS-TEST] Mensagem recebida:`, JSON.parse(event.data));
-      };
-    });
   };
 
   const getLogIcon = (type: TestLog['type']) => {
@@ -326,10 +201,10 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <QrCode className="h-5 w-5 text-blue-500" />
-            Diagnóstico Avançado de QR Code
+            QR Code - Teste Simplificado
           </CardTitle>
           <CardDescription>
-            Teste completo de criação de instância, geração de QR Code e conexão WebSocket
+            Teste direto e simplificado - baseado no método que funciona na sua imagem
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -347,24 +222,46 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
           </div>
           
           <Button 
-            onClick={runCompleteQRTest} 
+            onClick={runSimplifiedQRTest} 
             disabled={isRunning}
             className="w-full"
           >
             {isRunning ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Executando Teste Completo...
+                Executando Teste Simplificado...
               </>
             ) : (
               <>
                 <Zap className="h-4 w-4 mr-2" />
-                Executar Teste Completo de QR Code
+                Executar Teste Simplificado (REST Direto)
               </>
             )}
           </Button>
         </CardContent>
       </Card>
+
+      {/* QR Code Display */}
+      {qrCode && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              QR Code Obtido!
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
+            <img 
+              src={qrCode} 
+              alt="QR Code WhatsApp" 
+              className="max-w-full max-h-80 mx-auto border-2 border-green-500 rounded-lg"
+            />
+            <p className="text-sm text-green-600 mt-4 font-medium">
+              ✅ QR Code gerado com sucesso! Escaneie com seu WhatsApp.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Resultados */}
       {testResults && (
@@ -388,11 +285,17 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
                 </Badge>
               </div>
               <div>
-                <Label className="text-sm font-medium">WebSocket</Label>
-                <Badge variant={testResults.webSocketSuccess ? "default" : "secondary"}>
-                  {testResults.webSocketSuccess ? "Funcionando" : "Falhou"}
+                <Label className="text-sm font-medium">QR Code</Label>
+                <Badge variant={testResults.qrCodeFound ? "default" : "secondary"}>
+                  {testResults.qrCodeFound ? "Encontrado" : "Não Encontrado"}
                 </Badge>
               </div>
+              {testResults.method && (
+                <div>
+                  <Label className="text-sm font-medium">Método</Label>
+                  <p className="text-sm font-mono">{testResults.method}</p>
+                </div>
+              )}
               {testResults.instanceName && (
                 <div>
                   <Label className="text-sm font-medium">Instância Testada</Label>
@@ -400,7 +303,7 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
                 </div>
               )}
               {testResults.error && (
-                <div>
+                <div className="col-span-full">
                   <Label className="text-sm font-medium">Erro</Label>
                   <p className="text-sm text-red-600">{testResults.error}</p>
                 </div>

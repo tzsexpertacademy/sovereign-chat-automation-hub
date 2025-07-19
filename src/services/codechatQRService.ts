@@ -1,3 +1,4 @@
+
 import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
 
 export class CodechatQRService {
@@ -103,40 +104,49 @@ export class CodechatQRService {
     });
   }
 
-  async getQRCode(instanceName: string) {
-    console.log(`📱 [CODECHAT-QR] Buscando QR Code: ${instanceName}`);
+  // NOVO MÉTODO SIMPLIFICADO - BASEADO NA SUA IMAGEM
+  async getQRCodeSimple(instanceName: string): Promise<{ success: boolean; qrCode?: string; error?: string }> {
+    console.log(`📱 [CODECHAT-QR] Buscando QR Code SIMPLIFICADO: ${instanceName}`);
     
     try {
-      // Primeiro tentar via connect
-      const connectResult = await this.connectInstance(instanceName);
-      
-      if (connectResult.base64 || connectResult.qrCode) {
-        console.log(`✅ [CODECHAT-QR] QR Code obtido via connect`);
-        return {
-          success: true,
-          qrCode: connectResult.base64 || connectResult.qrCode,
-          count: connectResult.count
-        };
-      }
-
-      // Fallback: tentar via detalhes da instância
+      // Usar apenas fetchInstance - como mostrado na sua imagem
       const details = await this.getInstanceDetails(instanceName);
+      console.log(`📋 [CODECHAT-QR] Detalhes recebidos:`, details);
       
-      if (details.qrCode || (details.Whatsapp?.qr)) {
-        console.log(`✅ [CODECHAT-QR] QR Code obtido via fetchInstance`);
-        return {
-          success: true,
-          qrCode: details.qrCode || details.Whatsapp.qr
-        };
+      // Buscar QR code nos campos possíveis
+      let qrCode = null;
+      
+      if (details.qrCode) {
+        qrCode = details.qrCode;
+        console.log(`✅ [CODECHAT-QR] QR encontrado em details.qrCode`);
+      } else if (details.base64) {
+        qrCode = details.base64;
+        console.log(`✅ [CODECHAT-QR] QR encontrado em details.base64`);
+      } else if (details.Whatsapp?.qr) {
+        qrCode = details.Whatsapp.qr;
+        console.log(`✅ [CODECHAT-QR] QR encontrado em details.Whatsapp.qr`);
+      } else if (details.Whatsapp?.qrCode) {
+        qrCode = details.Whatsapp.qrCode;
+        console.log(`✅ [CODECHAT-QR] QR encontrado em details.Whatsapp.qrCode`);
       }
-
-      console.log(`⚠️ [CODECHAT-QR] QR Code não encontrado`);
-      return { success: false, error: 'QR Code não disponível' };
-
+      
+      if (qrCode) {
+        console.log(`🎉 [CODECHAT-QR] QR Code encontrado com sucesso!`);
+        return { success: true, qrCode };
+      } else {
+        console.log(`⚠️ [CODECHAT-QR] QR Code não encontrado nos detalhes`);
+        return { success: false, error: 'QR Code não disponível' };
+      }
+      
     } catch (error: any) {
       console.error(`❌ [CODECHAT-QR] Erro ao buscar QR Code:`, error);
       return { success: false, error: error.message };
     }
+  }
+
+  // MÉTODO LEGADO - MANTER COMPATIBILIDADE
+  async getQRCode(instanceName: string) {
+    return this.getQRCodeSimple(instanceName);
   }
 
   async checkInstanceExists(instanceName: string) {

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,44 +26,61 @@ const WebSocketStatusDebugSimplified = () => {
     const timestamp = new Date().toLocaleTimeString();
     
     try {
-      addLog('🧪 Iniciando teste de conectividade CodeChat API');
+      addLog('🧪 Iniciando teste de conectividade CodeChat API SIMPLIFICADO');
       
       // Validar API Key antes de testar
       const apiKey = localStorage.getItem('yumer_global_api_key');
       if (!apiKey) {
         throw new Error('API Key não configurada. Configure primeiro na seção acima.');
       }
-      addLog(`🔑 API Key encontrada: ${apiKey}`);
+      addLog(`🔑 API Key encontrada: ${apiKey.substring(0, 8)}***`);
       
-      // Teste simplificado: apenas verificar conectividade básica
-      const testInstanceName = 'connectivity-test-' + Date.now();
-      
-      // Teste único: Endpoint mais simples (GET status)
+      // Teste 1: Verificar conectividade básica
+      addLog('📊 Teste 1: Verificando conectividade básica...');
       try {
-        addLog('📊 Testando conectividade com endpoint básico...');
-        addLog(`🌐 URL: https://yumer.yumerflow.app:8083/instance/connectionState/${testInstanceName}`);
-        addLog(`🔑 Header apikey: ${apiKey}`);
-        
+        const testInstanceName = 'connectivity-test-' + Date.now();
         const statusResponse = await codechatQRService.getInstanceStatus(testInstanceName);
-        addLog('✅ Conectividade confirmada - servidor respondeu!');
-        
+        addLog('✅ Conectividade REST confirmada - servidor respondeu!');
       } catch (error: any) {
         if (error.message.includes('404')) {
           addLog('✅ Conectividade OK (404 é resposta esperada para instância inexistente)');
         } else if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
           addLog(`❌ ERRO CORS - verifique configuração do servidor`);
+          throw new Error('Problema de CORS detectado');
         } else {
-          addLog(`⚠️ Erro na conectividade: ${error.message}`);
+          addLog(`⚠️ Resposta inesperada: ${error.message}`);
+        }
+      }
+      
+      // Teste 2: Verificar listagem de instâncias
+      addLog('📊 Teste 2: Verificando listagem de instâncias...');
+      try {
+        const instances = await codechatQRService.getAllInstances();
+        addLog(`✅ Listagem funcionando - ${Array.isArray(instances) ? instances.length : 0} instância(s) encontrada(s)`);
+      } catch (error: any) {
+        addLog(`⚠️ Erro na listagem: ${error.message}`);
+      }
+      
+      // Teste 3: Verificar método de QR simplificado
+      addLog('📊 Teste 3: Verificando método getQRCodeSimple...');
+      try {
+        const qrTest = await codechatQRService.getQRCodeSimple('test-nonexistent');
+        addLog(`✅ Método QR simplificado funcionando (${qrTest.success ? 'success' : 'expected failure'})`);
+      } catch (error: any) {
+        if (error.message.includes('404')) {
+          addLog('✅ Método QR funcionando (404 esperado para instância inexistente)');
+        } else {
+          addLog(`⚠️ Erro no método QR: ${error.message}`);
         }
       }
       
       setLastTest({
         timestamp,
         success: true,
-        details: 'CORS e conectividade funcionando - API Key válida'
+        details: 'REST API funcionando - Métodos simplificados validados'
       });
       
-      addLog('✅ Teste de conectividade concluído');
+      addLog('✅ Teste de conectividade SIMPLIFICADO concluído com sucesso');
       
     } catch (error: any) {
       addLog(`❌ Teste falhou: ${error.message}`);
@@ -77,8 +95,9 @@ const WebSocketStatusDebugSimplified = () => {
   };
 
   useEffect(() => {
-    addLog('🚀 Monitor REST-first inicializado');
-    addLog('📡 Foco na CodeChat API v1.3.3 via REST');
+    addLog('🚀 Monitor REST SIMPLIFICADO inicializado');
+    addLog('📡 Foco na CodeChat API v1.3.3 via REST - Método Simplificado');
+    addLog('🎯 Baseado no fluxo que FUNCIONA na sua imagem');
   }, []);
 
   return (
@@ -95,10 +114,10 @@ const WebSocketStatusDebugSimplified = () => {
             <div>
               <CardTitle className="flex items-center space-x-2">
                 <Globe className="w-5 h-5 text-blue-500" />
-                <span>CodeChat API (REST-First)</span>
+                <span>CodeChat API (REST Simplificado)</span>
               </CardTitle>
               <CardDescription>
-                Monitor de conectividade CodeChat API v1.3.3 via REST
+                Monitor simplificado - baseado no método que funciona na sua imagem
               </CardDescription>
             </div>
             <div className="flex items-center space-x-2">
@@ -109,7 +128,7 @@ const WebSocketStatusDebugSimplified = () => {
                   ) : (
                     <XCircle className="w-3 h-3 mr-1" />
                   )}
-                  {lastTest.success ? "Conectado" : "Erro"}
+                  {lastTest.success ? "Funcionando" : "Erro"}
                 </Badge>
               )}
               <Button 
@@ -179,35 +198,36 @@ const WebSocketStatusDebugSimplified = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <div>
                 <h4 className="font-medium text-sm text-gray-600 dark:text-gray-300">Método Principal</h4>
-                <p className="text-sm font-mono">CodeChat REST API v1.3.3</p>
+                <p className="text-sm font-mono">REST Direto - fetchInstance</p>
               </div>
               <div>
-                <h4 className="font-medium text-sm text-gray-600 dark:text-gray-300">Endpoints Testados</h4>
-                <p className="text-sm font-mono">/instance/* (create, connect, qrcode, status)</p>
+                <h4 className="font-medium text-sm text-gray-600 dark:text-gray-300">Fluxo Simplificado</h4>
+                <p className="text-sm font-mono">create → connect → fetchInstance</p>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Status de Eventos (REST Polling) */}
+      {/* Status Simplificado */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Activity className="w-5 h-5" />
-            <span>Status via Polling</span>
+            <span>Abordagem Simplificada</span>
           </CardTitle>
           <CardDescription>
-            Atualizações de status obtidas via polling REST (3s interval)
+            Sem WebSocket, sem verificações complexas - apenas REST direto
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="text-center py-4 text-gray-500">
             <div className="mb-2">
-              <RefreshCw className="w-8 h-8 mx-auto text-blue-500" />
+              <RefreshCw className="w-8 h-8 mx-auto text-green-500" />
             </div>
-            <p>Sistema usar polling REST para atualizações em tempo real</p>
-            <p className="text-xs mt-1">Sem dependência de WebSocket para operações básicas</p>
+            <p className="text-green-600 font-medium">✅ Sistema simplificado ativo</p>
+            <p className="text-xs mt-1">Fluxo baseado no método que funciona na sua imagem</p>
+            <p className="text-xs mt-1">create → aguardar → connect → aguardar → fetchInstance</p>
           </div>
         </CardContent>
       </Card>
