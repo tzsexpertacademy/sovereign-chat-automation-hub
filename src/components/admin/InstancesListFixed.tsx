@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,8 +43,23 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     getInstanceStatus,
     isLoading,
     restMode,
-    cleanup
+    cleanup,
+    refreshStatus
   } = useUnifiedInstanceManager();
+
+  // ============ FORÇAR REFRESH QUANDO SELECIONAR QR ============
+  const handleViewQRCode = async (instanceId: string) => {
+    console.log(`👁️ [ADMIN] Visualizando QR Code para: ${instanceId}`);
+    setSelectedInstanceForQR(instanceId);
+    
+    // Forçar refresh do status para garantir dados atualizados
+    try {
+      await refreshStatus(instanceId);
+      console.log(`✅ [ADMIN] Status atualizado antes de mostrar QR`);
+    } catch (error) {
+      console.warn(`⚠️ [ADMIN] Erro ao atualizar status:`, error);
+    }
+  };
 
   const getClientName = (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
@@ -150,6 +164,17 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     try {
       await connectInstance(instanceId);
       console.log(`✅ [ADMIN] Conexão iniciada com sucesso`);
+      
+      // Aguardar um pouco e forçar refresh
+      setTimeout(async () => {
+        try {
+          await refreshStatus(instanceId);
+          console.log(`🔄 [ADMIN] Status atualizado pós-conexão`);
+        } catch (error) {
+          console.warn(`⚠️ [ADMIN] Erro ao atualizar status pós-conexão:`, error);
+        }
+      }, 2000);
+      
     } catch (error: any) {
       console.error(`❌ [ADMIN] Erro na conexão:`, error);
       
@@ -177,10 +202,6 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     cleanup(instanceId);
     setSelectedInstanceForQR(null);
     onInstanceUpdated();
-  };
-
-  const handleViewQRCode = (instanceId: string) => {
-    setSelectedInstanceForQR(instanceId);
   };
 
   const handleOpenChat = (instance: WhatsAppInstanceData) => {
@@ -234,187 +255,221 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
         </CardHeader>
         <CardContent>
           <div className="grid lg:grid-cols-2 gap-6">
-            {instances.map((instance) => (
-              <Card key={instance.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">
-                        {instance.custom_name || instance.instance_id}
-                      </CardTitle>
-                      <p className="text-sm text-gray-600">
-                        Cliente: {getClientName(instance.client_id)}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {instance.phone_number || getInstanceStatus(instance.instance_id).phoneNumber || 'Desconectado'}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(getInstanceStatus(instance.instance_id).status || instance.status)}`} />
-                      <Badge variant={getInstanceStatus(instance.instance_id).status === 'connected' ? 'default' : 'secondary'}>
-                        <div className="flex items-center space-x-1">
-                          {getStatusIcon(getInstanceStatus(instance.instance_id).status || instance.status)}
-                          <span>{getStatusText(getInstanceStatus(instance.instance_id).status || instance.status)}</span>
-                        </div>
-                      </Badge>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  
-                   {/* Status da Instância - CORRIGIDO */}
-                   {!isOrphanedInstance(instance) && (
-                     <div className="p-3 bg-green-50 border border-green-200 rounded">
-                       <div className="flex items-center space-x-2">
-                         <CheckCircle className="w-4 h-4 text-green-500" />
-                         <span className="text-sm font-medium text-green-900">Instância Sincronizada</span>
-                       </div>
-                       <p className="text-sm text-green-700 mt-1">
-                         ✅ Token: {instance.auth_token ? 'Válido' : 'Ausente'} | YUMER: Conectado
-                       </p>
-                     </div>
-                   )}
-
-                   {/* Alerta de Instância Órfã - CORRIGIDO */}
-                   {isOrphanedInstance(instance) && (
-                     <div className="p-3 bg-orange-50 border border-orange-200 rounded">
-                       <div className="flex items-center justify-between">
-                         <div className="flex items-center space-x-2">
-                           <AlertCircle className="w-4 h-4 text-orange-500" />
-                           <span className="text-sm font-medium text-orange-900">Instância Órfã</span>
-                         </div>
-                         <Button
-                           size="sm"
-                           onClick={() => handleRecreateInstance(instance)}
-                           className="bg-orange-600 hover:bg-orange-700 text-white"
-                         >
-                           <RefreshCw className="w-4 h-4 mr-1" />
-                           Recriar
-                         </Button>
-                       </div>
-                       <p className="text-sm text-orange-700 mt-1">
-                         🔧 Esta instância existe no banco mas sem token de autenticação válido
-                       </p>
-                     </div>
-                   )}
-
-                   {/* Status REST Mode */}
-                   {selectedInstanceForQR === instance.instance_id && (
-                     <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-                       <div className="flex items-center justify-between mb-2">
-                         <span className="text-sm font-medium">Status REST API:</span>
-                         <div className="flex items-center space-x-1">
-                           <RefreshCw className="w-4 h-4 text-blue-500" />
-                           <span className="text-xs">Modo REST Ativo</span>
-                         </div>
-                       </div>
-                        <div className="text-sm text-blue-800 space-y-1">
-                          <div>Status: {getInstanceStatus(instance.instance_id).status}</div>
-                          <div>Polling: {restMode ? '✅ Ativo' : '❌ Inativo'}</div>
-                          <div className="text-xs text-muted-foreground">
-                            Modo: 100% REST API CodeChat v1.3.3 CORRIGIDO
+            {instances.map((instance) => {
+              const instanceStatus = getInstanceStatus(instance.instance_id);
+              
+              return (
+                <Card key={instance.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">
+                          {instance.custom_name || instance.instance_id}
+                        </CardTitle>
+                        <p className="text-sm text-gray-600">
+                          Cliente: {getClientName(instance.client_id)}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {instance.phone_number || instanceStatus.phoneNumber || 'Desconectado'}
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className={`w-3 h-3 rounded-full ${getStatusColor(instanceStatus.status || instance.status)}`} />
+                        <Badge variant={instanceStatus.status === 'connected' ? 'default' : 'secondary'}>
+                          <div className="flex items-center space-x-1">
+                            {getStatusIcon(instanceStatus.status || instance.status)}
+                            <span>{getStatusText(instanceStatus.status || instance.status)}</span>
                           </div>
-                        </div>
-                     </div>
-                   )}
-
-                   {/* QR Code Display CORRIGIDO */}
-                   {selectedInstanceForQR === instance.instance_id && (
-                     <div>
-                       <div className="text-xs mb-2 p-2 bg-gray-100 rounded">
-                         Debug: selectedInstanceForQR={selectedInstanceForQR}, 
-                         hasQrCode={getInstanceStatus(instance.instance_id).hasQrCode}, 
-                         qrCode={getInstanceStatus(instance.instance_id).qrCode ? 'exists' : 'missing'}
-                       </div>
-                       {getInstanceStatus(instance.instance_id).hasQrCode && 
-                        getInstanceStatus(instance.instance_id).qrCode && (
-                          <QRCodeDisplay 
-                            qrCode={getInstanceStatus(instance.instance_id).qrCode!}
-                            instanceName={instance.yumer_instance_name || instance.instance_id}
-                          />
-                       )}
-                     </div>
-                   )}
-
-                   {/* Connected Info */}
-                   {(getInstanceStatus(instance.instance_id).status === 'connected' || instance.status === 'connected') && (
-                     <div className="p-3 bg-green-50 border border-green-200 rounded">
-                       <p className="text-sm text-green-800">
-                         ✅ WhatsApp conectado e funcionando perfeitamente!
-                       </p>
-                     </div>
-                   )}
-
-                   {/* Action Buttons CORRIGIDOS */}
-                   <div className="flex space-x-2 pt-2 flex-wrap">
-                    {(getInstanceStatus(instance.instance_id).phoneNumber || 
-                      getInstanceStatus(instance.instance_id).status === 'connected' || 
-                      instance.phone_number || 
-                      instance.status === 'connected') ? (
-                      <>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleDisconnectInstance(instance.instance_id)}
-                          disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
-                        >
-                          <Pause className="w-4 h-4 mr-1" />
-                          Desconectar
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          onClick={() => handleOpenChat(instance)}
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <MessageSquare className="w-4 h-4 mr-1" />
-                          Abrir Chat
-                        </Button>
-                      </>
-                    ) : (
-                      <Button 
-                        size="sm"
-                        onClick={() => handleConnectInstance(instance.instance_id)}
-                        disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline || isOrphanedInstance(instance)}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        {isLoading(instance.instance_id) ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                            Conectando...
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-4 h-4 mr-1" />
-                            Conectar
-                          </>
-                        )}
-                      </Button>
-                    )}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent className="space-y-4">
                     
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleViewQRCode(instance.instance_id)}
-                      disabled={isLoading(instance.instance_id)}
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      Ver QR
-                    </Button>
+                     {/* Status da Instância - CORRIGIDO */}
+                     {!isOrphanedInstance(instance) && (
+                       <div className="p-3 bg-green-50 border border-green-200 rounded">
+                         <div className="flex items-center space-x-2">
+                           <CheckCircle className="w-4 h-4 text-green-500" />
+                           <span className="text-sm font-medium text-green-900">Instância Sincronizada</span>
+                         </div>
+                         <p className="text-sm text-green-700 mt-1">
+                           ✅ Token: {instance.auth_token ? 'Válido' : 'Ausente'} | YUMER: Conectado
+                         </p>
+                       </div>
+                     )}
 
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleDeleteInstance(instance.instance_id)}
-                      disabled={isLoading(instance.instance_id)}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      Remover
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                     {/* Alerta de Instância Órfã - CORRIGIDO */}
+                     {isOrphanedInstance(instance) && (
+                       <div className="p-3 bg-orange-50 border border-orange-200 rounded">
+                         <div className="flex items-center justify-between">
+                           <div className="flex items-center space-x-2">
+                             <AlertCircle className="w-4 h-4 text-orange-500" />
+                             <span className="text-sm font-medium text-orange-900">Instância Órfã</span>
+                           </div>
+                           <Button
+                             size="sm"
+                             onClick={() => handleRecreateInstance(instance)}
+                             className="bg-orange-600 hover:bg-orange-700 text-white"
+                           >
+                             <RefreshCw className="w-4 h-4 mr-1" />
+                             Recriar
+                           </Button>
+                         </div>
+                         <p className="text-sm text-orange-700 mt-1">
+                           🔧 Esta instância existe no banco mas sem token de autenticação válido
+                         </p>
+                       </div>
+                     )}
+
+                     {/* Status REST Mode */}
+                     {selectedInstanceForQR === instance.instance_id && (
+                       <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+                         <div className="flex items-center justify-between mb-2">
+                           <span className="text-sm font-medium">Status REST API:</span>
+                           <div className="flex items-center space-x-1">
+                             <RefreshCw className="w-4 h-4 text-blue-500" />
+                             <span className="text-xs">Modo REST Ativo</span>
+                           </div>
+                         </div>
+                          <div className="text-sm text-blue-800 space-y-1">
+                            <div>Status: {instanceStatus.status}</div>
+                            <div>Polling: {restMode ? '✅ Ativo' : '❌ Inativo'}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Modo: 100% REST API CodeChat v1.3.3 CORRIGIDO
+                            </div>
+                          </div>
+                       </div>
+                     )}
+
+                     {/* QR Code Display MELHORADO */}
+                     {selectedInstanceForQR === instance.instance_id && (
+                       <div>
+                         <div className="text-xs mb-2 p-2 bg-gray-100 rounded">
+                           <div className="space-y-1">
+                             <div>🔍 Debug Info:</div>
+                             <div>• selectedInstanceForQR: {selectedInstanceForQR}</div>
+                             <div>• instanceStatus.hasQrCode: {instanceStatus.hasQrCode ? 'true' : 'false'}</div>
+                             <div>• instanceStatus.qrCode: {instanceStatus.qrCode ? 'exists' : 'missing'}</div>
+                             <div>• instanceStatus.status: {instanceStatus.status}</div>
+                             <div>• instance.status (DB): {instance.status}</div>
+                             <div>• instance.has_qr_code (DB): {instance.has_qr_code ? 'true' : 'false'}</div>
+                           </div>
+                         </div>
+                         
+                         {/* Mostrar QR Code se disponível */}
+                         {instanceStatus.hasQrCode && instanceStatus.qrCode ? (
+                           <div>
+                             <div className="text-sm text-green-600 mb-2">✅ QR Code encontrado via hook!</div>
+                             <QRCodeDisplay 
+                               qrCode={instanceStatus.qrCode}
+                               instanceName={instance.yumer_instance_name || instance.instance_id}
+                             />
+                           </div>
+                         ) : instance.has_qr_code && instance.qr_code ? (
+                           <div>
+                             <div className="text-sm text-blue-600 mb-2">📋 QR Code encontrado no banco!</div>
+                             <QRCodeDisplay 
+                               qrCode={instance.qr_code}
+                               instanceName={instance.yumer_instance_name || instance.instance_id}
+                             />
+                           </div>
+                         ) : (
+                           <div className="text-sm text-gray-600 p-3 bg-gray-50 rounded">
+                             ⏳ QR Code não disponível. Status: {instanceStatus.status}
+                             {instanceStatus.status === 'connecting' && (
+                               <div className="mt-2 text-xs">
+                                 • Aguardando geração do QR Code...
+                                 <br />
+                                 • O QR code pode levar alguns segundos para aparecer
+                               </div>
+                             )}
+                           </div>
+                         )}
+                       </div>
+                     )}
+
+                     {/* Connected Info */}
+                     {(instanceStatus.status === 'connected' || instance.status === 'connected') && (
+                       <div className="p-3 bg-green-50 border border-green-200 rounded">
+                         <p className="text-sm text-green-800">
+                           ✅ WhatsApp conectado e funcionando perfeitamente!
+                         </p>
+                       </div>
+                     )}
+
+                     {/* Action Buttons CORRIGIDOS */}
+                     <div className="flex space-x-2 pt-2 flex-wrap">
+                      {(instanceStatus.phoneNumber || 
+                        instanceStatus.status === 'connected' || 
+                        instance.phone_number || 
+                        instance.status === 'connected') ? (
+                        <>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleDisconnectInstance(instance.instance_id)}
+                            disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
+                          >
+                            <Pause className="w-4 h-4 mr-1" />
+                            Desconectar
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            onClick={() => handleOpenChat(instance)}
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <MessageSquare className="w-4 h-4 mr-1" />
+                            Abrir Chat
+                          </Button>
+                        </>
+                      ) : (
+                        <Button 
+                          size="sm"
+                          onClick={() => handleConnectInstance(instance.instance_id)}
+                          disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline || isOrphanedInstance(instance)}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          {isLoading(instance.instance_id) ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                              Conectando...
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-4 h-4 mr-1" />
+                              Conectar
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleViewQRCode(instance.instance_id)}
+                        disabled={isLoading(instance.instance_id)}
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        Ver QR
+                      </Button>
+
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleDeleteInstance(instance.instance_id)}
+                        disabled={isLoading(instance.instance_id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Remover
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
