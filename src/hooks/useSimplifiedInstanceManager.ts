@@ -28,20 +28,19 @@ interface UseSimplifiedInstanceManagerReturn {
 export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerReturn => {
   const [instances, setInstances] = useState<Record<string, InstanceStatus>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
-  const [websocketConnected] = useState(false); // REST-only, sem WebSocket
+  const [websocketConnected] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    console.log('🔧 [SIMPLIFIED] Inicializando REST-only Instance Manager');
-    console.log('📡 [SIMPLIFIED] CodeChat API v1.3.3 - 100% REST sem WebSocket');
+    console.log('🔧 [SIMPLIFIED] Inicializando REST-only Instance Manager v2');
+    console.log('📡 [SIMPLIFIED] CodeChat API v1.3.3 - Lógica que funcionou no diagnóstico');
   }, []);
 
-  // BUSCAR STATUS ATUAL VIA REST - SIMPLIFICADO
+  // BUSCAR STATUS ATUAL VIA REST
   const refreshStatus = useCallback(async (instanceId: string) => {
     try {
       console.log(`🔄 [SIMPLIFIED] Buscando status REST: ${instanceId}`);
       
-      // Buscar detalhes da instância via REST
       const details = await codechatQRService.getInstanceDetails(instanceId);
       console.log(`📊 [SIMPLIFIED] Detalhes obtidos:`, details);
       
@@ -50,12 +49,10 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
       let hasQrCode = false;
       let phoneNumber = undefined;
       
-      // Mapear status baseado no connectionStatus
       if (details.connectionStatus === 'ONLINE' && details.ownerJid) {
         status = 'connected';
         phoneNumber = details.ownerJid;
       } else if (details.connectionStatus === 'OFFLINE') {
-        // Verificar se tem QR code disponível
         const qrResult = await codechatQRService.getQRCodeSimple(instanceId);
         if (qrResult.success && qrResult.qrCode) {
           status = 'qr_ready';
@@ -83,7 +80,6 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
     } catch (error) {
       console.error(`❌ [SIMPLIFIED] Erro ao buscar status ${instanceId}:`, error);
       
-      // Se 404, marcar como não encontrada
       if (error.message?.includes('404')) {
         setInstances(prev => ({
           ...prev,
@@ -99,13 +95,12 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
     }
   }, []);
 
-  // CONECTAR INSTÂNCIA - FLUXO SIMPLIFICADO
+  // CONECTAR INSTÂNCIA - USANDO A LÓGICA QUE FUNCIONOU NO DIAGNÓSTICO
   const connectInstance = useCallback(async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
       console.log(`🚀 [SIMPLIFIED] Conectando instância SIMPLIFICADA: ${instanceId}`);
       
-      // Status inicial
       setInstances(prev => ({
         ...prev,
         [instanceId]: {
@@ -116,20 +111,43 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
         }
       }));
 
-      // 1. Conectar via REST
-      await codechatQRService.connectInstance(instanceId);
-      console.log(`✅ [SIMPLIFIED] Connect executado com sucesso`);
+      // 1. Conectar via REST (método que funcionou!)
+      const connectResult = await codechatQRService.connectInstance(instanceId);
+      console.log(`✅ [SIMPLIFIED] Connect executado:`, connectResult);
       
-      // 2. Aguardar estabilização
-      console.log(`⏳ [SIMPLIFIED] Aguardando 15s para estabilização...`);
-      await new Promise(resolve => setTimeout(resolve, 15000));
+      // 2. VERIFICAR SE QR VEIO DIRETO DO CONNECT (estratégia que funcionou!)
+      if (connectResult?.base64) {
+        console.log(`🎯 [SIMPLIFIED] QR Code obtido DIRETAMENTE do connect!`);
+        
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            status: 'qr_ready',
+            qrCode: connectResult.base64,
+            hasQrCode: true,
+            lastUpdated: Date.now()
+          }
+        }));
+
+        toast({
+          title: "📱 QR Code Disponível!",
+          description: "Escaneie o QR Code para conectar o WhatsApp",
+        });
+        
+        // 3. Iniciar polling para detectar scan
+        startConnectionPolling(instanceId);
+        return;
+      }
+
+      // FALLBACK: Se não veio no connect, aguardar e buscar
+      console.log(`⏳ [SIMPLIFIED] QR não veio no connect, aguardando 12s...`);
+      await new Promise(resolve => setTimeout(resolve, 12000));
       
-      // 3. Buscar QR code
-      console.log(`📱 [SIMPLIFIED] Buscando QR Code...`);
       const qrResult = await codechatQRService.getQRCodeSimple(instanceId);
       
       if (qrResult.success && qrResult.qrCode) {
-        console.log(`🎉 [SIMPLIFIED] QR Code obtido!`);
+        console.log(`✅ [SIMPLIFIED] QR Code obtido via fetchInstance!`);
         
         setInstances(prev => ({
           ...prev,
@@ -144,71 +162,14 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
 
         toast({
           title: "📱 QR Code Disponível!",
-          description: "Escaneie o QR Code para conectar o WhatsApp",
+          description: "Escaneie o QR Code para conectar",
         });
         
-        // 4. Iniciar polling para detectar scan
-        console.log(`🔄 [SIMPLIFIED] Iniciando polling para detectar scan...`);
-        const pollInterval = setInterval(async () => {
-          try {
-            const details = await codechatQRService.getInstanceDetails(instanceId);
-            
-            if (details.connectionStatus === 'ONLINE' && details.ownerJid) {
-              console.log(`✅ [SIMPLIFIED] WhatsApp conectado! ${details.ownerJid}`);
-              
-              setInstances(prev => ({
-                ...prev,
-                [instanceId]: {
-                  ...prev[instanceId],
-                  status: 'connected',
-                  phoneNumber: details.ownerJid,
-                  qrCode: undefined,
-                  hasQrCode: false,
-                  lastUpdated: Date.now()
-                }
-              }));
-              
-              // Sync com Supabase
-              await whatsappInstancesService.updateInstanceStatus(instanceId, 'connected', {
-                phone_number: details.ownerJid
-              });
-              
-              toast({
-                title: "✅ WhatsApp Conectado!",
-                description: `Conectado: ${details.ownerJid}`,
-              });
-              
-              clearInterval(pollInterval);
-            }
-          } catch (error) {
-            console.warn(`⚠️ [SIMPLIFIED] Erro no polling:`, error);
-          }
-        }, 5000); // Poll a cada 5 segundos
-        
-        // Parar polling após 2 minutos
-        setTimeout(() => {
-          clearInterval(pollInterval);
-          console.log(`⏰ [SIMPLIFIED] Polling finalizado por timeout`);
-        }, 120000);
-        
-      } else {
-        console.log(`⚠️ [SIMPLIFIED] QR Code não obtido: ${qrResult.error}`);
-        
-        setInstances(prev => ({
-          ...prev,
-          [instanceId]: {
-            ...prev[instanceId],
-            status: 'error',
-            lastUpdated: Date.now()
-          }
-        }));
-        
-        toast({
-          title: "Erro",
-          description: "Não foi possível obter o QR Code",
-          variant: "destructive"
-        });
+        startConnectionPolling(instanceId);
+        return;
       }
+
+      throw new Error('QR Code não disponível');
       
     } catch (error: any) {
       console.error('❌ [SIMPLIFIED] Erro ao conectar:', error);
@@ -231,6 +192,53 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
     } finally {
       setLoading(prev => ({ ...prev, [instanceId]: false }));
     }
+  }, [toast]);
+
+  // Polling para detectar conexão (igual ao diagnóstico)
+  const startConnectionPolling = useCallback((instanceId: string) => {
+    console.log(`🔄 [SIMPLIFIED] Iniciando polling para ${instanceId}...`);
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const details = await codechatQRService.getInstanceDetails(instanceId);
+        
+        if (details.connectionStatus === 'ONLINE' && details.ownerJid) {
+          console.log(`✅ [SIMPLIFIED] WhatsApp conectado! ${details.ownerJid}`);
+          
+          setInstances(prev => ({
+            ...prev,
+            [instanceId]: {
+              ...prev[instanceId],
+              status: 'connected',
+              phoneNumber: details.ownerJid,
+              qrCode: undefined,
+              hasQrCode: false,
+              lastUpdated: Date.now()
+            }
+          }));
+          
+          // Sync com Supabase
+          await whatsappInstancesService.updateInstanceStatus(instanceId, 'connected', {
+            phone_number: details.ownerJid
+          });
+          
+          toast({
+            title: "✅ WhatsApp Conectado!",
+            description: `Conectado: ${details.ownerJid}`,
+          });
+          
+          clearInterval(pollInterval);
+        }
+      } catch (error) {
+        console.warn(`⚠️ [SIMPLIFIED] Erro no polling:`, error);
+      }
+    }, 5000);
+    
+    // Parar polling após 3 minutos
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      console.log(`⏰ [SIMPLIFIED] Polling finalizado por timeout`);
+    }, 180000);
   }, [toast]);
 
   // DESCONECTAR INSTÂNCIA
@@ -275,17 +283,14 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
     }
   }, [toast]);
 
-  // Obter status de uma instância
   const getInstanceStatus = useCallback((instanceId: string): InstanceStatus => {
     return instances[instanceId] || { instanceId, status: 'disconnected' };
   }, [instances]);
 
-  // Verificar se está carregando
   const isLoading = useCallback((instanceId: string): boolean => {
     return loading[instanceId] || false;
   }, [loading]);
 
-  // Limpar instância
   const cleanup = useCallback((instanceId: string) => {
     setInstances(prev => {
       const newInstances = { ...prev };

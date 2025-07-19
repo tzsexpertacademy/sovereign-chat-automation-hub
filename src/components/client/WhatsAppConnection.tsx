@@ -1,11 +1,10 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { QRCodeDisplay } from "@/components/ui/QRCodeDisplay";
 import { 
   Plus, 
   Smartphone, 
@@ -13,18 +12,14 @@ import {
   CheckCircle, 
   AlertCircle, 
   RefreshCw,
-  Settings,
-  Edit,
-  Users,
   MessageSquare,
   Trash2
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import whatsappService, { WhatsAppClient } from "@/services/whatsappMultiClient";
 import { clientsService, ClientData } from "@/services/clientsService";
-import { queuesService, QueueWithAssistant } from "@/services/queuesService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
+import { useInstanceManager } from "@/hooks/useInstanceManager";
 
 const WhatsAppConnection = () => {
   const { clientId } = useParams();
@@ -32,18 +27,21 @@ const WhatsAppConnection = () => {
   
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
   const [clientData, setClientData] = useState<ClientData | null>(null);
-  const [queues, setQueues] = useState<QueueWithAssistant[]>([]);
   const [loading, setLoading] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-  const [selectedQueueId, setSelectedQueueId] = useState<string>("");
-  const [editingInstance, setEditingInstance] = useState<WhatsAppInstanceData | null>(null);
-  const [editName, setEditName] = useState("");
-  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  // Hook com nova lógica que funcionou
+  const { 
+    connectInstance, 
+    disconnectInstance,
+    refreshQRCode,
+    getInstanceStatus,
+    isLoading
+  } = useInstanceManager();
 
   useEffect(() => {
     if (clientId) {
       loadData();
-      setupRealtimeUpdates();
     }
   }, [clientId]);
 
@@ -52,51 +50,13 @@ const WhatsAppConnection = () => {
       setLoading(true);
       console.log('🔄 Carregando dados da conexão WhatsApp...');
       
-      // Carregar dados do cliente
       const clientsData = await clientsService.getAllClients();
       const clientInfo = clientsData.find(c => c.id === clientId);
       setClientData(clientInfo || null);
 
-      // Carregar instâncias do banco de dados
       const instancesData = await whatsappInstancesService.getInstancesByClientId(clientId!);
       console.log('📱 Instâncias do banco:', instancesData);
-
-      // Para cada instância, verificar status real no servidor WhatsApp
-      const instancesWithRealStatus = await Promise.all(
-        instancesData.map(async (instance) => {
-          try {
-            const serverStatus = await whatsappService.getClientStatus(instance.instance_id);
-            console.log(`📱 Status do servidor para ${instance.instance_id}:`, serverStatus);
-            
-            // Atualizar no banco se status for diferente
-            if (serverStatus && serverStatus.status !== instance.status) {
-              console.log(`📱 Atualizando status de ${instance.status} para ${serverStatus.status}`);
-              await whatsappInstancesService.updateInstanceById(instance.id, {
-                status: serverStatus.status,
-                phone_number: serverStatus.phoneNumber || instance.phone_number
-              });
-              
-              return {
-                ...instance,
-                status: serverStatus.status,
-                phone_number: serverStatus.phoneNumber || instance.phone_number
-              };
-            }
-            
-            return instance;
-          } catch (error) {
-            console.log(`❌ Erro ao verificar status para ${instance.instance_id}:`, error);
-            return instance;
-          }
-        })
-      );
-
-      setInstances(instancesWithRealStatus);
-
-      // Carregar filas
-      const queuesData = await queuesService.getClientQueues(clientId!);
-      console.log('📋 Filas carregadas:', queuesData);
-      setQueues(queuesData);
+      setInstances(instancesData);
 
     } catch (error) {
       console.error('❌ Erro ao carregar dados:', error);
@@ -110,37 +70,6 @@ const WhatsAppConnection = () => {
     }
   };
 
-  const setupRealtimeUpdates = () => {
-    if (!clientId) return;
-
-    // Configurar listener para atualizações de status via WebSocket
-    const socket = whatsappService.connectSocket();
-    
-    socket.on('connect', () => {
-      console.log('✅ WebSocket conectado para updates');
-      whatsappService.joinClientRoom(clientId);
-    });
-
-    socket.on(`status_${clientId}`, (statusUpdate: any) => {
-      console.log('📱 Status update recebido:', statusUpdate);
-      
-      setInstances(prev => prev.map(instance => {
-        if (instance.instance_id === statusUpdate.instanceId) {
-          return {
-            ...instance,
-            status: statusUpdate.status,
-            phone_number: statusUpdate.phoneNumber || instance.phone_number
-          };
-        }
-        return instance;
-      }));
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  };
-
   const canCreateNewInstance = () => {
     if (!clientData) return false;
     return instances.length < clientData.max_instances;
@@ -149,45 +78,43 @@ const WhatsAppConnection = () => {
   const handleCreateInstance = async () => {
     if (!clientId || !clientData) return;
 
-    // Verificar limite de instâncias
     if (!canCreateNewInstance()) {
       toast({
         title: "Limite Atingido",
-        description: `Seu plano ${clientData.plan.toUpperCase()} permite apenas ${clientData.max_instances} instância(s). Atualize seu plano para criar mais conexões.`,
+        description: `Seu plano ${clientData.plan.toUpperCase()} permite apenas ${clientData.max_instances} instância(s).`,
         variant: "destructive",
       });
       return;
     }
 
     try {
-      setConnecting(true);
+      setCreating(true);
       console.log('🚀 Criando nova instância...');
       
-      // Usar instancesUnifiedService para fluxo correto
-      const { instancesUnifiedService } = await import('@/services/instancesUnifiedService');
-      
       const customName = `Conexão ${instances.length + 1}`;
-      const result = await instancesUnifiedService.createInstanceForClient(
-        clientId, 
-        customName
-      );
+      const instanceId = `${clientId}_${Date.now()}`;
       
-      console.log('✅ [WHATSAPP] Instância criada com sucesso:', result);
+      await whatsappInstancesService.createInstance({
+        client_id: clientId,
+        instance_id: instanceId,
+        status: 'disconnected',
+        custom_name: customName
+      });
+      
+      console.log('✅ [WHATSAPP] Instância criada com sucesso');
 
-      // Atualizar cliente se for a primeira instância
-      if (instances.length === 0 && result.instance_id) {
-        await clientsService.updateClientInstance(clientId, result.instance_id, 'connecting');
+      if (instances.length === 0) {
+        await clientsService.updateClientInstance(clientId, instanceId, 'connecting');
       }
       
       toast({
         title: "Sucesso",
-        description: "Nova instância WhatsApp criada! Aguarde o QR Code...",
+        description: "Nova instância WhatsApp criada!",
       });
 
-      // Recarregar dados
       setTimeout(() => {
         loadData();
-      }, 2000);
+      }, 1000);
 
     } catch (error: any) {
       console.error('❌ Erro ao criar instância:', error);
@@ -197,117 +124,7 @@ const WhatsAppConnection = () => {
         variant: "destructive",
       });
     } finally {
-      setConnecting(false);
-    }
-  };
-
-  const handleConnectToQueue = async (instanceId: string) => {
-    if (!selectedQueueId) {
-      toast({
-        title: "Erro",
-        description: "Selecione uma fila para conectar",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setLoading(true);
-      console.log('🔗 Conectando instância à fila:', { instanceId, queueId: selectedQueueId });
-      
-      await queuesService.connectInstanceToQueue(instanceId, selectedQueueId);
-      
-      const isHuman = selectedQueueId === "human";
-      const queueName = isHuman ? "Interação Humana" : queues.find(q => q.id === selectedQueueId)?.name;
-      
-      toast({
-        title: "Sucesso",
-        description: `Instância conectada à ${queueName}`,
-      });
-
-      setSelectedQueueId("");
-      await loadData();
-      
-    } catch (error: any) {
-      console.error('❌ Erro ao conectar à fila:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Falha ao conectar à fila",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDisconnectFromQueue = async (instanceId: string, queueId: string) => {
-    try {
-      setLoading(true);
-      
-      await queuesService.disconnectInstanceFromQueue(instanceId, queueId);
-      
-      toast({
-        title: "Sucesso",
-        description: "Instância desconectada da fila",
-      });
-
-      await loadData();
-      
-    } catch (error: any) {
-      console.error('❌ Erro ao desconectar:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Falha ao desconectar da fila",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEditInstance = (instance: WhatsAppInstanceData) => {
-    setEditingInstance(instance);
-    setEditName(instance.custom_name || `Conexão ${instance.instance_id.split('_').pop()}`);
-    setShowEditDialog(true);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingInstance || !editName.trim()) {
-      toast({
-        title: "Erro",
-        description: "Nome é obrigatório",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setLoading(true);
-      console.log('💾 Salvando nome da instância:', { instanceId: editingInstance.instance_id, newName: editName.trim() });
-      
-      // Usar o ID da instância (UUID) para atualizar
-      await whatsappInstancesService.updateInstanceById(editingInstance.id, {
-        custom_name: editName.trim()
-      });
-
-      toast({
-        title: "Sucesso",
-        description: "Conexão atualizada com sucesso",
-      });
-
-      setShowEditDialog(false);
-      setEditingInstance(null);
-      await loadData();
-      
-    } catch (error: any) {
-      console.error('❌ Erro ao editar:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Falha ao atualizar conexão",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+      setCreating(false);
     }
   };
 
@@ -315,13 +132,8 @@ const WhatsAppConnection = () => {
     try {
       setLoading(true);
       
-      // Desconectar do WhatsApp
-      await whatsappService.disconnectClient(instanceId);
-      
-      // Remover do Supabase
       await whatsappInstancesService.deleteInstance(instanceId);
       
-      // Se era a instância principal do cliente, limpar
       if (clientData?.instance_id === instanceId) {
         await clientsService.updateClientInstance(clientId!, "", "disconnected");
       }
@@ -345,14 +157,6 @@ const WhatsAppConnection = () => {
     }
   };
 
-  const getInstanceConnections = (instance: WhatsAppInstanceData) => {
-    return queues.filter(queue => 
-      queue.instance_queue_connections?.some(conn => 
-        conn.instance_id === instance.id && conn.is_active
-      )
-    );
-  };
-
   const getInstanceDisplayName = (instance: WhatsAppInstanceData) => {
     return instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
   };
@@ -367,20 +171,10 @@ const WhatsAppConnection = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'connected': return 'bg-green-500';
-      case 'qr_ready': return 'bg-blue-500';
-      case 'connecting': return 'bg-yellow-500';
-      case 'error': return 'bg-red-500';
-      default: return 'bg-gray-500';
-    }
-  };
-
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'connected': return 'Conectado';
-      case 'qr_ready': return 'Aguardando QR';
+      case 'qr_ready': return 'QR Pronto';
       case 'connecting': return 'Conectando';
       case 'error': return 'Erro';
       case 'disconnected': return 'Desconectado';
@@ -405,7 +199,7 @@ const WhatsAppConnection = () => {
         <div>
           <h1 className="text-3xl font-bold">Conexões WhatsApp</h1>
           <p className="text-muted-foreground">
-            Gerencie suas conexões WhatsApp e configure as filas de atendimento
+            Gerencie suas conexões WhatsApp com a nova lógica otimizada
           </p>
           {clientData && (
             <p className="text-sm text-gray-500 mt-1">
@@ -420,10 +214,10 @@ const WhatsAppConnection = () => {
           </Button>
           <Button 
             onClick={handleCreateInstance}
-            disabled={connecting || !canCreateNewInstance()}
+            disabled={creating || !canCreateNewInstance()}
             className="bg-blue-600 hover:bg-blue-700"
           >
-            {connecting ? (
+            {creating ? (
               <>
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                 Criando...
@@ -447,14 +241,21 @@ const WhatsAppConnection = () => {
               <div>
                 <p className="font-medium text-orange-900">Limite de Conexões Atingido</p>
                 <p className="text-sm text-orange-700">
-                  Seu plano {clientData?.plan.toUpperCase()} permite apenas {clientData?.max_instances} conexão(ões). 
-                  Entre em contato para atualizar seu plano.
+                  Seu plano {clientData?.plan.toUpperCase()} permite apenas {clientData?.max_instances} conexão(ões).
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Success Alert */}
+      <Alert>
+        <CheckCircle className="h-4 w-4" />
+        <AlertDescription>
+          <span className="text-green-600">✅ Sistema usando nova lógica YUMER - QR Code direto do connect!</span>
+        </AlertDescription>
+      </Alert>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -464,7 +265,7 @@ const WhatsAppConnection = () => {
               <Smartphone className="w-8 h-8 text-blue-500" />
               <div>
                 <div className="text-2xl font-bold text-green-600">
-                  {instances.filter(i => i.status === 'connected').length}
+                  {instances.filter(i => getInstanceStatus(i.instance_id).status === 'connected').length}
                 </div>
                 <p className="text-sm text-gray-600">Conectadas</p>
               </div>
@@ -478,7 +279,7 @@ const WhatsAppConnection = () => {
               <QrCode className="w-8 h-8 text-blue-500" />
               <div>
                 <div className="text-2xl font-bold text-blue-600">
-                  {instances.filter(i => i.status === 'qr_ready').length}
+                  {instances.filter(i => getInstanceStatus(i.instance_id).status === 'qr_ready').length}
                 </div>
                 <p className="text-sm text-gray-600">Aguardando QR</p>
               </div>
@@ -492,9 +293,9 @@ const WhatsAppConnection = () => {
               <AlertCircle className="w-8 h-8 text-red-500" />
               <div>
                 <div className="text-2xl font-bold text-red-600">
-                  {instances.filter(i => ['error', 'disconnected'].includes(i.status)).length}
+                  {instances.filter(i => ['error', 'disconnected'].includes(getInstanceStatus(i.instance_id).status)).length}
                 </div>
-                <p className="text-sm text-gray-600">Com Problemas</p>
+                <p className="text-sm text-gray-600">Desconectadas</p>
               </div>
             </div>
           </CardContent>
@@ -507,12 +308,12 @@ const WhatsAppConnection = () => {
           <CardHeader>
             <CardTitle>Primeira Conexão WhatsApp</CardTitle>
             <CardDescription>
-              Crie sua primeira conexão WhatsApp para começar a usar o sistema
+              Crie sua primeira conexão WhatsApp com a nova lógica otimizada
             </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-600 mb-4">
-              Após criar a conexão, você poderá escanear o QR Code para conectar seu WhatsApp.
+              Após criar a conexão, você poderá conectar e obter o QR Code automaticamente.
             </p>
           </CardContent>
         </Card>
@@ -520,7 +321,7 @@ const WhatsAppConnection = () => {
 
       {/* Instances List */}
       {instances.map((instance) => {
-        const connections = getInstanceConnections(instance);
+        const instanceStatus = getInstanceStatus(instance.instance_id);
         const displayName = getInstanceDisplayName(instance);
         
         return (
@@ -528,127 +329,68 @@ const WhatsAppConnection = () => {
             <CardHeader>
               <div className="flex justify-between items-start">
                 <div className="flex items-center space-x-3">
-                  <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
+                  <div className="flex flex-col items-center">
+                    {getStatusIcon(instanceStatus.status)}
+                  </div>
                   <div>
                     <CardTitle className="text-lg">
                       {displayName}
                     </CardTitle>
                     <CardDescription className="flex items-center mt-1">
                       <Smartphone className="w-4 h-4 mr-1" />
-                      {instance.phone_number || 'Não conectado'}
+                      {instanceStatus.phoneNumber || 'Não conectado'}
                     </CardDescription>
+                    <Badge variant={instanceStatus.status === 'connected' ? 'default' : 'secondary'} className="mt-2">
+                      {getStatusLabel(instanceStatus.status)}
+                    </Badge>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <Badge variant={instance.status === 'connected' ? 'default' : 'secondary'}>
-                    <div className="flex items-center space-x-1">
-                      {getStatusIcon(instance.status)}
-                      <span className="capitalize">{getStatusLabel(instance.status)}</span>
-                    </div>
-                  </Badge>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleEditInstance(instance)}
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
+                  {instanceStatus.status === 'connected' ? (
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => disconnectInstance(instance.instance_id)}
+                      disabled={isLoading(instance.instance_id)}
+                    >
+                      {isLoading(instance.instance_id) ? (
+                        <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        'Desconectar'
+                      )}
+                    </Button>
+                  ) : (
+                    <Button 
+                      size="sm"
+                      onClick={() => connectInstance(instance.instance_id)}
+                      disabled={isLoading(instance.instance_id)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {isLoading(instance.instance_id) ? (
+                        <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        'Conectar'
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               
-              {/* Progress Bar */}
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Progresso da Conexão</span>
-                  <span>100%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-blue-600 h-2 rounded-full w-full"></div>
-                </div>
-              </div>
-
-              {/* Queue Configuration */}
-              <div className="space-y-3">
-                <h4 className="font-medium flex items-center">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Filas Conectadas:
-                </h4>
-                
-                {connections.length > 0 ? (
-                  <div className="space-y-2">
-                    {connections.map(connection => (
-                      <div key={connection.id} className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded">
-                        <div className="flex items-center space-x-2">
-                          <Users className="w-4 h-4 text-green-600" />
-                          <div>
-                            <div className="font-medium text-green-800">{connection.name}</div>
-                            {connection.assistants && (
-                              <div className="text-xs text-green-600">
-                                Assistente: {connection.assistants.name}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDisconnectFromQueue(instance.instance_id, connection.id)}
-                          disabled={loading}
-                        >
-                          Desconectar
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-3 bg-gray-50 border border-gray-200 rounded">
-                    <div className="flex items-center space-x-2">
-                      <MessageSquare className="w-4 h-4 text-gray-500" />
-                      <span className="text-sm text-gray-600">Interação Humana - Sem fila configurada</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Connect to Queue */}
-                <div className="flex space-x-2">
-                  <Select value={selectedQueueId} onValueChange={setSelectedQueueId}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Selecionar fila..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="human">
-                        <div className="flex items-center space-x-2">
-                          <MessageSquare className="w-4 h-4" />
-                          <span>Interação Humana (Sem Fila)</span>
-                        </div>
-                      </SelectItem>
-                      {queues.map((queue) => (
-                        <SelectItem key={queue.id} value={queue.id}>
-                          <div className="flex items-center space-x-2">
-                            <Users className="w-4 h-4" />
-                            <span>{queue.name}</span>
-                            {queue.assistants && (
-                              <span className="text-xs text-gray-500">({queue.assistants.name})</span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button 
-                    onClick={() => handleConnectToQueue(instance.instance_id)}
-                    disabled={loading || !selectedQueueId}
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    Conectar
-                  </Button>
-                </div>
-              </div>
+              {/* Show QR Code if available - USANDO NOVO COMPONENTE */}
+              {instanceStatus.hasQrCode && instanceStatus.qrCode && (
+                <QRCodeDisplay
+                  qrCode={instanceStatus.qrCode}
+                  instanceName={displayName}
+                  onRefresh={() => refreshQRCode(instance.instance_id)}
+                  refreshing={isLoading(instance.instance_id)}
+                  autoRefreshInterval={60000}
+                />
+              )}
 
               {/* WhatsApp Status */}
-              {instance.status === 'connected' && (
+              {instanceStatus.status === 'connected' && (
                 <div className="p-4 bg-green-50 border border-green-200 rounded">
                   <div className="flex items-center space-x-2">
                     <CheckCircle className="w-5 h-5 text-green-500" />
@@ -669,44 +411,22 @@ const WhatsAppConnection = () => {
                   className="text-red-600 hover:text-red-700"
                 >
                   <Trash2 className="w-4 h-4 mr-1" />
-                  Desconectar
+                  Remover
                 </Button>
+                
+                {instanceStatus.status === 'connected' && (
+                  <Button size="sm" variant="default" asChild>
+                    <a href={`/client/${clientId}/chat`}>
+                      <MessageSquare className="w-4 h-4 mr-1" />
+                      Abrir Chat
+                    </a>
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
         );
       })}
-
-      {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Conexão</DialogTitle>
-            <DialogDescription>
-              Personalize as configurações da sua conexão WhatsApp
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="edit-name">Nome da Conexão</Label>
-              <Input
-                id="edit-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Digite um nome para identificar esta conexão"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={loading}>
-              {loading ? "Salvando..." : "Salvar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

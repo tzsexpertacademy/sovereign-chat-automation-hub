@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import whatsappService from '@/services/whatsappMultiClient';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
@@ -20,7 +21,7 @@ export const useInstanceManager = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    console.log('🔍 Inicializando Instance Manager - REST Mode');
+    console.log('🔍 Inicializando Instance Manager - YUMER REST Mode v2');
     return () => {
       console.log('🧹 Limpando Instance Manager');
     };
@@ -41,87 +42,85 @@ export const useInstanceManager = () => {
         }
       }));
 
-      // CORREÇÃO: Usar codechatQRService que agora tem auth correta
-      const createResult = await codechatQRService.createInstance(instanceId);
-      console.log(`✅ [INSTANCE-MANAGER] Instância criada:`, createResult);
-
-      // Aguardar 5 segundos para instância inicializar
-      console.log(`⏳ [INSTANCE-MANAGER] Aguardando inicialização...`);
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      // Verificar status e aguardar ficar pronta
-      let attempts = 0;
-      const maxAttempts = 10;
-
-      while (attempts < maxAttempts) {
-        attempts++;
-        console.log(`🔍 [INSTANCE-MANAGER] Tentativa ${attempts}/${maxAttempts} - verificando estado`);
-
-        try {
-          const statusData = await codechatQRService.getInstanceStatus(instanceId);
-          console.log(`📊 [INSTANCE-MANAGER] Estado: ${statusData.state}, Reason: ${statusData.statusReason}`);
-
-          if (statusData.state === 'open') {
-            console.log(`✅ [INSTANCE-MANAGER] Instância online!`);
-            setInstances(prev => ({
-              ...prev,
-              [instanceId]: {
-                ...prev[instanceId],
-                status: 'connected',
-                lastUpdated: Date.now()
-              }
-            }));
-            
-            toast({
-              title: "✅ WhatsApp Conectado!",
-              description: "Instância conectada com sucesso",
-            });
-            return;
-          } else if (statusData.state === 'qr' || statusData.state === 'connecting') {
-            console.log(`📱 [INSTANCE-MANAGER] Estado adequado para QR: ${statusData.state}`);
-            
-            // Tentar obter QR Code
-            const qrResult = await codechatQRService.getQRCode(instanceId);
-            
-            if (qrResult.success && qrResult.qrCode) {
-              console.log(`📱 [INSTANCE-MANAGER] QR Code obtido!`);
-              setInstances(prev => ({
-                ...prev,
-                [instanceId]: {
-                  ...prev[instanceId],
-                  status: 'qr_ready',
-                  qrCode: qrResult.qrCode,
-                  hasQrCode: true,
-                  lastUpdated: Date.now()
-                }
-              }));
-
-              toast({
-                title: "📱 QR Code Disponível!",
-                description: "Escaneie o QR Code para conectar",
-              });
-              return;
-            }
-          }
-
-          // Se ainda está 'close', aguardar mais tempo
-          if (statusData.state === 'close') {
-            console.log(`⏳ [INSTANCE-MANAGER] Instância ainda fechada, aguardando...`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
-          }
-
-        } catch (error: any) {
-          console.error(`❌ [INSTANCE-MANAGER] Erro na tentativa ${attempts}:`, error);
+      // ETAPA 1: Criar instância no YUMER (se não existir)
+      console.log(`📝 [INSTANCE-MANAGER] Verificando/criando instância...`);
+      try {
+        const existsCheck = await codechatQRService.checkInstanceExists(instanceId);
+        if (!existsCheck.exists) {
+          console.log(`📝 [INSTANCE-MANAGER] Criando instância no YUMER...`);
+          await codechatQRService.createInstance(instanceId, `Instance: ${instanceId}`);
+          console.log(`✅ [INSTANCE-MANAGER] Instância criada no YUMER`);
           
-          if (attempts >= maxAttempts) {
-            throw error;
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Aguardar inicialização
+          console.log(`⏳ [INSTANCE-MANAGER] Aguardando 15s para inicialização...`);
+          await new Promise(resolve => setTimeout(resolve, 15000));
         }
+      } catch (createError: any) {
+        console.log(`ℹ️ [INSTANCE-MANAGER] Instância pode já existir: ${createError.message}`);
       }
 
-      throw new Error('Instância não ficou pronta após múltiplas tentativas');
+      // ETAPA 2: Conectar e obter QR direto - ESTRATÉGIA QUE FUNCIONOU!
+      console.log(`🔌 [INSTANCE-MANAGER] Conectando instância...`);
+      const connectResult = await codechatQRService.connectInstance(instanceId);
+      console.log(`📡 [INSTANCE-MANAGER] Connect executado:`, connectResult);
+      
+      // VERIFICAR SE QR VEIO DIRETO DO CONNECT (método que funcionou!)
+      if (connectResult?.base64) {
+        console.log(`🎯 [INSTANCE-MANAGER] QR Code obtido DIRETAMENTE do connect!`);
+        
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            status: 'qr_ready',
+            qrCode: connectResult.base64,
+            hasQrCode: true,
+            lastUpdated: Date.now()
+          }
+        }));
+
+        toast({
+          title: "📱 QR Code Disponível!",
+          description: "Escaneie o QR Code para conectar o WhatsApp",
+        });
+        
+        // ETAPA 3: Iniciar polling para detectar scan (igual ao diagnóstico)
+        console.log(`🔄 [INSTANCE-MANAGER] Iniciando polling para detectar scan...`);
+        startConnectionPolling(instanceId);
+        return;
+      }
+
+      // FALLBACK: Se não veio no connect, buscar via fetchInstance
+      console.log(`⏳ [INSTANCE-MANAGER] QR não veio no connect, aguardando 12s...`);
+      await new Promise(resolve => setTimeout(resolve, 12000));
+      
+      console.log(`📱 [INSTANCE-MANAGER] Buscando QR via fetchInstance...`);
+      const qrResult = await codechatQRService.getQRCodeSimple(instanceId);
+      
+      if (qrResult.success && qrResult.qrCode) {
+        console.log(`✅ [INSTANCE-MANAGER] QR Code obtido via fetchInstance!`);
+        
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            status: 'qr_ready',
+            qrCode: qrResult.qrCode,
+            hasQrCode: true,
+            lastUpdated: Date.now()
+          }
+        }));
+
+        toast({
+          title: "📱 QR Code Disponível!",
+          description: "Escaneie o QR Code para conectar",
+        });
+        
+        startConnectionPolling(instanceId);
+        return;
+      }
+
+      throw new Error('QR Code não disponível após múltiplas tentativas');
       
     } catch (error: any) {
       console.error('❌ [INSTANCE-MANAGER] Erro ao conectar instância:', error);
@@ -147,12 +146,58 @@ export const useInstanceManager = () => {
     }
   };
 
+  // Polling para detectar quando WhatsApp é conectado
+  const startConnectionPolling = (instanceId: string) => {
+    console.log(`🔄 [INSTANCE-MANAGER] Iniciando polling para ${instanceId}...`);
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const details = await codechatQRService.getInstanceDetails(instanceId);
+        
+        if (details.connectionStatus === 'ONLINE' && details.ownerJid) {
+          console.log(`✅ [INSTANCE-MANAGER] WhatsApp conectado! ${details.ownerJid}`);
+          
+          setInstances(prev => ({
+            ...prev,
+            [instanceId]: {
+              ...prev[instanceId],
+              status: 'connected',
+              phoneNumber: details.ownerJid,
+              qrCode: undefined,
+              hasQrCode: false,
+              lastUpdated: Date.now()
+            }
+          }));
+          
+          // Sync com Supabase
+          await whatsappInstancesService.updateInstanceStatus(instanceId, 'connected', {
+            phone_number: details.ownerJid
+          });
+          
+          toast({
+            title: "✅ WhatsApp Conectado!",
+            description: `Conectado: ${details.ownerJid}`,
+          });
+          
+          clearInterval(pollInterval);
+        }
+      } catch (error) {
+        console.warn(`⚠️ [INSTANCE-MANAGER] Erro no polling:`, error);
+      }
+    }, 5000); // Poll a cada 5 segundos
+    
+    // Parar polling após 3 minutos
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      console.log(`⏰ [INSTANCE-MANAGER] Polling finalizado por timeout`);
+    }, 180000);
+  };
+
   const disconnectInstance = async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
       console.log(`🔌 [INSTANCE-MANAGER] Desconectando instância: ${instanceId}`);
       
-      // Usar codechatQRService com auth correta
       const result = await codechatQRService.disconnectInstance(instanceId);
       
       if (result.success) {
@@ -172,7 +217,6 @@ export const useInstanceManager = () => {
         }
       }));
 
-      // Atualizar status no banco
       await whatsappInstancesService.updateInstanceStatus(instanceId, 'disconnected');
 
       toast({
@@ -189,6 +233,37 @@ export const useInstanceManager = () => {
       });
     } finally {
       setLoading(prev => ({ ...prev, [instanceId]: false }));
+    }
+  };
+
+  const refreshQRCode = async (instanceId: string) => {
+    try {
+      console.log(`🔄 [INSTANCE-MANAGER] Atualizando QR Code: ${instanceId}`);
+      
+      const qrResult = await codechatQRService.getQRCodeSimple(instanceId);
+      
+      if (qrResult.success && qrResult.qrCode) {
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            qrCode: qrResult.qrCode,
+            lastUpdated: Date.now()
+          }
+        }));
+        
+        toast({
+          title: "QR Code Atualizado",
+          description: "QR Code foi atualizado com sucesso",
+        });
+      }
+    } catch (error: any) {
+      console.error('❌ [INSTANCE-MANAGER] Erro ao atualizar QR:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao atualizar QR Code",
+        variant: "destructive",
+      });
     }
   };
 
@@ -212,6 +287,7 @@ export const useInstanceManager = () => {
   return {
     connectInstance,
     disconnectInstance,
+    refreshQRCode,
     getInstanceStatus,
     isLoading,
     websocketConnected,

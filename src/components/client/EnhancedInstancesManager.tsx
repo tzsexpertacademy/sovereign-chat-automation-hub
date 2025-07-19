@@ -1,8 +1,10 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { QRCodeDisplay } from "@/components/ui/QRCodeDisplay";
 import { 
   Smartphone, 
   Plus, 
@@ -19,7 +21,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useToast } from "@/hooks/use-toast";
-import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
+import { useInstanceManager } from "@/hooks/useInstanceManager";
 
 const EnhancedInstancesManager = () => {
   const { clientId } = useParams();
@@ -31,15 +33,14 @@ const EnhancedInstancesManager = () => {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
-  // Hook unificado com sistema de recuperação automática
+  // Hook com a nova lógica que funcionou
   const { 
     connectInstance, 
     disconnectInstance,
+    refreshQRCode,
     getInstanceStatus,
-    isLoading,
-    restMode,
-    refreshStatus
-  } = useUnifiedInstanceManager();
+    isLoading
+  } = useInstanceManager();
 
   useEffect(() => {
     if (clientId) {
@@ -172,7 +173,7 @@ const EnhancedInstancesManager = () => {
           icon: <AlertCircle className="w-4 h-4 text-red-500" />,
           text: 'Erro',
           variant: 'destructive' as const,
-          description: 'Falha na conexão - Sistema irá tentar recuperar automaticamente'
+          description: 'Falha na conexão - Tente conectar novamente'
         };
       default:
         return {
@@ -230,11 +231,7 @@ const EnhancedInstancesManager = () => {
       <Alert>
         <Activity className="h-4 w-4" />
         <AlertDescription>
-          {restMode ? (
-            <span className="text-blue-600">🔄 Sistema em modo REST - Auto-recuperação ativa</span>
-          ) : (
-            <span className="text-yellow-600">⚠️ Conectando ao sistema...</span>
-          )}
+          <span className="text-green-600">✅ Sistema YUMER online - Nova lógica de conexão ativa</span>
         </AlertDescription>
       </Alert>
 
@@ -283,7 +280,7 @@ const EnhancedInstancesManager = () => {
             return (
               <Card key={instance.id} className="border">
                 <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-4">
                       {statusInfo.icon}
                       <div className="flex-1">
@@ -351,20 +348,16 @@ const EnhancedInstancesManager = () => {
                     </div>
                   </div>
                   
-                  {/* Show QR Code if available */}
+                  {/* Show QR Code if available - NOVO COMPONENTE */}
                   {instanceStatus.hasQrCode && instanceStatus.qrCode && (
-                    <div className="mt-4 p-4 border rounded-lg bg-muted/50">
-                      <div className="text-center">
-                        <p className="text-sm font-medium mb-2">Escaneie este QR Code:</p>
-                        <img 
-                          src={instanceStatus.qrCode} 
-                          alt="QR Code WhatsApp"
-                          className="mx-auto max-w-[200px] border rounded"
-                        />
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Use o WhatsApp do seu celular para escanear
-                        </p>
-                      </div>
+                    <div className="mt-4">
+                      <QRCodeDisplay
+                        qrCode={instanceStatus.qrCode}
+                        instanceName={instance.custom_name || instance.instance_id}
+                        onRefresh={() => refreshQRCode(instance.instance_id)}
+                        refreshing={isLoading(instance.instance_id)}
+                        autoRefreshInterval={45000}
+                      />
                     </div>
                   )}
                 </CardContent>
