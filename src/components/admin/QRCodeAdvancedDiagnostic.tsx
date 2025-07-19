@@ -84,22 +84,40 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
       addLog('info', '⏳ [QR-SIMPLIFIED] ETAPA 2: Aguardando 18s para inicialização completa...');
       await new Promise(resolve => setTimeout(resolve, 18000));
       
-      // ETAPA 3: Conectar instância
+      // ETAPA 3: Conectar E OBTER QR CODE DIRETAMENTE  
       addLog('info', '🔌 [QR-SIMPLIFIED] ETAPA 3: Conectando instância...');
       const connectResult = await codechatQRService.connectInstance(testInstanceName);
       addLog('success', '📡 [QR-SIMPLIFIED] Connect executado', connectResult);
       
-      // ETAPA 4: Aguardar estabilização pós-connect
-      addLog('info', '⏳ [QR-SIMPLIFIED] ETAPA 4: Aguardando 12s após connect...');
+      // VERIFICAR SE JÁ TEMOS QR CODE NO CONNECT
+      if (connectResult?.base64) {
+        addLog('success', '🎯 [QR-SIMPLIFIED] QR Code obtido DIRETAMENTE do connect!');
+        setQrCode(connectResult.base64);
+        
+        setTestResults({
+          success: true,
+          instanceName: testInstanceName,
+          qrCodeFound: true,
+          method: 'connect_direct',
+          timestamp: new Date().toISOString()
+        });
+        
+        toast.success('🎉 QR Code obtido diretamente do connect!');
+        addLog('success', '✅ [QR-SIMPLIFIED] TESTE CONCLUÍDO COM SUCESSO DIRETO!');
+        return; // Sair sem fazer limpeza - sucesso!
+      }
+
+      // FALLBACK: Se não veio no connect, aguardar e buscar  
+      addLog('info', '⏳ [QR-SIMPLIFIED] ETAPA 4: QR não veio no connect, aguardando 12s...');
       await new Promise(resolve => setTimeout(resolve, 12000));
       
-      // ETAPA 5: Buscar QR Code diretamente - MÉTODO SIMPLIFICADO
+      // ETAPA 5: Buscar QR Code via fetchInstance
       addLog('info', '📱 [QR-SIMPLIFIED] ETAPA 5: Buscando QR Code via fetchInstance...');
       
       const qrResult = await codechatQRService.getQRCodeSimple(testInstanceName);
       
       if (qrResult.success && qrResult.qrCode) {
-        addLog('success', '🎉 [QR-SIMPLIFIED] QR Code obtido com SUCESSO!');
+        addLog('success', '🎉 [QR-SIMPLIFIED] QR Code obtido via fetchInstance!');
         setQrCode(qrResult.qrCode);
         
         setTestResults({
@@ -111,39 +129,21 @@ export const QRCodeAdvancedDiagnostic: React.FC = () => {
         });
         
         toast.success('🎉 QR Code obtido com sucesso!');
+        addLog('success', '✅ [QR-SIMPLIFIED] TESTE CONCLUÍDO COM SUCESSO!');
+        return; // Sair sem fazer limpeza - sucesso!
         
       } else {
-        addLog('warning', `⚠️ [QR-SIMPLIFIED] QR Code não encontrado: ${qrResult.error}`);
+        addLog('error', `❌ [QR-SIMPLIFIED] QR Code não encontrado: ${qrResult.error}`);
         
-        // ETAPA 6: Retry único após mais 10s
-        addLog('info', '🔄 [QR-SIMPLIFIED] ETAPA 6: Retry após 10s adicionais...');
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        setTestResults({
+          success: false,
+          instanceName: testInstanceName,
+          qrCodeFound: false,
+          error: qrResult.error,
+          timestamp: new Date().toISOString()
+        });
         
-        const retryResult = await codechatQRService.getQRCodeSimple(testInstanceName);
-        
-        if (retryResult.success && retryResult.qrCode) {
-          addLog('success', '🎉 [QR-SIMPLIFIED] QR Code obtido no RETRY!');
-          setQrCode(retryResult.qrCode);
-          
-          setTestResults({
-            success: true,
-            instanceName: testInstanceName,
-            qrCodeFound: true,
-            method: 'fetchInstance_retry',
-            timestamp: new Date().toISOString()
-          });
-          
-        } else {
-          addLog('error', `❌ [QR-SIMPLIFIED] QR Code não obtido após retry: ${retryResult.error}`);
-          
-          setTestResults({
-            success: false,
-            instanceName: testInstanceName,
-            qrCodeFound: false,
-            error: retryResult.error,
-            timestamp: new Date().toISOString()
-          });
-        }
+        throw new Error(`QR Code não disponível: ${qrResult.error}`);
       }
       
     } catch (error: any) {
