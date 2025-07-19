@@ -318,15 +318,23 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                      </div>
                    )}
 
-                  {/* QR Code Display CORRIGIDO */}
-                  {selectedInstanceForQR === instance.instance_id && 
-                   getInstanceStatus(instance.instance_id).hasQrCode && 
-                   getInstanceStatus(instance.instance_id).qrCode && (
-                       <QRCodeDisplay 
-                         qrCode={getInstanceStatus(instance.instance_id).qrCode!}
-                         instanceName={instance.yumer_instance_name || instance.instance_id}
-                       />
-                  )}
+                   {/* QR Code Display CORRIGIDO */}
+                   {selectedInstanceForQR === instance.instance_id && (
+                     <div>
+                       <div className="text-xs mb-2 p-2 bg-gray-100 rounded">
+                         Debug: selectedInstanceForQR={selectedInstanceForQR}, 
+                         hasQrCode={getInstanceStatus(instance.instance_id).hasQrCode}, 
+                         qrCode={getInstanceStatus(instance.instance_id).qrCode ? 'exists' : 'missing'}
+                       </div>
+                       {getInstanceStatus(instance.instance_id).hasQrCode && 
+                        getInstanceStatus(instance.instance_id).qrCode && (
+                          <QRCodeDisplay 
+                            qrCode={getInstanceStatus(instance.instance_id).qrCode!}
+                            instanceName={instance.yumer_instance_name || instance.instance_id}
+                          />
+                       )}
+                     </div>
+                   )}
 
                    {/* Connected Info */}
                    {(getInstanceStatus(instance.instance_id).status === 'connected' || instance.status === 'connected') && (
