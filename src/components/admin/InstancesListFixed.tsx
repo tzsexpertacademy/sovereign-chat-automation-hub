@@ -322,12 +322,10 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                   {selectedInstanceForQR === instance.instance_id && 
                    getInstanceStatus(instance.instance_id).hasQrCode && 
                    getInstanceStatus(instance.instance_id).qrCode && (
-                      <QRCodeDisplay 
-                        qrCode={getInstanceStatus(instance.instance_id).qrCode!}
-                        instanceId={instance.instance_id}
-                        title="QR Code WhatsApp (CORRIGIDO)"
-                        description="✅ Escaneie com seu WhatsApp para conectar"
-                      />
+                       <QRCodeDisplay 
+                         qrCode={getInstanceStatus(instance.instance_id).qrCode!}
+                         instanceName={instance.yumer_instance_name || instance.instance_id}
+                       />
                   )}
 
                    {/* Connected Info */}
