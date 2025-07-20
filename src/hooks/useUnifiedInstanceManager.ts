@@ -59,6 +59,22 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       setInstances(prev => {
         const current = prev[instanceId];
         
+        // Se status é connected, priorizar isso sobre qualquer QR code
+        if (status === 'connected') {
+          console.log(`🎯 [UNIFIED-SYNC] Instância conectada detectada via sync: ${instanceId}`);
+          return {
+            ...prev,
+            [instanceId]: {
+              ...current,
+              instanceId,
+              status: 'connected',
+              qrCode: undefined,
+              hasQrCode: false,
+              lastUpdated: Date.now()
+            }
+          };
+        }
+        
         // Se já temos QR code válido e o status é disconnected, manter qr_ready
         if (current?.hasQrCode && current?.qrCode && status === 'disconnected') {
           console.log(`🔒 [UNIFIED-SYNC] Preservando QR code válido para ${instanceId}`);
@@ -86,11 +102,20 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     enabled: true
   });
 
-  // ============ LIMPEZA AUTOMÁTICA DE INSTÂNCIAS ÓRFÃS ============
+  // ============ LIMPEZA AUTOMÁTICA DE INSTÂNCIAS ÓRFÃS + QR EXPIRADOS ============
   const cleanupOrphanInstances = useCallback(async () => {
-    console.log('🧹 [UNIFIED] Iniciando limpeza de instâncias órfãs...');
+    console.log('🧹 [UNIFIED] Iniciando limpeza de instâncias órfãs e QR codes expirados...');
     
     try {
+      // 1. Limpar QR codes expirados do banco
+      const { error: cleanupError } = await supabase.rpc('cleanup_expired_qr_codes');
+      if (cleanupError) {
+        console.warn('⚠️ [UNIFIED] Erro ao limpar QR codes expirados:', cleanupError);
+      } else {
+        console.log('✅ [UNIFIED] QR codes expirados limpos do banco');
+      }
+
+      // 2. Verificar instâncias órfãs no estado local
       const currentInstances = Object.keys(instances);
       const orphansToRemove: string[] = [];
       
@@ -145,8 +170,8 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
 
   // ============ REST-ONLY INITIALIZATION ============
   useEffect(() => {
-    console.log('🔧 [UNIFIED] Inicializando REST-only Instance Manager');
-    console.log('📡 [UNIFIED] CodeChat API v1.3.3 - 100% REST Polling');
+    console.log('🔧 [UNIFIED] Inicializando REST-only Instance Manager CORRIGIDO');
+    console.log('📡 [UNIFIED] CodeChat API v1.3.3 - 100% REST Polling com sync automático');
     
     // Executar limpeza inicial após 5 segundos
     const cleanupTimeout = setTimeout(cleanupOrphanInstances, 5000);
@@ -189,14 +214,14 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, []);
 
-  // ============ VERIFICAR QR CODE NO BANCO - CORRIGIDO ============
-  const checkDatabaseForQRCode = useCallback(async (instanceId: string): Promise<{ qrCode?: string; hasQrCode: boolean; status?: string }> => {
+  // ============ VERIFICAR QR CODE NO BANCO - CORRIGIDO PARA EXPIRAÇÃO ============
+  const checkDatabaseForQRCode = useCallback(async (instanceId: string): Promise<{ qrCode?: string; hasQrCode: boolean; status?: string; phoneNumber?: string }> => {
     try {
       console.log(`🔍 [UNIFIED-DB] Verificando QR Code no banco: ${instanceId}`);
       
       const { data, error } = await supabase
         .from('whatsapp_instances')
-        .select('qr_code, has_qr_code, qr_expires_at, status')
+        .select('qr_code, has_qr_code, qr_expires_at, status, phone_number')
         .eq('instance_id', instanceId)
         .maybeSingle();
       
@@ -210,7 +235,17 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         return { hasQrCode: false };
       }
       
-      // Verificar se QR Code ainda é válido
+      // PRIORIDADE 1: Se status é connected, retornar isso independente de QR
+      if (data.status === 'connected' && data.phone_number) {
+        console.log(`🎯 [UNIFIED-DB] Status CONNECTED encontrado no banco: ${data.phone_number}`);
+        return { 
+          hasQrCode: false, 
+          status: 'connected',
+          phoneNumber: data.phone_number
+        };
+      }
+      
+      // PRIORIDADE 2: Verificar se QR Code ainda é válido
       if (data.has_qr_code && data.qr_code && data.qr_expires_at) {
         const expiresAt = new Date(data.qr_expires_at);
         const now = new Date();
@@ -223,12 +258,23 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             status: data.status 
           };
         } else {
-          console.log(`⏰ [UNIFIED-DB] QR Code expirado no banco`);
+          console.log(`⏰ [UNIFIED-DB] QR Code expirado no banco - removendo...`);
+          
+          // Limpar QR code expirado do banco
+          await supabase
+            .from('whatsapp_instances')
+            .update({
+              qr_code: null,
+              has_qr_code: false,
+              qr_expires_at: null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('instance_id', instanceId);
         }
       }
       
-      console.log(`📭 [UNIFIED-DB] Nenhum QR Code válido no banco`);
-      return { hasQrCode: false, status: data.status };
+      console.log(`📭 [UNIFIED-DB] Nenhum QR Code válido no banco, status: ${data.status}`);
+      return { hasQrCode: false, status: data.status, phoneNumber: data.phone_number };
       
     } catch (error) {
       console.error(`❌ [UNIFIED-DB] Erro ao verificar banco:`, error);
@@ -236,16 +282,44 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, []);
 
-  // ============ ATUALIZAR STATUS VIA REST API + BANCO - CORRIGIDO ============
+  // ============ ATUALIZAR STATUS VIA REST API + BANCO - CORRIGIDO PARA CONNECTED ============
   const refreshStatus = useCallback(async (instanceId: string) => {
     try {
-      console.log(`🔄 [UNIFIED] Verificando status: ${instanceId}`);
+      console.log(`🔄 [UNIFIED] Verificando status CORRIGIDO: ${instanceId}`);
       
-      // 1. PRIMEIRA PRIORIDADE: Verificar QR Code no banco
-      const dbQrCheck = await checkDatabaseForQRCode(instanceId);
+      // 1. PRIMEIRA PRIORIDADE: Verificar banco (pode ter status connected)
+      const dbCheck = await checkDatabaseForQRCode(instanceId);
+      
+      // Se encontrou status connected no banco, usar imediatamente
+      if (dbCheck.status === 'connected' && dbCheck.phoneNumber) {
+        console.log(`🎯 [UNIFIED] Status CONNECTED encontrado no banco - atualizando estado!`);
+        
+        setInstances(prev => ({
+          ...prev,
+          [instanceId]: {
+            ...prev[instanceId],
+            instanceId,
+            status: 'connected',
+            phoneNumber: dbCheck.phoneNumber,
+            qrCode: undefined,
+            hasQrCode: false,
+            lastUpdated: Date.now()
+          }
+        }));
+        
+        // Parar polling para instâncias conectadas
+        stopPollingForInstance(instanceId);
+        
+        toast({
+          title: "✅ WhatsApp Conectado!",
+          description: `Conectado com sucesso: ${dbCheck.phoneNumber}`,
+        });
+        
+        return; // Retornar imediatamente - não precisa consultar API
+      }
       
       // Se encontrou QR válido no banco, usar imediatamente
-      if (dbQrCheck.hasQrCode && dbQrCheck.qrCode) {
+      if (dbCheck.hasQrCode && dbCheck.qrCode) {
         console.log(`🎯 [UNIFIED] QR Code válido encontrado no banco - usando imediatamente!`);
         
         setInstances(prev => ({
@@ -254,7 +328,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             ...prev[instanceId],
             instanceId,
             status: 'qr_ready',
-            qrCode: dbQrCheck.qrCode,
+            qrCode: dbCheck.qrCode,
             hasQrCode: true,
             lastUpdated: Date.now()
           }
@@ -263,11 +337,11 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         return; // Retornar imediatamente - não precisa consultar API
       }
       
-      // 2. Se não tem QR no banco, verificar status na API
+      // 2. Se não tem dados válidos no banco, verificar status na API
       let statusData;
       try {
         statusData = await codechatQRService.getInstanceStatus(instanceId);
-        console.log(`📊 [UNIFIED] Status response:`, statusData);
+        console.log(`📊 [UNIFIED] Status response da API:`, statusData);
       } catch (error) {
         if (error.message?.includes('404')) {
           console.log(`📋 [UNIFIED] Instância ${instanceId} não encontrada na API - removendo do estado`);
@@ -291,10 +365,11 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       if (statusData.state === 'open') {
         mappedStatus = 'connected';
         
-        // Buscar número do telefone
+        // Buscar número do telefone via fetchInstance
         try {
           const details = await codechatQRService.getInstanceDetails(instanceId);
           phoneNumber = details.ownerJid;
+          console.log(`📞 [UNIFIED] Número encontrado: ${phoneNumber}`);
         } catch (error) {
           console.warn(`⚠️ [UNIFIED] Não foi possível buscar número:`, error);
         }
@@ -542,7 +617,8 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       temStatusLocal: !!localStatus,
       statusLocal: localStatus?.status,
       hasQrCodeLocal: localStatus?.hasQrCode,
-      qrCodeExists: !!localStatus?.qrCode
+      qrCodeExists: !!localStatus?.qrCode,
+      phoneNumber: localStatus?.phoneNumber
     });
     
     // Se não tem no estado local, retornar padrão

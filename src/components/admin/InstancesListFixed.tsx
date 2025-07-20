@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +37,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Hook unificado REST-only
+  // Hook unificado REST-only CORRIGIDO
   const { 
     connectInstance, 
     disconnectInstance,
@@ -44,8 +45,42 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     isLoading,
     restMode,
     cleanup,
-    refreshStatus
+    refreshStatus,
+    startPollingForInstance
   } = useUnifiedInstanceManager();
+
+  // ============ FORÇAR SYNC AUTOMÁTICO DE TODAS AS INSTÂNCIAS ============
+  useEffect(() => {
+    console.log('🔄 [ADMIN] Forçando sync automático das instâncias...');
+    
+    const syncAllInstances = async () => {
+      for (const instance of instances) {
+        try {
+          console.log(`🔄 [ADMIN] Sincronizando instância: ${instance.instance_id}`);
+          await refreshStatus(instance.instance_id);
+          
+          // Se a instância está conectada, iniciar polling para monitoramento
+          const status = getInstanceStatus(instance.instance_id);
+          if (status.status === 'connected' || instance.status === 'connected') {
+            console.log(`👁️ [ADMIN] Iniciando polling para instância conectada: ${instance.instance_id}`);
+            startPollingForInstance(instance.instance_id);
+          }
+        } catch (error) {
+          console.warn(`⚠️ [ADMIN] Erro ao sincronizar ${instance.instance_id}:`, error);
+        }
+      }
+    };
+
+    // Executar sync imediato
+    syncAllInstances();
+    
+    // Executar sync a cada 30 segundos
+    const syncInterval = setInterval(syncAllInstances, 30000);
+    
+    return () => {
+      clearInterval(syncInterval);
+    };
+  }, [instances, refreshStatus, getInstanceStatus, startPollingForInstance]);
 
   // ============ FORÇAR REFRESH QUANDO SELECIONAR QR ============
   const handleViewQRCode = async (instanceId: string) => {
@@ -251,12 +286,17 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Instâncias WhatsApp CORRIGIDAS ({instances.length}) - {restMode ? '🔄 Modo REST' : '❌ Erro'}</CardTitle>
+          <CardTitle>Instâncias WhatsApp CORRIGIDAS ({instances.length}) - {restMode ? '🔄 Modo REST + Auto Sync' : '❌ Erro'}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid lg:grid-cols-2 gap-6">
             {instances.map((instance) => {
               const instanceStatus = getInstanceStatus(instance.instance_id);
+              
+              // ============ DETERMINAR STATUS FINAL CORRETO ============
+              const finalStatus = instanceStatus.status === 'connected' || instance.status === 'connected' || instanceStatus.phoneNumber || instance.phone_number ? 'connected' : instanceStatus.status || instance.status;
+              const finalPhoneNumber = instanceStatus.phoneNumber || instance.phone_number;
+              const isConnected = finalStatus === 'connected' && finalPhoneNumber;
               
               return (
                 <Card key={instance.id} className="hover:shadow-lg transition-shadow">
@@ -270,15 +310,15 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                           Cliente: {getClientName(instance.client_id)}
                         </p>
                         <p className="text-sm text-gray-500">
-                          {instance.phone_number || instanceStatus.phoneNumber || 'Desconectado'}
+                          {finalPhoneNumber || 'Desconectado'}
                         </p>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <div className={`w-3 h-3 rounded-full ${getStatusColor(instanceStatus.status || instance.status)}`} />
-                        <Badge variant={instanceStatus.status === 'connected' ? 'default' : 'secondary'}>
+                        <div className={`w-3 h-3 rounded-full ${getStatusColor(finalStatus)}`} />
+                        <Badge variant={isConnected ? 'default' : 'secondary'}>
                           <div className="flex items-center space-x-1">
-                            {getStatusIcon(instanceStatus.status || instance.status)}
-                            <span>{getStatusText(instanceStatus.status || instance.status)}</span>
+                            {getStatusIcon(finalStatus)}
+                            <span>{getStatusText(finalStatus)}</span>
                           </div>
                         </Badge>
                       </div>
@@ -295,7 +335,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                            <span className="text-sm font-medium text-green-900">Instância Sincronizada</span>
                          </div>
                          <p className="text-sm text-green-700 mt-1">
-                           ✅ Token: {instance.auth_token ? 'Válido' : 'Ausente'} | YUMER: Conectado
+                           ✅ Token: {instance.auth_token ? 'Válido' : 'Ausente'} | YUMER: Conectado | Status: {finalStatus}
                          </p>
                        </div>
                      )}
@@ -327,17 +367,21 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                      {selectedInstanceForQR === instance.instance_id && (
                        <div className="p-3 bg-blue-50 border border-blue-200 rounded">
                          <div className="flex items-center justify-between mb-2">
-                           <span className="text-sm font-medium">Status REST API:</span>
+                           <span className="text-sm font-medium">Status REST API CORRIGIDO:</span>
                            <div className="flex items-center space-x-1">
                              <RefreshCw className="w-4 h-4 text-blue-500" />
-                             <span className="text-xs">Modo REST Ativo</span>
+                             <span className="text-xs">Modo REST + Auto Sync</span>
                            </div>
                          </div>
                           <div className="text-sm text-blue-800 space-y-1">
-                            <div>Status: {instanceStatus.status}</div>
-                            <div>Polling: {restMode ? '✅ Ativo' : '❌ Inativo'}</div>
+                            <div>Status Hook: {instanceStatus.status}</div>
+                            <div>Status DB: {instance.status}</div>
+                            <div>Status Final: {finalStatus}</div>
+                            <div>Phone Hook: {instanceStatus.phoneNumber || 'N/A'}</div>
+                            <div>Phone DB: {instance.phone_number || 'N/A'}</div>
+                            <div>Is Connected: {isConnected ? 'SIM' : 'NÃO'}</div>
                             <div className="text-xs text-muted-foreground">
-                              Modo: 100% REST API CodeChat v1.3.3 CORRIGIDO
+                              Modo: 100% REST API CodeChat v1.3.3 + Sync Automático
                             </div>
                           </div>
                        </div>
@@ -348,63 +392,67 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                        <div>
                          <div className="text-xs mb-2 p-2 bg-gray-100 rounded">
                            <div className="space-y-1">
-                             <div>🔍 Debug Info:</div>
+                             <div>🔍 Debug Info CORRIGIDO:</div>
                              <div>• selectedInstanceForQR: {selectedInstanceForQR}</div>
                              <div>• instanceStatus.hasQrCode: {instanceStatus.hasQrCode ? 'true' : 'false'}</div>
                              <div>• instanceStatus.qrCode: {instanceStatus.qrCode ? 'exists' : 'missing'}</div>
                              <div>• instanceStatus.status: {instanceStatus.status}</div>
                              <div>• instance.status (DB): {instance.status}</div>
                              <div>• instance.has_qr_code (DB): {instance.has_qr_code ? 'true' : 'false'}</div>
+                             <div>• finalStatus: {finalStatus}</div>
+                             <div>• isConnected: {isConnected ? 'true' : 'false'}</div>
                            </div>
                          </div>
                          
-                         {/* Mostrar QR Code se disponível */}
-                         {instanceStatus.hasQrCode && instanceStatus.qrCode ? (
-                           <div>
-                             <div className="text-sm text-green-600 mb-2">✅ QR Code encontrado via hook!</div>
-                             <QRCodeDisplay 
-                               qrCode={instanceStatus.qrCode}
-                               instanceName={instance.yumer_instance_name || instance.instance_id}
-                             />
-                           </div>
-                         ) : instance.has_qr_code && instance.qr_code ? (
-                           <div>
-                             <div className="text-sm text-blue-600 mb-2">📋 QR Code encontrado no banco!</div>
-                             <QRCodeDisplay 
-                               qrCode={instance.qr_code}
-                               instanceName={instance.yumer_instance_name || instance.instance_id}
-                             />
+                         {/* Mostrar Connected Info se conectado */}
+                         {isConnected ? (
+                           <div className="text-center p-4 bg-green-50 border border-green-200 rounded">
+                             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                             <div className="text-lg font-semibold text-green-800">WhatsApp Conectado!</div>
+                             <div className="text-sm text-green-700">{finalPhoneNumber}</div>
+                             <div className="text-xs text-green-600 mt-1">
+                               ✅ Instância funcionando perfeitamente
+                             </div>
                            </div>
                          ) : (
-                           <div className="text-sm text-gray-600 p-3 bg-gray-50 rounded">
-                             ⏳ QR Code não disponível. Status: {instanceStatus.status}
-                             {instanceStatus.status === 'connecting' && (
-                               <div className="mt-2 text-xs">
-                                 • Aguardando geração do QR Code...
-                                 <br />
-                                 • O QR code pode levar alguns segundos para aparecer
+                           <>
+                             {/* Mostrar QR Code se disponível */}
+                             {instanceStatus.hasQrCode && instanceStatus.qrCode ? (
+                               <div>
+                                 <div className="text-sm text-green-600 mb-2">✅ QR Code encontrado via hook!</div>
+                                 <QRCodeDisplay 
+                                   qrCode={instanceStatus.qrCode}
+                                   instanceName={instance.yumer_instance_name || instance.instance_id}
+                                 />
+                               </div>
+                             ) : instance.has_qr_code && instance.qr_code ? (
+                               <div>
+                                 <div className="text-sm text-blue-600 mb-2">📋 QR Code encontrado no banco!</div>
+                                 <QRCodeDisplay 
+                                   qrCode={instance.qr_code}
+                                   instanceName={instance.yumer_instance_name || instance.instance_id}
+                                 />
+                               </div>
+                             ) : (
+                               <div className="text-sm text-gray-600 p-3 bg-gray-50 rounded">
+                                 ⏳ QR Code não disponível. Status: {finalStatus}
+                                 {finalStatus === 'connecting' && (
+                                   <div className="mt-2 text-xs">
+                                     • Aguardando geração do QR Code...
+                                     <br />
+                                     • O QR code pode levar alguns segundos para aparecer
+                                   </div>
+                                 )}
                                </div>
                              )}
-                           </div>
+                           </>
                          )}
-                       </div>
-                     )}
-
-                     {/* Connected Info */}
-                     {(instanceStatus.status === 'connected' || instance.status === 'connected') && (
-                       <div className="p-3 bg-green-50 border border-green-200 rounded">
-                         <p className="text-sm text-green-800">
-                           ✅ WhatsApp conectado e funcionando perfeitamente!
-                         </p>
                        </div>
                      )}
 
                      {/* Action Buttons CORRIGIDOS */}
                      <div className="flex space-x-2 pt-2 flex-wrap">
-                      {(instanceStatus.phoneNumber || 
-                        instanceStatus.status === 'connected' || 
-                        instance.phone_number || 
-                        instance.status === 'connected') ? (
+                      {isConnected ? (
                         <>
                           <Button 
                             size="sm" 
