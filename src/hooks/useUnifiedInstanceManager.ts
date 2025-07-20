@@ -7,7 +7,6 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useInstanceSync } from '@/hooks/useInstanceSync';
 import { useRetryWithBackoff } from '@/hooks/useRetryWithBackoff';
-import { instancesUnifiedService } from '@/services/instancesUnifiedService';
 
 interface InstanceStatus {
   instanceId: string;
@@ -22,6 +21,7 @@ interface UseUnifiedInstanceManagerReturn {
   instances: Record<string, InstanceStatus>;
   loading: Record<string, boolean>;
   restMode: boolean;
+  serverOnline: boolean;
   connectInstance: (instanceId: string) => Promise<void>;
   disconnectInstance: (instanceId: string) => Promise<void>;
   getInstanceStatus: (instanceId: string) => InstanceStatus;
@@ -35,10 +35,10 @@ interface UseUnifiedInstanceManagerReturn {
 export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => {
   const [instances, setInstances] = useState<Record<string, InstanceStatus>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const [serverOnline, setServerOnline] = useState(true);
   const { toast } = useToast();
-  const { retryWithBackoff } = useRetryWithBackoff();
 
-  // ============ SYNC REALTIME DO BANCO ============
+  // ============ SYNC REALTIME APENAS QUANDO NECESSÁRIO ============
   const { manualSync } = useInstanceSync({
     onQRCodeUpdate: (instanceId, qrCode) => {
       console.log(`📱 [UNIFIED-SYNC] QR Code recebido via sync: ${instanceId}`);
@@ -59,9 +59,9 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       setInstances(prev => {
         const current = prev[instanceId];
         
-        // Se status é connected, priorizar isso sobre qualquer QR code
         if (status === 'connected') {
-          console.log(`🎯 [UNIFIED-SYNC] Instância conectada detectada via sync: ${instanceId}`);
+          console.log(`🎯 [UNIFIED-SYNC] Conectado detectado - parando polling: ${instanceId}`);
+          stopPollingForInstance(instanceId);
           return {
             ...prev,
             [instanceId]: {
@@ -70,19 +70,6 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
               status: 'connected',
               qrCode: undefined,
               hasQrCode: false,
-              lastUpdated: Date.now()
-            }
-          };
-        }
-        
-        // Se já temos QR code válido e o status é disconnected, manter qr_ready
-        if (current?.hasQrCode && current?.qrCode && status === 'disconnected') {
-          console.log(`🔒 [UNIFIED-SYNC] Preservando QR code válido para ${instanceId}`);
-          return {
-            ...prev,
-            [instanceId]: {
-              ...current,
-              status: 'qr_ready',
               lastUpdated: Date.now()
             }
           };
@@ -102,108 +89,82 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     enabled: true
   });
 
-  // ============ LIMPEZA AUTOMÁTICA DE INSTÂNCIAS ÓRFÃS + QR EXPIRADOS ============
-  const cleanupOrphanInstances = useCallback(async () => {
-    console.log('🧹 [UNIFIED] Iniciando limpeza de instâncias órfãs e QR codes expirados...');
-    
+  // ============ VERIFICAR STATUS DO SERVIDOR ============
+  const checkServerOnline = useCallback(async (): Promise<boolean> => {
     try {
-      // 1. Limpar QR codes expirados do banco
-      const { error: cleanupError } = await supabase.rpc('cleanup_expired_qr_codes');
-      if (cleanupError) {
-        console.warn('⚠️ [UNIFIED] Erro ao limpar QR codes expirados:', cleanupError);
-      } else {
-        console.log('✅ [UNIFIED] QR codes expirados limpos do banco');
-      }
-
-      // 2. Verificar instâncias órfãs no estado local
-      const currentInstances = Object.keys(instances);
-      const orphansToRemove: string[] = [];
-      
-      for (const instanceId of currentInstances) {
-        try {
-          // Verificar se instância existe no banco
-          const dbInstance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
-          
-          if (!dbInstance) {
-            console.log(`🗑️ [UNIFIED] Instância órfã detectada: ${instanceId}`);
-            orphansToRemove.push(instanceId);
-          }
-        } catch (error) {
-          console.warn(`⚠️ [UNIFIED] Erro ao verificar instância ${instanceId}:`, error);
-          // Se erro 404 ou similar, também considerar órfã
-          if (error.message?.includes('404') || error.message?.includes('not found')) {
-            orphansToRemove.push(instanceId);
-          }
-        }
-      }
-      
-      // Remover órfãs do estado local
-      if (orphansToRemove.length > 0) {
-        console.log(`🧹 [UNIFIED] Removendo ${orphansToRemove.length} instâncias órfãs do estado`);
-        
-        setInstances(prev => {
-          const newInstances = { ...prev };
-          orphansToRemove.forEach(instanceId => {
-            delete newInstances[instanceId];
-          });
-          return newInstances;
-        });
-        
-        setLoading(prev => {
-          const newLoading = { ...prev };
-          orphansToRemove.forEach(instanceId => {
-            delete newLoading[instanceId];
-          });
-          return newLoading;
-        });
-        
-        // Parar polling para órfãs
-        orphansToRemove.forEach(instanceId => {
-          stopPollingForInstance(instanceId);
-        });
-      }
-      
+      const response = await fetch('https://yumer.yumerflow.app:8083/', { 
+        method: 'GET',
+        timeout: 5000 
+      });
+      const isOnline = response.ok;
+      setServerOnline(isOnline);
+      return isOnline;
     } catch (error) {
-      console.error('❌ [UNIFIED] Erro na limpeza de órfãs:', error);
+      console.warn('⚠️ [UNIFIED] Servidor offline detectado');
+      setServerOnline(false);
+      return false;
     }
-  }, [instances]);
+  }, []);
 
-  // ============ REST-ONLY INITIALIZATION ============
-  useEffect(() => {
-    console.log('🔧 [UNIFIED] Inicializando REST-only Instance Manager CORRIGIDO');
-    console.log('📡 [UNIFIED] CodeChat API v1.3.3 - 100% REST Polling com sync automático');
-    
-    // Executar limpeza inicial após 5 segundos
-    const cleanupTimeout = setTimeout(cleanupOrphanInstances, 5000);
-    
-    // Executar limpeza a cada 2 minutos
-    const cleanupInterval = setInterval(cleanupOrphanInstances, 120000);
-    
-    return () => {
-      console.log('🧹 [UNIFIED] Cleanup do manager');
-      clearTimeout(cleanupTimeout);
-      clearInterval(cleanupInterval);
-      webhookQRService.cleanup();
-    };
-  }, [cleanupOrphanInstances]);
-
-  // ============ POLLING PARA STATUS ============
+  // ============ POLLING INTELIGENTE - APENAS QUANDO NECESSÁRIO ============
   const pollingIntervals = useState<Map<string, NodeJS.Timeout>>(new Map())[0];
   
   const startPollingForInstance = useCallback((instanceId: string) => {
-    if (pollingIntervals.has(instanceId)) return;
+    // Não iniciar polling se já existe ou servidor offline
+    if (pollingIntervals.has(instanceId)) {
+      console.log(`⚠️ [UNIFIED] Polling já ativo para ${instanceId}`);
+      return;
+    }
+
+    if (!serverOnline) {
+      console.log(`⚠️ [UNIFIED] Servidor offline - não iniciando polling para ${instanceId}`);
+      return;
+    }
     
-    console.log(`🔄 [UNIFIED] Iniciando polling para ${instanceId}`);
+    console.log(`🔄 [UNIFIED] Iniciando polling INTELIGENTE para ${instanceId}`);
+    
+    let pollCount = 0;
+    const maxPolls = 36; // 3 minutos máximo (36 * 5s)
+    
     const interval = setInterval(async () => {
+      pollCount++;
+      
       try {
+        // Verificar se servidor ainda está online
+        const isOnline = await checkServerOnline();
+        if (!isOnline) {
+          console.log(`🔌 [UNIFIED] Servidor offline - parando polling: ${instanceId}`);
+          stopPollingForInstance(instanceId);
+          return;
+        }
+
         await refreshStatus(instanceId);
+        
+        // Verificar se chegou a um estado final
+        const currentStatus = instances[instanceId]?.status;
+        if (currentStatus === 'connected' || currentStatus === 'disconnected') {
+          console.log(`✅ [UNIFIED] Estado final atingido (${currentStatus}) - parando polling: ${instanceId}`);
+          stopPollingForInstance(instanceId);
+          return;
+        }
+
+        // Parar por timeout
+        if (pollCount >= maxPolls) {
+          console.log(`⏰ [UNIFIED] Timeout de polling atingido - parando: ${instanceId}`);
+          stopPollingForInstance(instanceId);
+        }
+        
       } catch (error) {
         console.error(`❌ [UNIFIED] Erro no polling de ${instanceId}:`, error);
+        // Parar em caso de erro persistente
+        if (pollCount > 5) {
+          stopPollingForInstance(instanceId);
+        }
       }
     }, 5000);
     
     pollingIntervals.set(instanceId, interval);
-  }, []);
+  }, [serverOnline, instances]);
   
   const stopPollingForInstance = useCallback((instanceId: string) => {
     const interval = pollingIntervals.get(instanceId);
@@ -214,11 +175,9 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, []);
 
-  // ============ VERIFICAR QR CODE NO BANCO - CORRIGIDO PARA EXPIRAÇÃO ============
+  // ============ VERIFICAR QR CODE NO BANCO - SEM EXCESSOS ============
   const checkDatabaseForQRCode = useCallback(async (instanceId: string): Promise<{ qrCode?: string; hasQrCode: boolean; status?: string; phoneNumber?: string }> => {
     try {
-      console.log(`🔍 [UNIFIED-DB] Verificando QR Code no banco: ${instanceId}`);
-      
       const { data, error } = await supabase
         .from('whatsapp_instances')
         .select('qr_code, has_qr_code, qr_expires_at, status, phone_number')
@@ -231,13 +190,11 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       }
       
       if (!data) {
-        console.log(`📋 [UNIFIED-DB] Instância não encontrada no banco: ${instanceId}`);
         return { hasQrCode: false };
       }
       
-      // PRIORIDADE 1: Se status é connected, retornar isso independente de QR
+      // PRIORIDADE 1: Status connected
       if (data.status === 'connected' && data.phone_number) {
-        console.log(`🎯 [UNIFIED-DB] Status CONNECTED encontrado no banco: ${data.phone_number}`);
         return { 
           hasQrCode: false, 
           status: 'connected',
@@ -245,22 +202,19 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         };
       }
       
-      // PRIORIDADE 2: Verificar se QR Code ainda é válido
+      // PRIORIDADE 2: QR Code válido (não expirado)
       if (data.has_qr_code && data.qr_code && data.qr_expires_at) {
         const expiresAt = new Date(data.qr_expires_at);
         const now = new Date();
         
         if (now < expiresAt) {
-          console.log(`✅ [UNIFIED-DB] QR Code válido encontrado no banco!`);
           return { 
             qrCode: data.qr_code, 
             hasQrCode: true, 
             status: data.status 
           };
         } else {
-          console.log(`⏰ [UNIFIED-DB] QR Code expirado no banco - removendo...`);
-          
-          // Limpar QR code expirado do banco
+          // QR expirado - limpar silenciosamente
           await supabase
             .from('whatsapp_instances')
             .update({
@@ -273,7 +227,6 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }
       
-      console.log(`📭 [UNIFIED-DB] Nenhum QR Code válido no banco, status: ${data.status}`);
       return { hasQrCode: false, status: data.status, phoneNumber: data.phone_number };
       
     } catch (error) {
@@ -282,18 +235,21 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, []);
 
-  // ============ ATUALIZAR STATUS VIA REST API + BANCO - CORRIGIDO PARA CONNECTED ============
+  // ============ REFRESH STATUS - SEM LOOPS ============
   const refreshStatus = useCallback(async (instanceId: string) => {
     try {
-      console.log(`🔄 [UNIFIED] Verificando status CORRIGIDO: ${instanceId}`);
-      
-      // 1. PRIMEIRA PRIORIDADE: Verificar banco (pode ter status connected)
+      // Verificar servidor online primeiro
+      const isOnline = await checkServerOnline();
+      if (!isOnline) {
+        console.log(`🔌 [UNIFIED] Servidor offline - não verificando status: ${instanceId}`);
+        return;
+      }
+
+      // 1. Verificar banco primeiro
       const dbCheck = await checkDatabaseForQRCode(instanceId);
       
-      // Se encontrou status connected no banco, usar imediatamente
+      // Se conectado no banco, usar isso
       if (dbCheck.status === 'connected' && dbCheck.phoneNumber) {
-        console.log(`🎯 [UNIFIED] Status CONNECTED encontrado no banco - atualizando estado!`);
-        
         setInstances(prev => ({
           ...prev,
           [instanceId]: {
@@ -307,21 +263,13 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           }
         }));
         
-        // Parar polling para instâncias conectadas
+        // Parar polling se conectado
         stopPollingForInstance(instanceId);
-        
-        toast({
-          title: "✅ WhatsApp Conectado!",
-          description: `Conectado com sucesso: ${dbCheck.phoneNumber}`,
-        });
-        
-        return; // Retornar imediatamente - não precisa consultar API
+        return;
       }
       
-      // Se encontrou QR válido no banco, usar imediatamente
+      // Se QR válido no banco, usar isso
       if (dbCheck.hasQrCode && dbCheck.qrCode) {
-        console.log(`🎯 [UNIFIED] QR Code válido encontrado no banco - usando imediatamente!`);
-        
         setInstances(prev => ({
           ...prev,
           [instanceId]: {
@@ -333,25 +281,20 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
             lastUpdated: Date.now()
           }
         }));
-        
-        return; // Retornar imediatamente - não precisa consultar API
+        return;
       }
       
-      // 2. Se não tem dados válidos no banco, verificar status na API
+      // 2. Verificar API apenas se necessário
       let statusData;
       try {
         statusData = await codechatQRService.getInstanceStatus(instanceId);
-        console.log(`📊 [UNIFIED] Status response da API:`, statusData);
       } catch (error) {
         if (error.message?.includes('404')) {
-          console.log(`📋 [UNIFIED] Instância ${instanceId} não encontrada na API - removendo do estado`);
-          
           setInstances(prev => {
             const newInstances = { ...prev };
             delete newInstances[instanceId];
             return newInstances;
           });
-          
           stopPollingForInstance(instanceId);
           return;
         }
@@ -361,27 +304,19 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       let mappedStatus = 'disconnected';
       let phoneNumber = undefined;
       
-      // Mapear estados do CodeChat
       if (statusData.state === 'open') {
         mappedStatus = 'connected';
-        
-        // Buscar número do telefone via fetchInstance
         try {
           const details = await codechatQRService.getInstanceDetails(instanceId);
           phoneNumber = details.ownerJid;
-          console.log(`📞 [UNIFIED] Número encontrado: ${phoneNumber}`);
         } catch (error) {
           console.warn(`⚠️ [UNIFIED] Não foi possível buscar número:`, error);
         }
       } else if (statusData.state === 'connecting') {
         mappedStatus = 'connecting';
-      } else if (statusData.state === 'close') {
-        mappedStatus = 'disconnected';
       }
       
-      console.log(`📊 [UNIFIED] Status processado: ${statusData.state} → ${mappedStatus}`);
-      
-      // Atualizar estado local
+      // Atualizar estado
       setInstances(prev => ({
         ...prev,
         [instanceId]: {
@@ -389,7 +324,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           instanceId,
           status: mappedStatus,
           phoneNumber: phoneNumber,
-          qrCode: undefined, // Limpar QR se não tem no banco
+          qrCode: undefined,
           hasQrCode: false,
           lastUpdated: Date.now()
         }
@@ -401,34 +336,35 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         updated_at: new Date().toISOString()
       });
       
-      console.log(`✅ [UNIFIED] Status sincronizado: ${instanceId} → ${mappedStatus}`);
-      
-      // Se conectado, parar polling e notificar
-      if (mappedStatus === 'connected') {
+      // Parar polling se chegou a estado final
+      if (mappedStatus === 'connected' || mappedStatus === 'disconnected') {
         stopPollingForInstance(instanceId);
         
-        toast({
-          title: "✅ WhatsApp Conectado!",
-          description: `Conectado com sucesso${phoneNumber ? `: ${phoneNumber}` : ''}`,
-        });
-      }
-      
-      // Se desconectado, parar polling
-      if (mappedStatus === 'disconnected') {
-        stopPollingForInstance(instanceId);
+        if (mappedStatus === 'connected') {
+          toast({
+            title: "✅ WhatsApp Conectado!",
+            description: `Conectado com sucesso${phoneNumber ? `: ${phoneNumber}` : ''}`,
+          });
+        }
       }
       
     } catch (error) {
       console.error(`❌ [UNIFIED] Erro ao verificar status de ${instanceId}:`, error);
       throw error;
     }
-  }, [toast, stopPollingForInstance, checkDatabaseForQRCode]);
+  }, [toast, stopPollingForInstance, checkDatabaseForQRCode, checkServerOnline]);
 
-  // ============ CONECTAR INSTÂNCIA - CORRIGIDA ============
+  // ============ CONECTAR INSTÂNCIA - SEM LOOPS ============
   const connectInstance = useCallback(async (instanceId: string) => {
     try {
       setLoading(prev => ({ ...prev, [instanceId]: true }));
-      console.log(`🚀 [UNIFIED] Conectando instância com padrão correto da API: ${instanceId}`);
+      console.log(`🚀 [UNIFIED] Conectando instância: ${instanceId}`);
+      
+      // Verificar se servidor está online
+      const isOnline = await checkServerOnline();
+      if (!isOnline) {
+        throw new Error('Servidor WhatsApp está offline');
+      }
       
       // Status inicial
       setInstances(prev => ({
@@ -441,19 +377,15 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         }
       }));
 
-      // ============ USAR LÓGICA QUE FUNCIONOU NO DIAGNÓSTICO ============
-      console.log(`🔌 [UNIFIED] Conectando via codechatQRService.connectInstance...`);
+      // Conectar via API
       const connectResult = await codechatQRService.connectInstance(instanceId);
       
-      console.log(`✅ [UNIFIED] Connect executado:`, connectResult);
-      
-      // CORREÇÃO CRÍTICA: API retorna {count, base64, code} e não {qrCode}
       if (connectResult?.base64) {
-        console.log(`🎯 [UNIFIED] QR Code obtido DIRETAMENTE do connect!`);
+        console.log(`🎯 [UNIFIED] QR Code obtido diretamente!`);
         
-        // Salvar QR Code no banco com expiração
+        // Salvar no banco com expiração
         const expiresAt = new Date();
-        expiresAt.setMinutes(expiresAt.getMinutes() + 3); // QR expira em 3 minutos
+        expiresAt.setMinutes(expiresAt.getMinutes() + 3);
         
         await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready', {
           qr_code: connectResult.base64,
@@ -478,21 +410,18 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
           description: "Escaneie o QR Code para conectar o WhatsApp",
         });
         
-        // Iniciar polling para detectar quando usuário escanear
+        // Iniciar polling apenas para detectar scan
         startPollingForInstance(instanceId);
         return;
       }
 
-      // FALLBACK: Se não veio no connect, aguardar e buscar
-      console.log(`⏳ [UNIFIED] QR não veio no connect, aguardando 12s...`);
-      await new Promise(resolve => setTimeout(resolve, 12000));
+      // Fallback - aguardar QR
+      console.log(`⏳ [UNIFIED] Aguardando QR Code...`);
+      await new Promise(resolve => setTimeout(resolve, 10000));
       
       const qrResult = await codechatQRService.getQRCodeSimple(instanceId);
       
       if (qrResult.success && qrResult.qrCode) {
-        console.log(`✅ [UNIFIED] QR Code obtido via fetchInstance!`);
-        
-        // Salvar QR Code no banco
         const expiresAt = new Date();
         expiresAt.setMinutes(expiresAt.getMinutes() + 3);
         
@@ -547,7 +476,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     } finally {
       setLoading(prev => ({ ...prev, [instanceId]: false }));
     }
-  }, [toast, startPollingForInstance]);
+  }, [toast, startPollingForInstance, checkServerOnline]);
 
   // ============ DESCONECTAR INSTÂNCIA ============
   const disconnectInstance = useCallback(async (instanceId: string) => {
@@ -558,19 +487,17 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
       // Parar polling
       stopPollingForInstance(instanceId);
       
-      // Tentar desconectar via CodeChat API
+      // Desconectar via API
       try {
         const disconnectResponse = await codechatQRService.disconnectInstance(instanceId);
         if (disconnectResponse.success) {
-          console.log(`✅ [UNIFIED] Desconectado via CodeChat API`);
-        } else {
-          console.warn(`⚠️ [UNIFIED] CodeChat disconnect falhou:`, disconnectResponse.error);
+          console.log(`✅ [UNIFIED] Desconectado via API`);
         }
       } catch (error) {
         console.warn(`⚠️ [UNIFIED] Erro na API disconnect:`, error);
       }
       
-      // Atualizar estado local
+      // Atualizar estado
       setInstances(prev => ({
         ...prev,
         [instanceId]: {
@@ -609,39 +536,39 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     }
   }, [toast, stopPollingForInstance]);
 
-  // ============ OBTER STATUS DE INSTÂNCIA - CORRIGIDO PARA PRIORIZAR BANCO ============
+  // ============ INICIALIZAÇÃO SIMPLES ============
+  useEffect(() => {
+    console.log('🔧 [UNIFIED] Inicializando Instance Manager OTIMIZADO');
+    console.log('📡 [UNIFIED] Sem loops infinitos - Polling apenas quando necessário');
+    
+    // Verificar servidor inicial
+    checkServerOnline();
+    
+    // Cleanup na desmontagem
+    return () => {
+      console.log('🧹 [UNIFIED] Cleanup do manager');
+      pollingIntervals.forEach((interval, instanceId) => {
+        clearInterval(interval);
+        console.log(`⏹️ [UNIFIED] Parando polling: ${instanceId}`);
+      });
+      pollingIntervals.clear();
+      webhookQRService.cleanup();
+    };
+  }, [checkServerOnline]);
+
+  // ============ FUNÇÕES AUXILIARES ============
   const getInstanceStatus = useCallback((instanceId: string): InstanceStatus => {
-    const localStatus = instances[instanceId];
-    
-    console.log(`🔍 [UNIFIED-STATUS] Buscando status para ${instanceId}:`, {
-      temStatusLocal: !!localStatus,
-      statusLocal: localStatus?.status,
-      hasQrCodeLocal: localStatus?.hasQrCode,
-      qrCodeExists: !!localStatus?.qrCode,
-      phoneNumber: localStatus?.phoneNumber
-    });
-    
-    // Se não tem no estado local, retornar padrão
-    if (!localStatus) {
-      return { instanceId, status: 'disconnected' };
-    }
-    
-    return localStatus;
+    return instances[instanceId] || { instanceId, status: 'disconnected' };
   }, [instances]);
 
-  // Verificar se está carregando
   const isLoading = useCallback((instanceId: string): boolean => {
     return loading[instanceId] || false;
   }, [loading]);
 
-  // Limpar instância
   const cleanup = useCallback((instanceId: string) => {
     console.log(`🧹 [UNIFIED] Limpando instância: ${instanceId}`);
     
-    // Parar polling se estiver ativo
     stopPollingForInstance(instanceId);
-    
-    // Limpar webhook service
     webhookQRService.clearQRCode(instanceId);
     
     setInstances(prev => {
@@ -655,6 +582,7 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
     instances,
     loading,
     restMode: true,
+    serverOnline,
     connectInstance,
     disconnectInstance,
     getInstanceStatus,

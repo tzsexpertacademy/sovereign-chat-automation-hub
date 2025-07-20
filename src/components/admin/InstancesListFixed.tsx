@@ -23,7 +23,6 @@ import { useNavigate } from "react-router-dom";
 import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
-import { codechatQRService } from "@/services/codechatQRService";
 
 interface InstancesListFixedProps {
   instances: WhatsAppInstanceData[];
@@ -37,7 +36,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Hook unificado REST-only CORRIGIDO
+  // Hook unificado OTIMIZADO - sem loops
   const { 
     connectInstance, 
     disconnectInstance,
@@ -46,152 +45,46 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     restMode,
     cleanup,
     refreshStatus,
-    startPollingForInstance
+    serverOnline
   } = useUnifiedInstanceManager();
 
-  // ============ FORÇAR SYNC AUTOMÁTICO DE TODAS AS INSTÂNCIAS ============
+  // ============ SYNC INICIAL APENAS UMA VEZ ============
   useEffect(() => {
-    console.log('🔄 [ADMIN] Forçando sync automático das instâncias...');
+    console.log('🔄 [ADMIN] Sync inicial das instâncias (uma única vez)');
     
-    const syncAllInstances = async () => {
+    const syncInitialInstances = async () => {
+      // Sync apenas das instâncias existentes, sem loop
       for (const instance of instances) {
         try {
-          console.log(`🔄 [ADMIN] Sincronizando instância: ${instance.instance_id}`);
+          console.log(`🔄 [ADMIN] Sincronizando ${instance.instance_id} uma vez`);
           await refreshStatus(instance.instance_id);
-          
-          // Se a instância está conectada, iniciar polling para monitoramento
-          const status = getInstanceStatus(instance.instance_id);
-          if (status.status === 'connected' || instance.status === 'connected') {
-            console.log(`👁️ [ADMIN] Iniciando polling para instância conectada: ${instance.instance_id}`);
-            startPollingForInstance(instance.instance_id);
-          }
         } catch (error) {
           console.warn(`⚠️ [ADMIN] Erro ao sincronizar ${instance.instance_id}:`, error);
         }
       }
     };
 
-    // Executar sync imediato
-    syncAllInstances();
-    
-    // Executar sync a cada 30 segundos
-    const syncInterval = setInterval(syncAllInstances, 30000);
-    
-    return () => {
-      clearInterval(syncInterval);
-    };
-  }, [instances, refreshStatus, getInstanceStatus, startPollingForInstance]);
+    if (instances.length > 0 && serverOnline) {
+      syncInitialInstances();
+    }
+  }, [instances.length]); // Apenas quando número de instâncias mudar
 
-  // ============ FORÇAR REFRESH QUANDO SELECIONAR QR ============
+  // ============ HANDLERS OTIMIZADOS ============
   const handleViewQRCode = async (instanceId: string) => {
     console.log(`👁️ [ADMIN] Visualizando QR Code para: ${instanceId}`);
     setSelectedInstanceForQR(instanceId);
     
-    // Forçar refresh do status para garantir dados atualizados
-    try {
-      await refreshStatus(instanceId);
-      console.log(`✅ [ADMIN] Status atualizado antes de mostrar QR`);
-    } catch (error) {
-      console.warn(`⚠️ [ADMIN] Erro ao atualizar status:`, error);
+    // Refresh apenas se necessário
+    const currentStatus = getInstanceStatus(instanceId);
+    if (!currentStatus.hasQrCode && currentStatus.status !== 'connected') {
+      try {
+        await refreshStatus(instanceId);
+      } catch (error) {
+        console.warn(`⚠️ [ADMIN] Erro ao atualizar status:`, error);
+      }
     }
   };
 
-  const getClientName = (clientId: string) => {
-    const client = clients.find(c => c.id === clientId);
-    return client?.name || 'Cliente Desconhecido';
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'connected': return 'bg-green-500';
-      case 'qr_ready': return 'bg-blue-500';
-      case 'connecting': return 'bg-yellow-500';
-      case 'checking': return 'bg-purple-500';
-      case 'creating': return 'bg-indigo-500';
-      case 'waiting_qr': return 'bg-orange-500';
-      case 'awaiting_qr': return 'bg-orange-500';
-      case 'authenticated': return 'bg-cyan-500';
-      case 'disconnected': return 'bg-gray-500';
-      case 'not_found': return 'bg-red-500';
-      case 'error': return 'bg-red-600';
-      default: return 'bg-gray-500';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'connected': return 'Conectado';
-      case 'qr_ready': return 'QR Pronto';
-      case 'connecting': return 'Conectando';
-      case 'checking': return 'Verificando';
-      case 'creating': return 'Criando';
-      case 'waiting_qr': return 'Aguardando QR';
-      case 'awaiting_qr': return 'Aguardando QR';
-      case 'websocket_connected': return 'WebSocket OK';
-      case 'authenticated': return 'Autenticado';
-      case 'disconnected': return 'Desconectado';
-      case 'not_found': return 'Não Encontrada';
-      case 'error': return 'Erro';
-      default: return 'Desconhecido';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'connected': return <Wifi className="w-4 h-4" />;
-      case 'qr_ready': return <QrCode className="w-4 h-4" />;
-      case 'connecting': return <RefreshCw className="w-4 h-4 animate-spin" />;
-      case 'authenticated': return <Smartphone className="w-4 h-4" />;
-      case 'disconnected': return <WifiOff className="w-4 h-4" />;
-      default: return <WifiOff className="w-4 h-4" />;
-    }
-  };
-
-  // Verificar se instância é órfã (existe no Supabase mas não tem auth_token)
-  const isOrphanedInstance = (instance: WhatsAppInstanceData) => {
-    return !instance.auth_token || instance.auth_token === null;
-  };
-
-  // Handler para recriar instância órfã
-  const handleRecreateInstance = async (instance: WhatsAppInstanceData) => {
-    if (!confirm('Esta instância está órfã (sem token de autenticação). Deseja recriá-la? Isso irá gerar um novo QR Code.')) {
-      return;
-    }
-
-    try {
-      console.log(`🔄 [ADMIN] Recriando instância órfã: ${instance.instance_id}`);
-      
-      const { instancesUnifiedService } = await import('@/services/instancesUnifiedService');
-      
-      // Deletar instância órfã do banco
-      await instancesUnifiedService.deleteInstance(instance.instance_id);
-      
-      // Recriar com o mesmo nome
-      const customName = instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
-      const result = await instancesUnifiedService.createInstanceForClient(
-        instance.client_id!, 
-        customName
-      );
-
-      console.log('✅ [ADMIN] Instância recriada com sucesso:', result);
-
-      toast({
-        title: "Instância Recriada",
-        description: "Instância órfã foi recriada com sucesso",
-      });
-
-      onInstanceUpdated();
-    } catch (error: any) {
-      console.error(`❌ [ADMIN] Erro ao recriar instância:`, error);
-      toast({
-        title: "Erro ao Recriar",
-        description: error.message || "Falha ao recriar instância órfã",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Handler de conexão corrigido
   const handleConnectInstance = async (instanceId: string) => {
     console.log(`🔗 [ADMIN] CONECTANDO INSTÂNCIA: ${instanceId}`);
     setSelectedInstanceForQR(instanceId);
@@ -199,21 +92,9 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     try {
       await connectInstance(instanceId);
       console.log(`✅ [ADMIN] Conexão iniciada com sucesso`);
-      
-      // Aguardar um pouco e forçar refresh
-      setTimeout(async () => {
-        try {
-          await refreshStatus(instanceId);
-          console.log(`🔄 [ADMIN] Status atualizado pós-conexão`);
-        } catch (error) {
-          console.warn(`⚠️ [ADMIN] Erro ao atualizar status pós-conexão:`, error);
-        }
-      }, 2000);
-      
     } catch (error: any) {
       console.error(`❌ [ADMIN] Erro na conexão:`, error);
       
-      // Detectar erro 404 (instância não encontrada no YUMER)
       if (error.message?.includes('404') || error.message?.includes('Not Found')) {
         toast({
           title: "Instância Órfã Detectada",
@@ -266,6 +147,99 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     }
   };
 
+  // ============ HANDLER PARA RECRIAR ÓRFÃS ============
+  const handleRecreateInstance = async (instance: WhatsAppInstanceData) => {
+    if (!confirm('Esta instância está órfã (sem token de autenticação). Deseja recriá-la? Isso irá gerar um novo QR Code.')) {
+      return;
+    }
+
+    try {
+      console.log(`🔄 [ADMIN] Recriando instância órfã: ${instance.instance_id}`);
+      
+      const { instancesUnifiedService } = await import('@/services/instancesUnifiedService');
+      
+      await instancesUnifiedService.deleteInstance(instance.instance_id);
+      
+      const customName = instance.custom_name || `Instância ${instance.instance_id.split('_').pop()}`;
+      const result = await instancesUnifiedService.createInstanceForClient(
+        instance.client_id!, 
+        customName
+      );
+
+      console.log('✅ [ADMIN] Instância recriada com sucesso:', result);
+
+      toast({
+        title: "Instância Recriada",
+        description: "Instância órfã foi recriada com sucesso",
+      });
+
+      onInstanceUpdated();
+    } catch (error: any) {
+      console.error(`❌ [ADMIN] Erro ao recriar instância:`, error);
+      toast({
+        title: "Erro ao Recriar",
+        description: error.message || "Falha ao recriar instância órfã",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // ============ FUNÇÕES AUXILIARES ============
+  const getClientName = (clientId: string) => {
+    const client = clients.find(c => c.id === clientId);
+    return client?.name || 'Cliente Desconhecido';
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'connected': return 'bg-green-500';
+      case 'qr_ready': return 'bg-blue-500';
+      case 'connecting': return 'bg-yellow-500';
+      case 'checking': return 'bg-purple-500';
+      case 'creating': return 'bg-indigo-500';
+      case 'waiting_qr': return 'bg-orange-500';
+      case 'awaiting_qr': return 'bg-orange-500';
+      case 'authenticated': return 'bg-cyan-500';
+      case 'disconnected': return 'bg-gray-500';
+      case 'not_found': return 'bg-red-500';
+      case 'error': return 'bg-red-600';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'connected': return 'Conectado';
+      case 'qr_ready': return 'QR Pronto';
+      case 'connecting': return 'Conectando';
+      case 'checking': return 'Verificando';
+      case 'creating': return 'Criando';
+      case 'waiting_qr': return 'Aguardando QR';
+      case 'awaiting_qr': return 'Aguardando QR';
+      case 'websocket_connected': return 'WebSocket OK';
+      case 'authenticated': return 'Autenticado';
+      case 'disconnected': return 'Desconectado';
+      case 'not_found': return 'Não Encontrada';
+      case 'error': return 'Erro';
+      default: return 'Desconhecido';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'connected': return <Wifi className="w-4 h-4" />;
+      case 'qr_ready': return <QrCode className="w-4 h-4" />;
+      case 'connecting': return <RefreshCw className="w-4 h-4 animate-spin" />;
+      case 'authenticated': return <Smartphone className="w-4 h-4" />;
+      case 'disconnected': return <WifiOff className="w-4 h-4" />;
+      default: return <WifiOff className="w-4 h-4" />;
+    }
+  };
+
+  const isOrphanedInstance = (instance: WhatsAppInstanceData) => {
+    return !instance.auth_token || instance.auth_token === null;
+  };
+
   if (instances.length === 0) {
     return (
       <Card>
@@ -286,14 +260,31 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Instâncias WhatsApp CORRIGIDAS ({instances.length}) - {restMode ? '🔄 Modo REST + Auto Sync' : '❌ Erro'}</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>Instâncias WhatsApp OTIMIZADAS ({instances.length})</span>
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1">
+                {serverOnline ? (
+                  <Wifi className="w-4 h-4 text-green-500" />
+                ) : (
+                  <WifiOff className="w-4 h-4 text-red-500" />
+                )}
+                <span className="text-xs">
+                  {serverOnline ? 'Servidor Online' : 'Servidor Offline'}
+                </span>
+              </div>
+              <Badge variant={restMode ? 'default' : 'destructive'}>
+                {restMode ? '🔄 Modo REST' : '❌ Erro'}
+              </Badge>
+            </div>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid lg:grid-cols-2 gap-6">
             {instances.map((instance) => {
               const instanceStatus = getInstanceStatus(instance.instance_id);
               
-              // ============ DETERMINAR STATUS FINAL CORRETO ============
+              // Determinar status final
               const finalStatus = instanceStatus.status === 'connected' || instance.status === 'connected' || instanceStatus.phoneNumber || instance.phone_number ? 'connected' : instanceStatus.status || instance.status;
               const finalPhoneNumber = instanceStatus.phoneNumber || instance.phone_number;
               const isConnected = finalStatus === 'connected' && finalPhoneNumber;
@@ -327,7 +318,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                   
                   <CardContent className="space-y-4">
                     
-                     {/* Status da Instância - CORRIGIDO */}
+                     {/* Status da Instância */}
                      {!isOrphanedInstance(instance) && (
                        <div className="p-3 bg-green-50 border border-green-200 rounded">
                          <div className="flex items-center space-x-2">
@@ -335,12 +326,12 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                            <span className="text-sm font-medium text-green-900">Instância Sincronizada</span>
                          </div>
                          <p className="text-sm text-green-700 mt-1">
-                           ✅ Token: {instance.auth_token ? 'Válido' : 'Ausente'} | YUMER: Conectado | Status: {finalStatus}
+                           ✅ Token: {instance.auth_token ? 'Válido' : 'Ausente'} | YUMER: {serverOnline ? 'Online' : 'Offline'} | Status: {finalStatus}
                          </p>
                        </div>
                      )}
 
-                     {/* Alerta de Instância Órfã - CORRIGIDO */}
+                     {/* Alerta de Instância Órfã */}
                      {isOrphanedInstance(instance) && (
                        <div className="p-3 bg-orange-50 border border-orange-200 rounded">
                          <div className="flex items-center justify-between">
@@ -363,14 +354,14 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                        </div>
                      )}
 
-                     {/* Status REST Mode */}
+                     {/* Status Debugging - SEM LOOP */}
                      {selectedInstanceForQR === instance.instance_id && (
                        <div className="p-3 bg-blue-50 border border-blue-200 rounded">
                          <div className="flex items-center justify-between mb-2">
-                           <span className="text-sm font-medium">Status REST API CORRIGIDO:</span>
+                           <span className="text-sm font-medium">Status OTIMIZADO (sem loops):</span>
                            <div className="flex items-center space-x-1">
                              <RefreshCw className="w-4 h-4 text-blue-500" />
-                             <span className="text-xs">Modo REST + Auto Sync</span>
+                             <span className="text-xs">Modo REST Inteligente</span>
                            </div>
                          </div>
                           <div className="text-sm text-blue-800 space-y-1">
@@ -380,30 +371,17 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                             <div>Phone Hook: {instanceStatus.phoneNumber || 'N/A'}</div>
                             <div>Phone DB: {instance.phone_number || 'N/A'}</div>
                             <div>Is Connected: {isConnected ? 'SIM' : 'NÃO'}</div>
+                            <div>Servidor: {serverOnline ? 'Online' : 'Offline'}</div>
                             <div className="text-xs text-muted-foreground">
-                              Modo: 100% REST API CodeChat v1.3.3 + Sync Automático
+                              Modo: Polling inteligente apenas quando necessário
                             </div>
                           </div>
                        </div>
                      )}
 
-                     {/* QR Code Display MELHORADO */}
+                     {/* QR Code Display OTIMIZADO */}
                      {selectedInstanceForQR === instance.instance_id && (
                        <div>
-                         <div className="text-xs mb-2 p-2 bg-gray-100 rounded">
-                           <div className="space-y-1">
-                             <div>🔍 Debug Info CORRIGIDO:</div>
-                             <div>• selectedInstanceForQR: {selectedInstanceForQR}</div>
-                             <div>• instanceStatus.hasQrCode: {instanceStatus.hasQrCode ? 'true' : 'false'}</div>
-                             <div>• instanceStatus.qrCode: {instanceStatus.qrCode ? 'exists' : 'missing'}</div>
-                             <div>• instanceStatus.status: {instanceStatus.status}</div>
-                             <div>• instance.status (DB): {instance.status}</div>
-                             <div>• instance.has_qr_code (DB): {instance.has_qr_code ? 'true' : 'false'}</div>
-                             <div>• finalStatus: {finalStatus}</div>
-                             <div>• isConnected: {isConnected ? 'true' : 'false'}</div>
-                           </div>
-                         </div>
-                         
                          {/* Mostrar Connected Info se conectado */}
                          {isConnected ? (
                            <div className="text-center p-4 bg-green-50 border border-green-200 rounded">
@@ -419,7 +397,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                              {/* Mostrar QR Code se disponível */}
                              {instanceStatus.hasQrCode && instanceStatus.qrCode ? (
                                <div>
-                                 <div className="text-sm text-green-600 mb-2">✅ QR Code encontrado via hook!</div>
+                                 <div className="text-sm text-green-600 mb-2">✅ QR Code disponível!</div>
                                  <QRCodeDisplay 
                                    qrCode={instanceStatus.qrCode}
                                    instanceName={instance.yumer_instance_name || instance.instance_id}
@@ -427,7 +405,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                                </div>
                              ) : instance.has_qr_code && instance.qr_code ? (
                                <div>
-                                 <div className="text-sm text-blue-600 mb-2">📋 QR Code encontrado no banco!</div>
+                                 <div className="text-sm text-blue-600 mb-2">📋 QR Code no banco!</div>
                                  <QRCodeDisplay 
                                    qrCode={instance.qr_code}
                                    instanceName={instance.yumer_instance_name || instance.instance_id}
@@ -440,7 +418,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                                    <div className="mt-2 text-xs">
                                      • Aguardando geração do QR Code...
                                      <br />
-                                     • O QR code pode levar alguns segundos para aparecer
+                                     • O sistema irá detectar automaticamente quando estiver pronto
                                    </div>
                                  )}
                                </div>
@@ -450,7 +428,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                        </div>
                      )}
 
-                     {/* Action Buttons CORRIGIDOS */}
+                     {/* Action Buttons OTIMIZADOS */}
                      <div className="flex space-x-2 pt-2 flex-wrap">
                       {isConnected ? (
                         <>
@@ -458,7 +436,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                             size="sm" 
                             variant="outline"
                             onClick={() => handleDisconnectInstance(instance.instance_id)}
-                            disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline}
+                            disabled={isLoading(instance.instance_id) || !serverOnline}
                           >
                             <Pause className="w-4 h-4 mr-1" />
                             Desconectar
@@ -476,7 +454,7 @@ const InstancesListFixed = ({ instances, clients, onInstanceUpdated, systemHealt
                         <Button 
                           size="sm"
                           onClick={() => handleConnectInstance(instance.instance_id)}
-                          disabled={isLoading(instance.instance_id) || !systemHealth.serverOnline || isOrphanedInstance(instance)}
+                          disabled={isLoading(instance.instance_id) || !serverOnline || isOrphanedInstance(instance)}
                           className="bg-green-600 hover:bg-green-700"
                         >
                           {isLoading(instance.instance_id) ? (
