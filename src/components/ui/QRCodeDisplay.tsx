@@ -1,18 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  QrCode, 
-  RefreshCw, 
-  CheckCircle, 
-  Clock,
-  Smartphone,
-  Copy
-} from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { RefreshCw, QrCode, Copy, CheckCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface QRCodeDisplayProps {
   qrCode: string;
@@ -20,118 +10,128 @@ interface QRCodeDisplayProps {
   onRefresh?: () => void;
   refreshing?: boolean;
   autoRefreshInterval?: number;
+  showInstructions?: boolean;
 }
 
-export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({
-  qrCode,
-  instanceName,
-  onRefresh,
-  refreshing = false,
-  autoRefreshInterval = 30000
-}) => {
+export const QRCodeDisplay = ({ 
+  qrCode, 
+  instanceName, 
+  onRefresh, 
+  refreshing = false, 
+  autoRefreshInterval = 60000,
+  showInstructions = true 
+}: QRCodeDisplayProps) => {
+  const [timeLeft, setTimeLeft] = useState(180); // 3 minutos
+  const [copied, setCopied] = useState(false);
   const { toast } = useToast();
-  const [timeLeft, setTimeLeft] = useState(autoRefreshInterval / 1000);
 
   useEffect(() => {
-    if (!autoRefreshInterval || !onRefresh) return;
+    if (!autoRefreshInterval) return;
 
-    const interval = setInterval(() => {
+    const countdown = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
-          onRefresh();
-          return autoRefreshInterval / 1000;
+          onRefresh?.();
+          return 180; // Reset
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => clearInterval(countdown);
   }, [autoRefreshInterval, onRefresh]);
 
-  const handleCopyQRData = () => {
-    navigator.clipboard.writeText(qrCode);
-    toast({
-      title: "Copiado!",
-      description: "Dados do QR Code copiados para área de transferência",
-    });
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(qrCode);
+      setCopied(true);
+      toast({
+        title: "QR Code copiado!",
+        description: "O código foi copiado para a área de transferência",
+      });
+      
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível copiar o QR Code",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
-    <Card className="border-2 border-green-200 bg-green-50">
-      <CardHeader className="text-center pb-4">
-        <CardTitle className="flex items-center justify-center gap-2 text-green-800">
-          <QrCode className="h-5 w-5" />
-          QR Code WhatsApp
-        </CardTitle>
-        <CardDescription className="text-green-700">
-          Instância: {instanceName}
-        </CardDescription>
-      </CardHeader>
+    <div className="text-center space-y-4">
+      <div className="flex items-center justify-center space-x-2">
+        <QrCode className="w-5 h-5 text-blue-600" />
+        <h4 className="font-medium text-blue-900">
+          QR Code para {instanceName}
+        </h4>
+      </div>
       
-      <CardContent className="space-y-4">
-        {/* QR Code Image */}
-        <div className="flex justify-center">
-          <div className="p-4 bg-white rounded-lg border-2 border-green-300 shadow-sm">
-            <img 
-              src={qrCode} 
-              alt="QR Code WhatsApp"
-              className="max-w-[250px] max-h-[250px] mx-auto"
-            />
-          </div>
+      <div className="bg-white p-4 rounded-lg border-2 border-blue-200 inline-block">
+        <img 
+          src={qrCode} 
+          alt={`QR Code WhatsApp - ${instanceName}`}
+          className="max-w-[200px] mx-auto block"
+        />
+      </div>
+      
+      {showInstructions && (
+        <div className="space-y-2">
+          <p className="text-sm text-blue-700 font-medium">
+            📱 Como conectar:
+          </p>
+          <ol className="text-xs text-blue-600 space-y-1 text-left max-w-md mx-auto">
+            <li>1. Abra o WhatsApp no seu celular</li>
+            <li>2. Toque em "Mais opções" (⋮) ou "Configurações"</li>
+            <li>3. Toque em "Aparelhos conectados"</li>
+            <li>4. Toque em "Conectar um aparelho"</li>
+            <li>5. Escaneie este QR Code</li>
+          </ol>
         </div>
-
-        {/* Instructions */}
-        <Alert>
-          <Smartphone className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Como conectar:</strong>
-            <ol className="list-decimal list-inside mt-2 space-y-1">
-              <li>Abra o WhatsApp no seu celular</li>
-              <li>Toque nos 3 pontos → Dispositivos conectados</li>
-              <li>Toque em "Conectar dispositivo"</li>
-              <li>Aponte a câmera para este QR Code</li>
-            </ol>
-          </AlertDescription>
-        </Alert>
-
-        {/* Status & Actions */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge variant="default" className="bg-blue-500">
-              <Clock className="h-3 w-3 mr-1" />
-              Aguardando scan
-            </Badge>
-            {onRefresh && (
-              <span className="text-xs text-muted-foreground">
-                Refresh em {timeLeft}s
-              </span>
+      )}
+      
+      <div className="flex items-center justify-center space-x-2 text-sm">
+        <div className="text-blue-600">
+          ⏰ Expira em: {formatTime(timeLeft)}
+        </div>
+        
+        <div className="flex space-x-1">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={copyToClipboard}
+            className="h-8 px-2"
+          >
+            {copied ? (
+              <CheckCircle className="w-3 h-3" />
+            ) : (
+              <Copy className="w-3 h-3" />
             )}
-          </div>
+          </Button>
           
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleCopyQRData}
-            >
-              <Copy className="h-3 w-3 mr-1" />
-              Copiar
-            </Button>
-            
-            {onRefresh && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onRefresh}
-                disabled={refreshing}
-              >
-                <RefreshCw className={`h-3 w-3 mr-1 ${refreshing && 'animate-spin'}`} />
-                {refreshing ? 'Atualizando...' : 'Atualizar'}
-              </Button>
-            )}
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="h-8 px-2"
+          >
+            <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+      
+      <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
+        ✅ Sistema integrado com YUMER - QR Code gerado automaticamente
+      </div>
+    </div>
   );
 };
