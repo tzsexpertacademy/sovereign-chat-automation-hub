@@ -16,17 +16,17 @@ import ServerConfiguration from "@/components/admin/ServerConfiguration";
 const AdminDashboard = () => {
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-background">
+      <div className="min-h-screen flex w-full bg-gradient-to-br from-slate-50 to-slate-100">
         <AdminSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <AdminHeader />
           <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-x-auto">
             <Routes>
               <Route path="/" element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<div className="space-y-6"><YumerApiKeyConfig /><AdminOverview /></div>} />
+              <Route path="overview" element={<AdminOverview />} />
               <Route path="clients" element={<ClientsManagement />} />
               <Route path="instances" element={<InstancesMonitor />} />
-              <Route path="server-config" element={<ServerConfiguration />} />
+              <Route path="server-config" element={<div className="space-y-6"><YumerApiKeyConfig /><ServerConfiguration /></div>} />
               <Route path="diagnostics" element={<ConnectionDiagnostics />} />
               <Route path="logs" element={<SystemLogsImproved />} />
               <Route path="websocket" element={<WebSocketStatusDebugSimplified />} />
