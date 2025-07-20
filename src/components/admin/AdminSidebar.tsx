@@ -45,7 +45,7 @@ const AdminSidebar = () => {
             {!collapsed && (
               <div className="min-w-0 flex-1">
                 <h2 className="text-base lg:text-lg font-bold text-foreground truncate">Admin Panel</h2>
-                <p className="text-xs lg:text-sm text-muted-foreground truncate">Sistema WhatsApp SaaS</p>
+                <p className="text-xs lg:text-sm text-muted-foreground truncate">YumerFlow</p>
               </div>
             )}
           </div>
