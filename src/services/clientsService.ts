@@ -15,16 +15,6 @@ export interface ClientData {
   created_at: string;
   updated_at: string;
   last_activity: string;
-  // Stripe integration fields
-  stripe_customer_id?: string | null;
-  stripe_subscription_id?: string | null;
-  subscription_status: 'active' | 'inactive' | 'trialing' | 'past_due' | 'canceled' | 'unpaid';
-  subscription_end_date?: string | null;
-  payment_method?: string | null;
-  billing_address?: any;
-  annual_plan: boolean;
-  trial_end_date?: string | null;
-  mrr: number;
 }
 
 export interface CreateClientData {
@@ -60,13 +50,10 @@ export const clientsService = {
       // Garantir que o max_instances está correto baseado no plano
       const clientsWithCorrectLimits = (data || []).map(client => ({
         ...client,
-        max_instances: getMaxInstancesForPlan(client.plan),
-        subscription_status: client.subscription_status || 'inactive',
-        annual_plan: client.annual_plan || false,
-        mrr: client.mrr || 0
+        max_instances: getMaxInstancesForPlan(client.plan)
       }));
       
-      return clientsWithCorrectLimits as ClientData[];
+      return clientsWithCorrectLimits;
     } catch (error) {
       console.error('Error fetching clients:', error);
       throw error;
@@ -91,12 +78,7 @@ export const clientsService = {
 
       if (error) throw error;
       
-      return {
-        ...data,
-        subscription_status: data.subscription_status || 'inactive',
-        annual_plan: data.annual_plan || false,
-        mrr: data.mrr || 0
-      } as ClientData;
+      return data;
     } catch (error) {
       console.error('Error creating client:', error);
       throw error;
@@ -120,12 +102,7 @@ export const clientsService = {
 
       if (error) throw error;
       
-      return {
-        ...data,
-        subscription_status: data.subscription_status || 'inactive',
-        annual_plan: data.annual_plan || false,
-        mrr: data.mrr || 0
-      } as ClientData;
+      return data;
     } catch (error) {
       console.error('Error updating client:', error);
       throw error;
@@ -177,12 +154,7 @@ export const clientsService = {
 
       if (error && error.code !== 'PGRST116') throw error;
       
-      return data ? {
-        ...data,
-        subscription_status: data.subscription_status || 'inactive',
-        annual_plan: data.annual_plan || false,
-        mrr: data.mrr || 0
-      } as ClientData : null;
+      return data || null;
     } catch (error) {
       console.error('Error fetching client by instance ID:', error);
       return null;
