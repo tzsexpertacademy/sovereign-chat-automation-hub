@@ -92,10 +92,15 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
   // ============ VERIFICAR STATUS DO SERVIDOR ============
   const checkServerOnline = useCallback(async (): Promise<boolean> => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
       const response = await fetch('https://yumer.yumerflow.app:8083/', { 
         method: 'GET',
-        timeout: 5000 
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       const isOnline = response.ok;
       setServerOnline(isOnline);
       return isOnline;
