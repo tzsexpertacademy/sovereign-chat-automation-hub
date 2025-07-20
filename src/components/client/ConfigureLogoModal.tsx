@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Upload, Image, X } from 'lucide-react';
@@ -59,6 +59,9 @@ export function ConfigureLogoModal({ open, onOpenChange, client, onUpdate }: Con
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Configurar Logo da Empresa</DialogTitle>
+          <DialogDescription>
+            Carregue o logo da sua empresa para personalizar o cabeçalho do sistema.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">

@@ -91,7 +91,9 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
             <p className="text-sm font-medium text-gray-900">
               {clientData?.name || `Cliente ${clientId}`}
             </p>
-            <p className="text-xs text-gray-500">YumerFlow Pro</p>
+            <p className="text-xs text-gray-500">
+              YumerFlow {clientData?.plan ? clientData.plan.charAt(0).toUpperCase() + clientData.plan.slice(1) : 'Basic'}
+            </p>
           </div>
           
           <DropdownMenu>

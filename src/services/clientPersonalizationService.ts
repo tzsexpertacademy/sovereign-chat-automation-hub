@@ -33,23 +33,36 @@ export const clientPersonalizationService = {
   },
 
   async uploadAsset(file: File, clientId: string, type: 'avatar' | 'logo') {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${clientId}/${type}-${Date.now()}.${fileExt}`;
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${clientId}/${type}-${Date.now()}.${fileExt}`;
 
-    const { data, error } = await supabase.storage
-      .from('client-assets')
-      .upload(fileName, file, {
-        cacheControl: '3600',
-        upsert: true
-      });
+      console.log('🔄 Iniciando upload:', { fileName, fileSize: file.size, fileType: file.type });
 
-    if (error) throw error;
+      const { data, error } = await supabase.storage
+        .from('client-assets')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('client-assets')
-      .getPublicUrl(fileName);
+      if (error) {
+        console.error('❌ Erro no upload:', error);
+        throw error;
+      }
 
-    return publicUrl;
+      console.log('✅ Upload concluído:', data);
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('client-assets')
+        .getPublicUrl(fileName);
+
+      console.log('🔗 URL pública gerada:', publicUrl);
+      return publicUrl;
+    } catch (error) {
+      console.error('💥 Erro geral no upload:', error);
+      throw error;
+    }
   },
 
   async removeAsset(url: string) {
