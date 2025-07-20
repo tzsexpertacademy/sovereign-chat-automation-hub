@@ -324,19 +324,19 @@ const ConnectionDiagnostics = () => {
   };
 
   // Calcular status geral do sistema
-  const getOverallStatus = () => {
+  const getOverallStatus = (): { status: TestResult['status']; message: string } => {
     const results = Object.values(systemHealth);
     const hasError = results.some(r => r.status === 'error');
     const hasWarning = results.some(r => r.status === 'warning');
     const allSuccess = results.every(r => r.status === 'success');
     const allTested = results.every(r => r.status !== 'idle');
 
-    if (!allTested) return { status: 'idle', message: 'Aguardando diagnóstico' };
-    if (hasError) return { status: 'error', message: 'Problemas detectados' };
-    if (hasWarning) return { status: 'warning', message: 'Funcionando com avisos' };
-    if (allSuccess) return { status: 'success', message: 'Sistema funcionando perfeitamente' };
+    if (!allTested) return { status: 'idle' as const, message: 'Aguardando diagnóstico' };
+    if (hasError) return { status: 'error' as const, message: 'Problemas detectados' };
+    if (hasWarning) return { status: 'warning' as const, message: 'Funcionando com avisos' };
+    if (allSuccess) return { status: 'success' as const, message: 'Sistema funcionando perfeitamente' };
     
-    return { status: 'idle', message: 'Status indefinido' };
+    return { status: 'idle' as const, message: 'Status indefinido' };
   };
 
   const overallStatus = getOverallStatus();
