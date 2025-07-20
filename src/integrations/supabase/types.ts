@@ -253,6 +253,8 @@ export type Database = {
       }
       clients: {
         Row: {
+          annual_plan: boolean | null
+          billing_address: Json | null
           company: string | null
           created_at: string
           current_instances: number | null
@@ -262,12 +264,21 @@ export type Database = {
           instance_status: string | null
           last_activity: string | null
           max_instances: number | null
+          mrr: number | null
           name: string
+          payment_method: string | null
           phone: string | null
           plan: Database["public"]["Enums"]["plan_type"] | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_end_date: string | null
+          subscription_status: string | null
+          trial_end_date: string | null
           updated_at: string
         }
         Insert: {
+          annual_plan?: boolean | null
+          billing_address?: Json | null
           company?: string | null
           created_at?: string
           current_instances?: number | null
@@ -277,12 +288,21 @@ export type Database = {
           instance_status?: string | null
           last_activity?: string | null
           max_instances?: number | null
+          mrr?: number | null
           name: string
+          payment_method?: string | null
           phone?: string | null
           plan?: Database["public"]["Enums"]["plan_type"] | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_end_date?: string | null
+          subscription_status?: string | null
+          trial_end_date?: string | null
           updated_at?: string
         }
         Update: {
+          annual_plan?: boolean | null
+          billing_address?: Json | null
           company?: string | null
           created_at?: string
           current_instances?: number | null
@@ -292,9 +312,16 @@ export type Database = {
           instance_status?: string | null
           last_activity?: string | null
           max_instances?: number | null
+          mrr?: number | null
           name?: string
+          payment_method?: string | null
           phone?: string | null
           plan?: Database["public"]["Enums"]["plan_type"] | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_end_date?: string | null
+          subscription_status?: string | null
+          trial_end_date?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1078,6 +1105,54 @@ export type Database = {
           },
         ]
       }
+      subscription_plans: {
+        Row: {
+          color: string | null
+          created_at: string
+          description: string | null
+          display_order: number | null
+          features: Json | null
+          id: string
+          is_active: boolean | null
+          max_instances: number
+          name: string
+          price_monthly: number
+          price_yearly: number
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          features?: Json | null
+          id?: string
+          is_active?: boolean | null
+          max_instances?: number
+          name: string
+          price_monthly?: number
+          price_yearly?: number
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          features?: Json | null
+          id?: string
+          is_active?: boolean | null
+          max_instances?: number
+          name?: string
+          price_monthly?: number
+          price_yearly?: number
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ticket_events: {
         Row: {
           created_at: string
@@ -1352,7 +1427,9 @@ export type Database = {
         Returns: number
       }
       get_max_instances_for_plan: {
-        Args: { plan_name: Database["public"]["Enums"]["plan_type"] }
+        Args:
+          | { plan_name: Database["public"]["Enums"]["plan_type"] }
+          | { plan_slug: string }
         Returns: number
       }
       upsert_conversation_ticket: {

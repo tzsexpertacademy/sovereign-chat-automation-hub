@@ -1,5 +1,5 @@
 
-import { BarChart3, Users, Activity, FileText, Settings, Shield, Wifi, Stethoscope, Server } from "lucide-react";
+import { BarChart3, Users, Activity, FileText, Settings, Shield, Wifi, Stethoscope, Server, CreditCard } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -18,6 +18,7 @@ const adminItems = [
   { title: "Overview", url: "overview", icon: BarChart3 },
   { title: "Clientes", url: "clients", icon: Users },
   { title: "Instâncias", url: "instances", icon: Activity },
+  { title: "Planos", url: "plans", icon: CreditCard },
   { title: "Configuração Servidor", url: "server-config", icon: Server },
   { title: "Diagnóstico", url: "diagnostics", icon: Stethoscope },
   { title: "Logs", url: "logs", icon: FileText },

@@ -7,6 +7,7 @@ import AdminHeader from "@/components/admin/AdminHeader";
 import AdminOverview from "@/components/admin/AdminOverview";
 import ClientsManagement from "@/components/admin/ClientsManagement";
 import InstancesMonitor from "@/components/admin/InstancesMonitor";
+import PlansManagement from "@/components/admin/PlansManagement";
 import SystemLogsModern from "@/components/admin/SystemLogsModern";
 import AdvancedTools from "@/components/admin/AdvancedTools";
 import YumerApiKeyConfig from "@/components/admin/YumerApiKeyConfig";
@@ -26,6 +27,7 @@ const AdminDashboard = () => {
               <Route path="overview" element={<AdminOverview />} />
               <Route path="clients" element={<ClientsManagement />} />
               <Route path="instances" element={<InstancesMonitor />} />
+              <Route path="plans" element={<PlansManagement />} />
               <Route path="server-config" element={<ServerConfiguration />} />
               <Route path="diagnostics" element={<ConnectionDiagnostics />} />
               <Route path="logs" element={<SystemLogsModern />} />
