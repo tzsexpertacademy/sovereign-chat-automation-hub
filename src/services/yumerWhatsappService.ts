@@ -426,12 +426,15 @@ class YumerWhatsAppService {
     return this.makeRequest(`/instance/qrcode/${instanceName}`, {}, instanceName);
   }
 
-  // ============ ENVIO DE MENSAGENS ============
+  // ============ ENVIO DE MENSAGENS - CORRIGIDO ============
 
-  // POST /message/sendText/:instanceName
+  // POST /message/sendText/:instanceName - CORREÇÃO PRINCIPAL
   async sendTextMessage(instanceName: string, to: string, message: string): Promise<YumerMessage> {
-    // Extrair instanceName do formato completo se necessário
-    const cleanInstanceName = instanceName.includes('_') ? instanceName.split('_')[0] : instanceName;
+    // ❌ REMOVIDA a lógica incorreta de "limpeza" do instanceName
+    // const cleanInstanceName = instanceName.includes('_') ? instanceName.split('_')[0] : instanceName;
+    
+    // ✅ USAR o instanceName completo exatamente como recebido
+    console.log(`📤 [CORREÇÃO] Enviando mensagem usando instanceName COMPLETO: ${instanceName}`);
     
     const payload = {
       number: to,
@@ -444,16 +447,15 @@ class YumerWhatsAppService {
       }
     };
 
-    console.log(`📤 Enviando mensagem de texto para ${to} via instância ${cleanInstanceName}`);
+    console.log(`📤 Enviando mensagem de texto para ${to} via instância ${instanceName}`);
     console.log(`📋 Payload:`, payload);
 
-    return this.makeRequest(`/message/sendText/${cleanInstanceName}`, {
+    return this.makeRequest(`/message/sendText/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify(payload),
-    }, cleanInstanceName);
+    }, instanceName);
   }
 
-  // POST /message/sendMedia/:instanceName
   async sendMediaMessage(instanceName: string, to: string, media: File, caption?: string): Promise<YumerMessage> {
     const formData = new FormData();
     formData.append('to', to);
@@ -467,7 +469,6 @@ class YumerWhatsAppService {
     }).then(res => res.json());
   }
 
-  // POST /message/sendMediaFile/:instanceName
   async sendMediaFile(instanceName: string, to: string, filePath: string, caption?: string): Promise<YumerMessage> {
     return this.makeRequest(`/message/sendMediaFile/${instanceName}`, {
       method: 'POST',
@@ -475,7 +476,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /message/sendWhatsAppAudio/:instanceName
   async sendAudioMessage(instanceName: string, to: string, audio: File): Promise<YumerMessage> {
     const formData = new FormData();
     formData.append('to', to);
@@ -488,7 +488,6 @@ class YumerWhatsAppService {
     }).then(res => res.json());
   }
 
-  // POST /message/sendWhatsAppAudioFile/:instanceName
   async sendAudioFile(instanceName: string, to: string, audioPath: string): Promise<YumerMessage> {
     return this.makeRequest(`/message/sendWhatsAppAudioFile/${instanceName}`, {
       method: 'POST',
@@ -496,7 +495,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /message/sendLocation/:instanceName
   async sendLocation(instanceName: string, to: string, latitude: number, longitude: number, description?: string): Promise<YumerMessage> {
     return this.makeRequest(`/message/sendLocation/${instanceName}`, {
       method: 'POST',
@@ -504,7 +502,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /message/sendContact/:instanceName
   async sendContact(instanceName: string, to: string, contact: YumerContact): Promise<YumerMessage> {
     return this.makeRequest(`/message/sendContact/${instanceName}`, {
       method: 'POST',
@@ -512,7 +509,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /message/sendReaction/:instanceName
   async sendReaction(instanceName: string, to: string, messageId: string, emoji: string): Promise<YumerMessage> {
     return this.makeRequest(`/message/sendReaction/${instanceName}`, {
       method: 'POST',
@@ -520,7 +516,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /message/sendButtons/:instanceName
   async sendButtons(instanceName: string, to: string, text: string, buttons: any[]): Promise<YumerMessage> {
     return this.makeRequest(`/message/sendButtons/${instanceName}`, {
       method: 'POST',
@@ -528,7 +523,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /message/sendList/:instanceName
   async sendList(instanceName: string, to: string, text: string, buttonText: string, list: any[]): Promise<YumerMessage> {
     return this.makeRequest(`/message/sendList/${instanceName}`, {
       method: 'POST',
@@ -536,7 +530,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /message/sendList/legacy/:instanceName
   async sendListLegacy(instanceName: string, to: string, text: string, list: any[]): Promise<YumerMessage> {
     return this.makeRequest(`/message/sendList/legacy/${instanceName}`, {
       method: 'POST',
@@ -544,7 +537,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /message/sendLink/:instanceName
   async sendLink(instanceName: string, to: string, url: string, text?: string): Promise<YumerMessage> {
     return this.makeRequest(`/message/sendLink/${instanceName}`, {
       method: 'POST',
@@ -552,16 +544,12 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // ============ GERENCIAMENTO DE CHATS ============
-
-  // POST /chat/whatsappNumbers/:instanceName
   async getWhatsAppNumbers(instanceName: string): Promise<string[]> {
     return this.makeRequest(`/chat/whatsappNumbers/${instanceName}`, {
       method: 'POST',
     }, instanceName);
   }
 
-  // PUT /chat/markMessageAsRead/:instanceName
   async markMessageAsRead(instanceName: string, chatId: string, messageId: string): Promise<{ success: boolean }> {
     return this.makeRequest(`/chat/markMessageAsRead/${instanceName}`, {
       method: 'PUT',
@@ -569,7 +557,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // PATCH /chat/readMessages/:instanceName
   async markChatAsRead(instanceName: string, chatId: string): Promise<{ success: boolean }> {
     return this.makeRequest(`/chat/readMessages/${instanceName}`, {
       method: 'PATCH',
@@ -577,7 +564,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // PATCH /chat/updatePresence/:instanceName
   async updatePresence(instanceName: string, presence: 'available' | 'unavailable' | 'composing' | 'recording'): Promise<{ success: boolean }> {
     return this.makeRequest(`/chat/updatePresence/${instanceName}`, {
       method: 'PATCH',
@@ -585,7 +571,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // PUT /chat/archiveChat/:instanceName
   async archiveChat(instanceName: string, chatId: string): Promise<{ success: boolean }> {
     return this.makeRequest(`/chat/archiveChat/${instanceName}`, {
       method: 'PUT',
@@ -593,7 +578,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // DELETE /chat/deleteMessageForEveryone/:instanceName
   async deleteMessageForEveryone(instanceName: string, messageId: string): Promise<{ success: boolean }> {
     return this.makeRequest(`/chat/deleteMessageForEveryone/${instanceName}`, {
       method: 'DELETE',
@@ -601,7 +585,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // DELETE /chat/deleteMessage/:instanceName
   async deleteMessage(instanceName: string, messageId: string): Promise<{ success: boolean }> {
     return this.makeRequest(`/chat/deleteMessage/${instanceName}`, {
       method: 'DELETE',
@@ -609,7 +592,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // DELETE /chat/deleteChat/:instanceName
   async deleteChat(instanceName: string, chatId: string): Promise<{ success: boolean }> {
     return this.makeRequest(`/chat/deleteChat/${instanceName}`, {
       method: 'DELETE',
@@ -617,7 +599,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /chat/fetchProfilePictureUrl/:instanceName
   async fetchProfilePictureUrl(instanceName: string, contactId: string): Promise<{ profilePictureUrl: string }> {
     return this.makeRequest(`/chat/fetchProfilePictureUrl/${instanceName}`, {
       method: 'POST',
@@ -625,7 +606,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /chat/findContacts/:instanceName
   async findContacts(instanceName: string, query: string): Promise<YumerContact[]> {
     return this.makeRequest(`/chat/findContacts/${instanceName}`, {
       method: 'POST',
@@ -633,7 +613,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // POST /chat/findMessages/:instanceName
   async findMessages(instanceName: string, chatId: string, limit?: number, offset?: number): Promise<YumerMessage[]> {
     return this.makeRequest(`/chat/findMessages/${instanceName}`, {
       method: 'POST',
@@ -641,14 +620,10 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // GET /chat/findChats/:instanceName
   async findChats(instanceName: string): Promise<YumerChat[]> {
     return this.makeRequest(`/chat/findChats/${instanceName}`, {}, instanceName);
   }
 
-  // ============ GERENCIAMENTO DE GRUPOS ============
-
-  // POST /group/create/:instanceName
   async createGroup(instanceName: string, name: string, participants: string[]): Promise<YumerGroup> {
     return this.makeRequest(`/group/create/${instanceName}`, {
       method: 'POST',
@@ -656,7 +631,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // PUT /group/updateGroupPicture/:instanceName
   async updateGroupPicture(instanceName: string, groupId: string, picture: File): Promise<{ success: boolean }> {
     const formData = new FormData();
     formData.append('groupId', groupId);
@@ -669,27 +643,22 @@ class YumerWhatsAppService {
     }).then(res => res.json());
   }
 
-  // GET /group/findGroupInfos/:instanceName
   async getGroupInfo(instanceName: string, groupId: string): Promise<YumerGroup> {
     return this.makeRequest(`/group/findGroupInfos/${instanceName}?groupId=${groupId}`, {}, instanceName);
   }
 
-  // GET /group/findAllGroups/:instanceName
   async findAllGroups(instanceName: string): Promise<YumerGroup[]> {
     return this.makeRequest(`/group/findAllGroups/${instanceName}`, {}, instanceName);
   }
 
-  // GET /group/participants/:instanceName
   async getGroupParticipants(instanceName: string, groupId: string): Promise<YumerContact[]> {
     return this.makeRequest(`/group/participants/${instanceName}?groupId=${groupId}`, {}, instanceName);
   }
 
-  // GET /group/inviteCode/:instanceName
   async getGroupInviteCode(instanceName: string, groupId: string): Promise<{ inviteCode: string }> {
     return this.makeRequest(`/group/inviteCode/${instanceName}?groupId=${groupId}`, {}, instanceName);
   }
 
-  // PUT /group/revokeInviteCode/:instanceName
   async revokeGroupInviteCode(instanceName: string, groupId: string): Promise<{ inviteCode: string }> {
     return this.makeRequest(`/group/revokeInviteCode/${instanceName}`, {
       method: 'PUT',
@@ -697,7 +666,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // PUT /group/updateParticipant/:instanceName
   async updateGroupParticipant(instanceName: string, groupId: string, participantId: string, action: 'add' | 'remove' | 'promote' | 'demote'): Promise<{ success: boolean }> {
     return this.makeRequest(`/group/updateParticipant/${instanceName}`, {
       method: 'PUT',
@@ -705,7 +673,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // DELETE /group/leaveGroup/:instanceName
   async leaveGroup(instanceName: string, groupId: string): Promise<{ success: boolean }> {
     return this.makeRequest(`/group/leaveGroup/${instanceName}`, {
       method: 'DELETE',
@@ -713,9 +680,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // ============ WEBHOOK / S3 / MÍDIA ============
-
-  // POST /api/v2/instance/:instanceId/webhook (API v2 com descoberta dinâmica)
   async setWebhook(instanceName: string, webhookUrl: string, events: string[]): Promise<{ success: boolean }> {
     try {
       // Descobrir instanceId real
@@ -749,12 +713,10 @@ class YumerWhatsAppService {
     }
   }
 
-  // GET /webhook/find/:instanceName
   async getWebhook(instanceName: string): Promise<{ webhookUrl: string; events: string[] }> {
     return this.makeRequest(`/webhook/find/${instanceName}`, {}, instanceName);
   }
 
-  // POST /s3/findMedia/:instanceName
   async findS3Media(instanceName: string, mediaId: string): Promise<{ mediaUrl: string }> {
     return this.makeRequest(`/s3/findMedia/${instanceName}`, {
       method: 'POST',
@@ -762,7 +724,6 @@ class YumerWhatsAppService {
     }, instanceName);
   }
 
-  // GET /s3/media/url/:id/:instanceName
   async getS3MediaUrl(instanceName: string, mediaId: string): Promise<{ url: string }> {
     return this.makeRequest(`/s3/media/url/${mediaId}/${instanceName}`, {}, instanceName);
   }
