@@ -371,6 +371,64 @@ export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => 
         throw new Error('Servidor WhatsApp está offline');
       }
       
+      // PRIMEIRO: Verificar se já está conectada via API
+      try {
+        const statusData = await codechatQRService.getInstanceStatus(instanceId);
+        if (statusData.state === 'open') {
+          console.log(`✅ [UNIFIED] Instância já está conectada: ${instanceId}`);
+          
+          try {
+            const details = await codechatQRService.getInstanceDetails(instanceId);
+            const phoneNumber = details.ownerJid;
+            
+            setInstances(prev => ({
+              ...prev,
+              [instanceId]: {
+                instanceId,
+                status: 'connected',
+                phoneNumber,
+                hasQrCode: false,
+                lastUpdated: Date.now()
+              }
+            }));
+
+            // Atualizar banco
+            await whatsappInstancesService.updateInstanceStatus(instanceId, 'connected', {
+              phone_number: phoneNumber,
+              updated_at: new Date().toISOString()
+            });
+
+            toast({
+              title: "✅ WhatsApp já Conectado!",
+              description: `WhatsApp já estava conectado${phoneNumber ? `: ${phoneNumber}` : ''}`,
+            });
+            
+            return;
+          } catch (detailsError) {
+            console.warn(`⚠️ [UNIFIED] Erro ao buscar detalhes:`, detailsError);
+            
+            setInstances(prev => ({
+              ...prev,
+              [instanceId]: {
+                instanceId,
+                status: 'connected',
+                hasQrCode: false,
+                lastUpdated: Date.now()
+              }
+            }));
+
+            toast({
+              title: "✅ WhatsApp já Conectado!",
+              description: "WhatsApp já estava conectado",
+            });
+            
+            return;
+          }
+        }
+      } catch (statusError) {
+        console.log(`🔍 [UNIFIED] Instância não conectada, prosseguindo com conexão...`);
+      }
+      
       // Status inicial
       setInstances(prev => ({
         ...prev,

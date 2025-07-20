@@ -67,6 +67,13 @@ const WhatsAppConnection = () => {
       console.log('📱 [WHATSAPP] Instâncias carregadas:', instancesData.length);
       setInstances(instancesData);
 
+      // Verificar status das instâncias carregadas automaticamente
+      for (const instance of instancesData) {
+        setTimeout(() => {
+          refreshStatus(instance.instance_id);
+        }, 1000);
+      }
+
     } catch (error) {
       console.error('❌ [WHATSAPP] Erro ao carregar dados:', error);
       toast({
