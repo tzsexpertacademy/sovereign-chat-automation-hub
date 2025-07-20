@@ -255,7 +255,7 @@ const WhatsAppConnection = () => {
         <div>
           <h1 className="text-3xl font-bold">Conexões WhatsApp</h1>
           <p className="text-muted-foreground">
-            Gerencie suas conexões WhatsApp com a nova lógica otimizada
+            Gerencie suas conexões WhatsApp
           </p>
           {clientData && (
             <div className="flex items-center space-x-4 mt-2">
@@ -303,13 +303,6 @@ const WhatsAppConnection = () => {
         </div>
       </div>
 
-      {/* Status do Sistema */}
-      <Alert>
-        <CheckCircle className="h-4 w-4" />
-        <AlertDescription>
-          <span className="text-green-600">✅ Sistema usando nova lógica YUMER - QR Code direto do connect!</span>
-        </AlertDescription>
-      </Alert>
 
       {/* Limite de Plano */}
       {!canCreateNewInstance() && clientData?.email !== 'thalisportal@gmail.com' && (

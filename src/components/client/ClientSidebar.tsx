@@ -1,5 +1,6 @@
 
 import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { 
   Sidebar, 
   SidebarContent, 
@@ -24,6 +25,7 @@ import {
   Layers3,
   UserCheck
 } from "lucide-react";
+import { clientsService, ClientData } from "@/services/clientsService";
 
 interface ClientSidebarProps {
   clientId: string;
@@ -31,6 +33,23 @@ interface ClientSidebarProps {
 
 const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
   const location = useLocation();
+  const [clientData, setClientData] = useState<ClientData | null>(null);
+
+  useEffect(() => {
+    const loadClientData = async () => {
+      try {
+        const clients = await clientsService.getAllClients();
+        const client = clients.find(c => c.id === clientId);
+        setClientData(client || null);
+      } catch (error) {
+        console.error('Erro ao carregar dados do cliente:', error);
+      }
+    };
+
+    if (clientId) {
+      loadClientData();
+    }
+  }, [clientId]);
   
   const menuItems = [
     { 
@@ -103,8 +122,8 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
             <UserCheck className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h2 className="font-semibold text-gray-900">CRM Dashboard</h2>
-            <p className="text-xs text-gray-500">Cliente: {clientId.slice(0, 8)}</p>
+            <h2 className="font-semibold text-gray-900">YumerFlow</h2>
+            <p className="text-xs text-gray-500">{clientData?.name || `Cliente: ${clientId.slice(0, 8)}`}</p>
           </div>
         </div>
       </SidebarHeader>
