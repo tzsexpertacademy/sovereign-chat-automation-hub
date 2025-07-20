@@ -175,7 +175,7 @@ export class AdminStatsService {
       try {
         const yumerInstances = await yumerWhatsAppService.fetchAllInstances();
         const yumerActive = yumerInstances.filter(i => 
-          i.status === 'connected' || i.status === 'ready' || i.connectionStatus === 'ONLINE'
+          i.status === 'connected' || i.status === 'ready'
         ).length;
 
         return {
