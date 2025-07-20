@@ -21,7 +21,7 @@ const adminItems = [
   { title: "Configuração Servidor", url: "server-config", icon: Server },
   { title: "Diagnóstico", url: "diagnostics", icon: Stethoscope },
   { title: "Logs", url: "logs", icon: FileText },
-  { title: "WebSocket Debug", url: "websocket", icon: Wifi },
+  { title: "Ferramentas Avançadas", url: "advanced", icon: Settings },
 ];
 
 const AdminSidebar = () => {

@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Download, RefreshCw, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { systemLogsService, SystemLogEntry } from "@/services/systemLogsService";
-import LogsStatsCards from "./logs/LogsStatsCards";
-import LogsFiltersBar from "./logs/LogsFiltersBar";
-import LogEntryCard from "./logs/LogEntryCard";
+import LogsStatsCards from "./LogsStatsCards";
+import LogsFiltersBar from "./LogsFiltersBar";
+import LogEntryCard from "./LogEntryCard";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const SystemLogsModern = () => {
