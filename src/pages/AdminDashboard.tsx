@@ -26,7 +26,7 @@ const AdminDashboard = () => {
               <Route path="overview" element={<AdminOverview />} />
               <Route path="clients" element={<ClientsManagement />} />
               <Route path="instances" element={<InstancesMonitor />} />
-              <Route path="server-config" element={<div className="space-y-6"><YumerApiKeyConfig /><ServerConfiguration /></div>} />
+              <Route path="server-config" element={<ServerConfiguration />} />
               <Route path="diagnostics" element={<ConnectionDiagnostics />} />
               <Route path="logs" element={<SystemLogsImproved />} />
               <Route path="websocket" element={<WebSocketStatusDebugSimplified />} />

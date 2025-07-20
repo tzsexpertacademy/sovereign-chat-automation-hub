@@ -104,106 +104,85 @@ const YumerApiKeyConfig = () => {
   const maskedApiKey = apiKey ? `${apiKey.substring(0, 8)}${'*'.repeat(Math.max(0, apiKey.length - 12))}${apiKey.substring(Math.max(8, apiKey.length - 4))}` : '';
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
+    <div className="space-y-4">
+      {!isConfigured && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-center space-x-2">
-            <Key className="w-5 h-5" />
-            <span>Configuração API Key YUMER</span>
-          </div>
-          {isConfigured ? (
-            <Badge className="bg-green-500">
-              <CheckCircle className="w-3 h-3 mr-1" />
-              Configurada
-            </Badge>
-          ) : (
-            <Badge variant="destructive">
-              <XCircle className="w-3 h-3 mr-1" />
-              Não Configurada
-            </Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!isConfigured && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-5 h-5 text-yellow-500" />
-              <div>
-                <p className="font-medium text-yellow-700">API Key necessária</p>
-                <p className="text-sm text-yellow-600 mt-1">
-                  Configure sua API Key do YUMER para usar os recursos de WhatsApp
-                </p>
-              </div>
+            <AlertTriangle className="w-5 h-5 text-yellow-500" />
+            <div>
+              <p className="font-medium text-yellow-700">API Key necessária</p>
+              <p className="text-sm text-yellow-600 mt-1">
+                Configure sua API Key do YUMER para usar os recursos de WhatsApp
+              </p>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        <div className="space-y-3">
-          <div className="flex items-center space-x-2">
-            <div className="flex-1 relative">
-              <Input
-                type={showKey ? "text" : "password"}
-                placeholder="Digite sua API Key do YUMER..."
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                className="pr-10"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="absolute right-1 top-1/2 -translate-y-1/2"
-                onClick={() => setShowKey(!showKey)}
-              >
-                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex space-x-2">
-            <Button onClick={handleSaveApiKey} disabled={!apiKey.trim()}>
-              Salvar API Key
-            </Button>
-            
-            <Button 
-              onClick={testApiKey} 
-              variant="outline" 
-              disabled={!apiKey.trim() || isTestingKey}
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2">
+          <div className="flex-1 relative">
+            <Input
+              type={showKey ? "text" : "password"}
+              placeholder="Digite sua API Key do YUMER..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="pr-10"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute right-1 top-1/2 -translate-y-1/2"
+              onClick={() => setShowKey(!showKey)}
             >
-              {isTestingKey ? 'Testando...' : 'Testar'}
+              {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </Button>
-            
-            {isConfigured && (
-              <Button onClick={handleClearApiKey} variant="destructive">
-                Remover
-              </Button>
-            )}
           </div>
         </div>
 
-        {isConfigured && (
-          <div className="bg-gray-50 rounded p-3">
-            <p className="text-sm text-muted-foreground">
-              <strong>API Key atual:</strong> {showKey ? apiKey : maskedApiKey}
-            </p>
-          </div>
-        )}
+        <div className="flex space-x-2">
+          <Button onClick={handleSaveApiKey} disabled={!apiKey.trim()}>
+            Salvar API Key
+          </Button>
+          
+          <Button 
+            onClick={testApiKey} 
+            variant="outline" 
+            disabled={!apiKey.trim() || isTestingKey}
+          >
+            {isTestingKey ? 'Testando...' : 'Testar'}
+          </Button>
+          
+          {isConfigured && (
+            <Button onClick={handleClearApiKey} variant="destructive">
+              Remover
+            </Button>
+          )}
+        </div>
+      </div>
 
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p><strong>Como obter sua API Key:</strong></p>
-          <ol className="list-decimal list-inside space-y-1 ml-2">
-            <li>Acesse o painel administrativo do YUMER</li>
-            <li>Vá para configurações de API</li>
-            <li>Gere ou copie sua API Key</li>
-            <li>Cole aqui e clique em "Salvar"</li>
-          </ol>
-          <p className="mt-2">
-            <strong>Nota:</strong> A API Key é armazenada localmente no seu navegador.
+      {isConfigured && (
+        <div className="bg-gray-50 rounded p-3">
+          <p className="text-sm text-muted-foreground">
+            <strong>API Key atual:</strong> {showKey ? apiKey : maskedApiKey}
           </p>
         </div>
-      </CardContent>
-    </Card>
+      )}
+
+      <div className="text-xs text-muted-foreground space-y-1">
+        <p><strong>Como obter sua API Key:</strong></p>
+        <ol className="list-decimal list-inside space-y-1 ml-2">
+          <li>Acesse o painel administrativo do YUMER</li>
+          <li>Vá para configurações de API</li>
+          <li>Gere ou copie sua API Key</li>
+          <li>Cole aqui e clique em "Salvar"</li>
+        </ol>
+        <p className="mt-2">
+          <strong>Nota:</strong> A API Key é armazenada localmente no seu navegador.
+        </p>
+      </div>
+    </div>
   );
 };
 

@@ -12,6 +12,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useServerConfig } from '@/hooks/useServerConfig';
+import { getYumerGlobalApiKey } from '@/config/environment';
+import YumerApiKeyConfig from './YumerApiKeyConfig';
 import { 
   Server, 
   Shield, 
@@ -29,7 +31,8 @@ import {
   Globe,
   Webhook,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Key
 } from 'lucide-react';
 
 const ServerConfiguration = () => {
@@ -414,61 +417,71 @@ const ServerConfiguration = () => {
 
         {/* Authentication Configuration */}
         <TabsContent value="auth">
-          <Card>
-            <CardHeader>
-              <CardTitle>Autenticação e Segurança</CardTitle>
-              <CardDescription>Configure as chaves de acesso e timeouts</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="globalApiKey">Chave API Global</Label>
-                <Input
-                  id="globalApiKey"
-                  type="password"
-                  value={config.globalApiKey}
-                  onChange={(e) => handleConfigChange('globalApiKey', e.target.value)}
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="jwtSecret">JWT Secret (WebSocket)</Label>
-                <Input
-                  id="jwtSecret"
-                  type="password"
-                  value={config.jwtSecret}
-                  onChange={(e) => handleConfigChange('jwtSecret', e.target.value)}
-                />
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="requestTimeout">Timeout de Requisições (ms)</Label>
-                  <Input
-                    id="requestTimeout"
-                    type="number"
-                    value={config.requestTimeout}
-                    onChange={(e) => handleConfigChange('requestTimeout', parseInt(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="retryAttempts">Tentativas de Retry</Label>
-                  <Input
-                    id="retryAttempts"
-                    type="number"
-                    value={config.retryAttempts}
-                    onChange={(e) => handleConfigChange('retryAttempts', parseInt(e.target.value))}
-                  />
-                </div>
-              </div>
+          <div className="space-y-6">
+            {/* API Key Configuration */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Key className="w-5 h-5" />
+                  Configuração API Key YUMER
+                </CardTitle>
+                <CardDescription>
+                  Configure sua chave de acesso para conectar ao servidor YUMER
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <YumerApiKeyConfig />
+              </CardContent>
+            </Card>
 
-              <div className="flex justify-end">
-                <Button onClick={handleSaveConfig} disabled={isSaving}>
-                  <Save className="w-4 h-4 mr-2" />
-                  {isSaving ? 'Salvando...' : 'Salvar Autenticação'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+            {/* System Authentication */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Autenticação do Sistema</CardTitle>
+                <CardDescription>Configure timeouts e outras configurações de segurança</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="jwtSecret">JWT Secret (WebSocket)</Label>
+                  <Input
+                    id="jwtSecret"
+                    type="password"
+                    value={config.jwtSecret}
+                    onChange={(e) => handleConfigChange('jwtSecret', e.target.value)}
+                    placeholder="Chave secreta para autenticação JWT"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="requestTimeout">Timeout de Requisições (ms)</Label>
+                    <Input
+                      id="requestTimeout"
+                      type="number"
+                      value={config.requestTimeout}
+                      onChange={(e) => handleConfigChange('requestTimeout', parseInt(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="retryAttempts">Tentativas de Retry</Label>
+                    <Input
+                      id="retryAttempts"
+                      type="number"
+                      value={config.retryAttempts}
+                      onChange={(e) => handleConfigChange('retryAttempts', parseInt(e.target.value))}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveConfig} disabled={isSaving}>
+                    <Save className="w-4 h-4 mr-2" />
+                    {isSaving ? 'Salvando...' : 'Salvar Autenticação'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Advanced Configuration */}
