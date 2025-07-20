@@ -1,40 +1,49 @@
-
-import { useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminSidebar from "@/components/admin/AdminSidebar";
+import { Routes, Route } from "react-router-dom";
 import AdminHeader from "@/components/admin/AdminHeader";
+import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminOverview from "@/components/admin/AdminOverview";
 import ClientsManagement from "@/components/admin/ClientsManagement";
-import InstancesMonitor from "@/components/admin/InstancesMonitor";
-import SystemLogsImproved from "@/components/admin/SystemLogsImproved";
-import WebSocketStatusDebugSimplified from "@/components/admin/WebSocketStatusDebugSimplified";
-import YumerApiKeyConfig from "@/components/admin/YumerApiKeyConfig";
-import ConnectionDiagnostics from "@/components/admin/ConnectionDiagnostics";
-import ServerConfiguration from "@/components/admin/ServerConfiguration";
+import InstancesMonitorClean from "@/components/admin/InstancesMonitorClean";
+import SettingsManagement from "@/components/admin/SettingsManagement";
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 const AdminDashboard = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) {
+      toast({
+        title: "Acesso Restrito",
+        description: "Você precisa estar logado para acessar o painel administrativo.",
+      });
+      navigate("/login");
+    }
+  }, [user, navigate, toast]);
+
+  if (!user) {
+    return null;
+  }
+
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-background">
+      <AdminHeader />
+      <div className="flex">
         <AdminSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
-          <AdminHeader />
-          <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-x-auto">
-            <Routes>
-              <Route path="/" element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<AdminOverview />} />
-              <Route path="clients" element={<ClientsManagement />} />
-              <Route path="instances" element={<InstancesMonitor />} />
-              <Route path="server-config" element={<div className="space-y-6"><YumerApiKeyConfig /><ServerConfiguration /></div>} />
-              <Route path="diagnostics" element={<ConnectionDiagnostics />} />
-              <Route path="logs" element={<SystemLogsImproved />} />
-              <Route path="websocket" element={<WebSocketStatusDebugSimplified />} />
-            </Routes>
-          </main>
-        </div>
+        <main className="flex-1 p-6">
+          <Routes>
+            <Route index element={<AdminOverview />} />
+            <Route path="clients" element={<ClientsManagement />} />
+            <Route path="instances" element={<InstancesMonitorClean />} />
+            <Route path="settings" element={<SettingsManagement />} />
+          </Routes>
+        </main>
       </div>
-    </SidebarProvider>
+    </div>
   );
 };
 
