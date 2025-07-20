@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Plus, Server, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import InstancesListFixed from "./InstancesListFixed";
-import JwtStatusIndicator from "./JwtStatusIndicator";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
@@ -222,130 +221,122 @@ const InstancesMonitor = () => {
   return (
     <InstanceManagerProvider>
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center mb-2">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Monitor de Instâncias</h1>
-            <p className="text-muted-foreground">
-              Gerencie todas as instâncias WhatsApp do sistema
+            <h1 className="text-3xl font-bold tracking-tight text-gradient bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+              Instâncias WhatsApp
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Gerencie e monitore suas instâncias de forma centralizada
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {systemHealth.serverOnline ? (
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-medium text-green-700 dark:text-green-300">Sistema Online</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                <AlertCircle className="w-4 h-4 text-red-600" />
+                <span className="text-sm font-medium text-red-700 dark:text-red-300">Sistema Offline</span>
+              </div>
+            )}
+            <Button size="sm" variant="outline" onClick={loadData}>
+              🔄 Atualizar
+            </Button>
           </div>
         </div>
 
-        {/* REST Status Indicator */}
-        <JwtStatusIndicator 
-          jwtConfigured={restMode}
-          websocketConnected={restMode}
-        />
-
-        {/* Status do Sistema */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Server className="w-5 h-5" />
-              <span>Status do Sistema</span>
+        {/* Criar Nova Instância */}
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-card to-card/80">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Plus className="w-5 h-5 text-primary" />
+              </div>
+              <span>Nova Instância WhatsApp</span>
             </CardTitle>
             <CardDescription>
-              Monitoramento em tempo real do servidor WhatsApp
+              Crie uma nova instância para seus clientes se conectarem ao WhatsApp
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                {getHealthStatusIcon()}
-                <div>
-                  <p className="font-medium">{getHealthStatusText()}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {systemHealth.lastCheck && `Última verificação: ${systemHealth.lastCheck.toLocaleTimeString()}`}
-                  </p>
-                </div>
-              </div>
-              {systemHealth.serverInfo && (
-                <div className="text-right space-y-1">
-                  <p className="text-sm font-medium">
-                    {systemHealth.serverInfo.activeClients}/{systemHealth.serverInfo.totalInstances} instâncias ativas
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Resposta: {systemHealth.serverInfo.responseTime}ms
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Uptime: {Math.floor((Date.now() - systemHealth.serverInfo.uptime * 1000) / 60000)} min
-                  </p>
-                </div>
-              )}
-              <Button size="sm" onClick={checkSystemHealth}>
-                Verificar Status
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Criar Nova Instância */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Plus className="w-5 h-5" />
-              <span>Criar Nova Instância</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="client">Cliente</Label>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              <div className="lg:col-span-4 space-y-2">
+                <Label htmlFor="client" className="text-sm font-medium">Cliente</Label>
                 <select
                   id="client"
                   value={selectedClientId}
                   onChange={(e) => setSelectedClientId(e.target.value)}
-                  className="w-full p-2 border rounded-md"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
                   disabled={creating || !systemHealth.serverOnline}
                 >
                   <option value="">Selecionar Cliente</option>
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
-                      {client.name} ({client.email})
+                      {client.name}
                     </option>
                   ))}
                 </select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="instanceName">Nome da Instância</Label>
+              
+              <div className="lg:col-span-5 space-y-2">
+                <Label htmlFor="instanceName" className="text-sm font-medium">Nome da Instância</Label>
                 <Input
                   id="instanceName"
                   placeholder="Ex: WhatsApp Principal"
                   value={newInstanceName}
                   onChange={(e) => setNewInstanceName(e.target.value)}
                   disabled={creating || !systemHealth.serverOnline}
+                  className="text-sm"
                 />
               </div>
-              <div className="flex items-end">
+              
+              <div className="lg:col-span-3 space-y-2">
+                <Label className="text-sm font-medium opacity-0">Ação</Label>
                 <Button 
                   onClick={createNewInstance}
                   disabled={creating || !selectedClientId || !newInstanceName.trim() || !systemHealth.serverOnline}
                   className="w-full"
+                  size="default"
                 >
-                  {creating ? "Criando..." : "Criar Instância"}
+                  {creating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Criando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Criar Instância
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
             
             {!systemHealth.serverOnline && (
-              <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 text-red-600" />
-                  <p className="text-sm font-medium text-red-800 dark:text-red-200">
-                    Servidor YUMER Offline
-                  </p>
+              <div className="mt-4 p-4 bg-destructive/5 border border-destructive/20 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-destructive">
+                      Servidor Indisponível
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Não é possível criar novas instâncias no momento. Verifique a conectividade.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={checkSystemHealth}
+                    className="ml-auto"
+                  >
+                    Verificar
+                  </Button>
                 </div>
-                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
-                  Não é possível criar novas instâncias. Verifique a conectividade e tente novamente.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={checkSystemHealth}
-                  className="mt-2"
-                >
-                  🔄 Tentar Reconectar
-                </Button>
               </div>
             )}
           </CardContent>
