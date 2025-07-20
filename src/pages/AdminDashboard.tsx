@@ -16,11 +16,11 @@ import ServerConfiguration from "@/components/admin/ServerConfiguration";
 const AdminDashboard = () => {
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gray-50">
+      <div className="min-h-screen flex w-full bg-background">
         <AdminSidebar />
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-w-0">
           <AdminHeader />
-          <main className="flex-1 p-6">
+          <main className="flex-1 p-3 sm:p-4 lg:p-6 overflow-x-auto">
             <Routes>
               <Route path="/" element={<Navigate to="overview" replace />} />
               <Route path="overview" element={<div className="space-y-6"><YumerApiKeyConfig /><AdminOverview /></div>} />

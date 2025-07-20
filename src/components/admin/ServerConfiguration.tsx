@@ -225,29 +225,29 @@ const ServerConfiguration = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header com Status */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header com Status - Responsivo */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Configuração do Servidor</h1>
-          <p className="text-gray-600">Gerencie as configurações de conexão com o backend</p>
+          <h1 className="text-2xl lg:text-3xl font-bold text-foreground">Configuração do Servidor</h1>
+          <p className="text-muted-foreground text-sm lg:text-base">Gerencie as configurações de conexão com o backend</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
           {getStatusBadge()}
-          <div className="text-sm text-gray-500">
-            <Clock className="w-4 h-4 inline mr-1" />
+          <div className="text-xs lg:text-sm text-muted-foreground">
+            <Clock className="w-3 h-3 lg:w-4 lg:h-4 inline mr-1" />
             Última verificação: {new Date(status.lastCheck).toLocaleTimeString()}
           </div>
         </div>
       </div>
 
-      {/* Save Button Global */}
-      <div className="flex justify-end gap-2">
-        <Button onClick={handleRollback} variant="outline" disabled={isLoading}>
+      {/* Save Button Global - Responsivo */}
+      <div className="flex flex-col sm:flex-row justify-start sm:justify-end gap-2">
+        <Button onClick={handleRollback} variant="outline" disabled={isLoading} className="w-full sm:w-auto">
           <RotateCcw className="w-4 h-4 mr-2" />
           Rollback
         </Button>
-        <Button onClick={handleSaveConfig} disabled={isSaving || isLoading}>
+        <Button onClick={handleSaveConfig} disabled={isSaving || isLoading} className="w-full sm:w-auto">
           <Save className="w-4 h-4 mr-2" />
           {isSaving ? 'Salvando...' : 'Salvar Configurações'}
         </Button>
@@ -305,32 +305,38 @@ const ServerConfiguration = () => {
         </Card>
       )}
 
-      {/* Configuration Tabs */}
+      {/* Configuration Tabs - Responsivo */}
       <Tabs defaultValue="primary" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="primary">
-            <Server className="w-4 h-4 mr-2" />
-            Servidor
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1">
+          <TabsTrigger value="primary" className="text-xs sm:text-sm">
+            <Server className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Servidor</span>
+            <span className="sm:hidden">Server</span>
           </TabsTrigger>
-          <TabsTrigger value="auth">
-            <Shield className="w-4 h-4 mr-2" />
-            Autenticação
+          <TabsTrigger value="auth" className="text-xs sm:text-sm">
+            <Shield className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Autenticação</span>
+            <span className="sm:hidden">Auth</span>
           </TabsTrigger>
-          <TabsTrigger value="advanced">
-            <Settings className="w-4 h-4 mr-2" />
-            Avançado
+          <TabsTrigger value="advanced" className="text-xs sm:text-sm">
+            <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Avançado</span>
+            <span className="sm:hidden">Config</span>
           </TabsTrigger>
-          <TabsTrigger value="frontend">
-            <Globe className="w-4 h-4 mr-2" />
-            Frontend
+          <TabsTrigger value="frontend" className="text-xs sm:text-sm">
+            <Globe className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Frontend</span>
+            <span className="sm:hidden">Front</span>
           </TabsTrigger>
-          <TabsTrigger value="webhooks">
-            <Webhook className="w-4 h-4 mr-2" />
-            Webhooks
+          <TabsTrigger value="webhooks" className="text-xs sm:text-sm">
+            <Webhook className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Webhooks</span>
+            <span className="sm:hidden">Hook</span>
           </TabsTrigger>
-          <TabsTrigger value="backup">
-            <Database className="w-4 h-4 mr-2" />
-            Backup
+          <TabsTrigger value="backup" className="text-xs sm:text-sm">
+            <Database className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Backup</span>
+            <span className="sm:hidden">Bkp</span>
           </TabsTrigger>
         </TabsList>
 
@@ -341,9 +347,9 @@ const ServerConfiguration = () => {
               <CardTitle>Configuração Primária do Servidor</CardTitle>
               <CardDescription>Configure a URL e porta do servidor backend</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-2">
                   <Label htmlFor="serverUrl">URL Completa do Servidor</Label>
                   <Input
                     id="serverUrl"
@@ -352,7 +358,7 @@ const ServerConfiguration = () => {
                     placeholder="https://yumer.yumerflow.app:8083"
                   />
                 </div>
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="host">Host/Domínio</Label>
                   <Input
                     id="host"
@@ -363,8 +369,8 @@ const ServerConfiguration = () => {
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-2">
                   <Label htmlFor="port">Porta</Label>
                   <Input
                     id="port"
@@ -373,7 +379,7 @@ const ServerConfiguration = () => {
                     onChange={(e) => handleConfigChange('port', parseInt(e.target.value))}
                   />
                 </div>
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="protocol">Protocolo</Label>
                   <Select value={config.protocol} onValueChange={(value) => handleConfigChange('protocol', value)}>
                     <SelectTrigger>
@@ -385,7 +391,7 @@ const ServerConfiguration = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="basePath">Path Base (opcional)</Label>
                   <Input
                     id="basePath"
@@ -397,7 +403,7 @@ const ServerConfiguration = () => {
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={handleSaveConfig} disabled={isSaving}>
+                <Button onClick={handleSaveConfig} disabled={isSaving} className="w-full sm:w-auto">
                   <Save className="w-4 h-4 mr-2" />
                   {isSaving ? 'Salvando...' : 'Salvar Servidor'}
                 </Button>
