@@ -21,8 +21,9 @@ const isDevelopment = config.environment === 'development';
 
 // ============ API KEY CONFIGURATION ============
 export const getYumerGlobalApiKey = (): string | null => {
-  // First try from dynamic config, then fallback to localStorage
-  return config.globalApiKey || localStorage.getItem('yumer_global_api_key');
+  // Get from dynamic config (always up to date)
+  const currentConfig = serverConfigService.getConfig();
+  return currentConfig.globalApiKey || localStorage.getItem('yumer_global_api_key');
 };
 
 export const setYumerGlobalApiKey = (apiKey: string): void => {
@@ -41,8 +42,9 @@ export const hasYumerGlobalApiKey = (): boolean => {
   return !!getYumerGlobalApiKey();
 };
 
-// Export dynamic config
+// Export dynamic config with real-time updates
 export const getServerConfig = () => {
+  // Always get fresh config
   const currentConfig = serverConfigService.getConfig();
   
   return {
@@ -73,22 +75,41 @@ export const getServerConfig = () => {
     requestTimeout: currentConfig.requestTimeout,
     retryAttempts: currentConfig.retryAttempts,
     offlineMode: currentConfig.offlineMode,
-    fallbackServerUrl: currentConfig.fallbackServerUrl
+    fallbackServerUrl: currentConfig.fallbackServerUrl,
+    
+    // Frontend integration
+    lovableDomain: currentConfig.lovableDomain,
+    supabaseUrl: currentConfig.supabaseUrl,
+    corsOrigins: currentConfig.corsOrigins,
+    
+    // Webhooks for admin
+    adminWebhooks: currentConfig.adminWebhooks
   };
 };
 
-// Subscribe to configuration changes
+// Subscribe to configuration changes and update global variables
 serverConfigService.subscribe((newConfig) => {
   console.log('🔄 Configuração do servidor atualizada:', newConfig);
   
-  // Update global variables (if needed by legacy code)
+  // Update global variables (for compatibility with existing code)
   (window as any).YUMER_CONFIG = {
     SERVER_URL: newConfig.serverUrl,
     API_BASE_URL: newConfig.serverUrl + newConfig.basePath,
     SOCKET_URL: serverConfigService.getWebSocketUrl(),
     config: newConfig
   };
+  
+  // Dispatch custom event for components that need to react to config changes
+  window.dispatchEvent(new CustomEvent('yumer-config-updated', { detail: newConfig }));
 });
+
+// Initialize global config on window for backward compatibility
+(window as any).YUMER_CONFIG = {
+  SERVER_URL: config.serverUrl,
+  API_BASE_URL: config.serverUrl + config.basePath,
+  SOCKET_URL: serverConfigService.getWebSocketUrl(),
+  config: config
+};
 
 console.log('✅ Configuração YUMER Backend Dinâmica:', {
   SERVER_URL,
@@ -98,5 +119,13 @@ console.log('✅ Configuração YUMER Backend Dinâmica:', {
   backendType: 'yumer',
   environment: config.environment,
   configurable: true,
-  note: 'Configuração totalmente dinâmica via AdminPanel'
+  adminConfigurable: true,
+  note: 'Sistema 100% configurável via Admin Panel'
 });
+
+// Export compatibility functions for existing code
+export {
+  isProduction,
+  isDevelopment,
+  serverConfigService
+};

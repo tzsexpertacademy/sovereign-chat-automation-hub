@@ -6,6 +6,7 @@ export const useServerConfig = () => {
   const [config, setConfig] = useState<ServerConfig>(serverConfigService.getConfig());
   const [status, setStatus] = useState<ServerStatus>(serverConfigService.getStatus());
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const unsubscribe = serverConfigService.subscribe((newConfig) => {
@@ -22,6 +23,19 @@ export const useServerConfig = () => {
       setConfig(serverConfigService.getConfig());
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const saveConfig = async (): Promise<boolean> => {
+    setIsSaving(true);
+    try {
+      const success = serverConfigService.saveConfigExplicitly();
+      if (success) {
+        setConfig(serverConfigService.getConfig());
+      }
+      return success;
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -62,19 +76,31 @@ export const useServerConfig = () => {
     setConfig(serverConfigService.getConfig());
   };
 
+  const rollbackConfig = () => {
+    const success = serverConfigService.rollbackConfig();
+    if (success) {
+      setConfig(serverConfigService.getConfig());
+    }
+    return success;
+  };
+
   return {
     config,
     status,
     isLoading,
+    isSaving,
     updateConfig,
+    saveConfig,
     testConnection,
     validateConfig,
     exportConfig,
     importConfig,
     resetToDefaults,
+    rollbackConfig,
     // Convenience getters
     apiUrl: serverConfigService.getApiUrl(),
     webSocketUrl: serverConfigService.getWebSocketUrl(),
-    headers: serverConfigService.getHeaders()
+    headers: serverConfigService.getHeaders(),
+    frontendIntegration: serverConfigService.getFrontendIntegrationInfo()
   };
 };

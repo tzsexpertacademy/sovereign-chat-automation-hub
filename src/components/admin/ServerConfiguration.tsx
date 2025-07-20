@@ -24,7 +24,12 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Wifi
+  Wifi,
+  Save,
+  Globe,
+  Webhook,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 
 const ServerConfiguration = () => {
@@ -32,12 +37,16 @@ const ServerConfiguration = () => {
     config, 
     status, 
     isLoading, 
-    updateConfig, 
+    isSaving,
+    updateConfig,
+    saveConfig,
     testConnection, 
     validateConfig,
     exportConfig,
     importConfig,
-    resetToDefaults 
+    resetToDefaults,
+    rollbackConfig,
+    frontendIntegration
   } = useServerConfig();
 
   const { toast } = useToast();
@@ -46,6 +55,39 @@ const ServerConfiguration = () => {
 
   const handleConfigChange = (field: string, value: any) => {
     updateConfig({ [field]: value });
+  };
+
+  const handleWebhookChange = (webhookType: string, field: string, value: any) => {
+    const webhooks = { ...config.adminWebhooks };
+    (webhooks as any)[webhookType] = {
+      ...(webhooks as any)[webhookType],
+      [field]: value
+    };
+    updateConfig({ adminWebhooks: webhooks });
+  };
+
+  const handleSaveConfig = async () => {
+    try {
+      const success = await saveConfig();
+      if (success) {
+        toast({
+          title: "✅ Configuração salva",
+          description: "Todas as alterações foram aplicadas com sucesso",
+        });
+      } else {
+        toast({
+          title: "❌ Erro ao salvar",
+          description: "Não foi possível salvar a configuração",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "❌ Erro ao salvar",
+        description: "Erro interno ao salvar configuração",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleTestConnection = async () => {
@@ -150,6 +192,30 @@ const ServerConfiguration = () => {
     });
   };
 
+  const handleRollback = () => {
+    const success = rollbackConfig();
+    if (success) {
+      toast({
+        title: "↩️ Rollback realizado",
+        description: "Configuração anterior restaurada",
+      });
+    } else {
+      toast({
+        title: "⚠️ Rollback não disponível",
+        description: "Nenhum backup encontrado",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: `📋 ${label} copiado`,
+      description: "Conteúdo copiado para a área de transferência",
+    });
+  };
+
   const getStatusBadge = () => {
     if (status.isOnline) {
       return <Badge className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Online</Badge>;
@@ -173,6 +239,18 @@ const ServerConfiguration = () => {
             Última verificação: {new Date(status.lastCheck).toLocaleTimeString()}
           </div>
         </div>
+      </div>
+
+      {/* Save Button Global */}
+      <div className="flex justify-end gap-2">
+        <Button onClick={handleRollback} variant="outline" disabled={isLoading}>
+          <RotateCcw className="w-4 h-4 mr-2" />
+          Rollback
+        </Button>
+        <Button onClick={handleSaveConfig} disabled={isSaving || isLoading}>
+          <Save className="w-4 h-4 mr-2" />
+          {isSaving ? 'Salvando...' : 'Salvar Configurações'}
+        </Button>
       </div>
 
       {/* Status Card */}
@@ -229,7 +307,7 @@ const ServerConfiguration = () => {
 
       {/* Configuration Tabs */}
       <Tabs defaultValue="primary" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="primary">
             <Server className="w-4 h-4 mr-2" />
             Servidor
@@ -242,13 +320,17 @@ const ServerConfiguration = () => {
             <Settings className="w-4 h-4 mr-2" />
             Avançado
           </TabsTrigger>
+          <TabsTrigger value="frontend">
+            <Globe className="w-4 h-4 mr-2" />
+            Frontend
+          </TabsTrigger>
+          <TabsTrigger value="webhooks">
+            <Webhook className="w-4 h-4 mr-2" />
+            Webhooks
+          </TabsTrigger>
           <TabsTrigger value="backup">
             <Database className="w-4 h-4 mr-2" />
             Backup
-          </TabsTrigger>
-          <TabsTrigger value="tests">
-            <TestTube className="w-4 h-4 mr-2" />
-            Testes
           </TabsTrigger>
         </TabsList>
 
@@ -313,6 +395,13 @@ const ServerConfiguration = () => {
                   />
                 </div>
               </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleSaveConfig} disabled={isSaving}>
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSaving ? 'Salvando...' : 'Salvar Servidor'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -364,6 +453,13 @@ const ServerConfiguration = () => {
                     onChange={(e) => handleConfigChange('retryAttempts', parseInt(e.target.value))}
                   />
                 </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleSaveConfig} disabled={isSaving}>
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSaving ? 'Salvando...' : 'Salvar Autenticação'}
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -432,8 +528,288 @@ const ServerConfiguration = () => {
                   </Select>
                 </div>
               </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleSaveConfig} disabled={isSaving}>
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSaving ? 'Salvando...' : 'Salvar Avançado'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Frontend Integration */}
+        <TabsContent value="frontend">
+          <Card>
+            <CardHeader>
+              <CardTitle>Integração Frontend</CardTitle>
+              <CardDescription>Informações necessárias para configurar o backend</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="lovableDomain">Domínio Lovable</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="lovableDomain"
+                    value={config.lovableDomain}
+                    onChange={(e) => handleConfigChange('lovableDomain', e.target.value)}
+                    placeholder="https://projeto.lovableproject.com"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(config.lovableDomain, 'Domínio Lovable')}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="supabaseUrl">URL Supabase</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="supabaseUrl"
+                    value={config.supabaseUrl}
+                    onChange={(e) => handleConfigChange('supabaseUrl', e.target.value)}
+                    placeholder="https://projeto.supabase.co"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(config.supabaseUrl, 'URL Supabase')}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="supabaseAnonKey">Chave Anônima Supabase</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="supabaseAnonKey"
+                    type="password"
+                    value={config.supabaseAnonKey}
+                    onChange={(e) => handleConfigChange('supabaseAnonKey', e.target.value)}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(config.supabaseAnonKey, 'Chave Anônima')}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="corsOrigins">Origins CORS (separados por vírgula)</Label>
+                <Textarea
+                  id="corsOrigins"
+                  value={config.corsOrigins.join(', ')}
+                  onChange={(e) => handleConfigChange('corsOrigins', e.target.value.split(',').map(s => s.trim()))}
+                  placeholder="https://dominio1.com, https://dominio2.com"
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="rateLimitRequests">Limite de Requisições</Label>
+                  <Input
+                    id="rateLimitRequests"
+                    type="number"
+                    value={config.rateLimitRequests}
+                    onChange={(e) => handleConfigChange('rateLimitRequests', parseInt(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="rateLimitWindow">Janela de Tempo (segundos)</Label>
+                  <Input
+                    id="rateLimitWindow"
+                    type="number"
+                    value={config.rateLimitWindow}
+                    onChange={(e) => handleConfigChange('rateLimitWindow', parseInt(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-2">ℹ️ Informações para o Backend:</h4>
+                <div className="space-y-1 text-sm text-gray-600">
+                  <div><strong>Adicionar ao CORS:</strong> {config.lovableDomain}</div>
+                  <div><strong>Webhook QR Code:</strong> {frontendIntegration.webhookUrls.qrCode}</div>
+                  <div><strong>Webhook Mensagens:</strong> {frontendIntegration.webhookUrls.message}</div>
+                  <div><strong>Rate Limit:</strong> {config.rateLimitRequests} req/{config.rateLimitWindow}s</div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleSaveConfig} disabled={isSaving}>
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSaving ? 'Salvando...' : 'Salvar Frontend'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Administrative Webhooks */}
+        <TabsContent value="webhooks">
+          <div className="space-y-4">
+            {/* QR Code Webhook */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Webhook QR Code</CardTitle>
+                <CardDescription>Configurações para receber QR Codes via webhook</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Habilitado</Label>
+                  <Switch
+                    checked={config.adminWebhooks.qrCodeWebhook.enabled}
+                    onCheckedChange={(checked) => handleWebhookChange('qrCodeWebhook', 'enabled', checked)}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="qrWebhookUrl">URL do Webhook</Label>
+                  <Input
+                    id="qrWebhookUrl"
+                    value={config.adminWebhooks.qrCodeWebhook.url}
+                    onChange={(e) => handleWebhookChange('qrCodeWebhook', 'url', e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="qrWebhookEvents">Eventos (separados por vírgula)</Label>
+                  <Input
+                    id="qrWebhookEvents"
+                    value={config.adminWebhooks.qrCodeWebhook.events.join(', ')}
+                    onChange={(e) => handleWebhookChange('qrCodeWebhook', 'events', e.target.value.split(',').map(s => s.trim()))}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="qrWebhookRetry">Tentativas de Retry</Label>
+                    <Input
+                      id="qrWebhookRetry"
+                      type="number"
+                      value={config.adminWebhooks.qrCodeWebhook.retryAttempts}
+                      onChange={(e) => handleWebhookChange('qrCodeWebhook', 'retryAttempts', parseInt(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="qrWebhookTimeout">Timeout (ms)</Label>
+                    <Input
+                      id="qrWebhookTimeout"
+                      type="number"
+                      value={config.adminWebhooks.qrCodeWebhook.timeout}
+                      onChange={(e) => handleWebhookChange('qrCodeWebhook', 'timeout', parseInt(e.target.value))}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Message Webhook */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Webhook Mensagens</CardTitle>
+                <CardDescription>Configurações para receber mensagens via webhook</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Habilitado</Label>
+                  <Switch
+                    checked={config.adminWebhooks.messageWebhook.enabled}
+                    onCheckedChange={(checked) => handleWebhookChange('messageWebhook', 'enabled', checked)}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="msgWebhookUrl">URL do Webhook</Label>
+                  <Input
+                    id="msgWebhookUrl"
+                    value={config.adminWebhooks.messageWebhook.url}
+                    onChange={(e) => handleWebhookChange('messageWebhook', 'url', e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="msgWebhookAuth">Tipo de Autenticação</Label>
+                  <Select 
+                    value={config.adminWebhooks.messageWebhook.authentication} 
+                    onValueChange={(value) => handleWebhookChange('messageWebhook', 'authentication', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bearer">Bearer Token</SelectItem>
+                      <SelectItem value="apikey">API Key</SelectItem>
+                      <SelectItem value="none">Nenhuma</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="msgWebhookSecret">Secret/Token</Label>
+                  <Input
+                    id="msgWebhookSecret"
+                    type="password"
+                    value={config.adminWebhooks.messageWebhook.secret}
+                    onChange={(e) => handleWebhookChange('messageWebhook', 'secret', e.target.value)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Status Webhook */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Webhook Status</CardTitle>
+                <CardDescription>Configurações para receber atualizações de status</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Habilitado</Label>
+                  <Switch
+                    checked={config.adminWebhooks.statusWebhook.enabled}
+                    onCheckedChange={(checked) => handleWebhookChange('statusWebhook', 'enabled', checked)}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="statusWebhookUrl">URL do Webhook</Label>
+                  <Input
+                    id="statusWebhookUrl"
+                    value={config.adminWebhooks.statusWebhook.url}
+                    onChange={(e) => handleWebhookChange('statusWebhook', 'url', e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="statusWebhookEvents">Eventos (separados por vírgula)</Label>
+                  <Input
+                    id="statusWebhookEvents"
+                    value={config.adminWebhooks.statusWebhook.events.join(', ')}
+                    onChange={(e) => handleWebhookChange('statusWebhook', 'events', e.target.value.split(',').map(s => s.trim()))}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-end">
+              <Button onClick={handleSaveConfig} disabled={isSaving}>
+                <Save className="w-4 h-4 mr-2" />
+                {isSaving ? 'Salvando...' : 'Salvar Webhooks'}
+              </Button>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Backup Configuration */}
@@ -506,44 +882,49 @@ const ServerConfiguration = () => {
                   </Button>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* Tests and Validation */}
-        <TabsContent value="tests">
-          <Card>
-            <CardHeader>
-              <CardTitle>Testes e Validação</CardTitle>
-              <CardDescription>Verifique se a configuração está funcionando corretamente</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Button onClick={handleTestConnection} disabled={isLoading}>
-                  <TestTube className="w-4 h-4 mr-2" />
-                  {isLoading ? 'Testando...' : 'Testar Conectividade'}
+              <div className="flex justify-end">
+                <Button onClick={handleSaveConfig} disabled={isSaving}>
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSaving ? 'Salvando...' : 'Salvar Backup'}
                 </Button>
-                
-                <Button onClick={handleValidateConfig} disabled={isLoading} variant="outline">
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  {isLoading ? 'Validando...' : 'Validar Configuração'}
-                </Button>
-              </div>
-              
-              {/* Test Results Display */}
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">Informações da Configuração Atual:</h4>
-                <div className="space-y-1 text-sm text-gray-600">
-                  <div><strong>API URL:</strong> {config.serverUrl}{config.basePath}</div>
-                  <div><strong>WebSocket URL:</strong> {config.webSocketEnabled ? `wss://${config.host}:${config.webSocketPort || config.port}${config.basePath}` : 'Desabilitado'}</div>
-                  <div><strong>Ambiente:</strong> {config.environment}</div>
-                  <div><strong>Última atualização:</strong> {new Date(config.lastUpdated).toLocaleString()}</div>
-                </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Tests and Validation Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Testes e Validação</CardTitle>
+          <CardDescription>Verifique se a configuração está funcionando corretamente</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Button onClick={handleTestConnection} disabled={isLoading}>
+              <TestTube className="w-4 h-4 mr-2" />
+              {isLoading ? 'Testando...' : 'Testar Conectividade'}
+            </Button>
+            
+            <Button onClick={handleValidateConfig} disabled={isLoading} variant="outline">
+              <CheckCircle className="w-4 h-4 mr-2" />
+              {isLoading ? 'Validando...' : 'Validar Configuração'}
+            </Button>
+          </div>
+          
+          {/* Test Results Display */}
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-900 mb-2">Informações da Configuração Atual:</h4>
+            <div className="space-y-1 text-sm text-gray-600">
+              <div><strong>API URL:</strong> {config.serverUrl}{config.basePath}</div>
+              <div><strong>WebSocket URL:</strong> {config.webSocketEnabled ? `wss://${config.host}:${config.webSocketPort || config.port}${config.basePath}` : 'Desabilitado'}</div>
+              <div><strong>Ambiente:</strong> {config.environment}</div>
+              <div><strong>Última atualização:</strong> {new Date(config.lastUpdated).toLocaleString()}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

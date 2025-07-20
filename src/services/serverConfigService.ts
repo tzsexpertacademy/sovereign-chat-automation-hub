@@ -26,6 +26,38 @@ interface ServerConfig {
   offlineMode: boolean;
   configCache: boolean;
   
+  // Frontend Integration
+  lovableDomain: string;
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  corsOrigins: string[];
+  rateLimitRequests: number;
+  rateLimitWindow: number;
+  
+  // Administrative Webhooks
+  adminWebhooks: {
+    qrCodeWebhook: {
+      enabled: boolean;
+      url: string;
+      events: string[];
+      headers: Record<string, string>;
+      retryAttempts: number;
+      timeout: number;
+    };
+    messageWebhook: {
+      enabled: boolean;
+      url: string;
+      events: string[];
+      authentication: 'bearer' | 'apikey' | 'none';
+      secret: string;
+    };
+    statusWebhook: {
+      enabled: boolean;
+      url: string;
+      events: string[];
+    };
+  };
+  
   // Metadata
   lastUpdated: string;
   version: string;
@@ -43,6 +75,7 @@ class ServerConfigService {
   private config: ServerConfig;
   private status: ServerStatus;
   private listeners: Array<(config: ServerConfig) => void> = [];
+  private backupConfig: ServerConfig | null = null;
 
   private constructor() {
     this.config = this.getDefaultConfig();
@@ -86,6 +119,44 @@ class ServerConfigService {
       offlineMode: false,
       configCache: true,
       
+      // Frontend Integration
+      lovableDomain: 'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
+      supabaseUrl: 'https://ymygyagbvbsdfkduxmgu.supabase.co',
+      supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI',
+      corsOrigins: [
+        'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
+        'https://ymygyagbvbsdfkduxmgu.supabase.co'
+      ],
+      rateLimitRequests: 100,
+      rateLimitWindow: 60,
+      
+      // Administrative Webhooks
+      adminWebhooks: {
+        qrCodeWebhook: {
+          enabled: true,
+          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook',
+          events: ['qrcodeUpdated', 'qr.updated', 'QR_CODE_UPDATED'],
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI'
+          },
+          retryAttempts: 3,
+          timeout: 10000
+        },
+        messageWebhook: {
+          enabled: true,
+          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook',
+          events: ['messagesUpsert', 'sendMessage'],
+          authentication: 'bearer',
+          secret: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI'
+        },
+        statusWebhook: {
+          enabled: true,
+          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook',
+          events: ['connectionUpdated', 'statusInstance']
+        }
+      },
+      
       // Metadata
       lastUpdated: new Date().toISOString(),
       version: '1.0.0'
@@ -117,14 +188,46 @@ class ServerConfigService {
     }
   }
 
+  private createBackup(): void {
+    this.backupConfig = { ...this.config };
+    localStorage.setItem('yumer_server_config_backup', JSON.stringify(this.backupConfig));
+    console.log('🗂️ Backup da configuração criado');
+  }
+
   // Public API
   getConfig(): ServerConfig {
     return { ...this.config };
   }
 
   updateConfig(updates: Partial<ServerConfig>): void {
+    this.createBackup();
     this.config = { ...this.config, ...updates };
     this.saveConfig();
+  }
+
+  saveConfigExplicitly(): boolean {
+    try {
+      this.saveConfig();
+      return true;
+    } catch (error) {
+      console.error('❌ Erro ao salvar configuração explicitamente:', error);
+      return false;
+    }
+  }
+
+  rollbackConfig(): boolean {
+    try {
+      if (this.backupConfig) {
+        this.config = { ...this.backupConfig };
+        this.saveConfig();
+        console.log('↩️ Configuração restaurada do backup');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('❌ Erro ao restaurar backup:', error);
+      return false;
+    }
   }
 
   async testConnection(): Promise<ServerStatus> {
@@ -181,6 +284,7 @@ class ServerConfigService {
   importConfig(configJson: string): boolean {
     try {
       const imported = JSON.parse(configJson);
+      this.createBackup();
       this.config = { ...this.getDefaultConfig(), ...imported };
       this.saveConfig();
       return true;
@@ -191,6 +295,7 @@ class ServerConfigService {
   }
 
   resetToDefaults(): void {
+    this.createBackup();
     this.config = this.getDefaultConfig();
     this.saveConfig();
   }
@@ -236,6 +341,20 @@ class ServerConfigService {
       errors.push('Chave API global é obrigatória');
     }
     
+    // Validate Lovable domain
+    try {
+      new URL(this.config.lovableDomain);
+    } catch {
+      errors.push('Domínio Lovable inválido');
+    }
+    
+    // Validate Supabase URL
+    try {
+      new URL(this.config.supabaseUrl);
+    } catch {
+      errors.push('URL Supabase inválida');
+    }
+    
     // Test connection
     await this.testConnection();
     if (!this.status.isOnline) {
@@ -264,6 +383,37 @@ class ServerConfigService {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'X-API-Key': this.config.globalApiKey
+    };
+  }
+
+  // Get frontend integration info
+  getFrontendIntegrationInfo(): {
+    lovableDomain: string;
+    supabaseUrl: string;
+    corsOrigins: string[];
+    webhookUrls: {
+      qrCode: string;
+      message: string;
+      status: string;
+    };
+    rateLimits: {
+      requests: number;
+      window: number;
+    };
+  } {
+    return {
+      lovableDomain: this.config.lovableDomain,
+      supabaseUrl: this.config.supabaseUrl,
+      corsOrigins: this.config.corsOrigins,
+      webhookUrls: {
+        qrCode: this.config.adminWebhooks.qrCodeWebhook.url,
+        message: this.config.adminWebhooks.messageWebhook.url,
+        status: this.config.adminWebhooks.statusWebhook.url
+      },
+      rateLimits: {
+        requests: this.config.rateLimitRequests,
+        window: this.config.rateLimitWindow
+      }
     };
   }
 }
