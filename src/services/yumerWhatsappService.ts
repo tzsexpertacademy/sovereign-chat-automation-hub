@@ -91,12 +91,15 @@ class YumerWhatsAppService {
       'Accept': 'application/json',
     };
     
+    console.log(`🔐 [AUTH] Obtendo headers de autenticação para: ${instanceName}`);
+    
     // PRIORIDADE 1: Token específico da instância
     if (instanceName) {
       const instanceToken = this.getInstanceToken(instanceName);
       if (instanceToken) {
         headers['Authorization'] = `Bearer ${instanceToken}`;
-        console.log(`🔐 Usando JWT Token da instância: ${instanceName}`);
+        console.log(`🔐 [AUTH] Usando JWT Token da instância: ${instanceName}`);
+        console.log(`🔑 [AUTH] Token: ${instanceToken.substring(0, 50)}...`);
         return headers;
       }
     }
@@ -104,21 +107,22 @@ class YumerWhatsAppService {
     // PRIORIDADE 2: Token JWT global
     if (this.jwtToken) {
       headers['Authorization'] = `Bearer ${this.jwtToken}`;
-      console.log('🔐 Usando JWT Token global para autenticação YUMER');
+      console.log('🔐 [AUTH] Usando JWT Token global para autenticação YUMER');
       return headers;
     }
     
     // PRIORIDADE 3: Tentar gerar JWT automaticamente se necessário
     if (instanceName) {
       try {
-        console.log(`🔄 Tentando gerar JWT automaticamente para: ${instanceName}`);
+        console.log(`🔄 [AUTH] Tentando gerar JWT automaticamente para: ${instanceName}`);
         const newToken = await yumerJwtService.generateLocalJWT(instanceName);
         this.setInstanceToken(instanceName, newToken);
         headers['Authorization'] = `Bearer ${newToken}`;
-        console.log(`✅ JWT gerado automaticamente para: ${instanceName}`);
+        console.log(`✅ [AUTH] JWT gerado automaticamente para: ${instanceName}`);
+        console.log(`🔑 [AUTH] Novo token: ${newToken.substring(0, 50)}...`);
         return headers;
       } catch (error) {
-        console.warn(`⚠️ Falha ao gerar JWT automaticamente: ${error}`);
+        console.warn(`⚠️ [AUTH] Falha ao gerar JWT automaticamente: ${error}`);
       }
     }
     
@@ -128,12 +132,12 @@ class YumerWhatsAppService {
       // Validar se a API Key não é um placeholder ou valor inválido
       if (!globalApiKey.includes('your-api-key') && !globalApiKey.includes('df1afd525fs5f15')) {
         headers['X-API-Key'] = globalApiKey;
-        console.log('🔑 Usando Global API Key para autenticação YUMER');
+        console.log('🔑 [AUTH] Usando Global API Key para autenticação YUMER');
       } else {
-        console.warn('⚠️ Global API Key parece ser um placeholder - ignorando');
+        console.warn('⚠️ [AUTH] Global API Key parece ser um placeholder - ignorando');
       }
     } else {
-      console.log('⚠️ Nenhuma autenticação configurada para YUMER');
+      console.log('⚠️ [AUTH] Nenhuma autenticação configurada para YUMER');
     }
     
     return headers;
@@ -430,10 +434,7 @@ class YumerWhatsAppService {
 
   // POST /message/sendText/:instanceName - CORREÇÃO PRINCIPAL
   async sendTextMessage(instanceName: string, to: string, message: string): Promise<YumerMessage> {
-    // ❌ REMOVIDA a lógica incorreta de "limpeza" do instanceName
-    // const cleanInstanceName = instanceName.includes('_') ? instanceName.split('_')[0] : instanceName;
-    
-    // ✅ USAR o instanceName completo exatamente como recebido
+    // ✅ USAR o instanceName completo exatamente como recebido (SEM LIMPEZA)
     console.log(`📤 [CORREÇÃO] Enviando mensagem usando instanceName COMPLETO: ${instanceName}`);
     
     const payload = {
@@ -449,6 +450,7 @@ class YumerWhatsAppService {
 
     console.log(`📤 Enviando mensagem de texto para ${to} via instância ${instanceName}`);
     console.log(`📋 Payload:`, payload);
+    console.log(`🔐 Verificando JWT para instância: ${instanceName}`);
 
     return this.makeRequest(`/message/sendText/${instanceName}`, {
       method: 'POST',

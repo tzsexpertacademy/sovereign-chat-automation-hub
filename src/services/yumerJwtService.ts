@@ -35,19 +35,20 @@ class YumerJwtService {
     
     try {
       console.log('🔐 [CODECHAT] Gerando JWT compatível com CodeChat API v1.3.5...', { 
-        instanceName, 
+        instanceName: instanceName, // USAR O NOME COMPLETO SEM LIMPEZA
         secretUsed: jwtSecret.substring(0, 8) + '...' 
       });
       
-      // Limpar instanceName se vier com timestamp
-      const cleanInstanceName = instanceName.includes('_') ? instanceName.split('_')[0] : instanceName;
+      // ✅ CORREÇÃO CRÍTICA: NÃO FAZER LIMPEZA DO NOME DA INSTÂNCIA
+      // Usar o instanceName EXATAMENTE como recebido (com timestamp)
+      const fullInstanceName = instanceName; // Não fazer split nem limpeza
       
       // Payload compatível com CodeChat API conforme documentação oficial
       const now = Math.floor(Date.now() / 1000);
       const exp = now + (4 * 60 * 60); // 4 horas de expiração
       
       const payload = {
-        instanceName: cleanInstanceName, // Nome limpo da instância
+        instanceName: fullInstanceName, // ✅ Nome COMPLETO da instância (com timestamp)
         apiName: "whatsapp-api", // Conforme documentação CodeChat
         tokenId: this.generateTokenId(), // ID único do token
         iat: now, // Issued at (agora)
@@ -73,6 +74,7 @@ class YumerJwtService {
       console.log('📋 [CODECHAT] Payload final:', payload);
       console.log('🔑 [CODECHAT] Token JWT:', token.substring(0, 50) + '...');
       console.log('⏱️ [CODECHAT] Expira em:', new Date(this.tokenExpiry).toISOString());
+      console.log('🎯 [CODECHAT] InstanceName usado no JWT:', fullInstanceName);
       
       return token;
     } catch (error: any) {
