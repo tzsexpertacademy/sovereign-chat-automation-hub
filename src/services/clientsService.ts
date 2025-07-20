@@ -15,6 +15,10 @@ export interface ClientData {
   created_at: string;
   updated_at: string;
   last_activity: string;
+  avatar_url?: string | null;
+  company_logo_url?: string | null;
+  brand_colors?: any;
+  custom_theme?: any;
 }
 
 export interface CreateClientData {
@@ -51,7 +55,7 @@ export const clientsService = {
       const clientsWithCorrectLimits = (data || []).map(client => ({
         ...client,
         max_instances: getMaxInstancesForPlan(client.plan)
-      }));
+      })) as ClientData[];
       
       return clientsWithCorrectLimits;
     } catch (error) {
@@ -78,7 +82,7 @@ export const clientsService = {
 
       if (error) throw error;
       
-      return data;
+      return data as ClientData;
     } catch (error) {
       console.error('Error creating client:', error);
       throw error;
@@ -102,7 +106,7 @@ export const clientsService = {
 
       if (error) throw error;
       
-      return data;
+      return data as ClientData;
     } catch (error) {
       console.error('Error updating client:', error);
       throw error;
@@ -154,7 +158,7 @@ export const clientsService = {
 
       if (error && error.code !== 'PGRST116') throw error;
       
-      return data || null;
+      return (data as ClientData) || null;
     } catch (error) {
       console.error('Error fetching client by instance ID:', error);
       return null;

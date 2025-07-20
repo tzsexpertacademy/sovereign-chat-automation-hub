@@ -254,10 +254,14 @@ export type Database = {
       clients: {
         Row: {
           annual_plan: boolean | null
+          avatar_url: string | null
           billing_address: Json | null
+          brand_colors: Json | null
           company: string | null
+          company_logo_url: string | null
           created_at: string
           current_instances: number | null
+          custom_theme: Json | null
           email: string
           id: string
           instance_id: string | null
@@ -278,10 +282,14 @@ export type Database = {
         }
         Insert: {
           annual_plan?: boolean | null
+          avatar_url?: string | null
           billing_address?: Json | null
+          brand_colors?: Json | null
           company?: string | null
+          company_logo_url?: string | null
           created_at?: string
           current_instances?: number | null
+          custom_theme?: Json | null
           email: string
           id?: string
           instance_id?: string | null
@@ -302,10 +310,14 @@ export type Database = {
         }
         Update: {
           annual_plan?: boolean | null
+          avatar_url?: string | null
           billing_address?: Json | null
+          brand_colors?: Json | null
           company?: string | null
+          company_logo_url?: string | null
           created_at?: string
           current_instances?: number | null
+          custom_theme?: Json | null
           email?: string
           id?: string
           instance_id?: string | null
