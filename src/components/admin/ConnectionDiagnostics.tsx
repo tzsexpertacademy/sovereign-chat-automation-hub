@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,9 @@ import {
   Database,
   Webhook,
   Users,
-  QrCode
+  QrCode,
+  Activity,
+  Zap
 } from "lucide-react";
 import { SERVER_URL, getServerConfig, getYumerGlobalApiKey } from "@/config/environment";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,23 +43,34 @@ interface EndpointTest {
   expectedStatus?: number;
 }
 
+interface SystemHealth {
+  cors: TestResult;
+  api: TestResult;
+  webhook: TestResult;
+  instances: TestResult;
+  supabase: TestResult;
+}
+
 const ConnectionDiagnostics = () => {
-  const [corsTest, setCorsTest] = useState<TestResult>({ status: 'idle', message: '' });
-  const [apiTests, setApiTests] = useState<Record<string, TestResult>>({});
-  const [webhookTest, setWebhookTest] = useState<TestResult>({ status: 'idle', message: '' });
-  const [multiInstanceTest, setMultiInstanceTest] = useState<TestResult>({ status: 'idle', message: '' });
-  const [supabaseTest, setSupabaseTest] = useState<TestResult>({ status: 'idle', message: '' });
-  const [isRunningAll, setIsRunningAll] = useState(false);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth>({
+    cors: { status: 'idle', message: '' },
+    api: { status: 'idle', message: '' },
+    webhook: { status: 'idle', message: '' },
+    instances: { status: 'idle', message: '' },
+    supabase: { status: 'idle', message: '' }
+  });
+  
+  const [isRunningComplete, setIsRunningComplete] = useState(false);
+  const [showDetails, setShowDetails] = useState<Record<string, boolean>>({});
 
   const config = getServerConfig();
   const apiKey = getYumerGlobalApiKey();
 
-  // Endpoints para testar
-  const endpoints: EndpointTest[] = [
+  // Endpoints básicos para teste rápido
+  const basicEndpoints: EndpointTest[] = [
     { name: 'Health Check', url: '/health', method: 'GET' },
     { name: 'Status Público', url: '/', method: 'GET' },
-    { name: 'Fetch Instances', url: '/instance/fetchInstances', method: 'GET', headers: { 'apikey': apiKey || '' } },
-    { name: 'Connection State', url: '/instance/connectionState/test', method: 'GET', headers: { 'apikey': apiKey || '' } },
+    { name: 'Fetch Instances', url: '/instance/fetchInstances', method: 'GET', headers: { 'apikey': apiKey || '' } }
   ];
 
   const getStatusIcon = (status: TestResult['status']) => {
@@ -69,237 +83,187 @@ const ConnectionDiagnostics = () => {
     }
   };
 
-  const getStatusBadge = (status: TestResult['status']) => {
+  const getStatusColor = (status: TestResult['status']) => {
     switch (status) {
-      case 'success': return <Badge className="bg-green-500">Sucesso</Badge>;
-      case 'error': return <Badge variant="destructive">Erro</Badge>;
-      case 'warning': return <Badge className="bg-yellow-500">Atenção</Badge>;
-      case 'testing': return <Badge variant="secondary">Testando...</Badge>;
-      default: return <Badge variant="outline">Não testado</Badge>;
+      case 'success': return 'text-green-600 dark:text-green-400';
+      case 'error': return 'text-red-600 dark:text-red-400';
+      case 'warning': return 'text-yellow-600 dark:text-yellow-400';
+      case 'testing': return 'text-blue-600 dark:text-blue-400';
+      default: return 'text-gray-600 dark:text-gray-400';
     }
   };
 
   // Teste CORS específico
-  const testCORS = async () => {
-    setCorsTest({ status: 'testing', message: 'Testando política CORS...' });
+  const testCORS = async (): Promise<TestResult> => {
     const startTime = Date.now();
-
     try {
-      const testUrl = `${SERVER_URL}/health`;
-      console.log('🧪 [CORS] Testando:', testUrl);
-
-      const response = await fetch(testUrl, {
+      const response = await fetch(`${SERVER_URL}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Origin': window.location.origin,
-          'X-Requested-With': 'XMLHttpRequest'
+          'Origin': window.location.origin
         },
         mode: 'cors',
         credentials: 'omit'
       });
 
       const duration = Date.now() - startTime;
-
+      
       if (response.ok) {
-        const data = await response.json();
-        setCorsTest({
+        return {
           status: 'success',
           message: 'CORS configurado corretamente',
-          details: { 
-            status: response.status, 
-            headers: Object.fromEntries(response.headers.entries()),
-            data
-          },
           duration
-        });
+        };
       } else {
-        setCorsTest({
+        return {
           status: 'error',
           message: `HTTP ${response.status}: ${response.statusText}`,
           duration
-        });
+        };
       }
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      
       if (error.message.includes('CORS') || error.message === 'Failed to fetch') {
-        setCorsTest({
+        return {
           status: 'error',
-          message: 'Bloqueado por CORS - servidor precisa permitir origem: ' + window.location.origin,
-          details: { error: error.message, origin: window.location.origin },
+          message: 'Bloqueado por CORS',
           duration
-        });
-      } else {
-        setCorsTest({
-          status: 'error',
-          message: error.message,
-          duration
-        });
+        };
       }
+      return {
+        status: 'error',
+        message: error.message,
+        duration
+      };
     }
   };
 
-  // Teste de endpoints da API
-  const testAPIEndpoints = async () => {
-    const results: Record<string, TestResult> = {};
+  // Teste API básica
+  const testBasicAPI = async (): Promise<TestResult> => {
+    const startTime = Date.now();
+    let successCount = 0;
     
-    for (const endpoint of endpoints) {
-      const testKey = endpoint.name;
-      results[testKey] = { status: 'testing', message: 'Testando...' };
-      setApiTests({ ...results });
-
-      const startTime = Date.now();
-
+    for (const endpoint of basicEndpoints) {
       try {
         const url = `${SERVER_URL}${endpoint.url}`;
-        console.log(`🧪 [API] Testando ${endpoint.name}:`, url);
-
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          ...endpoint.headers
-        };
-
         const response = await fetch(url, {
           method: endpoint.method,
-          headers,
-          body: endpoint.body ? JSON.stringify(endpoint.body) : undefined,
+          headers: {
+            'Content-Type': 'application/json',
+            ...endpoint.headers
+          },
           mode: 'cors'
         });
 
-        const duration = Date.now() - startTime;
-        const responseText = await response.text();
-        let responseData;
-        
-        try {
-          responseData = JSON.parse(responseText);
-        } catch {
-          responseData = responseText;
-        }
-
         if (response.ok) {
-          results[testKey] = {
-            status: 'success',
-            message: `${endpoint.method} ${response.status} - OK`,
-            details: { status: response.status, data: responseData },
-            duration
-          };
-        } else {
-          results[testKey] = {
-            status: 'error',
-            message: `${endpoint.method} ${response.status} - ${response.statusText}`,
-            details: { status: response.status, data: responseData },
-            duration
-          };
+          successCount++;
         }
-      } catch (error: any) {
-        const duration = Date.now() - startTime;
-        results[testKey] = {
+      } catch (error) {
+        // Continue testando outros endpoints
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    const successRate = (successCount / basicEndpoints.length) * 100;
+
+    if (successRate >= 75) {
+      return {
+        status: 'success',
+        message: `${successCount}/${basicEndpoints.length} endpoints funcionando`,
+        duration
+      };
+    } else if (successRate >= 25) {
+      return {
+        status: 'warning',
+        message: `${successCount}/${basicEndpoints.length} endpoints funcionando`,
+        duration
+      };
+    } else {
+      return {
+        status: 'error',
+        message: `Apenas ${successCount}/${basicEndpoints.length} endpoints funcionando`,
+        duration
+      };
+    }
+  };
+
+  // Teste Webhook
+  const testWebhook = async (): Promise<TestResult> => {
+    const startTime = Date.now();
+    try {
+      const response = await fetch(`${SERVER_URL}/webhook/find/test`, {
+        headers: { 'apikey': apiKey || '' }
+      });
+      
+      const duration = Date.now() - startTime;
+      
+      if (response.status === 404) {
+        return {
+          status: 'warning',
+          message: 'Webhook não configurado (normal)',
+          duration
+        };
+      } else if (response.ok) {
+        return {
+          status: 'success',
+          message: 'Webhook configurado',
+          duration
+        };
+      } else {
+        return {
           status: 'error',
-          message: `Erro: ${error.message}`,
-          details: { error: error.message },
+          message: `Erro HTTP ${response.status}`,
           duration
         };
       }
-
-      setApiTests({ ...results });
+    } catch (error: any) {
+      return {
+        status: 'error',
+        message: `Erro: ${error.message}`,
+        duration: Date.now() - startTime
+      };
     }
   };
 
-  // Teste de Webhook
-  const testWebhook = async () => {
-    setWebhookTest({ status: 'testing', message: 'Testando configuração de webhook...' });
+  // Teste múltiplas instâncias
+  const testInstances = async (): Promise<TestResult> => {
     const startTime = Date.now();
-
     try {
-      // Verificar se webhook está configurado no servidor
-      const response = await fetch(`${SERVER_URL}/webhook`, {
+      const response = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
         headers: { 'apikey': apiKey || '' }
       });
-
+      
       const duration = Date.now() - startTime;
-
+      
       if (response.ok) {
         const data = await response.json();
-        setWebhookTest({
+        const instanceCount = Array.isArray(data) ? data.length : 0;
+        return {
           status: 'success',
-          message: 'Webhook configurado',
-          details: data,
+          message: `${instanceCount} instância(s) encontrada(s)`,
           duration
-        });
+        };
       } else {
-        setWebhookTest({
-          status: 'warning',
-          message: 'Webhook endpoint não encontrado - pode estar em rota diferente',
+        return {
+          status: 'error',
+          message: `Erro HTTP ${response.status}`,
           duration
-        });
+        };
       }
     } catch (error: any) {
-      const duration = Date.now() - startTime;
-      setWebhookTest({
+      return {
         status: 'error',
-        message: `Erro ao testar webhook: ${error.message}`,
-        duration
-      });
-    }
-  };
-
-  // Teste de múltiplas instâncias
-  const testMultipleInstances = async () => {
-    setMultiInstanceTest({ status: 'testing', message: 'Testando suporte a múltiplas instâncias...' });
-    const startTime = Date.now();
-
-    try {
-      // Simular criação de múltiplas instâncias
-      const testInstances = [
-        'test-client-1_' + Date.now(),
-        'test-client-2_' + Date.now(),
-        'test-client-3_' + Date.now()
-      ];
-
-      const results = [];
-      
-      for (const instanceId of testInstances) {
-        try {
-          const response = await fetch(`${SERVER_URL}/instance/connectionState/${instanceId}`, {
-            headers: { 'apikey': apiKey || '' }
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            results.push({ instanceId, status: data.state });
-          }
-        } catch (error) {
-          // Esperado para instâncias de teste
-          results.push({ instanceId, status: 'not_found' });
-        }
-      }
-
-      const duration = Date.now() - startTime;
-      
-      setMultiInstanceTest({
-        status: 'success',
-        message: `Servidor responde para múltiplas instâncias (${results.length} testadas)`,
-        details: { instances: results, supportMultiple: true },
-        duration
-      });
-    } catch (error: any) {
-      const duration = Date.now() - startTime;
-      setMultiInstanceTest({
-        status: 'error',
-        message: `Erro ao testar múltiplas instâncias: ${error.message}`,
-        duration
-      });
+        message: `Erro: ${error.message}`,
+        duration: Date.now() - startTime
+      };
     }
   };
 
   // Teste Supabase
-  const testSupabase = async () => {
-    setSupabaseTest({ status: 'testing', message: 'Testando conexão com Supabase...' });
+  const testSupabase = async (): Promise<TestResult> => {
     const startTime = Date.now();
-
     try {
-      // Testar read no Supabase
       const { data, error, count } = await supabase
         .from('whatsapp_instances')
         .select('*', { count: 'exact' })
@@ -308,323 +272,388 @@ const ConnectionDiagnostics = () => {
       const duration = Date.now() - startTime;
 
       if (error) {
-        setSupabaseTest({
+        return {
           status: 'error',
-          message: `Erro Supabase: ${error.message}`,
+          message: `Erro: ${error.message}`,
           duration
-        });
-        return;
+        };
       }
 
-      // Testar insert de teste
-      const testInstance = {
-        instance_id: `test_${Date.now()}`,
-        status: 'test',
-        client_id: null
-      };
-
-      const { data: inserted, error: insertError } = await supabase
-        .from('whatsapp_instances')
-        .insert(testInstance)
-        .select()
-        .single();
-
-      if (inserted) {
-        // Limpar teste
-        await supabase
-          .from('whatsapp_instances')
-          .delete()
-          .eq('id', inserted.id);
-      }
-
-      setSupabaseTest({
+      return {
         status: 'success',
-        message: `Supabase OK - ${count || 0} instâncias no banco`,
-        details: { 
-          totalInstances: count,
-          canRead: true,
-          canWrite: !insertError,
-          testCleanedUp: true
-        },
+        message: `Conectado - ${count || 0} instâncias no banco`,
         duration
-      });
+      };
     } catch (error: any) {
-      const duration = Date.now() - startTime;
-      setSupabaseTest({
+      return {
         status: 'error',
-        message: `Erro Supabase: ${error.message}`,
-        duration
-      });
+        message: `Erro: ${error.message}`,
+        duration: Date.now() - startTime
+      };
     }
   };
 
-  // Executar todos os testes
-  const runAllTests = async () => {
-    setIsRunningAll(true);
+  // Executar diagnóstico completo
+  const runCompleteDiagnostic = async () => {
+    setIsRunningComplete(true);
     
     try {
-      await testCORS();
-      await testAPIEndpoints();
-      await testWebhook();
-      await testMultipleInstances();
-      await testSupabase();
+      // Executar todos os testes em paralelo
+      const [corsResult, apiResult, webhookResult, instancesResult, supabaseResult] = await Promise.all([
+        testCORS(),
+        testBasicAPI(),
+        testWebhook(),
+        testInstances(),
+        testSupabase()
+      ]);
+
+      setSystemHealth({
+        cors: corsResult,
+        api: apiResult,
+        webhook: webhookResult,
+        instances: instancesResult,
+        supabase: supabaseResult
+      });
     } finally {
-      setIsRunningAll(false);
+      setIsRunningComplete(false);
     }
   };
+
+  const toggleDetails = (key: string) => {
+    setShowDetails(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Calcular status geral do sistema
+  const getOverallStatus = () => {
+    const results = Object.values(systemHealth);
+    const hasError = results.some(r => r.status === 'error');
+    const hasWarning = results.some(r => r.status === 'warning');
+    const allSuccess = results.every(r => r.status === 'success');
+    const allTested = results.every(r => r.status !== 'idle');
+
+    if (!allTested) return { status: 'idle', message: 'Aguardando diagnóstico' };
+    if (hasError) return { status: 'error', message: 'Problemas detectados' };
+    if (hasWarning) return { status: 'warning', message: 'Funcionando com avisos' };
+    if (allSuccess) return { status: 'success', message: 'Sistema funcionando perfeitamente' };
+    
+    return { status: 'idle', message: 'Status indefinido' };
+  };
+
+  const overallStatus = getOverallStatus();
 
   return (
     <div className="space-y-6">
+      {/* Header com Status Geral */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            🔬 Diagnóstico Avançado de Conexão
-            <Button onClick={runAllTests} disabled={isRunningAll}>
-              {isRunningAll ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Executando...
-                </>
-              ) : (
-                'Executar Todos os Testes'
-              )}
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            <div className="p-3 border rounded">
-              <p className="text-sm font-medium">Frontend</p>
-              <p className="text-xs text-muted-foreground">{window.location.origin}</p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center space-x-3">
+              <Activity className="w-6 h-6 text-blue-500" />
+              <div>
+                <CardTitle className="text-xl">Diagnóstico do Sistema</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Verificação completa da conectividade e funcionalidades
+                </p>
+              </div>
             </div>
-            <div className="p-3 border rounded">
-              <p className="text-sm font-medium">Servidor YUMER</p>
-              <p className="text-xs text-muted-foreground">{SERVER_URL}</p>
-            </div>
-            <div className="p-3 border rounded">
-              <p className="text-sm font-medium">API Key</p>
-              <p className="text-xs text-muted-foreground">
-                {apiKey ? '✅ Configurada' : '❌ Não configurada'}
-              </p>
+            
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-2">
+                {getStatusIcon(overallStatus.status)}
+                <span className={`text-sm font-medium ${getStatusColor(overallStatus.status)}`}>
+                  {overallStatus.message}
+                </span>
+              </div>
+              
+              <Button 
+                onClick={runCompleteDiagnostic} 
+                disabled={isRunningComplete}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isRunningComplete ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Diagnosticando...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 mr-2" />
+                    Diagnóstico Completo
+                  </>
+                )}
+              </Button>
             </div>
           </div>
-
-          <Tabs defaultValue="cors" className="w-full">
-            <TabsList className="grid w-full grid-cols-7">
-              <TabsTrigger value="cors" className="flex items-center space-x-2">
-                <Shield className="w-4 h-4" />
-                <span>CORS</span>
-              </TabsTrigger>
-              <TabsTrigger value="api" className="flex items-center space-x-2">
-                <Server className="w-4 h-4" />
-                <span>API</span>
-              </TabsTrigger>
-              <TabsTrigger value="advanced-api" className="flex items-center space-x-2">
-                <Network className="w-4 h-4" />
-                <span>API Avançada</span>
-              </TabsTrigger>
-              <TabsTrigger value="webhook" className="flex items-center space-x-2">
-                <Webhook className="w-4 h-4" />
-                <span>Webhook</span>
-              </TabsTrigger>
-              <TabsTrigger value="qr" className="flex items-center space-x-2">
-                <QrCode className="w-4 h-4" />
-                <span>QR Code</span>
-              </TabsTrigger>
-              <TabsTrigger value="instances" className="flex items-center space-x-2">
-                <Users className="w-4 h-4" />
-                <span>Instâncias</span>
-              </TabsTrigger>
-              <TabsTrigger value="supabase" className="flex items-center space-x-2">
-                <Database className="w-4 h-4" />
-                <span>Supabase</span>
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="cors" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-lg">
-                    <div className="flex items-center space-x-2">
-                      <Shield className="w-5 h-5" />
-                      <span>Teste CORS</span>
-                    </div>
-                    {getStatusBadge(corsTest.status)}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Button onClick={testCORS} disabled={corsTest.status === 'testing'}>
-                    Testar CORS
-                  </Button>
+        </CardHeader>
+        
+        <CardContent>
+          {/* Dashboard de Status */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              { key: 'cors', label: 'CORS', icon: Shield },
+              { key: 'api', label: 'API', icon: Server },
+              { key: 'webhook', label: 'Webhook', icon: Webhook },
+              { key: 'instances', label: 'Instâncias', icon: Users },
+              { key: 'supabase', label: 'Banco', icon: Database }
+            ].map(({ key, label, icon: Icon }) => {
+              const result = systemHealth[key as keyof SystemHealth];
+              return (
+                <div 
+                  key={key}
+                  className="p-3 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => toggleDetails(key)}
+                >
+                  <div className="flex items-center space-x-2 mb-1">
+                    <Icon className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{label}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(result.status)}
+                    <span className={`text-xs ${getStatusColor(result.status)}`}>
+                      {result.status === 'idle' ? 'Não testado' : 
+                       result.status === 'testing' ? 'Testando...' :
+                       result.status === 'success' ? 'OK' :
+                       result.status === 'warning' ? 'Aviso' : 'Erro'}
+                    </span>
+                  </div>
                   
-                  {corsTest.message && (
-                    <div className="mt-4 p-3 border rounded">
-                      <div className="flex items-center space-x-2">
-                        {getStatusIcon(corsTest.status)}
-                        <span className="font-medium">{corsTest.message}</span>
-                        {corsTest.duration && (
-                          <span className="text-xs text-muted-foreground">
-                            ({corsTest.duration}ms)
-                          </span>
-                        )}
-                      </div>
-                      
-                      {corsTest.details && (
-                        <details className="mt-2">
-                          <summary className="cursor-pointer text-sm">Ver detalhes</summary>
-                          <pre className="mt-2 text-xs bg-gray-50 p-2 rounded overflow-auto">
-                            {JSON.stringify(corsTest.details, null, 2)}
-                          </pre>
-                        </details>
+                  {/* Detalhes colapsáveis */}
+                  {showDetails[key] && result.message && (
+                    <div className="mt-2 pt-2 border-t">
+                      <p className="text-xs text-muted-foreground">{result.message}</p>
+                      {result.duration && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {result.duration}ms
+                        </p>
                       )}
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                </div>
+              );
+            })}
+          </div>
 
-            <TabsContent value="advanced-api" className="space-y-4">
-              <AdvancedApiDiagnostic />
-            </TabsContent>
-
-            <TabsContent value="api" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-lg">
-                    <div className="flex items-center space-x-2">
-                      <Server className="w-5 h-5" />
-                      <span>Endpoints da API</span>
-                    </div>
-                    <Button onClick={testAPIEndpoints} size="sm">
-                      Testar APIs
-                    </Button>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {endpoints.map((endpoint) => {
-                      const test = apiTests[endpoint.name];
-                      return (
-                        <div key={endpoint.name} className="flex items-center justify-between p-3 border rounded">
-                          <div className="flex items-center space-x-3">
-                            {getStatusIcon(test?.status || 'idle')}
-                            <div>
-                              <p className="font-medium">{endpoint.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {endpoint.method} {endpoint.url}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            {test && (
-                              <>
-                                {getStatusBadge(test.status)}
-                                {test.duration && (
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    {test.duration}ms
-                                  </p>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="webhook" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-lg">
-                    <div className="flex items-center space-x-2">
-                      <Webhook className="w-5 h-5" />
-                      <span>Configuração Webhook</span>
-                    </div>
-                    {getStatusBadge(webhookTest.status)}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Button onClick={testWebhook} disabled={webhookTest.status === 'testing'}>
-                    Testar Webhook
-                  </Button>
-                  
-                  {webhookTest.message && (
-                    <div className="mt-4 p-3 border rounded">
-                      <div className="flex items-center space-x-2">
-                        {getStatusIcon(webhookTest.status)}
-                        <span>{webhookTest.message}</span>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="instances" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-lg">
-                    <div className="flex items-center space-x-2">
-                      <Users className="w-5 h-5" />
-                      <span>Múltiplas Instâncias</span>
-                    </div>
-                    {getStatusBadge(multiInstanceTest.status)}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Button onClick={testMultipleInstances} disabled={multiInstanceTest.status === 'testing'}>
-                    Testar Múltiplas Instâncias
-                  </Button>
-                  
-                  {multiInstanceTest.message && (
-                    <div className="mt-4 p-3 border rounded">
-                      <div className="flex items-center space-x-2">
-                        {getStatusIcon(multiInstanceTest.status)}
-                        <span>{multiInstanceTest.message}</span>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="qr" className="space-y-4">
-              <QRCodeAdvancedDiagnostic />
-            </TabsContent>
-
-            <TabsContent value="supabase" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-lg">
-                    <div className="flex items-center space-x-2">
-                      <Database className="w-5 h-5" />
-                      <span>Supabase</span>
-                    </div>
-                    {getStatusBadge(supabaseTest.status)}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Button onClick={testSupabase} disabled={supabaseTest.status === 'testing'}>
-                    Testar Supabase
-                  </Button>
-                  
-                  {supabaseTest.message && (
-                    <div className="mt-4 p-3 border rounded">
-                      <div className="flex items-center space-x-2">
-                        {getStatusIcon(supabaseTest.status)}
-                        <span>{supabaseTest.message}</span>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+          {/* Informações da Configuração */}
+          <div className="mt-4 pt-4 border-t">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="p-3 bg-muted/30 rounded">
+                <p className="font-medium text-muted-foreground">Frontend</p>
+                <p className="truncate">{window.location.origin}</p>
+              </div>
+              <div className="p-3 bg-muted/30 rounded">
+                <p className="font-medium text-muted-foreground">Servidor YUMER</p>
+                <p className="truncate">{SERVER_URL}</p>
+              </div>
+              <div className="p-3 bg-muted/30 rounded">
+                <p className="font-medium text-muted-foreground">API Key</p>
+                <p className={apiKey ? 'text-green-600' : 'text-red-600'}>
+                  {apiKey ? '✅ Configurada' : '❌ Não configurada'}
+                </p>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Tabs Reorganizadas */}
+      <Tabs defaultValue="connectivity" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+          <TabsTrigger value="connectivity" className="flex flex-col sm:flex-row items-center space-x-0 sm:space-x-2 p-3">
+            <Shield className="w-4 h-4 mb-1 sm:mb-0" />
+            <span className="text-xs sm:text-sm">Conectividade</span>
+          </TabsTrigger>
+          <TabsTrigger value="advanced-api" className="flex flex-col sm:flex-row items-center space-x-0 sm:space-x-2 p-3">
+            <Network className="w-4 h-4 mb-1 sm:mb-0" />
+            <span className="text-xs sm:text-sm">API Avançada</span>
+          </TabsTrigger>
+          <TabsTrigger value="qr-code" className="flex flex-col sm:flex-row items-center space-x-0 sm:space-x-2 p-3">
+            <QrCode className="w-4 h-4 mb-1 sm:mb-0" />
+            <span className="text-xs sm:text-sm">QR Code</span>
+          </TabsTrigger>
+          <TabsTrigger value="system" className="flex flex-col sm:flex-row items-center space-x-0 sm:space-x-2 p-3">
+            <Server className="w-4 h-4 mb-1 sm:mb-0" />
+            <span className="text-xs sm:text-sm">Sistema</span>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Tab: Conectividade (CORS + API Básica) */}
+        <TabsContent value="connectivity" className="space-y-4 mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2 text-lg">
+                  <Shield className="w-5 h-5" />
+                  <span>Teste CORS</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={async () => {
+                    setSystemHealth(prev => ({ ...prev, cors: { status: 'testing', message: 'Testando CORS...' } }));
+                    const result = await testCORS();
+                    setSystemHealth(prev => ({ ...prev, cors: result }));
+                  }}
+                  disabled={systemHealth.cors.status === 'testing'}
+                  className="w-full mb-4"
+                >
+                  Testar CORS
+                </Button>
+                
+                {systemHealth.cors.message && (
+                  <div className="p-3 border rounded">
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(systemHealth.cors.status)}
+                      <span className="font-medium">{systemHealth.cors.message}</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2 text-lg">
+                  <Server className="w-5 h-5" />
+                  <span>API Básica</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={async () => {
+                    setSystemHealth(prev => ({ ...prev, api: { status: 'testing', message: 'Testando API...' } }));
+                    const result = await testBasicAPI();
+                    setSystemHealth(prev => ({ ...prev, api: result }));
+                  }}
+                  disabled={systemHealth.api.status === 'testing'}
+                  className="w-full mb-4"
+                >
+                  Testar API
+                </Button>
+                
+                {systemHealth.api.message && (
+                  <div className="p-3 border rounded">
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(systemHealth.api.status)}
+                      <span className="font-medium">{systemHealth.api.message}</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Tab: API Avançada */}
+        <TabsContent value="advanced-api" className="space-y-4 mt-6">
+          <AdvancedApiDiagnostic />
+        </TabsContent>
+
+        {/* Tab: QR Code */}
+        <TabsContent value="qr-code" className="space-y-4 mt-6">
+          <div className="space-y-6">
+            <QRCodeAdvancedDiagnostic />
+            <AdvancedQRDiagnostic />
+          </div>
+        </TabsContent>
+
+        {/* Tab: Sistema (Webhook + Instâncias + Supabase) */}
+        <TabsContent value="system" className="space-y-4 mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2 text-lg">
+                  <Webhook className="w-5 h-5" />
+                  <span>Webhook</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={async () => {
+                    setSystemHealth(prev => ({ ...prev, webhook: { status: 'testing', message: 'Testando webhook...' } }));
+                    const result = await testWebhook();
+                    setSystemHealth(prev => ({ ...prev, webhook: result }));
+                  }}
+                  disabled={systemHealth.webhook.status === 'testing'}
+                  className="w-full mb-4"
+                >
+                  Testar Webhook
+                </Button>
+                
+                {systemHealth.webhook.message && (
+                  <div className="p-3 border rounded">
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(systemHealth.webhook.status)}
+                      <span className="text-sm">{systemHealth.webhook.message}</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2 text-lg">
+                  <Users className="w-5 h-5" />
+                  <span>Instâncias</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={async () => {
+                    setSystemHealth(prev => ({ ...prev, instances: { status: 'testing', message: 'Testando instâncias...' } }));
+                    const result = await testInstances();
+                    setSystemHealth(prev => ({ ...prev, instances: result }));
+                  }}
+                  disabled={systemHealth.instances.status === 'testing'}
+                  className="w-full mb-4"
+                >
+                  Testar Instâncias
+                </Button>
+                
+                {systemHealth.instances.message && (
+                  <div className="p-3 border rounded">
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(systemHealth.instances.status)}
+                      <span className="text-sm">{systemHealth.instances.message}</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2 text-lg">
+                  <Database className="w-5 h-5" />
+                  <span>Supabase</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={async () => {
+                    setSystemHealth(prev => ({ ...prev, supabase: { status: 'testing', message: 'Testando Supabase...' } }));
+                    const result = await testSupabase();
+                    setSystemHealth(prev => ({ ...prev, supabase: result }));
+                  }}
+                  disabled={systemHealth.supabase.status === 'testing'}
+                  className="w-full mb-4"
+                >
+                  Testar Supabase
+                </Button>
+                
+                {systemHealth.supabase.message && (
+                  <div className="p-3 border rounded">
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(systemHealth.supabase.status)}
+                      <span className="text-sm">{systemHealth.supabase.message}</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
