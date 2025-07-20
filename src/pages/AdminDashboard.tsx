@@ -7,7 +7,7 @@ import AdminHeader from "@/components/admin/AdminHeader";
 import AdminOverview from "@/components/admin/AdminOverview";
 import ClientsManagement from "@/components/admin/ClientsManagement";
 import InstancesMonitor from "@/components/admin/InstancesMonitor";
-import SystemLogsImproved from "@/components/admin/SystemLogsImproved";
+import SystemLogsModern from "@/components/admin/SystemLogsModern";
 import WebSocketStatusDebugSimplified from "@/components/admin/WebSocketStatusDebugSimplified";
 import YumerApiKeyConfig from "@/components/admin/YumerApiKeyConfig";
 import ConnectionDiagnostics from "@/components/admin/ConnectionDiagnostics";
@@ -28,7 +28,7 @@ const AdminDashboard = () => {
               <Route path="instances" element={<InstancesMonitor />} />
               <Route path="server-config" element={<ServerConfiguration />} />
               <Route path="diagnostics" element={<ConnectionDiagnostics />} />
-              <Route path="logs" element={<SystemLogsImproved />} />
+              <Route path="logs" element={<SystemLogsModern />} />
               <Route path="websocket" element={<WebSocketStatusDebugSimplified />} />
             </Routes>
           </main>
