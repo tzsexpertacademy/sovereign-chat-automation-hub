@@ -1,30 +1,26 @@
 import React from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
-import ClientsManagement from '@/pages/ClientsManagement';
+import ClientsManagement from '@/components/admin/ClientsManagement';
 import AdminDashboard from '@/pages/AdminDashboard';
-import AdminOverview from '@/pages/AdminOverview';
-import ServerConfiguration from '@/pages/ServerConfiguration';
+import AdminOverview from '@/components/admin/AdminOverview';
+import ServerConfiguration from '@/components/admin/ServerConfiguration';
 import ClientDashboard from '@/pages/ClientDashboard';
-import Chat from '@/pages/Chat';
 import WhatsAppConnection from '@/components/client/WhatsAppConnection';
-import Queues from '@/pages/Queues';
-import { ToastProvider } from "@/components/ui/use-toast"
-import PricingPage from '@/pages/PricingPage';
-import PublicPage from '@/pages/PublicPage';
+import { Toaster } from "@/components/ui/toaster";
 import CleanInstancesManager from "@/components/admin/CleanInstancesManager";
+import Index from '@/pages/Index';
+import NotFound from '@/pages/NotFound';
 
 function App() {
   return (
     <Router>
       <div className="min-h-screen bg-background">
         <Routes>
-          <Route path="/" element={<PublicPage />} />
-          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/" element={<Index />} />
+          <Route path="*" element={<NotFound />} />
           
           <Route path="/client/:clientId" element={<ClientDashboard />}>
             <Route index element={<WhatsAppConnection />} />
-            <Route path="chat" element={<Chat />} />
-            <Route path="queues" element={<Queues />} />
           </Route>
 
           <Route path="/admin" element={<AdminDashboard />}>
@@ -35,7 +31,7 @@ function App() {
           </Route>
         </Routes>
       </div>
-      <ToastProvider />
+      <Toaster />
     </Router>
   );
 }

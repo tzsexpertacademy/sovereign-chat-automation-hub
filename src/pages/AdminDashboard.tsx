@@ -27,7 +27,7 @@ const AdminDashboard = () => {
       <div className="min-h-screen flex w-full bg-gray-50">
         <AdminSidebar />
         <div className="flex-1 flex flex-col">
-          <AdminHeader title={getPageTitle()} />
+          <AdminHeader />
           <main className="flex-1 p-6 overflow-auto">
             <Outlet />
           </main>

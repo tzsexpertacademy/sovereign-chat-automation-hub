@@ -45,10 +45,11 @@ const menuItems = [
 
 const AdminSidebar = () => {
   const location = useLocation();
-  const { collapsed } = useSidebar();
+  const { state } = useSidebar();
+  const collapsed = state === "collapsed";
 
   return (
-    <Sidebar className={cn("border-r", collapsed ? "w-16" : "w-64")} collapsible>
+    <Sidebar className={cn("border-r", collapsed ? "w-16" : "w-64")} collapsible="icon">
       <SidebarHeader className="border-b p-4">
         <div className="flex items-center justify-between">
           {!collapsed && (
