@@ -11,6 +11,8 @@ import SystemLogsImproved from "@/components/admin/SystemLogsImproved";
 import WebSocketStatusDebugSimplified from "@/components/admin/WebSocketStatusDebugSimplified";
 import YumerApiKeyConfig from "@/components/admin/YumerApiKeyConfig";
 import ConnectionDiagnostics from "@/components/admin/ConnectionDiagnostics";
+import ServerConfiguration from "@/components/admin/ServerConfiguration";
+
 const AdminDashboard = () => {
   return (
     <SidebarProvider>
@@ -24,6 +26,7 @@ const AdminDashboard = () => {
               <Route path="overview" element={<div className="space-y-6"><YumerApiKeyConfig /><AdminOverview /></div>} />
               <Route path="clients" element={<ClientsManagement />} />
               <Route path="instances" element={<InstancesMonitor />} />
+              <Route path="server-config" element={<ServerConfiguration />} />
               <Route path="diagnostics" element={<ConnectionDiagnostics />} />
               <Route path="logs" element={<SystemLogsImproved />} />
               <Route path="websocket" element={<WebSocketStatusDebugSimplified />} />

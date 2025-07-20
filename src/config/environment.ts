@@ -1,55 +1,39 @@
 
-// Environment configuration for YUMER WhatsApp Backend Integration
-console.log('🚀 Configurando ambiente YUMER Backend...');
+// Dynamic Environment Configuration using ServerConfigService
+import { serverConfigService } from '@/services/serverConfigService';
 
-// Detect environment
-const isProduction = window.location.hostname.includes('lovableproject.com');
-const isDevelopment = window.location.hostname === 'localhost';
+console.log('🚀 Configurando ambiente dinâmico YUMER Backend...');
 
-// YUMER Backend configuration - porta 8083 com domínio válido
-const YUMER_SERVER = 'yumer.yumerflow.app:8083';
-const YUMER_HOST = 'yumer.yumerflow.app';
-const YUMER_PORT = '8083';
+// Get current configuration from service
+const config = serverConfigService.getConfig();
 
-// Configure URLs for YUMER Backend
-let SERVER_HOST: string;
-let API_BASE_URL: string;
-let SOCKET_URL: string;
+// Dynamic URLs based on current configuration
+export const SERVER_URL = config.serverUrl;
+export const API_BASE_URL = config.serverUrl + config.basePath;
+export const SOCKET_URL = serverConfigService.getWebSocketUrl();
+export const HTTPS_SERVER_URL = config.serverUrl;
+export const YUMER_SERVER_URL = config.serverUrl;
+export const YUMER_API_URL = config.serverUrl;
 
-if (isDevelopment) {
-  // Development - ainda apontando para YUMER em desenvolvimento
-  SERVER_HOST = `https://${YUMER_SERVER}`;
-  API_BASE_URL = `https://${YUMER_SERVER}`;
-  SOCKET_URL = `wss://${YUMER_SERVER}`;
-  console.log('🛠️ Modo Desenvolvimento - Conectando ao YUMER Backend');
-} else {
-  // Production - YUMER Backend HTTPS
-  SERVER_HOST = `https://${YUMER_SERVER}`;
-  API_BASE_URL = `https://${YUMER_SERVER}`;
-  SOCKET_URL = `wss://${YUMER_SERVER}`;
-  console.log('🔒 Modo Produção - YUMER Backend via HTTPS');
-}
-
-// Export the configured URLs
-export const SERVER_URL = SERVER_HOST;
-export const HTTPS_SERVER_URL = `https://${YUMER_SERVER}`; // Para compatibilidade
-export const YUMER_SERVER_URL = `https://${YUMER_SERVER}`;
-export const YUMER_API_URL = `https://${YUMER_SERVER}`; // Para AdminOverview
-export { API_BASE_URL, SOCKET_URL };
+// Detect environment dynamically
+const isProduction = config.environment === 'production';
+const isDevelopment = config.environment === 'development';
 
 // ============ API KEY CONFIGURATION ============
-// Configuração da API Key global para YUMER Backend
 export const getYumerGlobalApiKey = (): string | null => {
-  return localStorage.getItem('yumer_global_api_key');
+  // First try from dynamic config, then fallback to localStorage
+  return config.globalApiKey || localStorage.getItem('yumer_global_api_key');
 };
 
 export const setYumerGlobalApiKey = (apiKey: string): void => {
   localStorage.setItem('yumer_global_api_key', apiKey);
-  console.log('🔑 API Key global YUMER configurada');
+  serverConfigService.updateConfig({ globalApiKey: apiKey });
+  console.log('🔑 API Key global YUMER configurada dinamicamente');
 };
 
 export const clearYumerGlobalApiKey = (): void => {
   localStorage.removeItem('yumer_global_api_key');
+  serverConfigService.updateConfig({ globalApiKey: '' });
   console.log('🗑️ API Key global YUMER removida');
 };
 
@@ -57,36 +41,62 @@ export const hasYumerGlobalApiKey = (): boolean => {
   return !!getYumerGlobalApiKey();
 };
 
-// Export additional config for YUMER Backend
-export const getServerConfig = () => ({
-  SERVER_URL,
-  API_BASE_URL,
-  SOCKET_URL,
-  HTTPS_SERVER_URL,
-  YUMER_SERVER_URL,
-  isProduction,
-  isDevelopment,
-  isHttps: true, // YUMER sempre HTTPS
-  protocol: 'https:',
-  serverUrl: SERVER_URL,
-  requiresHttps: true,
-  nginxProxy: false, // Para compatibilidade
-  corsEnabled: true,
-  sslRequired: true,
-  yumerServer: YUMER_SERVER,
-  yumerPort: 8083,
-  directConnection: true, // Conexão direta ao YUMER
-  backendType: 'yumer', // Identificador do backend
-  hasApiKey: hasYumerGlobalApiKey(),
-  getApiKey: getYumerGlobalApiKey
+// Export dynamic config
+export const getServerConfig = () => {
+  const currentConfig = serverConfigService.getConfig();
+  
+  return {
+    SERVER_URL: currentConfig.serverUrl,
+    API_BASE_URL: currentConfig.serverUrl + currentConfig.basePath,
+    SOCKET_URL: serverConfigService.getWebSocketUrl(),
+    HTTPS_SERVER_URL: currentConfig.serverUrl,
+    YUMER_SERVER_URL: currentConfig.serverUrl,
+    isProduction: currentConfig.environment === 'production',
+    isDevelopment: currentConfig.environment === 'development',
+    isHttps: currentConfig.protocol === 'https',
+    protocol: currentConfig.protocol + ':',
+    serverUrl: currentConfig.serverUrl,
+    requiresHttps: currentConfig.sslRequired,
+    nginxProxy: false,
+    corsEnabled: currentConfig.corsEnabled,
+    sslRequired: currentConfig.sslRequired,
+    yumerServer: currentConfig.host + ':' + currentConfig.port,
+    yumerPort: currentConfig.port,
+    directConnection: true,
+    backendType: 'yumer',
+    hasApiKey: hasYumerGlobalApiKey(),
+    getApiKey: getYumerGlobalApiKey,
+    
+    // New dynamic fields
+    webSocketEnabled: currentConfig.webSocketEnabled,
+    environment: currentConfig.environment,
+    requestTimeout: currentConfig.requestTimeout,
+    retryAttempts: currentConfig.retryAttempts,
+    offlineMode: currentConfig.offlineMode,
+    fallbackServerUrl: currentConfig.fallbackServerUrl
+  };
+};
+
+// Subscribe to configuration changes
+serverConfigService.subscribe((newConfig) => {
+  console.log('🔄 Configuração do servidor atualizada:', newConfig);
+  
+  // Update global variables (if needed by legacy code)
+  (window as any).YUMER_CONFIG = {
+    SERVER_URL: newConfig.serverUrl,
+    API_BASE_URL: newConfig.serverUrl + newConfig.basePath,
+    SOCKET_URL: serverConfigService.getWebSocketUrl(),
+    config: newConfig
+  };
 });
 
-console.log('✅ Configuração YUMER Backend:', {
+console.log('✅ Configuração YUMER Backend Dinâmica:', {
   SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
-  isHttps: true,
+  isHttps: config.protocol === 'https',
   backendType: 'yumer',
-  environment: isProduction ? 'production' : isDevelopment ? 'development' : 'yumer-production',
-  note: 'Conectando diretamente ao YUMER Backend na porta 8083'
+  environment: config.environment,
+  configurable: true,
+  note: 'Configuração totalmente dinâmica via AdminPanel'
 });
