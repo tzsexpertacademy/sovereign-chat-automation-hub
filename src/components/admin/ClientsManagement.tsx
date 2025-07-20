@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,10 +7,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
   Plus, 
   Search, 
-  Edit, 
   Trash2, 
   MessageSquare,
-  Settings,
   Users,
   Building2,
   Phone,
@@ -19,7 +16,11 @@ import {
   Calendar,
   Activity,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  CreditCard,
+  TrendingUp,
+  DollarSign,
+  Shield
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -30,6 +31,8 @@ const ClientsManagement = () => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [newClient, setNewClient] = useState<CreateClientData>({
     name: "",
     email: "",
@@ -40,7 +43,6 @@ const ClientsManagement = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Load clients from Supabase on component mount
   useEffect(() => {
     loadClients();
   }, []);
@@ -50,7 +52,6 @@ const ClientsManagement = () => {
       setLoading(true);
       const clientsData = await clientsService.getAllClients();
       setClients(clientsData);
-      console.log('Clientes carregados do Supabase:', clientsData);
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
       toast({
@@ -89,7 +90,6 @@ const ClientsManagement = () => {
         description: `Cliente ${clientData.name} criado com sucesso!`,
       });
 
-      // Reset form and reload clients
       setNewClient({ name: "", email: "", phone: "", company: "", plan: "basic" });
       setShowCreateForm(false);
       await loadClients();
@@ -148,39 +148,44 @@ const ClientsManagement = () => {
     window.open(`/client/${client.id}`, '_blank');
   };
 
-  const filteredClients = clients.filter(client =>
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Filtros avançados
+  const filteredClients = clients.filter(client => {
+    const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchesPlan = selectedPlan === "all" || client.plan === selectedPlan;
+    const matchesStatus = selectedStatus === "all" || client.subscription_status === selectedStatus;
+    
+    return matchesSearch && matchesPlan && matchesStatus;
+  });
 
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'connected': return 'bg-green-500';
-      case 'qr_ready': return 'bg-blue-500';
-      case 'connecting': return 'bg-yellow-500';
-      case 'disconnected': return 'bg-gray-500';
-      default: return 'bg-gray-300';
-    }
+  // Estatísticas calculadas
+  const stats = {
+    total: clients.length,
+    active: clients.filter(c => c.subscription_status === 'active').length,
+    trial: clients.filter(c => c.subscription_status === 'trialing').length,
+    totalMRR: clients.reduce((sum, c) => sum + (c.mrr || 0), 0),
+    activeInstances: clients.reduce((sum, c) => sum + (c.current_instances || 0), 0)
   };
 
-  const getStatusText = (status?: string) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case 'connected': return 'Conectado';
-      case 'qr_ready': return 'QR Pronto';
-      case 'connecting': return 'Conectando';
-      case 'disconnected': return 'Desconectado';
-      default: return 'Sem Instância';
+      case 'active': return 'bg-success text-success-foreground';
+      case 'trialing': return 'bg-warning text-warning-foreground';
+      case 'past_due': return 'bg-destructive text-destructive-foreground';
+      case 'canceled': return 'bg-muted text-muted-foreground';
+      default: return 'bg-secondary text-secondary-foreground';
     }
   };
 
   const getPlanColor = (plan: string) => {
     switch (plan) {
-      case 'basic': return 'bg-gray-100 text-gray-800';
-      case 'standard': return 'bg-blue-100 text-blue-800';
-      case 'premium': return 'bg-purple-100 text-purple-800';
-      case 'enterprise': return 'bg-gold-100 text-gold-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'basic': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'standard': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'premium': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'enterprise': return 'bg-green-100 text-green-800 border-green-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
@@ -194,111 +199,156 @@ const ClientsManagement = () => {
     }
   };
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(value);
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Gerenciamento de Clientes</h1>
-          <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
+          <h1 className="text-3xl font-bold text-foreground">Gestão de Clientes</h1>
+          <p className="text-muted-foreground mt-1">
+            Gerencie clientes, assinaturas e instâncias WhatsApp
+          </p>
         </div>
-        <div className="flex space-x-2">
+        <div className="flex space-x-3">
           <Button onClick={loadClients} variant="outline" disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
-          <Button onClick={() => setShowCreateForm(true)}>
+          <Button onClick={() => setShowCreateForm(true)} className="bg-primary">
             <Plus className="w-4 h-4 mr-2" />
             Novo Cliente
           </Button>
         </div>
       </div>
 
-      {/* Summary Stats */}
+      {/* Métricas do Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Clientes</CardTitle>
+        <Card className="border-l-4 border-l-primary">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Clientes</CardTitle>
+              <Users className="w-4 h-4 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{clients.length}</div>
-            <p className="text-xs text-gray-500">Clientes cadastrados</p>
+            <div className="text-2xl font-bold text-foreground">{stats.total}</div>
+            <p className="text-xs text-muted-foreground">Clientes cadastrados</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Instâncias Ativas</CardTitle>
+
+        <Card className="border-l-4 border-l-success">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Clientes Ativos</CardTitle>
+              <Shield className="w-4 h-4 text-success" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {clients.reduce((sum, c) => sum + (c.current_instances || 0), 0)}
-            </div>
-            <p className="text-xs text-green-600">Conectadas</p>
+            <div className="text-2xl font-bold text-success">{stats.active}</div>
+            <p className="text-xs text-success">Com assinatura ativa</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Plano Básico</CardTitle>
+
+        <Card className="border-l-4 border-l-warning">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Em Trial</CardTitle>
+              <TrendingUp className="w-4 h-4 text-warning" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {clients.filter(c => c.plan === 'basic').length}
-            </div>
-            <p className="text-xs text-blue-600">Clientes</p>
+            <div className="text-2xl font-bold text-warning">{stats.trial}</div>
+            <p className="text-xs text-warning">Período de teste</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Plano Premium</CardTitle>
+
+        <Card className="border-l-4 border-l-accent">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">MRR Total</CardTitle>
+              <DollarSign className="w-4 h-4 text-accent" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {clients.filter(c => c.plan === 'premium' || c.plan === 'enterprise').length}
-            </div>
-            <p className="text-xs text-purple-600">Clientes</p>
+            <div className="text-2xl font-bold text-accent">{formatCurrency(stats.totalMRR)}</div>
+            <p className="text-xs text-accent">Receita mensal</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Ativos Hoje</CardTitle>
+
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Instâncias Ativas</CardTitle>
+              <MessageSquare className="w-4 h-4 text-blue-500" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {clients.filter(c => {
-                const today = new Date().toDateString();
-                return new Date(c.last_activity).toDateString() === today;
-              }).length}
-            </div>
-            <p className="text-xs text-orange-600">Atividade hoje</p>
+            <div className="text-2xl font-bold text-blue-500">{stats.activeInstances}</div>
+            <p className="text-xs text-blue-500">WhatsApp conectado</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Search */}
+      {/* Filtros e Busca */}
       <Card>
         <CardHeader>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <Input
-              placeholder="Buscar clientes por nome, email ou empresa..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+              <Input
+                placeholder="Buscar por nome, email ou empresa..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex gap-3">
+              <select
+                value={selectedPlan}
+                onChange={(e) => setSelectedPlan(e.target.value)}
+                className="px-3 py-2 border border-input rounded-md bg-background text-foreground"
+              >
+                <option value="all">Todos os Planos</option>
+                <option value="basic">Básico</option>
+                <option value="standard">Padrão</option>
+                <option value="premium">Premium</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="px-3 py-2 border border-input rounded-md bg-background text-foreground"
+              >
+                <option value="all">Todos os Status</option>
+                <option value="active">Ativo</option>
+                <option value="trialing">Trial</option>
+                <option value="past_due">Em Atraso</option>
+                <option value="canceled">Cancelado</option>
+                <option value="inactive">Inativo</option>
+              </select>
+            </div>
           </div>
         </CardHeader>
       </Card>
 
-      {/* Create Client Form */}
+      {/* Formulário de Criação */}
       {showCreateForm && (
         <Card>
           <CardHeader>
             <CardTitle>Criar Novo Cliente</CardTitle>
-            <CardDescription>Preencha os dados do cliente</CardDescription>
+            <CardDescription>Preencha os dados do cliente. A integração com Stripe será feita automaticamente.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium">Nome *</label>
+                <label className="text-sm font-medium text-foreground">Nome *</label>
                 <Input
                   placeholder="Nome completo"
                   value={newClient.name}
@@ -306,7 +356,7 @@ const ClientsManagement = () => {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Email *</label>
+                <label className="text-sm font-medium text-foreground">Email *</label>
                 <Input
                   type="email"
                   placeholder="email@exemplo.com"
@@ -315,7 +365,7 @@ const ClientsManagement = () => {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Telefone</label>
+                <label className="text-sm font-medium text-foreground">Telefone</label>
                 <Input
                   placeholder="(11) 99999-9999"
                   value={newClient.phone}
@@ -323,28 +373,28 @@ const ClientsManagement = () => {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Empresa</label>
+                <label className="text-sm font-medium text-foreground">Empresa</label>
                 <Input
                   placeholder="Nome da empresa"
                   value={newClient.company}
                   onChange={(e) => setNewClient(prev => ({ ...prev, company: e.target.value }))}
                 />
               </div>
-              <div className="col-span-2">
-                <label className="text-sm font-medium">Plano</label>
+              <div className="col-span-full">
+                <label className="text-sm font-medium text-foreground">Plano</label>
                 <select
                   value={newClient.plan}
                   onChange={(e) => setNewClient(prev => ({ ...prev, plan: e.target.value as any }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground"
                 >
-                  <option value="basic">Básico (1 instância)</option>
-                  <option value="standard">Padrão (3 instâncias)</option>
-                  <option value="premium">Premium (10 instâncias)</option>
-                  <option value="enterprise">Enterprise (50 instâncias)</option>
+                  <option value="basic">Básico - 1 instância ($29/mês)</option>
+                  <option value="standard">Padrão - 3 instâncias ($79/mês)</option>
+                  <option value="premium">Premium - 10 instâncias ($149/mês)</option>
+                  <option value="enterprise">Enterprise - 50 instâncias ($299/mês)</option>
                 </select>
               </div>
             </div>
-            <div className="flex space-x-2">
+            <div className="flex space-x-3">
               <Button onClick={handleCreateClient} disabled={loading}>
                 {loading ? "Criando..." : "Criar Cliente"}
               </Button>
@@ -356,20 +406,20 @@ const ClientsManagement = () => {
         </Card>
       )}
 
-      {/* Clients List */}
+      {/* Lista de Clientes */}
       <div className="grid gap-4">
         {filteredClients.length === 0 ? (
           <Card>
             <CardContent className="pt-6">
-              <div className="text-center py-8">
-                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
+              <div className="text-center py-12">
+                <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-foreground mb-2">
                   {clients.length === 0 ? "Nenhum cliente criado" : "Nenhum cliente encontrado"}
                 </h3>
-                <p className="text-gray-600 mb-4">
+                <p className="text-muted-foreground mb-6">
                   {clients.length === 0 
-                    ? "Crie seu primeiro cliente usando o botão 'Novo Cliente'"
-                    : "Tente ajustar os termos de busca"
+                    ? "Crie seu primeiro cliente ou aguarde a integração automática via Stripe"
+                    : "Tente ajustar os filtros de busca"
                   }
                 </p>
                 {clients.length === 0 && (
@@ -383,16 +433,18 @@ const ClientsManagement = () => {
           </Card>
         ) : (
           filteredClients.map((client) => (
-            <Card key={client.id} className="hover:shadow-lg transition-shadow">
+            <Card key={client.id} className="hover:shadow-lg transition-shadow duration-200 border-l-4 border-l-primary/20">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
-                    <Avatar className="w-12 h-12">
-                      <AvatarFallback>{client.name.split(' ').map(n => n[0]).join('').toUpperCase()}</AvatarFallback>
+                    <Avatar className="w-12 h-12 border-2 border-primary/20">
+                      <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                        {client.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
                     <div>
-                      <h3 className="font-semibold text-lg">{client.name}</h3>
-                      <div className="flex items-center space-x-4 text-sm text-gray-600">
+                      <h3 className="font-semibold text-lg text-foreground">{client.name}</h3>
+                      <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
                         <div className="flex items-center">
                           <Mail className="w-4 h-4 mr-1" />
                           {client.email}
@@ -414,38 +466,44 @@ const ClientsManagement = () => {
                   </div>
 
                   <div className="flex items-center space-x-4">
-                    {/* Plan and Instance Info */}
+                    {/* Status e Plano */}
                     <div className="text-center">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <Badge className={getPlanColor(client.plan)}>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Badge className={getPlanColor(client.plan)} variant="outline">
                           {client.plan.toUpperCase()}
                         </Badge>
-                        <Badge variant="outline">
-                          {client.current_instances || 0}/{getMaxInstancesForPlan(client.plan)} instâncias
+                        <Badge className={getStatusColor(client.subscription_status)}>
+                          {client.subscription_status}
                         </Badge>
                       </div>
-                      <p className="text-xs text-gray-500">
-                        ID: {client.id.slice(0, 8)}...
-                      </p>
+                      <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                        <span>{client.current_instances || 0}/{getMaxInstancesForPlan(client.plan)} instâncias</span>
+                        {client.mrr > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="font-medium text-success">{formatCurrency(client.mrr)}/mês</span>
+                          </>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Action Buttons */}
+                    {/* Ações */}
                     <div className="flex space-x-2">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleOpenClientPanel(client)}
-                        className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                        className="border-primary/20 hover:bg-primary/10"
                       >
                         <ExternalLink className="w-4 h-4 mr-1" />
-                        Painel Cliente
+                        Painel
                       </Button>
                       
                       <Button
                         size="sm"
                         onClick={() => handleOpenChat(client)}
-                        className="bg-green-600 hover:bg-green-700"
                         disabled={!client.current_instances || client.current_instances === 0}
+                        className="bg-success hover:bg-success/90"
                       >
                         <MessageSquare className="w-4 h-4 mr-1" />
                         Chat
@@ -455,23 +513,33 @@ const ClientsManagement = () => {
                         size="sm"
                         variant="outline"
                         onClick={() => handleDeleteClient(client.id)}
+                        className="border-destructive/20 hover:bg-destructive/10 text-destructive"
                       >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Remover
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
                 </div>
 
-                {/* Additional Info */}
-                <div className="mt-4 pt-4 border-t flex justify-between items-center text-sm text-gray-500">
-                  <div className="flex items-center">
-                    <Calendar className="w-4 h-4 mr-1" />
-                    Criado em {new Date(client.created_at).toLocaleDateString('pt-BR')}
-                  </div>
-                  <div className="flex items-center">
-                    <Activity className="w-4 h-4 mr-1" />
-                    Última atividade: {new Date(client.last_activity).toLocaleDateString('pt-BR')}
+                {/* Informações Adicionais */}
+                <div className="mt-4 pt-4 border-t border-border">
+                  <div className="flex justify-between items-center text-sm">
+                    <div className="flex items-center space-x-4 text-muted-foreground">
+                      <div className="flex items-center">
+                        <Calendar className="w-4 h-4 mr-1" />
+                        Criado em {new Date(client.created_at).toLocaleDateString('pt-BR')}
+                      </div>
+                      <div className="flex items-center">
+                        <Activity className="w-4 h-4 mr-1" />
+                        Última atividade: {new Date(client.last_activity).toLocaleDateString('pt-BR')}
+                      </div>
+                    </div>
+                    {client.stripe_customer_id && (
+                      <div className="flex items-center text-primary">
+                        <CreditCard className="w-4 h-4 mr-1" />
+                        <span className="text-xs">Stripe integrado</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -479,6 +547,13 @@ const ClientsManagement = () => {
           ))
         )}
       </div>
+
+      {/* Indicador de Resultados */}
+      {clients.length > 0 && (
+        <div className="text-center text-sm text-muted-foreground">
+          Mostrando {filteredClients.length} de {clients.length} clientes
+        </div>
+      )}
     </div>
   );
 };
