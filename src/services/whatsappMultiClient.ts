@@ -1,5 +1,6 @@
 // YUMER WhatsApp Backend Integration - Compatibility Layer
 import { yumerWhatsAppService, YumerInstance, YumerMessage, YumerChat } from './yumerWhatsappService';
+import { yumerJwtService } from './yumerJwtService';
 import { API_BASE_URL, SOCKET_URL, HTTPS_SERVER_URL } from '@/config/environment';
 import { Socket } from 'socket.io-client';
 
@@ -38,7 +39,7 @@ export interface ServerHealth {
 /**
  * LEGACY COMPATIBILITY SERVICE
  * This service maintains backward compatibility while internally using YUMER Backend
- * All methods now delegate to yumerWhatsAppService
+ * All methods now delegate to yumerWhatsAppService with improved authentication
  * 
  * @deprecated Use yumerWhatsAppService directly for new code
  */
@@ -56,7 +57,7 @@ class WhatsAppMultiClientService {
     });
   }
 
-  // Test connection to YUMER backend
+  // Test connection to YUMER backend with improved auth
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
       console.log('🔍 Testing connection to YUMER backend...');
@@ -73,6 +74,19 @@ class WhatsAppMultiClientService {
         success: false,
         message: `Connection failed: ${error}`
       };
+    }
+  }
+
+  // Initialize JWT for specific instance
+  async initializeInstanceAuth(instanceName: string): Promise<void> {
+    try {
+      console.log(`🔐 Inicializando autenticação para instância: ${instanceName}`);
+      const token = await yumerJwtService.generateLocalJWT(instanceName);
+      yumerWhatsAppService.setInstanceToken(instanceName, token);
+      console.log(`✅ Autenticação configurada para: ${instanceName}`);
+    } catch (error) {
+      console.error(`❌ Falha ao configurar autenticação para ${instanceName}:`, error);
+      throw error;
     }
   }
 
@@ -181,6 +195,10 @@ class WhatsAppMultiClientService {
   async connectClient(clientId: string): Promise<any> {
     try {
       console.log('🔌 Connecting client via YUMER:', clientId);
+      
+      // Inicializar autenticação para a instância
+      await this.initializeInstanceAuth(clientId);
+      
       const data = await yumerWhatsAppService.connectInstance(clientId);
       console.log('✅ Client connection initiated:', clientId);
       return data;
@@ -245,10 +263,24 @@ class WhatsAppMultiClientService {
     // This is a limitation of the compatibility layer
   }
 
-  // Send text message
+  // Send text message with improved authentication
   async sendMessage(clientId: string, to: string, message: string): Promise<any> {
     try {
-      console.log('📤 Sending message via YUMER:', { clientId, to, preview: message.substring(0, 50) + '...' });
+      console.log('📤 Sending message via YUMER:', { 
+        clientId, 
+        to, 
+        preview: message.substring(0, 50) + '...' 
+      });
+
+      // Garantir que a instância tem autenticação configurada
+      const cleanInstanceName = clientId.includes('_') ? clientId.split('_')[0] : clientId;
+      
+      // Verificar se já temos token para esta instância
+      if (!yumerWhatsAppService.getInstanceToken(cleanInstanceName)) {
+        console.log(`🔐 Configurando autenticação para instância: ${cleanInstanceName}`);
+        await this.initializeInstanceAuth(cleanInstanceName);
+      }
+      
       const data = await yumerWhatsAppService.sendTextMessage(clientId, to, message);
       console.log('✅ Message sent via YUMER:', { clientId, to });
       return { success: true, messageId: data.id || Date.now().toString(), ...data };
@@ -280,7 +312,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Send media files (images, videos, documents, etc.)
+  // Send media files with improved authentication
   async sendMedia(clientId: string, to: string, file: File, caption?: string): Promise<any> {
     try {
       console.log('📎 Sending media via YUMER:', { 
@@ -291,6 +323,12 @@ class WhatsAppMultiClientService {
         caption: caption?.substring(0, 50) 
       });
 
+      // Garantir autenticação
+      const cleanInstanceName = clientId.includes('_') ? clientId.split('_')[0] : clientId;
+      if (!yumerWhatsAppService.getInstanceToken(cleanInstanceName)) {
+        await this.initializeInstanceAuth(cleanInstanceName);
+      }
+
       const data = await yumerWhatsAppService.sendMediaMessage(clientId, to, file, caption);
       console.log('✅ Media sent successfully via YUMER');
       return { success: true, messageId: data.id || Date.now().toString(), ...data };
@@ -300,7 +338,7 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Send audio files specifically
+  // Send audio files with improved authentication
   async sendAudio(clientId: string, to: string, audioFile: File): Promise<any> {
     try {
       console.log('🎤 Sending audio via YUMER:', { 
@@ -309,6 +347,12 @@ class WhatsAppMultiClientService {
         fileName: audioFile.name, 
         fileSize: audioFile.size 
       });
+
+      // Garantir autenticação
+      const cleanInstanceName = clientId.includes('_') ? clientId.split('_')[0] : clientId;
+      if (!yumerWhatsAppService.getInstanceToken(cleanInstanceName)) {
+        await this.initializeInstanceAuth(cleanInstanceName);
+      }
 
       const data = await yumerWhatsAppService.sendAudioMessage(clientId, to, audioFile);
       console.log('✅ Audio sent successfully via YUMER');
@@ -319,11 +363,14 @@ class WhatsAppMultiClientService {
     }
   }
 
-  // Additional YUMER-specific methods for advanced features
-  
   // Send location
   async sendLocation(clientId: string, to: string, latitude: number, longitude: number, description?: string): Promise<any> {
     try {
+      const cleanInstanceName = clientId.includes('_') ? clientId.split('_')[0] : clientId;
+      if (!yumerWhatsAppService.getInstanceToken(cleanInstanceName)) {
+        await this.initializeInstanceAuth(cleanInstanceName);
+      }
+      
       const data = await yumerWhatsAppService.sendLocation(clientId, to, latitude, longitude, description);
       return { success: true, messageId: data.id || Date.now().toString(), ...data };
     } catch (error) {
@@ -335,6 +382,11 @@ class WhatsAppMultiClientService {
   // Send contact
   async sendContact(clientId: string, to: string, contact: any): Promise<any> {
     try {
+      const cleanInstanceName = clientId.includes('_') ? clientId.split('_')[0] : clientId;
+      if (!yumerWhatsAppService.getInstanceToken(cleanInstanceName)) {
+        await this.initializeInstanceAuth(cleanInstanceName);
+      }
+      
       const data = await yumerWhatsAppService.sendContact(clientId, to, contact);
       return { success: true, messageId: data.id || Date.now().toString(), ...data };
     } catch (error) {
@@ -346,6 +398,11 @@ class WhatsAppMultiClientService {
   // Send reaction
   async sendReaction(clientId: string, to: string, messageId: string, emoji: string): Promise<any> {
     try {
+      const cleanInstanceName = clientId.includes('_') ? clientId.split('_')[0] : clientId;
+      if (!yumerWhatsAppService.getInstanceToken(cleanInstanceName)) {
+        await this.initializeInstanceAuth(cleanInstanceName);
+      }
+      
       const data = await yumerWhatsAppService.sendReaction(clientId, to, messageId, emoji);
       return { success: true, ...data };
     } catch (error) {
@@ -357,6 +414,11 @@ class WhatsAppMultiClientService {
   // Send interactive buttons
   async sendButtons(clientId: string, to: string, text: string, buttons: any[]): Promise<any> {
     try {
+      const cleanInstanceName = clientId.includes('_') ? clientId.split('_')[0] : clientId;
+      if (!yumerWhatsAppService.getInstanceToken(cleanInstanceName)) {
+        await this.initializeInstanceAuth(cleanInstanceName);
+      }
+      
       const data = await yumerWhatsAppService.sendButtons(clientId, to, text, buttons);
       return { success: true, messageId: data.id || Date.now().toString(), ...data };
     } catch (error) {
@@ -368,6 +430,11 @@ class WhatsAppMultiClientService {
   // Send interactive list
   async sendList(clientId: string, to: string, text: string, buttonText: string, list: any[]): Promise<any> {
     try {
+      const cleanInstanceName = clientId.includes('_') ? clientId.split('_')[0] : clientId;
+      if (!yumerWhatsAppService.getInstanceToken(cleanInstanceName)) {
+        await this.initializeInstanceAuth(cleanInstanceName);
+      }
+      
       const data = await yumerWhatsAppService.sendList(clientId, to, text, buttonText, list);
       return { success: true, messageId: data.id || Date.now().toString(), ...data };
     } catch (error) {
@@ -380,6 +447,10 @@ class WhatsAppMultiClientService {
   async createInstance(instanceName: string, customName?: string): Promise<any> {
     try {
       const data = await yumerWhatsAppService.createInstance(instanceName, customName);
+      
+      // Configurar autenticação para a nova instância
+      await this.initializeInstanceAuth(instanceName);
+      
       return { success: true, ...data };
     } catch (error) {
       console.error('❌ Failed to create instance via YUMER:', error);

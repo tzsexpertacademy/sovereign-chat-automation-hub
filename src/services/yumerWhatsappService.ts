@@ -62,6 +62,7 @@ export interface YumerGroup {
 class YumerWhatsAppService {
   private jwtToken: string | null = null;
   private eventListeners: Map<string, Function[]> = new Map();
+  private instanceTokens: Map<string, string> = new Map(); // Cache de tokens por instância
 
   constructor() {
     console.log('🚀 Inicializando YUMER WhatsApp Service...');
@@ -73,20 +74,64 @@ class YumerWhatsAppService {
     console.log('🔐 JWT Token configurado para YUMER Backend');
   }
 
-  private getAuthHeaders(): HeadersInit {
+  // Definir token específico para uma instância
+  setInstanceToken(instanceName: string, token: string): void {
+    this.instanceTokens.set(instanceName, token);
+    console.log(`🔐 JWT Token configurado para instância: ${instanceName}`);
+  }
+
+  // Obter token específico da instância
+  getInstanceToken(instanceName: string): string | null {
+    return this.instanceTokens.get(instanceName) || null;
+  }
+
+  private async getAuthHeaders(instanceName?: string): Promise<HeadersInit> {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
     
-    // Prioridade: Global API Key > JWT Token
-    const globalApiKey = getYumerGlobalApiKey();
-    if (globalApiKey) {
-      headers['X-API-Key'] = globalApiKey;
-      console.log('🔑 Usando Global API Key para autenticação YUMER');
-    } else if (this.jwtToken) {
+    // PRIORIDADE 1: Token específico da instância
+    if (instanceName) {
+      const instanceToken = this.getInstanceToken(instanceName);
+      if (instanceToken) {
+        headers['Authorization'] = `Bearer ${instanceToken}`;
+        console.log(`🔐 Usando JWT Token da instância: ${instanceName}`);
+        return headers;
+      }
+    }
+    
+    // PRIORIDADE 2: Token JWT global
+    if (this.jwtToken) {
       headers['Authorization'] = `Bearer ${this.jwtToken}`;
-      console.log('🔐 Usando JWT Token para autenticação YUMER');
+      console.log('🔐 Usando JWT Token global para autenticação YUMER');
+      return headers;
+    }
+    
+    // PRIORIDADE 3: Tentar gerar JWT automaticamente se necessário
+    if (instanceName) {
+      try {
+        console.log(`🔄 Tentando gerar JWT automaticamente para: ${instanceName}`);
+        const newToken = await yumerJwtService.generateLocalJWT(instanceName);
+        this.setInstanceToken(instanceName, newToken);
+        headers['Authorization'] = `Bearer ${newToken}`;
+        console.log(`✅ JWT gerado automaticamente para: ${instanceName}`);
+        return headers;
+      } catch (error) {
+        console.warn(`⚠️ Falha ao gerar JWT automaticamente: ${error}`);
+      }
+    }
+    
+    // PRIORIDADE 4: Global API Key (último recurso, pode estar causando 401)
+    const globalApiKey = getYumerGlobalApiKey();
+    if (globalApiKey && globalApiKey.trim() !== '') {
+      // Validar se a API Key não é um placeholder ou valor inválido
+      if (!globalApiKey.includes('your-api-key') && !globalApiKey.includes('df1afd525fs5f15')) {
+        headers['X-API-Key'] = globalApiKey;
+        console.log('🔑 Usando Global API Key para autenticação YUMER');
+      } else {
+        console.warn('⚠️ Global API Key parece ser um placeholder - ignorando');
+      }
     } else {
       console.log('⚠️ Nenhuma autenticação configurada para YUMER');
     }
@@ -95,11 +140,11 @@ class YumerWhatsAppService {
   }
 
   // ============ REQUISIÇÕES HTTP ============
-  private async makeRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
+  private async makeRequest(endpoint: string, options: RequestInit = {}, instanceName?: string): Promise<any> {
     const url = `${API_BASE_URL}${endpoint}`;
     
     const requestOptions: RequestInit = {
-      headers: this.getAuthHeaders(),
+      headers: await this.getAuthHeaders(instanceName),
       ...options,
     };
 
@@ -107,7 +152,7 @@ class YumerWhatsAppService {
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // Aumentar timeout
       
       const response = await fetch(url, {
         ...requestOptions,
@@ -118,6 +163,14 @@ class YumerWhatsAppService {
       
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`❌ YUMER API Error ${response.status}:`, errorText);
+        
+        // Se for 401 e estivermos usando API Key, tentar com JWT
+        if (response.status === 401 && instanceName) {
+          console.log('🔄 Tentando novamente com JWT...');
+          return this.retryWithJWT(endpoint, options, instanceName);
+        }
+        
         throw new Error(`YUMER API Error ${response.status}: ${errorText}`);
       }
       
@@ -129,6 +182,41 @@ class YumerWhatsAppService {
       if (error.name === 'AbortError') {
         throw new Error('Request timeout - servidor não responde');
       }
+      throw error;
+    }
+  }
+
+  // Retry com JWT quando API Key falha
+  private async retryWithJWT(endpoint: string, options: RequestInit, instanceName: string): Promise<any> {
+    try {
+      // Gerar novo JWT para a instância
+      const newToken = await yumerJwtService.generateLocalJWT(instanceName);
+      this.setInstanceToken(instanceName, newToken);
+      
+      const url = `${API_BASE_URL}${endpoint}`;
+      const requestOptions: RequestInit = {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${newToken}`
+        },
+        ...options,
+      };
+
+      console.log(`🔄 Retry com JWT: ${options.method || 'GET'} ${url}`);
+      
+      const response = await fetch(url, requestOptions);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`YUMER API Error ${response.status}: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log(`✅ Retry Success: ${endpoint}`, data);
+      return data;
+    } catch (error) {
+      console.error(`❌ Retry failed: ${endpoint}`, error);
       throw error;
     }
   }
@@ -203,7 +291,7 @@ class YumerWhatsAppService {
       // NÍVEL 3: Teste nas APIs funcionais (com auth) - fallback
       const authResponse = await fetch(`${API_BASE_URL}/instance/fetchInstances`, {
         method: 'GET',
-        headers: this.getAuthHeaders(),
+        headers: await this.getAuthHeaders(),
         signal: controller.signal,
       });
       
@@ -279,17 +367,17 @@ class YumerWhatsAppService {
 
   // GET /instance/connect/:instanceName
   async connectInstance(instanceName: string): Promise<YumerInstance> {
-    return this.makeRequest(`/instance/connect/${instanceName}`);
+    return this.makeRequest(`/instance/connect/${instanceName}`, {}, instanceName);
   }
 
   // GET /instance/connectionState/:instanceName
   async getInstanceConnectionState(instanceName: string): Promise<YumerInstance> {
-    return this.makeRequest(`/instance/connectionState/${instanceName}`);
+    return this.makeRequest(`/instance/connectionState/${instanceName}`, {}, instanceName);
   }
 
   // GET /instance/fetchInstance/:instanceName
   async fetchInstance(instanceName: string): Promise<YumerInstance> {
-    return this.makeRequest(`/instance/fetchInstance/${instanceName}`);
+    return this.makeRequest(`/instance/fetchInstance/${instanceName}`, {}, instanceName);
   }
 
   // GET /instance/fetchInstances
@@ -301,7 +389,7 @@ class YumerWhatsAppService {
   async reloadInstance(instanceName: string): Promise<YumerInstance> {
     return this.makeRequest(`/instance/reload/${instanceName}`, {
       method: 'PATCH',
-    });
+    }, instanceName);
   }
 
   // PATCH /instance/update/:instanceName
@@ -309,43 +397,60 @@ class YumerWhatsAppService {
     return this.makeRequest(`/instance/update/${instanceName}`, {
       method: 'PATCH',
       body: JSON.stringify(updateData),
-    });
+    }, instanceName);
   }
 
   // DELETE /instance/logout/:instanceName
   async logoutInstance(instanceName: string): Promise<{ success: boolean }> {
     return this.makeRequest(`/instance/logout/${instanceName}`, {
       method: 'DELETE',
-    });
+    }, instanceName);
   }
 
   // DELETE /instance/delete/:instanceName
   async deleteInstance(instanceName: string): Promise<{ success: boolean }> {
     return this.makeRequest(`/instance/delete/${instanceName}`, {
       method: 'DELETE',
-    });
+    }, instanceName);
   }
 
   // PUT /instance/refreshToken/:instanceName
   async refreshInstanceToken(instanceName: string): Promise<{ token: string }> {
     return this.makeRequest(`/instance/refreshToken/${instanceName}`, {
       method: 'PUT',
-    });
+    }, instanceName);
   }
 
   // GET /instance/qrcode/:instanceName
   async getQRCode(instanceName: string): Promise<{ qrCode: string }> {
-    return this.makeRequest(`/instance/qrcode/${instanceName}`);
+    return this.makeRequest(`/instance/qrcode/${instanceName}`, {}, instanceName);
   }
 
   // ============ ENVIO DE MENSAGENS ============
 
   // POST /message/sendText/:instanceName
   async sendTextMessage(instanceName: string, to: string, message: string): Promise<YumerMessage> {
-    return this.makeRequest(`/message/sendText/${instanceName}`, {
+    // Extrair instanceName do formato completo se necessário
+    const cleanInstanceName = instanceName.includes('_') ? instanceName.split('_')[0] : instanceName;
+    
+    const payload = {
+      number: to,
+      options: {
+        delay: 1200,
+        presence: "composing"
+      },
+      textMessage: {
+        text: message
+      }
+    };
+
+    console.log(`📤 Enviando mensagem de texto para ${to} via instância ${cleanInstanceName}`);
+    console.log(`📋 Payload:`, payload);
+
+    return this.makeRequest(`/message/sendText/${cleanInstanceName}`, {
       method: 'POST',
-      body: JSON.stringify({ to, message }),
-    });
+      body: JSON.stringify(payload),
+    }, cleanInstanceName);
   }
 
   // POST /message/sendMedia/:instanceName
@@ -367,7 +472,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/message/sendMediaFile/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ to, filePath, caption }),
-    });
+    }, instanceName);
   }
 
   // POST /message/sendWhatsAppAudio/:instanceName
@@ -388,7 +493,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/message/sendWhatsAppAudioFile/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ to, audioPath }),
-    });
+    }, instanceName);
   }
 
   // POST /message/sendLocation/:instanceName
@@ -396,7 +501,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/message/sendLocation/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ to, latitude, longitude, description }),
-    });
+    }, instanceName);
   }
 
   // POST /message/sendContact/:instanceName
@@ -404,7 +509,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/message/sendContact/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ to, contact }),
-    });
+    }, instanceName);
   }
 
   // POST /message/sendReaction/:instanceName
@@ -412,7 +517,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/message/sendReaction/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ to, messageId, emoji }),
-    });
+    }, instanceName);
   }
 
   // POST /message/sendButtons/:instanceName
@@ -420,7 +525,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/message/sendButtons/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ to, text, buttons }),
-    });
+    }, instanceName);
   }
 
   // POST /message/sendList/:instanceName
@@ -428,7 +533,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/message/sendList/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ to, text, buttonText, list }),
-    });
+    }, instanceName);
   }
 
   // POST /message/sendList/legacy/:instanceName
@@ -436,7 +541,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/message/sendList/legacy/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ to, text, list }),
-    });
+    }, instanceName);
   }
 
   // POST /message/sendLink/:instanceName
@@ -444,7 +549,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/message/sendLink/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ to, url, text }),
-    });
+    }, instanceName);
   }
 
   // ============ GERENCIAMENTO DE CHATS ============
@@ -453,7 +558,7 @@ class YumerWhatsAppService {
   async getWhatsAppNumbers(instanceName: string): Promise<string[]> {
     return this.makeRequest(`/chat/whatsappNumbers/${instanceName}`, {
       method: 'POST',
-    });
+    }, instanceName);
   }
 
   // PUT /chat/markMessageAsRead/:instanceName
@@ -461,7 +566,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/markMessageAsRead/${instanceName}`, {
       method: 'PUT',
       body: JSON.stringify({ chatId, messageId }),
-    });
+    }, instanceName);
   }
 
   // PATCH /chat/readMessages/:instanceName
@@ -469,7 +574,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/readMessages/${instanceName}`, {
       method: 'PATCH',
       body: JSON.stringify({ chatId }),
-    });
+    }, instanceName);
   }
 
   // PATCH /chat/updatePresence/:instanceName
@@ -477,7 +582,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/updatePresence/${instanceName}`, {
       method: 'PATCH',
       body: JSON.stringify({ presence }),
-    });
+    }, instanceName);
   }
 
   // PUT /chat/archiveChat/:instanceName
@@ -485,7 +590,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/archiveChat/${instanceName}`, {
       method: 'PUT',
       body: JSON.stringify({ chatId }),
-    });
+    }, instanceName);
   }
 
   // DELETE /chat/deleteMessageForEveryone/:instanceName
@@ -493,7 +598,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/deleteMessageForEveryone/${instanceName}`, {
       method: 'DELETE',
       body: JSON.stringify({ messageId }),
-    });
+    }, instanceName);
   }
 
   // DELETE /chat/deleteMessage/:instanceName
@@ -501,7 +606,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/deleteMessage/${instanceName}`, {
       method: 'DELETE',
       body: JSON.stringify({ messageId }),
-    });
+    }, instanceName);
   }
 
   // DELETE /chat/deleteChat/:instanceName
@@ -509,7 +614,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/deleteChat/${instanceName}`, {
       method: 'DELETE',
       body: JSON.stringify({ chatId }),
-    });
+    }, instanceName);
   }
 
   // POST /chat/fetchProfilePictureUrl/:instanceName
@@ -517,7 +622,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/fetchProfilePictureUrl/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ contactId }),
-    });
+    }, instanceName);
   }
 
   // POST /chat/findContacts/:instanceName
@@ -525,7 +630,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/findContacts/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ query }),
-    });
+    }, instanceName);
   }
 
   // POST /chat/findMessages/:instanceName
@@ -533,12 +638,12 @@ class YumerWhatsAppService {
     return this.makeRequest(`/chat/findMessages/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ chatId, limit, offset }),
-    });
+    }, instanceName);
   }
 
   // GET /chat/findChats/:instanceName
   async findChats(instanceName: string): Promise<YumerChat[]> {
-    return this.makeRequest(`/chat/findChats/${instanceName}`);
+    return this.makeRequest(`/chat/findChats/${instanceName}`, {}, instanceName);
   }
 
   // ============ GERENCIAMENTO DE GRUPOS ============
@@ -548,7 +653,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/group/create/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ name, participants }),
-    });
+    }, instanceName);
   }
 
   // PUT /group/updateGroupPicture/:instanceName
@@ -566,22 +671,22 @@ class YumerWhatsAppService {
 
   // GET /group/findGroupInfos/:instanceName
   async getGroupInfo(instanceName: string, groupId: string): Promise<YumerGroup> {
-    return this.makeRequest(`/group/findGroupInfos/${instanceName}?groupId=${groupId}`);
+    return this.makeRequest(`/group/findGroupInfos/${instanceName}?groupId=${groupId}`, {}, instanceName);
   }
 
   // GET /group/findAllGroups/:instanceName
   async findAllGroups(instanceName: string): Promise<YumerGroup[]> {
-    return this.makeRequest(`/group/findAllGroups/${instanceName}`);
+    return this.makeRequest(`/group/findAllGroups/${instanceName}`, {}, instanceName);
   }
 
   // GET /group/participants/:instanceName
   async getGroupParticipants(instanceName: string, groupId: string): Promise<YumerContact[]> {
-    return this.makeRequest(`/group/participants/${instanceName}?groupId=${groupId}`);
+    return this.makeRequest(`/group/participants/${instanceName}?groupId=${groupId}`, {}, instanceName);
   }
 
   // GET /group/inviteCode/:instanceName
   async getGroupInviteCode(instanceName: string, groupId: string): Promise<{ inviteCode: string }> {
-    return this.makeRequest(`/group/inviteCode/${instanceName}?groupId=${groupId}`);
+    return this.makeRequest(`/group/inviteCode/${instanceName}?groupId=${groupId}`, {}, instanceName);
   }
 
   // PUT /group/revokeInviteCode/:instanceName
@@ -589,7 +694,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/group/revokeInviteCode/${instanceName}`, {
       method: 'PUT',
       body: JSON.stringify({ groupId }),
-    });
+    }, instanceName);
   }
 
   // PUT /group/updateParticipant/:instanceName
@@ -597,7 +702,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/group/updateParticipant/${instanceName}`, {
       method: 'PUT',
       body: JSON.stringify({ groupId, participantId, action }),
-    });
+    }, instanceName);
   }
 
   // DELETE /group/leaveGroup/:instanceName
@@ -605,7 +710,7 @@ class YumerWhatsAppService {
     return this.makeRequest(`/group/leaveGroup/${instanceName}`, {
       method: 'DELETE',
       body: JSON.stringify({ groupId }),
-    });
+    }, instanceName);
   }
 
   // ============ WEBHOOK / S3 / MÍDIA ============
@@ -616,7 +721,7 @@ class YumerWhatsAppService {
       // Descobrir instanceId real
       const discovery = await this.makeRequest(`/api/v2/instance/find/${instanceName}`, {
         method: 'GET'
-      });
+      }, instanceName);
       
       if (!discovery.id) {
         throw new Error('InstanceId não encontrado na resposta de discovery');
@@ -637,7 +742,7 @@ class YumerWhatsAppService {
             connectionUpdate: true 
           }
         }),
-      });
+      }, instanceName);
     } catch (error) {
       console.error(`❌ [YUMER-API] Erro ao configurar webhook:`, error);
       return { success: false };
@@ -646,7 +751,7 @@ class YumerWhatsAppService {
 
   // GET /webhook/find/:instanceName
   async getWebhook(instanceName: string): Promise<{ webhookUrl: string; events: string[] }> {
-    return this.makeRequest(`/webhook/find/${instanceName}`);
+    return this.makeRequest(`/webhook/find/${instanceName}`, {}, instanceName);
   }
 
   // POST /s3/findMedia/:instanceName
@@ -654,15 +759,13 @@ class YumerWhatsAppService {
     return this.makeRequest(`/s3/findMedia/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify({ mediaId }),
-    });
+    }, instanceName);
   }
 
   // GET /s3/media/url/:id/:instanceName
   async getS3MediaUrl(instanceName: string, mediaId: string): Promise<{ url: string }> {
-    return this.makeRequest(`/s3/media/url/${mediaId}/${instanceName}`);
+    return this.makeRequest(`/s3/media/url/${mediaId}/${instanceName}`, {}, instanceName);
   }
-
-  // ============ WEBSOCKET EVENT LISTENERS (BRIDGE DE COMPATIBILIDADE) ============
 
   // ============ EVENT HANDLERS DISABLED (REST-ONLY) ============
   
