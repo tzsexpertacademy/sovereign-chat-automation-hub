@@ -77,18 +77,18 @@ const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesLis
 
   if (messages.length === 0) {
     return (
-      <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
+      <div className="h-full flex items-center justify-center">
         <div className="text-center text-gray-500 py-8">
           <p>Nenhuma mensagem nesta conversa</p>
           <p className="text-sm">Inicie uma conversa enviando uma mensagem</p>
         </div>
-      </ScrollArea>
+      </div>
     );
   }
 
   return (
-    <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
-      <div className="space-y-4">
+    <ScrollArea ref={scrollAreaRef} className="h-full">
+      <div className="space-y-4 p-4">
         {messages.map((message) => (
           <div
             key={`${message.id}-${message.timestamp}`}

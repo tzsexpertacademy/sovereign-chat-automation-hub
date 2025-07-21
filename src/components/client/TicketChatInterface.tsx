@@ -35,6 +35,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { ticket, queueInfo, connectedInstance } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
 
+  // Auto-scroll para última mensagem
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
@@ -130,16 +131,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         endpoint: `/api/clients/${connectedInstance}/send`
       });
 
-      console.log('📡 Resposta do envio:', response);
-
       if (response.success) {
         console.log('✅ Mensagem enviada com sucesso via WhatsApp');
 
-        console.log('💾 Salvando mensagem manual no ticket:', {
-          ticketId,
-          content: newMessage.substring(0, 50)
-        });
-        
         await ticketsService.addTicketMessage(ticketId, {
           message_id: messageId,
           from_me: true,
@@ -198,44 +192,56 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full">
-      <TicketHeader
-        queueInfo={queueInfo}
-        onClearHistory={handleClearHistory}
-        isClearing={isClearing}
-        messagesCount={messages.length}
-      />
-
-      <ConnectionStatus
-        connectedInstance={connectedInstance}
-        isOnline={isOnline}
-      />
-
-      <MessagesList
-        messages={messages}
-        scrollAreaRef={scrollAreaRef}
-        getMessageStatus={getMessageStatus}
-      />
-
-      {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (
-        <TypingIndicator 
-          isTyping={isTyping(ticket?.chat_id || '')}
-          isRecording={isRecording(ticket?.chat_id || '')}
-          userName="🤖 Assistente IA"
-          isAI={true}
+    <div className="flex flex-col h-full max-h-screen">
+      {/* Header fixo */}
+      <div className="flex-shrink-0">
+        <TicketHeader
+          queueInfo={queueInfo}
+          onClearHistory={handleClearHistory}
+          isClearing={isClearing}
+          messagesCount={messages.length}
         />
+
+        <ConnectionStatus
+          connectedInstance={connectedInstance}
+          isOnline={isOnline}
+        />
+      </div>
+
+      {/* Área de mensagens - ocupa espaço disponível */}
+      <div className="flex-1 min-h-0">
+        <MessagesList
+          messages={messages}
+          scrollAreaRef={scrollAreaRef}
+          getMessageStatus={getMessageStatus}
+        />
+      </div>
+
+      {/* Indicador de digitação - fixo */}
+      {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (
+        <div className="flex-shrink-0 px-4 py-2">
+          <TypingIndicator 
+            isTyping={isTyping(ticket?.chat_id || '')}
+            isRecording={isRecording(ticket?.chat_id || '')}
+            userName="🤖 Assistente IA"
+            isAI={true}
+          />
+        </div>
       )}
 
-      <MessageInput
-        newMessage={newMessage}
-        setNewMessage={setNewMessage}
-        onSendMessage={handleSendMessage}
-        onAudioReady={handleAudioReady}
-        connectedInstance={connectedInstance}
-        isSending={isSending}
-        onKeyPress={handleKeyPress}
-        chatId={ticket?.chat_id || ''}
-      />
+      {/* Input de mensagem - fixo no bottom */}
+      <div className="flex-shrink-0 border-t bg-background">
+        <MessageInput
+          newMessage={newMessage}
+          setNewMessage={setNewMessage}
+          onSendMessage={handleSendMessage}
+          onAudioReady={handleAudioReady}
+          connectedInstance={connectedInstance}
+          isSending={isSending}
+          onKeyPress={handleKeyPress}
+          chatId={ticket?.chat_id || ''}
+        />
+      </div>
     </div>
   );
 };
