@@ -202,7 +202,6 @@ const AutomaticProcessorStatusFixed = ({ clientId }: AutomaticProcessorStatusPro
                           checked={processor.isActive && globalEnabled}
                           onCheckedChange={(enabled) => handleInstanceToggle(processor.instanceId, enabled)}
                           disabled={!globalEnabled}
-                          size="sm"
                         />
                         <Button
                           variant="outline"
