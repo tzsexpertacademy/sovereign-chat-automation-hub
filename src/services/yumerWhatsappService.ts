@@ -1,6 +1,6 @@
 // YUMER WhatsApp Backend Service - Integração completa com todas as APIs
 import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
-import { codeChatApiService } from './codechatApiService';
+import { codechatApiService } from './codechatApiService';
 import { yumerJwtService } from './yumerJwtService';
 
 export interface YumerInstance {
@@ -77,7 +77,7 @@ class YumerWhatsAppService {
   setInstanceToken(instanceName: string, token: string): void {
     this.instanceTokens.set(instanceName, token);
     // Também configurar no CodeChat API Service
-    codeChatApiService.setInstanceToken(instanceName, token);
+    // codechatApiService não tem setInstanceToken
     console.log(`🔐 JWT Token configurado para instância: ${instanceName}`);
   }
 
@@ -621,7 +621,7 @@ class YumerWhatsAppService {
       console.log(`📨 [CODECHAT] Buscando mensagens via CodeChat API v1.3.0 para chat: ${chatId}`);
       
       // Usar o novo serviço CodeChat
-      const messages = await codeChatApiService.findMessages(instanceName, chatId, limit, offset);
+      const messages = await codechatApiService.findMessages(instanceName, chatId, limit);
       
       // Converter para formato YUMER
       return messages.map(message => ({
@@ -648,7 +648,7 @@ class YumerWhatsAppService {
       console.log(`📊 [CODECHAT] Buscando chats via CodeChat API v1.3.0 para: ${instanceName}`);
       
       // Usar o novo serviço CodeChat
-      const chats = await codeChatApiService.findChats(instanceName);
+      const chats = await codechatApiService.findChats(instanceName);
       
       // Converter para formato YUMER
       return chats.map(chat => ({

@@ -65,7 +65,7 @@ class TicketsService {
         throw error;
       }
 
-      return tickets || [];
+      return (tickets || []) as ConversationTicket[];
     } catch (error) {
       console.error('Erro ao buscar tickets:', error);
       throw error;
@@ -90,7 +90,7 @@ class TicketsService {
         throw error;
       }
 
-      return ticket;
+      return ticket as ConversationTicket;
     } catch (error) {
       console.error('Erro ao buscar ticket:', error);
       throw error;
@@ -114,7 +114,7 @@ class TicketsService {
         return null;
       }
 
-      return ticket;
+      return ticket as ConversationTicket;
     } catch (error) {
       console.error('Erro ao buscar ticket por chat ID:', error);
       return null;

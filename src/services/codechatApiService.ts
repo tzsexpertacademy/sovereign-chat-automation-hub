@@ -29,7 +29,7 @@ class BaseApiService {
   protected readonly baseUrl: string;
 
   constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_CODECHAT_API_URL || 'http://localhost:3001';
+    this.baseUrl = 'https://yumer.yumerflow.app:8083';
   }
 }
 
@@ -39,7 +39,7 @@ class CodeChatApiService extends BaseApiService {
    */
   async getClientInstances(clientId: string): Promise<CodeChatInstance[]> {
     try {
-      const token = yumerJwtService.getClientToken(clientId);
+      const token = yumerJwtService.getCurrentToken();
       if (!token) {
         console.error('❌ [CODECHAT] Token não encontrado para cliente:', clientId);
         return [];
@@ -81,7 +81,7 @@ class CodeChatApiService extends BaseApiService {
    */
   async findChats(instanceName: string, limit: number = 50): Promise<any[]> {
     try {
-      const token = yumerJwtService.getInstanceToken(instanceName);
+      const token = yumerJwtService.getCurrentToken();
       if (!token) {
         console.error('❌ [CODECHAT] Token não encontrado para instância:', instanceName);
         return [];
@@ -144,7 +144,7 @@ class CodeChatApiService extends BaseApiService {
       try {
         console.log('🔍 [CODECHAT] Testando formato:', format);
         
-        const token = yumerJwtService.getInstanceToken(instanceName);
+        const token = yumerJwtService.getCurrentToken();
         if (!token) {
           console.error('❌ [CODECHAT] Token não encontrado para instância:', instanceName);
           continue;

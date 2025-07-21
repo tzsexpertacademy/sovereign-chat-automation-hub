@@ -7,6 +7,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 import { codechatApiService } from '@/services/codechatApiService';
 import { ticketsService } from '@/services/ticketsService';
+import { supabase } from '@/integrations/supabase/client';
+import { contactNameService } from '@/services/contactNameService';
 import TicketChatInterface from './TicketChatInterface';
 import { 
   MessageSquare, 
@@ -172,7 +174,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               console.log(`💾 [IMPORT] Processando conversa: ${chat.name || chat.id}`);
 
               // Extrair número de telefone limpo
-              const phoneNumber = this.extractPhoneNumber(chat.id);
+              const phoneNumber = extractPhoneNumber(chat.id);
               if (!phoneNumber) {
                 console.warn('⚠️ [IMPORT] Número inválido, pulando:', chat.id);
                 continue;
@@ -192,13 +194,14 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               const ticketId = await ticketsService.createOrUpdateTicket({
                 clientId,
                 chatId: phoneNumber,
-                title: chat.name || this.formatPhoneForDisplay(phoneNumber),
+                title: chat.name || formatPhoneForDisplay(phoneNumber),
                 phoneNumber,
                 contactName: chat.name,
                 instanceId: instance.instance_id,
                 lastMessage: chat.lastMessage,
                 lastMessageAt: chat.lastMessageTime,
-                pushName: chat.name // Para extração de nome real
+                pushName: chat.name,
+                firstMessage: chat.lastMessage
               });
 
               console.log('🎫 Ticket criado/atualizado:', ticketId);
@@ -240,7 +243,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                     }
 
                     // Extrair nome real se habilitado
-                    let senderName = message.keyFromMe ? 'Atendente' : (chat.name || this.formatPhoneForDisplay(phoneNumber));
+                    let senderName = message.keyFromMe ? 'Atendente' : (chat.name || formatPhoneForDisplay(phoneNumber));
                     
                     console.log('💾 Salvando mensagem no ticket:', {
                       ticketId,
