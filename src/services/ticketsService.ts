@@ -298,6 +298,69 @@ export const ticketsService = {
     if (error) throw error;
   },
 
+  // NOVO: Limpar tickets antigos
+  async clearOldTickets(clientId: string, olderThanDays: number = 30): Promise<{ deletedTickets: number; deletedMessages: number }> {
+    try {
+      console.log(`🧹 [CLEANUP] Limpando tickets com mais de ${olderThanDays} dias para cliente: ${clientId}`);
+      
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+      const cutoffISOString = cutoffDate.toISOString();
+      
+      // Buscar tickets antigos para ter os IDs
+      const { data: oldTickets, error: fetchError } = await supabase
+        .from('conversation_tickets')
+        .select('id')
+        .eq('client_id', clientId)
+        .lt('created_at', cutoffISOString);
+
+      if (fetchError) {
+        console.error('❌ [CLEANUP] Erro ao buscar tickets antigos:', fetchError);
+        throw fetchError;
+      }
+
+      const ticketIds = (oldTickets || []).map(ticket => ticket.id);
+      
+      if (ticketIds.length === 0) {
+        console.log('✅ [CLEANUP] Nenhum ticket antigo encontrado');
+        return { deletedTickets: 0, deletedMessages: 0 };
+      }
+
+      // Deletar mensagens dos tickets antigos primeiro
+      const { error: messagesError, count: deletedMessages } = await supabase
+        .from('ticket_messages')
+        .delete({ count: 'exact' })
+        .in('ticket_id', ticketIds);
+
+      if (messagesError) {
+        console.error('❌ [CLEANUP] Erro ao deletar mensagens:', messagesError);
+        throw messagesError;
+      }
+
+      // Deletar tickets antigos
+      const { error: ticketsError, count: deletedTickets } = await supabase
+        .from('conversation_tickets')
+        .delete({ count: 'exact' })
+        .in('id', ticketIds);
+
+      if (ticketsError) {
+        console.error('❌ [CLEANUP] Erro ao deletar tickets:', ticketsError);
+        throw ticketsError;
+      }
+
+      console.log(`✅ [CLEANUP] Removidos: ${deletedTickets} tickets e ${deletedMessages} mensagens`);
+      
+      return { 
+        deletedTickets: deletedTickets || 0, 
+        deletedMessages: deletedMessages || 0 
+      };
+
+    } catch (error) {
+      console.error('❌ [CLEANUP] Erro na limpeza:', error);
+      throw error;
+    }
+  },
+
   normalizePhoneNumber(phoneNumber: string): string {
     return codeChatApiService.normalizePhoneNumber(phoneNumber);
   },
@@ -352,11 +415,16 @@ export const ticketsService = {
     return validTimestamp;
   },
 
-  // TOTALMENTE REESCRITO: Importação inteligente com debug e progresso
+  // CORRIGIDO E MELHORADO: Importação inteligente com opções de limpeza
   async importConversationsFromWhatsApp(
     clientId: string, 
-    onProgress?: (progress: { current: number; total: number; message: string }) => void
+    options: {
+      clearOldData?: boolean;
+      importMessages?: boolean;
+      onProgress?: (progress: { current: number; total: number; message: string }) => void;
+    } = {}
   ): Promise<{ success: number; errors: number; details: string[] }> {
+    const { clearOldData = false, importMessages = true, onProgress } = options;
     const details: string[] = [];
     
     try {
@@ -365,7 +433,21 @@ export const ticketsService = {
       
       onProgress?.({ current: 0, total: 100, message: 'Verificando instâncias...' });
 
-      // FASE 1: Buscar instâncias ativas
+      // FASE 1: Limpeza opcional de dados antigos
+      if (clearOldData) {
+        onProgress?.({ current: 5, total: 100, message: 'Limpando dados antigos...' });
+        
+        try {
+          const cleanupResult = await this.clearOldTickets(clientId, 7); // Limpar tickets com mais de 7 dias
+          details.push(`🧹 Dados antigos removidos: ${cleanupResult.deletedTickets} tickets, ${cleanupResult.deletedMessages} mensagens`);
+          console.log('🧹 [IMPORT] Limpeza de dados antigos concluída:', cleanupResult);
+        } catch (cleanupError) {
+          console.warn('⚠️ [IMPORT] Erro na limpeza (continuando):', cleanupError);
+          details.push('⚠️ Erro na limpeza de dados antigos (continuando...)');
+        }
+      }
+
+      // FASE 2: Buscar instâncias ativas
       const { data: instances, error: instancesError } = await supabase
         .from('whatsapp_instances')
         .select('instance_id, phone_number, yumer_instance_name, auth_token')
@@ -387,10 +469,10 @@ export const ticketsService = {
       let totalSuccess = 0;
       let totalErrors = 0;
 
-      // FASE 2: Processar cada instância
+      // FASE 3: Processar cada instância
       for (let i = 0; i < instances.length; i++) {
         const instance = instances[i];
-        const instanceProgress = (i / instances.length) * 100;
+        const instanceProgress = 20 + (i / instances.length) * 60; // 20% a 80%
         
         onProgress?.({ 
           current: instanceProgress, 
@@ -409,12 +491,12 @@ export const ticketsService = {
           
           const instanceName = instance.yumer_instance_name || instance.instance_id;
           
-          // FASE 3: Buscar chats com estratégia inteligente
+          // FASE 4: Buscar chats com estratégia inteligente
           const chats = await codeChatApiService.findChats(instanceName, {
             limit: 50, // Processar apenas 50 conversas mais relevantes
             useMessages: true, // Usar estratégia alternativa se necessário
             onProgress: (current, total) => {
-              const chatProgress = instanceProgress + (current / total) * (100 / instances.length);
+              const chatProgress = instanceProgress + (current / total) * (60 / instances.length);
               onProgress?.({ 
                 current: chatProgress, 
                 total: 100, 
@@ -431,11 +513,11 @@ export const ticketsService = {
             continue;
           }
 
-          // FASE 4: Processar cada chat válido
+          // FASE 5: Processar cada chat válido
           for (let j = 0; j < chats.length; j++) {
             const chat = chats[j];
             
-            const chatProgress = instanceProgress + ((j + 1) / chats.length) * (100 / instances.length);
+            const chatProgress = instanceProgress + ((j + 1) / chats.length) * (60 / instances.length);
             onProgress?.({ 
               current: chatProgress, 
               total: 100, 
@@ -462,12 +544,15 @@ export const ticketsService = {
                 lastMessageTime
               );
 
-              // Opcionalmente, importar algumas mensagens do histórico
-              try {
-                await this.importChatMessages(instanceName, phoneNumber, ticketId, 5);
-              } catch (messageError) {
-                console.warn(`⚠️ [IMPORT] Falha ao importar mensagens para ${phoneNumber}:`, messageError);
-                details.push(`⚠️ Erro ao importar mensagens de ${contactName}`);
+              // Importar mensagens se solicitado
+              if (importMessages) {
+                try {
+                  await this.importChatMessages(instanceName, phoneNumber, ticketId, 10);
+                  console.log(`📨 [IMPORT] Mensagens importadas para: ${contactName}`);
+                } catch (messageError) {
+                  console.warn(`⚠️ [IMPORT] Falha ao importar mensagens para ${phoneNumber}:`, messageError);
+                  details.push(`⚠️ Erro ao importar mensagens de ${contactName}`);
+                }
               }
 
               totalSuccess++;
@@ -506,13 +591,40 @@ export const ticketsService = {
     }
   },
 
-  // ATUALIZADO: Importar mensagens específicas de um chat com validação robusta
-  async importChatMessages(instanceName: string, chatId: string, ticketId: string, limit: number = 20): Promise<void> {
+  // CORRIGIDO: Importar mensagens específicas de um chat com validação robusta
+  async importChatMessages(instanceName: string, chatId: string, ticketId: string, limit: number = 15): Promise<void> {
     try {
       console.log(`📨 [IMPORT] Importando mensagens para chat ${chatId} (limite: ${limit})`);
       
-      const messages = await codeChatApiService.findMessages(instanceName, chatId, limit);
-      console.log(`📨 [IMPORT] ${messages.length} mensagens encontradas para importação`);
+      // Construir remoteJid correto para busca
+      const remoteJidFormats = [
+        `${chatId}@s.whatsapp.net`,
+        `${chatId}@c.us`,
+        chatId
+      ];
+      
+      let messages: any[] = [];
+      
+      // Tentar diferentes formatos de remoteJid
+      for (const remoteJid of remoteJidFormats) {
+        try {
+          const foundMessages = await codeChatApiService.findMessages(instanceName, remoteJid, limit);
+          if (foundMessages.length > 0) {
+            messages = foundMessages;
+            console.log(`📨 [IMPORT] ${messages.length} mensagens encontradas com remoteJid: ${remoteJid}`);
+            break;
+          }
+        } catch (error) {
+          console.log(`⚠️ [IMPORT] Tentativa com ${remoteJid} falhou:`, error);
+        }
+      }
+
+      if (messages.length === 0) {
+        console.log(`📨 [IMPORT] Nenhuma mensagem encontrada para chat ${chatId}`);
+        return;
+      }
+
+      console.log(`📨 [IMPORT] Processando ${messages.length} mensagens para importação`);
 
       for (let i = 0; i < messages.length; i++) {
         const message = messages[i];
@@ -571,6 +683,8 @@ export const ticketsService = {
           console.error(`❌ [IMPORT] Erro ao importar mensagem ${message.keyId}:`, messageError);
         }
       }
+      
+      console.log(`✅ [IMPORT] Importação de mensagens concluída para chat ${chatId}`);
     } catch (error) {
       console.error(`❌ [IMPORT] Erro ao importar mensagens do chat ${chatId}:`, error);
       throw error;

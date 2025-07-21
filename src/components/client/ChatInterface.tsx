@@ -4,7 +4,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import TicketChatInterface from './TicketChatInterface';
@@ -24,6 +25,8 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 100, message: '' });
   const [showImportModal, setShowImportModal] = useState(false);
+  const [clearOldData, setClearOldData] = useState(false);
+  const [importMessages, setImportMessages] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { chatId } = useParams();
@@ -53,7 +56,7 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
     navigate(`/client/${clientId}/chat/${ticketId}`);
   }, [onSelectChat, navigate, clientId]);
 
-  // Importar conversas do WhatsApp com UX melhorada
+  // Importar conversas do WhatsApp com UX melhorada e opções
   const handleImportConversations = async () => {
     try {
       setIsImporting(true);
@@ -62,13 +65,17 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
       
       toast({
         title: "Importação iniciada",
-        description: "Importando conversas com estratégia inteligente CodeChat v1.3.0..."
+        description: `Importando conversas ${clearOldData ? 'com limpeza de dados antigos' : ''} ${importMessages ? 'incluindo mensagens' : 'apenas conversas'}...`
       });
 
       const result = await ticketsService.importConversationsFromWhatsApp(
         clientId,
-        (progress) => {
-          setImportProgress(progress);
+        {
+          clearOldData: clearOldData,
+          importMessages: importMessages,
+          onProgress: (progress) => {
+            setImportProgress(progress);
+          }
         }
       );
       
@@ -101,23 +108,28 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   };
 
   const getDisplayName = useCallback((ticket: ConversationTicket) => {
+    // Priorizar o nome real do cliente se não for formatação automática
     if (ticket.customer?.name && 
         ticket.customer.name !== `Contato ${ticket.customer.phone}` &&
         !ticket.customer.name.startsWith('Contato ') &&
-        !ticket.customer.name.match(/^\(\d+\)/)) {
+        !ticket.customer.name.match(/^\(\d+\)/) &&
+        !ticket.customer.name.match(/^\d+$/)) {
       return ticket.customer.name;
     }
     
+    // Verificar se o título contém um nome real
     if (ticket.title && ticket.title.includes('Conversa com ')) {
       const nameFromTitle = ticket.title.replace('Conversa com ', '').trim();
       if (nameFromTitle && 
           !nameFromTitle.startsWith('Contato ') && 
           !nameFromTitle.match(/^\(\d+\)/) &&
+          !nameFromTitle.match(/^\d+$/) &&
           nameFromTitle !== ticket.customer?.phone) {
         return nameFromTitle;
       }
     }
     
+    // Fallback para número formatado
     const phone = ticket.customer?.phone || ticket.chat_id;
     if (phone) {
       const cleanPhone = phone.replace(/\D/g, '');
@@ -209,6 +221,35 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               </div>
             </div>
             
+            {/* Opções de Importação */}
+            <div className="space-y-3 mb-3">
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="clearOldData" 
+                    checked={clearOldData}
+                    onCheckedChange={(checked) => setClearOldData(checked as boolean)}
+                    disabled={isImporting}
+                  />
+                  <label htmlFor="clearOldData" className="text-sm text-gray-600 cursor-pointer">
+                    Limpar dados antigos (7+ dias)
+                  </label>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="importMessages" 
+                    checked={importMessages}
+                    onCheckedChange={(checked) => setImportMessages(checked as boolean)}
+                    disabled={isImporting}
+                  />
+                  <label htmlFor="importMessages" className="text-sm text-gray-600 cursor-pointer">
+                    Importar mensagens (últimas 10 por chat)
+                  </label>
+                </div>
+              </div>
+            </div>
+            
             <Button
               size="sm"
               variant="secondary"
@@ -228,6 +269,13 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                 </>
               )}
             </Button>
+            
+            {clearOldData && (
+              <p className="text-xs text-orange-600 mt-2 flex items-center">
+                <Trash2 className="w-3 h-3 mr-1" />
+                Atenção: Dados antigos serão removidos
+              </p>
+            )}
           </div>
 
           {/* Lista de conversas */}
