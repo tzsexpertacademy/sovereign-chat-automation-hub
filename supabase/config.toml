@@ -1,4 +1,8 @@
+
 project_id = "ymygyagbvbsdfkduxmgu"
 
 [functions.codechat-webhook]
+verify_jwt = false
+
+[functions.yumer-webhook]
 verify_jwt = false
