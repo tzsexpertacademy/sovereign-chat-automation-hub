@@ -352,12 +352,20 @@ export const ticketsService = {
     return validTimestamp;
   },
 
-  // ATUALIZADO: Importação usando CodeChat API v1.3.0 com validação robusta
-  async importConversationsFromWhatsApp(clientId: string): Promise<{ success: number; errors: number }> {
+  // TOTALMENTE REESCRITO: Importação inteligente com debug e progresso
+  async importConversationsFromWhatsApp(
+    clientId: string, 
+    onProgress?: (progress: { current: number; total: number; message: string }) => void
+  ): Promise<{ success: number; errors: number; details: string[] }> {
+    const details: string[] = [];
+    
     try {
-      console.log('🔄 Iniciando importação de conversas CodeChat v1.3.0 para cliente:', clientId);
+      console.log('🚀 [IMPORT] Iniciando importação inteligente CodeChat v1.3.0');
+      details.push('🚀 Iniciando importação inteligente...');
       
-      // Buscar instâncias ativas do cliente
+      onProgress?.({ current: 0, total: 100, message: 'Verificando instâncias...' });
+
+      // FASE 1: Buscar instâncias ativas
       const { data: instances, error: instancesError } = await supabase
         .from('whatsapp_instances')
         .select('instance_id, phone_number, yumer_instance_name, auth_token')
@@ -365,7 +373,7 @@ export const ticketsService = {
         .eq('status', 'connected');
 
       if (instancesError) {
-        console.error('❌ Erro ao buscar instâncias:', instancesError);
+        console.error('❌ [IMPORT] Erro ao buscar instâncias:', instancesError);
         throw new Error('Falha ao buscar instâncias WhatsApp');
       }
 
@@ -373,11 +381,25 @@ export const ticketsService = {
         throw new Error('Nenhuma instância WhatsApp conectada encontrada');
       }
 
+      details.push(`📱 ${instances.length} instância(s) conectada(s) encontrada(s)`);
+      console.log(`📱 [IMPORT] ${instances.length} instâncias encontradas`);
+
       let totalSuccess = 0;
       let totalErrors = 0;
 
-      for (const instance of instances) {
-        console.log(`📱 Processando instância: ${instance.instance_id}`);
+      // FASE 2: Processar cada instância
+      for (let i = 0; i < instances.length; i++) {
+        const instance = instances[i];
+        const instanceProgress = (i / instances.length) * 100;
+        
+        onProgress?.({ 
+          current: instanceProgress, 
+          total: 100, 
+          message: `Processando instância ${i + 1}/${instances.length}...` 
+        });
+
+        console.log(`📱 [IMPORT] Processando instância: ${instance.instance_id}`);
+        details.push(`📱 Processando: ${instance.instance_id}`);
         
         try {
           // Configurar autenticação se disponível
@@ -385,104 +407,101 @@ export const ticketsService = {
             codeChatApiService.setInstanceToken(instance.yumer_instance_name, instance.auth_token);
           }
           
-          // Usar o yumer_instance_name ou fallback para instance_id
           const instanceName = instance.yumer_instance_name || instance.instance_id;
           
-          console.log(`📡 [IMPORTAÇÃO] Buscando chats para instanceName: ${instanceName}`);
-          
-          // Buscar chats usando CodeChat API v1.3.0 com tratamento de erro
-          let chats = [];
-          try {
-            chats = await codeChatApiService.findChats(instanceName);
-            console.log(`📊 ${chats.length} conversas encontradas para ${instanceName}`);
-          } catch (apiError) {
-            console.error(`❌ Erro na API CodeChat para ${instanceName}:`, apiError);
-            totalErrors++;
-            continue; // Pular para próxima instância
+          // FASE 3: Buscar chats com estratégia inteligente
+          const chats = await codeChatApiService.findChats(instanceName, {
+            limit: 50, // Processar apenas 50 conversas mais relevantes
+            useMessages: true, // Usar estratégia alternativa se necessário
+            onProgress: (current, total) => {
+              const chatProgress = instanceProgress + (current / total) * (100 / instances.length);
+              onProgress?.({ 
+                current: chatProgress, 
+                total: 100, 
+                message: `Analisando chat ${current}/${total} na instância ${i + 1}...` 
+              });
+            }
+          });
+
+          console.log(`📊 [IMPORT] ${chats.length} chats válidos encontrados para ${instanceName}`);
+          details.push(`📊 ${chats.length} conversas válidas encontradas`);
+
+          if (chats.length === 0) {
+            details.push(`⚠️ Nenhuma conversa válida na instância ${instanceName}`);
+            continue;
           }
 
-          // Processar cada conversa com validação robusta
-          for (let i = 0; i < chats.length; i++) {
-            const chat = chats[i];
+          // FASE 4: Processar cada chat válido
+          for (let j = 0; j < chats.length; j++) {
+            const chat = chats[j];
             
-            try {
-              console.log(`📝 [${i + 1}/${chats.length}] Processando chat:`, chat);
-              
-              const chatId = chat.id;
-              
-              if (!chatId || typeof chatId !== 'string' || chatId.trim() === '') {
-                console.log(`⚠️ Chat ${i + 1} sem ID válido, pulando...`);
-                totalErrors++;
-                continue;
-              }
+            const chatProgress = instanceProgress + ((j + 1) / chats.length) * (100 / instances.length);
+            onProgress?.({ 
+              current: chatProgress, 
+              total: 100, 
+              message: `Importando conversa ${j + 1}/${chats.length}: ${chat.name}` 
+            });
 
-              // Extrair nome do contato com fallback seguro
-              let contactName;
-              try {
-                contactName = codeChatApiService.extractContactName(chat, chatId);
-              } catch (nameError) {
-                console.error(`❌ Erro ao extrair nome para chat ${chatId}:`, nameError);
-                contactName = `Contato ${i + 1}`;
-              }
-              
-              // FASE 2: Extrair número real de WhatsApp
-              const phoneNumber = codeChatApiService.extractWhatsAppPhone(chat);
-              
-              // Pular chats sem número válido
-              if (!phoneNumber) {
-                console.log(`⏭️ Chat ${chatId} pulado - sem número válido`);
-                continue;
-              }
-              
-              // Preparar última mensagem
+            try {
+              console.log(`💾 [IMPORT] Processando conversa: ${chat.name} (${chat.id})`);
+
+              // Usar o phoneNumber já extraído e validado pelo findChats
+              const phoneNumber = chat.id; // findChats já retorna o número como ID
+              const contactName = chat.name;
               const lastMessage = chat.lastMessage || 'Conversa importada do WhatsApp';
               const lastMessageTime = this.validateAndFixTimestamp(chat.lastMessageTime || Date.now());
 
-              console.log(`💾 Salvando conversa: ${contactName} (${phoneNumber})`);
+              // Criar ou atualizar ticket
+              const ticketId = await this.createOrUpdateTicket(
+                clientId,
+                phoneNumber, // Usar como chat_id também
+                instance.instance_id,
+                contactName,
+                phoneNumber,
+                lastMessage,
+                lastMessageTime
+              );
 
-              // Criar ou atualizar ticket com tratamento de erro
+              // Opcionalmente, importar algumas mensagens do histórico
               try {
-                const ticketId = await this.createOrUpdateTicket(
-                  clientId,
-                  chatId,
-                  instance.instance_id,
-                  contactName,
-                  phoneNumber,
-                  lastMessage,
-                  lastMessageTime
-                );
-
-                // Opcionalmente, importar histórico de mensagens
-                try {
-                  await this.importChatMessages(instanceName, chatId, ticketId, 10); // Limitar a 10 mensagens por chat
-                } catch (messageError) {
-                  console.warn(`⚠️ Falha ao importar mensagens para chat ${chatId}:`, messageError);
-                }
-
-                totalSuccess++;
-                console.log(`✅ Chat ${i + 1} processado com sucesso`);
-
-              } catch (ticketError) {
-                console.error(`❌ Erro ao criar ticket para chat ${chatId}:`, ticketError);
-                totalErrors++;
+                await this.importChatMessages(instanceName, phoneNumber, ticketId, 5);
+              } catch (messageError) {
+                console.warn(`⚠️ [IMPORT] Falha ao importar mensagens para ${phoneNumber}:`, messageError);
+                details.push(`⚠️ Erro ao importar mensagens de ${contactName}`);
               }
 
+              totalSuccess++;
+              console.log(`✅ [IMPORT] Conversa importada: ${contactName}`);
+
             } catch (chatError) {
-              console.error(`❌ Erro ao processar chat ${i + 1}:`, chat, chatError);
+              console.error(`❌ [IMPORT] Erro ao processar conversa ${chat.id}:`, chatError);
+              details.push(`❌ Erro ao processar: ${chat.name}`);
               totalErrors++;
             }
           }
+
         } catch (instanceError) {
-          console.error(`❌ Erro ao processar instância ${instance.instance_id}:`, instanceError);
+          console.error(`❌ [IMPORT] Erro ao processar instância ${instance.instance_id}:`, instanceError);
+          details.push(`❌ Erro na instância: ${instance.instance_id}`);
           totalErrors++;
         }
       }
 
-      console.log(`✅ Importação concluída: ${totalSuccess} sucessos, ${totalErrors} erros`);
-      return { success: totalSuccess, errors: totalErrors };
+      onProgress?.({ current: 100, total: 100, message: 'Importação concluída!' });
+
+      const summary = `✅ Importação concluída: ${totalSuccess} sucessos, ${totalErrors} erros`;
+      console.log(`🎉 [IMPORT] ${summary}`);
+      details.push(summary);
+
+      return { 
+        success: totalSuccess, 
+        errors: totalErrors,
+        details 
+      };
 
     } catch (error) {
-      console.error('❌ Erro na importação:', error);
+      console.error('❌ [IMPORT] Erro crítico na importação:', error);
+      details.push(`❌ Erro crítico: ${error}`);
       throw error;
     }
   },
@@ -490,10 +509,10 @@ export const ticketsService = {
   // ATUALIZADO: Importar mensagens específicas de um chat com validação robusta
   async importChatMessages(instanceName: string, chatId: string, ticketId: string, limit: number = 20): Promise<void> {
     try {
-      console.log(`📨 Importando mensagens para chat ${chatId} (limite: ${limit})`);
+      console.log(`📨 [IMPORT] Importando mensagens para chat ${chatId} (limite: ${limit})`);
       
       const messages = await codeChatApiService.findMessages(instanceName, chatId, limit);
-      console.log(`📨 ${messages.length} mensagens encontradas para importação`);
+      console.log(`📨 [IMPORT] ${messages.length} mensagens encontradas para importação`);
 
       for (let i = 0; i < messages.length; i++) {
         const message = messages[i];
@@ -508,7 +527,7 @@ export const ticketsService = {
             .single();
 
           if (existingMessage) {
-            console.log(`⏭️ Mensagem ${message.keyId} já existe, pulando...`);
+            console.log(`⏭️ [IMPORT] Mensagem ${message.keyId} já existe, pulando...`);
             continue;
           }
 
@@ -529,7 +548,7 @@ export const ticketsService = {
               content = `[${message.messageType}]`;
             }
           } catch (contentError) {
-            console.error(`❌ Erro ao extrair conteúdo da mensagem ${message.keyId}:`, contentError);
+            console.error(`❌ [IMPORT] Erro ao extrair conteúdo da mensagem ${message.keyId}:`, contentError);
             content = `[Erro ao processar conteúdo]`;
           }
 
@@ -547,13 +566,13 @@ export const ticketsService = {
             processing_status: 'processed'
           });
 
-          console.log(`✅ Mensagem ${i + 1}/${messages.length} importada: ${message.keyId}`);
+          console.log(`✅ [IMPORT] Mensagem ${i + 1}/${messages.length} importada: ${message.keyId}`);
         } catch (messageError) {
-          console.error(`❌ Erro ao importar mensagem ${message.keyId}:`, messageError);
+          console.error(`❌ [IMPORT] Erro ao importar mensagem ${message.keyId}:`, messageError);
         }
       }
     } catch (error) {
-      console.error(`❌ Erro ao importar mensagens do chat ${chatId}:`, error);
+      console.error(`❌ [IMPORT] Erro ao importar mensagens do chat ${chatId}:`, error);
       throw error;
     }
   }

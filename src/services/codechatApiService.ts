@@ -115,46 +115,291 @@ class CodeChatApiService {
     }
   }
 
-  // GET /chat/findChats/:instanceName
-  async findChats(instanceName: string): Promise<CodeChatChat[]> {
+  // NOVO: Debugar estrutura completa da API
+  async debugApiStructure(instanceName: string): Promise<void> {
+    console.log(`🔍 [DEBUG] Iniciando debug completo da API para: ${instanceName}`);
+    
     try {
-      console.log(`📊 [CODECHAT] Buscando chats para instância: ${instanceName}`);
-      const response = await this.makeRequest(`/chat/findChats/${instanceName}`, {
+      // 1. Testar findChats com debug completo
+      const chatsResponse = await this.makeRequest(`/chat/findChats/${instanceName}`, {
         method: 'GET',
       }, instanceName);
       
-      console.log(`🔍 [CODECHAT] Dados brutos recebidos:`, JSON.stringify(response, null, 2));
+      console.log(`🔍 [DEBUG] Estrutura completa de findChats:`, JSON.stringify(chatsResponse, null, 2));
       
-      // Normalizar dados retornados
-      if (Array.isArray(response)) {
-        const normalizedChats = response.map((chat, index) => {
-          console.log(`🔍 [CODECHAT] Processando chat ${index + 1}:`, chat);
+      if (Array.isArray(chatsResponse) && chatsResponse.length > 0) {
+        console.log(`🔍 [DEBUG] Primeiro chat (exemplo):`, JSON.stringify(chatsResponse[0], null, 2));
+        console.log(`🔍 [DEBUG] Campos disponíveis no chat:`, Object.keys(chatsResponse[0]));
+      }
+
+      // 2. Testar findContacts como alternativa
+      try {
+        const contactsResponse = await this.makeRequest(`/chat/findContacts/${instanceName}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            where: {}
+          }),
+        }, instanceName);
+        
+        console.log(`🔍 [DEBUG] Estrutura de findContacts:`, JSON.stringify(contactsResponse, null, 2));
+      } catch (contactError) {
+        console.log(`⚠️ [DEBUG] findContacts não disponível:`, contactError);
+      }
+
+      // 3. Testar findMessages para ver estrutura de dados reais
+      try {
+        const messagesResponse = await this.makeRequest(`/chat/findMessages/${instanceName}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            where: {},
+            limit: 5,
+            offset: 0
+          }),
+        }, instanceName);
+        
+        console.log(`🔍 [DEBUG] Estrutura de findMessages:`, JSON.stringify(messagesResponse, null, 2));
+        
+        if (messagesResponse?.messages?.records && messagesResponse.messages.records.length > 0) {
+          const firstMessage = messagesResponse.messages.records[0];
+          console.log(`🔍 [DEBUG] Primeira mensagem (exemplo):`, JSON.stringify(firstMessage, null, 2));
+          console.log(`🔍 [DEBUG] keyRemoteJid da mensagem:`, firstMessage.keyRemoteJid);
+        }
+      } catch (messageError) {
+        console.log(`⚠️ [DEBUG] Erro ao testar findMessages:`, messageError);
+      }
+
+    } catch (error) {
+      console.error(`❌ [DEBUG] Erro no debug da API:`, error);
+    }
+  }
+
+  // ATUALIZADO: findChats com estratégia inteligente
+  async findChats(instanceName: string, options: {
+    limit?: number;
+    useMessages?: boolean;
+    onProgress?: (current: number, total: number) => void;
+  } = {}): Promise<CodeChatChat[]> {
+    const { limit = 50, useMessages = true, onProgress } = options;
+    
+    try {
+      console.log(`📊 [CODECHAT] Buscando chats para instância: ${instanceName} (limit: ${limit})`);
+      
+      // FASE 1: Debugar API primeiro
+      await this.debugApiStructure(instanceName);
+      
+      // FASE 2: Estratégia principal - usar findChats
+      let chats: any[] = [];
+      
+      try {
+        const response = await this.makeRequest(`/chat/findChats/${instanceName}`, {
+          method: 'GET',
+        }, instanceName);
+        
+        console.log(`🔍 [CODECHAT] Resposta findChats:`, {
+          type: typeof response,
+          isArray: Array.isArray(response),
+          length: Array.isArray(response) ? response.length : 'N/A'
+        });
+        
+        if (Array.isArray(response)) {
+          chats = response.slice(0, limit); // Limitar processamento
+        }
+      } catch (chatsError) {
+        console.error(`❌ [CODECHAT] Erro em findChats:`, chatsError);
+      }
+
+      // FASE 3: Estratégia alternativa - usar mensagens recentes se findChats falhar
+      if (chats.length === 0 && useMessages) {
+        console.log(`🔄 [CODECHAT] Tentando estratégia alternativa via mensagens...`);
+        
+        try {
+          const messagesResponse = await this.makeRequest(`/chat/findMessages/${instanceName}`, {
+            method: 'POST',
+            body: JSON.stringify({
+              where: {},
+              limit: limit * 2, // Mais mensagens para extrair chats únicos
+              offset: 0
+            }),
+          }, instanceName);
           
-          // Extrair chatId com múltiplas tentativas
-          const chatId = this.extractChatId(chat);
-          
-          return {
-            id: chatId,
-            name: this.safeExtractString(chat.name) || this.safeExtractString(chat.pushName) || 'Contato sem nome',
-            isGroup: Boolean(chat.isGroup),
-            lastMessage: this.safeExtractString(chat.lastMessage?.body) || this.safeExtractString(chat.lastMessage?.content) || '',
-            lastMessageTime: chat.lastMessage?.timestamp || chat.timestamp,
+          if (messagesResponse?.messages?.records) {
+            const uniqueChats = new Map();
+            
+            messagesResponse.messages.records.forEach((message: any) => {
+              if (message.keyRemoteJid && !uniqueChats.has(message.keyRemoteJid)) {
+                uniqueChats.set(message.keyRemoteJid, {
+                  id: message.keyRemoteJid,
+                  remoteJid: message.keyRemoteJid,
+                  name: message.pushName || 'Contato',
+                  isGroup: message.keyRemoteJid.includes('@g.us'),
+                  lastMessage: this.extractMessageContent(message.content),
+                  lastMessageTime: message.messageTimestamp,
+                  unreadCount: 0
+                });
+              }
+            });
+            
+            chats = Array.from(uniqueChats.values()).slice(0, limit);
+            console.log(`✅ [CODECHAT] ${chats.length} chats extraídos de mensagens`);
+          }
+        } catch (messageError) {
+          console.error(`❌ [CODECHAT] Erro na estratégia alternativa:`, messageError);
+        }
+      }
+
+      // FASE 4: Processar e validar chats
+      if (chats.length === 0) {
+        console.warn(`⚠️ [CODECHAT] Nenhum chat encontrado`);
+        return [];
+      }
+
+      console.log(`🔄 [CODECHAT] Processando ${chats.length} chats...`);
+      
+      const validChats: CodeChatChat[] = [];
+      
+      for (let i = 0; i < chats.length; i++) {
+        const chat = chats[i];
+        onProgress?.(i + 1, chats.length);
+        
+        // Extrair número real do WhatsApp
+        const phoneNumber = this.extractWhatsAppPhone(chat);
+        
+        if (phoneNumber) {
+          const normalizedChat = {
+            id: phoneNumber, // Usar número como ID real
+            name: this.extractContactName(chat, phoneNumber),
+            isGroup: this.isGroupChat(chat),
+            lastMessage: this.extractMessageContent(chat.lastMessage) || 'Conversa importada',
+            lastMessageTime: this.normalizeTimestamp(chat.lastMessageTime),
             unreadCount: Number(chat.unreadCount) || 0,
             profilePictureUrl: this.safeExtractString(chat.profilePictureUrl),
             participants: Array.isArray(chat.participants) ? chat.participants : []
           };
-        }).filter(chat => chat.id); // Filtrar chats sem ID válido
-        
-        console.log(`✅ [CODECHAT] ${normalizedChats.length} chats normalizados de ${response.length} originais`);
-        return normalizedChats;
+          
+          validChats.push(normalizedChat);
+          console.log(`✅ [CODECHAT] Chat válido: ${normalizedChat.name} (${phoneNumber})`);
+        } else {
+          console.log(`⏭️ [CODECHAT] Chat ${chat.id} pulado - sem número válido`);
+        }
       }
       
-      console.warn(`⚠️ [CODECHAT] Resposta não é array:`, response);
-      return [];
+      console.log(`✅ [CODECHAT] ${validChats.length} chats válidos de ${chats.length} processados`);
+      return validChats;
+      
     } catch (error) {
       console.error(`❌ [CODECHAT] Erro ao buscar chats:`, error);
       throw error;
     }
+  }
+
+  // NOVO: Extrair número real do WhatsApp com múltiplas estratégias
+  extractWhatsAppPhone(chat: any): string | null {
+    console.log(`🔍 [CODECHAT] Extraindo telefone de:`, { 
+      id: chat.id, 
+      remoteJid: chat.remoteJid, 
+      jid: chat.jid,
+      keyRemoteJid: chat.keyRemoteJid 
+    });
+    
+    // 1. Verificar se é chat de grupo (ignorar)
+    if (this.isGroupChat(chat)) {
+      console.log(`⏭️ [CODECHAT] Chat de grupo ignorado: ${chat.id}`);
+      return null;
+    }
+    
+    // 2. Tentar extrair número dos campos WhatsApp
+    const possibleFields = [
+      chat.remoteJid,
+      chat.jid, 
+      chat.keyRemoteJid,
+      chat.id
+    ];
+    
+    for (const field of possibleFields) {
+      if (field && typeof field === 'string') {
+        // Formato padrão WhatsApp: 5511999999999@s.whatsapp.net
+        if (field.includes('@s.whatsapp.net')) {
+          const phoneNumber = field.split('@')[0];
+          if (this.isValidPhoneNumber(phoneNumber)) {
+            console.log(`📱 [CODECHAT] Número extraído de ${field}: ${phoneNumber}`);
+            return this.normalizePhoneNumber(phoneNumber);
+          }
+        }
+        
+        // Número direto (validar se é telefone real)
+        if (this.isValidPhoneNumber(field)) {
+          console.log(`📱 [CODECHAT] Número direto encontrado: ${field}`);
+          return this.normalizePhoneNumber(field);
+        }
+      }
+    }
+    
+    console.warn(`⚠️ [CODECHAT] Nenhum telefone válido encontrado para:`, chat);
+    return null;
+  }
+
+  // NOVO: Validar se é número de telefone real
+  private isValidPhoneNumber(value: string): boolean {
+    if (!value || typeof value !== 'string') return false;
+    
+    const cleanNumber = value.replace(/\D/g, '');
+    
+    // Deve ter entre 10 e 15 dígitos (padrão internacional)
+    if (cleanNumber.length < 10 || cleanNumber.length > 15) return false;
+    
+    // Não deve ser apenas sequencial (123, 4567, etc.)
+    if (/^(\d)\1+$/.test(cleanNumber)) return false;
+    
+    // Não deve ser ID interno simples (1, 2, 3, etc.)
+    if (cleanNumber.length < 8) return false;
+    
+    return true;
+  }
+
+  // NOVO: Detectar chat de grupo
+  private isGroupChat(chat: any): boolean {
+    const groupIndicators = [
+      chat.isGroup === true,
+      chat.remoteJid?.includes('@g.us'),
+      chat.jid?.includes('@g.us'),
+      chat.keyRemoteJid?.includes('@g.us'),
+      chat.id?.includes('@g.us')
+    ];
+    
+    return groupIndicators.some(indicator => indicator === true);
+  }
+
+  // NOVO: Extrair conteúdo de mensagem
+  private extractMessageContent(content: any): string {
+    if (!content) return '';
+    
+    if (typeof content === 'string') return content;
+    
+    if (typeof content === 'object') {
+      return content.text || content.body || content.caption || '[Mídia]';
+    }
+    
+    return String(content);
+  }
+
+  // NOVO: Normalizar timestamp
+  private normalizeTimestamp(timestamp: any): string {
+    if (!timestamp) return new Date().toISOString();
+    
+    if (typeof timestamp === 'number') {
+      // Se parece com timestamp em segundos
+      if (timestamp.toString().length === 10) {
+        return new Date(timestamp * 1000).toISOString();
+      }
+      // Se parece com timestamp em milissegundos
+      return new Date(timestamp).toISOString();
+    }
+    
+    if (typeof timestamp === 'string') {
+      return new Date(timestamp).toISOString();
+    }
+    
+    return new Date().toISOString();
   }
 
   // POST /chat/findMessages/:instanceName
@@ -253,32 +498,6 @@ class CodeChatApiService {
 
   // === MÉTODOS AUXILIARES SEGUROS ===
 
-  // Extrair chatId com múltiplas tentativas
-  private extractChatId(chatData: any): string {
-    console.log(`🔍 [CODECHAT] Extraindo chatId de:`, chatData);
-    
-    // Tentar múltiplos campos possíveis
-    const possibleIds = [
-      chatData?.id,
-      chatData?.chatId,
-      chatData?.jid,
-      chatData?.remoteJid,
-      chatData?.key?.remoteJid,
-      chatData?.keyRemoteJid
-    ];
-    
-    for (const id of possibleIds) {
-      const safeId = this.safeExtractString(id);
-      if (safeId && safeId.length > 0) {
-        console.log(`✅ [CODECHAT] ChatId extraído: ${safeId}`);
-        return safeId;
-      }
-    }
-    
-    console.warn(`⚠️ [CODECHAT] Nenhum chatId válido encontrado em:`, chatData);
-    return `unknown_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
   // Extrair string segura de qualquer valor
   private safeExtractString(value: any): string {
     if (value === null || value === undefined) {
@@ -298,56 +517,6 @@ class CodeChatApiService {
     }
     
     return '';
-  }
-
-  // FASE 2: Extrai número real do WhatsApp do chat
-  extractWhatsAppPhone(chat: any): string | null {
-    console.log(`🔍 [CODECHAT] Extraindo telefone real do chat:`, { id: chat.id, name: chat.name });
-    
-    // 1. Verificar se é chat de grupo (ignorar)
-    if (chat.isGroup) {
-      console.log(`⏭️ [CODECHAT] Chat de grupo ignorado: ${chat.id}`);
-      return null;
-    }
-    
-    // 2. Tentar extrair número real dos campos disponíveis
-    let phoneNumber = null;
-    
-    // Prioridade 1: remoteJid (formato: 5511999999999@s.whatsapp.net)
-    if (chat.remoteJid && chat.remoteJid.includes('@')) {
-      phoneNumber = chat.remoteJid.split('@')[0];
-      console.log(`📱 [CODECHAT] Número extraído de remoteJid: ${phoneNumber}`);
-    }
-    
-    // Prioridade 2: jid (similar ao remoteJid)
-    else if (chat.jid && chat.jid.includes('@')) {
-      phoneNumber = chat.jid.split('@')[0];
-      console.log(`📱 [CODECHAT] Número extraído de jid: ${phoneNumber}`);
-    }
-    
-    // Prioridade 3: keyRemoteJid
-    else if (chat.keyRemoteJid && chat.keyRemoteJid.includes('@')) {
-      phoneNumber = chat.keyRemoteJid.split('@')[0];
-      console.log(`📱 [CODECHAT] Número extraído de keyRemoteJid: ${phoneNumber}`);
-    }
-    
-    // Prioridade 4: se o ID for um número (não apenas 23, 24, etc.)
-    else if (chat.id && /^\d{10,15}$/.test(chat.id)) {
-      phoneNumber = chat.id;
-      console.log(`📱 [CODECHAT] Número extraído de ID: ${phoneNumber}`);
-    }
-    
-    // Validar se é um número de telefone real
-    if (phoneNumber && phoneNumber.length >= 10) {
-      const normalized = this.normalizePhoneNumber(phoneNumber);
-      if (normalized && normalized !== 'unknown' && normalized.length >= 10) {
-        console.log(`✅ [CODECHAT] Telefone válido encontrado: ${normalized}`);
-        return normalized;
-      }
-    }
-    
-    console.warn(`⚠️ [CODECHAT] Nenhum telefone válido encontrado para chat: ${chat.id}`);
-    return null;
   }
 
   // Função auxiliar para normalizar número de telefone (COM VALIDAÇÃO)
@@ -407,14 +576,14 @@ class CodeChatApiService {
   }
 
   // Função para extrair nome do contato de dados complexos (COM VALIDAÇÃO)
-  extractContactName(chatData: any, chatId: string): string {
+  extractContactName(chatData: any, phoneNumber: string): string {
     console.log(`🔍 [CODECHAT] Extraindo nome do contato:`, chatData);
     
     try {
       // Estratégia 1: Nome direto do chat
       const chatName = this.safeExtractString(chatData?.name);
       if (chatName && chatName.length > 1 && !chatName.includes('@') && !chatName.match(/^\d+$/)) {
-        const formattedName = this.formatCustomerName(chatName, chatId);
+        const formattedName = this.formatCustomerName(chatName, phoneNumber);
         console.log(`✅ [CODECHAT] Nome extraído (chat.name): ${formattedName}`);
         return formattedName;
       }
@@ -422,7 +591,7 @@ class CodeChatApiService {
       // Estratégia 2: pushName
       const pushName = this.safeExtractString(chatData?.pushName);
       if (pushName && pushName.length > 1 && !pushName.includes('@') && !pushName.match(/^\d+$/)) {
-        const formattedName = this.formatCustomerName(pushName, chatId);
+        const formattedName = this.formatCustomerName(pushName, phoneNumber);
         console.log(`✅ [CODECHAT] Nome extraído (pushName): ${formattedName}`);
         return formattedName;
       }
@@ -430,19 +599,19 @@ class CodeChatApiService {
       // Estratégia 3: dados do contato
       const contactName = this.safeExtractString(chatData?.contact?.name) || this.safeExtractString(chatData?.contact?.pushname);
       if (contactName && contactName.length > 1 && !contactName.includes('@') && !contactName.match(/^\d+$/)) {
-        const formattedName = this.formatCustomerName(contactName, chatId);
+        const formattedName = this.formatCustomerName(contactName, phoneNumber);
         console.log(`✅ [CODECHAT] Nome extraído (contact): ${formattedName}`);
         return formattedName;
       }
       
       // Fallback: usar número formatado
-      const fallbackName = this.formatPhoneForDisplay(this.normalizePhoneNumber(chatId));
+      const fallbackName = this.formatPhoneForDisplay(this.normalizePhoneNumber(phoneNumber));
       console.log(`⚠️ [CODECHAT] Usando fallback para nome: ${fallbackName}`);
       return fallbackName;
       
     } catch (error) {
       console.error(`❌ [CODECHAT] Erro ao extrair nome do contato:`, error);
-      return this.formatPhoneForDisplay(chatId);
+      return this.formatPhoneForDisplay(phoneNumber);
     }
   }
 
