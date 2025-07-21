@@ -1,32 +1,6 @@
 
-import { supabase } from "@/integrations/supabase/client";
-import { customersService } from "./customersService";
-import { codeChatApiService } from "./codechatApiService";
-
-export interface ConversationTicket {
-  id: string;
-  client_id: string;
-  chat_id: string;
-  instance_id: string;
-  title: string;
-  status: string;
-  priority: number;
-  created_at: string;
-  updated_at: string;
-  last_message_at: string;
-  last_message_preview: string;
-  customer_id?: string;
-  assigned_queue_id?: string;
-  assigned_assistant_id?: string;
-  tags?: string[];
-  customer?: {
-    id: string;
-    client_id: string;
-    name: string;
-    phone: string;
-  };
-  assigned_queue_name?: string;
-}
+import { supabase } from '@/integrations/supabase/client';
+import { codeChatApiService } from './codechatApiService';
 
 export interface TicketMessage {
   id: string;
@@ -39,709 +13,422 @@ export interface TicketMessage {
   timestamp: string;
   is_internal_note: boolean;
   is_ai_response: boolean;
-  ai_confidence_score?: number;
   processing_status: string;
+  created_at: string;
   media_url?: string;
+  audio_base64?: string;
+  media_duration?: number;
+  media_transcription?: string;
+  ai_confidence_score?: number;
 }
 
-export const ticketsService = {
-  async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
-    const { data, error } = await supabase
-      .from('conversation_tickets')
-      .select(`
-        *,
-        customer: customers (*)
-      `)
-      .eq('client_id', clientId)
-      .order('last_message_at', { ascending: false });
+export interface ConversationTicket {
+  id: string;
+  client_id: string;
+  customer_id: string;
+  chat_id: string;
+  instance_id: string;
+  title: string;
+  status: string;
+  priority: number;
+  last_message_preview: string;
+  last_message_at: string;
+  created_at: string;
+  updated_at: string;
+  customer?: {
+    id: string;
+    name: string;
+    phone: string;
+    email?: string;
+  };
+  assigned_assistant_id?: string;
+  assigned_queue_id?: string;
+}
 
-    if (error) throw error;
-    
-    // Converter tags do tipo Json para string[]
-    const normalizedData = (data || []).map(ticket => ({
-      ...ticket,
-      tags: Array.isArray(ticket.tags) ? ticket.tags : 
-            (ticket.tags ? [ticket.tags] : [])
-    }));
-    
-    return normalizedData as ConversationTicket[];
-  },
-
-  async getTicketById(ticketId: string): Promise<ConversationTicket | null> {
-    const { data, error } = await supabase
-      .from('conversation_tickets')
-      .select(`
-        *,
-        customer: customers (*)
-      `)
-      .eq('id', ticketId)
-      .single();
-
-    if (error) throw error;
-    
-    // Normalizar tags
-    const normalizedTicket = {
-      ...data,
-      tags: Array.isArray(data.tags) ? data.tags : 
-            (data.tags ? [data.tags] : [])
-    };
-    
-    return normalizedTicket as ConversationTicket;
-  },
-
-  async createOrUpdateTicket(
-    clientId: string,
-    chatId: string,
-    instanceId: string,
-    title: string,
-    phoneNumber: string,
-    lastMessage: string,
-    lastMessageTime: string
-  ): Promise<string> {
+class TicketsService {
+  // === CORE FUNCTIONS (EXISTING) ===
+  async getTicketMessages(ticketId: string, limit = 100): Promise<TicketMessage[]> {
     try {
-      console.log('🎫 Criando/atualizando ticket:', {
-        clientId,
-        chatId,
-        title,
-        phoneNumber
-      });
+      const { data, error } = await supabase
+        .from('ticket_messages')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('timestamp', { ascending: true })
+        .limit(limit);
 
-      // Verificar se já existe um ticket para este chat_id
-      const { data: existingTicket, error: selectError } = await supabase
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('❌ Erro ao buscar mensagens do ticket:', error);
+      throw error;
+    }
+  }
+
+  async getTicketsByClient(clientId: string): Promise<ConversationTicket[]> {
+    try {
+      const { data, error } = await supabase
         .from('conversation_tickets')
-        .select('id, customer_id')
+        .select(`
+          *,
+          customer:customer_id (
+            id,
+            name,
+            phone,
+            email
+          )
+        `)
         .eq('client_id', clientId)
-        .eq('chat_id', chatId)
+        .order('last_message_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('❌ Erro ao buscar tickets:', error);
+      throw error;
+    }
+  }
+
+  async addTicketMessage(message: Partial<TicketMessage>): Promise<TicketMessage> {
+    try {
+      const { data, error } = await supabase
+        .from('ticket_messages')
+        .insert(message)
+        .select()
         .single();
 
-      if (selectError && selectError.code !== 'PGRST116') {
-        console.error('Erro ao verificar ticket existente:', selectError);
-        throw selectError;
-      }
-
-      // Buscar ou criar cliente
-      let customer = await customersService.findByPhone(clientId, phoneNumber);
-      if (!customer) {
-        customer = await customersService.createCustomer({
-          client_id: clientId,
-          name: title,
-          phone: phoneNumber,
-          whatsapp_chat_id: chatId
-        });
-        console.log('👤 Cliente criado:', customer.name);
-      } else {
-        // Atualizar nome se encontramos um nome melhor
-        if (customer.name !== title && !customer.name.startsWith('Contato ') && title !== customer.phone) {
-          await customersService.updateCustomer(customer.id, {
-            name: title,
-            whatsapp_chat_id: chatId
-          });
-          console.log('👤 Cliente atualizado:', title);
-        }
-      }
-
-      if (existingTicket) {
-        // Atualizar ticket existente
-        const { error: updateError } = await supabase
-          .from('conversation_tickets')
-          .update({
-            instance_id: instanceId,
-            title: title,
-            customer_id: customer.id,
-            last_message_preview: lastMessage,
-            last_message_at: lastMessageTime,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingTicket.id);
-
-        if (updateError) {
-          console.error('Erro ao atualizar ticket:', updateError);
-          throw updateError;
-        }
-
-        console.log(`✅ Ticket atualizado: ${existingTicket.id}`);
-        return existingTicket.id;
-      } else {
-        // Criar novo ticket
-        const { data: newTicket, error: insertError } = await supabase
-          .from('conversation_tickets')
-          .insert({
-            client_id: clientId,
-            customer_id: customer.id,
-            chat_id: chatId,
-            instance_id: instanceId,
-            title: title,
-            status: 'open',
-            priority: 1,
-            last_message_preview: lastMessage,
-            last_message_at: lastMessageTime
-          })
-          .select('id')
-          .single();
-
-        if (insertError) {
-          console.error('Erro ao criar ticket:', insertError);
-          throw insertError;
-        }
-
-        console.log(`✅ Ticket criado: ${newTicket.id}`);
-        return newTicket.id;
-      }
+      if (error) throw error;
+      return data;
     } catch (error) {
-      console.error('❌ Erro ao criar ou atualizar ticket:', error);
+      console.error('❌ Erro ao adicionar mensagem ao ticket:', error);
       throw error;
     }
-  },
+  }
 
-  async getTicketMessages(ticketId: string, limit: number = 50): Promise<TicketMessage[]> {
-    console.log('📨 Carregando mensagens do ticket:', ticketId);
-    
-    const { data, error } = await supabase
-      .from('ticket_messages')
-      .select('*')
-      .eq('ticket_id', ticketId)
-      .order('timestamp', { ascending: true })
-      .limit(limit);
-
-    if (error) {
-      console.error('❌ Erro ao carregar mensagens:', error);
-      throw error;
-    }
-    
-    console.log(`📨 ${data?.length || 0} mensagens carregadas para ticket ${ticketId}`);
-    return data || [];
-  },
-
-  async addTicketMessage(message: Omit<TicketMessage, 'id'>): Promise<TicketMessage> {
-    console.log('💾 Salvando mensagem no ticket:', {
-      ticketId: message.ticket_id,
-      messageId: message.message_id,
-      fromMe: message.from_me,
-      content: message.content.substring(0, 50)
-    });
-
-    const { data, error } = await supabase
-      .from('ticket_messages')
-      .insert(message)
-      .select('*')
-      .single();
-
-    if (error) {
-      console.error('❌ Erro ao salvar mensagem:', error);
-      throw error;
-    }
-    
-    console.log('✅ Mensagem salva com sucesso');
-    return data;
-  },
-
-  async updateTicketStatus(ticketId: string, status: string): Promise<void> {
-    const { error } = await supabase
-      .from('conversation_tickets')
-      .update({ status: status, updated_at: new Date().toISOString() })
-      .eq('id', ticketId);
-
-    if (error) throw error;
-  },
-
-  async assignTicketToQueue(ticketId: string, queueId: string): Promise<void> {
-    const { error } = await supabase
-      .from('conversation_tickets')
-      .update({ assigned_queue_id: queueId, updated_at: new Date().toISOString() })
-      .eq('id', ticketId);
-
-    if (error) throw error;
-  },
-
-  async removeTicketFromQueue(ticketId: string): Promise<void> {
-    const { error } = await supabase
-      .from('conversation_tickets')
-      .update({ assigned_queue_id: null, updated_at: new Date().toISOString() })
-      .eq('id', ticketId);
-
-    if (error) throw error;
-  },
-
-  async updateTicketTags(ticketId: string, tags: string[]): Promise<void> {
-    const { error } = await supabase
-      .from('conversation_tickets')
-      .update({ tags: tags, updated_at: new Date().toISOString() })
-      .eq('id', ticketId);
-
-    if (error) throw error;
-  },
-
-  async assumeTicketManually(ticketId: string): Promise<void> {
-    const { error } = await supabase
-      .from('conversation_tickets')
-      .update({ 
-        status: 'pending',
-        assigned_queue_id: null,
-        assigned_assistant_id: null,
-        updated_at: new Date().toISOString() 
-      })
-      .eq('id', ticketId);
-
-    if (error) throw error;
-  },
-
-  async transferTicket(ticketId: string, queueId: string): Promise<void> {
-    const { error } = await supabase
-      .from('conversation_tickets')
-      .update({ 
-        assigned_queue_id: queueId,
-        status: 'open',
-        updated_at: new Date().toISOString() 
-      })
-      .eq('id', ticketId);
-
-    if (error) throw error;
-  },
-
-  // NOVO: Reset completo de todos os tickets de um cliente
-  async resetAllTickets(clientId: string): Promise<{ deletedTickets: number; deletedMessages: number }> {
-    try {
-      console.log(`🧹 [RESET] Iniciando reset completo para cliente: ${clientId}`);
-      
-      // Buscar todos os tickets do cliente
-      const { data: tickets, error: fetchError } = await supabase
-        .from('conversation_tickets')
-        .select('id')
-        .eq('client_id', clientId);
-
-      if (fetchError) {
-        console.error('❌ [RESET] Erro ao buscar tickets:', fetchError);
-        throw fetchError;
-      }
-
-      const ticketIds = (tickets || []).map(ticket => ticket.id);
-      
-      if (ticketIds.length === 0) {
-        console.log('✅ [RESET] Nenhum ticket encontrado para deletar');
-        return { deletedTickets: 0, deletedMessages: 0 };
-      }
-
-      console.log(`🗑️ [RESET] Deletando ${ticketIds.length} tickets e suas mensagens...`);
-
-      // Deletar mensagens dos tickets primeiro
-      const { error: messagesError, count: deletedMessages } = await supabase
-        .from('ticket_messages')
-        .delete({ count: 'exact' })
-        .in('ticket_id', ticketIds);
-
-      if (messagesError) {
-        console.error('❌ [RESET] Erro ao deletar mensagens:', messagesError);
-        throw messagesError;
-      }
-
-      // Deletar tickets
-      const { error: ticketsError, count: deletedTickets } = await supabase
-        .from('conversation_tickets')
-        .delete({ count: 'exact' })
-        .in('id', ticketIds);
-
-      if (ticketsError) {
-        console.error('❌ [RESET] Erro ao deletar tickets:', ticketsError);
-        throw ticketsError;
-      }
-
-      console.log(`✅ [RESET] Reset completo: ${deletedTickets} tickets e ${deletedMessages} mensagens removidos`);
-      
-      return { 
-        deletedTickets: deletedTickets || 0, 
-        deletedMessages: deletedMessages || 0 
-      };
-
-    } catch (error) {
-      console.error('❌ [RESET] Erro no reset completo:', error);
-      throw error;
-    }
-  },
-
-  // MELHORADO: Limpar tickets antigos
-  async clearOldTickets(clientId: string, olderThanDays: number = 30): Promise<{ deletedTickets: number; deletedMessages: number }> {
-    try {
-      console.log(`🧹 [CLEANUP] Limpando tickets com mais de ${olderThanDays} dias para cliente: ${clientId}`);
-      
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
-      const cutoffISOString = cutoffDate.toISOString();
-      
-      // Buscar tickets antigos para ter os IDs
-      const { data: oldTickets, error: fetchError } = await supabase
-        .from('conversation_tickets')
-        .select('id')
-        .eq('client_id', clientId)
-        .lt('created_at', cutoffISOString);
-
-      if (fetchError) {
-        console.error('❌ [CLEANUP] Erro ao buscar tickets antigos:', fetchError);
-        throw fetchError;
-      }
-
-      const ticketIds = (oldTickets || []).map(ticket => ticket.id);
-      
-      if (ticketIds.length === 0) {
-        console.log('✅ [CLEANUP] Nenhum ticket antigo encontrado');
-        return { deletedTickets: 0, deletedMessages: 0 };
-      }
-
-      // Deletar mensagens dos tickets antigos primeiro
-      const { error: messagesError, count: deletedMessages } = await supabase
-        .from('ticket_messages')
-        .delete({ count: 'exact' })
-        .in('ticket_id', ticketIds);
-
-      if (messagesError) {
-        console.error('❌ [CLEANUP] Erro ao deletar mensagens:', messagesError);
-        throw messagesError;
-      }
-
-      // Deletar tickets antigos
-      const { error: ticketsError, count: deletedTickets } = await supabase
-        .from('conversation_tickets')
-        .delete({ count: 'exact' })
-        .in('id', ticketIds);
-
-      if (ticketsError) {
-        console.error('❌ [CLEANUP] Erro ao deletar tickets:', ticketsError);
-        throw ticketsError;
-      }
-
-      console.log(`✅ [CLEANUP] Removidos: ${deletedTickets} tickets e ${deletedMessages} mensagens`);
-      
-      return { 
-        deletedTickets: deletedTickets || 0, 
-        deletedMessages: deletedMessages || 0 
-      };
-
-    } catch (error) {
-      console.error('❌ [CLEANUP] Erro na limpeza:', error);
-      throw error;
-    }
-  },
-
-  normalizePhoneNumber(phoneNumber: string): string {
-    return codeChatApiService.normalizePhoneNumber(phoneNumber);
-  },
-
-  formatPhoneForDisplay(phoneNumber: string): string {
-    return codeChatApiService.formatPhoneForDisplay(phoneNumber);
-  },
-
-  validateAndFixTimestamp(timestamp: any): string {
-    console.log('🕐 Validando timestamp:', timestamp);
-    
-    if (!timestamp) {
-      return new Date().toISOString();
-    }
-    
-    let date: Date;
-    
-    if (typeof timestamp === 'number') {
-      // Se for um número, verificar se está em segundos ou milissegundos
-      if (timestamp.toString().length === 10) {
-        // Segundos - converter para milissegundos
-        date = new Date(timestamp * 1000);
-      } else if (timestamp.toString().length === 13) {
-        // Milissegundos
-        date = new Date(timestamp);
-      } else {
-        // Timestamp inválido, usar data atual
-        console.log('⚠️ Timestamp numérico inválido:', timestamp);
-        date = new Date();
-      }
-    } else if (typeof timestamp === 'string') {
-      date = new Date(timestamp);
-    } else {
-      console.log('⚠️ Tipo de timestamp desconhecido:', typeof timestamp);
-      date = new Date();
-    }
-    
-    // Verificar se a data é válida e não está no futuro distante
-    if (isNaN(date.getTime()) || date.getFullYear() > 2030) {
-      console.log('⚠️ Data inválida ou muito futura, usando data atual');
-      date = new Date();
-    }
-    
-    // Verificar se a data não é muito antiga (antes de 2020)
-    if (date.getFullYear() < 2020) {
-      console.log('⚠️ Data muito antiga, usando data atual');
-      date = new Date();
-    }
-    
-    const validTimestamp = date.toISOString();
-    console.log('✅ Timestamp validado:', validTimestamp);
-    return validTimestamp;
-  },
-
-  // CORRIGIDO E MELHORADO: Importação inteligente com opções de limpeza e reset
-  async importConversationsFromWhatsApp(
-    clientId: string, 
-    options: {
-      clearOldData?: boolean;
-      importMessages?: boolean;
-      resetAllData?: boolean;
-      onProgress?: (progress: { current: number; total: number; message: string }) => void;
-    } = {}
-  ): Promise<{ success: number; errors: number; details: string[] }> {
-    const { clearOldData = false, importMessages = true, resetAllData = false, onProgress } = options;
-    const details: string[] = [];
+  // === IMPORTAÇÃO DE CONVERSAS ===
+  async importConversationsFromWhatsApp(clientId: string): Promise<{ success: number; errors: number }> {
+    console.log('📥 [IMPORT] Iniciando importação de conversas para cliente:', clientId);
     
     try {
-      console.log('🚀 [IMPORT] Iniciando importação inteligente CodeChat v1.3.0');
-      details.push('🚀 Iniciando importação inteligente...');
-      
-      onProgress?.({ current: 0, total: 100, message: 'Verificando instâncias...' });
-
-      // FASE 1: Reset completo se solicitado
-      if (resetAllData) {
-        onProgress?.({ current: 5, total: 100, message: 'Executando reset completo...' });
-        
-        try {
-          const resetResult = await this.resetAllTickets(clientId);
-          details.push(`🧹 Reset completo: ${resetResult.deletedTickets} tickets, ${resetResult.deletedMessages} mensagens removidos`);
-          console.log('🧹 [IMPORT] Reset completo executado:', resetResult);
-        } catch (resetError) {
-          console.warn('⚠️ [IMPORT] Erro no reset (continuando):', resetError);
-          details.push('⚠️ Erro no reset completo (continuando...)');
-        }
-      }
-      // FASE 1B: Limpeza opcional de dados antigos (se não foi reset completo)
-      else if (clearOldData) {
-        onProgress?.({ current: 5, total: 100, message: 'Limpando dados antigos...' });
-        
-        try {
-          const cleanupResult = await this.clearOldTickets(clientId, 7); // Limpar tickets com mais de 7 dias
-          details.push(`🧹 Dados antigos removidos: ${cleanupResult.deletedTickets} tickets, ${cleanupResult.deletedMessages} mensagens`);
-          console.log('🧹 [IMPORT] Limpeza de dados antigos concluída:', cleanupResult);
-        } catch (cleanupError) {
-          console.warn('⚠️ [IMPORT] Erro na limpeza (continuando):', cleanupError);
-          details.push('⚠️ Erro na limpeza de dados antigos (continuando...)');
-        }
-      }
-
-      // FASE 2: Buscar instâncias ativas
-      const { data: instances, error: instancesError } = await supabase
+      // 1. Buscar instâncias do cliente
+      const { data: instances } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id, phone_number, yumer_instance_name, auth_token')
+        .select('instance_id, id')
         .eq('client_id', clientId)
         .eq('status', 'connected');
-
-      if (instancesError) {
-        console.error('❌ [IMPORT] Erro ao buscar instâncias:', instancesError);
-        throw new Error('Falha ao buscar instâncias WhatsApp');
-      }
 
       if (!instances || instances.length === 0) {
         throw new Error('Nenhuma instância WhatsApp conectada encontrada');
       }
 
-      details.push(`📱 ${instances.length} instância(s) conectada(s) encontrada(s)`);
-      console.log(`📱 [IMPORT] ${instances.length} instâncias encontradas`);
-
       let totalSuccess = 0;
       let totalErrors = 0;
 
-      // FASE 3: Processar cada instância
-      for (let i = 0; i < instances.length; i++) {
-        const instance = instances[i];
-        const instanceProgress = 20 + (i / instances.length) * 60; // 20% a 80%
-        
-        onProgress?.({ 
-          current: instanceProgress, 
-          total: 100, 
-          message: `Processando instância ${i + 1}/${instances.length}...` 
-        });
-
+      // 2. Importar conversas de cada instância
+      for (const instance of instances) {
         console.log(`📱 [IMPORT] Processando instância: ${instance.instance_id}`);
-        details.push(`📱 Processando: ${instance.instance_id}`);
         
         try {
-          // Configurar autenticação se disponível
-          if (instance.auth_token && instance.yumer_instance_name) {
-            codeChatApiService.setInstanceToken(instance.yumer_instance_name, instance.auth_token);
-          }
+          const { success, errors } = await this.importChatsFromInstance(
+            clientId, 
+            instance.instance_id
+          );
           
-          const instanceName = instance.yumer_instance_name || instance.instance_id;
+          totalSuccess += success;
+          totalErrors += errors;
           
-          // FASE 4: Buscar chats com estratégia inteligente
-          const chats = await codeChatApiService.findChats(instanceName, {
-            limit: 50, // Processar apenas 50 conversas mais relevantes
-            useMessages: true, // Usar estratégia alternativa se necessário
-            onProgress: (current, total) => {
-              const chatProgress = instanceProgress + (current / total) * (60 / instances.length);
-              onProgress?.({ 
-                current: chatProgress, 
-                total: 100, 
-                message: `Analisando chat ${current}/${total} na instância ${i + 1}...` 
-              });
-            }
-          });
-
-          console.log(`📊 [IMPORT] ${chats.length} chats válidos encontrados para ${instanceName}`);
-          details.push(`📊 ${chats.length} conversas válidas encontradas`);
-
-          if (chats.length === 0) {
-            details.push(`⚠️ Nenhuma conversa válida na instância ${instanceName}`);
-            continue;
-          }
-
-          // FASE 5: Processar cada chat válido
-          for (let j = 0; j < chats.length; j++) {
-            const chat = chats[j];
-            
-            const chatProgress = instanceProgress + ((j + 1) / chats.length) * (60 / instances.length);
-            onProgress?.({ 
-              current: chatProgress, 
-              total: 100, 
-              message: `Importando conversa ${j + 1}/${chats.length}: ${chat.name}` 
-            });
-
-            try {
-              console.log(`💾 [IMPORT] Processando conversa: ${chat.name} (${chat.id})`);
-
-              // Usar o phoneNumber já extraído e validado pelo findChats
-              const phoneNumber = chat.id; // findChats já retorna o número como ID
-              const contactName = chat.name;
-              const lastMessage = chat.lastMessage || 'Conversa importada do WhatsApp';
-              const lastMessageTime = this.validateAndFixTimestamp(chat.lastMessageTime || Date.now());
-
-              // Criar ou atualizar ticket
-              const ticketId = await this.createOrUpdateTicket(
-                clientId,
-                phoneNumber, // Usar como chat_id também
-                instance.instance_id,
-                contactName,
-                phoneNumber,
-                lastMessage,
-                lastMessageTime
-              );
-
-              // Importar mensagens se solicitado
-              if (importMessages) {
-                try {
-                  await this.importChatMessages(instanceName, phoneNumber, ticketId, 10);
-                  console.log(`📨 [IMPORT] Mensagens importadas para: ${contactName}`);
-                } catch (messageError) {
-                  console.warn(`⚠️ [IMPORT] Falha ao importar mensagens para ${phoneNumber}:`, messageError);
-                  details.push(`⚠️ Erro ao importar mensagens de ${contactName}`);
-                }
-              }
-
-              totalSuccess++;
-              console.log(`✅ [IMPORT] Conversa importada: ${contactName}`);
-
-            } catch (chatError) {
-              console.error(`❌ [IMPORT] Erro ao processar conversa ${chat.id}:`, chatError);
-              details.push(`❌ Erro ao processar: ${chat.name}`);
-              totalErrors++;
-            }
-          }
-
-        } catch (instanceError) {
-          console.error(`❌ [IMPORT] Erro ao processar instância ${instance.instance_id}:`, instanceError);
-          details.push(`❌ Erro na instância: ${instance.instance_id}`);
+          console.log(`✅ [IMPORT] Instância ${instance.instance_id}: ${success} sucessos, ${errors} erros`);
+        } catch (error) {
+          console.error(`❌ [IMPORT] Erro na instância ${instance.instance_id}:`, error);
           totalErrors++;
         }
       }
 
-      onProgress?.({ current: 100, total: 100, message: 'Importação concluída!' });
-
-      const summary = `✅ Importação concluída: ${totalSuccess} sucessos, ${totalErrors} erros`;
-      console.log(`🎉 [IMPORT] ${summary}`);
-      details.push(summary);
-
-      return { 
-        success: totalSuccess, 
-        errors: totalErrors,
-        details 
-      };
-
-    } catch (error) {
-      console.error('❌ [IMPORT] Erro crítico na importação:', error);
-      details.push(`❌ Erro crítico: ${error}`);
-      throw error;
-    }
-  },
-
-  // CORRIGIDO: Importar mensagens específicas de um chat com validação robusta e formato DDI correto
-  async importChatMessages(instanceName: string, chatId: string, ticketId: string, limit: number = 15): Promise<void> {
-    try {
-      console.log(`📨 [IMPORT] Importando mensagens para chat ${chatId} (limite: ${limit})`);
+      console.log(`🎉 [IMPORT] Importação concluída: ${totalSuccess} sucessos, ${totalErrors} erros`);
+      return { success: totalSuccess, errors: totalErrors };
       
-      // Usar o método corrigido do codeChatApiService que já testa múltiplos formatos
-      const messages = await codeChatApiService.findMessages(instanceName, chatId, limit);
-
-      if (messages.length === 0) {
-        console.log(`📨 [IMPORT] Nenhuma mensagem encontrada para chat ${chatId}`);
-        return;
-      }
-
-      console.log(`📨 [IMPORT] Processando ${messages.length} mensagens para importação`);
-
-      for (let i = 0; i < messages.length; i++) {
-        const message = messages[i];
-        
-        try {
-          // Verificar se mensagem já existe
-          const { data: existingMessage } = await supabase
-            .from('ticket_messages')
-            .select('id')
-            .eq('message_id', message.keyId)
-            .eq('ticket_id', ticketId)
-            .single();
-
-          if (existingMessage) {
-            console.log(`⏭️ [IMPORT] Mensagem ${message.keyId} já existe, pulando...`);
-            continue;
-          }
-
-          // Converter timestamp com validação
-          const timestamp = this.validateAndFixTimestamp(message.messageTimestamp * 1000);
-
-          // Extrair conteúdo da mensagem com fallback seguro
-          let content = '';
-          try {
-            if (typeof message.content === 'string') {
-              content = message.content;
-            } else if (message.content && typeof message.content === 'object') {
-              content = message.content.text || 
-                       message.content.body || 
-                       message.content.caption || 
-                       `[${message.messageType}]`;
-            } else {
-              content = `[${message.messageType}]`;
-            }
-          } catch (contentError) {
-            console.error(`❌ [IMPORT] Erro ao extrair conteúdo da mensagem ${message.keyId}:`, contentError);
-            content = `[Erro ao processar conteúdo]`;
-          }
-
-          // Criar mensagem no ticket
-          await this.addTicketMessage({
-            ticket_id: ticketId,
-            message_id: message.keyId,
-            from_me: message.keyFromMe,
-            sender_name: message.pushName || (message.keyFromMe ? 'Você' : 'Cliente'),
-            content: content,
-            message_type: message.messageType,
-            timestamp: timestamp,
-            is_internal_note: false,
-            is_ai_response: false,
-            processing_status: 'processed'
-          });
-
-          console.log(`✅ [IMPORT] Mensagem ${i + 1}/${messages.length} importada: ${message.keyId}`);
-        } catch (messageError) {
-          console.error(`❌ [IMPORT] Erro ao importar mensagem ${message.keyId}:`, messageError);
-        }
-      }
-      
-      console.log(`✅ [IMPORT] Importação de mensagens concluída para chat ${chatId}`);
     } catch (error) {
-      console.error(`❌ [IMPORT] Erro ao importar mensagens do chat ${chatId}:`, error);
+      console.error('❌ [IMPORT] Erro na importação:', error);
       throw error;
     }
   }
-};
+
+  private async importChatsFromInstance(clientId: string, instanceId: string): Promise<{ success: number; errors: number }> {
+    try {
+      // Buscar chats da API CodeChat
+      const chats = await codeChatApiService.findChats(instanceId, {
+        limit: 50,
+        useMessages: true,
+        onProgress: (current, total) => {
+          console.log(`📊 [IMPORT] Progresso: ${current}/${total} chats processados`);
+        }
+      });
+
+      console.log(`📊 [IMPORT] ${chats.length} chats encontrados na instância ${instanceId}`);
+
+      let success = 0;
+      let errors = 0;
+
+      // Processar cada chat
+      for (const chat of chats) {
+        try {
+          await this.createTicketFromChat(clientId, chat, instanceId);
+          success++;
+        } catch (error) {
+          console.error(`❌ [IMPORT] Erro ao processar chat ${chat.id}:`, error);
+          errors++;
+        }
+      }
+
+      return { success, errors };
+    } catch (error) {
+      console.error(`❌ [IMPORT] Erro ao importar chats da instância ${instanceId}:`, error);
+      throw error;
+    }
+  }
+
+  // === CRIAÇÃO DE TICKETS A PARTIR DE CHATS ===
+  async createTicketFromChat(clientId: string, chat: any, instanceId?: string): Promise<ConversationTicket> {
+    console.log('🎫 [CREATE-TICKET] Criando ticket a partir de chat:', chat.id);
+    
+    try {
+      // 1. Extrair informações do chat
+      const phoneNumber = this.extractPhoneNumber(chat.id);
+      const contactName = this.formatContactName(chat.name, phoneNumber);
+      
+      // 2. Criar/atualizar customer
+      const customerId = await this.createOrUpdateCustomer(clientId, {
+        phoneNumber,
+        contactName,
+        chatId: chat.id
+      });
+
+      // 3. Verificar se ticket já existe
+      const { data: existingTicket } = await supabase
+        .from('conversation_tickets')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('chat_id', chat.id)
+        .single();
+
+      if (existingTicket) {
+        console.log('🎫 [CREATE-TICKET] Ticket já existe:', existingTicket.id);
+        
+        // Retornar ticket existente
+        const { data: ticket } = await supabase
+          .from('conversation_tickets')
+          .select(`
+            *,
+            customer:customer_id (
+              id,
+              name,
+              phone,
+              email
+            )
+          `)
+          .eq('id', existingTicket.id)
+          .single();
+        
+        return ticket;
+      }
+
+      // 4. Criar novo ticket
+      const title = `Conversa com ${contactName}`;
+      
+      const { data: newTicket, error } = await supabase
+        .from('conversation_tickets')
+        .insert({
+          client_id: clientId,
+          customer_id: customerId,
+          chat_id: chat.id,
+          instance_id: instanceId || '',
+          title: title,
+          status: 'open',
+          priority: 1,
+          last_message_preview: chat.lastMessage || 'Conversa importada',
+          last_message_at: chat.lastMessageTime ? new Date(chat.lastMessageTime).toISOString() : new Date().toISOString()
+        })
+        .select(`
+          *,
+          customer:customer_id (
+            id,
+            name,
+            phone,
+            email
+          )
+        `)
+        .single();
+
+      if (error) throw error;
+
+      console.log('✅ [CREATE-TICKET] Ticket criado:', newTicket.id);
+      return newTicket;
+      
+    } catch (error) {
+      console.error('❌ [CREATE-TICKET] Erro ao criar ticket:', error);
+      throw error;
+    }
+  }
+
+  // === FUNÇÕES DE SUPORTE PARA WEBHOOK ===
+  async createOrUpdateCustomer(clientId: string, messageData: any): Promise<string> {
+    console.log('👤 [CUSTOMER] Criando/atualizando customer');
+    
+    const phoneNumber = messageData.phoneNumber || this.extractPhoneNumber(messageData.chatId);
+    const contactName = messageData.contactName || this.formatContactName(messageData.pushName, phoneNumber);
+    
+    try {
+      // Verificar se customer já existe
+      const { data: existingCustomer } = await supabase
+        .from('customers')
+        .select('id, name')
+        .eq('client_id', clientId)
+        .eq('phone', phoneNumber)
+        .single();
+
+      if (existingCustomer) {
+        // Atualizar nome se temos um nome melhor
+        if (contactName && 
+            contactName !== 'Contato sem nome' &&
+            !contactName.includes('(') &&
+            (existingCustomer.name === 'Contato sem nome' || 
+             existingCustomer.name.includes('(') ||
+             existingCustomer.name === phoneNumber)) {
+          
+          await supabase
+            .from('customers')
+            .update({
+              name: contactName,
+              whatsapp_chat_id: messageData.chatId,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingCustomer.id);
+          
+          console.log('👤 [CUSTOMER] Nome atualizado:', contactName);
+        }
+        
+        return existingCustomer.id;
+      } else {
+        // Criar novo customer
+        const { data: newCustomer, error } = await supabase
+          .from('customers')
+          .insert({
+            client_id: clientId,
+            name: contactName,
+            phone: phoneNumber,
+            whatsapp_chat_id: messageData.chatId
+          })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+
+        console.log('👤 [CUSTOMER] Novo customer criado:', contactName);
+        return newCustomer.id;
+      }
+    } catch (error) {
+      console.error('❌ [CUSTOMER] Erro:', error);
+      throw error;
+    }
+  }
+
+  async createOrUpdateTicket(clientId: string, instanceId: string, messageData: any, customerId: string): Promise<string> {
+    console.log('🎫 [TICKET] Criando/atualizando ticket');
+    
+    try {
+      // Verificar se ticket já existe
+      const { data: existingTicket } = await supabase
+        .from('conversation_tickets')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('chat_id', messageData.chatId)
+        .single();
+
+      const title = `Conversa com ${messageData.contactName}`;
+
+      if (existingTicket) {
+        // Atualizar ticket existente
+        await supabase
+          .from('conversation_tickets')
+          .update({
+            customer_id: customerId,
+            title: title,
+            last_message_preview: messageData.content,
+            last_message_at: messageData.timestamp,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingTicket.id);
+        
+        console.log('🎫 [TICKET] Ticket atualizado:', existingTicket.id);
+        return existingTicket.id;
+      } else {
+        // Criar novo ticket
+        const { data: newTicket, error } = await supabase
+          .from('conversation_tickets')
+          .insert({
+            client_id: clientId,
+            customer_id: customerId,
+            chat_id: messageData.chatId,
+            instance_id: instanceId,
+            title: title,
+            status: 'open',
+            priority: 1,
+            last_message_preview: messageData.content,
+            last_message_at: messageData.timestamp
+          })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+
+        console.log('🎫 [TICKET] Novo ticket criado:', newTicket.id);
+        return newTicket.id;
+      }
+    } catch (error) {
+      console.error('❌ [TICKET] Erro:', error);
+      throw error;
+    }
+  }
+
+  // === FUNÇÕES AUXILIARES ===
+  private extractPhoneNumber(chatId: string): string {
+    if (!chatId) return '';
+    
+    let phone = chatId.split('@')[0];
+    phone = phone.replace(/\D/g, '');
+    
+    // Remover DDI 55 se presente
+    if (phone.startsWith('55') && phone.length >= 12) {
+      phone = phone.slice(2);
+    }
+    
+    return phone;
+  }
+
+  private formatContactName(name: string | undefined, phoneNumber: string): string {
+    // Usar nome se válido
+    if (name && name.trim() && !name.match(/^\d+$/) && !name.includes('@')) {
+      return name.trim()
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+    }
+    
+    // Fallback para número formatado
+    return this.formatPhoneForDisplay(phoneNumber);
+  }
+
+  private formatPhoneForDisplay(phoneNumber: string): string {
+    const cleaned = phoneNumber.replace(/\D/g, '');
+
+    if (cleaned.length === 10) {
+      return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+    } else if (cleaned.length === 11) {
+      return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    }
+
+    return phoneNumber;
+  }
+}
+
+export const ticketsService = new TicketsService();
+export default ticketsService;
