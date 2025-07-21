@@ -18,7 +18,7 @@ export const useTicketMessages = (ticketId: string) => {
         setIsLoading(true);
         console.log('🔄 Carregando mensagens para ticket:', ticketId);
         
-        const messagesData = await ticketsService.getTicketMessages(ticketId);
+        const messagesData = await ticketsService.getTicketMessages(ticketId, 100);
         console.log(`📨 ${messagesData.length} mensagens carregadas para ticket ${ticketId}`);
         
         setMessages(messagesData);

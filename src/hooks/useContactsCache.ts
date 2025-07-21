@@ -1,22 +1,15 @@
-
 /**
- * Hook MELHORADO para gerenciar cache de contatos
- * Versão 2.0 - Com limpeza automática e extração inteligente
+ * Hook para gerenciar cache de contatos
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { contactCacheService, ContactInfo } from '@/services/contactCacheService';
-import { contactNameService } from '@/services/contactNameService';
-import { contactsCleanupService } from '@/services/contactsCleanupService';
-import { useToast } from '@/hooks/use-toast';
 
 export function useContactsCache(clientId: string) {
   const [contacts, setContacts] = useState<ContactInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [cacheStats, setCacheStats] = useState(contactCacheService.getCacheStats());
-  const [isOptimizing, setIsOptimizing] = useState(false);
-  const { toast } = useToast();
 
   // Carregar contatos
   const loadContacts = useCallback(async (forceSync = false) => {
@@ -59,6 +52,7 @@ export function useContactsCache(clientId: string) {
     const updatedContact = await contactCacheService.updateContact(clientId, phone, updates);
     
     if (updatedContact) {
+      // Atualizar lista local
       setContacts(prev => 
         prev.map(contact => 
           contact.phone === phone 
@@ -72,113 +66,28 @@ export function useContactsCache(clientId: string) {
     return updatedContact;
   }, [clientId]);
 
-  // NOVA: Otimizar contatos com IA
-  const optimizeContactNames = useCallback(async () => {
-    if (!clientId || isOptimizing) return;
-
-    try {
-      setIsOptimizing(true);
-      console.log('🤖 [OPTIMIZE-NAMES] Iniciando otimização inteligente de nomes');
-
-      toast({
-        title: "Otimização Iniciada",
-        description: "Analisando contatos com IA para extrair nomes reais..."
-      });
-
-      const result = await contactNameService.reprocessExistingContacts(clientId);
-
-      if (result.updated > 0) {
-        toast({
-          title: "Nomes Otimizados",
-          description: `${result.updated} contatos foram melhorados com nomes reais!`
-        });
-        
-        // Recarregar contatos
-        await loadContacts(true);
-      } else {
-        toast({
-          title: "Otimização Concluída",
-          description: "Todos os contatos já possuem nomes válidos"
-        });
-      }
-
-      if (result.errors > 0) {
-        console.warn(`⚠️ [OPTIMIZE-NAMES] ${result.errors} erros durante otimização`);
-      }
-
-    } catch (error: any) {
-      console.error('❌ [OPTIMIZE-NAMES] Erro na otimização:', error);
-      toast({
-        title: "Erro na Otimização",
-        description: error.message || "Erro ao otimizar nomes dos contatos",
-        variant: "destructive"
-      });
-    } finally {
-      setIsOptimizing(false);
-    }
-  }, [clientId, isOptimizing, loadContacts, toast]);
-
-  // NOVA: Limpeza completa de contatos
-  const performFullCleanup = useCallback(async () => {
-    if (!clientId || isOptimizing) return;
-
-    try {
-      setIsOptimizing(true);
-      console.log('🧹 [FULL-CLEANUP] Iniciando limpeza completa');
-
-      toast({
-        title: "Limpeza Iniciada",
-        description: "Removendo contatos órfãos e otimizando base de dados..."
-      });
-
-      const result = await contactsCleanupService.performFullCleanup(clientId);
-
-      toast({
-        title: "Limpeza Concluída",
-        description: result.summary
-      });
-
-      // Recarregar contatos após limpeza
-      await loadContacts(true);
-
-      console.log('✅ [FULL-CLEANUP] Resultado:', result);
-
-    } catch (error: any) {
-      console.error('❌ [FULL-CLEANUP] Erro na limpeza:', error);
-      toast({
-        title: "Erro na Limpeza",
-        description: error.message || "Erro ao limpar contatos",
-        variant: "destructive"
-      });
-    } finally {
-      setIsOptimizing(false);
-    }
-  }, [clientId, isOptimizing, loadContacts, toast]);
-
   // Forçar sincronização
   const forceSync = useCallback(() => {
     loadContacts(true);
   }, [loadContacts]);
 
-  // MELHORADO: Obter nome formatado para exibição
+  // Obter contato formatado para exibição
   const getDisplayName = useCallback((contact: ContactInfo | null, fallbackPhone?: string): string => {
     if (!contact && !fallbackPhone) return 'Contato desconhecido';
     
     const phone = contact?.phone || fallbackPhone || '';
     const name = contact?.name || '';
     
-    // Se tem nome válido e não é genérico/telefone
+    // Se tem nome válido e não é genérico
     if (name && 
         name !== `Contato ${phone}` &&
         !name.startsWith('Contato ') &&
         !name.match(/^\(\d+\)/) &&
-        !name.match(/^\d+$/) &&
-        !name.startsWith('55') &&
         name !== phone) {
       return name;
     }
     
-    // Formatar telefone para exibição
+    // Formatar telefone
     if (phone && phone.match(/^\d+$/)) {
       if (phone.length === 13 && phone.startsWith('55')) {
         return phone.replace(/(\d{2})(\d{2})(\d{4,5})(\d{4})/, '($2) $3-$4');
@@ -187,7 +96,7 @@ export function useContactsCache(clientId: string) {
       }
     }
     
-    return phone || 'Contato sem identificação';
+    return phone || 'Contato sem nome';
   }, []);
 
   // Carregar contatos na inicialização
@@ -195,16 +104,16 @@ export function useContactsCache(clientId: string) {
     loadContacts();
   }, [loadContacts]);
 
-  // Auto-sync periódico reduzido para melhor performance
+  // Auto-sync periódico
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!cacheStats.isValid && !isLoading) {
+      if (!cacheStats.isValid) {
         loadContacts();
       }
-    }, 120000); // Check a cada 2 minutos
+    }, 60000); // Check a cada minuto
 
     return () => clearInterval(interval);
-  }, [cacheStats.isValid, isLoading, loadContacts]);
+  }, [cacheStats.isValid, loadContacts]);
 
   return {
     // Estado
@@ -212,18 +121,13 @@ export function useContactsCache(clientId: string) {
     isLoading,
     lastSync,
     cacheStats,
-    isOptimizing,
     
-    // Ações básicas
+    // Ações
     loadContacts,
     getContact,
     updateContact,
     forceSync,
     getDisplayName,
-    
-    // Novas funcionalidades
-    optimizeContactNames,
-    performFullCleanup,
     
     // Utilitários
     clearCache: contactCacheService.clearCache,

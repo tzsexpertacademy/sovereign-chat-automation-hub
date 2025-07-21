@@ -46,11 +46,23 @@ const ClientDashboardFixed = () => {
               <Route path="connect" element={<WhatsAppConnection />} />
               <Route 
                 path="chat" 
-                element={<ChatTabsInterface clientId={clientId} />} 
+                element={
+                  <ChatTabsInterface 
+                    clientId={clientId} 
+                    selectedChatId={selectedChatId}
+                    onSelectChat={handleSelectChat}
+                  />
+                } 
               />
               <Route 
                 path="chat/:chatId" 
-                element={<ChatTabsInterface clientId={clientId} />} 
+                element={
+                  <ChatTabsInterface 
+                    clientId={clientId} 
+                    selectedChatId={selectedChatId}
+                    onSelectChat={handleSelectChat}
+                  />
+                } 
               />
               <Route path="funnel" element={<FunnelKanban clientId={clientId} />} />
               <Route path="assistants" element={<AssistantsManager />} />

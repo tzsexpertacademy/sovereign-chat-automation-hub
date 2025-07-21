@@ -42,7 +42,8 @@ export const useAudioHandling = (ticketId: string) => {
       markActivity();
 
       // Registrar mensagem como processando
-      await ticketsService.addTicketMessage(ticketId, {
+      await ticketsService.addTicketMessage({
+        ticket_id: ticketId,
         message_id: messageId,
         from_me: true,
         sender_name: 'Atendente',

@@ -77,80 +77,78 @@ const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesLis
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="text-center text-gray-500">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
+        <div className="text-center text-gray-500 py-8">
           <p>Nenhuma mensagem nesta conversa</p>
           <p className="text-sm">Inicie uma conversa enviando uma mensagem</p>
         </div>
-      </div>
+      </ScrollArea>
     );
   }
 
   return (
-    <div className="flex-1 min-h-0">
-      <ScrollArea ref={scrollAreaRef} className="h-full w-full">
-        <div className="space-y-4 p-4">
-          {messages.map((message) => (
-            <div
-              key={`${message.id}-${message.timestamp}`}
-              className={`flex gap-3 ${message.from_me ? 'justify-end' : 'justify-start'}`}
-            >
-              {!message.from_me && (
-                <Avatar className="w-8 h-8 flex-shrink-0">
-                  <AvatarFallback>
-                    {message.is_ai_response ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              
-              <div className={`max-w-[70%] ${message.from_me ? 'order-1' : 'order-2'}`}>
-                <div
-                  className={`rounded-lg px-3 py-2 ${
-                    message.from_me
-                      ? 'bg-blue-500 text-white'
-                      : message.is_ai_response
-                      ? 'bg-green-100 text-green-900 border border-green-200'
-                      : 'bg-gray-100 text-gray-900'
-                  }`}
-                >
-                  {!message.from_me && (
-                    <div className="flex items-center gap-1 mb-1">
-                      <span className="text-xs font-medium">
-                        {message.sender_name}
-                      </span>
-                      {message.is_ai_response && (
-                        <Bot className="w-3 h-3" />
-                      )}
-                    </div>
-                  )}
-                  
-                  <div className="text-sm break-words whitespace-pre-wrap">
-                    {renderMessageContent(message)}
+    <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
+      <div className="space-y-4">
+        {messages.map((message) => (
+          <div
+            key={`${message.id}-${message.timestamp}`}
+            className={`flex gap-3 ${message.from_me ? 'justify-end' : 'justify-start'}`}
+          >
+            {!message.from_me && (
+              <Avatar className="w-8 h-8 flex-shrink-0">
+                <AvatarFallback>
+                  {message.is_ai_response ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                </AvatarFallback>
+              </Avatar>
+            )}
+            
+            <div className={`max-w-[70%] ${message.from_me ? 'order-1' : 'order-2'}`}>
+              <div
+                className={`rounded-lg px-3 py-2 ${
+                  message.from_me
+                    ? 'bg-blue-500 text-white'
+                    : message.is_ai_response
+                    ? 'bg-green-100 text-green-900 border border-green-200'
+                    : 'bg-gray-100 text-gray-900'
+                }`}
+              >
+                {!message.from_me && (
+                  <div className="flex items-center gap-1 mb-1">
+                    <span className="text-xs font-medium">
+                      {message.sender_name}
+                    </span>
+                    {message.is_ai_response && (
+                      <Bot className="w-3 h-3" />
+                    )}
                   </div>
-                </div>
+                )}
                 
-                <div className="mt-1">
-                  <MessageStatus 
-                    status={getMessageStatus(message.message_id)}
-                    timestamp={message.timestamp}
-                    fromMe={message.from_me}
-                    isAiResponse={message.is_ai_response}
-                  />
+                <div className="text-sm break-words whitespace-pre-wrap">
+                  {renderMessageContent(message)}
                 </div>
               </div>
               
-              {message.from_me && (
-                <Avatar className="w-8 h-8 flex-shrink-0">
-                  <AvatarFallback>
-                    <User className="w-4 h-4" />
-                  </AvatarFallback>
-                </Avatar>
-              )}
+              <div className="mt-1">
+                <MessageStatus 
+                  status={getMessageStatus(message.message_id)}
+                  timestamp={message.timestamp}
+                  fromMe={message.from_me}
+                  isAiResponse={message.is_ai_response}
+                />
+              </div>
             </div>
-          ))}
-        </div>
-      </ScrollArea>
-    </div>
+            
+            {message.from_me && (
+              <Avatar className="w-8 h-8 flex-shrink-0">
+                <AvatarFallback>
+                  <User className="w-4 h-4" />
+                </AvatarFallback>
+              </Avatar>
+            )}
+          </div>
+        ))}
+      </div>
+    </ScrollArea>
   );
 };
 
