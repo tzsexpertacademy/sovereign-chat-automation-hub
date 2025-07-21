@@ -24,8 +24,20 @@ export const useTicketRealtimeImproved = (clientId: string) => {
       setIsLoading(true);
       console.log('🔄 [TICKETS] Carregando tickets para cliente:', clientId);
       
+      // Verificar se existem tickets no banco primeiro
+      const { data: ticketCount, error: countError } = await supabase
+        .from('conversation_tickets')
+        .select('id', { count: 'exact' })
+        .eq('client_id', clientId);
+      
+      console.log('📊 [TICKETS] Total de tickets no banco:', ticketCount?.length || 0);
+      if (countError) {
+        console.error('❌ [TICKETS] Erro ao contar tickets:', countError);
+      }
+      
       const ticketsData = await ticketsService.getClientTickets(clientId);
-      console.log('✅ [TICKETS] Tickets carregados:', ticketsData.length);
+      console.log('✅ [TICKETS] Tickets carregados via service:', ticketsData.length);
+      console.log('📋 [TICKETS] Primeiros 3 tickets:', ticketsData.slice(0, 3));
       
       if (mountedRef.current) {
         setTickets(ticketsData);

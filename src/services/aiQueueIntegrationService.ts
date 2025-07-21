@@ -186,7 +186,7 @@ class AIQueueIntegrationService {
         assistantName: assistant?.name,
         isActive: queue.is_active,
         autoProcessing: true,
-        processingDelay: assistant?.advanced_settings?.response_delay_seconds || 3
+        processingDelay: (assistant?.advanced_settings as any)?.response_delay_seconds || 3
       };
 
     } catch (error) {

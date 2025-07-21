@@ -25,6 +25,11 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
   const { toast } = useToast();
   const { chatId } = useParams();
 
+  // Log de debug
+  useEffect(() => {
+    console.log('🔄 [CHAT-INTERFACE] Iniciando ChatInterfaceImproved...', { clientId });
+  }, [clientId]);
+
   // Hook melhorado para tempo real 
   const {
     tickets,
