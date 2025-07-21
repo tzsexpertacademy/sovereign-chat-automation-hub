@@ -1331,11 +1331,13 @@ export type Database = {
           has_qr_code: boolean | null
           id: string
           instance_id: string
+          last_import_at: string | null
           phone_number: string | null
           qr_code: string | null
           qr_expires_at: string | null
           status: string | null
           updated_at: string
+          webhook_enabled: boolean | null
           yumer_instance_name: string | null
         }
         Insert: {
@@ -1346,11 +1348,13 @@ export type Database = {
           has_qr_code?: boolean | null
           id?: string
           instance_id: string
+          last_import_at?: string | null
           phone_number?: string | null
           qr_code?: string | null
           qr_expires_at?: string | null
           status?: string | null
           updated_at?: string
+          webhook_enabled?: boolean | null
           yumer_instance_name?: string | null
         }
         Update: {
@@ -1361,11 +1365,13 @@ export type Database = {
           has_qr_code?: boolean | null
           id?: string
           instance_id?: string
+          last_import_at?: string | null
           phone_number?: string | null
           qr_code?: string | null
           qr_expires_at?: string | null
           status?: string | null
           updated_at?: string
+          webhook_enabled?: boolean | null
           yumer_instance_name?: string | null
         }
         Relationships: [

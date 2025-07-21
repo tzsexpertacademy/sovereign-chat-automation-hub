@@ -1,6 +1,6 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { yumerWhatsAppService } from "./yumerWhatsappService";
+import { yumerWhatsappService } from "./yumerWhatsappService";
 
 export interface SystemLogEntry {
   id: string;

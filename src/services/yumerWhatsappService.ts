@@ -1,96 +1,34 @@
-import { baseService } from "./baseService";
-
-class YumerWhatsappService extends baseService {
-  constructor() {
-    super(process.env.NEXT_PUBLIC_YUMER_WHATSAPP_API_URL || "", {
-      "apikey": process.env.NEXT_PUBLIC_YUMER_WHATSAPP_API_KEY || "",
-      "Authorization": `Bearer ${process.env.NEXT_PUBLIC_YUMER_WHATSAPP_API_KEY || ""}`
-    });
-  }
-
-  async sendMessage(instanceName: string, chatId: string, message: string) {
-    try {
-      const response = await this.post(`/message/sendText/${instanceName}`, {
-        number: chatId,
-        options: {
-          delay: 1200,
-          message
-        }
-      });
-      return response;
-    } catch (error) {
-      console.error("Erro ao enviar mensagem:", error);
-      return {
-        success: false,
-        error: "Erro ao enviar mensagem"
-      };
-    }
-  }
-
-  async sendAudio(instanceName: string, chatId: string, audioBase64: string) {
-    try {
-      const response = await this.post(`/message/sendAudio/${instanceName}`, {
-        number: chatId,
-        options: {
-          delay: 1200,
-          base64: audioBase64
-        }
-      });
-      return response;
-    } catch (error) {
-      console.error("Erro ao enviar áudio:", error);
-      return {
-        success: false,
-        error: "Erro ao enviar áudio"
-      };
-    }
-  }
-
-  async sendImage(instanceName: string, chatId: string, imageBase64: string, caption?: string) {
-    try {
-      const response = await this.post(`/message/sendImage/${instanceName}`, {
-        number: chatId,
-        options: {
-          delay: 1200,
-          base64: imageBase64,
-          caption
-        }
-      });
-      return response;
-    } catch (error) {
-      console.error("Erro ao enviar imagem:", error);
-      return {
-        success: false,
-        error: "Erro ao enviar imagem"
-      };
-    }
-  }
-
-  async sendFile(instanceName: string, chatId: string, fileBase64: string, fileName: string, caption?: string) {
-    try {
-      const response = await this.post(`/message/sendFile/${instanceName}`, {
-        number: chatId,
-        options: {
-          delay: 1200,
-          base64: fileBase64,
-          filename: fileName,
-          caption
-        }
-      });
-      return response;
-    } catch (error) {
-      console.error("Erro ao enviar arquivo:", error);
-      return {
-        success: false,
-        error: "Erro ao enviar arquivo"
-      };
-    }
-  }
+// Tipos do Yumer API
+export interface YumerInstance {
+  id: number;
+  name: string;
+  description?: string;
+  connectionStatus: string;
+  ownerJid?: string;
+  profilePicUrl?: string;
+  Auth: {
+    token: string;
+  };
 }
 
-export const whatsappService = new YumerWhatsappService();
+export interface YumerMessage {
+  id: number;
+  keyId: string;
+  keyFromMe: boolean;
+  keyRemoteJid: string;
+  messageType: string;
+  content: any;
+  messageTimestamp: number;
+  device: string;
+}
 
-import { baseService } from "./baseService";
+export interface YumerChat {
+  id: string;
+  name?: string;
+  isGroup: boolean;
+  lastMessage?: string;
+  unreadCount: number;
+}
 
 export const yumerWhatsappService = {
   // Configurar webhook
@@ -246,6 +184,52 @@ export const yumerWhatsappService = {
       return { success: true, data: messages };
     } catch (error) {
       console.error(`❌ [YUMER-MESSAGES] Erro ao obter mensagens:`, error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Erro desconhecido' 
+      };
+    }
+  },
+
+  // Enviar mensagem
+  async sendMessage(instanceId: string, chatId: string, message: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      console.log(`📤 [YUMER-SEND] Enviando mensagem para: ${chatId}`);
+
+      const baseUrl = process.env.NEXT_PUBLIC_YUMER_WHATSAPP_API_URL || "";
+      const apiKey = process.env.NEXT_PUBLIC_YUMER_WHATSAPP_API_KEY || "";
+      
+      const response = await fetch(`${baseUrl}/message/sendText/${instanceId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'apikey': apiKey
+        },
+        body: JSON.stringify({
+          number: chatId,
+          options: {
+            delay: 1200,
+            presence: 'composing'
+          },
+          textMessage: {
+            text: message
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ [YUMER-SEND] Erro HTTP ${response.status}:`, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log(`✅ [YUMER-SEND] Mensagem enviada:`, data);
+      
+      return { success: true, data };
+    } catch (error) {
+      console.error(`❌ [YUMER-SEND] Erro ao enviar mensagem:`, error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Erro desconhecido' 

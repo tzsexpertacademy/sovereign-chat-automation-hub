@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Search, Download, RefreshCw, AlertCircle, CheckCircle, Info, AlertTriangle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { yumerWhatsAppService } from "@/services/yumerWhatsappService";
+import { yumerWhatsappService } from "@/services/yumerWhatsappService";
 import { useToast } from "@/hooks/use-toast";
 
 interface LogEntry {
