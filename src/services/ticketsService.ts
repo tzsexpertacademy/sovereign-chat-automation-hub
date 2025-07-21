@@ -1,5 +1,7 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { customersService } from "./customersService";
+import { codeChatApiService } from "./codechatApiService";
 
 export interface ConversationTicket {
   id: string;
@@ -40,28 +42,6 @@ export interface TicketMessage {
   ai_confidence_score?: number;
   processing_status: string;
   media_url?: string;
-}
-
-// Interface para dados do WhatsApp
-interface WhatsAppChat {
-  id: any;
-  name?: string;
-  lastMessage?: {
-    body?: string;
-    content?: string;
-    text?: string;
-    type?: string;
-    timestamp?: any;
-    t?: any;
-    author?: string;
-    pushName?: string;
-  };
-  contact?: {
-    name?: string;
-    pushname?: string;
-  };
-  timestamp?: any;
-  chatId?: string;
 }
 
 export const ticketsService = {
@@ -319,29 +299,11 @@ export const ticketsService = {
   },
 
   normalizePhoneNumber(phoneNumber: string): string {
-    let cleanedNumber = phoneNumber.replace(/\D/g, '');
-
-    if (cleanedNumber.length < 10) {
-      return cleanedNumber;
-    }
-
-    if (cleanedNumber.startsWith('55')) {
-      cleanedNumber = cleanedNumber.slice(2);
-    }
-
-    return cleanedNumber;
+    return codeChatApiService.normalizePhoneNumber(phoneNumber);
   },
 
   formatPhoneForDisplay(phoneNumber: string): string {
-    const cleanedNumber = this.normalizePhoneNumber(phoneNumber);
-
-    if (cleanedNumber.length === 10) {
-      return cleanedNumber.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
-    } else if (cleanedNumber.length === 11) {
-      return cleanedNumber.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
-    }
-
-    return phoneNumber;
+    return codeChatApiService.formatPhoneForDisplay(phoneNumber);
   },
 
   validateAndFixTimestamp(timestamp: any): string {
@@ -390,14 +352,15 @@ export const ticketsService = {
     return validTimestamp;
   },
 
+  // NOVO: Importação usando CodeChat API v1.3.0
   async importConversationsFromWhatsApp(clientId: string): Promise<{ success: number; errors: number }> {
     try {
-      console.log('🔄 Iniciando importação de conversas para cliente:', clientId);
+      console.log('🔄 Iniciando importação de conversas CodeChat v1.3.0 para cliente:', clientId);
       
       // Buscar instâncias ativas do cliente
       const { data: instances, error: instancesError } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id, phone_number')
+        .select('instance_id, phone_number, yumer_instance_name, auth_token')
         .eq('client_id', clientId)
         .eq('status', 'connected');
 
@@ -413,107 +376,73 @@ export const ticketsService = {
       let totalSuccess = 0;
       let totalErrors = 0;
 
-      // URLs possíveis do servidor WhatsApp (incluindo a URL do servidor externo)
-       const possibleUrls = [
-         'https://yumer.yumerflow.app:8083', // URL do servidor YUMER com certificado válido
-         'http://localhost:3001',
-         'http://127.0.0.1:3001',
-         'https://whatsapp-server.yourdomain.com',
-         'http://192.168.1.100:3001'
-       ];
-
       for (const instance of instances) {
         console.log(`📱 Processando instância: ${instance.instance_id}`);
         
-        let chatsData = null;
-        let serverUrl = null;
+        try {
+          // Configurar autenticação se disponível
+          if (instance.auth_token && instance.yumer_instance_name) {
+            codeChatApiService.setInstanceToken(instance.yumer_instance_name, instance.auth_token);
+          }
+          
+          // Usar o yumer_instance_name ou fallback para instance_id
+          const instanceName = instance.yumer_instance_name || instance.instance_id;
+          
+          // Buscar chats usando CodeChat API v1.3.0
+          const chats = await codeChatApiService.findChats(instanceName);
+          console.log(`📊 ${chats.length} conversas encontradas para ${instanceName}`);
 
-        // Tentar cada URL até encontrar uma que funcione
-        for (const url of possibleUrls) {
-          try {
-            console.log(`🌐 Testando URL: ${url}/chats/${instance.instance_id}`);
-            
-            const response = await fetch(`${url}/chats/${instance.instance_id}`, {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              signal: AbortSignal.timeout(10000)
-            });
-
-            if (response.ok) {
-              const data = await response.json();
-              if (data && (Array.isArray(data) || (data.chats && Array.isArray(data.chats)))) {
-                chatsData = Array.isArray(data) ? data : data.chats;
-                serverUrl = url;
-                console.log(`✅ Conectado com sucesso em: ${url}`);
-                break;
+          // Processar cada conversa
+          for (const chat of chats) {
+            try {
+              const chatId = chat.id;
+              
+              if (!chatId) {
+                console.log('⚠️ Chat sem ID válido, pulando...');
+                totalErrors++;
+                continue;
               }
-            }
-          } catch (error) {
-            console.log(`❌ Falha em ${url}:`, error);
-            continue;
-          }
-        }
 
-        if (!chatsData || !serverUrl) {
-          console.error(`❌ Não foi possível conectar em nenhuma URL para instância ${instance.instance_id}`);
-          totalErrors++;
-          continue;
-        }
+              // Extrair nome do contato
+              const contactName = codeChatApiService.extractContactName(chat, chatId);
+              
+              // Extrair e normalizar número de telefone
+              const phoneNumber = this.normalizePhoneNumber(chatId);
+              
+              // Preparar última mensagem
+              const lastMessage = chat.lastMessage || 'Conversa importada do WhatsApp';
+              const lastMessageTime = this.validateAndFixTimestamp(chat.lastMessageTime || Date.now());
 
-        console.log(`📊 ${chatsData.length} conversas encontradas para ${instance.instance_id}`);
+              console.log(`💾 Salvando conversa: ${contactName} (${phoneNumber})`);
 
-        // Processar cada conversa
-        for (const chat of chatsData) {
-          try {
-            const chatId = chat.id?.user || chat.id?._serialized || chat.chatId || chat.id;
-            
-            if (!chatId) {
-              console.log('⚠️ Chat sem ID válido, pulando...');
+              // Criar ou atualizar ticket
+              const ticketId = await this.createOrUpdateTicket(
+                clientId,
+                chatId,
+                instance.instance_id,
+                contactName,
+                phoneNumber,
+                lastMessage,
+                lastMessageTime
+              );
+
+              // Opcionalmente, importar histórico de mensagens
+              try {
+                await this.importChatMessages(instanceName, chatId, ticketId);
+              } catch (messageError) {
+                console.warn(`⚠️ Falha ao importar mensagens para chat ${chatId}:`, messageError);
+              }
+
+              totalSuccess++;
+
+            } catch (chatError) {
+              console.error('❌ Erro ao processar chat:', chat, chatError);
               totalErrors++;
-              continue;
             }
-
-            // Melhorar extração de nome usando múltiplas estratégias
-            let contactName = await this.extractBestContactName(chat, serverUrl, instance.instance_id, chatId);
-            
-            // Extrair e normalizar número de telefone
-            const phoneNumber = this.normalizePhoneNumber(chatId);
-            
-            // Preparar última mensagem
-            const lastMessage = chat.lastMessage?.body || 
-                              chat.lastMessage?.content || 
-                              chat.lastMessage?.text ||
-                              (chat.lastMessage?.type !== 'text' ? `[${chat.lastMessage?.type || 'Mídia'}]` : '') ||
-                              'Conversa importada do WhatsApp';
-
-            const lastMessageTime = this.validateAndFixTimestamp(
-              chat.lastMessage?.timestamp || 
-              chat.lastMessage?.t || 
-              chat.timestamp || 
-              Date.now()
-            );
-
-            console.log(`💾 Salvando conversa: ${contactName} (${phoneNumber})`);
-
-            // Criar ou atualizar ticket
-            await this.createOrUpdateTicket(
-              clientId,
-              chatId,
-              instance.instance_id,
-              contactName,
-              phoneNumber,
-              lastMessage,
-              lastMessageTime
-            );
-
-            totalSuccess++;
-
-          } catch (chatError) {
-            console.error('❌ Erro ao processar chat:', chat, chatError);
-            totalErrors++;
           }
+        } catch (instanceError) {
+          console.error(`❌ Erro ao processar instância ${instance.instance_id}:`, instanceError);
+          totalErrors++;
         }
       }
 
@@ -526,111 +455,67 @@ export const ticketsService = {
     }
   },
 
-  // Função melhorada para extrair o melhor nome do contato
-  async extractBestContactName(chat: WhatsAppChat, serverUrl: string, instanceId: string, chatId: string): Promise<string> {
-    let contactName = 'Contato sem nome';
-    
+  // NOVO: Importar mensagens específicas de um chat
+  async importChatMessages(instanceName: string, chatId: string, ticketId: string, limit: number = 20): Promise<void> {
     try {
-      // Estratégia 1: Nome direto do chat
-      if (chat.name && chat.name.trim() && !chat.name.includes('@') && !chat.name.match(/^\d+$/)) {
-        contactName = this.formatCustomerName(chat.name.trim(), chatId);
-        console.log(`✅ Nome obtido do chat: ${contactName}`);
-        return contactName;
-      }
+      console.log(`📨 Importando mensagens para chat ${chatId} (limite: ${limit})`);
       
-      // Estratégia 2: pushName da última mensagem
-      if (chat.lastMessage?.author || chat.lastMessage?.pushName) {
-        const authorName = chat.lastMessage.author || chat.lastMessage.pushName;
-        if (authorName && !authorName.includes('@') && !authorName.match(/^\d+$/)) {
-          contactName = this.formatCustomerName(authorName.trim(), chatId);
-          console.log(`✅ Nome obtido da mensagem: ${contactName}`);
-          return contactName;
-        }
-      }
-      
-      // Estratégia 3: Nome do contato da agenda
-      if (chat.contact?.name || chat.contact?.pushname) {
-        const phoneName = chat.contact.name || chat.contact.pushname;
-        if (phoneName && !phoneName.includes('@') && !phoneName.match(/^\d+$/)) {
-          contactName = this.formatCustomerName(phoneName.trim(), chatId);
-          console.log(`✅ Nome obtido do contato: ${contactName}`);
-          return contactName;
-        }
-      }
-      
-      // Estratégia 4: Buscar perfil completo via API do servidor WhatsApp
-      try {
-        const profileResponse = await fetch(`${serverUrl}/contact/${instanceId}/${encodeURIComponent(chatId)}`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(5000)
-        });
-        
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json();
-          console.log(`👤 Dados do perfil para ${chatId}:`, profileData);
-          
-          // Tentar extrair nome do perfil
-          const profileName = profileData.name || 
-                            profileData.pushname || 
-                            profileData.notify || 
-                            profileData.verifiedName ||
-                            profileData.businessProfile?.name;
-          
-          if (profileName && !profileName.includes('@') && !profileName.match(/^\d+$/)) {
-            contactName = this.formatCustomerName(profileName.trim(), chatId);
-            console.log(`✅ Nome obtido do perfil API: ${contactName}`);
-            return contactName;
+      const messages = await codeChatApiService.findMessages(instanceName, chatId, limit);
+      console.log(`📨 ${messages.length} mensagens encontradas para importação`);
+
+      for (const message of messages) {
+        try {
+          // Verificar se mensagem já existe
+          const { data: existingMessage } = await supabase
+            .from('ticket_messages')
+            .select('id')
+            .eq('message_id', message.keyId)
+            .eq('ticket_id', ticketId)
+            .single();
+
+          if (existingMessage) {
+            console.log(`⏭️ Mensagem ${message.keyId} já existe, pulando...`);
+            continue;
           }
+
+          // Converter timestamp
+          const timestamp = this.validateAndFixTimestamp(message.messageTimestamp * 1000);
+
+          // Extrair conteúdo da mensagem
+          let content = '';
+          if (typeof message.content === 'string') {
+            content = message.content;
+          } else if (message.content && typeof message.content === 'object') {
+            content = message.content.text || 
+                     message.content.body || 
+                     message.content.caption || 
+                     `[${message.messageType}]`;
+          } else {
+            content = `[${message.messageType}]`;
+          }
+
+          // Criar mensagem no ticket
+          await this.addTicketMessage({
+            ticket_id: ticketId,
+            message_id: message.keyId,
+            from_me: message.keyFromMe,
+            sender_name: message.pushName || (message.keyFromMe ? 'Você' : 'Cliente'),
+            content: content,
+            message_type: message.messageType,
+            timestamp: timestamp,
+            is_internal_note: false,
+            is_ai_response: false,
+            processing_status: 'processed'
+          });
+
+          console.log(`✅ Mensagem ${message.keyId} importada com sucesso`);
+        } catch (messageError) {
+          console.error(`❌ Erro ao importar mensagem ${message.keyId}:`, messageError);
         }
-      } catch (profileError) {
-        console.log(`⚠️ Não foi possível obter perfil para ${chatId}:`, profileError);
       }
-      
-      // Estratégia 5: Usar número formatado como último recurso
-      contactName = this.formatPhoneForDisplay(this.normalizePhoneNumber(chatId));
-      console.log(`📞 Usando telefone formatado: ${contactName}`);
-      
     } catch (error) {
-      console.error('❌ Erro ao extrair nome do contato:', error);
-      contactName = this.formatPhoneForDisplay(this.normalizePhoneNumber(chatId));
+      console.error(`❌ Erro ao importar mensagens do chat ${chatId}:`, error);
+      throw error;
     }
-    
-    return contactName;
-  },
-
-  // Função para formatar nome do cliente
-  formatCustomerName(rawName: string, phoneNumber: string): string {
-    if (!rawName || rawName.trim() === '') {
-      return this.formatPhoneForDisplay(phoneNumber);
-    }
-
-    const cleanName = rawName.trim();
-    
-    // Se é apenas um número, usar formato de telefone
-    if (/^\d+$/.test(cleanName)) {
-      return this.formatPhoneForDisplay(phoneNumber);
-    }
-    
-    // Se contém @ (email), usar telefone
-    if (cleanName.includes('@')) {
-      return this.formatPhoneForDisplay(phoneNumber);
-    }
-    
-    // Se é muito curto (menos de 2 caracteres), usar telefone
-    if (cleanName.length < 2) {
-      return this.formatPhoneForDisplay(phoneNumber);
-    }
-    
-    // Se parece com um ID de usuário, usar telefone
-    if (cleanName.startsWith('user_') || cleanName.startsWith('contact_')) {
-      return this.formatPhoneForDisplay(phoneNumber);
-    }
-    
-    // Nome válido - capitalizar primeira letra de cada palavra
-    return cleanName
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
-  },
+  }
 };

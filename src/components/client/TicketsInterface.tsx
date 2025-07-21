@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, MessageSquare, Clock, User, Bot, AlertCircle, RefreshCw, Settings, Filter, CheckCircle } from "lucide-react";
+import { Search, MessageSquare, Clock, User, Bot, AlertCircle, RefreshCw, Settings, Filter, CheckCircle, Download } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useTicketRealtime } from "@/hooks/useTicketRealtime";
@@ -19,6 +19,7 @@ const TicketsInterface = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedTicket, setSelectedTicket] = useState<string>("");
+  const [isImporting, setIsImporting] = useState(false);
 
   // Hook de tempo real
   const { tickets, isLoading, reloadTickets } = useTicketRealtime(clientId || '');
@@ -34,12 +35,13 @@ const TicketsInterface = () => {
   });
 
   const handleImportConversations = async () => {
-    if (!clientId) return;
+    if (!clientId || isImporting) return;
     
+    setIsImporting(true);
     try {
       toast({
         title: "Importando...",
-        description: "Iniciando importação de conversas do WhatsApp",
+        description: "Iniciando importação de conversas do CodeChat v1.3.0",
       });
 
       const result = await ticketsService.importConversationsFromWhatsApp(clientId);
@@ -56,6 +58,8 @@ const TicketsInterface = () => {
         description: error.message || "Erro ao importar conversas",
         variant: "destructive",
       });
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -91,13 +95,13 @@ const TicketsInterface = () => {
   // Auto-refresh a cada 5 segundos
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!isLoading) {
+      if (!isLoading && !isImporting) {
         reloadTickets();
       }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [isLoading, reloadTickets]);
+  }, [isLoading, isImporting, reloadTickets]);
 
   if (isLoading && tickets.length === 0) {
     return (
@@ -121,11 +125,11 @@ const TicketsInterface = () => {
               <CardTitle className="text-lg flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
                 Tickets ({filteredTickets.length})
-                {isLoading && <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>}
+                {(isLoading || isImporting) && <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>}
               </CardTitle>
               <CardDescription className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />
-                Sistema de atendimento em tempo real ativo
+                Sistema CodeChat v1.3.0 ativo
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -133,7 +137,7 @@ const TicketsInterface = () => {
                 variant="outline" 
                 size="sm"
                 onClick={reloadTickets}
-                disabled={isLoading}
+                disabled={isLoading || isImporting}
                 title="Recarregar tickets manualmente"
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -142,10 +146,15 @@ const TicketsInterface = () => {
                 variant="outline" 
                 size="sm"
                 onClick={handleImportConversations}
-                title="Importar conversas do WhatsApp"
+                disabled={isImporting}
+                title="Importar conversas do CodeChat v1.3.0"
               >
-                <Settings className="w-4 h-4 mr-1" />
-                Importar
+                {isImporting ? (
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
+                ) : (
+                  <Download className="w-4 h-4 mr-1" />
+                )}
+                {isImporting ? 'Importando...' : 'Importar'}
               </Button>
             </div>
           </div>
@@ -180,6 +189,18 @@ const TicketsInterface = () => {
         
         <CardContent className="flex-1 p-0">
           <ScrollArea className="h-full">
+            {isImporting && (
+              <div className="p-4 bg-blue-50 border-b">
+                <div className="flex items-center gap-2 text-blue-700">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm font-medium">Importando conversas do CodeChat v1.3.0...</span>
+                </div>
+                <p className="text-xs text-blue-600 mt-1">
+                  Buscando chats e mensagens via API oficial
+                </p>
+              </div>
+            )}
+            
             {filteredTickets.length === 0 ? (
               <div className="p-4 text-center text-gray-500">
                 <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
@@ -194,10 +215,15 @@ const TicketsInterface = () => {
                   size="sm" 
                   variant="outline" 
                   onClick={handleImportConversations}
+                  disabled={isImporting}
                   className="mt-2"
                 >
-                  <Settings className="w-3 h-3 mr-1" />
-                  Importar Conversas
+                  {isImporting ? (
+                    <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
+                  ) : (
+                    <Download className="w-3 h-3 mr-1" />
+                  )}
+                  {isImporting ? 'Importando...' : 'Importar Conversas'}
                 </Button>
               </div>
             ) : (
@@ -279,7 +305,7 @@ const TicketsInterface = () => {
                   <p>Detalhes do ticket em desenvolvimento</p>
                   <p className="text-sm">Em breve: visualização de mensagens, histórico e ações</p>
                   <p className="text-xs mt-2 text-green-600">
-                    ✅ Sistema de tempo real funcionando - mensagens chegam automaticamente
+                    ✅ Sistema CodeChat v1.3.0 funcionando - mensagens chegam automaticamente
                   </p>
                 </div>
               </div>
@@ -294,11 +320,26 @@ const TicketsInterface = () => {
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex items-center justify-center gap-2 text-green-600">
                   <CheckCircle className="h-4 w-4" />
-                  <span>Sistema de tempo real ativo</span>
+                  <span>Sistema CodeChat v1.3.0 ativo</span>
                 </div>
                 <p className="text-xs text-gray-500">
                   Mensagens do WhatsApp aparecem automaticamente
                 </p>
+                <div className="mt-3">
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleImportConversations}
+                    disabled={isImporting}
+                  >
+                    {isImporting ? (
+                      <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
+                    ) : (
+                      <Download className="w-3 h-3 mr-1" />
+                    )}
+                    {isImporting ? 'Importando...' : 'Importar Conversas'}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

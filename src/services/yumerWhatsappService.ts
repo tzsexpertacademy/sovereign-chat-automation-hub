@@ -1,9 +1,8 @@
 // YUMER WhatsApp Backend Service - Integração completa com todas as APIs
 import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
-
+import { codeChatApiService } from './codechatApiService';
 import { yumerJwtService } from './yumerJwtService';
 
-// Interfaces para tipagem do YUMER Backend
 export interface YumerInstance {
   instanceName: string;
   status: 'connected' | 'disconnected' | 'qr_ready' | 'authenticating' | 'ready';
@@ -77,6 +76,8 @@ class YumerWhatsAppService {
   // Definir token específico para uma instância
   setInstanceToken(instanceName: string, token: string): void {
     this.instanceTokens.set(instanceName, token);
+    // Também configurar no CodeChat API Service
+    codeChatApiService.setInstanceToken(instanceName, token);
     console.log(`🔐 JWT Token configurado para instância: ${instanceName}`);
   }
 
@@ -616,14 +617,54 @@ class YumerWhatsAppService {
   }
 
   async findMessages(instanceName: string, chatId: string, limit?: number, offset?: number): Promise<YumerMessage[]> {
-    return this.makeRequest(`/chat/findMessages/${instanceName}`, {
-      method: 'POST',
-      body: JSON.stringify({ chatId, limit, offset }),
-    }, instanceName);
+    try {
+      console.log(`📨 [CODECHAT] Buscando mensagens via CodeChat API v1.3.0 para chat: ${chatId}`);
+      
+      // Usar o novo serviço CodeChat
+      const messages = await codeChatApiService.findMessages(instanceName, chatId, limit, offset);
+      
+      // Converter para formato YUMER
+      return messages.map(message => ({
+        id: message.keyId,
+        from: message.keyRemoteJid,
+        to: message.keyRemoteJid,
+        body: typeof message.content === 'string' ? message.content : 
+              (message.content?.text || message.content?.body || `[${message.messageType}]`),
+        type: message.messageType as any,
+        timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
+        fromMe: message.keyFromMe,
+        mediaUrl: message.content?.url,
+        caption: message.content?.caption,
+        isForwarded: message.content?.contextInfo?.isForwarded || false
+      }));
+    } catch (error) {
+      console.error(`❌ [CODECHAT] Erro ao buscar mensagens:`, error);
+      throw error;
+    }
   }
 
   async findChats(instanceName: string): Promise<YumerChat[]> {
-    return this.makeRequest(`/chat/findChats/${instanceName}`, {}, instanceName);
+    try {
+      console.log(`📊 [CODECHAT] Buscando chats via CodeChat API v1.3.0 para: ${instanceName}`);
+      
+      // Usar o novo serviço CodeChat
+      const chats = await codeChatApiService.findChats(instanceName);
+      
+      // Converter para formato YUMER
+      return chats.map(chat => ({
+        id: chat.id,
+        name: chat.name || 'Contato sem nome',
+        isGroup: chat.isGroup,
+        lastMessage: chat.lastMessage,
+        lastMessageTime: chat.lastMessageTime,
+        unreadCount: chat.unreadCount,
+        profilePictureUrl: chat.profilePictureUrl,
+        participants: chat.participants
+      }));
+    } catch (error) {
+      console.error(`❌ [CODECHAT] Erro ao buscar chats:`, error);
+      throw error;
+    }
   }
 
   async createGroup(instanceName: string, name: string, participants: string[]): Promise<YumerGroup> {
