@@ -140,8 +140,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           content: newMessage.substring(0, 50)
         });
         
-        await ticketsService.addTicketMessage({
-          ticket_id: ticketId,
+        await ticketsService.addTicketMessage(ticketId, {
           message_id: messageId,
           from_me: true,
           sender_name: 'Atendente',

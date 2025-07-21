@@ -16,6 +16,9 @@ export interface TicketMessage {
   processing_status?: string;
   is_ai_response?: boolean;
   is_internal_note?: boolean;
+  audio_base64?: string;
+  media_duration?: number;
+  media_transcription?: string;
 }
 
 export interface ConversationTicket {
@@ -49,6 +52,70 @@ export class TicketsService {
    */
   async importConversationsFromWhatsApp(clientId: string) {
     return await conversationImportService.importConversationsFromWhatsApp(clientId);
+  }
+
+  /**
+   * Buscar tickets do cliente
+   */
+  async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
+    return await this.getTickets(clientId);
+  }
+
+  /**
+   * Adicionar mensagem ao ticket
+   */
+  async addTicketMessage(ticketId: string, messageData: Partial<TicketMessage>): Promise<TicketMessage | null> {
+    try {
+      const { data, error } = await supabase
+        .from('ticket_messages')
+        .insert({
+          ticket_id: ticketId,
+          message_id: messageData.message_id || `msg_${Date.now()}`,
+          content: messageData.content || '',
+          message_type: messageData.message_type || 'text',
+          from_me: messageData.from_me || false,
+          sender_name: messageData.sender_name,
+          timestamp: messageData.timestamp || new Date().toISOString(),
+          media_url: messageData.media_url,
+          processing_status: messageData.processing_status || 'processed',
+          is_ai_response: messageData.is_ai_response || false,
+          is_internal_note: messageData.is_internal_note || false,
+          audio_base64: messageData.audio_base64,
+          media_duration: messageData.media_duration,
+          media_transcription: messageData.media_transcription
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erro ao adicionar mensagem:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Criar ou atualizar ticket
+   */
+  async createOrUpdateTicket(clientId: string, chatId: string, instanceId: string, customerData: any): Promise<string | null> {
+    try {
+      const { data, error } = await supabase.rpc('upsert_conversation_ticket', {
+        p_client_id: clientId,
+        p_chat_id: chatId,
+        p_instance_id: instanceId,
+        p_customer_name: customerData.name || 'Cliente',
+        p_customer_phone: customerData.phone || '',
+        p_last_message: customerData.lastMessage || '',
+        p_last_message_at: customerData.lastMessageAt || new Date().toISOString()
+      });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erro ao criar/atualizar ticket:', error);
+      return null;
+    }
   }
 
   /**
@@ -215,7 +282,11 @@ export class TicketsService {
       const { data, error } = await query;
 
       if (error) throw error;
-      return data || [];
+      return (data || []).map(ticket => ({
+        ...ticket,
+        status: ticket.status as 'open' | 'closed',
+        tags: Array.isArray(ticket.tags) ? ticket.tags.map(tag => String(tag)) : []
+      }));
     } catch (error) {
       console.error('Erro ao buscar tickets:', error);
       return [];
@@ -268,7 +339,11 @@ export class TicketsService {
         .maybeSingle();
 
       if (error) throw error;
-      return data;
+      return data ? { 
+        ...data, 
+        status: data.status as 'open' | 'closed',
+        tags: Array.isArray(data.tags) ? data.tags.map(tag => String(tag)) : []
+      } : null;
     } catch (error) {
       console.error('Erro ao buscar ticket:', error);
       return null;

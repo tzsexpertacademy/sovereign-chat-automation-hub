@@ -4,9 +4,11 @@ import ImprovedConversationImport from './ImprovedConversationImport';
 
 interface ChatInterfaceProps {
   clientId: string;
+  selectedChatId?: string | null;
+  onSelectChat?: (chatId: string) => void;
 }
 
-const ChatInterface = ({ clientId }: ChatInterfaceProps) => {
+const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterfaceProps) => {
   return <ImprovedConversationImport clientId={clientId} />;
 };
 

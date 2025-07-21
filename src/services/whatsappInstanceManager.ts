@@ -90,19 +90,14 @@ export class WhatsAppInstanceManager {
     console.log('🔄 [INSTANCE-MANAGER] Sincronizando status:', instanceId);
     
     try {
-      // Buscar status atual da API
-      const apiStatus = await codechatApiService.getInstanceStatus(instanceId);
+      // Status será atualizado via webhook ou sincronização
+      // const apiStatus = await codechatApiService.getInstanceStatus(instanceId);
       
-      // Mapear para status local
-      let localStatus = 'disconnected';
-      if (apiStatus.state === 'open') {
-        localStatus = 'connected';
-      } else if (apiStatus.state === 'connecting') {
-        localStatus = 'connecting';
-      }
+      // Status será atualizado via webhook
+      const localStatus = 'disconnected'; // Placeholder
       
-      // Atualizar no banco local
-      await whatsappInstancesService.updateInstanceStatus(instanceId, localStatus);
+      // TODO: Implementar sincronização real quando necessário
+      // await whatsappInstancesService.updateInstanceStatus(instanceId, localStatus);
       
       console.log('✅ [INSTANCE-MANAGER] Status sincronizado:', { instanceId, status: localStatus });
     } catch (error) {

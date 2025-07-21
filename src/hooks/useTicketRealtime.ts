@@ -490,8 +490,7 @@ export const useTicketRealtime = (clientId: string) => {
             if (sendResult.success) {
               simulateMessageProgression(aiMessageId, true);
               
-              await ticketsService.addTicketMessage({
-                ticket_id: ticketId,
+              await ticketsService.addTicketMessage(ticketId, {
                 message_id: aiMessageId,
                 from_me: true,
                 sender_name: `🤖 ${assistant.name}`,
@@ -499,7 +498,7 @@ export const useTicketRealtime = (clientId: string) => {
                 message_type: 'text',
                 is_internal_note: false,
                 is_ai_response: true,
-                ai_confidence_score: 0.9,
+                
                 processing_status: 'completed',
                 timestamp: new Date().toISOString()
               });
@@ -578,8 +577,7 @@ export const useTicketRealtime = (clientId: string) => {
           const existingTicket = ticketsData.find(t => t.chat_id === normalizedMessage.from);
           
           if (existingTicket) {
-            await ticketsService.addTicketMessage({
-              ticket_id: existingTicket.id,
+            await ticketsService.addTicketMessage(existingTicket.id, {
               message_id: normalizedMessage.id,
               from_me: true,
               sender_name: 'Atendente',
@@ -616,13 +614,23 @@ export const useTicketRealtime = (clientId: string) => {
     
     try {
       // CRIAR/ATUALIZAR TICKET
-      const ticketId = await ticketsService.createOrUpdateTicket({
-        clientId: clientId,
-        chatId: normalizedMessage.from,
-        title: `Conversa com ${normalizedMessage.customerName}`,
-        phoneNumber: normalizedMessage.phoneNumber,
-        contactName: normalizedMessage.customerName,
-        lastMessage: normalizedMessage.body,
+      // Buscar primeira instância ativa para este cliente
+      const { data: instances } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id')
+        .eq('client_id', clientId)
+        .limit(1);
+
+      const instanceId = instances?.[0]?.instance_id || 'default_instance';
+
+      const ticketId = await ticketsService.createOrUpdateTicket(
+        clientId,
+        normalizedMessage.from,
+        instanceId,
+        {
+          name: normalizedMessage.customerName,
+          phone: normalizedMessage.phoneNumber,
+          lastMessage: normalizedMessage.body,
         lastMessageAt: normalizedMessage.timestamp
       });
 
@@ -660,7 +668,7 @@ export const useTicketRealtime = (clientId: string) => {
           }
         }
         
-        await ticketsService.addTicketMessage(messageData);
+        await ticketsService.addTicketMessage(ticketId, messageData);
         console.log(`💾 MENSAGEM salva no banco: ${normalized.type}`);
       }
 
