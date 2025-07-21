@@ -1,15 +1,18 @@
 
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Settings } from "lucide-react";
 import { getServerConfig } from "@/config/environment";
 
 interface ConnectionStatusProps {
   className?: string;
   connectedInstance?: string;
   isOnline?: boolean;
+  onShowDiagnostics?: () => void;
 }
 
-const ConnectionStatus = ({ className, connectedInstance, isOnline: propIsOnline }: ConnectionStatusProps) => {
+const ConnectionStatus = ({ className, connectedInstance, isOnline: propIsOnline, onShowDiagnostics }: ConnectionStatusProps) => {
   const [isServerOnline, setIsServerOnline] = useState(true);
   const config = getServerConfig();
 
@@ -44,12 +47,26 @@ const ConnectionStatus = ({ className, connectedInstance, isOnline: propIsOnline
     : `${isOnline ? "🟢 Online" : "🔴 Offline"}`;
 
   return (
-    <Badge 
-      variant={isOnline ? "default" : "destructive"}
-      className={className}
-    >
-      {statusText}
-    </Badge>
+    <div className="flex items-center justify-between p-2 bg-muted rounded-lg">
+      <Badge 
+        variant={isOnline ? "default" : "destructive"}
+        className={className}
+      >
+        {statusText}
+      </Badge>
+      
+      {onShowDiagnostics && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onShowDiagnostics}
+          className="h-6 px-2"
+        >
+          <Settings className="h-3 w-3 mr-1" />
+          Diagnóstico
+        </Button>
+      )}
+    </div>
   );
 };
 

@@ -191,20 +191,66 @@ class WhatsAppMultiClientService {
   }
 
   async sendMessage(clientId: string, to: string, message: string): Promise<any> {
+    console.log(`📤 [WHATSAPP-SEND] Iniciando envio - Cliente: ${clientId}, Para: ${to.substring(0, 10)}...`);
+    
     try {
-      console.log('📤 [CORREÇÃO] Sending message via YUMER:', { 
-        clientId, 
-        to, 
-        preview: message.substring(0, 50) + '...' 
-      });
+      // Primeiro, verificar/configurar webhook automaticamente
+      console.log(`🔧 [WHATSAPP-SEND] Verificando webhook para instância: ${clientId}`);
+      const webhookCheck = await yumerWhatsappService.ensureWebhookConfigured(clientId);
+      
+      if (!webhookCheck.success) {
+        console.warn(`⚠️ [WHATSAPP-SEND] Aviso webhook:`, webhookCheck.error);
+      }
 
+      // Testar conexão antes de enviar
+      console.log(`🔍 [WHATSAPP-SEND] Testando conexão da instância: ${clientId}`);
+      const connectionTest = await yumerWhatsappService.testConnection(clientId);
+      
+      if (!connectionTest.success) {
+        console.error(`❌ [WHATSAPP-SEND] Instância desconectada:`, connectionTest.error);
+        return {
+          success: false,
+          error: `Instância desconectada: ${connectionTest.error}`
+        };
+      }
+
+      // Configurar autenticação
       await this.initializeInstanceAuth(clientId);
-      const data = await yumerWhatsappService.sendMessage(clientId, to, message);
-      console.log('✅ Message sent via YUMER:', { clientId, to });
-      return { success: true, messageId: data.data?.id || Date.now().toString(), ...data };
+
+      // Enviar mensagem
+      console.log(`📤 [WHATSAPP-SEND] Enviando mensagem via Yumer API...`);
+      const result = await yumerWhatsappService.sendMessage(clientId, to, message);
+      
+      if (result.success) {
+        console.log(`✅ [WHATSAPP-SEND] Mensagem enviada com sucesso:`, {
+          messageId: result.data?.id,
+          keyId: result.data?.keyId,
+          timestamp: result.data?.messageTimestamp
+        });
+        
+        return {
+          success: true,
+          data: result.data,
+          messageId: result.data?.id || `msg_${Date.now()}`,
+          sent: true,
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        console.error(`❌ [WHATSAPP-SEND] Falha no envio:`, result.error);
+        return {
+          success: false,
+          error: result.error || 'Erro ao enviar mensagem via API',
+          details: 'Verifique a conexão da instância e configuração do webhook'
+        };
+      }
+      
     } catch (error) {
-      console.error('❌ Failed to send message via YUMER:', error);
-      throw error;
+      console.error(`❌ [WHATSAPP-SEND] Erro crítico:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro crítico no envio',
+        details: 'Erro de rede ou configuração do servidor'
+      };
     }
   }
 

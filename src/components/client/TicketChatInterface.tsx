@@ -13,6 +13,7 @@ import ConnectionStatus from './chat/ConnectionStatus';
 import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
+import ConnectionDiagnostics from './ConnectionDiagnostics';
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
 
@@ -25,6 +26,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
   const { messages, isLoading } = useTicketMessages(ticketId);
@@ -95,8 +97,14 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     if (!newMessage.trim() || !ticket || !connectedInstance || isSending) {
       if (!connectedInstance) {
         toast({
-          title: "Erro",
-          description: "Nenhuma instância WhatsApp conectada",
+          title: "❌ Erro de Conexão",
+          description: "Nenhuma instância WhatsApp conectada. Conecte uma instância primeiro.",
+          variant: "destructive"
+        });
+      } else if (!newMessage.trim()) {
+        toast({
+          title: "❌ Mensagem Vazia",
+          description: "Digite uma mensagem antes de enviar.",
           variant: "destructive"
         });
       }
@@ -107,42 +115,46 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       setIsSending(true);
       const messageId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
+      // Mostrar feedback de progresso
+      toast({
+        title: "📤 Enviando mensagem...",
+        description: "Configurando webhook e verificando conexão"
+      });
+
       simulateMessageProgression(messageId, false);
       
-      console.log('📤 Enviando mensagem:', {
+      console.log('📤 [TICKET-SEND] Iniciando envio:', {
         instanceId: connectedInstance,
         chatId: ticket.chat_id,
-        message: newMessage.substring(0, 50) + '...',
-        customerPhone: ticket.customer?.phone
+        messagePreview: newMessage.substring(0, 50) + '...',
+        customerPhone: ticket.customer?.phone,
+        ticketId
       });
 
       markActivity();
 
+      // Tentar envio com melhor logging
       const response = await whatsappService.sendMessage(
         connectedInstance,
         ticket.chat_id,
         newMessage
       );
       
-      console.log('📡 Resposta detalhada do envio:', {
+      console.log('📡 [TICKET-SEND] Resposta completa:', {
         success: response.success,
         error: response.error,
-        endpoint: `/api/clients/${connectedInstance}/send`
+        details: response.details,
+        messageId: response.messageId,
+        timestamp: response.timestamp
       });
 
-      console.log('📡 Resposta do envio:', response);
-
       if (response.success) {
-        console.log('✅ Mensagem enviada com sucesso via WhatsApp');
+        console.log('✅ [TICKET-SEND] Mensagem enviada - salvando no ticket');
 
-        console.log('💾 Salvando mensagem manual no ticket:', {
-          ticketId,
-          content: newMessage.substring(0, 50)
-        });
-        
+        // Salvar no banco de dados
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
-          message_id: messageId,
+          message_id: response.messageId || messageId,
           from_me: true,
           sender_name: 'Atendente',
           content: newMessage,
@@ -153,26 +165,34 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: new Date().toISOString()
         });
 
-        console.log('💾 Mensagem manual registrada no ticket');
+        console.log('💾 [TICKET-SEND] Mensagem salva no ticket com sucesso');
         setNewMessage('');
         
         toast({
-          title: "Sucesso",
-          description: "Mensagem enviada com sucesso"
+          title: "✅ Sucesso",
+          description: "Mensagem enviada e registrada com sucesso"
         });
       } else {
-        console.error('❌ Erro ao enviar mensagem via WhatsApp:', response.error);
+        console.error('❌ [TICKET-SEND] Falha no envio:', {
+          error: response.error,
+          details: response.details,
+          instanceId: connectedInstance
+        });
+        
         toast({
-          title: "Erro",
-          description: response.error || "Erro ao enviar mensagem",
+          title: "❌ Erro no Envio",
+          description: response.details ? 
+            `${response.error}\n${response.details}` : 
+            (response.error || "Erro desconhecido ao enviar mensagem"),
           variant: "destructive"
         });
       }
     } catch (error) {
-      console.error('❌ Erro ao enviar mensagem:', error);
+      console.error('❌ [TICKET-SEND] Erro crítico:', error);
+      
       toast({
-        title: "Erro",
-        description: "Erro ao enviar mensagem",
+        title: "❌ Erro Crítico",
+        description: "Falha na comunicação com o servidor. Verifique sua conexão.",
         variant: "destructive"
       });
     } finally {
@@ -210,6 +230,12 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       <ConnectionStatus
         connectedInstance={connectedInstance}
         isOnline={isOnline}
+        onShowDiagnostics={() => setShowDiagnostics(!showDiagnostics)}
+      />
+
+      <ConnectionDiagnostics
+        instanceId={connectedInstance}
+        isVisible={showDiagnostics}
       />
 
       <MessagesList
