@@ -1,6 +1,6 @@
 
 import React from 'react';
-import ImprovedConversationImport from './ImprovedConversationImport';
+import ConversationsPanel from './ConversationsPanel';
 
 interface ChatInterfaceProps {
   clientId: string;
@@ -8,8 +8,8 @@ interface ChatInterfaceProps {
   onSelectChat?: (chatId: string) => void;
 }
 
-const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterfaceProps) => {
-  return <ImprovedConversationImport clientId={clientId} />;
+const ChatInterface = ({ clientId }: ChatInterfaceProps) => {
+  return <ConversationsPanel clientId={clientId} />;
 };
 
 export default ChatInterface;

@@ -7,11 +7,9 @@ import ContactsManager from './ContactsManager';
 
 interface ChatTabsInterfaceProps {
   clientId: string;
-  selectedChatId: string | null;
-  onSelectChat: (chatId: string) => void;
 }
 
-const ChatTabsInterface = ({ clientId, selectedChatId, onSelectChat }: ChatTabsInterfaceProps) => {
+const ChatTabsInterface = ({ clientId }: ChatTabsInterfaceProps) => {
   const [activeTab, setActiveTab] = useState("conversations");
 
   return (
@@ -29,11 +27,7 @@ const ChatTabsInterface = ({ clientId, selectedChatId, onSelectChat }: ChatTabsI
         </TabsList>
         
         <TabsContent value="conversations" className="flex-1 mt-0">
-          <ChatInterface 
-            clientId={clientId}
-            selectedChatId={selectedChatId}
-            onSelectChat={onSelectChat}
-          />
+          <ChatInterface clientId={clientId} />
         </TabsContent>
         
         <TabsContent value="contacts" className="flex-1 mt-0">
