@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag, Sync, Clock } from "lucide-react";
+import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag, RotateCw, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
 import TicketChatInterface from './TicketChatInterface';
@@ -179,7 +179,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     const getStatusIcon = () => {
       switch (syncStatus) {
         case 'syncing': return <RefreshCw className="w-3 h-3 animate-spin" />;
-        case 'success': return <Sync className="w-3 h-3" />;
+        case 'success': return <RotateCw className="w-3 h-3" />;
         case 'error': return <RefreshCw className="w-3 h-3" />;
         default: return <Clock className="w-3 h-3" />;
       }
@@ -225,7 +225,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
                 disabled={syncStatus === 'syncing'}
                 title="Forçar sincronização de mensagens"
               >
-                <Sync className={`w-4 h-4 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                <RotateCw className={`w-4 h-4 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
               </Button>
             </div>
           </div>
@@ -283,7 +283,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
                   </>
                 ) : (
                   <>
-                    <Sync className="w-4 h-4 mr-2" />
+                    <RotateCw className="w-4 h-4 mr-2" />
                     Sincronizar Mensagens
                   </>
                 )}
