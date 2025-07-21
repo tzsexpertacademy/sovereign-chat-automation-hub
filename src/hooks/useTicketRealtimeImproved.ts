@@ -149,7 +149,7 @@ export const useTicketRealtimeImproved = (clientId: string) => {
           filter: `client_id=eq.${clientId}`
         },
         (payload) => {
-          console.log('🔄 [REALTIME] Mudança em tickets detectada:', payload.eventType, payload.new?.id);
+          console.log('🔄 [REALTIME] Mudança em tickets detectada:', payload.eventType, (payload.new as any)?.id);
           if (mountedRef.current) {
             setTimeout(loadTickets, 500);
           }
@@ -163,7 +163,7 @@ export const useTicketRealtimeImproved = (clientId: string) => {
           table: 'ticket_messages'
         },
         (payload) => {
-          console.log('📨 [REALTIME] Nova mensagem em ticket detectada:', payload.new?.id);
+          console.log('📨 [REALTIME] Nova mensagem em ticket detectada:', (payload.new as any)?.id);
           if (mountedRef.current) {
             setTimeout(loadTickets, 500);
           }
