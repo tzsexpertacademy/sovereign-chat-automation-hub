@@ -25,7 +25,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
   const { toast } = useToast();
   const { chatId } = useParams();
 
-  // Hook melhorado para tempo real
+  // Hook melhorado para tempo real 
   const {
     tickets,
     isLoading: ticketsLoading,
@@ -35,16 +35,26 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     forceSyncMessages
   } = useTicketRealtimeImproved(clientId);
 
+  // Simulando funcionalidades das próximas fases
+  const unreadTotal = 0;
+  const markTicketAsRead = (id: string) => console.log('Mark as read:', id);
+  const getDisplayName = (customer: any, phone?: string) => customer?.name || phone || 'Contato';
+
   const currentChatId = chatId || selectedChatId;
 
   useEffect(() => {
     if (currentChatId && tickets.length > 0) {
       const chat = tickets.find(ticket => ticket.id === currentChatId);
       setSelectedChat(chat || null);
+      
+      // Marcar como lido quando selecionar (simulado)
+      // if (chat && chat.has_unread) {
+      //   markTicketAsRead(chat.id);
+      // }
     } else if (!currentChatId) {
       setSelectedChat(null);
     }
-  }, [currentChatId, tickets]);
+  }, [currentChatId, tickets, markTicketAsRead]);
 
   const handleSelectChat = useCallback((ticketId: string) => {
     onSelectChat(ticketId);
@@ -82,35 +92,10 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     }
   };
 
-  const getDisplayName = useCallback((ticket: ConversationTicket) => {
-    if (ticket.customer?.name && 
-        ticket.customer.name !== `Contato ${ticket.customer.phone}` &&
-        !ticket.customer.name.startsWith('Contato ') &&
-        !ticket.customer.name.match(/^\(\d+\)/)) {
-      return ticket.customer.name;
-    }
-    
-    if (ticket.title && ticket.title.includes('Conversa com ')) {
-      const nameFromTitle = ticket.title.replace('Conversa com ', '').trim();
-      if (nameFromTitle && 
-          !nameFromTitle.startsWith('Contato ') && 
-          !nameFromTitle.match(/^\(\d+\)/) &&
-          nameFromTitle !== ticket.customer?.phone) {
-        return nameFromTitle;
-      }
-    }
-    
-    const phone = ticket.customer?.phone || ticket.chat_id;
-    if (phone) {
-      const cleanPhone = phone.replace(/\D/g, '');
-      if (cleanPhone.length >= 10) {
-        const formattedPhone = cleanPhone.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3');
-        return formattedPhone;
-      }
-    }
-    
-    return 'Contato sem nome';
-  }, []);
+  const getDisplayNameForTicket = useCallback((ticket: ConversationTicket) => {
+    // Usar função melhorada do hook
+    return getDisplayName(ticket.customer, ticket.customer?.phone);
+  }, [getDisplayName]);
 
   // Renderizar badges do ticket
   const renderTicketBadges = (ticket: ConversationTicket) => {
@@ -208,7 +193,14 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
       <div className="w-1/3 border-r border-gray-200 flex flex-col h-full">
         <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-900">Conversas</h2>
+            <div className="flex items-center space-x-2">
+              <h2 className="font-semibold text-gray-900">Conversas</h2>
+              {unreadTotal > 0 && (
+                <span className="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-500 rounded-full">
+                  {unreadTotal}
+                </span>
+              )}
+            </div>
             <div className="flex items-center space-x-2">
               <Button
                 size="sm"
@@ -294,7 +286,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
               {tickets.map((chat) => (
                 <li
                   key={chat.id}
-                  className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                  className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors relative ${
                     currentChatId === chat.id ? 'bg-blue-50 border-r-2 border-blue-500' : ''
                   }`}
                   onClick={() => handleSelectChat(chat.id)}
@@ -303,14 +295,14 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-3">
                         <Avatar className="w-8 h-8 flex-shrink-0">
-                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayName(chat)}`} />
+                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayNameForTicket(chat)}`} />
                           <AvatarFallback className="text-xs">
-                            {getDisplayName(chat).substring(0, 2).toUpperCase()}
+                            {getDisplayNameForTicket(chat).substring(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div className="space-y-1 flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">
-                            {getDisplayName(chat)}
+                            {getDisplayNameForTicket(chat)}
                           </p>
                           <p className="text-xs text-gray-500 truncate">
                             {chat.last_message_preview?.substring(0, 35) || 'Nenhuma mensagem'}
@@ -330,6 +322,12 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
                           minute: '2-digit' 
                         })}
                       </span>
+                      {/* Placeholder para contador de não lidas */}
+                      {false && (
+                        <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
+                          0
+                        </span>
+                      )}
                       {chat.status === 'open' && (
                         <div className="w-2 h-2 bg-green-500 rounded-full" />
                       )}
@@ -351,14 +349,14 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3 min-w-0 flex-1">
                   <Avatar className="w-10 h-10 flex-shrink-0">
-                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedChat ? getDisplayName(selectedChat) : ''}`} />
+                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedChat ? getDisplayNameForTicket(selectedChat) : ''}`} />
                     <AvatarFallback>
-                      {selectedChat ? getDisplayName(selectedChat).substring(0, 2).toUpperCase() : 'UN'}
+                      {selectedChat ? getDisplayNameForTicket(selectedChat).substring(0, 2).toUpperCase() : 'UN'}
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
                     <h3 className="font-medium text-gray-900 truncate">
-                      {selectedChat ? getDisplayName(selectedChat) : 'Chat'}
+                      {selectedChat ? getDisplayNameForTicket(selectedChat) : 'Chat'}
                     </h3>
                     <div className="flex items-center space-x-2 text-sm text-gray-500">
                       <span className="truncate">{selectedChat?.customer?.phone}</span>
