@@ -4,9 +4,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag, RotateCw, Clock } from "lucide-react";
+import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag, RotateCw, Clock, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
+import { yumerMessageSyncService } from "@/services/yumerMessageSyncService";
 import TicketChatInterface from './TicketChatInterface';
 import TicketActionsMenu from './TicketActionsMenu';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
@@ -21,14 +22,19 @@ interface ChatInterfaceImprovedProps {
 const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatInterfaceImprovedProps) => {
   const [selectedChat, setSelectedChat] = useState<ConversationTicket | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { chatId } = useParams();
 
-  // Log de debug
+  // Log de debug melhorado
   useEffect(() => {
-    console.log('🔄 [CHAT-INTERFACE] Iniciando ChatInterfaceImproved...', { clientId });
-  }, [clientId]);
+    console.log('🔄 [CHAT-INTERFACE] Iniciando ChatInterfaceImproved...', { 
+      clientId, 
+      selectedChatId, 
+      currentChatId: chatId 
+    });
+  }, [clientId, selectedChatId, chatId]);
 
   // Hook melhorado para tempo real 
   const {
@@ -39,6 +45,19 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     reloadTickets,
     forceSyncMessages
   } = useTicketRealtimeImproved(clientId);
+
+  // Debug de tickets carregados
+  useEffect(() => {
+    console.log('📊 [CHAT-INTERFACE] Tickets atualizados:', {
+      count: tickets.length,
+      tickets: tickets.slice(0, 3).map(t => ({
+        id: t.id,
+        title: t.title,
+        customerName: t.customer?.name,
+        lastMessage: t.last_message_preview?.substring(0, 50)
+      }))
+    });
+  }, [tickets]);
 
   // Simulando funcionalidades das próximas fases
   const unreadTotal = 0;
@@ -52,10 +71,11 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
       const chat = tickets.find(ticket => ticket.id === currentChatId);
       setSelectedChat(chat || null);
       
-      // Marcar como lido quando selecionar (simulado)
-      // if (chat && chat.has_unread) {
-      //   markTicketAsRead(chat.id);
-      // }
+      console.log('📋 [CHAT-INTERFACE] Chat selecionado:', {
+        chatId: currentChatId,
+        found: !!chat,
+        chatTitle: chat?.title
+      });
     } else if (!currentChatId) {
       setSelectedChat(null);
     }
@@ -66,7 +86,38 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     navigate(`/client/${clientId}/chat/${ticketId}`);
   }, [onSelectChat, navigate, clientId]);
 
-  // Importar conversas do WhatsApp
+  // Converter mensagens YUMER não processadas
+  const handleConvertYumerMessages = async () => {
+    try {
+      setIsConverting(true);
+      
+      toast({
+        title: "Convertendo mensagens YUMER",
+        description: "Aguarde enquanto convertemos suas mensagens não processadas..."
+      });
+
+      const result = await yumerMessageSyncService.convertUnprocessedMessages(clientId);
+      
+      toast({
+        title: "Conversão concluída",
+        description: `${result.converted} mensagens convertidas com sucesso. ${result.errors > 0 ? `${result.errors} erros encontrados.` : ''}`
+      });
+
+      setTimeout(reloadTickets, 2000);
+
+    } catch (error: any) {
+      console.error('Erro na conversão YUMER:', error);
+      toast({
+        title: "Erro na conversão",
+        description: error.message || "Falha ao converter mensagens YUMER",
+        variant: "destructive"
+      });
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  // Importar conversas do WhatsApp (legado)
   const handleImportConversations = async () => {
     try {
       setIsImporting(true);
@@ -98,7 +149,6 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
   };
 
   const getDisplayNameForTicket = useCallback((ticket: ConversationTicket) => {
-    // Usar função melhorada do hook
     return getDisplayName(ticket.customer, ticket.customer?.phone);
   }, [getDisplayName]);
 
@@ -232,25 +282,48 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
             {renderSyncStatus()}
           </div>
           
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={handleImportConversations}
-            disabled={isImporting}
-            className="w-full"
-          >
-            {isImporting ? (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                Importando...
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4 mr-2" />
-                Importar Conversas
-              </>
-            )}
-          </Button>
+          {/* Botões de importação e conversão */}
+          <div className="space-y-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleConvertYumerMessages}
+              disabled={isConverting}
+              className="w-full"
+            >
+              {isConverting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Convertendo YUMER...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 mr-2" />
+                  Converter Mensagens YUMER
+                </>
+              )}
+            </Button>
+            
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleImportConversations}
+              disabled={isImporting}
+              className="w-full"
+            >
+              {isImporting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Importando...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Importar Conversas (Legado)
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* Lista de conversas */}
@@ -265,23 +338,23 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
               <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
               <p className="text-sm mb-2">Nenhuma conversa encontrada</p>
               <p className="text-xs text-gray-400 mb-3">
-                Importe suas conversas do WhatsApp ou aguarde novas mensagens
+                Converta mensagens YUMER ou aguarde novas mensagens
               </p>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={forceSyncMessages}
-                disabled={syncStatus === 'syncing'}
+                onClick={handleConvertYumerMessages}
+                disabled={isConverting}
               >
-                {syncStatus === 'syncing' ? (
+                {isConverting ? (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Sincronizando...
+                    Convertendo...
                   </>
                 ) : (
                   <>
-                    <RotateCw className="w-4 h-4 mr-2" />
-                    Sincronizar Mensagens
+                    <Zap className="w-4 h-4 mr-2" />
+                    Converter YUMER
                   </>
                 )}
               </Button>
@@ -327,12 +400,6 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
                           minute: '2-digit' 
                         })}
                       </span>
-                      {/* Placeholder para contador de não lidas */}
-                      {false && (
-                        <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
-                          0
-                        </span>
-                      )}
                       {chat.status === 'open' && (
                         <div className="w-2 h-2 bg-green-500 rounded-full" />
                       )}
@@ -406,6 +473,25 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
               </p>
               <div className="mt-4">
                 {renderSyncStatus()}
+              </div>
+              <div className="mt-4 space-y-2">
+                <Button
+                  variant="outline"
+                  onClick={handleConvertYumerMessages}
+                  disabled={isConverting}
+                >
+                  {isConverting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Convertendo YUMER...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 mr-2" />
+                      Converter Mensagens YUMER
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           </div>

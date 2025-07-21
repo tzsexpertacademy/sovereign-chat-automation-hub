@@ -13,38 +13,25 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
-interface WhatsAppWebhookData {
-  event: string;
-  instance: {
-    name: string;
-    id: number;
+// Interface para mensagens YUMER
+interface YumerMessageData {
+  keyId?: string;
+  keyRemoteJid?: string;
+  keyFromMe?: boolean;
+  pushName?: string;
+  messageType?: string;
+  content?: {
+    text?: string;
+    conversation?: string;
+    [key: string]: any;
   };
-  data?: {
-    key?: {
-      remoteJid?: string;
-      fromMe?: boolean;
-      id?: string;
-    };
-    message?: any;
-    messageTimestamp?: number;
-    pushName?: string;
-    participant?: string;
-    body?: string;
+  messageTimestamp?: number;
+  instanceId?: number;
+  device?: string;
+  isGroup?: boolean;
+  id?: number;
+  info?: {
     type?: string;
-    from?: string;
-    to?: string;
-    author?: string;
-    notifyName?: string;
-    qrcode?: {
-      base64: string;
-      code: string;
-    };
-  };
-  date?: {
-    qrcode?: {
-      code: string;
-      base64: string;
-    };
   };
 }
 
@@ -88,7 +75,7 @@ serve(async (req) => {
       const body = await req.text();
       console.log('📨 [YUMER-WEBHOOK] POST recebido - Body length:', body.length);
       
-      let webhookData: WhatsAppWebhookData;
+      let webhookData: YumerMessageData;
       
       try {
         webhookData = JSON.parse(body);
@@ -103,45 +90,27 @@ serve(async (req) => {
         );
       }
 
-      console.log('📋 [YUMER-WEBHOOK] Dados recebidos:', JSON.stringify(webhookData, null, 2));
+      console.log('📋 [YUMER-WEBHOOK] Dados YUMER recebidos:', JSON.stringify(webhookData, null, 2));
 
-      // Processar diferentes tipos de eventos
-      if (webhookData.event === 'qrcodeUpdated' || 
-          webhookData.event === 'qrcode.updated' || 
-          webhookData.event === 'qr.updated' ||
-          webhookData.event === 'qr-updated' ||
-          webhookData.event === 'QR_CODE_UPDATED') {
-        
-        console.log('🎯 [YUMER-WEBHOOK] Processando QR Code webhook');
-        return await processQRCodeWebhook(webhookData);
-        
-      } else if (webhookData.event === 'messages.upsert' || 
-                 webhookData.event === 'message' ||
-                 webhookData.event === 'message.new' ||
-                 webhookData.event === 'messages.set') {
-        
-        console.log('📨 [YUMER-WEBHOOK] Processando webhook de mensagem');
-        return await processMessageWebhook(webhookData);
-        
-      } else if (webhookData.event === 'connection.update') {
-        
-        console.log('📡 [YUMER-WEBHOOK] Processando webhook de conexão');
-        return await processConnectionWebhook(webhookData);
-        
-      } else {
-        console.log(`📋 [YUMER-WEBHOOK] Evento não processado: ${webhookData.event}`);
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: 'Webhook received but not processed',
-            event: webhookData.event
-          }), 
-          { 
-            status: 200, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
+      // Detectar se é mensagem YUMER pelo formato
+      if (webhookData.keyId && webhookData.keyRemoteJid && webhookData.instanceId && typeof webhookData.instanceId === 'number') {
+        console.log('🎯 [YUMER-WEBHOOK] Detectada mensagem YUMER - processando...');
+        return await processYumerMessage(webhookData);
       }
+
+      // Se não é YUMER, tentar processar como webhook antigo (compatibilidade)
+      console.log('📋 [YUMER-WEBHOOK] Formato não reconhecido como YUMER, ignorando...');
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Webhook received but not in YUMER format',
+          timestamp: new Date().toISOString()
+        }), 
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
 
     } catch (error) {
       console.error('❌ [YUMER-WEBHOOK] Erro crítico:', error);
@@ -169,195 +138,55 @@ serve(async (req) => {
   );
 });
 
-// Função para processar QR Code webhooks
-async function processQRCodeWebhook(webhookData: WhatsAppWebhookData) {
-  console.log('🎯 [QR-WEBHOOK] Processando QR Code');
+// Função para processar mensagens YUMER
+async function processYumerMessage(yumerData: YumerMessageData) {
+  console.log('🔧 [YUMER-PROCESS] Iniciando processamento de mensagem YUMER');
   
-  const instanceName = webhookData.instance?.name;
-  
-  // Buscar QR Code em múltiplas localizações possíveis
-  const qrCode = webhookData.date?.qrcode?.base64 || 
-                 webhookData.data?.qrcode?.base64 ||
-                 webhookData.data?.qr ||
-                 webhookData.data?.base64;
-  
-  if (!instanceName) {
-    console.warn('⚠️ [QR-WEBHOOK] Nome da instância não encontrado');
-    return new Response(
-      JSON.stringify({ error: 'Instance name not found' }), 
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  if (!qrCode) {
-    console.warn('⚠️ [QR-WEBHOOK] QR Code não encontrado no webhook');
-    return new Response(
-      JSON.stringify({ error: 'QR Code not found' }), 
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  console.log(`✅ [QR-WEBHOOK] QR Code recebido para instância: ${instanceName}`);
-
-  // Salvar QR Code no banco de dados
   try {
-    const { error } = await supabase
+    // 1. Buscar instância pelo instanceId numérico
+    const { data: instance, error: instanceError } = await supabase
       .from('whatsapp_instances')
-      .update({
-        qr_code: qrCode,
-        has_qr_code: true,
-        qr_expires_at: new Date(Date.now() + 5 * 60 * 1000), // 5 minutos
-        status: 'qr_ready',
-        updated_at: new Date().toISOString()
-      })
-      .eq('instance_id', instanceName);
+      .select('instance_id, client_id, id')
+      .eq('id', yumerData.instanceId)
+      .single();
 
-    if (error) {
-      console.error('❌ [QR-WEBHOOK] Erro ao salvar QR Code:', error);
-    } else {
-      console.log(`💾 [QR-WEBHOOK] QR Code salvo no banco para instância: ${instanceName}`);
+    if (instanceError || !instance) {
+      console.error('❌ [YUMER-PROCESS] Instância não encontrada:', yumerData.instanceId, instanceError);
+      return new Response(
+        JSON.stringify({ error: 'Instance not found' }), 
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-  } catch (dbError) {
-    console.error('❌ [QR-WEBHOOK] Erro de banco:', dbError);
-  }
 
-  return new Response(
-    JSON.stringify({ 
-      success: true, 
-      message: 'QR Code webhook processed',
-      instanceName,
-      timestamp: new Date().toISOString()
-    }), 
-    { 
-      status: 200, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    console.log(`✅ [YUMER-PROCESS] Instância encontrada: ${instance.instance_id} (Cliente: ${instance.client_id})`);
+
+    // 2. Extrair e normalizar dados da mensagem
+    const messageData = extractYumerMessageData(yumerData, instance);
+    
+    if (!messageData) {
+      console.warn('⚠️ [YUMER-PROCESS] Dados da mensagem não puderam ser extraídos');
+      return new Response(
+        JSON.stringify({ error: 'Message data could not be extracted' }), 
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-  );
-}
 
-// Função para processar webhooks de conexão
-async function processConnectionWebhook(webhookData: WhatsAppWebhookData) {
-  console.log('📡 [CONNECTION-WEBHOOK] Processando atualização de conexão');
-  
-  const instanceName = webhookData.instance?.name;
-  const connectionData = webhookData.data;
-  
-  if (!instanceName) {
-    console.warn('⚠️ [CONNECTION-WEBHOOK] Nome da instância não encontrado');
-    return new Response(
-      JSON.stringify({ error: 'Instance name not found' }), 
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-  
-  console.log(`📊 [CONNECTION-WEBHOOK] Connection update para ${instanceName}:`, connectionData);
-  
-  // Salvar atualização de status no banco
-  try {
-    let status = 'disconnected';
-    if (connectionData?.state === 'open') {
-      status = 'connected';
-    } else if (connectionData?.state === 'connecting') {
-      status = 'connecting';
-    } else if (connectionData?.state === 'close') {
-      status = 'disconnected';
-    }
+    console.log('📊 [YUMER-PROCESS] Dados da mensagem extraídos:', messageData);
+
+    // 3. Salvar mensagem bruta no whatsapp_messages
+    await saveYumerMessage(messageData, instance.instance_id);
     
-    await supabase
-      .from('whatsapp_instances')
-      .update({
-        status: status,
-        updated_at: new Date().toISOString()
-      })
-      .eq('instance_id', instanceName);
-      
-    console.log(`💾 [CONNECTION-WEBHOOK] Status atualizado para ${instanceName}: ${status}`);
-  } catch (dbError) {
-    console.error('❌ [CONNECTION-WEBHOOK] Erro ao atualizar status:', dbError);
-  }
-
-  return new Response(
-    JSON.stringify({ 
-      success: true, 
-      message: 'Connection webhook processed',
-      instanceName,
-      timestamp: new Date().toISOString()
-    }), 
-    { 
-      status: 200, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-    }
-  );
-}
-
-// Função para processar webhooks de mensagem - NOVA IMPLEMENTAÇÃO
-async function processMessageWebhook(webhookData: WhatsAppWebhookData) {
-  console.log('📨 [MESSAGE-WEBHOOK] ===== PROCESSANDO MENSAGEM =====');
-  console.log('📋 [MESSAGE-WEBHOOK] Dados completos:', JSON.stringify(webhookData, null, 2));
-  
-  const instanceName = webhookData.instance?.name;
-  
-  if (!instanceName) {
-    console.warn('⚠️ [MESSAGE-WEBHOOK] Nome da instância não encontrado');
-    return new Response(
-      JSON.stringify({ error: 'Instance name not found' }), 
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Buscar informações da instância no banco
-  const { data: instanceData, error: instanceError } = await supabase
-    .from('whatsapp_instances')
-    .select('client_id, id')
-    .eq('instance_id', instanceName)
-    .single();
-
-  if (instanceError || !instanceData) {
-    console.error('❌ [MESSAGE-WEBHOOK] Instância não encontrada no banco:', instanceError);
-    return new Response(
-      JSON.stringify({ error: 'Instance not found in database' }), 
-      { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const clientId = instanceData.client_id;
-  console.log(`👤 [MESSAGE-WEBHOOK] Cliente ID: ${clientId}`);
-
-  // Extrair dados da mensagem
-  const messageData = extractMessageData(webhookData);
-  
-  if (!messageData) {
-    console.warn('⚠️ [MESSAGE-WEBHOOK] Dados da mensagem não puderam ser extraídos');
-    return new Response(
-      JSON.stringify({ error: 'Message data could not be extracted' }), 
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  console.log('📊 [MESSAGE-WEBHOOK] Dados da mensagem extraídos:', messageData);
-
-  try {
-    // 1. Salvar mensagem na tabela whatsapp_messages
-    await saveWhatsAppMessage(messageData, instanceName);
+    // 4. Processar mensagem para tickets
+    await processMessageToTickets(messageData, instance.client_id, instance.instance_id);
     
-    // 2. Criar/atualizar customer
-    const customerId = await createOrUpdateCustomer(clientId, messageData);
-    
-    // 3. Criar/atualizar conversation_ticket
-    const ticketId = await createOrUpdateTicket(clientId, instanceName, messageData, customerId);
-    
-    // 4. Salvar mensagem na tabela ticket_messages
-    await saveTicketMessage(ticketId, messageData);
-    
-    console.log('✅ [MESSAGE-WEBHOOK] Mensagem processada com sucesso');
+    console.log('✅ [YUMER-PROCESS] Mensagem YUMER processada com sucesso');
     
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Message webhook processed successfully',
-        instanceName,
+        message: 'YUMER message processed successfully',
+        instanceName: instance.instance_id,
         messageId: messageData.messageId,
-        ticketId,
         timestamp: new Date().toISOString()
       }), 
       { 
@@ -367,11 +196,11 @@ async function processMessageWebhook(webhookData: WhatsAppWebhookData) {
     );
 
   } catch (error) {
-    console.error('❌ [MESSAGE-WEBHOOK] Erro ao processar mensagem:', error);
+    console.error('❌ [YUMER-PROCESS] Erro ao processar mensagem YUMER:', error);
     
     return new Response(
       JSON.stringify({
-        error: 'Failed to process message',
+        error: 'Failed to process YUMER message',
         message: error.message
       }),
       {
@@ -382,53 +211,28 @@ async function processMessageWebhook(webhookData: WhatsAppWebhookData) {
   }
 }
 
-// Função para extrair dados da mensagem do webhook
-function extractMessageData(webhookData: WhatsAppWebhookData) {
-  console.log('🔧 [EXTRACT-MESSAGE] Extraindo dados da mensagem');
+// Função para extrair dados da mensagem YUMER
+function extractYumerMessageData(yumerData: YumerMessageData, instance: any) {
+  console.log('🔧 [EXTRACT-YUMER] Extraindo dados da mensagem YUMER');
   
-  const data = webhookData.data;
-  if (!data) {
-    console.warn('⚠️ [EXTRACT-MESSAGE] Dados não encontrados no webhook');
-    return null;
-  }
-
   // Extrair informações básicas
-  const messageId = data.key?.id || data.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const chatId = data.key?.remoteJid || data.from || data.to;
-  const fromMe = data.key?.fromMe || false;
-  const timestamp = data.messageTimestamp || Date.now();
+  const messageId = yumerData.keyId || `yumer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  // Normalizar chat_id: converter @s.whatsapp.net para formato padrão
+  let chatId = yumerData.keyRemoteJid || '';
+  if (chatId.includes('@s.whatsapp.net')) {
+    chatId = chatId.replace('@s.whatsapp.net', '@c.us');
+  }
+  
+  const fromMe = yumerData.keyFromMe || false;
+  const timestamp = yumerData.messageTimestamp ? new Date(yumerData.messageTimestamp * 1000).toISOString() : new Date().toISOString();
   
   // Extrair conteúdo da mensagem
-  let content = data.body || data.message?.conversation || data.message?.text || '';
-  let messageType = data.type || 'text';
+  let content = yumerData.content?.text || yumerData.content?.conversation || '';
+  let messageType = yumerData.messageType || 'text';
   
-  // Processar diferentes tipos de mensagem
-  if (data.message) {
-    const msg = data.message;
-    
-    if (msg.imageMessage) {
-      content = `[Imagem] ${msg.imageMessage.caption || 'Imagem enviada'}`;
-      messageType = 'image';
-    } else if (msg.audioMessage || msg.pttMessage) {
-      content = `[Áudio] Mensagem de áudio`;
-      messageType = 'audio';
-    } else if (msg.videoMessage) {
-      content = `[Vídeo] ${msg.videoMessage.caption || 'Vídeo enviado'}`;
-      messageType = 'video';
-    } else if (msg.documentMessage) {
-      content = `[Documento] ${msg.documentMessage.fileName || 'Documento enviado'}`;
-      messageType = 'document';
-    } else if (msg.stickerMessage) {
-      content = `[Figurinha] Figurinha enviada`;
-      messageType = 'sticker';
-    } else if (msg.locationMessage) {
-      content = `[Localização] Localização compartilhada`;
-      messageType = 'location';
-    }
-  }
-
   // Extrair nome do contato
-  const contactName = extractContactName(data, chatId);
+  const contactName = extractContactName(yumerData.pushName, chatId);
   
   // Extrair número de telefone
   const phoneNumber = extractPhoneNumber(chatId);
@@ -439,40 +243,34 @@ function extractMessageData(webhookData: WhatsAppWebhookData) {
     fromMe,
     content,
     messageType,
-    timestamp: new Date(typeof timestamp === 'number' ? timestamp * 1000 : timestamp).toISOString(),
+    timestamp,
     contactName,
     phoneNumber,
-    author: data.author || data.participant || contactName,
-    pushName: data.pushName || data.notifyName || contactName
+    author: yumerData.pushName || contactName,
+    pushName: yumerData.pushName || contactName,
+    sender: yumerData.pushName || phoneNumber
   };
 
-  console.log('✅ [EXTRACT-MESSAGE] Dados extraídos:', messageData);
+  console.log('✅ [EXTRACT-YUMER] Dados extraídos:', messageData);
   return messageData;
 }
 
 // Função para extrair nome do contato
-function extractContactName(data: any, chatId: string) {
-  // Tentar múltiplas fontes para o nome
-  const name = data.pushName || 
-               data.notifyName || 
-               data.participant || 
-               data.author ||
-               data.contact?.name ||
-               data.contact?.pushname;
-
-  if (name && name.trim() && !name.includes('@') && !name.match(/^\d+$/)) {
-    return formatCustomerName(name.trim());
+function extractContactName(pushName: string | undefined, chatId: string): string {
+  // Usar pushName se disponível e válido
+  if (pushName && pushName.trim() && !pushName.includes('@') && !pushName.match(/^\d+$/)) {
+    return formatCustomerName(pushName.trim());
   }
-
+  
   // Se não encontrou nome, usar telefone formatado
   return formatPhoneForDisplay(extractPhoneNumber(chatId));
 }
 
 // Função para extrair número de telefone
-function extractPhoneNumber(chatId: string) {
+function extractPhoneNumber(chatId: string): string {
   if (!chatId) return '';
   
-  // Remover sufixos do WhatsApp (@s.whatsapp.net, @g.us)
+  // Remover sufixos do WhatsApp (@c.us, @s.whatsapp.net, @g.us)
   let phone = chatId.split('@')[0];
   
   // Remover caracteres não numéricos
@@ -482,7 +280,7 @@ function extractPhoneNumber(chatId: string) {
 }
 
 // Função para formatar nome do cliente
-function formatCustomerName(rawName: string) {
+function formatCustomerName(rawName: string): string {
   if (!rawName || rawName.trim() === '') {
     return 'Contato sem nome';
   }
@@ -512,7 +310,7 @@ function formatCustomerName(rawName: string) {
 }
 
 // Função para formatar telefone para exibição
-function formatPhoneForDisplay(phoneNumber: string) {
+function formatPhoneForDisplay(phoneNumber: string): string {
   const cleanedNumber = phoneNumber.replace(/\D/g, '');
 
   if (cleanedNumber.length === 10) {
@@ -524,9 +322,9 @@ function formatPhoneForDisplay(phoneNumber: string) {
   return phoneNumber;
 }
 
-// Função para salvar mensagem na tabela whatsapp_messages
-async function saveWhatsAppMessage(messageData: any, instanceId: string) {
-  console.log('💾 [SAVE-WA-MESSAGE] Salvando mensagem WhatsApp');
+// Função para salvar mensagem YUMER no whatsapp_messages
+async function saveYumerMessage(messageData: any, instanceId: string) {
+  console.log('💾 [SAVE-YUMER] Salvando mensagem YUMER no whatsapp_messages');
   
   const { error } = await supabase
     .from('whatsapp_messages')
@@ -534,24 +332,46 @@ async function saveWhatsAppMessage(messageData: any, instanceId: string) {
       message_id: messageData.messageId,
       chat_id: messageData.chatId,
       instance_id: instanceId,
-      sender: messageData.author,
+      sender: messageData.sender,
       body: messageData.content,
       message_type: messageData.messageType,
       from_me: messageData.fromMe,
       timestamp: messageData.timestamp,
-      is_processed: false
+      is_processed: true // Já processando diretamente
     });
 
   if (error) {
-    console.error('❌ [SAVE-WA-MESSAGE] Erro ao salvar:', error);
+    console.error('❌ [SAVE-YUMER] Erro ao salvar:', error);
     throw error;
   }
 
-  console.log('✅ [SAVE-WA-MESSAGE] Mensagem WhatsApp salva');
+  console.log('✅ [SAVE-YUMER] Mensagem YUMER salva no whatsapp_messages');
+}
+
+// Função para processar mensagem para sistema de tickets
+async function processMessageToTickets(messageData: any, clientId: string, instanceId: string) {
+  console.log('🎫 [PROCESS-TICKETS] Processando mensagem para sistema de tickets');
+  
+  try {
+    // 1. Criar/atualizar customer
+    const customerId = await createOrUpdateCustomer(clientId, messageData);
+    
+    // 2. Criar/atualizar ticket
+    const ticketId = await createOrUpdateTicket(clientId, instanceId, messageData, customerId);
+    
+    // 3. Salvar mensagem no ticket
+    await saveTicketMessage(ticketId, messageData);
+    
+    console.log('✅ [PROCESS-TICKETS] Mensagem processada para tickets com sucesso');
+    
+  } catch (error) {
+    console.error('❌ [PROCESS-TICKETS] Erro ao processar para tickets:', error);
+    throw error;
+  }
 }
 
 // Função para criar/atualizar customer
-async function createOrUpdateCustomer(clientId: string, messageData: any) {
+async function createOrUpdateCustomer(clientId: string, messageData: any): Promise<string> {
   console.log('👤 [CUSTOMER] Criando/atualizando customer');
   
   // Verificar se customer já existe
@@ -607,7 +427,7 @@ async function createOrUpdateCustomer(clientId: string, messageData: any) {
 }
 
 // Função para criar/atualizar ticket
-async function createOrUpdateTicket(clientId: string, instanceId: string, messageData: any, customerId: string) {
+async function createOrUpdateTicket(clientId: string, instanceId: string, messageData: any, customerId: string): Promise<string> {
   console.log('🎫 [TICKET] Criando/atualizando ticket');
   
   // Verificar se ticket já existe
