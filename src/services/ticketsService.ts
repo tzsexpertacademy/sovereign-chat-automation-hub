@@ -90,9 +90,24 @@ class TicketsService {
 
   async addTicketMessage(message: Partial<TicketMessage>): Promise<TicketMessage> {
     try {
+      // Garantir que campos obrigatórios estejam presentes
+      const messageData = {
+        content: message.content || '',
+        ticket_id: message.ticket_id || '',
+        message_id: message.message_id || '',
+        timestamp: message.timestamp || new Date().toISOString(),
+        from_me: message.from_me || false,
+        sender_name: message.sender_name || '',
+        message_type: message.message_type || 'text',
+        is_internal_note: message.is_internal_note || false,
+        is_ai_response: message.is_ai_response || false,
+        processing_status: message.processing_status || 'processed',
+        ...message
+      };
+
       const { data, error } = await supabase
         .from('ticket_messages')
-        .insert(message)
+        .insert(messageData)
         .select()
         .single();
 
@@ -104,8 +119,128 @@ class TicketsService {
     }
   }
 
+  // === MÉTODOS PARA COMPATIBILIDADE ===
+  async getTicketById(ticketId: string): Promise<ConversationTicket | null> {
+    try {
+      const { data, error } = await supabase
+        .from('conversation_tickets')
+        .select(`
+          *,
+          customer:customer_id (
+            id,
+            name,
+            phone,
+            email
+          )
+        `)
+        .eq('id', ticketId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('❌ Erro ao buscar ticket:', error);
+      return null;
+    }
+  }
+
+  async getClientTickets(clientId: string): Promise<ConversationTicket[]> {
+    return this.getTicketsByClient(clientId);
+  }
+
+  async assumeTicketManually(ticketId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          status: 'pending',
+          assigned_queue_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('❌ Erro ao assumir ticket:', error);
+      throw error;
+    }
+  }
+
+  async removeTicketFromQueue(ticketId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          assigned_queue_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('❌ Erro ao remover ticket da fila:', error);
+      throw error;
+    }
+  }
+
+  async transferTicket(ticketId: string, queueId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          assigned_queue_id: queueId,
+          status: 'open',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('❌ Erro ao transferir ticket:', error);
+      throw error;
+    }
+  }
+
+  async updateTicketTags(ticketId: string, tags: string[]): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          tags: tags,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('❌ Erro ao atualizar tags do ticket:', error);
+      throw error;
+    }
+  }
+
+  async validateAndFixTimestamp(timestamp: any): Promise<string> {
+    if (!timestamp) return new Date().toISOString();
+    
+    try {
+      if (typeof timestamp === 'number') {
+        return new Date(timestamp * 1000).toISOString();
+      }
+      
+      if (typeof timestamp === 'string') {
+        const date = new Date(timestamp);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString();
+        }
+      }
+      
+      return new Date().toISOString();
+    } catch {
+      return new Date().toISOString();
+    }
+  }
+
   // === IMPORTAÇÃO DE CONVERSAS ===
-  async importConversationsFromWhatsApp(clientId: string): Promise<{ success: number; errors: number }> {
+  async importConversationsFromWhatsApp(clientId: string, options?: any): Promise<{ success: number; errors: number }> {
     console.log('📥 [IMPORT] Iniciando importação de conversas para cliente:', clientId);
     
     try {

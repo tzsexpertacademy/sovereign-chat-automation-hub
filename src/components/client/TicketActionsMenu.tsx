@@ -92,7 +92,8 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
     const tag = prompt('Digite a tag:');
     if (tag) {
       try {
-        const currentTags = ticket.tags || [];
+        // TODO: Implementar tags quando campo estiver na tabela
+        const currentTags: string[] = [];
         const newTags = [...currentTags, tag];
         await ticketsService.updateTicketTags(ticket.id, newTags);
         toast({
@@ -112,7 +113,8 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
 
   const handleRemoveTag = async (tagToRemove: string) => {
     try {
-      const currentTags = ticket.tags || [];
+      // TODO: Implementar tags quando campo estiver na tabela  
+      const currentTags: string[] = [];
       const newTags = currentTags.filter(tag => tag !== tagToRemove);
       await ticketsService.updateTicketTags(ticket.id, newTags);
       toast({
@@ -172,12 +174,13 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
           Adicionar Tag
         </DropdownMenuItem>
 
-        {ticket.tags && ticket.tags.length > 0 && (
+        {/* TODO: Mostrar tags quando campo estiver na tabela */}
+        {false && (
           <>
             <DropdownMenuSeparator />
             <div className="px-2 py-1">
               <div className="flex flex-wrap gap-1">
-                {ticket.tags.map((tag, index) => (
+                {[].map((tag, index) => (
                   <Badge 
                     key={index} 
                     variant="secondary" 

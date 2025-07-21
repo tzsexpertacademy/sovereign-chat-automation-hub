@@ -173,7 +173,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
 
     // Mostrar fila ativa
     if (ticket.assigned_queue_id && !isHumanAssigned) {
-      const queueName = ticket.assigned_queue_name || 'Fila Ativa';
+      const queueName = 'Fila Ativa';
       badges.push(
         <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
           <Bot className="w-3 h-3 mr-1" />
@@ -192,15 +192,8 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
       );
     }
 
-    // Tags se houver
-    if (ticket.tags && ticket.tags.length > 0) {
-      badges.push(
-        <Badge key="tags" variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-200">
-          <Tag className="w-3 h-3 mr-1" />
-          {ticket.tags.length} tag{ticket.tags.length > 1 ? 's' : ''}
-        </Badge>
-      );
-    }
+    // Tags se houver (removido temporariamente - campo não existe na tabela)
+    // TODO: Implementar sistema de tags quando necessário
 
     return badges;
   };

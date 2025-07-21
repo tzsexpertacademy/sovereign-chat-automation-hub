@@ -52,7 +52,7 @@ export const useTicketRealtimeImproved = (clientId: string) => {
         console.log('📨 [TICKETS] Mensagens não processadas:', unprocessedMessages?.length || 0);
       }
       
-      const ticketsData = await ticketsService.getClientTickets(clientId);
+      const ticketsData = await ticketsService.getTicketsByClient(clientId);
       console.log('✅ [TICKETS] Tickets carregados via service:', ticketsData.length);
       console.log('📋 [TICKETS] Primeiros 3 tickets:', ticketsData.slice(0, 3).map(t => ({
         id: t.id,

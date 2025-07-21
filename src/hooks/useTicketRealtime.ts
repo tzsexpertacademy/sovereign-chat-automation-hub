@@ -588,7 +588,7 @@ export const useTicketRealtime = (clientId: string) => {
               is_internal_note: false,
               is_ai_response: false,
               processing_status: 'completed',
-              timestamp: normalizedMessage.timestamp,
+              timestamp: await ticketsService.validateAndFixTimestamp(normalizedMessage.timestamp),
               media_url: normalizedMessage.mediaUrl
             });
             console.log('💾 MENSAGEM nossa salva');
@@ -619,11 +619,13 @@ export const useTicketRealtime = (clientId: string) => {
       const ticketId = await ticketsService.createOrUpdateTicket(
         clientId,
         normalizedMessage.from,
-        clientId,
-        normalizedMessage.customerName,
-        normalizedMessage.phoneNumber,
-        normalizedMessage.body,
-        normalizedMessage.timestamp
+        {
+          chatId: normalizedMessage.from,
+          contactName: normalizedMessage.customerName,
+          content: normalizedMessage.body,
+          timestamp: await ticketsService.validateAndFixTimestamp(normalizedMessage.timestamp)
+        },
+        'customer-id-placeholder'
       );
 
       console.log(`📋 TICKET criado/atualizado: ${ticketId}`);
