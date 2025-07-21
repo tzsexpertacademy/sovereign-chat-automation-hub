@@ -298,7 +298,67 @@ export const ticketsService = {
     if (error) throw error;
   },
 
-  // NOVO: Limpar tickets antigos
+  // NOVO: Reset completo de todos os tickets de um cliente
+  async resetAllTickets(clientId: string): Promise<{ deletedTickets: number; deletedMessages: number }> {
+    try {
+      console.log(`🧹 [RESET] Iniciando reset completo para cliente: ${clientId}`);
+      
+      // Buscar todos os tickets do cliente
+      const { data: tickets, error: fetchError } = await supabase
+        .from('conversation_tickets')
+        .select('id')
+        .eq('client_id', clientId);
+
+      if (fetchError) {
+        console.error('❌ [RESET] Erro ao buscar tickets:', fetchError);
+        throw fetchError;
+      }
+
+      const ticketIds = (tickets || []).map(ticket => ticket.id);
+      
+      if (ticketIds.length === 0) {
+        console.log('✅ [RESET] Nenhum ticket encontrado para deletar');
+        return { deletedTickets: 0, deletedMessages: 0 };
+      }
+
+      console.log(`🗑️ [RESET] Deletando ${ticketIds.length} tickets e suas mensagens...`);
+
+      // Deletar mensagens dos tickets primeiro
+      const { error: messagesError, count: deletedMessages } = await supabase
+        .from('ticket_messages')
+        .delete({ count: 'exact' })
+        .in('ticket_id', ticketIds);
+
+      if (messagesError) {
+        console.error('❌ [RESET] Erro ao deletar mensagens:', messagesError);
+        throw messagesError;
+      }
+
+      // Deletar tickets
+      const { error: ticketsError, count: deletedTickets } = await supabase
+        .from('conversation_tickets')
+        .delete({ count: 'exact' })
+        .in('id', ticketIds);
+
+      if (ticketsError) {
+        console.error('❌ [RESET] Erro ao deletar tickets:', ticketsError);
+        throw ticketsError;
+      }
+
+      console.log(`✅ [RESET] Reset completo: ${deletedTickets} tickets e ${deletedMessages} mensagens removidos`);
+      
+      return { 
+        deletedTickets: deletedTickets || 0, 
+        deletedMessages: deletedMessages || 0 
+      };
+
+    } catch (error) {
+      console.error('❌ [RESET] Erro no reset completo:', error);
+      throw error;
+    }
+  },
+
+  // MELHORADO: Limpar tickets antigos
   async clearOldTickets(clientId: string, olderThanDays: number = 30): Promise<{ deletedTickets: number; deletedMessages: number }> {
     try {
       console.log(`🧹 [CLEANUP] Limpando tickets com mais de ${olderThanDays} dias para cliente: ${clientId}`);
@@ -415,16 +475,17 @@ export const ticketsService = {
     return validTimestamp;
   },
 
-  // CORRIGIDO E MELHORADO: Importação inteligente com opções de limpeza
+  // CORRIGIDO E MELHORADO: Importação inteligente com opções de limpeza e reset
   async importConversationsFromWhatsApp(
     clientId: string, 
     options: {
       clearOldData?: boolean;
       importMessages?: boolean;
+      resetAllData?: boolean;
       onProgress?: (progress: { current: number; total: number; message: string }) => void;
     } = {}
   ): Promise<{ success: number; errors: number; details: string[] }> {
-    const { clearOldData = false, importMessages = true, onProgress } = options;
+    const { clearOldData = false, importMessages = true, resetAllData = false, onProgress } = options;
     const details: string[] = [];
     
     try {
@@ -433,8 +494,21 @@ export const ticketsService = {
       
       onProgress?.({ current: 0, total: 100, message: 'Verificando instâncias...' });
 
-      // FASE 1: Limpeza opcional de dados antigos
-      if (clearOldData) {
+      // FASE 1: Reset completo se solicitado
+      if (resetAllData) {
+        onProgress?.({ current: 5, total: 100, message: 'Executando reset completo...' });
+        
+        try {
+          const resetResult = await this.resetAllTickets(clientId);
+          details.push(`🧹 Reset completo: ${resetResult.deletedTickets} tickets, ${resetResult.deletedMessages} mensagens removidos`);
+          console.log('🧹 [IMPORT] Reset completo executado:', resetResult);
+        } catch (resetError) {
+          console.warn('⚠️ [IMPORT] Erro no reset (continuando):', resetError);
+          details.push('⚠️ Erro no reset completo (continuando...)');
+        }
+      }
+      // FASE 1B: Limpeza opcional de dados antigos (se não foi reset completo)
+      else if (clearOldData) {
         onProgress?.({ current: 5, total: 100, message: 'Limpando dados antigos...' });
         
         try {
@@ -591,33 +665,13 @@ export const ticketsService = {
     }
   },
 
-  // CORRIGIDO: Importar mensagens específicas de um chat com validação robusta
+  // CORRIGIDO: Importar mensagens específicas de um chat com validação robusta e formato DDI correto
   async importChatMessages(instanceName: string, chatId: string, ticketId: string, limit: number = 15): Promise<void> {
     try {
       console.log(`📨 [IMPORT] Importando mensagens para chat ${chatId} (limite: ${limit})`);
       
-      // Construir remoteJid correto para busca
-      const remoteJidFormats = [
-        `${chatId}@s.whatsapp.net`,
-        `${chatId}@c.us`,
-        chatId
-      ];
-      
-      let messages: any[] = [];
-      
-      // Tentar diferentes formatos de remoteJid
-      for (const remoteJid of remoteJidFormats) {
-        try {
-          const foundMessages = await codeChatApiService.findMessages(instanceName, remoteJid, limit);
-          if (foundMessages.length > 0) {
-            messages = foundMessages;
-            console.log(`📨 [IMPORT] ${messages.length} mensagens encontradas com remoteJid: ${remoteJid}`);
-            break;
-          }
-        } catch (error) {
-          console.log(`⚠️ [IMPORT] Tentativa com ${remoteJid} falhou:`, error);
-        }
-      }
+      // Usar o método corrigido do codeChatApiService que já testa múltiplos formatos
+      const messages = await codeChatApiService.findMessages(instanceName, chatId, limit);
 
       if (messages.length === 0) {
         console.log(`📨 [IMPORT] Nenhuma mensagem encontrada para chat ${chatId}`);

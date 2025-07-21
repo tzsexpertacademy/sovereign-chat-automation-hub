@@ -128,6 +128,8 @@ class CodeChatApiService {
       
       // FASE 1: Buscar dados de contatos primeiro para ter nomes reais
       let contactsData: any[] = [];
+      let contactsMap = new Map<string, any>();
+      
       try {
         const contactsResponse = await this.makeRequest(`/chat/findContacts/${instanceName}`, {
           method: 'POST',
@@ -136,7 +138,24 @@ class CodeChatApiService {
         
         if (Array.isArray(contactsResponse)) {
           contactsData = contactsResponse;
-          console.log(`✅ [CODECHAT] ${contactsData.length} contatos encontrados com nomes reais`);
+          
+          // Criar mapa otimizado para busca de contatos
+          contactsData.forEach(contact => {
+            if (contact.remoteJid) {
+              // Mapear por diferentes formatos possíveis
+              const phoneNumber = this.extractPhoneFromRemoteJid(contact.remoteJid);
+              if (phoneNumber) {
+                contactsMap.set(contact.remoteJid, contact);
+                contactsMap.set(`${phoneNumber}@s.whatsapp.net`, contact);
+                contactsMap.set(`${phoneNumber}@c.us`, contact);
+                contactsMap.set(`55${phoneNumber}@s.whatsapp.net`, contact);
+                contactsMap.set(`55${phoneNumber}@c.us`, contact);
+                contactsMap.set(phoneNumber, contact);
+              }
+            }
+          });
+          
+          console.log(`✅ [CODECHAT] ${contactsData.length} contatos mapeados para busca rápida`);
         }
       } catch (contactError) {
         console.warn(`⚠️ [CODECHAT] Erro ao buscar contatos:`, contactError);
@@ -213,14 +232,27 @@ class CodeChatApiService {
         const phoneNumber = this.extractWhatsAppPhone(chat);
         
         if (phoneNumber) {
-          // Buscar dados do contato correspondente usando remoteJid
-          const contactData = contactsData.find(contact => 
-            contact.remoteJid === chat.remoteJid ||
-            contact.remoteJid?.replace('@s.whatsapp.net', '') === phoneNumber ||
-            contact.remoteJid?.replace('@c.us', '') === phoneNumber
-          );
+          // BUSCA MELHORADA: Tentar encontrar contato usando múltiplos formatos
+          let contactData = null;
           
-          // Extrair nome real do contato
+          const searchKeys = [
+            chat.remoteJid,
+            `${phoneNumber}@s.whatsapp.net`,
+            `55${phoneNumber}@s.whatsapp.net`,
+            `${phoneNumber}@c.us`,
+            `55${phoneNumber}@c.us`,
+            phoneNumber
+          ];
+          
+          for (const key of searchKeys) {
+            if (contactsMap.has(key)) {
+              contactData = contactsMap.get(key);
+              console.log(`🎯 [CODECHAT] Contato encontrado via chave: ${key} -> ${contactData.pushName}`);
+              break;
+            }
+          }
+          
+          // Extrair nome real do contato com prioridades corretas
           const realContactName = this.extractRealContactName(chat, contactData, phoneNumber);
           
           const normalizedChat = {
@@ -250,6 +282,28 @@ class CodeChatApiService {
     }
   }
 
+  // NOVO: Extrair telefone do remoteJid de forma robusta
+  private extractPhoneFromRemoteJid(remoteJid: string): string | null {
+    if (!remoteJid || typeof remoteJid !== 'string') return null;
+    
+    // Remover sufixos do WhatsApp
+    let phone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+    
+    // Limpar caracteres não numéricos
+    phone = phone.replace(/\D/g, '');
+    
+    // Validar se é um número válido
+    if (phone.length >= 10 && phone.length <= 15) {
+      // Remover DDI 55 se presente para normalização
+      if (phone.startsWith('55') && phone.length >= 12) {
+        return phone.substring(2);
+      }
+      return phone;
+    }
+    
+    return null;
+  }
+
   // NOVO: Extrair nome real do contato priorizando dados verdadeiros
   private extractRealContactName(chatData: any, contactData: any, phoneNumber: string): string {
     console.log(`🔍 [CODECHAT] Extraindo nome real:`, { 
@@ -259,31 +313,25 @@ class CodeChatApiService {
     });
     
     try {
-      // Estratégia 1: pushName do contato real (prioridade máxima)
-      if (contactData?.pushName) {
+      // PRIORIDADE 1: pushName do contato real (dados do findContacts)
+      if (contactData?.pushName && this.isValidContactName(contactData.pushName)) {
         const contactName = this.safeExtractString(contactData.pushName);
-        if (this.isValidContactName(contactName)) {
-          console.log(`✅ [CODECHAT] Nome real do contato: ${contactName}`);
-          return this.formatCustomerName(contactName, phoneNumber);
-        }
+        console.log(`✅ [CODECHAT] Nome real do contato encontrado: ${contactName}`);
+        return this.formatCustomerName(contactName, phoneNumber);
       }
       
-      // Estratégia 2: pushName do chat
-      if (chatData?.pushName) {
+      // PRIORIDADE 2: pushName do chat
+      if (chatData?.pushName && this.isValidContactName(chatData.pushName)) {
         const chatName = this.safeExtractString(chatData.pushName);
-        if (this.isValidContactName(chatName)) {
-          console.log(`✅ [CODECHAT] Nome do chat: ${chatName}`);
-          return this.formatCustomerName(chatName, phoneNumber);
-        }
+        console.log(`✅ [CODECHAT] Nome do chat válido: ${chatName}`);
+        return this.formatCustomerName(chatName, phoneNumber);
       }
       
-      // Estratégia 3: Nome direto do chat
-      if (chatData?.name) {
+      // PRIORIDADE 3: Nome direto do chat
+      if (chatData?.name && this.isValidContactName(chatData.name)) {
         const directName = this.safeExtractString(chatData.name);
-        if (this.isValidContactName(directName)) {
-          console.log(`✅ [CODECHAT] Nome direto: ${directName}`);
-          return this.formatCustomerName(directName, phoneNumber);
-        }
+        console.log(`✅ [CODECHAT] Nome direto válido: ${directName}`);
+        return this.formatCustomerName(directName, phoneNumber);
       }
       
       // Fallback: usar número formatado
@@ -299,7 +347,7 @@ class CodeChatApiService {
 
   // NOVO: Validar se é um nome de contato válido
   private isValidContactName(name: string): boolean {
-    if (!name || name.trim() === '') return false;
+    if (!name || typeof name !== 'string' || name.trim() === '') return false;
     
     const cleanName = name.trim();
     
@@ -317,6 +365,9 @@ class CodeChatApiService {
     
     // Rejeitar se é exatamente igual ao número (formatado)
     if (/^\(\d{2}\)\s\d{4,5}-\d{4}$/.test(cleanName)) return false;
+    
+    // Rejeitar se parece com um número com DDI
+    if (/^55\d{10,11}$/.test(cleanName)) return false;
     
     return true;
   }
@@ -445,31 +496,53 @@ class CodeChatApiService {
     return new Date().toISOString();
   }
 
-  // POST /chat/findMessages/:instanceName
+  // CORRIGIDO: Busca de mensagens com formato de DDI correto
   async findMessages(instanceName: string, chatId: string, limit: number = 50, offset: number = 0): Promise<CodeChatMessage[]> {
     try {
       console.log(`📨 [CODECHAT] Buscando mensagens para chat ${chatId} na instância: ${instanceName}`);
       
-      const payload = {
-        where: {
-          keyRemoteJid: chatId
-        },
-        offset: offset,
-        limit: limit
-      };
-
-      const response = await this.makeRequest(`/chat/findMessages/${instanceName}`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }, instanceName);
+      // Gerar diferentes formatos possíveis para keyRemoteJid
+      const phoneNumber = chatId.replace(/[@\s\.]/g, '').replace(/\D/g, '');
       
-      // Extrair mensagens da resposta
-      if (response?.messages?.records && Array.isArray(response.messages.records)) {
-        console.log(`📨 [CODECHAT] ${response.messages.records.length} mensagens encontradas`);
-        return response.messages.records;
+      const searchFormats = [
+        chatId, // Formato original
+        `${phoneNumber}@s.whatsapp.net`, // Sem DDI
+        `55${phoneNumber}@s.whatsapp.net`, // Com DDI 55
+        `${phoneNumber}@c.us`, // Formato alternativo
+        `55${phoneNumber}@c.us` // Formato alternativo com DDI
+      ];
+      
+      console.log(`🔍 [CODECHAT] Tentando formatos de busca:`, searchFormats);
+      
+      for (const remoteJid of searchFormats) {
+        console.log(`🔍 [CODECHAT] Testando formato: ${remoteJid}`);
+        
+        const payload = {
+          where: {
+            keyRemoteJid: remoteJid
+          },
+          offset: offset,
+          limit: limit
+        };
+
+        const response = await this.makeRequest(`/chat/findMessages/${instanceName}`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }, instanceName);
+        
+        // Extrair mensagens da resposta
+        if (response?.messages?.records && Array.isArray(response.messages.records)) {
+          const messages = response.messages.records;
+          if (messages.length > 0) {
+            console.log(`✅ [CODECHAT] ${messages.length} mensagens encontradas com formato: ${remoteJid}`);
+            return messages;
+          }
+        }
+        
+        console.log(`📨 [CODECHAT] Nenhuma mensagem encontrada com formato: ${remoteJid}`);
       }
       
-      console.log(`📨 [CODECHAT] Nenhuma mensagem encontrada para ${chatId}`);
+      console.log(`📨 [CODECHAT] Nenhuma mensagem encontrada para ${chatId} em nenhum formato`);
       return [];
     } catch (error) {
       console.error(`❌ [CODECHAT] Erro ao buscar mensagens:`, error);
@@ -595,7 +668,8 @@ class CodeChatApiService {
       return cleanedNumber || 'unknown';
     }
 
-    if (cleanedNumber.startsWith('55')) {
+    // Remover DDI 55 se presente para normalização
+    if (cleanedNumber.startsWith('55') && cleanedNumber.length >= 12) {
       cleanedNumber = cleanedNumber.slice(2);
     }
 
