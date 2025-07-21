@@ -7,13 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, MessageSquare, RefreshCw, Download, CheckCircle, Activity } from "lucide-react";
+import { Search, MessageSquare, RefreshCw, Download, CheckCircle, Activity, Settings } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { useTicketRealtime } from "@/hooks/useTicketRealtime";
-import { useRealTimeMessages } from "@/hooks/useRealTimeMessages";
-import { ticketsService } from "@/services/ticketsService";
+import { useTicketRealtimeImproved } from "@/hooks/useTicketRealtimeImproved";
+import { incrementalImportService } from "@/services/incrementalImportService";
 import TicketChatInterface from "./TicketChatInterface";
+import SystemHealthIndicator from "./SystemHealthIndicator";
 
 const TicketsInterface = () => {
   const { clientId } = useParams<{ clientId: string }>();
@@ -23,22 +23,15 @@ const TicketsInterface = () => {
   const [selectedTicket, setSelectedTicket] = useState<string>("");
   const [isImporting, setIsImporting] = useState(false);
 
-  // Hook de tempo real para tickets
-  const { tickets, isLoading, reloadTickets } = useTicketRealtime(clientId || '');
-
-  // Hook de tempo real para mensagens (webhook + supabase)
-  const { isConnected, connectionStatus } = useRealTimeMessages({
-    clientId: clientId || '',
-    instanceId: 'default', // TODO: pegar instância ativa do cliente
-    onNewMessage: (message) => {
-      console.log('📨 [TICKETS-UI] Nova mensagem recebida:', message);
-      reloadTickets(); // Atualizar lista de tickets
-    },
-    onNewTicket: (ticket) => {
-      console.log('🎫 [TICKETS-UI] Novo ticket criado:', ticket);
-      reloadTickets(); // Atualizar lista de tickets
-    }
-  });
+  // Hook de tempo real aprimorado
+  const { 
+    tickets, 
+    isLoading, 
+    syncStatus, 
+    lastSyncTime,
+    reloadTickets, 
+    forceSyncMessages 
+  } = useTicketRealtimeImproved(clientId || '');
 
   const filteredTickets = tickets.filter(ticket => {
     const matchesSearch = ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -50,28 +43,34 @@ const TicketsInterface = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const handleImportConversations = async () => {
+  const handleSmartImport = async () => {
     if (!clientId || isImporting) return;
     
     setIsImporting(true);
     try {
       toast({
-        title: "Importando...",
-        description: "Iniciando importação de conversas do CodeChat v1.3.0",
+        title: "🚀 Importação Inteligente",
+        description: "Importando apenas mensagens novas com retry automático...",
       });
 
-      const result = await ticketsService.importConversationsFromWhatsApp(clientId);
+      const result = await incrementalImportService.performImportWithRetry(clientId, 3);
       
       toast({
-        title: "Importação Concluída",
-        description: `${result.success} conversas importadas com sucesso. ${result.errors} erros.`,
+        title: "✅ Importação Concluída",
+        description: `${result.imported} mensagens novas importadas. ${result.errors > 0 ? `${result.errors} erros.` : ''}`,
       });
 
-      reloadTickets();
+      // Recarregar após pequeno delay para sincronização
+      setTimeout(() => {
+        reloadTickets();
+        forceSyncMessages();
+      }, 2000);
+
     } catch (error: any) {
+      console.error('❌ [UI] Erro na importação inteligente:', error);
       toast({
-        title: "Erro na Importação",
-        description: error.message || "Erro ao importar conversas",
+        title: "❌ Erro na Importação",
+        description: error.message || "Erro ao importar mensagens",
         variant: "destructive",
       });
     } finally {
@@ -108,46 +107,23 @@ const TicketsInterface = () => {
     }
   };
 
-  const getConnectionStatusColor = () => {
-    switch (connectionStatus) {
-      case 'connected': return 'text-green-600';
-      case 'connecting': return 'text-yellow-600';
-      case 'disconnected': return 'text-red-600';
+  const getSyncStatusColor = () => {
+    switch (syncStatus) {
+      case 'success': return 'text-green-600';
+      case 'syncing': return 'text-blue-600';
+      case 'error': return 'text-red-600';
       default: return 'text-gray-600';
     }
   };
 
-  const getConnectionStatusLabel = () => {
-    switch (connectionStatus) {
-      case 'connected': return 'Conectado';
-      case 'connecting': return 'Conectando';
-      case 'disconnected': return 'Desconectado';
-      default: return 'Verificando';
+  const getSyncStatusLabel = () => {
+    switch (syncStatus) {
+      case 'success': return 'Sincronizado';
+      case 'syncing': return 'Sincronizando';
+      case 'error': return 'Erro na Sincronização';
+      default: return 'Iniciando';
     }
   };
-
-  // Auto-refresh a cada 10 segundos (mais frequente para tempo real)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!isLoading && !isImporting) {
-        reloadTickets();
-      }
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [isLoading, isImporting, reloadTickets]);
-
-  if (isLoading && tickets.length === 0) {
-    return (
-      <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando tickets...</p>
-          <p className="text-sm text-gray-500 mt-2">Iniciando sistema de tempo real...</p>
-        </div>
-      </div>
-    );
-  }
 
   // Se um ticket está selecionado, mostrar interface de chat
   if (selectedTicket) {
@@ -161,10 +137,15 @@ const TicketsInterface = () => {
             ← Voltar aos Tickets
           </Button>
           <div className="flex items-center gap-2">
-            <Activity className={`w-4 h-4 ${getConnectionStatusColor()}`} />
-            <span className={`text-sm font-medium ${getConnectionStatusColor()}`}>
-              {getConnectionStatusLabel()}
+            <Activity className={`w-4 h-4 ${getSyncStatusColor()}`} />
+            <span className={`text-sm font-medium ${getSyncStatusColor()}`}>
+              {getSyncStatusLabel()}
             </span>
+            {lastSyncTime && (
+              <span className="text-xs text-gray-500">
+                - {formatTime(lastSyncTime.toISOString())}
+              </span>
+            )}
           </div>
         </div>
         
@@ -176,10 +157,27 @@ const TicketsInterface = () => {
     );
   }
 
+  if (isLoading && tickets.length === 0) {
+    return (
+      <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Carregando tickets...</p>
+          <p className="text-sm text-gray-500 mt-2">Inicializando sistema YUMER...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-[calc(100vh-8rem)] grid grid-cols-12 gap-6">
+      {/* Sistema Health Sidebar */}
+      <div className="col-span-3">
+        <SystemHealthIndicator clientId={clientId || ''} />
+      </div>
+
       {/* Lista de Tickets */}
-      <Card className="col-span-12 flex flex-col">
+      <Card className="col-span-9 flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex justify-between items-center">
             <div>
@@ -191,13 +189,18 @@ const TicketsInterface = () => {
               <CardDescription className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>Sistema CodeChat v1.3.0 ativo</span>
+                  <span>Sistema YUMER v1.3.0 ativo</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Activity className={`h-4 w-4 ${getConnectionStatusColor()}`} />
-                  <span className={getConnectionStatusColor()}>
-                    Tempo Real: {getConnectionStatusLabel()}
+                  <Activity className={`h-4 w-4 ${getSyncStatusColor()}`} />
+                  <span className={getSyncStatusColor()}>
+                    {getSyncStatusLabel()}
                   </span>
+                  {lastSyncTime && (
+                    <span className="text-xs text-gray-400">
+                      ({formatTime(lastSyncTime.toISOString())})
+                    </span>
+                  )}
                 </div>
               </CardDescription>
             </div>
@@ -214,16 +217,25 @@ const TicketsInterface = () => {
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={handleImportConversations}
+                onClick={forceSyncMessages}
                 disabled={isImporting}
-                title="Importar conversas do CodeChat v1.3.0"
+                title="Forçar sincronização YUMER"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant="secondary" 
+                size="sm"
+                onClick={handleSmartImport}
+                disabled={isImporting}
+                title="Importação inteligente com retry automático"
               >
                 {isImporting ? (
                   <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
                 ) : (
                   <Download className="w-4 h-4 mr-1" />
                 )}
-                {isImporting ? 'Importando...' : 'Importar'}
+                {isImporting ? 'Importando...' : 'Import Smart'}
               </Button>
             </div>
           </div>
@@ -258,37 +270,20 @@ const TicketsInterface = () => {
         
         <CardContent className="flex-1 p-0">
           <ScrollArea className="h-full">
-            {isImporting && (
-              <div className="p-4 bg-blue-50 border-b">
-                <div className="flex items-center gap-2 text-blue-700">
-                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm font-medium">Importando conversas do CodeChat v1.3.0...</span>
-                </div>
-                <p className="text-xs text-blue-600 mt-1">
-                  Mensagens chegam automaticamente via webhook
-                </p>
-              </div>
-            )}
-            
             {filteredTickets.length === 0 ? (
               <div className="p-4 text-center text-gray-500">
                 <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                 <p>Nenhum ticket encontrado</p>
                 <p className="text-sm">
                   {tickets.length === 0 
-                    ? "Aguardando mensagens do WhatsApp ou importe conversas existentes"
+                    ? "Execute uma importação inteligente para sincronizar mensagens"
                     : "Nenhum ticket corresponde aos filtros aplicados"
                   }
                 </p>
-                {!isConnected && (
-                  <p className="text-sm text-red-600 mt-2">
-                    ⚠️ Sistema de tempo real desconectado
-                  </p>
-                )}
                 <Button 
                   size="sm" 
                   variant="outline" 
-                  onClick={handleImportConversations}
+                  onClick={handleSmartImport}
                   disabled={isImporting}
                   className="mt-2"
                 >
@@ -297,11 +292,11 @@ const TicketsInterface = () => {
                   ) : (
                     <Download className="w-3 h-3 mr-1" />
                   )}
-                  {isImporting ? 'Importando...' : 'Importar Conversas'}
+                  {isImporting ? 'Importando...' : 'Importação Inteligente'}
                 </Button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
                 {filteredTickets.map((ticket) => (
                   <Card
                     key={ticket.id}
