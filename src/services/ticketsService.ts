@@ -10,9 +10,12 @@ export interface ConversationTicket {
   chat_id: string;
   instance_id: string;
   title: string;
-  status: 'open' | 'closed' | 'pending';
+  status: 'open' | 'closed' | 'pending' | 'resolved';
   priority: number;
   assigned_queue_id?: string;
+  assigned_queue_name?: string;
+  assigned_assistant_id?: string;
+  tags?: string[];
   last_message_preview?: string;
   last_message_at?: string;
   customer?: {
@@ -39,6 +42,7 @@ export interface TicketMessage {
   timestamp: string;
   is_internal_note: boolean;
   is_ai_response: boolean;
+  ai_confidence_score?: number;
   processing_status: string;
   media_url?: string;
   audio_base64?: string;
@@ -359,6 +363,128 @@ class TicketsService {
     } catch (error) {
       console.error('❌ [RESET] Erro ao deletar dados do cliente:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Importar conversas do WhatsApp (método legado)
+   */
+  async importConversationsFromWhatsApp(clientId: string): Promise<{ success: number; errors: number }> {
+    console.warn('⚠️ [LEGACY] Método importConversationsFromWhatsApp está sendo usado');
+    return { success: 0, errors: 0 };
+  }
+
+  /**
+   * Buscar mensagens de um ticket
+   */
+  async getTicketMessages(ticketId: string): Promise<TicketMessage[]> {
+    try {
+      const { data: messages, error } = await supabase
+        .from('ticket_messages')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('timestamp', { ascending: true });
+
+      if (error) throw error;
+      return (messages || []) as TicketMessage[];
+    } catch (error) {
+      console.error('Erro ao buscar mensagens:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Assumir ticket manualmente
+   */
+  async assumeTicketManually(ticketId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          status: 'pending',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erro ao assumir ticket:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remover ticket da fila
+   */
+  async removeTicketFromQueue(ticketId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          assigned_queue_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erro ao remover da fila:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Transferir ticket para outra fila
+   */
+  async transferTicket(ticketId: string, queueId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          assigned_queue_id: queueId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erro ao transferir ticket:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Atualizar tags do ticket
+   */
+  async updateTicketTags(ticketId: string, tags: string[]): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          tags: tags,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erro ao atualizar tags:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Validar e corrigir timestamp
+   */
+  validateAndFixTimestamp(timestamp: string): string {
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) {
+        return new Date().toISOString();
+      }
+      return date.toISOString();
+    } catch {
+      return new Date().toISOString();
     }
   }
 }

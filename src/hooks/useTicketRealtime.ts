@@ -283,7 +283,7 @@ export const useTicketRealtime = (clientId: string) => {
         .eq('id', ticketId);
 
       // CONTEXTO
-      const ticketMessages = await ticketsService.getTicketMessages(ticketId, 50);
+      const ticketMessages = await ticketsService.getTicketMessages(ticketId);
       
       // CONFIGURAÇÕES
       let settings = { temperature: 0.7, max_tokens: 1000 };
@@ -616,15 +616,15 @@ export const useTicketRealtime = (clientId: string) => {
     
     try {
       // CRIAR/ATUALIZAR TICKET
-      const ticketId = await ticketsService.createOrUpdateTicket(
-        clientId,
-        normalizedMessage.from,
-        clientId,
-        normalizedMessage.customerName,
-        normalizedMessage.phoneNumber,
-        normalizedMessage.body,
-        normalizedMessage.timestamp
-      );
+      const ticketId = await ticketsService.createOrUpdateTicket({
+        clientId: clientId,
+        chatId: normalizedMessage.from,
+        title: `Conversa com ${normalizedMessage.customerName}`,
+        phoneNumber: normalizedMessage.phoneNumber,
+        contactName: normalizedMessage.customerName,
+        lastMessage: normalizedMessage.body,
+        lastMessageAt: normalizedMessage.timestamp
+      });
 
       console.log(`📋 TICKET criado/atualizado: ${ticketId}`);
 

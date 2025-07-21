@@ -629,13 +629,19 @@ class YumerWhatsAppService {
         from: message.keyRemoteJid,
         to: message.keyRemoteJid,
         body: typeof message.content === 'string' ? message.content : 
-              (message.content?.text || message.content?.body || `[${message.messageType}]`),
+              (typeof message.content === 'object' && message.content && 
+               ('text' in message.content || 'body' in message.content) ? 
+               ((message.content as any).text || (message.content as any).body) : 
+               `[${message.messageType}]`),
         type: message.messageType as any,
         timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
         fromMe: message.keyFromMe,
-        mediaUrl: message.content?.url,
-        caption: message.content?.caption,
-        isForwarded: message.content?.contextInfo?.isForwarded || false
+        mediaUrl: typeof message.content === 'object' && message.content && 'url' in message.content ? 
+                  (message.content as any).url : undefined,
+        caption: typeof message.content === 'object' && message.content && 'caption' in message.content ? 
+                 (message.content as any).caption : undefined,
+        isForwarded: typeof message.content === 'object' && message.content && 'contextInfo' in message.content ? 
+                     (message.content as any).contextInfo?.isForwarded || false : false
       }));
     } catch (error) {
       console.error(`❌ [CODECHAT] Erro ao buscar mensagens:`, error);

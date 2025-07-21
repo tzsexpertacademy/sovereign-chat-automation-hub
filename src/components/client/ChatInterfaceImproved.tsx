@@ -168,12 +168,11 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
 
     // Status do atendimento
     const isHumanAssigned = ticket.status === 'pending' || 
-                           ticket.status === 'resolved' ||
                            ticket.status === 'closed';
 
     // Mostrar fila ativa
     if (ticket.assigned_queue_id && !isHumanAssigned) {
-      const queueName = ticket.assigned_queue_name || 'Fila Ativa';
+      const queueName = 'Fila Ativa';
       badges.push(
         <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
           <Bot className="w-3 h-3 mr-1" />
