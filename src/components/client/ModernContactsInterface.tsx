@@ -18,11 +18,11 @@ import {
   ChevronRight,
   Loader2
 } from 'lucide-react';
-import { modernContactsService, ModernContact, ContactsStats } from '@/services/modernContactsService';
+import { modernContactsService, ModernContact, ContactsStats as ContactsStatsType } from '@/services/modernContactsService';
 import { useContactsCache } from '@/hooks/useContactsCache';
 import { useToast } from '@/hooks/use-toast';
 import ContactCard from './contacts/ContactCard';
-import ContactsStats from './contacts/ContactsStats';
+import ContactsStatsComponent from './contacts/ContactsStats';
 import ContactsFilters from './contacts/ContactsFilters';
 
 interface ModernContactsInterfaceProps {
@@ -31,7 +31,7 @@ interface ModernContactsInterfaceProps {
 
 const ModernContactsInterface = ({ clientId }: ModernContactsInterfaceProps) => {
   const [contacts, setContacts] = useState<ModernContact[]>([]);
-  const [stats, setStats] = useState<ContactsStats>({ total: 0, withConversations: 0, active: 0, needsNameUpdate: 0 });
+  const [stats, setStats] = useState<ContactsStatsType>({ total: 0, withConversations: 0, active: 0, needsNameUpdate: 0 });
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'with_conversation' | 'without_conversation' | 'active'>('all');
@@ -120,7 +120,14 @@ const ModernContactsInterface = ({ clientId }: ModernContactsInterfaceProps) => 
     <div className="h-full flex flex-col space-y-4">
       {/* Header com Estatísticas */}
       <div className="flex-shrink-0">
-        <ContactsStats stats={stats} />
+        <ContactsStatsComponent stats={{
+          total: stats.total,
+          withConversations: stats.withConversations,
+          withoutConversations: stats.total - stats.withConversations,
+          totalMessages: 0,
+          activeToday: stats.active,
+          newThisWeek: 0
+        }} />
       </div>
 
       {/* Controles */}
@@ -138,10 +145,36 @@ const ModernContactsInterface = ({ clientId }: ModernContactsInterfaceProps) => 
 
         {/* Filtros e Ações */}
         <div className="flex flex-wrap gap-2 items-center justify-between">
-          <ContactsFilters 
-            filter={filter} 
-            onFilterChange={setFilter} 
-          />
+          <div className="flex gap-2">
+            <Button
+              variant={filter === 'all' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFilter('all')}
+            >
+              Todos
+            </Button>
+            <Button
+              variant={filter === 'with_conversation' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFilter('with_conversation')}
+            >
+              Com Conversa
+            </Button>
+            <Button
+              variant={filter === 'without_conversation' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFilter('without_conversation')}
+            >
+              Sem Conversa
+            </Button>
+            <Button
+              variant={filter === 'active' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFilter('active')}
+            >
+              Ativos
+            </Button>
+          </div>
           
           <div className="flex gap-2">
             <Button
@@ -213,13 +246,20 @@ const ModernContactsInterface = ({ clientId }: ModernContactsInterfaceProps) => 
               {filteredContacts.map((contact) => (
                 <ContactCard
                   key={contact.id}
-                  contact={contact}
-                  displayName={getDisplayName({ 
+                  contact={{
                     id: contact.id,
                     name: contact.name,
                     phone: contact.phone,
+                    created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
-                  })}
+                  }}
+                  ticketInfo={contact.hasConversation ? {
+                    id: contact.ticketId || '',
+                    messagesCount: 1,
+                    lastMessage: contact.lastMessage,
+                    lastMessageAt: contact.lastMessageTime,
+                    status: contact.ticketStatus || 'open'
+                  } : undefined}
                 />
               ))}
             </div>
