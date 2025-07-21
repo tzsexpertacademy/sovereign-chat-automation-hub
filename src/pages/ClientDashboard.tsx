@@ -39,23 +39,11 @@ const ClientDashboard = () => {
               <Route path="connect" element={<WhatsAppConnection />} />
               <Route 
                 path="chat" 
-                element={
-                  <ChatTabsInterface 
-                    clientId={clientId} 
-                    selectedChatId={selectedChatId}
-                    onSelectChat={handleSelectChat}
-                  />
-                } 
+                element={<ChatTabsInterface clientId={clientId} />} 
               />
               <Route 
                 path="chat/:chatId" 
-                element={
-                  <ChatTabsInterface 
-                    clientId={clientId} 
-                    selectedChatId={selectedChatId}
-                    onSelectChat={handleSelectChat}
-                  />
-                } 
+                element={<ChatTabsInterface clientId={clientId} />} 
               />
               <Route path="funnel" element={<FunnelKanban clientId={clientId} />} />
               <Route path="assistants" element={<AssistantsManager />} />
