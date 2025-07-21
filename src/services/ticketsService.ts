@@ -320,6 +320,39 @@ export class TicketsService {
   }
 
   /**
+   * Criar ou atualizar ticket a partir de mensagem
+   */
+  async createOrUpdateTicketFromMessage(
+    clientId: string,
+    chatId: string,
+    instanceId: string,
+    senderName?: string,
+    senderPhone?: string,
+    content?: string,
+    timestamp?: string
+  ): Promise<string | null> {
+    try {
+      // Usar a função do banco para criar/atualizar
+      const { data, error } = await supabase
+        .rpc('upsert_conversation_ticket', {
+          p_client_id: clientId,
+          p_chat_id: chatId,
+          p_instance_id: instanceId,
+          p_customer_name: senderName || 'Contato',
+          p_customer_phone: senderPhone || chatId,
+          p_last_message: content || '',
+          p_last_message_at: timestamp || new Date().toISOString()
+        });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erro ao criar/atualizar ticket:', error);
+      return null;
+    }
+  }
+
+  /**
    * Buscar ticket por ID
    */
   async getTicketById(ticketId: string): Promise<ConversationTicket | null> {

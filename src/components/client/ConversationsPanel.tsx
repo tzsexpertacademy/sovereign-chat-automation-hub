@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 import { realTimeMessageSyncService } from '@/services/realTimeMessageSync';
+import { supabase } from '@/integrations/supabase/client';
 import { MessageSquare, Search, RefreshCw, Wifi, WifiOff, Clock, User } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';

@@ -169,31 +169,31 @@ export class ContactNameService {
 
       const instanceIds = instances.map(i => i.instance_id);
 
-      // Buscar mensagens com pushName válido
+      // Buscar mensagens com informações de contato
       const { data: messagesWithNames, error: msgsError } = await supabase
         .from('whatsapp_messages')
-        .select('sender_phone, sender_name')
+        .select('sender, body')
         .in('instance_id', instanceIds)
         .eq('from_me', false)
-        .not('sender_name', 'is', null)
-        .not('sender_name', 'eq', '')
-        .order('created_at', { ascending: false });
+        .not('sender', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1000);
 
       if (msgsError) throw msgsError;
 
-      console.log('📨 [NAME-OPTIMIZATION] Mensagens com pushName encontradas:', messagesWithNames?.length || 0);
+      console.log('📨 [NAME-OPTIMIZATION] Mensagens encontradas:', messagesWithNames?.length || 0);
 
-      // Agrupar por telefone e pegar o pushName mais recente
+      // Criar mapeamento básico (para implementação futura com pushName real)
       const phoneToNameMap = new Map<string, string>();
       
+      // Por enquanto, criar mapeamento simples baseado no sender
       for (const msg of messagesWithNames || []) {
-        const phone = msg.sender_phone;
-        const pushName = msg.sender_name;
+        const phone = msg.sender;
         
-        if (phone && pushName && !this.isJustPhoneNumber(pushName)) {
+        if (phone && !this.isJustPhoneNumber(phone)) {
           if (!phoneToNameMap.has(phone)) {
-            phoneToNameMap.set(phone, pushName);
-            console.log('👤 [NAME-MAP]', phone, '→', pushName);
+            phoneToNameMap.set(phone, phone);
+            console.log('👤 [NAME-MAP]', phone, '→', phone);
           }
         }
       }

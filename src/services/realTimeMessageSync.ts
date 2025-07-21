@@ -1,145 +1,192 @@
-
 /**
- * =====================================================
- * REAL TIME MESSAGE SYNC - TEMPO REAL IGUAL WHATSAPP
- * =====================================================
+ * 🚀 REAL-TIME MESSAGE SYNC SERVICE V2.0
+ * Integração tempo real com CodeChat API v1.3.0
  * 
- * Sistema híbrido para sincronização em tempo real:
- * 1. Supabase = Base local com dados existentes
- * 2. API Server = Fonte de mensagens novas
- * 3. WebSocket = Notificações instantâneas
+ * ✅ WebSocket nativo para tempo real
+ * ✅ Sync periódico com API
+ * ✅ Supabase local cache
+ * ✅ Compatibilidade total com CodeChat v1.3.0
  */
 
-import { supabase } from '@/integrations/supabase/client';
-import { yumerNativeWebSocketService } from './yumerNativeWebSocketService';
-import { yumerMessageSyncService } from './yumerMessageSyncService';
-import { ticketsService } from './ticketsService';
+import { supabase } from "@/integrations/supabase/client";
+import { ticketsService } from "./ticketsService";
+import { yumerMessageSyncService } from "./yumerMessageSyncService";
 
-export interface RealTimeConfig {
+export interface RealTimeSyncConfig {
   clientId: string;
   instanceIds: string[];
   enabled: boolean;
   syncInterval: number;
+  apiBaseUrl?: string;
+  apiKey?: string;
 }
 
+export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
+
 class RealTimeMessageSyncService {
-  private config: RealTimeConfig | null = null;
-  private isConnected = false;
+  private config: RealTimeSyncConfig | null = null;
+  private wsConnections: Map<string, WebSocket> = new Map();
   private syncInterval: NodeJS.Timeout | null = null;
-  private listeners: Map<string, Function[]> = new Map();
+  private status: SyncStatus = 'idle';
+  private lastSyncTime: Date | null = null;
 
   /**
-   * Inicializar sincronização em tempo real
+   * Inicializar serviço de tempo real
    */
-  async initialize(config: RealTimeConfig): Promise<void> {
-    this.config = config;
+  async initialize(config: RealTimeSyncConfig): Promise<void> {
+    console.log('🚀 [REAL-TIME] Inicializando serviço v2.0...');
     
-    if (!config.enabled) {
-      console.log('🔕 [REALTIME-SYNC] Sincronização desabilitada');
-      return;
-    }
-
-    console.log('🚀 [REALTIME-SYNC] Inicializando tempo real para cliente:', config.clientId);
-    console.log('📡 [REALTIME-SYNC] Instâncias:', config.instanceIds);
+    this.config = config;
+    this.status = 'syncing';
 
     try {
-      // 1. Configurar WebSocket para notificações instantâneas
-      await this.setupWebSocketConnection();
+      if (config.enabled) {
+        // 1. Configurar WebSockets para instâncias
+        await this.setupWebSockets();
+        
+        // 2. Configurar sincronização periódica
+        this.setupPeriodicSync();
+        
+        // 3. Sync inicial
+        await this.performInitialSync();
+      }
+
+      this.status = 'success';
+      this.lastSyncTime = new Date();
       
-      // 2. Configurar sincronização periódica
-      this.setupPeriodicSync();
-      
-      // 3. Configurar listeners Supabase para atualizações locais
-      this.setupSupabaseListeners();
-      
-      this.isConnected = true;
-      console.log('✅ [REALTIME-SYNC] Sistema tempo real ativo!');
+      console.log('✅ [REAL-TIME] Serviço inicializado com sucesso');
       
     } catch (error) {
-      console.error('❌ [REALTIME-SYNC] Erro na inicialização:', error);
+      console.error('❌ [REAL-TIME] Erro na inicialização:', error);
+      this.status = 'error';
       throw error;
     }
   }
 
   /**
-   * Configurar WebSocket para mensagens instantâneas
+   * Configurar WebSockets para cada instância
    */
-  private async setupWebSocketConnection(): Promise<void> {
+  private async setupWebSockets(): Promise<void> {
+    if (!this.config) return;
+
+    for (const instanceId of this.config.instanceIds) {
+      try {
+        // Configurar WebSocket direto com servidor CodeChat
+        const wsUrl = `wss://yumer.yumerflow.app:8083/ws/${instanceId}`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log(`🔌 [WEBSOCKET] Conectado à instância: ${instanceId}`);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            this.handleWebSocketMessage(data);
+          } catch (error) {
+            console.error('❌ [WEBSOCKET] Erro ao processar mensagem:', error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error(`❌ [WEBSOCKET] Erro na instância ${instanceId}:`, error);
+        };
+
+        ws.onclose = () => {
+          console.log(`🔌 [WEBSOCKET] Desconectado da instância: ${instanceId}`);
+          // Tentar reconectar após 5 segundos
+          setTimeout(() => this.reconnectWebSocket(instanceId), 5000);
+        };
+
+        this.wsConnections.set(instanceId, ws);
+        
+      } catch (error) {
+        console.error(`❌ [WEBSOCKET] Erro ao conectar instância ${instanceId}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Reconectar WebSocket
+   */
+  private reconnectWebSocket(instanceId: string): void {
+    console.log(`🔄 [WEBSOCKET] Tentando reconectar: ${instanceId}`);
+    
+    // Remove conexão antiga
+    const oldWs = this.wsConnections.get(instanceId);
+    if (oldWs) {
+      oldWs.close();
+      this.wsConnections.delete(instanceId);
+    }
+
+    // Criar nova conexão
+    this.setupWebSocketForInstance(instanceId);
+  }
+
+  /**
+   * Configurar WebSocket para instância específica
+   */
+  private async setupWebSocketForInstance(instanceId: string): Promise<void> {
     if (!this.config) return;
 
     try {
-      // Conectar ao WebSocket do servidor Yumer
-      await yumerNativeWebSocketService.connect({
-        instanceName: this.config.instanceIds[0], // Usar primeira instância
-        event: 'messagesUpsert',
-        useSecureConnection: true,
-        autoReconnect: true,
-        maxReconnectAttempts: 10
-      });
+      const wsUrl = `wss://yumer.yumerflow.app:8083/ws/${instanceId}`;
+      const ws = new WebSocket(wsUrl);
 
-      // Escutar mensagens em tempo real
-      yumerNativeWebSocketService.on('message_received', (data) => {
-        this.handleRealtimeMessage(data);
-      });
+      ws.onopen = () => {
+        console.log(`🔌 [WEBSOCKET] Reconectado à instância: ${instanceId}`);
+      };
 
-      // Escutar eventos de status de instância
-      yumerNativeWebSocketService.on('instance_status', (data) => {
-        this.handleInstanceStatusUpdate(data);
-      });
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleWebSocketMessage(data);
+        } catch (error) {
+          console.error('❌ [WEBSOCKET] Erro ao processar mensagem:', error);
+        }
+      };
 
-      console.log('🔌 [REALTIME-SYNC] WebSocket conectado');
-
+      this.wsConnections.set(instanceId, ws);
+      
     } catch (error) {
-      console.error('❌ [REALTIME-SYNC] Erro no WebSocket:', error);
-      // Continuar sem WebSocket (modo polling apenas)
+      console.error(`❌ [WEBSOCKET] Erro ao reconectar instância ${instanceId}:`, error);
     }
   }
 
   /**
-   * Processar mensagem recebida em tempo real
+   * Processar mensagem do WebSocket
    */
-  private async handleRealtimeMessage(data: any): Promise<void> {
-    try {
-      console.log('📨 [REALTIME-MESSAGE] Nova mensagem:', data);
-      
-      if (!this.config) return;
+  private handleWebSocketMessage(data: any): void {
+    console.log('📨 [WEBSOCKET] Nova mensagem recebida:', data);
 
-      // Verificar se a mensagem é de uma das nossas instâncias
-      if (!this.config.instanceIds.includes(data.instanceName)) {
-        return;
-      }
-
-      // Processar mensagem e criar/atualizar ticket
-      await this.processIncomingMessage(data);
-      
-      // Notificar listeners
-      this.notifyListeners('new_message', data);
-      
-    } catch (error) {
-      console.error('❌ [REALTIME-MESSAGE] Erro ao processar:', error);
+    // Verificar se é mensagem recebida (não enviada)
+    if (data.event === 'messagesUpsert' && !data.data?.keyFromMe) {
+      this.processIncomingMessage(data.data);
     }
   }
 
   /**
-   * Processar mensagem e sincronizar com Supabase
+   * Processar mensagem recebida
    */
   private async processIncomingMessage(messageData: any): Promise<void> {
     if (!this.config) return;
 
     try {
+      console.log('🔄 [PROCESS] Processando mensagem:', messageData.keyId);
+
       // 1. Converter para formato padrão
       const standardMessage = this.convertToStandardFormat(messageData);
       
-      // 2. Salvar no banco Supabase
+      // 2. Salvar no Supabase
       await this.saveMessageToSupabase(standardMessage);
       
-      // 3. Criar/atualizar ticket de conversa
+      // 3. Criar/atualizar ticket
       await this.updateConversationTicket(standardMessage);
       
-      console.log('✅ [REALTIME-PROCESS] Mensagem processada:', standardMessage.message_id);
+      console.log('✅ [PROCESS] Mensagem processada com sucesso');
       
     } catch (error) {
-      console.error('❌ [REALTIME-PROCESS] Erro:', error);
+      console.error('❌ [PROCESS] Erro ao processar mensagem:', error);
     }
   }
 
@@ -147,17 +194,21 @@ class RealTimeMessageSyncService {
    * Converter mensagem para formato padrão
    */
   private convertToStandardFormat(data: any): any {
+    const phoneNumber = data.keyRemoteJid?.replace('@s.whatsapp.net', '') || '';
+    
     return {
-      message_id: data.id || data.keyId,
-      instance_id: data.instanceName,
-      chat_id: data.keyRemoteJid || data.chatId,
-      sender_phone: data.keyRemoteJid?.replace('@s.whatsapp.net', ''),
-      sender_name: data.pushName || 'Contato',
-      content: data.content?.text || data.body || '[mídia]',
+      message_id: data.keyId,
+      instance_id: data.instanceName || this.config?.instanceIds[0],
+      chat_id: data.keyRemoteJid,
+      sender: phoneNumber,
+      body: data.content?.text || data.body || '[mídia]',
       message_type: data.messageType || 'text',
       from_me: data.keyFromMe || false,
       timestamp: new Date(data.messageTimestamp * 1000).toISOString(),
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      is_processed: false,
+      sender_name: data.pushName,
+      content: data.content?.text || data.body || '[mídia]'
     };
   }
 
@@ -165,17 +216,30 @@ class RealTimeMessageSyncService {
    * Salvar mensagem no Supabase
    */
   private async saveMessageToSupabase(message: any): Promise<void> {
-    const { error } = await supabase
-      .from('whatsapp_messages')
-      .upsert(message, { 
-        onConflict: 'message_id,instance_id',
-        ignoreDuplicates: false 
-      });
+    try {
+      const { error } = await supabase
+        .from('whatsapp_messages')
+        .upsert({
+          message_id: message.message_id,
+          instance_id: message.instance_id,
+          chat_id: message.chat_id,
+          sender: message.sender,
+          body: message.body,
+          message_type: message.message_type,
+          from_me: message.from_me,
+          timestamp: message.timestamp,
+          created_at: message.created_at,
+          is_processed: message.is_processed
+        }, {
+          onConflict: 'message_id,instance_id'
+        });
 
-    if (error) {
-      console.error('❌ [SAVE-MESSAGE] Erro ao salvar:', error);
-    } else {
-      console.log('💾 [SAVE-MESSAGE] Salva:', message.message_id);
+      if (error) throw error;
+      
+      console.log('💾 [SUPABASE] Mensagem salva:', message.message_id);
+      
+    } catch (error) {
+      console.error('❌ [SUPABASE] Erro ao salvar:', error);
     }
   }
 
@@ -190,16 +254,16 @@ class RealTimeMessageSyncService {
         this.config.clientId,
         message.chat_id,
         message.instance_id,
-        message.sender_name,
-        message.sender_phone,
+        message.sender_name || 'Contato',
+        message.sender,
         message.content,
         message.timestamp
       );
       
-      console.log('🎫 [TICKET-UPDATE] Ticket atualizado para:', message.sender_phone);
+      console.log('🎫 [TICKET] Atualizado para:', message.chat_id);
       
     } catch (error) {
-      console.error('❌ [TICKET-UPDATE] Erro:', error);
+      console.error('❌ [TICKET] Erro ao atualizar:', error);
     }
   }
 
@@ -235,153 +299,112 @@ class RealTimeMessageSyncService {
     console.log('🔄 [PERIODIC-SYNC] Executando...');
 
     try {
-      // Sincronizar mensagens não processadas
-      const result = await yumerMessageSyncService.convertUnprocessedMessages(this.config.clientId);
+      this.status = 'syncing';
       
-      if (result.converted > 0) {
-        console.log(`✅ [PERIODIC-SYNC] ${result.converted} mensagens sincronizadas`);
-        this.notifyListeners('sync_complete', result);
-      }
+      // Sincronizar mensagens não processadas do Yumer
+      await yumerMessageSyncService.convertUnprocessedMessages(this.config.clientId);
+      
+      this.status = 'success';
+      this.lastSyncTime = new Date();
+      
+      console.log('✅ [PERIODIC-SYNC] Concluído');
       
     } catch (error) {
       console.error('❌ [PERIODIC-SYNC] Erro:', error);
+      this.status = 'error';
     }
   }
 
   /**
-   * Configurar listeners Supabase para mudanças locais
+   * Executar sync inicial
    */
-  private setupSupabaseListeners(): void {
+  private async performInitialSync(): Promise<void> {
     if (!this.config) return;
 
-    // Escutar mudanças em tickets
-    supabase
-      .channel(`realtime-tickets-${this.config.clientId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'conversation_tickets',
-          filter: `client_id=eq.${this.config.clientId}`
-        },
-        (payload) => {
-          console.log('🎫 [SUPABASE-REALTIME] Ticket alterado:', payload.eventType);
-          this.notifyListeners('ticket_changed', payload);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ticket_messages'
-        },
-        (payload) => {
-          console.log('📨 [SUPABASE-REALTIME] Mensagem alterada:', payload.eventType);
-          this.notifyListeners('message_changed', payload);
-        }
-      )
-      .subscribe();
+    console.log('🎯 [INITIAL-SYNC] Executando sync inicial...');
 
-    console.log('👂 [SUPABASE-REALTIME] Listeners configurados');
-  }
-
-  /**
-   * Atualizar status de instância
-   */
-  private handleInstanceStatusUpdate(data: any): void {
-    console.log('📡 [INSTANCE-STATUS]', data.instanceName, '→', data.status);
-    this.notifyListeners('instance_status', data);
-  }
-
-  /**
-   * Adicionar listener para eventos
-   */
-  on(event: string, callback: Function): void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, []);
+    try {
+      // Converter mensagens não processadas
+      await yumerMessageSyncService.convertUnprocessedMessages(this.config.clientId);
+      
+      console.log('✅ [INITIAL-SYNC] Concluído');
+      
+    } catch (error) {
+      console.error('❌ [INITIAL-SYNC] Erro:', error);
+      throw error;
     }
-    this.listeners.get(event)!.push(callback);
-  }
-
-  /**
-   * Remover listener
-   */
-  off(event: string, callback: Function): void {
-    const callbacks = this.listeners.get(event);
-    if (callbacks) {
-      const index = callbacks.indexOf(callback);
-      if (index > -1) {
-        callbacks.splice(index, 1);
-      }
-    }
-  }
-
-  /**
-   * Notificar listeners
-   */
-  private notifyListeners(event: string, data: any): void {
-    const callbacks = this.listeners.get(event) || [];
-    callbacks.forEach(callback => {
-      try {
-        callback(data);
-      } catch (error) {
-        console.error('❌ [LISTENER] Erro no callback:', error);
-      }
-    });
-  }
-
-  /**
-   * Parar sincronização
-   */
-  stop(): void {
-    console.log('🛑 [REALTIME-SYNC] Parando...');
-    
-    this.isConnected = false;
-    
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-    }
-    
-    yumerNativeWebSocketService.disconnect();
-    this.listeners.clear();
-    
-    console.log('✅ [REALTIME-SYNC] Parado');
-  }
-
-  /**
-   * Status da conexão
-   */
-  getStatus(): { connected: boolean; config: RealTimeConfig | null } {
-    return {
-      connected: this.isConnected,
-      config: this.config
-    };
   }
 
   /**
    * Forçar sincronização manual
    */
-  async forcSync(): Promise<any> {
+  async forceSyncMessages(): Promise<void> {
     if (!this.config) {
       throw new Error('Serviço não inicializado');
     }
 
-    console.log('🔄 [FORCE-SYNC] Iniciando sincronização manual...');
-    
+    console.log('🎯 [FORCE-SYNC] Iniciando sincronização forçada...');
+
     try {
-      const result = await yumerMessageSyncService.convertUnprocessedMessages(this.config.clientId);
+      this.status = 'syncing';
       
-      console.log('✅ [FORCE-SYNC] Concluída:', result);
-      this.notifyListeners('sync_complete', result);
+      // Executar sync completo
+      await yumerMessageSyncService.convertUnprocessedMessages(this.config.clientId);
       
-      return result;
+      this.status = 'success';
+      this.lastSyncTime = new Date();
+      
+      console.log('✅ [FORCE-SYNC] Sincronização forçada concluída');
+      
     } catch (error) {
       console.error('❌ [FORCE-SYNC] Erro:', error);
+      this.status = 'error';
       throw error;
     }
+  }
+
+  /**
+   * Parar serviço
+   */
+  stop(): void {
+    console.log('🛑 [REAL-TIME] Parando serviço...');
+
+    // Fechar WebSockets
+    this.wsConnections.forEach((ws, instanceId) => {
+      console.log(`🔌 [WEBSOCKET] Fechando conexão: ${instanceId}`);
+      ws.close();
+    });
+    this.wsConnections.clear();
+
+    // Limpar interval
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
+
+    // Reset estado
+    this.config = null;
+    this.status = 'idle';
+    this.lastSyncTime = null;
+
+    console.log('✅ [REAL-TIME] Serviço parado');
+  }
+
+  /**
+   * Obter status atual
+   */
+  getStatus(): { status: SyncStatus; lastSyncTime: Date | null } {
+    return {
+      status: this.status,
+      lastSyncTime: this.lastSyncTime
+    };
+  }
+
+  /**
+   * Verificar se está ativo
+   */
+  isActive(): boolean {
+    return this.config !== null && this.status !== 'idle';
   }
 }
 
