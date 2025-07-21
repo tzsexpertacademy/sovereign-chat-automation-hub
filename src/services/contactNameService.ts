@@ -1,10 +1,13 @@
+
 /**
  * =====================================================
- * CONTACT NAME SERVICE V3.0 - SUPER SIMPLES
+ * CONTACT NAME SERVICE V3.0 - USAR PUSHNAME DIRETO
  * =====================================================
  * 
- * O servidor já traz pushName correto: 'Thalis Zulianello Silva'
- * Vamos apenas usar isso diretamente!
+ * CORREÇÃO CRÍTICA: O servidor já traz pushName correto!
+ * Exemplo: pushName: 'Thalis Zulianello Silva'
+ * 
+ * NOVA REGRA: Se pushName existe e NÃO é número, usar DIRETO!
  */
 
 import { supabase } from "@/integrations/supabase/client";
@@ -18,7 +21,7 @@ export interface ContactNameData {
 export class ContactNameService {
   
   /**
-   * ✅ VERSÃO SUPER SIMPLES - USAR PUSHNAME DIRETO
+   * ✅ VERSÃO CORRIGIDA - PUSHNAME TEM PRIORIDADE ABSOLUTA
    */
   extractRealContactName(
     pushName?: string, 
@@ -28,9 +31,9 @@ export class ContactNameService {
     
     console.log('🔍 [NAME-EXTRACTION] Entrada:', { pushName, phone, firstMessage });
 
-    // 1. Se pushName existe e não é número, usar direto!
+    // 1. REGRA PRINCIPAL: Se pushName existe e não é só número, usar DIRETO!
     if (pushName && !this.isJustPhoneNumber(pushName)) {
-      console.log('✅ [NAME-EXTRACTION] Usando pushName:', pushName);
+      console.log('✅ [NAME-EXTRACTION] Usando pushName direto:', pushName);
       return {
         name: this.cleanName(pushName),
         confidence: 'high',
@@ -38,7 +41,7 @@ export class ContactNameService {
       };
     }
 
-    // 2. Tentar extrair da mensagem
+    // 2. Se pushName é número ou vazio, tentar extrair da mensagem
     if (firstMessage) {
       const extractedName = this.extractNameFromMessage(firstMessage);
       if (extractedName) {
@@ -51,7 +54,7 @@ export class ContactNameService {
       }
     }
 
-    // 3. Último recurso: telefone formatado
+    // 3. ÚLTIMO RECURSO: telefone formatado (só se pushName for número)
     const formattedPhone = this.formatPhone(phone || '');
     console.log('⚠️ [NAME-EXTRACTION] Usando telefone formatado:', formattedPhone);
     return {
@@ -62,18 +65,33 @@ export class ContactNameService {
   }
 
   /**
-   * Verificar se é apenas número de telefone
+   * Verificar se é apenas número de telefone ou formato de telefone
    */
   private isJustPhoneNumber(text: string): boolean {
-    // Remove espaços e caracteres especiais
-    const clean = text.replace(/[\s\-\(\)]/g, '');
+    if (!text || text.trim().length === 0) return true;
+    
+    // Remove espaços e caracteres especiais comuns em telefones
+    const clean = text.replace(/[\s\-\(\)\+]/g, '');
     
     // Se é só números e tem 10+ dígitos, é telefone
-    if (/^\d{10,}$/.test(clean)) return true;
+    if (/^\d{10,}$/.test(clean)) {
+      console.log('📞 [NAME-CHECK] É telefone (só números):', text);
+      return true;
+    }
     
     // Se começa com 55 e tem muitos números, é telefone brasileiro
-    if (/^55\d{10,11}$/.test(clean)) return true;
+    if (/^55\d{10,11}$/.test(clean)) {
+      console.log('📞 [NAME-CHECK] É telefone brasileiro:', text);
+      return true;
+    }
+
+    // Se contém formato de telefone brasileiro
+    if (/^\(\d{2}\)\s?\d{4,5}-?\d{4}$/.test(text)) {
+      console.log('📞 [NAME-CHECK] É telefone formatado:', text);
+      return true;
+    }
     
+    console.log('👤 [NAME-CHECK] É nome real:', text);
     return false;
   }
 
@@ -127,7 +145,7 @@ export class ContactNameService {
   }
 
   /**
-   * Otimizar nomes existentes - USA DIRETAMENTE O PUSHNAME DOS WEBHOOKS
+   * OTIMIZAÇÃO: Usar pushName dos webhooks para corrigir nomes
    */
   async optimizeContactNames(clientId: string): Promise<{
     updated: number;
@@ -139,52 +157,71 @@ export class ContactNameService {
     const result = { updated: 0, errors: 0, details: [] as string[] };
 
     try {
-      // Buscar contatos com nomes que são telefones
-      const { data: customers, error } = await supabase
-        .from('customers')
-        .select(`
-          id, name, phone,
-          conversation_tickets (
-            ticket_messages (
-              content, sender_name, from_me
-            )
-          )
-        `)
+      // Buscar mensagens WhatsApp com pushName válido
+      const { data: instances } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id')
         .eq('client_id', clientId);
 
-      if (error) throw error;
+      if (!instances || instances.length === 0) {
+        throw new Error('Nenhuma instância WhatsApp encontrada para este cliente');
+      }
+
+      const instanceIds = instances.map(i => i.instance_id);
+
+      // Buscar mensagens com pushName válido
+      const { data: messagesWithNames, error: msgsError } = await supabase
+        .from('whatsapp_messages')
+        .select('sender_phone, sender_name')
+        .in('instance_id', instanceIds)
+        .eq('from_me', false)
+        .not('sender_name', 'is', null)
+        .not('sender_name', 'eq', '')
+        .order('created_at', { ascending: false });
+
+      if (msgsError) throw msgsError;
+
+      console.log('📨 [NAME-OPTIMIZATION] Mensagens com pushName encontradas:', messagesWithNames?.length || 0);
+
+      // Agrupar por telefone e pegar o pushName mais recente
+      const phoneToNameMap = new Map<string, string>();
+      
+      for (const msg of messagesWithNames || []) {
+        const phone = msg.sender_phone;
+        const pushName = msg.sender_name;
+        
+        if (phone && pushName && !this.isJustPhoneNumber(pushName)) {
+          if (!phoneToNameMap.has(phone)) {
+            phoneToNameMap.set(phone, pushName);
+            console.log('👤 [NAME-MAP]', phone, '→', pushName);
+          }
+        }
+      }
+
+      console.log('📞 [NAME-OPTIMIZATION] Mapeamento criado:', phoneToNameMap.size, 'contatos');
+
+      // Buscar clientes que precisam de otimização
+      const { data: customers, error: custError } = await supabase
+        .from('customers')
+        .select('id, name, phone')
+        .eq('client_id', clientId);
+
+      if (custError) throw custError;
 
       for (const customer of customers || []) {
         try {
-          // Se nome atual parece telefone, tentar melhorar
-          if (this.isPhoneFormattedName(customer.name)) {
+          const currentName = customer.name;
+          const phone = customer.phone;
+          
+          // Se nome atual parece telefone e temos um pushName melhor
+          if (this.isPhoneFormattedName(currentName) && phoneToNameMap.has(phone)) {
+            const newName = phoneToNameMap.get(phone)!;
             
-            const messages = customer.conversation_tickets?.[0]?.ticket_messages || [];
+            await this.updateCustomerName(customer.id, newName);
+            result.updated++;
+            result.details.push(`✅ ${phone}: ${currentName} → ${newName}`);
             
-            // 1. Procurar sender_name válido (que é o pushName do webhook!)
-            const validSender = messages.find(m => 
-              !m.from_me && 
-              m.sender_name && 
-              !this.isJustPhoneNumber(m.sender_name)
-            );
-            
-            if (validSender) {
-              await this.updateCustomerName(customer.id, validSender.sender_name);
-              result.updated++;
-              result.details.push(`✅ ${customer.phone} → ${validSender.sender_name}`);
-              continue;
-            }
-
-            // 2. Tentar extrair da primeira mensagem
-            const firstMessage = messages.find(m => !m.from_me && m.content);
-            if (firstMessage) {
-              const extracted = this.extractNameFromMessage(firstMessage.content);
-              if (extracted) {
-                await this.updateCustomerName(customer.id, extracted);
-                result.updated++;
-                result.details.push(`✅ ${customer.phone} → ${extracted} (mensagem)`);
-              }
-            }
+            console.log('✅ [NAME-UPDATE]', phone, ':', currentName, '→', newName);
           }
 
           await new Promise(resolve => setTimeout(resolve, 50));
@@ -207,7 +244,9 @@ export class ContactNameService {
    * Verificar se é nome formatado como telefone
    */
   private isPhoneFormattedName(name: string): boolean {
-    return /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/.test(name) || /^\d+$/.test(name);
+    return /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/.test(name) || 
+           /^\d+$/.test(name) ||
+           name.startsWith('Contato ');
   }
 
   /**

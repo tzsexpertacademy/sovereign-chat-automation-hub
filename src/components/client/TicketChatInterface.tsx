@@ -192,9 +192,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   }
 
   return (
-    <div className="flex flex-col h-full max-h-screen">
+    <div className="flex flex-col h-full">
       {/* Header fixo */}
-      <div className="flex-shrink-0">
+      <div className="flex-shrink-0 border-b bg-background">
         <TicketHeader
           queueInfo={queueInfo}
           onClearHistory={handleClearHistory}
@@ -208,18 +208,16 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         />
       </div>
 
-      {/* Área de mensagens - ocupa espaço disponível */}
-      <div className="flex-1 min-h-0">
-        <MessagesList
-          messages={messages}
-          scrollAreaRef={scrollAreaRef}
-          getMessageStatus={getMessageStatus}
-        />
-      </div>
+      {/* Área de mensagens - ScrollArea independente */}
+      <MessagesList
+        messages={messages}
+        scrollAreaRef={scrollAreaRef}
+        getMessageStatus={getMessageStatus}
+      />
 
       {/* Indicador de digitação - fixo */}
       {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (
-        <div className="flex-shrink-0 px-4 py-2">
+        <div className="flex-shrink-0 px-4 py-2 border-t bg-background">
           <TypingIndicator 
             isTyping={isTyping(ticket?.chat_id || '')}
             isRecording={isRecording(ticket?.chat_id || '')}

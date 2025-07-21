@@ -1,6 +1,8 @@
 
 import React from 'react';
-import ConversationsPanel from './ConversationsPanel';
+import { useParams } from 'react-router-dom';
+import ChatTabsInterface from './ChatTabsInterface';
+import TicketChatInterface from './TicketChatInterface';
 
 interface ChatInterfaceProps {
   clientId: string;
@@ -9,7 +11,15 @@ interface ChatInterfaceProps {
 }
 
 const ChatInterface = ({ clientId }: ChatInterfaceProps) => {
-  return <ConversationsPanel clientId={clientId} />;
+  const { ticketId } = useParams<{ ticketId?: string }>();
+
+  // Se há ticketId na URL, mostrar chat específico
+  if (ticketId) {
+    return <TicketChatInterface clientId={clientId} ticketId={ticketId} />;
+  }
+
+  // Caso contrário, mostrar lista de conversas/contatos
+  return <ChatTabsInterface clientId={clientId} />;
 };
 
 export default ChatInterface;
