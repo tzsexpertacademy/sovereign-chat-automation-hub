@@ -300,6 +300,56 @@ class CodeChatApiService {
     return '';
   }
 
+  // FASE 2: Extrai número real do WhatsApp do chat
+  extractWhatsAppPhone(chat: any): string | null {
+    console.log(`🔍 [CODECHAT] Extraindo telefone real do chat:`, { id: chat.id, name: chat.name });
+    
+    // 1. Verificar se é chat de grupo (ignorar)
+    if (chat.isGroup) {
+      console.log(`⏭️ [CODECHAT] Chat de grupo ignorado: ${chat.id}`);
+      return null;
+    }
+    
+    // 2. Tentar extrair número real dos campos disponíveis
+    let phoneNumber = null;
+    
+    // Prioridade 1: remoteJid (formato: 5511999999999@s.whatsapp.net)
+    if (chat.remoteJid && chat.remoteJid.includes('@')) {
+      phoneNumber = chat.remoteJid.split('@')[0];
+      console.log(`📱 [CODECHAT] Número extraído de remoteJid: ${phoneNumber}`);
+    }
+    
+    // Prioridade 2: jid (similar ao remoteJid)
+    else if (chat.jid && chat.jid.includes('@')) {
+      phoneNumber = chat.jid.split('@')[0];
+      console.log(`📱 [CODECHAT] Número extraído de jid: ${phoneNumber}`);
+    }
+    
+    // Prioridade 3: keyRemoteJid
+    else if (chat.keyRemoteJid && chat.keyRemoteJid.includes('@')) {
+      phoneNumber = chat.keyRemoteJid.split('@')[0];
+      console.log(`📱 [CODECHAT] Número extraído de keyRemoteJid: ${phoneNumber}`);
+    }
+    
+    // Prioridade 4: se o ID for um número (não apenas 23, 24, etc.)
+    else if (chat.id && /^\d{10,15}$/.test(chat.id)) {
+      phoneNumber = chat.id;
+      console.log(`📱 [CODECHAT] Número extraído de ID: ${phoneNumber}`);
+    }
+    
+    // Validar se é um número de telefone real
+    if (phoneNumber && phoneNumber.length >= 10) {
+      const normalized = this.normalizePhoneNumber(phoneNumber);
+      if (normalized && normalized !== 'unknown' && normalized.length >= 10) {
+        console.log(`✅ [CODECHAT] Telefone válido encontrado: ${normalized}`);
+        return normalized;
+      }
+    }
+    
+    console.warn(`⚠️ [CODECHAT] Nenhum telefone válido encontrado para chat: ${chat.id}`);
+    return null;
+  }
+
   // Função auxiliar para normalizar número de telefone (COM VALIDAÇÃO)
   normalizePhoneNumber(phoneInput: any): string {
     console.log(`🔍 [CODECHAT] Normalizando telefone:`, phoneInput, `(tipo: ${typeof phoneInput})`);

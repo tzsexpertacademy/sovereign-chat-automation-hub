@@ -425,13 +425,13 @@ export const ticketsService = {
                 contactName = `Contato ${i + 1}`;
               }
               
-              // Extrair e normalizar número de telefone com validação
-              let phoneNumber;
-              try {
-                phoneNumber = codeChatApiService.normalizePhoneNumber(chatId);
-              } catch (phoneError) {
-                console.error(`❌ Erro ao normalizar telefone para chat ${chatId}:`, phoneError);
-                phoneNumber = 'unknown';
+              // FASE 2: Extrair número real de WhatsApp
+              const phoneNumber = codeChatApiService.extractWhatsAppPhone(chat);
+              
+              // Pular chats sem número válido
+              if (!phoneNumber) {
+                console.log(`⏭️ Chat ${chatId} pulado - sem número válido`);
+                continue;
               }
               
               // Preparar última mensagem
