@@ -1,12 +1,13 @@
+
 import React from 'react';
-import ContactsManagerSimplified from './ContactsManagerSimplified';
+import ModernContactsInterface from './ModernContactsInterface';
 
 interface ContactsManagerProps {
   clientId: string;
 }
 
 const ContactsManager = ({ clientId }: ContactsManagerProps) => {
-  return <ContactsManagerSimplified clientId={clientId} />;
+  return <ModernContactsInterface clientId={clientId} />;
 };
 
 export default ContactsManager;
