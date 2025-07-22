@@ -8,6 +8,7 @@ export const useTicketMessages = (ticketId: string) => {
   const [isLoading, setIsLoading] = useState(false);
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastLoadRef = useRef<number>(0);
+  const realtimeConnectedRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!ticketId) {
@@ -37,12 +38,13 @@ export const useTicketMessages = (ticketId: string) => {
     // Carregamento inicial
     loadMessages();
 
-    // Polling como fallback (a cada 30 segundos)
+    // Polling como fallback (só se realtime não estiver funcionando)
     const startPolling = () => {
       pollTimeoutRef.current = setTimeout(() => {
         const timeSinceLastLoad = Date.now() - lastLoadRef.current;
-        // Só faz polling se passou mais de 25 segundos desde o último carregamento
-        if (timeSinceLastLoad > 25000) {
+        // Só faz polling se realtime não estiver conectado E passou mais de 25 segundos
+        if (!realtimeConnectedRef.current && timeSinceLastLoad > 25000) {
+          console.log('🔄 Polling de backup executado (realtime não conectado)');
           loadMessages(true);
         }
         startPolling(); // Continuar polling
@@ -77,14 +79,18 @@ export const useTicketMessages = (ticketId: string) => {
             console.log('📨 Nova mensagem recebida via realtime:', {
               id: newMessage.id,
               fromMe: newMessage.from_me,
-              content: newMessage.content.substring(0, 50)
+              content: newMessage.content.substring(0, 50),
+              messageId: newMessage.message_id
             });
             
             setMessages(prev => {
-              // Evitar duplicatas
-              const exists = prev.some(msg => msg.id === newMessage.id);
+              // Evitar duplicatas usando message_id único
+              const exists = prev.some(msg => 
+                msg.id === newMessage.id || 
+                msg.message_id === newMessage.message_id
+              );
               if (exists) {
-                console.log('⚠️ Mensagem já existe, ignorando duplicata');
+                console.log('⚠️ Mensagem já existe, ignorando duplicata:', newMessage.message_id);
                 return prev;
               }
               
@@ -102,13 +108,20 @@ export const useTicketMessages = (ticketId: string) => {
             console.log('🔄 Mensagem atualizada via realtime:', updatedMessage.id);
             
             setMessages(prev => 
-              prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
+              prev.map(msg => 
+                msg.id === updatedMessage.id || msg.message_id === updatedMessage.message_id 
+                  ? updatedMessage 
+                  : msg
+              )
             );
           } else if (payload.eventType === 'DELETE' && payload.old) {
             console.log('🗑️ Mensagem removida via realtime:', (payload.old as any).id);
             
             setMessages(prev => 
-              prev.filter(msg => msg.id !== (payload.old as any).id)
+              prev.filter(msg => 
+                msg.id !== (payload.old as any).id && 
+                msg.message_id !== (payload.old as any).message_id
+              )
             );
           }
         }
@@ -117,11 +130,16 @@ export const useTicketMessages = (ticketId: string) => {
         console.log('📡 Status da subscription para mensagens:', status);
         
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Realtime conectado, iniciando polling de backup');
-          startPolling();
+          console.log('✅ Realtime conectado com sucesso');
+          realtimeConnectedRef.current = true;
+          startPolling(); // Ainda manter polling como backup extremo
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('⚠️ Problema no realtime, dependendo apenas do polling');
+          console.warn('⚠️ Problema no realtime, ativando polling como principal');
+          realtimeConnectedRef.current = false;
           startPolling();
+        } else if (status === 'CLOSED') {
+          console.warn('🔌 Realtime desconectado');
+          realtimeConnectedRef.current = false;
         }
       });
 
@@ -131,6 +149,7 @@ export const useTicketMessages = (ticketId: string) => {
         clearTimeout(pollTimeoutRef.current);
         pollTimeoutRef.current = null;
       }
+      realtimeConnectedRef.current = false;
       supabase.removeChannel(channel);
     };
   }, [ticketId]);

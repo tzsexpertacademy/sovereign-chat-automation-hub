@@ -156,8 +156,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
       instanceName: instanceName
     });
 
-    // CORREÇÃO CRÍTICA: Buscar instância pelo nome da instância YUMER
-    // Primeiro tentativa: pelo yumer_instance_name
+    // Buscar instância pelo nome da instância YUMER
     let { data: instance, error: instanceError } = await supabase
       .from('whatsapp_instances')
       .select('instance_id, client_id, id')
@@ -203,23 +202,11 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
         error: instanceError
       });
 
-      // Vamos listar todas as instâncias para debug
-      const { data: allInstances } = await supabase
-        .from('whatsapp_instances')
-        .select('instance_id, yumer_instance_name, id')
-        .limit(10);
-      
-      console.log('📋 [DEBUG] Instâncias disponíveis:', allInstances);
-
       return new Response(
         JSON.stringify({ 
           error: 'Instance not found', 
           instanceName,
-          instanceNumericId,
-          availableInstances: allInstances?.map(i => ({
-            instance_id: i.instance_id,
-            yumer_instance_name: i.yumer_instance_name
-          }))
+          instanceNumericId
         }), 
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -253,7 +240,13 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
     await saveYumerMessage(processedMessage, instance.instance_id);
     
     // 4. Processar mensagem para tickets
-    await processMessageToTickets(processedMessage, instance.client_id, instance.instance_id);
+    const ticketId = await processMessageToTickets(processedMessage, instance.client_id, instance.instance_id);
+    
+    // 🤖 5. NOVA FUNCIONALIDADE: Verificar se deve processar com IA
+    if (!processedMessage.fromMe) {
+      console.log('🤖 [AI-TRIGGER] Mensagem recebida (não enviada) - verificando se deve processar com IA');
+      await processWithAIIfEnabled(ticketId, processedMessage, instance.client_id, instance.instance_id);
+    }
     
     console.log('✅ [YUMER-PROCESS] Mensagem YUMER processada com sucesso');
     
@@ -264,6 +257,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
         instanceName: instance.instance_id,
         messageId: processedMessage.messageId,
         clientId: instance.client_id,
+        ticketId: ticketId,
         timestamp: new Date().toISOString()
       }), 
       { 
@@ -285,6 +279,103 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
+  }
+}
+
+// 🤖 NOVA FUNÇÃO: Processar com IA se habilitado
+async function processWithAIIfEnabled(ticketId: string, messageData: any, clientId: string, instanceId: string) {
+  try {
+    console.log('🤖 [AI-CHECK] Verificando se instância tem fila com assistente ativo');
+    
+    // Buscar instância pelo instance_id para pegar o UUID
+    const { data: instanceData, error: instanceError } = await supabase
+      .from('whatsapp_instances')
+      .select('id')
+      .eq('instance_id', instanceId)
+      .single();
+
+    if (instanceError || !instanceData) {
+      console.log('⚠️ [AI-CHECK] Instância não encontrada para verificação de IA');
+      return;
+    }
+
+    // Verificar se instância está conectada a uma fila com assistente
+    const { data: connection, error: connectionError } = await supabase
+      .from('instance_queue_connections')
+      .select(`
+        *,
+        queues:queue_id (
+          id,
+          name,
+          is_active,
+          assistants:assistant_id (
+            id,
+            name,
+            prompt,
+            model,
+            advanced_settings,
+            is_active
+          )
+        )
+      `)
+      .eq('instance_id', instanceData.id)
+      .eq('is_active', true)
+      .single();
+
+    if (connectionError || !connection) {
+      console.log('ℹ️ [AI-CHECK] Instância não está conectada a nenhuma fila ativa');
+      return;
+    }
+
+    const queue = connection.queues;
+    const assistant = queue?.assistants;
+
+    if (!queue?.is_active) {
+      console.log('⚠️ [AI-CHECK] Fila não está ativa');
+      return;
+    }
+
+    if (!assistant || !assistant.is_active) {
+      console.log('ℹ️ [AI-CHECK] Fila não tem assistente ativo configurado');
+      return;
+    }
+
+    console.log(`🤖 [AI-TRIGGER] Processando com IA - Fila: ${queue.name}, Assistente: ${assistant.name}`);
+
+    // Chamar edge function de processamento de IA
+    const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
+      body: {
+        ticketId: ticketId,
+        message: messageData.content,
+        clientId: clientId,
+        instanceId: instanceId,
+        assistant: {
+          id: assistant.id,
+          name: assistant.name,
+          prompt: assistant.prompt,
+          model: assistant.model || 'gpt-4o-mini',
+          settings: assistant.advanced_settings
+        },
+        context: {
+          customerName: messageData.contactName,
+          phoneNumber: messageData.phoneNumber,
+          chatId: messageData.chatId
+        }
+      }
+    });
+
+    if (aiError) {
+      console.error('❌ [AI-TRIGGER] Erro ao processar com IA:', aiError);
+      return;
+    }
+
+    console.log('✅ [AI-TRIGGER] IA processou mensagem com sucesso:', {
+      hasResponse: !!aiResult?.response,
+      confidence: aiResult?.confidence
+    });
+
+  } catch (error) {
+    console.error('❌ [AI-TRIGGER] Erro crítico no processamento de IA:', error);
   }
 }
 
@@ -420,7 +511,7 @@ async function saveYumerMessage(messageData: any, instanceId: string) {
 }
 
 // Função para processar mensagem para sistema de tickets
-async function processMessageToTickets(messageData: any, clientId: string, instanceId: string) {
+async function processMessageToTickets(messageData: any, clientId: string, instanceId: string): Promise<string> {
   console.log('🎫 [PROCESS-TICKETS] Processando mensagem para sistema de tickets');
   
   try {
@@ -440,6 +531,8 @@ async function processMessageToTickets(messageData: any, clientId: string, insta
       .eq('message_id', messageData.messageId);
     
     console.log('✅ [PROCESS-TICKETS] Mensagem processada para tickets com sucesso');
+    
+    return ticketId;
     
   } catch (error) {
     console.error('❌ [PROCESS-TICKETS] Erro ao processar para tickets:', error);
