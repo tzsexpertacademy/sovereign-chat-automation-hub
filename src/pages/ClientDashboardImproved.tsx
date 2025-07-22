@@ -92,7 +92,7 @@ const ClientDashboardImproved = () => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <ClientHeader clientId={clientId} />
+      <ClientHeader />
       <div className="flex">
         <ClientSidebar clientId={clientId} />
         <main className="flex-1">

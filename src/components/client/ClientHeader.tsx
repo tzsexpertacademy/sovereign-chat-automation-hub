@@ -1,125 +1,123 @@
-
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { 
-  Bell, 
-  User, 
-  Settings, 
-  LogOut,
-  Activity,
-  Bot
-} from "lucide-react";
+import { useState, useEffect } from 'react';
+import { Bell, Wifi, WifiOff, Edit, Smartphone, LogOut } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
-import { useToast } from "@/components/ui/use-toast";
-import AIConfigIndicator from "./AIConfigIndicator";
+} from '@/components/ui/dropdown-menu';
+import { clientsService, type ClientData } from '@/services/clientsService';
+import { EditProfileModal } from './EditProfileModal';
+import { ConfigureLogoModal } from './ConfigureLogoModal';
 
 interface ClientHeaderProps {
-  clientId: string;
-  clientName?: string;
+  clientId?: string;
 }
 
-const ClientHeader = ({ clientId, clientName }: ClientHeaderProps) => {
-  const [instancesCount, setInstancesCount] = useState(0);
-  const [onlineInstances, setOnlineInstances] = useState(0);
-  const navigate = useNavigate();
-  const { toast } = useToast();
+export function ClientHeader({ clientId }: ClientHeaderProps) {
+  const [clientData, setClientData] = useState<ClientData | null>(null);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [configureLogoOpen, setConfigureLogoOpen] = useState(false);
+  const isConnected = true; // Simulado
 
   useEffect(() => {
-    loadInstancesStats();
+    const loadClientData = async () => {
+      try {
+        const clients = await clientsService.getAllClients();
+        const client = clients.find(c => c.id === clientId);
+        setClientData(client || null);
+      } catch (error) {
+        console.error('Erro ao carregar dados do cliente:', error);
+      }
+    };
+
+    if (clientId) {
+      loadClientData();
+    }
   }, [clientId]);
 
-  const loadInstancesStats = async () => {
-    try {
-      const { data: instances, error } = await supabase
-        .from('whatsapp_instances')
-        .select('status')
-        .eq('client_id', clientId);
-
-      if (error) throw error;
-
-      setInstancesCount(instances?.length || 0);
-      setOnlineInstances(
-        instances?.filter(i => i.status === 'connected' || i.status === 'online')?.length || 0
-      );
-    } catch (error) {
-      console.error('❌ [CLIENT-HEADER] Erro ao carregar stats:', error);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      navigate('/');
-      toast({
-        title: "Logout realizado",
-        description: "Você foi desconectado com sucesso",
-      });
-    } catch (error) {
-      console.error('❌ [CLIENT-HEADER] Erro no logout:', error);
-      toast({
-        title: "Erro no logout",
-        description: "Erro ao realizar logout",
-        variant: "destructive"
-      });
-    }
+  const getClientInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase())
+      .join('')
+      .substring(0, 2);
   };
 
   return (
-    <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-16 items-center justify-between px-6">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1 className="text-xl font-semibold">{clientName || 'Dashboard'}</h1>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Activity className="h-3 w-3" />
-              <span>{instancesCount} instância(s)</span>
-              <span>•</span>
-              <span className="text-green-600">{onlineInstances} online</span>
+    <header className="h-16 border-b bg-white flex items-center justify-between px-6">
+      <div className="flex items-center space-x-4">
+        <SidebarTrigger />
+        <div className="flex items-center space-x-3">
+          {clientData?.company_logo_url ? (
+            <img 
+              src={clientData.company_logo_url} 
+              alt="Logo da empresa" 
+              className="h-8 w-auto"
+            />
+          ) : (
+            <div className="text-lg font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+              YumerFlow
             </div>
+          )}
+          <div className="flex items-center space-x-2">
+            {isConnected ? (
+              <Wifi className="w-5 h-5 text-green-500" />
+            ) : (
+              <WifiOff className="w-5 h-5 text-red-500" />
+            )}
+            <Badge variant={isConnected ? "default" : "secondary"}>
+              {isConnected ? "WhatsApp Conectado" : "Desconectado"}
+            </Badge>
           </div>
         </div>
+      </div>
 
-        <div className="flex items-center gap-4">
-          {/* AI Config Indicator */}
-          <AIConfigIndicator clientId={clientId} compact />
-
-          {/* User Menu */}
+      <div className="flex items-center space-x-4">
+        <Button variant="ghost" size="sm" className="relative">
+          <Bell className="w-5 h-5" />
+          <Badge className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+            2
+          </Badge>
+        </Button>
+        
+        <div className="flex items-center space-x-3">
+          <div className="text-right">
+            <p className="text-sm font-medium text-gray-900">
+              {clientData?.name || `Cliente ${clientId}`}
+            </p>
+            <p className="text-xs text-gray-500">
+              YumerFlow {clientData?.plan ? clientData.plan.charAt(0).toUpperCase() + clientData.plan.slice(1) : 'Basic'}
+            </p>
+          </div>
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <User className="h-4 w-4" />
-                <span className="hidden md:inline">Conta</span>
+              <Button variant="ghost" size="sm" className="rounded-full p-2">
+                <Avatar className="w-8 h-8">
+                  <AvatarImage src={clientData?.avatar_url} />
+                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-sm">
+                    {clientData?.name ? getClientInitials(clientData.name) : 'U'}
+                  </AvatarFallback>
+                </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <div className="px-2 py-1.5">
-                <div className="text-sm font-medium">{clientName}</div>
-                <div className="text-xs text-muted-foreground">Cliente</div>
-              </div>
-              <DropdownMenuSeparator />
-              
-              <DropdownMenuItem onClick={() => navigate('/client/assistants')}>
-                <Bot className="mr-2 h-4 w-4" />
-                Configurar IA
+              <DropdownMenuItem onClick={() => setEditProfileOpen(true)}>
+                <Edit className="mr-2 h-4 w-4" />
+                Editar Perfil
               </DropdownMenuItem>
-              
-              <DropdownMenuItem onClick={() => navigate('/client/settings')}>
-                <Settings className="mr-2 h-4 w-4" />
-                Configurações
+              <DropdownMenuItem onClick={() => setConfigureLogoOpen(true)}>
+                <Smartphone className="mr-2 h-4 w-4" />
+                Configurar Logo
               </DropdownMenuItem>
-              
               <DropdownMenuSeparator />
-              
-              <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+              <DropdownMenuItem className="text-red-600">
                 <LogOut className="mr-2 h-4 w-4" />
                 Sair
               </DropdownMenuItem>
@@ -127,8 +125,25 @@ const ClientHeader = ({ clientId, clientName }: ClientHeaderProps) => {
           </DropdownMenu>
         </div>
       </div>
+
+      {clientData && (
+        <>
+          <EditProfileModal
+            open={editProfileOpen}
+            onOpenChange={setEditProfileOpen}
+            client={clientData}
+            onUpdate={setClientData}
+          />
+          <ConfigureLogoModal
+            open={configureLogoOpen}
+            onOpenChange={setConfigureLogoOpen}
+            client={clientData}
+            onUpdate={setClientData}
+          />
+        </>
+      )}
     </header>
   );
-};
+}
 
 export default ClientHeader;
