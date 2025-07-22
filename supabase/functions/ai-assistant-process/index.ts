@@ -6,8 +6,6 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -33,23 +31,56 @@ serve(async (req) => {
     console.log('🤖 [AI-ASSISTANT] Dados recebidos:', {
       ticketId,
       instanceId,
+      clientId,
       assistantName: assistant?.name,
       messageLength: message?.length || 0,
-      customerName: context?.customerName,
-      hasOpenAIKey: !!openAIApiKey
+      customerName: context?.customerName
     });
 
-    // Verificar se OpenAI API key está configurada
-    if (!openAIApiKey) {
-      console.error('❌ [AI-ASSISTANT] OpenAI API key não configurada');
+    // 🔑 BUSCAR API KEY ESPECÍFICA DO CLIENTE
+    console.log('🔍 [AI-ASSISTANT] Buscando configuração da IA do cliente:', clientId);
+    
+    const { data: clientConfig, error: configError } = await supabase
+      .from('client_ai_configs')
+      .select('openai_api_key, default_model')
+      .eq('client_id', clientId)
+      .single();
+
+    if (configError || !clientConfig) {
+      console.error('❌ [AI-ASSISTANT] Configuração da IA não encontrada para cliente:', clientId, configError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Client AI configuration not found',
+          message: 'O cliente precisa configurar sua chave API da OpenAI primeiro',
+          requiresConfig: true,
+          clientId: clientId
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const clientOpenAIKey = clientConfig.openai_api_key;
+    const clientModel = clientConfig.default_model || 'gpt-4o-mini';
+
+    if (!clientOpenAIKey) {
+      console.error('❌ [AI-ASSISTANT] Chave OpenAI não configurada para cliente:', clientId);
       return new Response(
         JSON.stringify({ 
           error: 'OpenAI API key not configured',
-          message: 'Configure OPENAI_API_KEY in Supabase Edge Function Secrets'
+          message: 'Configure sua chave API da OpenAI nas configurações dos assistentes',
+          requiresConfig: true,
+          clientId: clientId
         }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log('✅ [AI-ASSISTANT] Configuração encontrada:', {
+      clientId,
+      hasApiKey: !!clientOpenAIKey,
+      model: clientModel,
+      keyPreview: `${clientOpenAIKey.substring(0, 8)}...${clientOpenAIKey.slice(-4)}`
+    });
 
     // Buscar histórico recente de mensagens do ticket para contexto
     const { data: recentMessages } = await supabase
@@ -86,17 +117,21 @@ Instruções importantes:
 - Responda em português brasileiro
 - Seja conciso mas completo`;
 
-    console.log('🤖 [AI-ASSISTANT] Chamando OpenAI API com modelo:', assistant.model || 'gpt-4o-mini');
+    console.log('🤖 [AI-ASSISTANT] Chamando OpenAI API com:', {
+      model: clientModel,
+      clientId: clientId,
+      keyPreview: `${clientOpenAIKey.substring(0, 8)}...${clientOpenAIKey.slice(-4)}`
+    });
 
-    // Chamar OpenAI API
+    // 🚀 CHAMAR OPENAI COM A API KEY DO CLIENTE
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
+        'Authorization': `Bearer ${clientOpenAIKey}`, // 🔑 USANDO API KEY DO CLIENTE
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: assistant.model || 'gpt-4o-mini',
+        model: clientModel, // 🎯 USANDO MODELO CONFIGURADO PELO CLIENTE
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: message }
@@ -109,6 +144,20 @@ Instruções importantes:
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ [AI-ASSISTANT] Erro na OpenAI API:', response.status, response.statusText, errorText);
+      
+      // Tratar erros específicos da OpenAI
+      if (response.status === 401) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Invalid OpenAI API key',
+            message: 'Sua chave API da OpenAI é inválida. Verifique e atualize nas configurações.',
+            requiresConfig: true,
+            clientId: clientId
+          }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
@@ -117,7 +166,8 @@ Instruções importantes:
 
     console.log('✅ [AI-ASSISTANT] Resposta da IA gerada:', {
       responseLength: aiResponse?.length || 0,
-      model: assistant.model || 'gpt-4o-mini'
+      model: clientModel,
+      clientId: clientId
     });
 
     // Salvar resposta da IA no ticket
@@ -151,7 +201,7 @@ Instruções importantes:
       console.error('❌ [AI-ASSISTANT] Erro ao enviar via YUMER:', sendResult.error);
     }
 
-    console.log('✅ [AI-ASSISTANT] Processamento completo');
+    console.log('✅ [AI-ASSISTANT] Processamento completo para cliente:', clientId);
 
     return new Response(
       JSON.stringify({
@@ -159,7 +209,9 @@ Instruções importantes:
         response: aiResponse,
         messageId: messageId,
         timestamp: new Date().toISOString(),
-        sentViaYumer: sendResult.success
+        sentViaYumer: sendResult.success,
+        clientId: clientId,
+        modelUsed: clientModel
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
