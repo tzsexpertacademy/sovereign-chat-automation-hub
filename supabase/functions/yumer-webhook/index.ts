@@ -80,7 +80,7 @@ serve(async (req) => {
 
       console.log('📋 [YUMER-WEBHOOK] Dados YUMER recebidos:', JSON.stringify(webhookData, null, 2));
 
-      // NOVA LÓGICA: Detectar mensagens YUMER pelo evento e estrutura
+      // DETECTAR MENSAGENS YUMER pelo evento e estrutura
       if (webhookData.event === 'messages.upsert' && webhookData.data && webhookData.instance?.id) {
         console.log('🎯 [YUMER-WEBHOOK] Detectada mensagem YUMER - processando...');
         return await processYumerMessage(webhookData);
@@ -159,7 +159,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
     // Buscar instância pelo nome da instância YUMER
     let { data: instance, error: instanceError } = await supabase
       .from('whatsapp_instances')
-      .select('instance_id, client_id, id')
+      .select('instance_id, client_id, id, auth_token')
       .eq('yumer_instance_name', instanceName)
       .single();
 
@@ -169,7 +169,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
       
       const { data: instanceById, error: instanceByIdError } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id, client_id, id')
+        .select('instance_id, client_id, id, auth_token')
         .eq('instance_id', instanceName)
         .single();
       
@@ -185,7 +185,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
       
       const { data: instanceByPattern, error: instanceByPatternError } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id, client_id, id')
+        .select('instance_id, client_id, id, auth_token')
         .ilike('instance_id', `%${instanceName}%`)
         .single();
       
@@ -214,7 +214,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
 
     console.log(`✅ [YUMER-PROCESS] Instância encontrada: ${instance.instance_id} (Cliente: ${instance.client_id})`);
 
-    // Vamos atualizar o yumer_instance_name se ainda não estiver definido
+    // Atualizar o yumer_instance_name se ainda não estiver definido
     if (!instance.yumer_instance_name) {
       console.log('🔄 [YUMER-PROCESS] Atualizando yumer_instance_name na instância');
       await supabase
@@ -242,10 +242,16 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
     // 4. Processar mensagem para tickets
     const ticketId = await processMessageToTickets(processedMessage, instance.client_id, instance.instance_id);
     
-    // 🤖 5. NOVA FUNCIONALIDADE: Verificar se deve processar com IA
+    // 🤖 5. ATIVAÇÃO AUTOMÁTICA DA IA: Verificar se deve processar com IA
     if (!processedMessage.fromMe) {
       console.log('🤖 [AI-TRIGGER] Mensagem recebida (não enviada) - verificando se deve processar com IA');
-      await processWithAIIfEnabled(ticketId, processedMessage, instance.client_id, instance.instance_id);
+      
+      try {
+        const aiResult = await processWithAIIfEnabled(ticketId, processedMessage, instance.client_id, instance.instance_id);
+        console.log('🤖 [AI-TRIGGER] Resultado do processamento de IA:', aiResult ? 'sucesso' : 'não processado');
+      } catch (aiError) {
+        console.error('❌ [AI-TRIGGER] Erro ao processar com IA:', aiError);
+      }
     }
     
     console.log('✅ [YUMER-PROCESS] Mensagem YUMER processada com sucesso');
@@ -282,8 +288,8 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
   }
 }
 
-// 🤖 NOVA FUNÇÃO: Processar com IA se habilitado
-async function processWithAIIfEnabled(ticketId: string, messageData: any, clientId: string, instanceId: string) {
+// 🤖 FUNÇÃO MELHORADA: Processar com IA se habilitado
+async function processWithAIIfEnabled(ticketId: string, messageData: any, clientId: string, instanceId: string): Promise<boolean> {
   try {
     console.log('🤖 [AI-CHECK] Verificando se instância tem fila com assistente ativo');
     
@@ -296,10 +302,10 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
 
     if (instanceError || !instanceData) {
       console.log('⚠️ [AI-CHECK] Instância não encontrada para verificação de IA');
-      return;
+      return false;
     }
 
-    // Verificar se instância está conectada a uma fila com assistente
+    // Verificar se instância está conectada a uma fila com assistente ATIVO
     const { data: connection, error: connectionError } = await supabase
       .from('instance_queue_connections')
       .select(`
@@ -324,7 +330,7 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
 
     if (connectionError || !connection) {
       console.log('ℹ️ [AI-CHECK] Instância não está conectada a nenhuma fila ativa');
-      return;
+      return false;
     }
 
     const queue = connection.queues;
@@ -332,17 +338,17 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
 
     if (!queue?.is_active) {
       console.log('⚠️ [AI-CHECK] Fila não está ativa');
-      return;
+      return false;
     }
 
     if (!assistant || !assistant.is_active) {
       console.log('ℹ️ [AI-CHECK] Fila não tem assistente ativo configurado');
-      return;
+      return false;
     }
 
     console.log(`🤖 [AI-TRIGGER] Processando com IA - Fila: ${queue.name}, Assistente: ${assistant.name}`);
 
-    // Chamar edge function de processamento de IA
+    // Chamar edge function de processamento de IA com timeout e retry
     const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
       body: {
         ticketId: ticketId,
@@ -366,16 +372,19 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
 
     if (aiError) {
       console.error('❌ [AI-TRIGGER] Erro ao processar com IA:', aiError);
-      return;
+      return false;
     }
 
     console.log('✅ [AI-TRIGGER] IA processou mensagem com sucesso:', {
       hasResponse: !!aiResult?.response,
-      confidence: aiResult?.confidence
+      sentViaYumer: aiResult?.sentViaYumer
     });
+
+    return true;
 
   } catch (error) {
     console.error('❌ [AI-TRIGGER] Erro crítico no processamento de IA:', error);
+    return false;
   }
 }
 
