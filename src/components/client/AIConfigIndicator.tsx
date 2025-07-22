@@ -104,7 +104,7 @@ const AIConfigIndicator = ({ clientId, compact = false }: AIConfigIndicatorProps
           {hasConfig ? "IA Configurada" : "IA Não Configurada"}
         </Badge>
         {!hasConfig && (
-          <Link to="/client/assistants">
+          <Link to={`/client/${clientId}/assistants`}>
             <Button variant="outline" size="sm">
               <Settings className="h-3 w-3 mr-1" />
               Configurar
@@ -146,7 +146,7 @@ const AIConfigIndicator = ({ clientId, compact = false }: AIConfigIndicatorProps
               >
                 {isTestingKey ? "Testando..." : "Testar Conexão"}
               </Button>
-              <Link to="/client/assistants">
+              <Link to={`/client/${clientId}/assistants`}>
                 <Button variant="outline" size="sm">
                   <Settings className="h-3 w-3 mr-1" />
                   Gerenciar
@@ -159,7 +159,7 @@ const AIConfigIndicator = ({ clientId, compact = false }: AIConfigIndicatorProps
             <div className="text-sm text-muted-foreground">
               Configure sua chave API da OpenAI para usar os assistentes de IA
             </div>
-            <Link to="/client/assistants">
+            <Link to={`/client/${clientId}/assistants`}>
               <Button variant="default" size="sm">
                 <Settings className="h-3 w-3 mr-1" />
                 Configurar Agora

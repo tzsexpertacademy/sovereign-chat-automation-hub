@@ -48,8 +48,8 @@ const ClientSidebar = ({ clientId, activeTab, onTabChange }: ClientSidebarProps)
 
   const handleItemClick = (itemId: string) => {
     if (itemId === 'assistants') {
-      // Navegar para a página de assistentes
-      window.location.href = '/client/assistants';
+      // Navegar para a página de assistentes com clientId correto
+      window.location.href = `/client/${clientId}/assistants`;
       return;
     }
     onTabChange?.(itemId);
@@ -119,7 +119,7 @@ const ClientSidebar = ({ clientId, activeTab, onTabChange }: ClientSidebarProps)
             <Button 
               size="sm" 
               className="w-full" 
-              onClick={() => window.location.href = '/client/assistants'}
+              onClick={() => window.location.href = `/client/${clientId}/assistants`}
             >
               <Settings className="h-3 w-3 mr-1" />
               Configurar Agora
