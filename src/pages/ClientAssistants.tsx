@@ -185,7 +185,7 @@ const ClientAssistants = () => {
 
             <TabsContent value="assistants" className="space-y-6">
               {hasConfig ? (
-                <AssistantsManager clientId={clientId} />
+                <AssistantsManager />
               ) : (
                 <Card>
                   <CardContent className="p-8 text-center">
