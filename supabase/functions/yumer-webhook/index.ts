@@ -136,34 +136,105 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
   
   try {
     const instanceNumericId = yumerData.instance?.id;
+    const instanceName = yumerData.instance?.name;
     const messageData = yumerData.data;
 
-    if (!instanceNumericId || !messageData) {
-      console.error('❌ [YUMER-PROCESS] Dados insuficientes:', { instanceNumericId, hasMessageData: !!messageData });
+    if (!instanceNumericId || !messageData || !instanceName) {
+      console.error('❌ [YUMER-PROCESS] Dados insuficientes:', { 
+        instanceNumericId, 
+        instanceName,
+        hasMessageData: !!messageData 
+      });
       return new Response(
         JSON.stringify({ error: 'Insufficient data' }), 
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('🔍 [YUMER-PROCESS] Buscando instância por ID numérico:', instanceNumericId);
+    console.log('🔍 [YUMER-PROCESS] Buscando instância:', {
+      numericId: instanceNumericId,
+      instanceName: instanceName
+    });
 
-    // 1. Buscar instância pelo instanceId numérico (campo id na tabela)
-    const { data: instance, error: instanceError } = await supabase
+    // CORREÇÃO CRÍTICA: Buscar instância pelo nome da instância YUMER
+    // Primeiro tentativa: pelo yumer_instance_name
+    let { data: instance, error: instanceError } = await supabase
       .from('whatsapp_instances')
       .select('instance_id, client_id, id')
-      .eq('id', instanceNumericId)
+      .eq('yumer_instance_name', instanceName)
       .single();
 
+    // Se não encontrou, tentar buscar pelo instance_id que pode conter o nome
     if (instanceError || !instance) {
-      console.error('❌ [YUMER-PROCESS] Instância não encontrada:', instanceNumericId, instanceError);
+      console.log('🔍 [YUMER-PROCESS] Tentativa 2: Buscar por instance_id que contém o nome');
+      
+      const { data: instanceById, error: instanceByIdError } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, client_id, id')
+        .eq('instance_id', instanceName)
+        .single();
+      
+      if (!instanceByIdError && instanceById) {
+        instance = instanceById;
+        instanceError = null;
+      }
+    }
+
+    // Se ainda não encontrou, tentar buscar por pattern no instance_id
+    if (instanceError || !instance) {
+      console.log('🔍 [YUMER-PROCESS] Tentativa 3: Buscar por pattern no instance_id');
+      
+      const { data: instanceByPattern, error: instanceByPatternError } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, client_id, id')
+        .ilike('instance_id', `%${instanceName}%`)
+        .single();
+      
+      if (!instanceByPatternError && instanceByPattern) {
+        instance = instanceByPattern;
+        instanceError = null;
+      }
+    }
+
+    if (instanceError || !instance) {
+      console.error('❌ [YUMER-PROCESS] Instância não encontrada após todas as tentativas:', {
+        instanceName,
+        instanceNumericId,
+        error: instanceError
+      });
+
+      // Vamos listar todas as instâncias para debug
+      const { data: allInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, yumer_instance_name, id')
+        .limit(10);
+      
+      console.log('📋 [DEBUG] Instâncias disponíveis:', allInstances);
+
       return new Response(
-        JSON.stringify({ error: 'Instance not found' }), 
+        JSON.stringify({ 
+          error: 'Instance not found', 
+          instanceName,
+          instanceNumericId,
+          availableInstances: allInstances?.map(i => ({
+            instance_id: i.instance_id,
+            yumer_instance_name: i.yumer_instance_name
+          }))
+        }), 
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     console.log(`✅ [YUMER-PROCESS] Instância encontrada: ${instance.instance_id} (Cliente: ${instance.client_id})`);
+
+    // Vamos atualizar o yumer_instance_name se ainda não estiver definido
+    if (!instance.yumer_instance_name) {
+      console.log('🔄 [YUMER-PROCESS] Atualizando yumer_instance_name na instância');
+      await supabase
+        .from('whatsapp_instances')
+        .update({ yumer_instance_name: instanceName })
+        .eq('id', instance.id);
+    }
 
     // 2. Extrair e normalizar dados da mensagem
     const processedMessage = extractYumerMessageData(messageData, instance);
