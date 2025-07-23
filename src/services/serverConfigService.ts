@@ -10,6 +10,7 @@ interface ServerConfig {
   
   // Authentication & Security - v2.1.3
   adminToken: string;
+  globalApiKey: string;
   jwtSecret: string;
   sessionSecret: string;
   requestTimeout: number;
@@ -107,6 +108,7 @@ class ServerConfigService {
       
       // Authentication - v2.1.3 Tokens
       adminToken: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
+      globalApiKey: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
       jwtSecret: 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe',
       sessionSecret: 'M^r6Z!Lp9vAqTrXc@kYwFh#D2zGjTbUq',
       requestTimeout: 15000,
@@ -397,6 +399,18 @@ class ServerConfigService {
       'Accept': 'application/json',
       'Authorization': `Bearer ${instanceJWT}`
     };
+  }
+
+  // WebSocket URL Generation
+  getWebSocketUrl(): string {
+    const protocol = this.config.protocol === 'https' ? 'wss' : 'ws';
+    const port = this.config.webSocketPort || this.config.port;
+    return `${protocol}://${this.config.host}:${port}`;
+  }
+
+  // Headers utility
+  getHeaders(): Record<string, string> {
+    return this.getAdminHeaders();
   }
 
   // Get frontend integration info

@@ -58,7 +58,7 @@ class CodeChatBusinessService {
       const response = await fetch(url, {
         ...options,
         headers: {
-          ...this.config.getAdminHeaders(),
+          ...serverConfigService.getAdminHeaders(),
           ...options.headers
         },
         signal: AbortSignal.timeout(this.config.requestTimeout)
