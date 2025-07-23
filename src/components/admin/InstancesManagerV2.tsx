@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
-import { businessSyncService } from "@/services/businessSyncService";
+// Removido businessSyncService - usando sistema 1:1 simplificado
 import unifiedYumerService from "@/services/unifiedYumerService";
 
 interface InstanceState {
@@ -56,8 +56,7 @@ const InstancesManagerV2 = () => {
   const [serverOnline, setServerOnline] = useState(false);
   const [qrModal, setQrModal] = useState<QRModalData>({ show: false });
   const [instanceStates, setInstanceStates] = useState<InstanceStates>({});
-  const [businesses, setBusinesses] = useState<any[]>([]);
-  const [syncingBusinesses, setSyncingBusinesses] = useState(false);
+  // Removido businesses state - usando business_id do cliente diretamente
   
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -89,8 +88,7 @@ const InstancesManagerV2 = () => {
       await Promise.all([
         checkServerHealth(),
         loadClients(),
-        loadInstances(),
-        loadBusinesses()
+        loadInstances()
       ]);
     } finally {
       setGlobalLoading(false);
@@ -136,42 +134,20 @@ const InstancesManagerV2 = () => {
     }
   };
 
-  const loadBusinesses = async () => {
-    try {
-      setSyncingBusinesses(true);
-      
-      // 1. Sincronizar businesses da API para o banco local
-      await businessSyncService.syncBusinessesToLocal();
-      
-      // 2. Auto-vincular businesses órfãos
-      await businessSyncService.autoLinkOrphanBusinesses();
-      
-      // 3. Buscar businesses locais (já vinculados aos clientes)
-      const localBusinesses = await businessSyncService.getLocalBusinesses();
-      setBusinesses(localBusinesses);
-      
-      console.log('✅ Businesses sincronizados e carregados:', localBusinesses.length);
-    } catch (error) {
-      console.error('❌ Erro ao carregar e sincronizar businesses:', error);
-      setBusinesses([]);
-    } finally {
-      setSyncingBusinesses(false);
-    }
-  };
+  // Removido loadBusinesses - usando business_id diretamente do cliente
 
   const refreshInstancesStatus = async () => {
     console.log('🔄 Atualizando status das instâncias...');
     
     for (const instance of instances) {
       try {
-        // Buscar business para esta instância usando business_business_id (agora do banco local)
-        const business = businesses.find(b => b.business_id === instance.business_business_id);
-        if (!business) {
-          console.log(`⚠️ Business local não encontrado para instância ${instance.instance_id} (business_id: ${instance.business_business_id})`);
+        // Verificar se a instância tem business_business_id
+        if (!instance.business_business_id) {
+          console.log(`⚠️ Instância ${instance.instance_id} sem business_id`);
           continue;
         }
 
-        // Verificar status atual
+        // Verificar status atual usando business_id diretamente
         const result = await unifiedYumerService.getConnectionState(instance.instance_id);
         if (!result.success) continue;
         const connectionState = result.data;
@@ -339,9 +315,9 @@ const InstancesManagerV2 = () => {
     const instance = instances.find(i => i.instance_id === instanceId);
     if (!instance) return;
 
-    const business = businesses.find(b => b.business_id === instance.business_business_id);
-    if (!business) {
-      toast({ title: "Erro", description: "Business local não encontrado para esta instância", variant: "destructive" });
+    // Verificar se a instância tem business_id (sistema 1:1)
+    if (!instance.business_business_id) {
+      toast({ title: "Erro", description: "Instância não possui business associado", variant: "destructive" });
       return;
     }
 
@@ -422,7 +398,7 @@ const InstancesManagerV2 = () => {
           status: 'success',
           progress: 100,
           message: 'QR Code disponível! Clique para visualizar.',
-          data: { qrCode, businessId: business.business_id }
+          data: { qrCode, businessId: instance.business_business_id }
         });
 
         await loadInstances();
@@ -445,10 +421,7 @@ const InstancesManagerV2 = () => {
 
   const showQRCode = async (instanceId: string) => {
     const instance = instances.find(i => i.instance_id === instanceId);
-    if (!instance) return;
-
-    const business = businesses.find(b => b.business_id === instance.business_business_id);
-    if (!business) return;
+    if (!instance || !instance.business_business_id) return;
 
     try {
       let qrCode = instance.qr_code;
@@ -464,7 +437,7 @@ const InstancesManagerV2 = () => {
           show: true,
           instanceId,
           qrCode,
-          businessId: business.business_id
+          businessId: instance.business_business_id
         });
       } else {
         toast({
@@ -487,8 +460,6 @@ const InstancesManagerV2 = () => {
     
     const instance = instances.find(i => i.instance_id === instanceId);
     if (!instance) return;
-
-    const business = businesses.find(b => b.business_id === instance.business_business_id);
     
     try {
       updateInstanceState(instanceId, {
@@ -497,13 +468,11 @@ const InstancesManagerV2 = () => {
         message: 'Removendo instância...'
       });
 
-      // Tentar remover da API (se business existe)
-      if (business) {
-        try {
-          await unifiedYumerService.deleteInstance(instanceId);
-        } catch (error) {
-          console.log('Instância não existe na API, apenas no banco');
-        }
+      // Tentar remover da API (sempre tentar)
+      try {
+        await unifiedYumerService.deleteInstance(instanceId);
+      } catch (error) {
+        console.log('Instância não existe na API, apenas no banco');
       }
 
       // Remover do banco
@@ -617,9 +586,9 @@ const InstancesManagerV2 = () => {
             <Wifi className="w-4 h-4 text-success" />
             <span className="text-xs text-success">API Online</span>
           </div>
-          <Button onClick={loadInitialData} disabled={globalLoading || syncingBusinesses}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${(globalLoading || syncingBusinesses) ? 'animate-spin' : ''}`} />
-            {syncingBusinesses ? 'Sincronizando...' : 'Atualizar'}
+          <Button onClick={loadInitialData} disabled={globalLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${globalLoading ? 'animate-spin' : ''}`} />
+            Atualizar
           </Button>
         </div>
       </div>
@@ -640,7 +609,7 @@ const InstancesManagerV2 = () => {
                 {instances.filter(i => i.status === 'connected').length} Conectadas
               </Badge>
               <Badge variant="outline">
-                {businesses.length} Businesses
+                {clients.filter(c => c.business_id).length} Businesses
               </Badge>
             </div>
           </div>
