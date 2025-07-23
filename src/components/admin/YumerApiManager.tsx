@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { yumerApiV2Service } from '@/services/yumerApiV2Service';
+import yumerApiV2 from '@/services/yumerApiV2Service';
 import { validateEndpointCoverage } from '@/services/obsoleteServicesCleanup';
 import { 
   CheckCircle, 

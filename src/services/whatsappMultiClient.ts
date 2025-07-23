@@ -1,6 +1,6 @@
 /**
  * LEGACY COMPATIBILITY SERVICE
- * Este serviço mantém compatibilidade com código existente
+ * Este serviço mantém compatibilidade TOTAL com código existente
  * Redirecionando para o novo yumerApiV2Service
  */
 
@@ -9,9 +9,14 @@ import yumerApiV2 from './yumerApiV2Service';
 export interface WhatsAppClient {
   instanceId: string;
   instanceName: string;
-  status: 'connected' | 'disconnected' | 'connecting';
+  status: 'connected' | 'disconnected' | 'connecting' | 'qr_ready';
   phone?: string;
   profileName?: string;
+  // Propriedades legacy necessárias para compatibilidade
+  clientId: string;
+  phoneNumber?: string;
+  hasQrCode?: boolean;
+  qrCode?: string;
 }
 
 export interface SendMessageOptions {
@@ -29,6 +34,8 @@ export interface SendMediaOptions {
 
 export class WhatsAppMultiClient {
   private apiKey: string = '';
+  private clients: WhatsAppClient[] = [];
+  private statusListeners: Array<(client: WhatsAppClient) => void> = [];
 
   setApiKey(apiKey: string) {
     this.apiKey = apiKey;
@@ -38,17 +45,36 @@ export class WhatsAppMultiClient {
   async getClients(): Promise<WhatsAppClient[]> {
     try {
       const instances = await yumerApiV2.listInstances();
-      return instances.map(instance => ({
+      this.clients = instances.map(instance => ({
         instanceId: instance.instanceName,
         instanceName: instance.instanceName,
-        status: instance.status === 'open' ? 'connected' : 
-                instance.status === 'connecting' ? 'connecting' : 'disconnected',
+        status: this.mapStatus(instance.status || 'close'),
         phone: instance.owner,
-        profileName: instance.profileName
+        profileName: instance.profileName,
+        // Propriedades legacy para compatibilidade
+        clientId: instance.instanceName,
+        phoneNumber: instance.owner,
+        hasQrCode: false,
+        qrCode: undefined
       }));
+      return this.clients;
     } catch (error) {
       console.error('[WhatsAppMultiClient] Error getting clients:', error);
       return [];
+    }
+  }
+
+  // Alias para compatibilidade
+  async getAllClients(): Promise<WhatsAppClient[]> {
+    return this.getClients();
+  }
+
+  private mapStatus(apiStatus: string): 'connected' | 'disconnected' | 'connecting' | 'qr_ready' {
+    switch (apiStatus) {
+      case 'open': return 'connected';
+      case 'connecting': return 'connecting';
+      case 'qr_ready': return 'qr_ready';
+      default: return 'disconnected';
     }
   }
 
@@ -68,6 +94,21 @@ export class WhatsAppMultiClient {
       return true;
     } catch (error) {
       console.error('[WhatsAppMultiClient] Error connecting instance:', error);
+      return false;
+    }
+  }
+
+  // Métodos legacy necessários para compatibilidade
+  async connectClient(clientId: string): Promise<boolean> {
+    return this.connectInstance(clientId);
+  }
+
+  async disconnectClient(clientId: string): Promise<boolean> {
+    try {
+      await yumerApiV2.logoutInstance(clientId);
+      return true;
+    } catch (error) {
+      console.error('[WhatsAppMultiClient] Error disconnecting client:', error);
       return false;
     }
   }
@@ -130,8 +171,59 @@ export class WhatsAppMultiClient {
       return 'close';
     }
   }
+
+  // Métodos legacy para compatibilidade com componentes antigos
+  async getClientStatus(clientId: string): Promise<string> {
+    return this.getInstanceStatus(clientId);
+  }
+
+  async testConnection(): Promise<boolean> {
+    try {
+      await yumerApiV2.listInstances();
+      return true;
+    } catch (error) {
+      console.error('[WhatsAppMultiClient] Test connection failed:', error);
+      return false;
+    }
+  }
+
+  async checkServerHealth(): Promise<boolean> {
+    return this.testConnection();
+  }
+
+  // Métodos de socket/realtime para compatibilidade (simulados)
+  connectSocket(): void {
+    console.log('[WhatsAppMultiClient] Socket connection simulated for compatibility');
+  }
+
+  disconnect(): void {
+    console.log('[WhatsAppMultiClient] Disconnect simulated for compatibility');
+  }
+
+  joinClientRoom(clientId: string): void {
+    console.log(`[WhatsAppMultiClient] Joined room for client ${clientId} (simulated)`);
+  }
+
+  onClientStatus(callback: (client: WhatsAppClient) => void): void {
+    this.statusListeners.push(callback);
+  }
+
+  offClientStatus(callback: (client: WhatsAppClient) => void): void {
+    const index = this.statusListeners.indexOf(callback);
+    if (index > -1) {
+      this.statusListeners.splice(index, 1);
+    }
+  }
 }
 
-// Singleton instance para compatibilidade
+// Alias e exportações adicionais para compatibilidade
+export const whatsappService = whatsappMultiClient;
+
+export interface QueuedMessage {
+  id: string;
+  to: string;
+  message: string;
+  timestamp: number;
+}
 export const whatsappMultiClient = new WhatsAppMultiClient();
 export default whatsappMultiClient;
