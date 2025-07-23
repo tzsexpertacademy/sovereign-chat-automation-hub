@@ -1,16 +1,17 @@
-
 // Dynamic Server Configuration Service
 interface ServerConfig {
-  // Primary Backend Configuration
+  // Primary Backend Configuration - CodeChat API v2.1.3
   serverUrl: string;
   host: string;
   port: number;
   protocol: 'https' | 'http';
   basePath: string;
+  apiVersion: string;
   
-  // Authentication & Security
-  globalApiKey: string;
+  // Authentication & Security - v2.1.3
+  adminToken: string;
   jwtSecret: string;
+  sessionSecret: string;
   requestTimeout: number;
   retryAttempts: number;
   
@@ -34,7 +35,7 @@ interface ServerConfig {
   rateLimitRequests: number;
   rateLimitWindow: number;
   
-  // Administrative Webhooks
+  // Administrative Webhooks - v2.1.3
   adminWebhooks: {
     qrCodeWebhook: {
       enabled: boolean;
@@ -96,17 +97,19 @@ class ServerConfigService {
 
   private getDefaultConfig(): ServerConfig {
     return {
-      // Primary Backend
-      serverUrl: 'https://yumer.yumerflow.app:8083',
-      host: 'yumer.yumerflow.app',
-      port: 8083,
+      // Primary Backend - CodeChat API v2.1.3
+      serverUrl: 'https://api.yumer.com.br',
+      host: 'api.yumer.com.br',
+      port: 443,
       protocol: 'https',
-      basePath: '',
+      basePath: '/api/v2',
+      apiVersion: '2.1.3',
       
-      // Authentication
-      globalApiKey: 'df1afd525fs5f15',
-      jwtSecret: 'sfdgs8152g5s1s5',
-      requestTimeout: 10000,
+      // Authentication - v2.1.3 Tokens
+      adminToken: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
+      jwtSecret: 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe',
+      sessionSecret: 'M^r6Z!Lp9vAqTrXc@kYwFh#D2zGjTbUq',
+      requestTimeout: 15000,
       retryAttempts: 3,
       
       // Advanced
@@ -130,36 +133,36 @@ class ServerConfigService {
       rateLimitRequests: 100,
       rateLimitWindow: 60,
       
-      // Administrative Webhooks
+      // Administrative Webhooks - v2.1.3
       adminWebhooks: {
         qrCodeWebhook: {
           enabled: true,
-          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook',
+          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-v2-webhook',
           events: ['qrcodeUpdated', 'qr.updated', 'QR_CODE_UPDATED'],
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI'
           },
           retryAttempts: 3,
-          timeout: 10000
+          timeout: 15000
         },
         messageWebhook: {
           enabled: true,
-          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook',
+          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-v2-webhook',
           events: ['messagesUpsert', 'sendMessage'],
           authentication: 'bearer',
           secret: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI'
         },
         statusWebhook: {
           enabled: true,
-          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook',
+          url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-v2-webhook',
           events: ['connectionUpdated', 'statusInstance']
         }
       },
       
       // Metadata
       lastUpdated: new Date().toISOString(),
-      version: '1.0.0'
+      version: '2.1.3'
     };
   }
 
@@ -194,7 +197,7 @@ class ServerConfigService {
     console.log('🗂️ Backup da configuração criado');
   }
 
-  // Public API
+  // Public API - Updated for v2.1.3
   getConfig(): ServerConfig {
     return { ...this.config };
   }
@@ -243,7 +246,7 @@ class ServerConfigService {
         method: 'GET',
         signal: controller.signal,
         headers: {
-          'X-API-Key': this.config.globalApiKey
+          'X-API-Key': this.config.adminToken
         }
       });
       
@@ -337,7 +340,7 @@ class ServerConfigService {
     }
     
     // Validate API key
-    if (!this.config.globalApiKey.trim()) {
+    if (!this.config.adminToken.trim()) {
       errors.push('Chave API global é obrigatória');
     }
     
@@ -367,22 +370,32 @@ class ServerConfigService {
     };
   }
 
-  // Generate URLs based on current config
+  // Generate URLs based on current config - v2.1.3
   getApiUrl(): string {
     return `${this.config.serverUrl}${this.config.basePath}`;
   }
 
-  getWebSocketUrl(): string {
-    const protocol = this.config.protocol === 'https' ? 'wss' : 'ws';
-    const port = this.config.webSocketPort || this.config.port;
-    return `${protocol}://${this.config.host}:${port}${this.config.basePath}`;
-  }
-
-  getHeaders(): Record<string, string> {
+  getAdminHeaders(): Record<string, string> {
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'X-API-Key': this.config.globalApiKey
+      'Authorization': `Bearer ${this.config.adminToken}`
+    };
+  }
+
+  getBusinessHeaders(businessToken: string): Record<string, string> {
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${businessToken}`
+    };
+  }
+
+  getInstanceHeaders(instanceJWT: string): Record<string, string> {
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${instanceJWT}`
     };
   }
 

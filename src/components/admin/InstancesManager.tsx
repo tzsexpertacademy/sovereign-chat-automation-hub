@@ -1,8 +1,8 @@
 
-import SimpleInstanceManager from "./SimpleInstanceManager";
+import CodeChatV2Manager from "./CodeChatV2Manager";
 
 const InstancesManager = () => {
-  return <SimpleInstanceManager />;
+  return <CodeChatV2Manager />;
 };
 
 export default InstancesManager;
