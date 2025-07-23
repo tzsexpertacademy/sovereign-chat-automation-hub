@@ -611,6 +611,7 @@ const YumerV2Diagnostic = () => {
         
         if (endpoint.name === 'Refresh Business Token' && localState.realBusinessToken) {
           requestBody = { oldToken: localState.realBusinessToken };
+          console.log(`🔄 [REFRESH-TOKEN] Usando businessToken: ${localState.realBusinessToken.substring(0, 20)}...`);
         }
         
         if (endpoint.name === 'Move Instance to Business' && localState.realInstanceId && localState.realBusinessId) {
@@ -618,6 +619,7 @@ const YumerV2Diagnostic = () => {
             sourceInstanceId: localState.realInstanceId,
             businessIdTarget: localState.realBusinessId
           };
+          console.log(`🔄 [MOVE-INSTANCE] sourceInstanceId: ${localState.realInstanceId}, businessIdTarget: ${localState.realBusinessId}`);
         }
 
       // Obter token do estado local
