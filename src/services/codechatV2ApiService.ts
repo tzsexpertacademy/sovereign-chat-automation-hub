@@ -239,6 +239,22 @@ class CodeChatV2ApiService {
     });
   }
 
+  // ============ BASIC MESSAGING ============
+  async sendTextMessage(instanceJWT: string, instanceId: string, data: { number: string; text: string; delay?: number; presence?: string; }) {
+    return this.makeRequest(`api/v2/instance/${instanceId}/message/text`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` },
+      body: JSON.stringify({
+        number: data.number,
+        textMessage: { text: data.text },
+        options: { 
+          delay: data.delay || 1200, 
+          presence: data.presence || 'composing' 
+        }
+      })
+    });
+  }
+
   // ============ ADVANCED MESSAGING ============
   async sendAudioMessage(instanceJWT: string, instanceId: string, chatId: string, audioUrl: string, caption?: string) {
     return this.makeRequest(`api/v2/instance/${instanceId}/message/audio`, {

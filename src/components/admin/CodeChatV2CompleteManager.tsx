@@ -17,7 +17,7 @@ import {
   Settings, 
   Send, 
   Archive, 
-  Unarchive,
+  ArchiveRestore,
   Webhook,
   Phone,
   Mail,
@@ -357,7 +357,7 @@ const CodeChatV2CompleteManager: React.FC<Props> = ({ clientId }) => {
                             >
                               {manager.selectedChat.archived ? (
                                 <>
-                                  <Unarchive className="h-4 w-4 mr-2" />
+                                  <ArchiveRestore className="h-4 w-4 mr-2" />
                                   Desarquivar
                                 </>
                               ) : (
