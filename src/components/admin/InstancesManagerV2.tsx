@@ -76,15 +76,14 @@ const InstancesManagerV2 = () => {
   useEffect(() => {
     loadInitialData();
     
-    // Auto-refresh otimizado
-    const interval = setInterval(() => {
-      // Só atualizar se não estiver carregando
-      if (!globalLoading) {
-        refreshInstancesStatus();
-      }
-    }, 15000); // Reduzido para 15 segundos
-    return () => clearInterval(interval);
-  }, [globalLoading]);
+    // Auto-refresh otimizado - DESABILITADO temporariamente para corrigir loop
+    // const interval = setInterval(() => {
+    //   if (!globalLoading) {
+    //     refreshInstancesStatus();
+    //   }
+    // }, 30000); // Aumentado para 30 segundos
+    // return () => clearInterval(interval);
+  }, []);
 
   const updateInstanceState = (instanceId: string, updates: Partial<InstanceState>) => {
     setInstanceStates(prev => ({
@@ -178,20 +177,31 @@ const InstancesManagerV2 = () => {
 
   const loadInstances = async () => {
     try {
+      // Não executar se não há clientes
+      if (clients.length === 0) {
+        console.log('🔍 Nenhum cliente carregado para buscar instâncias');
+        setInstances([]);
+        return;
+      }
+      
       console.log('🔍 Buscando instâncias para cliente:', clients.map(c => c.id));
       const allInstances: WhatsAppInstanceData[] = [];
       
-      for (const client of clients) {
+      // Usar Promise.all para otimizar
+      const instancePromises = clients.map(async (client) => {
         console.log(`🔍 Buscando instâncias para cliente: ${client.id}`);
         const clientInstances = await whatsappInstancesService.getInstancesByClientId(client.id);
         console.log(`✅ Instâncias encontradas: ${clientInstances.length}`);
-        allInstances.push(...clientInstances);
-      }
+        return clientInstances;
+      });
+      
+      const results = await Promise.all(instancePromises);
+      results.forEach(instances => allInstances.push(...instances));
       
       console.log(`📊 Total de instâncias carregadas: ${allInstances.length}`);
       setInstances(allInstances);
     } catch (error) {
-      console.error('Erro ao carregar instâncias:', error);
+      console.error('❌ Erro ao carregar instâncias:', error);
     }
   };
 
