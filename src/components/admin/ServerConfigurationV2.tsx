@@ -62,7 +62,7 @@ const ServerConfigurationV2 = () => {
 
   const handleTestConnection = async () => {
     const result = await testConnection();
-    if (result.connected) {
+    if (result.isOnline) {
       toast.success('Conexão testada com sucesso!');
     } else {
       toast.error(`Erro na conexão: ${result.error || 'Desconhecido'}`);
@@ -121,20 +121,22 @@ const ServerConfigurationV2 = () => {
   };
 
   const getStatusIcon = () => {
-    switch (status.status) {
-      case 'connected': return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'error': return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'warning': return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
-      default: return <Server className="w-5 h-5 text-gray-500" />;
+    if (status.isOnline) {
+      return <CheckCircle className="w-5 h-5 text-green-500" />;
+    } else if (status.error) {
+      return <XCircle className="w-5 h-5 text-red-500" />;
+    } else {
+      return <Server className="w-5 h-5 text-gray-500" />;
     }
   };
 
   const getStatusBadge = () => {
-    switch (status.status) {
-      case 'connected': return <Badge variant="default">Conectado</Badge>;
-      case 'error': return <Badge variant="destructive">Erro</Badge>;
-      case 'warning': return <Badge variant="secondary">Aviso</Badge>;
-      default: return <Badge variant="outline">Desconhecido</Badge>;
+    if (status.isOnline) {
+      return <Badge variant="default">Conectado</Badge>;
+    } else if (status.error) {
+      return <Badge variant="destructive">Erro</Badge>;
+    } else {
+      return <Badge variant="outline">Desconectado</Badge>;
     }
   };
 
@@ -233,20 +235,20 @@ const ServerConfigurationV2 = () => {
 
               <div className="flex items-center space-x-2">
                 <Switch
-                  id="enableHttps"
-                  checked={localConfig.enableHttps}
-                  onCheckedChange={(checked) => handleConfigChange('enableHttps', checked)}
+                  id="sslRequired"
+                  checked={localConfig.sslRequired}
+                  onCheckedChange={(checked) => handleConfigChange('sslRequired', checked)}
                 />
-                <Label htmlFor="enableHttps">Forçar HTTPS</Label>
+                <Label htmlFor="sslRequired">SSL Obrigatório</Label>
               </div>
 
               <div className="flex items-center space-x-2">
                 <Switch
-                  id="enableRetry"
-                  checked={localConfig.enableRetry}
-                  onCheckedChange={(checked) => handleConfigChange('enableRetry', checked)}
+                  id="corsEnabled"
+                  checked={localConfig.corsEnabled}
+                  onCheckedChange={(checked) => handleConfigChange('corsEnabled', checked)}
                 />
-                <Label htmlFor="enableRetry">Retry Automático</Label>
+                <Label htmlFor="corsEnabled">CORS Habilitado</Label>
               </div>
 
               <div className="flex space-x-2">
@@ -281,12 +283,12 @@ const ServerConfigurationV2 = () => {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="timeout">Timeout (ms)</Label>
+                  <Label htmlFor="requestTimeout">Timeout (ms)</Label>
                   <Input
-                    id="timeout"
+                    id="requestTimeout"
                     type="number"
-                    value={localConfig.timeout}
-                    onChange={(e) => handleConfigChange('timeout', parseInt(e.target.value))}
+                    value={localConfig.requestTimeout}
+                    onChange={(e) => handleConfigChange('requestTimeout', parseInt(e.target.value))}
                     placeholder="30000"
                   />
                 </div>
@@ -314,12 +316,12 @@ const ServerConfigurationV2 = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="rateLimitPerMinute">Rate Limit (/min)</Label>
+                  <Label htmlFor="rateLimitRequests">Rate Limit (requests)</Label>
                   <Input
-                    id="rateLimitPerMinute"
+                    id="rateLimitRequests"
                     type="number"
-                    value={localConfig.rateLimitPerMinute}
-                    onChange={(e) => handleConfigChange('rateLimitPerMinute', parseInt(e.target.value))}
+                    value={localConfig.rateLimitRequests}
+                    onChange={(e) => handleConfigChange('rateLimitRequests', parseInt(e.target.value))}
                     placeholder="60"
                   />
                 </div>
@@ -328,29 +330,29 @@ const ServerConfigurationV2 = () => {
               <div className="space-y-4">
                 <div className="flex items-center space-x-2">
                   <Switch
-                    id="enableDebugMode"
-                    checked={localConfig.enableDebugMode}
-                    onCheckedChange={(checked) => handleConfigChange('enableDebugMode', checked)}
+                    id="webSocketEnabled"
+                    checked={localConfig.webSocketEnabled}
+                    onCheckedChange={(checked) => handleConfigChange('webSocketEnabled', checked)}
                   />
-                  <Label htmlFor="enableDebugMode">Modo Debug</Label>
+                  <Label htmlFor="webSocketEnabled">WebSocket Habilitado</Label>
                 </div>
 
                 <div className="flex items-center space-x-2">
                   <Switch
-                    id="enableCaching"
-                    checked={localConfig.enableCaching}
-                    onCheckedChange={(checked) => handleConfigChange('enableCaching', checked)}
+                    id="configCache"
+                    checked={localConfig.configCache}
+                    onCheckedChange={(checked) => handleConfigChange('configCache', checked)}
                   />
-                  <Label htmlFor="enableCaching">Cache de Respostas</Label>
+                  <Label htmlFor="configCache">Cache de Configuração</Label>
                 </div>
 
                 <div className="flex items-center space-x-2">
                   <Switch
-                    id="enableWebhooks"
-                    checked={localConfig.enableWebhooks}
-                    onCheckedChange={(checked) => handleConfigChange('enableWebhooks', checked)}
+                    id="offlineMode"
+                    checked={localConfig.offlineMode}
+                    onCheckedChange={(checked) => handleConfigChange('offlineMode', checked)}
                   />
-                  <Label htmlFor="enableWebhooks">Webhooks Automáticos</Label>
+                  <Label htmlFor="offlineMode">Modo Offline</Label>
                 </div>
               </div>
 
