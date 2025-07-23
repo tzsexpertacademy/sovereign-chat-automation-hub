@@ -9,6 +9,10 @@ interface ServerConfig {
   basePath: string;
   apiVersion: string;
   
+  // Proxy Configuration for CORS handling
+  useProxy: boolean;
+  proxyUrl: string;
+  
   // Authentication & Security - v2.1.3
   adminToken: string;
   globalApiKey: string;
@@ -108,6 +112,10 @@ class ServerConfigService {
       protocol: 'https',
       basePath: '/api/v2',
       apiVersion: '2.1.3',
+      
+      // Proxy Configuration for CORS handling
+      useProxy: true,
+      proxyUrl: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-v2-proxy',
       
       // Authentication - CodeChat API v2.1.3 - TOKENS OFICIAIS ATUALIZADOS
       adminToken: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
@@ -468,6 +476,9 @@ class ServerConfigService {
 
   // Generate URLs based on current config - CodeChat API v2.1.3
   getApiUrl(): string {
+    if (this.config.useProxy) {
+      return this.config.proxyUrl;
+    }
     return `${this.config.serverUrl}${this.config.basePath}`;
   }
 
