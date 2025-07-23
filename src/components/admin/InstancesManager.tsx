@@ -1,8 +1,8 @@
 
-import { YumerApiManager } from "./YumerApiManager";
+import CodeChatV2Manager from "./CodeChatV2Manager";
 
 const InstancesManager = () => {
-  return <YumerApiManager />;
+  return <CodeChatV2Manager />;
 };
 
 export default InstancesManager;

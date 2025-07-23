@@ -6,9 +6,13 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminHeader from "@/components/admin/AdminHeader";
 import AdminOverview from "@/components/admin/AdminOverview";
 import ClientsManagement from "@/components/admin/ClientsManagement";
+import InstancesMonitor from "@/components/admin/InstancesMonitor";
 import PlansManagement from "@/components/admin/PlansManagement";
 import SystemLogsModern from "@/components/admin/SystemLogsModern";
-import { YumerApiManager } from "@/components/admin/YumerApiManager";
+import AdvancedTools from "@/components/admin/AdvancedTools";
+import YumerApiKeyConfig from "@/components/admin/YumerApiKeyConfig";
+import ConnectionDiagnostics from "@/components/admin/ConnectionDiagnostics";
+import ServerConfiguration from "@/components/admin/ServerConfiguration";
 
 const AdminDashboard = () => {
   return (
@@ -22,9 +26,12 @@ const AdminDashboard = () => {
               <Route path="/" element={<Navigate to="overview" replace />} />
               <Route path="overview" element={<AdminOverview />} />
               <Route path="clients" element={<ClientsManagement />} />
-              <Route path="api" element={<YumerApiManager />} />
+              <Route path="instances" element={<InstancesMonitor />} />
               <Route path="plans" element={<PlansManagement />} />
+              <Route path="server-config" element={<ServerConfiguration />} />
+              <Route path="diagnostics" element={<ConnectionDiagnostics />} />
               <Route path="logs" element={<SystemLogsModern />} />
+              <Route path="advanced" element={<AdvancedTools />} />
             </Routes>
           </main>
         </div>
