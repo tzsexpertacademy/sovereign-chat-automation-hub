@@ -162,8 +162,7 @@ const SimpleInstancesManager = () => {
       
       const instanceName = `${client.name.replace(/\s+/g, '_')}_${Date.now()}`;
       const createResult = await unifiedYumerService.createBusinessInstance(client.business_id, {
-        instanceName,
-        qrcode: true
+        instanceName
       });
       
       if (!createResult.success) {

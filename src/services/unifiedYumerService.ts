@@ -250,16 +250,15 @@ class UnifiedYumerService {
     });
   }
 
-  async createBusinessInstance(businessId: string, instanceData: {
-    instanceName: string;
-    qrcode?: boolean;
+  async createBusinessInstance(businessId: string, instanceData?: {
+    instanceName?: string;
+    externalId?: string;
   }): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
+    console.log('🔄 Criando instância no business:', businessId, 'com dados:', instanceData);
+    
     return this.makeRequest<YumerInstance>(`/api/v2/business/${businessId}/instance`, {
       method: 'POST',
-      body: JSON.stringify({
-        ...instanceData,
-        qrcode: instanceData.qrcode !== false
-      })
+      body: instanceData ? JSON.stringify(instanceData) : null
     });
   }
 

@@ -267,8 +267,7 @@ const InstancesManagerV2 = () => {
       const customName = `${client.name}_${Date.now()}`;
       
       const createResult = await unifiedYumerService.createBusinessInstance(client.business_id, {
-        instanceName: instanceId,
-        qrcode: true
+        instanceName: instanceId
       });
       
       if (!createResult.success) {
