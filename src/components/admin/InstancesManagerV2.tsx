@@ -150,9 +150,12 @@ const InstancesManagerV2 = () => {
     
     for (const instance of instances) {
       try {
-        // Buscar business para esta instância
-        const business = businesses.find(b => b.businessId === instance.client_id);
-        if (!business) continue;
+        // Buscar business para esta instância usando business_business_id
+        const business = businesses.find(b => b.businessId === instance.business_business_id);
+        if (!business) {
+          console.log(`⚠️ Business não encontrado para instância ${instance.instance_id} (business_id: ${instance.business_business_id})`);
+          continue;
+        }
 
         // Verificar status atual
         const result = await unifiedYumerService.getConnectionState(instance.instance_id);
@@ -293,7 +296,8 @@ const InstancesManagerV2 = () => {
         client_id: client.id,
         instance_id: instanceId,
         status: 'disconnected',
-        custom_name: customName
+        custom_name: customName,
+        business_business_id: business.businessId
       });
 
       updateInstanceState(tempInstanceId, {
@@ -335,9 +339,9 @@ const InstancesManagerV2 = () => {
     const instance = instances.find(i => i.instance_id === instanceId);
     if (!instance) return;
 
-    const business = businesses.find(b => b.businessId === instance.client_id);
+    const business = businesses.find(b => b.businessId === instance.business_business_id);
     if (!business) {
-      toast({ title: "Erro", description: "Business não encontrado", variant: "destructive" });
+      toast({ title: "Erro", description: "Business não encontrado para esta instância", variant: "destructive" });
       return;
     }
 
