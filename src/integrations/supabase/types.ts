@@ -216,6 +216,104 @@ export type Database = {
           },
         ]
       }
+      business_collections: {
+        Row: {
+          business_id: string
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          name: string
+          position: number | null
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          name: string
+          position?: number | null
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          name?: string
+          position?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      business_products: {
+        Row: {
+          business_id: string
+          collection_id: string | null
+          created_at: string
+          currency: string | null
+          description: string | null
+          id: string
+          images: Json | null
+          is_active: boolean | null
+          metadata: Json | null
+          name: string
+          position: number | null
+          price: number | null
+          sku: string | null
+          stock_quantity: number | null
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          collection_id?: string | null
+          created_at?: string
+          currency?: string | null
+          description?: string | null
+          id?: string
+          images?: Json | null
+          is_active?: boolean | null
+          metadata?: Json | null
+          name: string
+          position?: number | null
+          price?: number | null
+          sku?: string | null
+          stock_quantity?: number | null
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          collection_id?: string | null
+          created_at?: string
+          currency?: string | null
+          description?: string | null
+          id?: string
+          images?: Json | null
+          is_active?: boolean | null
+          metadata?: Json | null
+          name?: string
+          position?: number | null
+          price?: number | null
+          sku?: string | null
+          stock_quantity?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_products_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "business_collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_ai_configs: {
         Row: {
           client_id: string
@@ -337,6 +435,103 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      codechat_businesses: {
+        Row: {
+          active: boolean
+          business_id: string
+          business_token: string
+          client_id: string | null
+          country: string
+          created_at: string
+          deleted_at: string | null
+          email: string
+          id: string
+          language: string
+          name: string
+          phone: string
+          slug: string
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          business_id: string
+          business_token: string
+          client_id?: string | null
+          country?: string
+          created_at?: string
+          deleted_at?: string | null
+          email: string
+          id?: string
+          language?: string
+          name: string
+          phone: string
+          slug: string
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          business_id?: string
+          business_token?: string
+          client_id?: string | null
+          country?: string
+          created_at?: string
+          deleted_at?: string | null
+          email?: string
+          id?: string
+          language?: string
+          name?: string
+          phone?: string
+          slug?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codechat_businesses_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      codechat_instance_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          instance_id: string | null
+          jwt_token: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          instance_id?: string | null
+          jwt_token: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          instance_id?: string | null
+          jwt_token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codechat_instance_tokens_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversation_queue_states: {
         Row: {
@@ -1324,8 +1519,14 @@ export type Database = {
       }
       whatsapp_instances: {
         Row: {
+          api_version: string | null
+          auth_jwt: string | null
           auth_token: string | null
+          business_business_id: string | null
           client_id: string | null
+          codechat_business_id: string | null
+          codechat_instance_name: string | null
+          connection_state: string | null
           created_at: string
           custom_name: string | null
           has_qr_code: boolean | null
@@ -1333,6 +1534,7 @@ export type Database = {
           instance_id: string
           last_import_at: string | null
           phone_number: string | null
+          proxy: string | null
           qr_code: string | null
           qr_expires_at: string | null
           status: string | null
@@ -1341,8 +1543,14 @@ export type Database = {
           yumer_instance_name: string | null
         }
         Insert: {
+          api_version?: string | null
+          auth_jwt?: string | null
           auth_token?: string | null
+          business_business_id?: string | null
           client_id?: string | null
+          codechat_business_id?: string | null
+          codechat_instance_name?: string | null
+          connection_state?: string | null
           created_at?: string
           custom_name?: string | null
           has_qr_code?: boolean | null
@@ -1350,6 +1558,7 @@ export type Database = {
           instance_id: string
           last_import_at?: string | null
           phone_number?: string | null
+          proxy?: string | null
           qr_code?: string | null
           qr_expires_at?: string | null
           status?: string | null
@@ -1358,8 +1567,14 @@ export type Database = {
           yumer_instance_name?: string | null
         }
         Update: {
+          api_version?: string | null
+          auth_jwt?: string | null
           auth_token?: string | null
+          business_business_id?: string | null
           client_id?: string | null
+          codechat_business_id?: string | null
+          codechat_instance_name?: string | null
+          connection_state?: string | null
           created_at?: string
           custom_name?: string | null
           has_qr_code?: boolean | null
@@ -1367,6 +1582,7 @@ export type Database = {
           instance_id?: string
           last_import_at?: string | null
           phone_number?: string | null
+          proxy?: string | null
           qr_code?: string | null
           qr_expires_at?: string | null
           status?: string | null
@@ -1380,6 +1596,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_instances_codechat_business_id_fkey"
+            columns: ["codechat_business_id"]
+            isOneToOne: false
+            referencedRelation: "codechat_businesses"
             referencedColumns: ["id"]
           },
         ]

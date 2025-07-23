@@ -1,358 +1,137 @@
-// YUMER WhatsApp Backend Integration - Compatibility Layer
-import { yumerWhatsappService } from './yumerWhatsappService';
-import { yumerJwtService } from './yumerJwtService';
-import { API_BASE_URL, SOCKET_URL, HTTPS_SERVER_URL } from '@/config/environment';
-
-// Backward compatibility interfaces
-export interface WhatsAppClient {
-  clientId: string;
-  status: 'connecting' | 'qr_ready' | 'authenticated' | 'connected' | 'disconnected' | 'auth_failed' | 'ready';
-  phoneNumber?: string;
-  hasQrCode?: boolean;
-  qrCode?: string;
-  timestamp?: string;
-  qrTimestamp?: string;
-}
-
-export interface QueuedMessage {
-  id: string;
-  from: string;
-  to: string;
-  body: string;
-  timestamp: number;
-}
-
-export interface ServerHealth {
-  status: string;
-  timestamp: string;
-  activeClients: number;
-  connectedClients: number;
-  uptime: number;
-  memory: any;
-  version: string;
-  server: string;
-  protocol?: string;
-  cors?: any;
-}
-
 /**
  * LEGACY COMPATIBILITY SERVICE
- * This service maintains backward compatibility while internally using YUMER Backend
- * All methods now delegate to yumerWhatsappService with improved authentication
- * 
- * @deprecated Use yumerWhatsappService directly for new code
+ * Este serviço mantém compatibilidade com código existente
+ * Redirecionando para o novo yumerApiV2Service
  */
-class WhatsAppMultiClientService {
-  private healthCheckCache: { result: any; timestamp: number } | null = null;
 
-  constructor() {
-    console.log('📱 Initializing WhatsApp Multi-Client Service (YUMER Backend)...');
-    console.log('⚠️ This is a compatibility layer - consider using yumerWhatsappService directly');
-    console.log('Configuration:', {
-      API_BASE_URL,
-      SOCKET_URL,
-      HTTPS_SERVER_URL,
-      backend: 'YUMER'
-    });
+import yumerApiV2 from './yumerApiV2Service';
+
+export interface WhatsAppClient {
+  instanceId: string;
+  instanceName: string;
+  status: 'connected' | 'disconnected' | 'connecting';
+  phone?: string;
+  profileName?: string;
+}
+
+export interface SendMessageOptions {
+  to: string;
+  message: string;
+  instanceId?: string;
+}
+
+export interface SendMediaOptions {
+  to: string;
+  media: string;
+  caption?: string;
+  instanceId?: string;
+}
+
+export class WhatsAppMultiClient {
+  private apiKey: string = '';
+
+  setApiKey(apiKey: string) {
+    this.apiKey = apiKey;
+    yumerApiV2.setGlobalApiKey(apiKey);
   }
 
-  async testConnection(): Promise<{ success: boolean; message: string }> {
+  async getClients(): Promise<WhatsAppClient[]> {
     try {
-      console.log('🔍 Testing connection to YUMER backend...');
-      
-      // Try to fetch instances to test connection
-      await yumerWhatsappService.getChats('test');
-      return {
-        success: true,
-        message: 'YUMER Backend connection successful'
-      };
+      const instances = await yumerApiV2.listInstances();
+      return instances.map(instance => ({
+        instanceId: instance.instanceName,
+        instanceName: instance.instanceName,
+        status: instance.status === 'open' ? 'connected' : 
+                instance.status === 'connecting' ? 'connecting' : 'disconnected',
+        phone: instance.owner,
+        profileName: instance.profileName
+      }));
     } catch (error) {
-      console.error('❌ YUMER Backend connection failed:', error);
-      return {
-        success: false,
-        message: `Connection failed: ${error}`
-      };
+      console.error('[WhatsAppMultiClient] Error getting clients:', error);
+      return [];
     }
   }
 
-  async initializeInstanceAuth(instanceName: string): Promise<void> {
+  async createInstance(instanceName: string): Promise<boolean> {
     try {
-      console.log(`🔐 Inicializando autenticação para instância: ${instanceName}`);
-      const token = await yumerJwtService.generateLocalJWT(instanceName);
-      // Token configurado no yumerWhatsappService
-      console.log(`✅ Autenticação configurada para: ${instanceName}`);
+      await yumerApiV2.createInstance(instanceName);
+      return true;
     } catch (error) {
-      console.error(`❌ Falha ao configurar autenticação para ${instanceName}:`, error);
-      throw error;
+      console.error('[WhatsAppMultiClient] Error creating instance:', error);
+      return false;
     }
   }
 
-  connectSocket(instanceName: string = 'default', event: string = 'MESSAGE_RECEIVED'): any {
-    console.log('🔌 Connecting via YUMER WebSocket service...');
-    
-    // Mock socket para compatibilidade
-    return {
-      on: (event: string, handler: Function) => {
-        console.log(`📡 Mock socket listener para: ${event}`);
-      },
-      off: (event: string, handler?: Function) => {
-        console.log(`🔇 Removendo listener: ${event}`);
-      },
-      emit: (event: string, data: any) => {
-        console.log(`📤 Emitindo evento: ${event}`, data);
-      },
-      disconnect: () => {
-        console.log(`🔌 Desconectando mock socket`);
-      },
-      connected: true
-    };
-  }
-
-  getSocket(): any {
-    return null; // Mock socket
-  }
-
-  disconnect(): void {
-    console.log('🔌 Disconnecting mock socket...');
-  }
-
-  async checkServerHealth(): Promise<ServerHealth> {
+  async connectInstance(instanceName: string): Promise<boolean> {
     try {
-      if (this.healthCheckCache && 
-          Date.now() - this.healthCheckCache.timestamp < 10000) {
-        console.log('📋 Using cached YUMER health check');
-        return this.healthCheckCache.result;
-      }
-
-      const instancesResult = await yumerWhatsappService.getChats('test');
-      const result = {
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        activeClients: 0,
-        connectedClients: 0,
-        uptime: Date.now(),
-        memory: {},
-        version: 'YUMER 2.0',
-        server: 'YUMER Backend',
-        protocol: 'HTTPS',
-        cors: true
-      };
-
-      this.healthCheckCache = {
-        result,
-        timestamp: Date.now()
-      };
-
-      return result;
+      await yumerApiV2.connectInstance(instanceName);
+      return true;
     } catch (error) {
-      console.error('❌ YUMER health check failed:', error);
-      this.healthCheckCache = null;
-      throw error;
+      console.error('[WhatsAppMultiClient] Error connecting instance:', error);
+      return false;
     }
   }
 
-  // Simplified methods using only available yumerWhatsappService functions
-  async getAllClients(): Promise<WhatsAppClient[]> {
-    console.log('📋 Getting clients from YUMER...');
-    return [];
-  }
-
-  async connectClient(clientId: string): Promise<any> {
-    console.log('🔌 Connecting client via YUMER:', clientId);
-    await this.initializeInstanceAuth(clientId);
-    return { success: true, clientId };
-  }
-
-  async disconnectClient(clientId: string): Promise<any> {
-    console.log('🔌 Disconnecting client via YUMER:', clientId);
-    return { success: true, clientId };
-  }
-
-  async getClientStatus(clientId: string): Promise<WhatsAppClient> {
-    console.log('📊 Getting client status from YUMER:', clientId);
-    return {
-      clientId,
-      status: 'disconnected',
-      phoneNumber: undefined,
-      hasQrCode: false
-    };
-  }
-
-  joinClientRoom(clientId: string): void {
-    console.log(`📱 Mock joining YUMER room: ${clientId}`);
-  }
-
-  onClientStatus(clientId: string, callback: (data: WhatsAppClient) => void): void {
-    console.log(`🔧 Event handlers disabled - use REST polling instead for ${clientId}`);
-  }
-
-  offClientStatus(clientId: string, callback?: (data: WhatsAppClient) => void): void {
-    console.log(`🔇 Removing YUMER listeners for: ${clientId}`);
-  }
-
-  async sendMessage(clientId: string, to: string, message: string): Promise<any> {
-    console.log(`📤 [WHATSAPP-SEND] Iniciando envio - Cliente: ${clientId}, Para: ${to.substring(0, 10)}...`);
-    
+  async getQRCode(instanceName: string): Promise<string | null> {
     try {
-      // Primeiro, verificar/configurar webhook automaticamente
-      console.log(`🔧 [WHATSAPP-SEND] Verificando webhook para instância: ${clientId}`);
-      const webhookCheck = await yumerWhatsappService.ensureWebhookConfigured(clientId);
-      
-      if (!webhookCheck.success) {
-        console.warn(`⚠️ [WHATSAPP-SEND] Aviso webhook:`, webhookCheck.error);
-      }
-
-      // Testar conexão antes de enviar
-      console.log(`🔍 [WHATSAPP-SEND] Testando conexão da instância: ${clientId}`);
-      const connectionTest = await yumerWhatsappService.testConnection(clientId);
-      
-      if (!connectionTest.success) {
-        console.error(`❌ [WHATSAPP-SEND] Instância desconectada:`, connectionTest.error);
-        return {
-          success: false,
-          error: `Instância desconectada: ${connectionTest.error}`
-        };
-      }
-
-      // Configurar autenticação
-      await this.initializeInstanceAuth(clientId);
-
-      // Enviar mensagem
-      console.log(`📤 [WHATSAPP-SEND] Enviando mensagem via Yumer API...`);
-      const result = await yumerWhatsappService.sendMessage(clientId, to, message);
-      
-      if (result.success) {
-        console.log(`✅ [WHATSAPP-SEND] Mensagem enviada com sucesso:`, {
-          messageId: result.data?.id,
-          keyId: result.data?.keyId,
-          timestamp: result.data?.messageTimestamp
-        });
-        
-        return {
-          success: true,
-          data: result.data,
-          messageId: result.data?.id || `msg_${Date.now()}`,
-          sent: true,
-          timestamp: new Date().toISOString()
-        };
-      } else {
-        console.error(`❌ [WHATSAPP-SEND] Falha no envio:`, result.error);
-        return {
-          success: false,
-          error: result.error || 'Erro ao enviar mensagem via API',
-          details: 'Verifique a conexão da instância e configuração do webhook'
-        };
-      }
-      
+      const result = await yumerApiV2.getQRCode(instanceName);
+      return result.qrcode?.code || null;
     } catch (error) {
-      console.error(`❌ [WHATSAPP-SEND] Erro crítico:`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Erro crítico no envio',
-        details: 'Erro de rede ou configuração do servidor'
-      };
+      console.error('[WhatsAppMultiClient] Error getting QR code:', error);
+      return null;
     }
   }
 
-  async getChats(clientId: string): Promise<any> {
+  async sendTextMessage(options: SendMessageOptions): Promise<boolean> {
     try {
-      console.log('📱 Getting chats via YUMER:', clientId);
-      const result = await yumerWhatsappService.getChats(clientId);
-      return { 
-        success: true, 
-        chats: result.data || []
-      };
+      if (!options.instanceId) return false;
+      await yumerApiV2.sendText(options.instanceId, options.to, options.message);
+      return true;
     } catch (error) {
-      console.error('❌ Failed to get chats from YUMER:', error);
-      throw error;
+      console.error('[WhatsAppMultiClient] Error sending message:', error);
+      return false;
     }
   }
 
-  // Simplified stubs for other methods
-  async sendMedia(clientId: string, to: string, file: File, caption?: string): Promise<any> {
-    console.log('📎 Media sending not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
+  async sendMedia(options: SendMediaOptions): Promise<boolean> {
+    try {
+      if (!options.instanceId) return false;
+      await yumerApiV2.sendMedia(options.instanceId, {
+        number: options.to,
+        media: {
+          mediatype: 'image',
+          media: options.media,
+          caption: options.caption
+        }
+      });
+      return true;
+    } catch (error) {
+      console.error('[WhatsAppMultiClient] Error sending media:', error);
+      return false;
+    }
   }
 
-  async sendAudio(clientId: string, to: string, audioFile: File): Promise<any> {
-    console.log('🎤 Audio sending not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
+  async deleteInstance(instanceName: string): Promise<boolean> {
+    try {
+      await yumerApiV2.deleteInstance(instanceName);
+      return true;
+    } catch (error) {
+      console.error('[WhatsAppMultiClient] Error deleting instance:', error);
+      return false;
+    }
   }
 
-  async sendLocation(clientId: string, to: string, latitude: number, longitude: number, description?: string): Promise<any> {
-    console.log('📍 Location sending not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async sendContact(clientId: string, to: string, contact: any): Promise<any> {
-    console.log('👤 Contact sending not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async sendReaction(clientId: string, to: string, messageId: string, emoji: string): Promise<any> {
-    console.log('😀 Reaction sending not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async sendButtons(clientId: string, to: string, text: string, buttons: any[]): Promise<any> {
-    console.log('🔘 Button sending not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async sendList(clientId: string, to: string, text: string, buttonText: string, list: any[]): Promise<any> {
-    console.log('📋 List sending not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async createInstance(instanceName: string, customName?: string): Promise<any> {
-    console.log('🏗️ Instance creation not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async deleteInstance(instanceName: string): Promise<any> {
-    console.log('🗑️ Instance deletion not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async getQRCode(instanceName: string): Promise<any> {
-    console.log('📱 QR code retrieval not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async findContacts(instanceName: string, query: string): Promise<any> {
-    console.log('👥 Contact search not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async getGroups(instanceName: string): Promise<any> {
-    console.log('👥 Group retrieval not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async createGroup(instanceName: string, name: string, participants: string[]): Promise<any> {
-    console.log('👥 Group creation not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async updatePresence(instanceName: string, presence: 'available' | 'unavailable' | 'composing' | 'recording'): Promise<any> {
-    console.log('👁️ Presence update not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  async markAsRead(instanceName: string, chatId: string): Promise<any> {
-    console.log('✅ Mark as read not implemented in current YUMER service');
-    return { success: false, error: 'Not implemented' };
-  }
-
-  setJWTToken(token: string): void {
-    console.log('🔑 JWT token set for YUMER service');
+  async getInstanceStatus(instanceName: string): Promise<string> {
+    try {
+      const result = await yumerApiV2.getConnectionState(instanceName);
+      return result.state;
+    } catch (error) {
+      console.error('[WhatsAppMultiClient] Error getting status:', error);
+      return 'close';
+    }
   }
 }
 
-// Export singleton instance (legacy compatibility)
-const whatsappService = new WhatsAppMultiClientService();
-export default whatsappService;
-export { whatsappService };
-
-// Export YUMER service for direct use
-export { yumerWhatsappService };
+// Singleton instance para compatibilidade
+export const whatsappMultiClient = new WhatsAppMultiClient();
+export default whatsappMultiClient;
