@@ -491,45 +491,36 @@ class UnifiedYumerService {
     }, true, false);
   }
 
-  async connectInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; qrCode?: string; error?: string }> {
+  async connectInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`🔗 [UNIFIED-YUMER] Conectando instância: ${instanceId}`);
+    
+    // Buscar JWT da instância no banco
+    let authToken = this.config.globalApiKey;
+    
     try {
-      // Buscar JWT específico da instância se não fornecido
-      if (!instanceJWT) {
-        try {
-          const { whatsappInstancesService } = await import('./whatsappInstancesService');
-          const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
-          instanceJWT = instance?.auth_jwt || undefined;
-          
-          if (!instanceJWT) {
-            console.warn('⚠️ [CONNECT] JWT não encontrado para instância:', instanceId);
-          }
-        } catch (error) {
-          console.warn('⚠️ [CONNECT] Erro ao buscar JWT da instância:', error);
-        }
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('auth_jwt')
+        .eq('instance_id', instanceId)
+        .maybeSingle();
+      
+      if (instance?.auth_jwt) {
+        authToken = instance.auth_jwt;
+        console.log('🔑 [UNIFIED-YUMER] Usando JWT específico da instância');
+      } else {
+        console.log('⚠️ [UNIFIED-YUMER] JWT não encontrado, usando ADMIN_TOKEN');
       }
-      
-      const result = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/connect`, {
-        method: 'GET',
-        headers: instanceJWT ? {
-          'authorization': `Bearer ${instanceJWT}`
-        } : {}
-      }, true, false);
-      
-      // Capturar QR Code da resposta
-      const qrCode = result.data?.base64 || result.data?.code;
-      
-      return {
-        success: result.success,
-        data: result.data,
-        qrCode: qrCode,
-        error: result.error
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message
-      };
+    } catch (error) {
+      console.warn('⚠️ [UNIFIED-YUMER] Erro ao buscar JWT, usando ADMIN_TOKEN:', error);
     }
+
+    return this.makeRequest(
+      `/api/v2/instance/${instanceId}/connect`,
+      { method: 'GET', headers: { 'authorization': `Bearer ${authToken}` } },
+      true,
+      false
+    );
   }
 
   async deleteInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {

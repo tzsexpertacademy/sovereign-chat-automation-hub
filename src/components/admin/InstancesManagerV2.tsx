@@ -30,6 +30,7 @@ import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 // Removido businessSyncService - usando sistema 1:1 simplificado
 import unifiedYumerService from "@/services/unifiedYumerService";
+import { yumerJwtService } from "@/services/yumerJwtService";
 import { InstancesCleanupManager } from "./InstancesCleanupManager";
 import { InstanceConnectionMonitor } from "./InstanceConnectionMonitor";
 
@@ -330,6 +331,20 @@ const InstancesManagerV2 = () => {
       });
 
       updateInstanceState(tempInstanceId, {
+        status: 'loading',
+        progress: 90,
+        message: 'Gerando e salvando JWT...'
+      });
+
+      // 5. Gerar e salvar JWT após instância estar no banco
+      try {
+        await yumerJwtService.saveInstanceJWT(createResult.instanceId!, client.business_id);
+        console.log('✅ JWT salvo para instância:', createResult.instanceId);
+      } catch (jwtError) {
+        console.warn('⚠️ Erro ao salvar JWT (não bloqueia):', jwtError);
+      }
+
+      updateInstanceState(tempInstanceId, {
         status: 'success',
         progress: 100,
         message: 'Instância criada com sucesso!'
@@ -377,7 +392,7 @@ const InstancesManagerV2 = () => {
       // Conectar e capturar QR Code diretamente
       const connectResult = await unifiedYumerService.connectInstance(instanceId);
       
-      if (connectResult.success && connectResult.qrCode) {
+      if (connectResult.success && connectResult.data?.base64) {
         // QR Code recebido imediatamente!
         updateInstanceState(instanceId, {
           status: 'loading',
@@ -390,7 +405,7 @@ const InstancesManagerV2 = () => {
         await supabase
           .from('whatsapp_instances')
           .update({
-            qr_code: connectResult.qrCode,
+            qr_code: connectResult.data.base64,
             has_qr_code: true,
             qr_expires_at: new Date(Date.now() + 60000).toISOString(), // 1 minuto
             status: 'qr_ready'
@@ -401,7 +416,7 @@ const InstancesManagerV2 = () => {
           status: 'success',
           progress: 100,
           message: 'QR Code disponível!',
-          data: { qrCode: connectResult.qrCode }
+          data: { qrCode: connectResult.data.base64 }
         });
         
         toast({ 

@@ -330,6 +330,41 @@ class YumerJwtService {
       return false;
     }
   }
+
+  // Salvar JWT gerado no banco de dados
+  async saveInstanceJWT(instanceId: string, businessId: string): Promise<void> {
+    try {
+      // Verificar se instância existe no banco
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: existingInstance } = await supabase
+        .from('whatsapp_instances')
+        .select('id')
+        .eq('instance_id', instanceId)
+        .maybeSingle();
+
+      if (!existingInstance) {
+        console.error('❌ Instância não encontrada no banco:', instanceId);
+        throw new Error(`Instância ${instanceId} não encontrada no banco`);
+      }
+
+      const jwt = await this.generateInstanceJWT(instanceId, businessId);
+      
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .update({ auth_jwt: jwt })
+        .eq('instance_id', instanceId);
+      
+      if (error) {
+        console.error('❌ Erro ao salvar JWT no banco:', error);
+        throw new Error(`Erro ao salvar JWT: ${error.message}`);
+      }
+      
+      console.log('✅ JWT salvo com sucesso para instância:', instanceId);
+    } catch (error) {
+      console.error('❌ Erro ao salvar JWT da instância:', error);
+      throw error;
+    }
+  }
 }
 
 export const yumerJwtService = new YumerJwtService();
