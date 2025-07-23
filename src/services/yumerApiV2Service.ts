@@ -1,3 +1,4 @@
+
 /**
  * CodeChat API v2.2.1 - Serviço Unificado
  * Baseado na documentação oficial: https://docs.codechat.dev/api/v2.2.1
@@ -8,6 +9,19 @@ export interface ApiKey {
   key: string;
 }
 
+export interface Business {
+  businessId: string;
+  name: string;
+  email: string;
+  phone: string;
+  slug: string;
+  country: string;
+  timezone: string;
+  language: string;
+  active: boolean;
+  businessToken: string;
+}
+
 export interface Instance {
   instanceName: string;
   owner: string;
@@ -16,6 +30,7 @@ export interface Instance {
   status?: string;
   serverUrl?: string;
   apikey?: string;
+  businessId?: string;
 }
 
 export interface ConnectionState {
@@ -107,7 +122,7 @@ class YumerApiV2Service {
       headers,
     };
 
-    console.log(`[YumerApiV2] ${options.method || 'GET'} ${url}`, {
+    console.log(`[YumerApiV2.2.1] ${options.method || 'GET'} ${url}`, {
       headers: { ...headers, apikey: (headers as any).apikey ? '***' : undefined },
       body: options.body
     });
@@ -116,12 +131,12 @@ class YumerApiV2Service {
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[YumerApiV2] Error ${response.status}:`, errorText);
+      console.error(`[YumerApiV2.2.1] Error ${response.status}:`, errorText);
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
-    console.log(`[YumerApiV2] Response:`, data);
+    console.log(`[YumerApiV2.2.1] Response:`, data);
     return data;
   }
 
@@ -153,137 +168,199 @@ class YumerApiV2Service {
     });
   }
 
-  // ==================== INSTANCE MANAGEMENT ====================
+  // ==================== BUSINESS MANAGEMENT (v2.2.1) ====================
 
   /**
-   * Cria uma nova instância
+   * Lista todos os businesses
    */
-  async createInstance(instanceName: string, token?: string, qrcode = true, number?: string): Promise<Instance> {
-    const body: any = {
-      instanceName,
-      qrcode
-    };
-    
-    if (token) body.token = token;
-    if (number) body.number = number;
+  async listBusinesses(): Promise<Business[]> {
+    return this.makeRequest<Business[]>('/business');
+  }
 
-    return this.makeRequest<Instance>('/instance/create', {
+  /**
+   * Cria um novo business
+   */
+  async createBusiness(businessData: {
+    name: string;
+    email: string;
+    phone: string;
+    slug: string;
+    country?: string;
+    timezone?: string;
+    language?: string;
+  }): Promise<Business> {
+    return this.makeRequest<Business>('/business', {
       method: 'POST',
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        ...businessData,
+        country: businessData.country || 'BR',
+        timezone: businessData.timezone || 'America/Sao_Paulo',
+        language: businessData.language || 'pt-BR'
+      })
     });
   }
 
   /**
-   * Lista todas as instâncias
+   * Obtém um business específico
    */
-  async listInstances(): Promise<Instance[]> {
-    return this.makeRequest<Instance[]>('/instance/fetchInstances');
+  async getBusiness(businessId: string): Promise<Business> {
+    return this.makeRequest<Business>(`/business/${businessId}`);
+  }
+
+  /**
+   * Atualiza um business
+   */
+  async updateBusiness(businessId: string, updates: Partial<Business>): Promise<Business> {
+    return this.makeRequest<Business>(`/business/${businessId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+  }
+
+  /**
+   * Remove um business
+   */
+  async deleteBusiness(businessId: string): Promise<{ message: string }> {
+    return this.makeRequest<{ message: string }>(`/business/${businessId}`, {
+      method: 'DELETE'
+    });
+  }
+
+  // ==================== INSTANCE MANAGEMENT (v2.2.1) ====================
+
+  /**
+   * Lista instâncias de um business
+   */
+  async listBusinessInstances(businessId: string): Promise<Instance[]> {
+    return this.makeRequest<Instance[]>(`/business/${businessId}/instance`, {}, true);
+  }
+
+  /**
+   * Cria uma nova instância em um business
+   */
+  async createBusinessInstance(businessId: string, instanceData: {
+    instanceName: string;
+    token?: string;
+    qrcode?: boolean;
+    number?: string;
+  }): Promise<Instance> {
+    return this.makeRequest<Instance>(`/business/${businessId}/instance`, {
+      method: 'POST',
+      body: JSON.stringify(instanceData)
+    }, true);
+  }
+
+  /**
+   * Obtém uma instância específica
+   */
+  async getInstance(instanceId: string): Promise<Instance> {
+    return this.makeRequest<Instance>(`/instance/${instanceId}`, {}, true, instanceId);
   }
 
   /**
    * Conecta uma instância
    */
-  async connectInstance(instanceName: string): Promise<Instance> {
-    return this.makeRequest<Instance>(`/instance/connect/${instanceName}`, {
+  async connectInstance(instanceId: string): Promise<Instance> {
+    return this.makeRequest<Instance>(`/instance/${instanceId}/connect`, {
       method: 'GET'
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Reinicia uma instância
    */
-  async restartInstance(instanceName: string): Promise<Instance> {
-    return this.makeRequest<Instance>(`/instance/restart/${instanceName}`, {
+  async restartInstance(instanceId: string): Promise<Instance> {
+    return this.makeRequest<Instance>(`/instance/${instanceId}/restart`, {
       method: 'PUT'
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Desconecta uma instância
    */
-  async logoutInstance(instanceName: string): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/instance/logout/${instanceName}`, {
+  async logoutInstance(instanceId: string): Promise<{ message: string }> {
+    return this.makeRequest<{ message: string }>(`/instance/${instanceId}/logout`, {
       method: 'DELETE'
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Remove uma instância
    */
-  async deleteInstance(instanceName: string): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/instance/delete/${instanceName}`, {
+  async deleteInstance(instanceId: string): Promise<{ message: string }> {
+    return this.makeRequest<{ message: string }>(`/instance/${instanceId}`, {
       method: 'DELETE'
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
-  // ==================== CONNECTION STATUS ====================
+  // ==================== CONNECTION STATUS (v2.2.1) ====================
 
   /**
-   * Obtém status da conexão
+   * Obtém status da conexão de uma instância
    */
-  async getConnectionState(instanceName: string): Promise<ConnectionState> {
-    return this.makeRequest<ConnectionState>(`/instance/connectionState/${instanceName}`, {
+  async getConnectionState(instanceId: string): Promise<ConnectionState> {
+    return this.makeRequest<ConnectionState>(`/instance/${instanceId}/connection-state`, {
       method: 'GET'
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Obtém QR Code para conexão
    */
-  async getQRCode(instanceName: string): Promise<QRCode> {
-    return this.makeRequest<QRCode>(`/instance/qrcode/${instanceName}`, {
+  async getQRCode(instanceId: string): Promise<QRCode> {
+    return this.makeRequest<QRCode>(`/instance/${instanceId}/qrcode`, {
       method: 'GET'
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
-  // ==================== WEBHOOK MANAGEMENT ====================
+  // ==================== WEBHOOK MANAGEMENT (v2.2.1) ====================
 
   /**
    * Configura webhook para instância
    */
-  async setWebhook(instanceName: string, webhookData: WebhookData): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/webhook/set/${instanceName}`, {
+  async setWebhook(instanceId: string, webhookData: WebhookData): Promise<{ message: string }> {
+    return this.makeRequest<{ message: string }>(`/webhook/set/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify(webhookData)
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Obtém configuração do webhook
    */
-  async getWebhook(instanceName: string): Promise<WebhookData> {
-    return this.makeRequest<WebhookData>(`/webhook/find/${instanceName}`, {
+  async getWebhook(instanceId: string): Promise<WebhookData> {
+    return this.makeRequest<WebhookData>(`/webhook/find/${instanceId}`, {
       method: 'GET'
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
-  // ==================== MESSAGE SENDING ====================
+  // ==================== MESSAGE SENDING (v2.2.1) ====================
 
   /**
    * Envia mensagem de texto
    */
-  async sendText(instanceName: string, number: string, text: string): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/message/sendText/${instanceName}`, {
+  async sendText(instanceId: string, number: string, text: string): Promise<MessageInfo> {
+    return this.makeRequest<MessageInfo>(`/message/sendText/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify({ number, text })
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Envia mídia (imagem, vídeo, áudio, documento)
    */
-  async sendMedia(instanceName: string, data: SendMessageData): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/message/sendMedia/${instanceName}`, {
+  async sendMedia(instanceId: string, data: SendMessageData): Promise<MessageInfo> {
+    return this.makeRequest<MessageInfo>(`/message/sendMedia/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify(data)
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Envia áudio
    */
-  async sendWhatsAppAudio(instanceName: string, number: string, audioBase64: string): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/message/sendWhatsAppAudio/${instanceName}`, {
+  async sendWhatsAppAudio(instanceId: string, number: string, audioBase64: string): Promise<MessageInfo> {
+    return this.makeRequest<MessageInfo>(`/message/sendWhatsAppAudio/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify({
         number,
@@ -292,71 +369,90 @@ class YumerApiV2Service {
           media: audioBase64
         }
       })
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
-  // ==================== CHAT MANAGEMENT ====================
+  // ==================== CHAT MANAGEMENT (v2.2.1) ====================
 
   /**
    * Lista todos os chats
    */
-  async findChats(instanceName: string): Promise<ChatInfo[]> {
-    return this.makeRequest<ChatInfo[]>(`/chat/findChats/${instanceName}`, {
+  async findChats(instanceId: string): Promise<ChatInfo[]> {
+    return this.makeRequest<ChatInfo[]>(`/chat/findChats/${instanceId}`, {
       method: 'GET'
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Busca mensagens de um chat
    */
-  async findMessages(instanceName: string, remoteJid: string, limit = 20): Promise<MessageInfo[]> {
-    return this.makeRequest<MessageInfo[]>(`/chat/findMessages/${instanceName}`, {
+  async findMessages(instanceId: string, remoteJid: string, limit = 20): Promise<MessageInfo[]> {
+    return this.makeRequest<MessageInfo[]>(`/chat/findMessages/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify({ remoteJid, limit })
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
-  // ==================== CONTACT MANAGEMENT ====================
+  // ==================== CONTACT MANAGEMENT (v2.2.1) ====================
 
   /**
    * Lista todos os contatos
    */
-  async findContacts(instanceName: string): Promise<ContactInfo[]> {
-    return this.makeRequest<ContactInfo[]>(`/chat/findContacts/${instanceName}`, {
+  async findContacts(instanceId: string): Promise<ContactInfo[]> {
+    return this.makeRequest<ContactInfo[]>(`/chat/findContacts/${instanceId}`, {
       method: 'GET'
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Obtém foto do perfil de um contato
    */
-  async getProfilePic(instanceName: string, number: string): Promise<{ profilePicUrl: string }> {
-    return this.makeRequest<{ profilePicUrl: string }>(`/chat/getProfilePic/${instanceName}`, {
+  async getProfilePic(instanceId: string, number: string): Promise<{ profilePicUrl: string }> {
+    return this.makeRequest<{ profilePicUrl: string }>(`/chat/getProfilePic/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify({ number })
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
-  // ==================== INSTANCE SETTINGS ====================
+  // ==================== INSTANCE SETTINGS (v2.2.1) ====================
 
   /**
    * Define foto do perfil da instância
    */
-  async setProfilePic(instanceName: string, picture: string): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/chat/setProfilePic/${instanceName}`, {
+  async setProfilePic(instanceId: string, picture: string): Promise<{ message: string }> {
+    return this.makeRequest<{ message: string }>(`/chat/setProfilePic/${instanceId}`, {
       method: 'PUT',
       body: JSON.stringify({ picture })
-    }, true, instanceName);
+    }, true, instanceId);
   }
 
   /**
    * Define nome do perfil da instância
    */
-  async setProfileName(instanceName: string, name: string): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/chat/setProfileName/${instanceName}`, {
+  async setProfileName(instanceId: string, name: string): Promise<{ message: string }> {
+    return this.makeRequest<{ message: string }>(`/chat/setProfileName/${instanceId}`, {
       method: 'PUT',
       body: JSON.stringify({ name })
-    }, true, instanceName);
+    }, true, instanceId);
+  }
+
+  // ==================== LEGACY COMPATIBILITY METHODS ====================
+
+  /**
+   * @deprecated Use listBusinessInstances instead
+   */
+  async listInstances(): Promise<Instance[]> {
+    console.warn('[YumerApiV2.2.1] listInstances() is deprecated, use listBusinessInstances(businessId) instead');
+    // Para compatibilidade, retornar array vazio
+    return [];
+  }
+
+  /**
+   * @deprecated Use createBusinessInstance instead
+   */
+  async createInstance(instanceName: string, token?: string, qrcode = true, number?: string): Promise<Instance> {
+    console.warn('[YumerApiV2.2.1] createInstance() is deprecated, use createBusinessInstance(businessId, data) instead');
+    throw new Error('createInstance is deprecated in v2.2.1. Use createBusinessInstance(businessId, instanceData) instead');
   }
 
   // ==================== UTILITY METHODS ====================
@@ -378,10 +474,11 @@ class YumerApiV2Service {
   /**
    * Obtém configurações atuais
    */
-  getConfig(): { baseUrl: string; hasApiKey: boolean } {
+  getConfig(): { baseUrl: string; hasApiKey: boolean; version: string } {
     return {
       baseUrl: this.baseUrl,
-      hasApiKey: !!this.globalApiKey
+      hasApiKey: !!this.globalApiKey,
+      version: 'v2.2.1'
     };
   }
 }

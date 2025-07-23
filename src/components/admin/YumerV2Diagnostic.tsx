@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,25 +22,26 @@ interface EndpointTest {
 const YumerV2Diagnostic = () => {
   const { config, status: serverStatus, isLoading: configLoading } = useServerConfig();
   const [tests, setTests] = useState<EndpointTest[]>([
-    // Admin endpoints - Básicos primeiro
+    // Admin endpoints - Básicos primeiro (v2.2.1)
     { name: "Health Check", url: "/health", method: "GET", category: "admin", status: "pending" },
     { name: "Server Info", url: "/info", method: "GET", category: "admin", status: "pending" },
     
-    // Business endpoints  
+    // Business endpoints (v2.2.1) 
     { name: "List Businesses", url: "/business", method: "GET", category: "business", status: "pending" },
     { name: "Create Business", url: "/business", method: "POST", category: "business", status: "pending" },
+    { name: "Business Instances", url: "/business/test-business/instance", method: "GET", category: "business", status: "pending" },
     
-    // Instance endpoints
-    { name: "List Instances", url: "/instance/fetchInstances", method: "GET", category: "instance", status: "pending" },
-    { name: "Create Instance", url: "/instance/create", method: "POST", category: "instance", status: "pending" },
-    { name: "Instance Status", url: "/instance/connectionState/test", method: "GET", category: "instance", status: "pending" },
+    // Instance endpoints (v2.2.1)
+    { name: "Create Instance", url: "/business/test-business/instance", method: "POST", category: "instance", status: "pending" },
+    { name: "Instance Connection State", url: "/instance/test-instance/connection-state", method: "GET", category: "instance", status: "pending" },
+    { name: "Instance QR Code", url: "/instance/test-instance/qrcode", method: "GET", category: "instance", status: "pending" },
     
-    // Webhook endpoints
-    { name: "Webhook Config", url: "/webhook/find/test", method: "GET", category: "webhook", status: "pending" },
-    { name: "Set Webhook", url: "/webhook/set/test", method: "PUT", category: "webhook", status: "pending" },
+    // Webhook endpoints (v2.2.1)
+    { name: "Get Webhook", url: "/webhook/find/test-instance", method: "GET", category: "webhook", status: "pending" },
+    { name: "Set Webhook", url: "/webhook/set/test-instance", method: "POST", category: "webhook", status: "pending" },
     
-    // Message endpoints
-    { name: "Send Message", url: "/message/sendText/test", method: "POST", category: "message", status: "pending" }
+    // Message endpoints (v2.2.1)
+    { name: "Send Text Message", url: "/message/sendText/test-instance", method: "POST", category: "message", status: "pending" }
   ]);
   
   const [testing, setTesting] = useState(false);
@@ -51,7 +51,7 @@ const YumerV2Diagnostic = () => {
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] ${message}`;
-    console.log(`🧪 [YUMER-V2] ${logMessage}`);
+    console.log(`🧪 [YUMER-V2.2.1] ${logMessage}`);
     setDetailedLogs(prev => [...prev, logMessage]);
   };
 
@@ -68,7 +68,7 @@ const YumerV2Diagnostic = () => {
         'Origin': window.location.origin
       };
 
-      // Adicionar autenticação para endpoints que precisam
+      // Adicionar autenticação para endpoints que precisam (v2.2.1)
       if (endpoint.category !== 'admin') {
         if (config.globalApiKey) {
           headers['apikey'] = config.globalApiKey;
@@ -80,7 +80,7 @@ const YumerV2Diagnostic = () => {
 
       addLog(`Headers: ${JSON.stringify(headers, null, 2)}`);
 
-      // Criar AbortController para timeout
+      // Criar AbortController para timeout de 10 segundos
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();
@@ -116,8 +116,14 @@ const YumerV2Diagnostic = () => {
         const contentType = response.headers.get('content-type');
         
         if (contentType && contentType.includes('application/json')) {
-          data = await response.json();
-          addLog(`Response Data: ${JSON.stringify(data, null, 2)}`);
+          try {
+            data = await response.json();
+            addLog(`Response Data: ${JSON.stringify(data, null, 2)}`);
+          } catch (parseError) {
+            const textData = await response.text();
+            addLog(`Response Text (JSON parse failed): ${textData}`);
+            data = { raw: textData };
+          }
         } else {
           data = await response.text();
           addLog(`Response Text: ${data}`);
@@ -219,26 +225,31 @@ const YumerV2Diagnostic = () => {
         return {
           name: "Test Business v2.2.1",
           email: "test@example.com",
-          phone: "5511999999999"
+          phone: "5511999999999",
+          slug: "test-business-v221",
+          country: "BR",
+          timezone: "America/Sao_Paulo",
+          language: "pt-BR"
         };
-      case '/instance/create':
-        return {
+      case '/business/test-business/instance':
+        return endpoint.method === 'POST' ? {
           instanceName: `test-instance-${Date.now()}`,
           token: config.adminToken,
-          qrcode: true
-        };
-      case '/webhook/set/test':
+          qrcode: true,
+          number: "5511999999999"
+        } : {};
+      case '/webhook/set/test-instance':
         return {
           enabled: true,
-          url: config.adminWebhooks.messageWebhook.url,
-          events: ['messagesUpsert', 'qrcodeUpdated'],
+          url: config.adminWebhooks?.messageWebhook?.url || "https://webhook.test.com",
+          events: ['messagesUpsert', 'qrcodeUpdated', 'connectionUpdate'],
           webhook_by_events: true,
           webhook_base64: false
         };
-      case '/message/sendText/test':
+      case '/message/sendText/test-instance':
         return {
           number: "5511999999999",
-          text: "Test message from v2.2.1 diagnostic"
+          text: "Test message from CodeChat v2.2.1 diagnostic"
         };
       default:
         return {};
@@ -255,7 +266,7 @@ const YumerV2Diagnostic = () => {
     
     const updatedTests: EndpointTest[] = [];
     
-    // Testar endpoints básicos primeiro
+    // Testar endpoints básicos primeiro (admin), depois autenticados
     const basicEndpoints = tests.filter(t => t.category === 'admin');
     const otherEndpoints = tests.filter(t => t.category !== 'admin');
     
@@ -529,10 +540,10 @@ const YumerV2Diagnostic = () => {
         <div className="bg-blue-50 p-4 rounded">
           <h4 className="font-medium text-blue-900 mb-2">📋 Plano de Correção v2.2.1:</h4>
           <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-            <li><strong>FASE 1:</strong> Configurar CORS no backend CodeChat para todos os endpoints</li>
+            <li><strong>FASE 1:</strong> Configurar CORS no backend CodeChat para todos os endpoints v2.2.1</li>
             <li><strong>FASE 2:</strong> Verificar e ajustar tokens de autenticação API v2.2.1</li>
-            <li><strong>FASE 3:</strong> Implementar serviços v2.2.1 completos</li>
-            <li><strong>FASE 4:</strong> Atualizar estrutura Supabase</li>
+            <li><strong>FASE 3:</strong> Implementar serviços v2.2.1 completos com novos endpoints</li>
+            <li><strong>FASE 4:</strong> Atualizar estrutura Supabase para v2.2.1</li>
             <li><strong>FASE 5:</strong> Migração completa da interface v2.2.1</li>
           </ol>
         </div>
