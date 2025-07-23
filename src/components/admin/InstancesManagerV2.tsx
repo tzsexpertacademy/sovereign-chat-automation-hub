@@ -20,7 +20,9 @@ import {
   WifiOff,
   Clock,
   Zap,
-  Phone
+  Phone,
+  Loader2,
+  AlertCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -103,6 +105,22 @@ const InstancesManagerV2 = () => {
         loadClients(),
         loadInstances()
       ]);
+      
+      // Auto-selecionar primeiro cliente se não há nenhum selecionado
+      if (!selectedClient || selectedClient === "none") {
+        const firstClient = clients[0];
+        if (firstClient) {
+          setSelectedClient(firstClient.id);
+          console.log('🔄 Auto-selecionando primeiro cliente:', firstClient.name);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro no carregamento inicial:', error);
+      toast({
+        title: "Erro no Carregamento",
+        description: "Falha ao carregar dados iniciais",
+        variant: "destructive",
+      });
     } finally {
       setGlobalLoading(false);
     }
@@ -139,6 +157,12 @@ const InstancesManagerV2 = () => {
       
       setClients(clientsData);
       setClientsCache({ data: clientsData, timestamp: now });
+      
+      // Auto-selecionar primeiro cliente se necessário
+      if (clientsData.length > 0 && (!selectedClient || selectedClient === "none")) {
+        setSelectedClient(clientsData[0].id);
+        console.log('🔄 Auto-selecionando cliente:', clientsData[0].name);
+      }
       
       console.log(`✅ [CLIENTS] ${clientsData.length} clientes carregados`);
     } catch (error) {
@@ -753,10 +777,24 @@ const InstancesManagerV2 = () => {
             </Select>
             <Button 
               onClick={createInstanceForClient} 
-              disabled={globalLoading || !selectedClient || selectedClient === "none"}
+              disabled={globalLoading || !selectedClient || selectedClient === "none" || clients.length === 0}
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Criar Instância
+              {globalLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Carregando...
+                </>
+              ) : clients.length === 0 ? (
+                <>
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  Sem Clientes
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Criar Instância
+                </>
+              )}
             </Button>
           </div>
           
