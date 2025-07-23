@@ -208,59 +208,20 @@ const InstancesManagerV2 = () => {
   // Removido loadBusinesses - usando business_id diretamente do cliente
 
   const refreshInstancesStatus = async () => {
-    console.log('🔄 Atualizando status das instâncias...');
+    console.log('🔄 [MANUAL] Atualizando status das instâncias...');
     
-    // Verificar se há clientes carregados antes de atualizar
-    if (clients.length === 0) {
-      console.log('⚠️ Nenhum cliente carregado, carregando...');
-      await loadClients();
-      
-      // Se ainda não há clientes após carregamento, aguardar próximo ciclo
-      if (clients.length === 0) {
-        console.log('⚠️ Nenhum cliente encontrado no sistema');
-        return;
-      }
+    if (instances.length === 0) {
+      console.log('⚠️ Nenhuma instância para atualizar');
+      return;
     }
 
-    for (const instance of instances) {
-      try {
-        // Verificar se a instância tem business_business_id
-        if (!instance.business_business_id) {
-          console.log(`⚠️ Instância ${instance.instance_id} sem business_id`);
-          continue;
-        }
-
-        // Verificar status atual usando business_id diretamente
-        const result = await unifiedYumerService.getConnectionState(instance.instance_id);
-        if (!result.success) continue;
-        const connectionState = result.data;
-        
-        // Atualizar no banco se mudou
-        const statusMapping = { 'open': 'connected', 'close': 'disconnected', 'connecting': 'connecting' };
-        const mappedStatus = statusMapping[connectionState.state] || 'disconnected';
-        
-        if (mappedStatus !== instance.status) {
-          await whatsappInstancesService.updateInstanceStatus(
-            instance.instance_id, 
-            mappedStatus
-          );
-          
-          updateInstanceState(instance.instance_id, {
-            status: 'success',
-            message: `Status: ${mappedStatus}`,
-            data: connectionState,
-            progress: 100
-          });
-        }
-      } catch (error) {
-        console.log(`Erro ao atualizar instância ${instance.instance_id}:`, error);
-      }
-    }
+    // Simples recarregamento via webhook/database
+    await loadInstances();
     
-    // Só recarregar instâncias se houver clientes
-    if (clients.length > 0) {
-      await loadInstances();
-    }
+    toast({ 
+      title: "Status Atualizado", 
+      description: "Status das instâncias atualizado via database" 
+    });
   };
 
   const createInstanceForClient = async () => {
@@ -404,150 +365,123 @@ const InstancesManagerV2 = () => {
   };
 
   const connectInstance = async (instanceId: string) => {
-    const instance = instances.find(i => i.instance_id === instanceId);
-    if (!instance) return;
-
-    // Verificar se a instância tem business_id (sistema 1:1)
-    if (!instance.business_business_id) {
-      toast({ title: "Erro", description: "Instância não possui business associado", variant: "destructive" });
-      return;
-    }
-
+    if (!instanceId) return;
+    
     try {
       updateInstanceState(instanceId, {
         status: 'loading',
-        progress: 10,
-        message: 'Aguardando instância ficar pronta...'
+        progress: 20,
+        message: 'Iniciando conexão...'
       });
 
-      // 1. AGUARDAR instância ficar pronta (delay inicial)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // 2. Pular verificação problemática - usar dados existentes
-      console.log(`✅ Instância criada: ${instanceId}, processando conexão...`);
-
-      updateInstanceState(instanceId, {
-        status: 'loading',
-        progress: 30,
-        message: 'Conectando instância...'
-      });
-
-      // 3. CONECTAR instância (com retry para "Inactive instance")
-      let connectSuccess = false;
-      let connectAttempts = 0;
-      const maxConnectAttempts = 3;
-
-      while (!connectSuccess && connectAttempts < maxConnectAttempts) {
-        try {
-          const connectResult = await unifiedYumerService.connectInstance(instanceId, instance.auth_jwt || undefined);
-          if (connectResult.success) {
-            connectSuccess = true;
-            break;
-          } else if (connectResult.error?.includes('Inactive instance')) {
-            console.log(`🔄 Instância ainda inativa, tentativa ${connectAttempts + 1}/${maxConnectAttempts}`);
-            connectAttempts++;
-            if (connectAttempts < maxConnectAttempts) {
-              await new Promise(resolve => setTimeout(resolve, 3000));
-            }
-          } else {
-            throw new Error(connectResult.error || 'Falha ao ativar instância');
-          }
-        } catch (error: any) {
-          if (error.message?.includes('Inactive instance') && connectAttempts < maxConnectAttempts - 1) {
-            console.log(`🔄 Erro "Inactive instance", tentativa ${connectAttempts + 1}/${maxConnectAttempts}`);
-            connectAttempts++;
-            await new Promise(resolve => setTimeout(resolve, 3000));
-          } else {
-            throw error;
-          }
-        }
-      }
-
-      if (!connectSuccess) {
-        throw new Error('Falha ao conectar após múltiplas tentativas');
-      }
-
-      updateInstanceState(instanceId, {
-        status: 'loading',
-        progress: 30,
-        message: 'Verificando status da conexão...'
-      });
-
-      // 2. DEPOIS: Verificar status da conexão
-      const stateResult = await unifiedYumerService.getConnectionState(instanceId, instance.auth_jwt || undefined);
-      if (!stateResult.success) {
-        throw new Error(stateResult.error || 'Falha ao obter status');
-      }
-      const connectionState = stateResult.data;
+      // Simplesmente conectar e aguardar webhook
+      const connectResult = await unifiedYumerService.connectInstance(instanceId);
       
-      if (connectionState.state === 'open') {
-        updateInstanceState(instanceId, {
-          status: 'success',
-          progress: 100,
-          message: 'Já conectado!',
-          data: connectionState
-        });
-        return;
-      }
-
-      updateInstanceState(instanceId, {
-        status: 'loading',
-        progress: 50,
-        message: 'Aguardando QR Code...'
-      });
-
-      // 3. Aguardar QR Code com timeout
-      let qrCode = null;
-      let attempts = 0;
-      const maxAttempts = 15; // 15 segundos
-
-      while (!qrCode && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        try {
-          const qrResult = await unifiedYumerService.getQRCode(instanceId, instance.auth_jwt || undefined);
-          if (!qrResult.success) continue;
-          if (qrResult.data?.qrcode?.code) {
-            qrCode = qrResult.data.qrcode.code;
-            break;
-          }
-        } catch (error) {
-          console.log(`Tentativa ${attempts + 1}: QR ainda não disponível`);
-        }
-        
-        attempts++;
+      if (connectResult.success) {
         updateInstanceState(instanceId, {
           status: 'loading',
-          progress: 50 + (attempts * 3),
-          message: `Aguardando QR Code... (${attempts}/${maxAttempts})`
+          progress: 60,
+          message: 'Aguardando QR Code via webhook...'
         });
-      }
-
-      if (qrCode) {
-        // Atualizar status no banco
-        await whatsappInstancesService.updateInstanceStatus(instanceId, 'qr_ready');
-
-        updateInstanceState(instanceId, {
-          status: 'success',
-          progress: 100,
-          message: 'QR Code disponível! Clique para visualizar.',
-          data: { qrCode, businessId: instance.business_business_id }
-        });
-
-        await loadInstances();
+        
+        // Aguardar QR Code via webhook (timeout 90s)
+        let waitTime = 0;
+        const maxWait = 90000; // 90 segundos
+        const checkInterval = 2000; // 2 segundos
+        
+        const checkForQR = async (): Promise<boolean> => {
+          try {
+            const { supabase } = await import('@/integrations/supabase/client');
+            const { data } = await supabase
+              .from('whatsapp_instances')
+              .select('qr_code, has_qr_code, status')
+              .eq('instance_id', instanceId)
+              .single();
+            
+            if (data?.has_qr_code && data.qr_code) {
+              updateInstanceState(instanceId, {
+                status: 'success',
+                progress: 100,
+                message: 'QR Code recebido!',
+                data: { qrCode: data.qr_code }
+              });
+              
+              toast({ 
+                title: "QR Code Disponível", 
+                description: "QR Code recebido via webhook!" 
+              });
+              return true;
+            }
+            
+            if (data?.status === 'connected') {
+              updateInstanceState(instanceId, {
+                status: 'success',
+                progress: 100,
+                message: 'Instância conectada!'
+              });
+              
+              toast({ 
+                title: "Conectado", 
+                description: "Instância conectada com sucesso!" 
+              });
+              return true;
+            }
+            
+            return false;
+          } catch (error) {
+            console.warn('Erro ao verificar QR:', error);
+            return false;
+          }
+        };
+        
+        const waitForQR = async () => {
+          while (waitTime < maxWait) {
+            if (await checkForQR()) return;
+            
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            waitTime += checkInterval;
+            
+            const progress = Math.min(60 + (waitTime / maxWait) * 30, 90);
+            updateInstanceState(instanceId, {
+              status: 'loading',
+              progress,
+              message: `Aguardando QR Code... (${Math.floor((maxWait - waitTime) / 1000)}s)`
+            });
+          }
+          
+          // Timeout
+          updateInstanceState(instanceId, {
+            status: 'error',
+            progress: 0,
+            message: 'Timeout: QR Code não recebido'
+          });
+          
+          toast({ 
+            title: "Timeout", 
+            description: "QR Code não foi recebido em 90 segundos", 
+            variant: "destructive" 
+          });
+        };
+        
+        await waitForQR();
+        
       } else {
-        updateInstanceState(instanceId, {
-          status: 'timeout',
-          progress: 0,
-          message: 'Timeout: QR Code não gerado'
-        });
+        throw new Error(connectResult.error || 'Falha na conexão');
       }
-
+      
     } catch (error: any) {
+      console.error('Erro ao conectar instância:', error);
+      
       updateInstanceState(instanceId, {
         status: 'error',
         progress: 0,
-        message: error.message || "Erro ao conectar"
+        message: error.message || 'Erro na conexão'
+      });
+      
+      toast({ 
+        title: "Erro", 
+        description: error.message || "Falha ao conectar instância", 
+        variant: "destructive" 
       });
     }
   };
@@ -824,11 +758,37 @@ const InstancesManagerV2 = () => {
         </CardContent>
       </Card>
 
-      {/* Monitor de Conexões */}
-      <InstanceConnectionMonitor
-        instances={instances}
-        onRefresh={loadInitialData}
-      />
+      {/* Manual Refresh Button */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-medium">Status das Instâncias</h3>
+              <p className="text-sm text-muted-foreground">
+                Atualização manual via database (sem polling)
+              </p>
+            </div>
+            <Button 
+              onClick={refreshInstancesStatus}
+              disabled={globalLoading}
+              variant="outline"
+              size="sm"
+            >
+              {globalLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Atualizando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Atualizar Status
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
       
       {/* Limpeza de Instâncias */}
       <InstancesCleanupManager 

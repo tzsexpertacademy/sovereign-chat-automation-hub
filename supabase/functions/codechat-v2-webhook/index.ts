@@ -69,17 +69,25 @@ Deno.serve(async (req) => {
       case 'qrcodeUpdated':
       case 'qr.updated':
       case 'QR_CODE_UPDATED':
+      case 'qrcode.updated':
+      case 'qr':
         console.log('📱 [CODECHAT-V2-WEBHOOK] Processando QR Code...');
+        console.log('📱 [QR-DEBUG] Event data:', JSON.stringify(data, null, 2));
         
-        if (data?.qrCode || data?.base64) {
+        // Múltiplas formas de receber QR Code
+        const qrCode = data?.qrCode || data?.base64 || data?.qr || data?.code;
+        
+        if (qrCode) {
+          console.log('📱 [QR-DEBUG] QR Code encontrado, tamanho:', qrCode.length);
+          
           // Update WhatsApp instance with QR code
           const { error: updateError } = await supabase
             .from('whatsapp_instances')
             .update({
-              qr_code: data.qrCode || data.base64,
+              qr_code: qrCode,
               has_qr_code: true,
               status: 'qr_ready',
-              qr_expires_at: new Date(Date.now() + 60000).toISOString(), // 60 seconds
+              qr_expires_at: new Date(Date.now() + 120000).toISOString(), // 2 minutos
               updated_at: new Date().toISOString()
             })
             .eq('instance_id', instanceId);
@@ -89,32 +97,53 @@ Deno.serve(async (req) => {
           } else {
             console.log('✅ [CODECHAT-V2-WEBHOOK] QR Code atualizado com sucesso');
           }
+        } else {
+          console.warn('⚠️ [CODECHAT-V2-WEBHOOK] QR Code não encontrado no data');
         }
         break;
 
       case 'connectionUpdated':
       case 'statusInstance':
+      case 'connection.update':
         console.log('🔄 [CODECHAT-V2-WEBHOOK] Atualizando status da conexão...');
+        console.log('🔄 [STATUS-DEBUG] Connection:', connection, 'State:', state);
         
         let newStatus = 'disconnected';
-        if (connection === 'open') newStatus = 'connected';
-        else if (connection === 'connecting') newStatus = 'connecting';
-        else if (state === 'active') newStatus = 'disconnected';
+        let clearQR = false;
+        
+        if (connection === 'open') {
+          newStatus = 'connected';
+          clearQR = true; // Limpar QR quando conectar
+        } else if (connection === 'connecting') {
+          newStatus = 'connecting';
+        } else if (state === 'active') {
+          newStatus = 'disconnected';
+        }
+
+        const updateData: any = {
+          status: newStatus,
+          connection_state: connection,
+          instance_state: state,
+          updated_at: new Date().toISOString()
+        };
+
+        // Limpar QR Code quando conectar
+        if (clearQR) {
+          updateData.qr_code = null;
+          updateData.has_qr_code = false;
+          updateData.qr_expires_at = null;
+          console.log('🧹 [CODECHAT-V2-WEBHOOK] Limpando QR Code - instância conectada');
+        }
 
         const { error: statusError } = await supabase
           .from('whatsapp_instances')
-          .update({
-            status: newStatus,
-            connection_state: connection,
-            instance_state: state,
-            updated_at: new Date().toISOString()
-          })
+          .update(updateData)
           .eq('instance_id', instanceId);
 
         if (statusError) {
           console.error('❌ [CODECHAT-V2-WEBHOOK] Erro ao atualizar status:', statusError);
         } else {
-          console.log(`✅ [CODECHAT-V2-WEBHOOK] Status atualizado: ${newStatus}`);
+          console.log(`✅ [CODECHAT-V2-WEBHOOK] Status atualizado: ${newStatus}${clearQR ? ' (QR limpo)' : ''}`);
         }
         break;
 
