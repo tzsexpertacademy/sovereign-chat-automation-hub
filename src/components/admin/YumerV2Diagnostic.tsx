@@ -145,7 +145,7 @@ const YumerV2Diagnostic = () => {
       dependency: 'Create Business'
     },
     
-    // 📱 Instance Controller - INSTANCE_TOKEN
+    // 📱 Instance Controller - INSTANCE_TOKEN (SEQUÊNCIA CORRIGIDA)
     { 
       name: 'Get Instance Info', 
       url: '/api/v2/instance/{instanceId}', 
@@ -157,11 +157,11 @@ const YumerV2Diagnostic = () => {
       dependency: 'Create Business Instance'
     },
     { 
-      name: 'Connect Instance', 
-      url: '/api/v2/instance/{instanceId}/connect', 
+      name: 'Get QR Code', 
+      url: '/api/v2/instance/{instanceId}/qrcode', 
       method: 'GET', 
       category: 'instance',
-      description: 'Conectar instância ao WhatsApp',
+      description: 'Obter QR code (pode não existir)',
       requiresInstanceId: true,
       tokenType: 'instance',
       dependency: 'Create Business Instance'
@@ -177,26 +177,26 @@ const YumerV2Diagnostic = () => {
       dependency: 'Create Business Instance'
     },
     { 
-      name: 'Get QR Code', 
-      url: '/api/v2/instance/{instanceId}/qrcode', 
+      name: 'Connect Instance', 
+      url: '/api/v2/instance/{instanceId}/connect', 
       method: 'GET', 
       category: 'instance',
-      description: 'Obter QR code para conexão',
+      description: 'Conectar instância (opcional - pode demorar)',
       requiresInstanceId: true,
       tokenType: 'instance',
-      dependency: 'Create Business Instance'
+      dependency: 'Get QR Code'
     },
     
-    // 🔔 Webhook Controller - INSTANCE_TOKEN
+    // 🔔 Webhook Controller - INSTANCE_TOKEN (OPCIONAIS)
     { 
       name: 'Set Instance Webhook', 
       url: '/api/v2/instance/{instanceId}/webhook', 
       method: 'POST', 
       category: 'webhook',
-      description: 'Configurar webhook da instância',
+      description: 'Configurar webhook da instância (opcional)',
       requiresInstanceId: true,
       tokenType: 'instance',
-      dependency: 'Create Business Instance',
+      dependency: 'Get Instance Info',
       body: {
         url: 'https://webhook.site/test-diagnostic-v221',
         enabled: true
@@ -207,22 +207,22 @@ const YumerV2Diagnostic = () => {
       url: '/api/v2/instance/{instanceId}/webhook', 
       method: 'GET', 
       category: 'webhook',
-      description: 'Buscar webhook da instância',
+      description: 'Buscar webhook da instância (opcional)',
       requiresInstanceId: true,
       tokenType: 'instance',
-      dependency: 'Create Business Instance'
+      dependency: 'Get Instance Info'
     },
     
-    // 💬 Message Controller - INSTANCE_TOKEN
+    // 💬 Message Controller - INSTANCE_TOKEN (OPCIONAIS)
     { 
       name: 'Send Text Message', 
       url: '/api/v2/instance/{instanceId}/send/text', 
       method: 'POST', 
       category: 'message',
-      description: 'Enviar mensagem de texto',
+      description: 'Enviar mensagem de texto (opcional - requer conexão)',
       requiresInstanceId: true,
       tokenType: 'instance',
-      dependency: 'Create Business Instance',
+      dependency: 'Get Instance Info',
       body: {
         number: '5511999999999',
         text: 'Test message from YumerDiagnostic v2.2.1'
@@ -233,10 +233,10 @@ const YumerV2Diagnostic = () => {
       url: '/api/v2/instance/{instanceId}/send/media', 
       method: 'POST', 
       category: 'message',
-      description: 'Enviar mensagem com mídia',
+      description: 'Enviar mensagem com mídia (opcional - requer conexão)',
       requiresInstanceId: true,
       tokenType: 'instance',
-      dependency: 'Create Business Instance',
+      dependency: 'Get Instance Info',
       body: {
         number: '5511999999999',
         mediatype: 'image',
@@ -245,26 +245,26 @@ const YumerV2Diagnostic = () => {
       }
     },
     
-    // 💬 Chat Controller - INSTANCE_TOKEN
+    // 💬 Chat Controller - INSTANCE_TOKEN (OPCIONAIS)
     { 
       name: 'Search Contacts', 
       url: '/api/v2/instance/{instanceId}/chat/search/contacts', 
       method: 'GET', 
       category: 'chat',
-      description: 'Buscar contatos da instância',
+      description: 'Buscar contatos da instância (opcional - requer conexão)',
       requiresInstanceId: true,
       tokenType: 'instance',
-      dependency: 'Create Business Instance'
+      dependency: 'Get Instance Info'
     },
     { 
       name: 'Search Chats', 
       url: '/api/v2/instance/{instanceId}/chat/search/chats', 
       method: 'GET', 
       category: 'chat',
-      description: 'Buscar conversas da instância',
+      description: 'Buscar conversas da instância (opcional - requer conexão)',
       requiresInstanceId: true,
       tokenType: 'instance',
-      dependency: 'Create Business Instance'
+      dependency: 'Get Instance Info'
     }
   ];
 
