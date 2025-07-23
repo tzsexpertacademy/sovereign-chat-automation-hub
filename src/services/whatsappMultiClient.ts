@@ -134,6 +134,11 @@ export class WhatsAppMultiClient {
     }
   }
 
+  // Alias para compatibilidade
+  async sendMessage(options: SendMessageOptions): Promise<boolean> {
+    return this.sendTextMessage(options);
+  }
+
   async sendMedia(options: SendMediaOptions): Promise<boolean> {
     try {
       if (!options.instanceId) return false;
@@ -224,6 +229,8 @@ export interface QueuedMessage {
   to: string;
   message: string;
   timestamp: number;
+  from?: string;
+  body?: string;
 }
 export const whatsappMultiClient = new WhatsAppMultiClient();
 export default whatsappMultiClient;

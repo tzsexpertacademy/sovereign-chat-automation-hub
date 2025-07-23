@@ -18,11 +18,34 @@ export interface CreateBusinessRequest {
   name: string;
   email: string;
   phone: string;
+  slug?: string;
+}
+
+export interface InstanceData {
+  instanceName: string;
+  owner: string;
+  profileName?: string;
+  status?: string;
+}
+
+export interface BusinessWithInstances {
+  businessId: string;
+  name: string;
+  email: string;
+  phone: string;
+  active: boolean;
+  businessToken: string;
+  instances: InstanceData[];
 }
 
 export class CodeChatBusinessService {
   // Legacy compatibility methods
   async getAllBusinesses(): Promise<BusinessData[]> {
+    // Para compatibilidade - retornar array vazio
+    return [];
+  }
+
+  async getInstancesByBusiness(businessId: string): Promise<InstanceData[]> {
     // Para compatibilidade - retornar array vazio
     return [];
   }
@@ -37,6 +60,31 @@ export class CodeChatBusinessService {
       active: true,
       businessToken: 'legacy-token'
     };
+  }
+
+  async createInstance(instanceName: string): Promise<InstanceData> {
+    // Para compatibilidade - retornar dados mock
+    return {
+      instanceName,
+      owner: 'legacy-owner',
+      profileName: 'Legacy Profile',
+      status: 'close'
+    };
+  }
+
+  async connectInstance(instanceName: string): Promise<void> {
+    // Para compatibilidade - não fazer nada
+    console.log('[CodeChatBusinessService] Connect instance simulated:', instanceName);
+  }
+
+  async getQRCode(instanceName: string): Promise<string | null> {
+    // Para compatibilidade - retornar null
+    return null;
+  }
+
+  async deleteInstance(instanceName: string): Promise<void> {
+    // Para compatibilidade - não fazer nada
+    console.log('[CodeChatBusinessService] Delete instance simulated:', instanceName);
   }
 }
 

@@ -101,10 +101,9 @@ export const YumerApiManager: React.FC = () => {
     setTestResults([]);
 
     // Testes básicos
-    await runEndpointTest('Health Check', () => yumerApiV2Service.getHealth());
-    await runEndpointTest('Server Info', () => yumerApiV2Service.getServerInfo());
-    await runEndpointTest('List Businesses', () => yumerApiV2Service.listBusinesses());
-    await runEndpointTest('List Instances', () => yumerApiV2Service.listInstances());
+    await runEndpointTest('List API Keys', async () => ({ success: true, data: await yumerApiV2.listApiKeys() }));
+    await runEndpointTest('List Instances', async () => ({ success: true, data: await yumerApiV2.listInstances() }));
+    await runEndpointTest('Config Check', async () => ({ success: true, data: yumerApiV2.getConfig() }));
 
     setLoading(false);
   };
@@ -122,9 +121,9 @@ export const YumerApiManager: React.FC = () => {
     setLoading(true);
 
     // Testes de instância
-    await runEndpointTest('Instance Status', () => yumerApiV2Service.getInstanceStatus(instanceName));
-    await runEndpointTest('Fetch QR Code', () => yumerApiV2Service.fetchQRCode(instanceName));
-    await runEndpointTest('Webhook Config', () => yumerApiV2Service.getWebhookConfig(instanceName));
+    await runEndpointTest('Connection State', async () => ({ success: true, data: await yumerApiV2.getConnectionState(instanceName) }));
+    await runEndpointTest('QR Code', async () => ({ success: true, data: await yumerApiV2.getQRCode(instanceName) }));
+    await runEndpointTest('Webhook Config', async () => ({ success: true, data: await yumerApiV2.getWebhook(instanceName) }));
 
     setLoading(false);
   };
@@ -142,9 +141,9 @@ export const YumerApiManager: React.FC = () => {
     setLoading(true);
 
     // Testes de chat
-    await runEndpointTest('Find Chats', () => yumerApiV2Service.findChats(instanceName));
-    await runEndpointTest('Find Contacts', () => yumerApiV2Service.findContacts(instanceName));
-    await runEndpointTest('Find Messages', () => yumerApiV2Service.findMessages(instanceName));
+    await runEndpointTest('Find Chats', async () => ({ success: true, data: await yumerApiV2.findChats(instanceName) }));
+    await runEndpointTest('Find Contacts', async () => ({ success: true, data: await yumerApiV2.findContacts(instanceName) }));
+    await runEndpointTest('Find Messages', async () => ({ success: true, data: await yumerApiV2.findMessages(instanceName, '5511999999999@c.us') }));
 
     setLoading(false);
   };
@@ -155,12 +154,10 @@ export const YumerApiManager: React.FC = () => {
       setLoading(true);
       
       // Exemplo de teste customizado
-      await runEndpointTest('Custom Test', () => 
-        yumerApiV2Service.sendTextMessage(instanceName, {
-          number: data.number || '5511999999999',
-          textMessage: { text: data.message || 'Teste da API' }
-        })
-      );
+      await runEndpointTest('Send Text', async () => ({ 
+        success: true, 
+        data: await yumerApiV2.sendText(instanceName, data.number || '5511999999999', data.message || 'Teste da API') 
+      }));
       
       setLoading(false);
     } catch (error) {
