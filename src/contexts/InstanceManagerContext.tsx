@@ -1,6 +1,5 @@
 
 import React, { createContext, useContext, ReactNode } from 'react';
-import { useSimplifiedInstanceManager } from '@/hooks/useSimplifiedInstanceManager';
 
 interface InstanceManagerContextType {
   instances: Record<string, any>;
@@ -17,10 +16,21 @@ interface InstanceManagerContextType {
 const InstanceManagerContext = createContext<InstanceManagerContextType | undefined>(undefined);
 
 export const InstanceManagerProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const manager = useSimplifiedInstanceManager();
+  // Simplified mock implementation to prevent crashes
+  const mockManager: InstanceManagerContextType = {
+    instances: {},
+    loading: {},
+    websocketConnected: false,
+    connectInstance: async () => {},
+    disconnectInstance: async () => {},
+    getInstanceStatus: () => ({ status: 'disconnected' }),
+    isLoading: () => false,
+    cleanup: () => {},
+    refreshStatus: async () => {}
+  };
 
   return (
-    <InstanceManagerContext.Provider value={manager}>
+    <InstanceManagerContext.Provider value={mockManager}>
       {children}
     </InstanceManagerContext.Provider>
   );

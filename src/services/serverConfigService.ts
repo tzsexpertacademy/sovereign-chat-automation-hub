@@ -99,18 +99,18 @@ class ServerConfigService {
   private getDefaultConfig(): ServerConfig {
     return {
       // Primary Backend - CodeChat API v2.1.3
-      serverUrl: 'https://api.yumer.com.br',
-      host: 'api.yumer.com.br',
-      port: 443,
+      serverUrl: 'https://yumer.yumerflow.app:8083',
+      host: 'yumer.yumerflow.app',
+      port: 8083,
       protocol: 'https',
-      basePath: '/api/v2',
+      basePath: '',
       apiVersion: '2.1.3',
       
       // Authentication - v2.1.3 Tokens
-      adminToken: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
-      globalApiKey: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
-      jwtSecret: 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe',
-      sessionSecret: 'M^r6Z!Lp9vAqTrXc@kYwFh#D2zGjTbUq',
+      adminToken: 'df1afd525fs5f15df1afd525fs5f15',
+      globalApiKey: 'df1afd525fs5f15df1afd525fs5f15',
+      jwtSecret: 'sfdgs8152g5s1s5sfdgs8152g5s1s5',
+      sessionSecret: '1af6454dg5afdg1af6454dg5afdg',
       requestTimeout: 15000,
       retryAttempts: 3,
       
@@ -248,7 +248,7 @@ class ServerConfigService {
         method: 'GET',
         signal: controller.signal,
         headers: {
-          'X-API-Key': this.config.adminToken
+          'Authorization': `Bearer ${this.config.adminToken}`
         }
       });
       
