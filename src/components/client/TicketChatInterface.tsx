@@ -134,11 +134,11 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       markActivity();
 
       // Tentar envio com melhor logging
-      const response = await whatsappService.sendMessage(
-        connectedInstance,
-        ticket.chat_id,
-        newMessage
-      );
+      const response = await whatsappService.sendTextMessage({
+        instanceId: connectedInstance,
+        to: ticket.chat_id,
+        message: newMessage
+      });
       
       console.log('📡 [TICKET-SEND] Resposta completa:', {
         success: response.success,

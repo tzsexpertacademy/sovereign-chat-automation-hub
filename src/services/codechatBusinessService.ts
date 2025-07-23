@@ -19,13 +19,25 @@ export interface CreateBusinessRequest {
   email: string;
   phone: string;
   slug?: string;
+  country?: string;
+  timezone?: string;
+  language?: string;
+  active?: boolean;
 }
 
 export interface InstanceData {
   instanceName: string;
+  instanceId: string;
   owner: string;
   profileName?: string;
   status?: string;
+  state?: string;
+  connection?: 'connected' | 'disconnected' | 'connecting' | 'qr_ready';
+  name?: string;
+  Auth?: {
+    apikey: string;
+    jwt?: string;
+  };
 }
 
 export interface BusinessWithInstances {
@@ -62,27 +74,33 @@ export class CodeChatBusinessService {
     };
   }
 
-  async createInstance(instanceName: string): Promise<InstanceData> {
+  async createInstance(businessToken: string, instanceName?: string): Promise<InstanceData> {
     // Para compatibilidade - retornar dados mock
     return {
-      instanceName,
+      instanceName: instanceName || 'new-instance',
+      instanceId: instanceName || 'new-instance',
       owner: 'legacy-owner',
       profileName: 'Legacy Profile',
-      status: 'close'
+      status: 'close',
+      name: instanceName || 'new-instance',
+      Auth: {
+        apikey: 'legacy-api-key',
+        jwt: 'legacy-jwt-token'
+      }
     };
   }
 
-  async connectInstance(instanceName: string): Promise<void> {
+  async connectInstance(jwt: string, instanceName: string): Promise<void> {
     // Para compatibilidade - não fazer nada
     console.log('[CodeChatBusinessService] Connect instance simulated:', instanceName);
   }
 
-  async getQRCode(instanceName: string): Promise<string | null> {
+  async getQRCode(jwt: string, instanceName: string): Promise<string | null> {
     // Para compatibilidade - retornar null
     return null;
   }
 
-  async deleteInstance(instanceName: string): Promise<void> {
+  async deleteInstance(businessToken: string, instanceName: string): Promise<void> {
     // Para compatibilidade - não fazer nada
     console.log('[CodeChatBusinessService] Delete instance simulated:', instanceName);
   }

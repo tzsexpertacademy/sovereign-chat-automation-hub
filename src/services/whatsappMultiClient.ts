@@ -25,6 +25,14 @@ export interface SendMessageOptions {
   instanceId?: string;
 }
 
+export interface SendMessageResult {
+  success: boolean;
+  error?: string;
+  details?: any;
+  messageId?: string;
+  timestamp?: number;
+}
+
 export interface SendMediaOptions {
   to: string;
   media: string;
@@ -123,20 +131,32 @@ export class WhatsAppMultiClient {
     }
   }
 
-  async sendTextMessage(options: SendMessageOptions): Promise<boolean> {
+  async sendTextMessage(options: SendMessageOptions): Promise<SendMessageResult> {
     try {
-      if (!options.instanceId) return false;
-      await yumerApiV2.sendText(options.instanceId, options.to, options.message);
-      return true;
+      if (!options.instanceId) {
+        return { success: false, error: 'Instance ID is required' };
+      }
+      const result = await yumerApiV2.sendText(options.instanceId, options.to, options.message);
+      return {
+        success: true,
+        messageId: result?.messageId || `msg-${Date.now()}`,
+        timestamp: Date.now(),
+        details: result
+      };
     } catch (error) {
       console.error('[WhatsAppMultiClient] Error sending message:', error);
-      return false;
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: error
+      };
     }
   }
 
-  // Alias para compatibilidade
+  // Alias para compatibilidade - versão simplificada que retorna boolean
   async sendMessage(options: SendMessageOptions): Promise<boolean> {
-    return this.sendTextMessage(options);
+    const result = await this.sendTextMessage(options);
+    return result.success;
   }
 
   async sendMedia(options: SendMediaOptions): Promise<boolean> {
