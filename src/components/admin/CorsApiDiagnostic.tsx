@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle, XCircle, AlertTriangle, RefreshCw } from "lucide-react";
-import { API_BASE_URL } from "@/config/environment";
+import { useServerConfig } from "@/hooks/useServerConfig";
 
 interface EndpointTest {
   name: string;
@@ -17,31 +17,33 @@ interface EndpointTest {
 }
 
 const CorsApiDiagnostic = () => {
+  const { config, apiUrl } = useServerConfig();
   const [tests, setTests] = useState<EndpointTest[]>([
     { name: "Health Check", url: "/health", method: "GET", status: "pending" },
-    { name: "Lista Clientes", url: "/clients", method: "GET", status: "pending" },
-    { name: "Conectar Cliente", url: "/clients/test-instance/connect", method: "POST", status: "pending" },
-    { name: "Desconectar Cliente", url: "/clients/test-instance/disconnect", method: "POST", status: "pending" },
-    { name: "Status Cliente", url: "/clients/test-instance/status", method: "GET", status: "pending" },
-    { name: "Enviar Mensagem", url: "/clients/test-instance/send-message", method: "POST", status: "pending" },
-    { name: "Listar Chats", url: "/clients/test-instance/chats", method: "GET", status: "pending" },
-    { name: "API Docs JSON", url: "/api-docs.json", method: "GET", status: "pending" },
-    { name: "API Docs Interface", url: "/api-docs", method: "GET", status: "pending" }
+    { name: "Lista Instâncias", url: "/instance/fetchInstances", method: "GET", status: "pending" },
+    { name: "Conectar Instância", url: "/instance/connect/test-instance", method: "GET", status: "pending" },
+    { name: "Desconectar Instância", url: "/instance/logout/test-instance", method: "DELETE", status: "pending" },
+    { name: "Status Instância", url: "/instance/connectionState/test-instance", method: "GET", status: "pending" },
+    { name: "QR Code", url: "/instance/qrcode/test-instance", method: "GET", status: "pending" },
+    { name: "Criar Instância", url: "/instance/create", method: "POST", status: "pending" },
+    { name: "Webhook Find", url: "/webhook/find/test", method: "GET", status: "pending" },
+    { name: "API Docs", url: "/docs", method: "GET", status: "pending" }
   ]);
   const [testing, setTesting] = useState(false);
 
   const testEndpoint = async (endpoint: EndpointTest): Promise<EndpointTest> => {
-    const fullUrl = `${API_BASE_URL}${endpoint.url}`;
+    const fullUrl = `${config.serverUrl}${endpoint.url}`;
     
     try {
-      console.log(`🧪 Testando ${endpoint.method} ${fullUrl}`);
+      console.log(`🧪 [CORS-TEST-v2.2.1] Testando ${endpoint.method} ${fullUrl}`);
       
       const response = await fetch(fullUrl, {
         method: endpoint.method,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Origin': window.location.origin
+          'Origin': window.location.origin,
+          'apikey': config.globalApiKey || ''
         },
         mode: 'cors',
         credentials: 'omit'
@@ -73,7 +75,7 @@ const CorsApiDiagnostic = () => {
       }
       
     } catch (error: any) {
-      console.error(`❌ Erro testando ${endpoint.name}:`, error);
+      console.error(`❌ [CORS-TEST-v2.2.1] Erro testando ${endpoint.name}:`, error);
       
       if (error.message.includes('CORS') || 
           error.message.includes('Access-Control-Allow-Origin') ||
@@ -101,7 +103,7 @@ const CorsApiDiagnostic = () => {
 
   const runAllTests = async () => {
     setTesting(true);
-    console.log('🧪 Iniciando diagnóstico CORS dos endpoints da API...');
+    console.log('🧪 [CORS-v2.2.1] Iniciando diagnóstico CORS dos endpoints da API...');
     
     const updatedTests: EndpointTest[] = [];
     
@@ -123,7 +125,7 @@ const CorsApiDiagnostic = () => {
     const corsErrors = updatedTests.filter(t => t.status === 'cors_error').length;
     const successes = updatedTests.filter(t => t.status === 'success').length;
     
-    console.log(`🎯 Diagnóstico concluído: ${successes} sucessos, ${corsErrors} erros CORS`);
+    console.log(`🎯 [CORS-v2.2.1] Diagnóstico concluído: ${successes} sucessos, ${corsErrors} erros CORS`);
   };
 
   const getStatusIcon = (status: string) => {
@@ -157,13 +159,13 @@ const CorsApiDiagnostic = () => {
   };
 
   const corsErrors = tests.filter(t => t.status === 'cors_error');
-  const hasApiCorsIssues = corsErrors.some(t => t.url.includes('/clients/'));
+  const hasApiCorsIssues = corsErrors.some(t => t.url.includes('/instance/'));
 
   return (
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle>🧪 Diagnóstico CORS da API</CardTitle>
+          <CardTitle>🧪 Diagnóstico CORS da API v2.2.1</CardTitle>
           <Button onClick={runAllTests} disabled={testing}>
             {testing ? (
               <>
@@ -211,6 +213,17 @@ const CorsApiDiagnostic = () => {
           </div>
         )}
 
+        {/* Configuração atual */}
+        <div className="bg-blue-50 p-4 rounded">
+          <h4 className="font-medium text-blue-900 mb-2">📋 Configuração atual:</h4>
+          <div className="text-sm text-blue-800 space-y-1">
+            <p><strong>Servidor:</strong> {config.serverUrl}</p>
+            <p><strong>API Version:</strong> v{config.apiVersion}</p>
+            <p><strong>API Key:</strong> {config.globalApiKey ? '✅ Configurada' : '❌ Não configurada'}</p>
+            <p><strong>Frontend:</strong> {window.location.origin}</p>
+          </div>
+        </div>
+
         {/* API CORS Issue Alert */}
         {hasApiCorsIssues && (
           <Alert variant="destructive">
@@ -218,9 +231,9 @@ const CorsApiDiagnostic = () => {
             <AlertDescription>
               <div className="space-y-2">
                 <p className="font-medium">🎯 PROBLEMA IDENTIFICADO:</p>
-                <p>Os endpoints da API <code>/clients/*</code> não têm CORS configurado!</p>
+                <p>Os endpoints da API <code>/instance/*</code> não têm CORS configurado!</p>
                 <p className="text-sm">
-                  <strong>Solução:</strong> Configure CORS no servidor backend para todos os endpoints da API, 
+                  <strong>Solução:</strong> Configure CORS no servidor backend para todos os endpoints da API v2.2.1, 
                   não apenas para <code>/health</code>.
                 </p>
               </div>
@@ -238,7 +251,7 @@ const CorsApiDiagnostic = () => {
                 <div>
                   <div className="font-medium">{test.name}</div>
                   <div className="text-sm text-gray-500">
-                    {test.method} {API_BASE_URL}{test.url}
+                    {test.method} {config.serverUrl}{test.url}
                   </div>
                 </div>
               </div>
@@ -272,12 +285,12 @@ const CorsApiDiagnostic = () => {
 
         {/* Instructions */}
         <div className="bg-blue-50 p-4 rounded">
-          <h4 className="font-medium text-blue-900 mb-2">📋 Como corrigir:</h4>
+          <h4 className="font-medium text-blue-900 mb-2">📋 Como corrigir CORS v2.2.1:</h4>
           <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-            <li>Execute: <code>sudo ./scripts/fix-cors-duplicate.sh</code></li>
-            <li>Verifique configuração CORS no servidor Node.js</li>
-            <li>Certifique-se que CORS está aplicado a TODOS os endpoints</li>
-            <li>Reinicie o servidor: <code>pm2 restart whatsapp-multi-client</code></li>
+            <li>Verificar configuração CORS no servidor CodeChat v2.2.1</li>
+            <li>Certifique-se que CORS está aplicado a TODOS os endpoints /instance/*</li>
+            <li>Adicionar headers necessários: Access-Control-Allow-Origin, Access-Control-Allow-Methods</li>
+            <li>Reiniciar o servidor CodeChat</li>
             <li>Execute este diagnóstico novamente</li>
           </ol>
         </div>

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,8 +23,8 @@ import {
   Eye,
   Settings
 } from "lucide-react";
-import { SERVER_URL, getYumerGlobalApiKey } from "@/config/environment";
 import { useToast } from "@/hooks/use-toast";
+import { useServerConfig } from "@/hooks/useServerConfig";
 import InstanceStatusChecker from "./InstanceStatusChecker";
 
 interface TestResult {
@@ -47,15 +48,14 @@ interface ApiEndpoint {
 }
 
 const AdvancedApiDiagnostic = () => {
+  const { config, apiUrl, headers } = useServerConfig();
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
   const [isRunningSequential, setIsRunningSequential] = useState(false);
   const [currentTestInstance, setCurrentTestInstance] = useState<string>('');
   const [progress, setProgress] = useState(0);
   const { toast } = useToast();
 
-  const apiKey = getYumerGlobalApiKey();
-
-  // ============ DEFINIÇÃO COMPLETA DOS ENDPOINTS YUMER ============
+  // ============ DEFINIÇÃO COMPLETA DOS ENDPOINTS YUMER API v2.2.1 ============
   const endpoints: ApiEndpoint[] = [
     // 🔧 Básicos
     { 
@@ -70,18 +70,18 @@ const AdvancedApiDiagnostic = () => {
       url: '/', 
       method: 'GET', 
       category: 'basic',
-      description: 'Status público da API'
+      description: 'Status público da API v2.2.1'
     },
     
-    // 📱 Instance CRUD
+    // 📱 Instance CRUD - API v2.2.1
     { 
       name: 'Create Instance', 
       url: '/instance/create', 
       method: 'POST', 
       category: 'instance',
       description: 'Criar nova instância',
-      headers: { 'apikey': apiKey || '' },
-      body: { instanceName: '', description: 'Test Instance from Diagnostic' }
+      headers: headers,
+      body: { instanceName: '', description: 'Test Instance from Diagnostic v2.2.1' }
     },
     { 
       name: 'Fetch All Instances', 
@@ -89,7 +89,7 @@ const AdvancedApiDiagnostic = () => {
       method: 'GET', 
       category: 'instance',
       description: 'Listar todas as instâncias',
-      headers: { 'apikey': apiKey || '' }
+      headers: headers
     },
     { 
       name: 'Fetch Single Instance', 
@@ -97,7 +97,7 @@ const AdvancedApiDiagnostic = () => {
       method: 'GET', 
       category: 'instance',
       description: 'Buscar instância específica',
-      headers: { 'apikey': apiKey || '' },
+      headers: headers,
       requiresInstance: true
     },
     { 
@@ -106,9 +106,9 @@ const AdvancedApiDiagnostic = () => {
       method: 'PATCH', 
       category: 'instance',
       description: 'Atualizar configurações da instância',
-      headers: { 'apikey': apiKey || '' },
+      headers: headers,
       requiresInstance: true,
-      body: { description: 'Updated from Diagnostic' }
+      body: { description: 'Updated from Diagnostic v2.2.1' }
     },
     { 
       name: 'Delete Instance', 
@@ -116,18 +116,18 @@ const AdvancedApiDiagnostic = () => {
       method: 'DELETE', 
       category: 'instance',
       description: 'Deletar instância',
-      headers: { 'apikey': apiKey || '' },
+      headers: headers,
       requiresInstance: true
     },
     
-    // 🔗 Conexão e QR
+    // 🔗 Conexão e QR - API v2.2.1
     { 
       name: 'Connect Instance', 
       url: '/instance/connect/{instance}', 
       method: 'GET', 
       category: 'connection',
       description: 'Conectar instância e gerar QR code',
-      headers: { 'apikey': apiKey || '' },
+      headers: headers,
       requiresInstance: true
     },
     { 
@@ -136,7 +136,7 @@ const AdvancedApiDiagnostic = () => {
       method: 'GET', 
       category: 'connection',
       description: 'Verificar estado da conexão',
-      headers: { 'apikey': apiKey || '' },
+      headers: headers,
       requiresInstance: true
     },
     { 
@@ -145,7 +145,7 @@ const AdvancedApiDiagnostic = () => {
       method: 'GET', 
       category: 'connection',
       description: 'Obter QR code diretamente',
-      headers: { 'apikey': apiKey || '' },
+      headers: headers,
       requiresInstance: true
     },
     { 
@@ -154,17 +154,17 @@ const AdvancedApiDiagnostic = () => {
       method: 'DELETE', 
       category: 'connection',
       description: 'Desconectar instância',
-      headers: { 'apikey': apiKey || '' },
+      headers: headers,
       requiresInstance: true
     }
   ];
 
   const categories = {
-    basic: { name: '🔧 Básicos', icon: Shield },
-    instance: { name: '📱 Instâncias', icon: Database },
-    connection: { name: '🔗 Conexão', icon: Network },
-    webhook: { name: '🔔 Webhook', icon: Webhook },
-    performance: { name: '⚡ Performance', icon: Activity }
+    basic: { name: '🔧 Básicos v2.2.1', icon: Shield },
+    instance: { name: '📱 Instâncias v2.2.1', icon: Database },
+    connection: { name: '🔗 Conexão v2.2.1', icon: Network },
+    webhook: { name: '🔔 Webhook v2.2.1', icon: Webhook },
+    performance: { name: '⚡ Performance v2.2.1', icon: Activity }
   };
 
   const getStatusIcon = (status: TestResult['status']) => {
@@ -187,7 +187,7 @@ const AdvancedApiDiagnostic = () => {
     }
   };
 
-  // Executar teste único
+  // Executar teste único usando configuração dinâmica
   const executeTest = async (endpoint: ApiEndpoint, instanceName?: string): Promise<TestResult> => {
     const startTime = Date.now();
     const testKey = `${endpoint.category}-${endpoint.name}`;
@@ -204,7 +204,7 @@ const AdvancedApiDiagnostic = () => {
     }));
 
     try {
-      let url = `${SERVER_URL}${endpoint.url}`;
+      let url = `${config.serverUrl}${endpoint.url}`;
       let finalInstanceName = instanceName;
       
       // Para testes que precisam de instância, garantir que temos uma disponível
@@ -212,29 +212,29 @@ const AdvancedApiDiagnostic = () => {
         // Se não foi fornecido instanceName ou é um placeholder
         if (!finalInstanceName || finalInstanceName === 'test_single') {
           try {
-            console.log(`🔍 [API-TEST] Buscando instâncias existentes para ${endpoint.name}...`);
+            console.log(`🔍 [API-TEST-v2.2.1] Buscando instâncias existentes para ${endpoint.name}...`);
             
             // Buscar instâncias existentes primeiro
-            const instancesResponse = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
-              headers: { 'apikey': apiKey || '', 'Content-Type': 'application/json' }
+            const instancesResponse = await fetch(`${config.serverUrl}/instance/fetchInstances`, {
+              headers: { ...headers, 'Content-Type': 'application/json' }
             });
             
             if (instancesResponse.ok) {
               const instances = await instancesResponse.json();
-              console.log(`📊 [API-TEST] Resposta fetchInstances:`, instances);
+              console.log(`📊 [API-TEST-v2.2.1] Resposta fetchInstances:`, instances);
               
               // Verificar se temos instâncias
               if (Array.isArray(instances) && instances.length > 0) {
                 // Tentar diferentes campos para o nome da instância
                 const firstInstance = instances[0];
                 finalInstanceName = firstInstance.name || firstInstance.instanceName || firstInstance.id?.toString();
-                console.log(`🎯 [API-TEST] Usando instância existente: ${finalInstanceName}`);
+                console.log(`🎯 [API-TEST-v2.2.1] Usando instância existente: ${finalInstanceName}`);
               } else if (instances && typeof instances === 'object' && (instances.name || instances.instanceName || instances.id)) {
                 // Se não for array, pode ser objeto único
                 finalInstanceName = instances.name || instances.instanceName || instances.id?.toString();
-                console.log(`🎯 [API-TEST] Usando instância única: ${finalInstanceName}`);
+                console.log(`🎯 [API-TEST-v2.2.1] Usando instância única: ${finalInstanceName}`);
               } else {
-                console.log(`⚠️ [API-TEST] Nenhuma instância encontrada:`, instances);
+                console.log(`⚠️ [API-TEST-v2.2.1] Nenhuma instância encontrada:`, instances);
                 // Se não há instâncias, vamos falhar com mensagem clara
                 return {
                   status: 'warning',
@@ -249,12 +249,12 @@ const AdvancedApiDiagnostic = () => {
                 };
               }
             } else {
-              console.warn(`⚠️ [API-TEST] Erro ao buscar instâncias: ${instancesResponse.status}`);
+              console.warn(`⚠️ [API-TEST-v2.2.1] Erro ao buscar instâncias: ${instancesResponse.status}`);
               // Se busca falhou mas temos um nome, usar ele
               finalInstanceName = instanceName || 'default_instance';
             }
           } catch (error) {
-            console.warn(`⚠️ [API-TEST] Erro ao buscar instâncias existentes:`, error);
+            console.warn(`⚠️ [API-TEST-v2.2.1] Erro ao buscar instâncias existentes:`, error);
             // Se erro, usar o nome fornecido ou fallback
             finalInstanceName = instanceName || 'default_instance';
           }
@@ -278,7 +278,7 @@ const AdvancedApiDiagnostic = () => {
         
         // Substituir placeholder de instância
         url = url.replace('{instance}', finalInstanceName);
-        console.log(`🔗 [API-TEST] URL final: ${url}`);
+        console.log(`🔗 [API-TEST-v2.2.1] URL final: ${url}`);
       }
 
       // Preparar body para create instance
@@ -286,11 +286,11 @@ const AdvancedApiDiagnostic = () => {
       if (endpoint.name === 'Create Instance' && finalInstanceName) {
         body = { 
           instanceName: finalInstanceName,
-          description: `Test Instance: ${finalInstanceName}` 
+          description: `Test Instance v2.2.1: ${finalInstanceName}` 
         };
       }
 
-      console.log(`🧪 [API-TEST] ${endpoint.method} ${url}`, body ? { body } : '');
+      console.log(`🧪 [API-TEST-v2.2.1] ${endpoint.method} ${url}`, body ? { body } : '');
 
       const response = await fetch(url, {
         method: endpoint.method,
@@ -334,7 +334,8 @@ const AdvancedApiDiagnostic = () => {
           status: response.status, 
           data: responseData,
           url: url,
-          usedInstance: instanceName || 'N/A'
+          usedInstance: instanceName || 'N/A',
+          apiVersion: 'v2.2.1'
         },
         duration,
         endpoint: endpoint.url,
@@ -349,7 +350,7 @@ const AdvancedApiDiagnostic = () => {
       const result: TestResult = {
         status: 'error',
         message: `Erro: ${error.message}`,
-        details: { error: error.message, url: `${SERVER_URL}${endpoint.url}` },
+        details: { error: error.message, url: `${config.serverUrl}${endpoint.url}`, apiVersion: 'v2.2.1' },
         duration,
         endpoint: endpoint.url,
         method: endpoint.method
@@ -365,7 +366,7 @@ const AdvancedApiDiagnostic = () => {
     setIsRunningSequential(true);
     setProgress(0);
     
-    const testInstanceName = `test_diagnostic_${Date.now()}`;
+    const testInstanceName = `test_diagnostic_v221_${Date.now()}`;
     setCurrentTestInstance(testInstanceName);
     
     try {
@@ -401,13 +402,13 @@ const AdvancedApiDiagnostic = () => {
         ...(deleteEndpoint ? [deleteEndpoint] : [])
       ];
       
-      console.log(`🔄 [SEQUENTIAL] Iniciando teste sequencial com ${allEndpoints.length} endpoints`);
-      console.log(`📝 [SEQUENTIAL] Sequência:`, allEndpoints.map(e => `${e.category}/${e.name}`));
+      console.log(`🔄 [SEQUENTIAL-v2.2.1] Iniciando teste sequencial com ${allEndpoints.length} endpoints`);
+      console.log(`📝 [SEQUENTIAL-v2.2.1] Sequência:`, allEndpoints.map(e => `${e.category}/${e.name}`));
 
       for (let i = 0; i < allEndpoints.length; i++) {
         const endpoint = allEndpoints[i];
         
-        console.log(`🔄 [SEQUENTIAL] (${i+1}/${allEndpoints.length}) Executando: ${endpoint.category}/${endpoint.name}`);
+        console.log(`🔄 [SEQUENTIAL-v2.2.1] (${i+1}/${allEndpoints.length}) Executando: ${endpoint.category}/${endpoint.name}`);
         
         // Para endpoints básicos, não usar instanceName
         const instanceToUse = endpoint.category === 'basic' ? undefined : testInstanceName;
@@ -416,7 +417,7 @@ const AdvancedApiDiagnostic = () => {
         
         // Pausas estratégicas para operações que precisam de tempo
         if (['Create Instance', 'Connect Instance'].includes(endpoint.name)) {
-          console.log(`⏱️ [SEQUENTIAL] Aguardando 2s após ${endpoint.name}...`);
+          console.log(`⏱️ [SEQUENTIAL-v2.2.1] Aguardando 2s após ${endpoint.name}...`);
           await new Promise(resolve => setTimeout(resolve, 2000));
         } else {
           // Pausa menor entre testes para não sobrecarregar
@@ -427,7 +428,7 @@ const AdvancedApiDiagnostic = () => {
         
         // Se criação da instância falhar, interromper teste
         if (endpoint.name === 'Create Instance' && result.status === 'error') {
-          console.error(`❌ [SEQUENTIAL] Falha crítica na criação da instância`);
+          console.error(`❌ [SEQUENTIAL-v2.2.1] Falha crítica na criação da instância`);
           toast({
             title: "Teste Sequencial Interrompido",
             description: "Falha ao criar instância de teste - verificar API Key e permissões",
@@ -438,7 +439,7 @@ const AdvancedApiDiagnostic = () => {
         
         // Se algum endpoint básico falhar, continuar mas avisar
         if (endpoint.category === 'basic' && result.status === 'error') {
-          console.warn(`⚠️ [SEQUENTIAL] Endpoint básico falhou: ${endpoint.name}`);
+          console.warn(`⚠️ [SEQUENTIAL-v2.2.1] Endpoint básico falhou: ${endpoint.name}`);
         }
       }
 
@@ -451,7 +452,7 @@ const AdvancedApiDiagnostic = () => {
         description: `✅ ${successCount} sucessos, ❌ ${errorCount} erros, ⚠️ ${warningCount} avisos`,
       });
 
-      console.log(`🏁 [SEQUENTIAL] Teste concluído: ${successCount}/${allEndpoints.length} sucessos`);
+      console.log(`🏁 [SEQUENTIAL-v2.2.1] Teste concluído: ${successCount}/${allEndpoints.length} sucessos`);
 
     } finally {
       setIsRunningSequential(false);
@@ -464,37 +465,37 @@ const AdvancedApiDiagnostic = () => {
     const categoryEndpoints = endpoints.filter(e => e.category === category);
     
     // Para categoria de instâncias, primeiro verificar se há instâncias disponíveis
-    let existingInstanceName = 'test_category_instance';
+    let existingInstanceName = 'test_category_instance_v221';
     let hasInstances = false;
     
     if (category === 'instance') {
       try {
-        console.log(`🔍 [CATEGORY-TEST] Verificando instâncias disponíveis...`);
+        console.log(`🔍 [CATEGORY-TEST-v2.2.1] Verificando instâncias disponíveis...`);
         
-        const response = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
-          headers: { 'apikey': apiKey || '', 'Content-Type': 'application/json' }
+        const response = await fetch(`${config.serverUrl}/instance/fetchInstances`, {
+          headers: { ...headers, 'Content-Type': 'application/json' }
         });
         
         if (response.ok) {
           const instances = await response.json();
-          console.log(`📊 [CATEGORY-TEST] Resposta fetchInstances:`, instances);
+          console.log(`📊 [CATEGORY-TEST-v2.2.1] Resposta fetchInstances:`, instances);
           
           if (Array.isArray(instances) && instances.length > 0) {
             const firstInstance = instances[0];
             existingInstanceName = firstInstance.name || firstInstance.instanceName || firstInstance.id?.toString();
             hasInstances = true;
-            console.log(`🎯 [CATEGORY-TEST] Usando instância existente: ${existingInstanceName}`);
+            console.log(`🎯 [CATEGORY-TEST-v2.2.1] Usando instância existente: ${existingInstanceName}`);
           } else if (instances && typeof instances === 'object' && (instances.name || instances.instanceName)) {
             existingInstanceName = instances.name || instances.instanceName || instances.id?.toString();
             hasInstances = true;
-            console.log(`🎯 [CATEGORY-TEST] Usando instância única: ${existingInstanceName}`);
+            console.log(`🎯 [CATEGORY-TEST-v2.2.1] Usando instância única: ${existingInstanceName}`);
           } else {
-            console.log(`⚠️ [CATEGORY-TEST] Nenhuma instância encontrada`);
+            console.log(`⚠️ [CATEGORY-TEST-v2.2.1] Nenhuma instância encontrada`);
             hasInstances = false;
           }
         }
       } catch (error) {
-        console.warn(`⚠️ [CATEGORY-TEST] Erro ao buscar instâncias:`, error);
+        console.warn(`⚠️ [CATEGORY-TEST-v2.2.1] Erro ao buscar instâncias:`, error);
       }
     }
     
@@ -510,7 +511,7 @@ const AdvancedApiDiagnostic = () => {
             [testKey]: {
               status: 'warning',
               message: 'Nenhuma instância disponível - crie uma instância primeiro',
-              details: { suggestion: 'Use "Create Instance" antes de testar outros endpoints' },
+              details: { suggestion: 'Use "Create Instance" antes de testar outros endpoints', apiVersion: 'v2.2.1' },
               endpoint: endpoint.url,
               method: endpoint.method
             }
@@ -599,7 +600,7 @@ const AdvancedApiDiagnostic = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            📊 Diagnóstico Avançado da API YUMER
+            📊 Diagnóstico Avançado da API YUMER v2.2.1
             <div className="flex space-x-2">
               <Button onClick={clearResults} variant="outline" size="sm">
                 <Trash2 className="w-4 h-4 mr-2" />
@@ -639,17 +640,17 @@ const AdvancedApiDiagnostic = () => {
           
           <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="p-3 border rounded">
-              <p className="text-sm font-medium">Servidor YUMER</p>
-              <p className="text-xs text-muted-foreground">{SERVER_URL}</p>
+              <p className="text-sm font-medium">Servidor YUMER v2.2.1</p>
+              <p className="text-xs text-muted-foreground">{config.serverUrl}</p>
             </div>
             <div className="p-3 border rounded">
-              <p className="text-sm font-medium">API Key</p>
+              <p className="text-sm font-medium">API Key Global</p>
               <p className="text-xs text-muted-foreground">
-                {apiKey ? '✅ Configurada' : '❌ Não configurada'}
+                {config.globalApiKey ? '✅ Configurada' : '❌ Não configurada'}
               </p>
             </div>
             <div className="p-3 border rounded">
-              <p className="text-sm font-medium">Endpoints</p>
+              <p className="text-sm font-medium">Endpoints v2.2.1</p>
               <p className="text-xs text-muted-foreground">{endpoints.length} mapeados</p>
             </div>
           </div>

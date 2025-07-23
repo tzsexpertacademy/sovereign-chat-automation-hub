@@ -18,10 +18,12 @@ import {
   Users,
   QrCode,
   Activity,
-  Zap
+  Zap,
+  Settings,
+  RefreshCw
 } from "lucide-react";
-import { SERVER_URL, getServerConfig, getYumerGlobalApiKey } from "@/config/environment";
 import { supabase } from "@/integrations/supabase/client";
+import { useServerConfig } from "@/hooks/useServerConfig";
 
 import { QRCodeAdvancedDiagnostic } from "./QRCodeAdvancedDiagnostic";
 import { AdvancedQRDiagnostic } from "./AdvancedQRDiagnostic";
@@ -52,6 +54,7 @@ interface SystemHealth {
 }
 
 const ConnectionDiagnostics = () => {
+  const { config, status, apiUrl, headers, testConnection } = useServerConfig();
   const [systemHealth, setSystemHealth] = useState<SystemHealth>({
     cors: { status: 'idle', message: '' },
     api: { status: 'idle', message: '' },
@@ -63,14 +66,11 @@ const ConnectionDiagnostics = () => {
   const [isRunningComplete, setIsRunningComplete] = useState(false);
   const [showDetails, setShowDetails] = useState<Record<string, boolean>>({});
 
-  const config = getServerConfig();
-  const apiKey = getYumerGlobalApiKey();
-
-  // Endpoints básicos para teste rápido
+  // Endpoints básicos para teste rápido usando configuração dinâmica
   const basicEndpoints: EndpointTest[] = [
     { name: 'Health Check', url: '/health', method: 'GET' },
     { name: 'Status Público', url: '/', method: 'GET' },
-    { name: 'Fetch Instances', url: '/instance/fetchInstances', method: 'GET', headers: { 'apikey': apiKey || '' } }
+    { name: 'Fetch Instances', url: '/instance/fetchInstances', method: 'GET', headers: headers }
   ];
 
   const getStatusIcon = (status: TestResult['status']) => {
@@ -93,11 +93,11 @@ const ConnectionDiagnostics = () => {
     }
   };
 
-  // Teste CORS específico
+  // Teste CORS específico usando configuração dinâmica
   const testCORS = async (): Promise<TestResult> => {
     const startTime = Date.now();
     try {
-      const response = await fetch(`${SERVER_URL}/health`, {
+      const response = await fetch(`${config.serverUrl}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -139,14 +139,14 @@ const ConnectionDiagnostics = () => {
     }
   };
 
-  // Teste API básica
+  // Teste API básica usando configuração dinâmica
   const testBasicAPI = async (): Promise<TestResult> => {
     const startTime = Date.now();
     let successCount = 0;
     
     for (const endpoint of basicEndpoints) {
       try {
-        const url = `${SERVER_URL}${endpoint.url}`;
+        const url = `${config.serverUrl}${endpoint.url}`;
         const response = await fetch(url, {
           method: endpoint.method,
           headers: {
@@ -188,12 +188,12 @@ const ConnectionDiagnostics = () => {
     }
   };
 
-  // Teste Webhook
+  // Teste Webhook usando configuração dinâmica
   const testWebhook = async (): Promise<TestResult> => {
     const startTime = Date.now();
     try {
-      const response = await fetch(`${SERVER_URL}/webhook/find/test`, {
-        headers: { 'apikey': apiKey || '' }
+      const response = await fetch(`${config.serverUrl}/webhook/find/test`, {
+        headers: headers
       });
       
       const duration = Date.now() - startTime;
@@ -226,12 +226,12 @@ const ConnectionDiagnostics = () => {
     }
   };
 
-  // Teste múltiplas instâncias
+  // Teste múltiplas instâncias usando configuração dinâmica
   const testInstances = async (): Promise<TestResult> => {
     const startTime = Date.now();
     try {
-      const response = await fetch(`${SERVER_URL}/instance/fetchInstances`, {
-        headers: { 'apikey': apiKey || '' }
+      const response = await fetch(`${config.serverUrl}/instance/fetchInstances`, {
+        headers: headers
       });
       
       const duration = Date.now() - startTime;
@@ -341,6 +341,11 @@ const ConnectionDiagnostics = () => {
 
   const overallStatus = getOverallStatus();
 
+  // Função para reconectar o servidor
+  const handleReconnectServer = async () => {
+    await testConnection();
+  };
+
   return (
     <div className="space-y-6">
       {/* Header com Status Geral */}
@@ -350,7 +355,7 @@ const ConnectionDiagnostics = () => {
             <div className="flex items-center space-x-3">
               <Activity className="w-6 h-6 text-blue-500" />
               <div>
-                <CardTitle className="text-xl">Diagnóstico do Sistema</CardTitle>
+                <CardTitle className="text-xl">Diagnóstico do Sistema CodeChat v2.2.1</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
                   Verificação completa da conectividade e funcionalidades
                 </p>
@@ -433,22 +438,46 @@ const ConnectionDiagnostics = () => {
             })}
           </div>
 
-          {/* Informações da Configuração */}
+          {/* Informações da Configuração Dinâmica */}
           <div className="mt-4 pt-4 border-t">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
               <div className="p-3 bg-muted/30 rounded">
                 <p className="font-medium text-muted-foreground">Frontend</p>
                 <p className="truncate">{window.location.origin}</p>
               </div>
               <div className="p-3 bg-muted/30 rounded">
-                <p className="font-medium text-muted-foreground">Servidor YUMER</p>
-                <p className="truncate">{SERVER_URL}</p>
+                <p className="font-medium text-muted-foreground">Servidor CodeChat v2.2.1</p>
+                <p className="truncate">{config.serverUrl}</p>
+                <div className="flex items-center space-x-2 mt-1">
+                  {status.isOnline ? (
+                    <Badge variant="default" className="bg-green-100 text-green-800">Online</Badge>
+                  ) : (
+                    <Badge variant="destructive">Offline</Badge>
+                  )}
+                  {status.latency && (
+                    <span className="text-xs text-muted-foreground">{status.latency}ms</span>
+                  )}
+                </div>
               </div>
               <div className="p-3 bg-muted/30 rounded">
-                <p className="font-medium text-muted-foreground">API Key</p>
-                <p className={apiKey ? 'text-green-600' : 'text-red-600'}>
-                  {apiKey ? '✅ Configurada' : '❌ Não configurada'}
+                <p className="font-medium text-muted-foreground">API Key Global</p>
+                <p className={config.globalApiKey ? 'text-green-600' : 'text-red-600'}>
+                  {config.globalApiKey ? '✅ Configurada' : '❌ Não configurada'}
                 </p>
+              </div>
+              <div className="p-3 bg-muted/30 rounded flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-muted-foreground">Configuração</p>
+                  <p className="text-xs">v{config.apiVersion}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleReconnectServer}
+                  title="Reconectar servidor"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                </Button>
               </div>
             </div>
           </div>

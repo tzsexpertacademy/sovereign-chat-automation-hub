@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -5,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Wifi, WifiOff, Settings, CheckCircle, XCircle, AlertTriangle, RefreshCw } from "lucide-react";
 import { yumerWhatsappService } from '@/services/yumerWhatsappService';
-import { serverConfigService } from '@/services/serverConfigService';
+import { useServerConfig } from '@/hooks/useServerConfig';
 
 interface ConnectionDiagnosticsProps {
   instanceId: string | null;
@@ -21,6 +22,7 @@ interface DiagnosticResult {
 }
 
 const ConnectionDiagnostics = ({ instanceId, isVisible, onConfigureWebhook }: ConnectionDiagnosticsProps) => {
+  const { config, status, testConnection } = useServerConfig();
   const [diagnostics, setDiagnostics] = useState<DiagnosticResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
@@ -39,27 +41,26 @@ const ConnectionDiagnostics = ({ instanceId, isVisible, onConfigureWebhook }: Co
     setIsRunning(true);
     const results: DiagnosticResult[] = [];
 
-    // 1. Testar configuração do servidor
+    // 1. Testar configuração do servidor usando useServerConfig
     results.push({
-      name: 'Configuração do Servidor',
+      name: 'Configuração do Servidor v2.2.1',
       status: 'checking',
       message: 'Verificando configuração...'
     });
 
     try {
-      const config = serverConfigService.getConfig();
-      const serverStatus = await serverConfigService.testConnection();
+      const serverStatus = await testConnection();
       
       if (serverStatus.isOnline) {
         results[0] = {
-          name: 'Configuração do Servidor',
+          name: 'Configuração do Servidor v2.2.1',
           status: 'success',
           message: `Conectado (${serverStatus.latency}ms)`,
-          details: `URL: ${config.serverUrl}`
+          details: `URL: ${config.serverUrl} | API v${config.apiVersion}`
         };
       } else {
         results[0] = {
-          name: 'Configuração do Servidor',
+          name: 'Configuração do Servidor v2.2.1',
           status: 'error',
           message: 'Servidor offline',
           details: serverStatus.error || 'Falha na conexão'
@@ -67,7 +68,7 @@ const ConnectionDiagnostics = ({ instanceId, isVisible, onConfigureWebhook }: Co
       }
     } catch (error) {
       results[0] = {
-        name: 'Configuração do Servidor',
+        name: 'Configuração do Servidor v2.2.1',
         status: 'error',
         message: 'Erro na configuração',
         details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -154,7 +155,7 @@ const ConnectionDiagnostics = ({ instanceId, isVisible, onConfigureWebhook }: Co
       };
     }
 
-    // 4. Testar envio de mensagem (opcional)
+    // 4. Testar capacidade de envio (opcional)
     results.push({
       name: 'Capacidade de Envio',
       status: 'checking',
@@ -261,7 +262,7 @@ const ConnectionDiagnostics = ({ instanceId, isVisible, onConfigureWebhook }: Co
             ) : (
               <Wifi className="h-5 w-5 text-green-500" />
             )}
-            <span>Diagnóstico de Conexão</span>
+            <span>Diagnóstico de Conexão CodeChat v2.2.1</span>
           </div>
           <div className="flex items-center space-x-2">
             {lastCheck && (
@@ -333,7 +334,7 @@ const ConnectionDiagnostics = ({ instanceId, isVisible, onConfigureWebhook }: Co
           <Alert>
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
-              Todas as verificações foram aprovadas. O sistema está pronto para enviar e receber mensagens.
+              Todas as verificações foram aprovadas. O sistema CodeChat v2.2.1 está pronto para enviar e receber mensagens.
             </AlertDescription>
           </Alert>
         )}
