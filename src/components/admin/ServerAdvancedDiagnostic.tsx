@@ -53,15 +53,21 @@ const ServerAdvancedDiagnostic = () => {
 
   // Endpoints para testar
   const endpointTests: EndpointTest[] = [
+    // Endpoints básicos da CodeChat API v2.2.1
+    { url: '/docs', method: 'GET', description: 'Documentação Swagger', authRequired: false },
     { url: '/', method: 'GET', description: 'Raiz da API', authRequired: false },
-    { url: '/health', method: 'GET', description: 'Health Check Padrão', authRequired: false },
-    { url: '/api/health', method: 'GET', description: 'Health Check API', authRequired: false },
-    { url: '/api/v2/health', method: 'GET', description: 'Health Check v2', authRequired: false },
-    { url: '/status', method: 'GET', description: 'Status do Servidor', authRequired: false },
-    { url: '/ping', method: 'GET', description: 'Ping Simples', authRequired: false },
-    { url: '/manager/findApikey', method: 'GET', description: 'Listar API Keys', authRequired: true },
-    { url: '/instance/fetchInstances', method: 'GET', description: 'Listar Instâncias', authRequired: true },
-    { url: '/instance/create', method: 'POST', description: 'Criar Instância', authRequired: true },
+    
+    // Admin Controller - baseado na documentação
+    { url: '/api/v2/admin/business', method: 'GET', description: 'Admin - List Business', authRequired: true },
+    { url: '/api/v2/admin/business', method: 'POST', description: 'Admin - Create Business', authRequired: true },
+    
+    // Business Controller
+    { url: '/api/v2/business', method: 'GET', description: 'Business - Get All', authRequired: true },
+    
+    // Instance Controller 
+    { url: '/api/v2/instance', method: 'GET', description: 'Instance - List All', authRequired: true },
+    { url: '/api/v2/instance/create', method: 'POST', description: 'Instance - Create', authRequired: true },
+    { url: '/api/v2/instance/connectionState/:instanceName', method: 'GET', description: 'Instance - Connection State', authRequired: true }
   ];
 
   // Formatos de autenticação para testar

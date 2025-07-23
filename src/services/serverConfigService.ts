@@ -101,15 +101,15 @@ class ServerConfigService {
 
   private getDefaultConfig(): ServerConfig {
     return {
-      // Primary Backend - CodeChat API v2.1.3 - SERVIDOR OFICIAL ATUALIZADO
+      // Primary Backend - CodeChat API v2.2.1 - VERSÃO CORRETA DO SERVIDOR
       serverUrl: 'https://api.yumer.com.br',
       host: 'api.yumer.com.br',
       port: 443,
       protocol: 'https',
       basePath: '/api/v2',
-      apiVersion: '2.1.3',
+      apiVersion: 'v2.2.1',
       
-      // Authentication - CodeChat API v2.1.3 - TOKENS OFICIAIS ATUALIZADOS
+      // Authentication - CodeChat API v2.2.1 - TOKENS OFICIAIS DO SERVIDOR
       adminToken: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
       globalApiKey: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
       jwtSecret: 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe',
@@ -165,9 +165,9 @@ class ServerConfigService {
         }
       },
       
-      // Metadata - ATUALIZADO
+      // Metadata - ATUALIZADO PARA v2.2.1
       lastUpdated: new Date().toISOString(),
-      version: '2.1.3',
+      version: 'v2.2.1',
       configVersion: 2
     };
   }
@@ -328,7 +328,7 @@ class ServerConfigService {
     const startTime = Date.now();
     
     try {
-      console.log(`🔍 Testando conexão com CodeChat API v2.1.3: ${this.config.serverUrl}`);
+      console.log(`🔍 Testando conexão com CodeChat API v2.2.1: ${this.config.serverUrl}`);
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout);
@@ -352,7 +352,7 @@ class ServerConfigService {
         error: response.ok ? undefined : `HTTP ${response.status}`
       };
       
-      console.log(`✅ Teste de conexão CodeChat API v2.1.3 concluído:`, this.status);
+      console.log(`✅ Teste de conexão CodeChat API v2.2.1 concluído:`, this.status);
       
     } catch (error: any) {
       this.status = {
@@ -362,7 +362,7 @@ class ServerConfigService {
         error: error.message || 'Connection failed'
       };
       
-      console.error('❌ Teste de conexão CodeChat API v2.1.3 falhou:', this.status);
+      console.error('❌ Teste de conexão CodeChat API v2.2.1 falhou:', this.status);
     }
     
     return this.status;
