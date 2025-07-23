@@ -1,581 +1,441 @@
 
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
+import { yumerApiV2Service } from '@/services/yumerApiV2Service';
+import { validateEndpointCoverage } from '@/services/obsoleteServicesCleanup';
 import { 
   CheckCircle, 
   XCircle, 
+  AlertCircle, 
   RefreshCw, 
-  Server, 
-  Database, 
-  Globe,
+  Send, 
+  Database,
+  Users,
   MessageSquare,
   Settings,
-  Plus,
-  Trash2,
-  Power,
-  PowerOff
-} from "lucide-react";
-import YumerV2Diagnostic from "./YumerV2Diagnostic";
-import { yumerApiV2Service, YumerV2Instance, YumerV2Business } from "@/services/yumerApiV2Service";
-import { useToast } from "@/hooks/use-toast";
+  Webhook,
+  Image,
+  Phone,
+  Tag,
+  UserPlus
+} from 'lucide-react';
 
-const YumerApiManager = () => {
-  const [instances, setInstances] = useState<YumerV2Instance[]>([]);
-  const [businesses, setBusinesses] = useState<YumerV2Business[]>([]);
+interface TestResult {
+  endpoint: string;
+  success: boolean;
+  duration: number;
+  error?: string;
+  data?: any;
+}
+
+export const YumerApiManager: React.FC = () => {
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [serverHealth, setServerHealth] = useState<any>(null);
+  const [instanceName, setInstanceName] = useState('test-instance');
+  const [testData, setTestData] = useState('{}');
+  const [coverage, setCoverage] = useState(validateEndpointCoverage());
   const { toast } = useToast();
 
-  // Form states
-  const [newInstanceName, setNewInstanceName] = useState("");
-  const [newBusiness, setNewBusiness] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    description: ""
-  });
-
   useEffect(() => {
-    loadInitialData();
+    setCoverage(validateEndpointCoverage());
   }, []);
 
-  const loadInitialData = async () => {
-    setLoading(true);
+  const runEndpointTest = async (
+    name: string,
+    testFunction: () => Promise<any>
+  ) => {
+    const startTime = Date.now();
     try {
-      await Promise.all([
-        loadServerHealth(),
-        loadInstances(),
-        loadBusinesses()
-      ]);
-    } catch (error) {
-      console.error('❌ [YUMER-MANAGER] Erro ao carregar dados:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadServerHealth = async () => {
-    try {
-      const result = await yumerApiV2Service.getHealth();
+      const result = await testFunction();
+      const duration = Date.now() - startTime;
+      
+      const testResult: TestResult = {
+        endpoint: name,
+        success: result.success || false,
+        duration,
+        data: result.data,
+        error: result.error
+      };
+      
+      setTestResults(prev => [...prev.filter(r => r.endpoint !== name), testResult]);
+      
       if (result.success) {
-        setServerHealth(result.data);
-        console.log('✅ [YUMER-MANAGER] Server health:', result.data);
-      }
-    } catch (error) {
-      console.error('❌ [YUMER-MANAGER] Erro ao verificar saúde do servidor:', error);
-    }
-  };
-
-  const loadInstances = async () => {
-    try {
-      const result = await yumerApiV2Service.listInstances();
-      if (result.success && result.data) {
-        setInstances(result.data);
-        console.log('✅ [YUMER-MANAGER] Instâncias carregadas:', result.data.length);
+        toast({
+          title: `✅ ${name}`,
+          description: `Sucesso em ${duration}ms`,
+        });
       } else {
-        console.warn('⚠️ [YUMER-MANAGER] Falha ao carregar instâncias:', result.error);
+        toast({
+          title: `❌ ${name}`,
+          description: result.error || 'Erro desconhecido',
+          variant: "destructive",
+        });
       }
-    } catch (error) {
-      console.error('❌ [YUMER-MANAGER] Erro ao carregar instâncias:', error);
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      const testResult: TestResult = {
+        endpoint: name,
+        success: false,
+        duration,
+        error: error.message
+      };
+      
+      setTestResults(prev => [...prev.filter(r => r.endpoint !== name), testResult]);
+      
+      toast({
+        title: `❌ ${name}`,
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
-  const loadBusinesses = async () => {
-    try {
-      const result = await yumerApiV2Service.listBusinesses();
-      if (result.success && result.data) {
-        setBusinesses(result.data);
-        console.log('✅ [YUMER-MANAGER] Businesses carregados:', result.data.length);
-      } else {
-        console.warn('⚠️ [YUMER-MANAGER] Falha ao carregar businesses:', result.error);
-      }
-    } catch (error) {
-      console.error('❌ [YUMER-MANAGER] Erro ao carregar businesses:', error);
-    }
+  const testBasicEndpoints = async () => {
+    setLoading(true);
+    setTestResults([]);
+
+    // Testes básicos
+    await runEndpointTest('Health Check', () => yumerApiV2Service.getHealth());
+    await runEndpointTest('Server Info', () => yumerApiV2Service.getServerInfo());
+    await runEndpointTest('List Businesses', () => yumerApiV2Service.listBusinesses());
+    await runEndpointTest('List Instances', () => yumerApiV2Service.listInstances());
+
+    setLoading(false);
   };
 
-  const handleCreateInstance = async () => {
-    if (!newInstanceName.trim()) {
+  const testInstanceEndpoints = async () => {
+    if (!instanceName) {
       toast({
         title: "Erro",
         description: "Nome da instância é obrigatório",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
 
     setLoading(true);
-    try {
-      const result = await yumerApiV2Service.createAndConfigureInstance(newInstanceName);
-      
-      if (result.success) {
-        toast({
-          title: "Sucesso",
-          description: `Instância ${newInstanceName} criada com sucesso`
-        });
-        setNewInstanceName("");
-        await loadInstances();
-      } else {
-        toast({
-          title: "Erro",
-          description: result.error || "Falha ao criar instância",
-          variant: "destructive"
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Erro",
-        description: error.message,
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
+
+    // Testes de instância
+    await runEndpointTest('Instance Status', () => yumerApiV2Service.getInstanceStatus(instanceName));
+    await runEndpointTest('Fetch QR Code', () => yumerApiV2Service.fetchQRCode(instanceName));
+    await runEndpointTest('Webhook Config', () => yumerApiV2Service.getWebhookConfig(instanceName));
+
+    setLoading(false);
   };
 
-  const handleCreateBusiness = async () => {
-    if (!newBusiness.name || !newBusiness.email || !newBusiness.phone) {
+  const testChatEndpoints = async () => {
+    if (!instanceName) {
       toast({
         title: "Erro",
-        description: "Nome, email e telefone são obrigatórios",
-        variant: "destructive"
+        description: "Nome da instância é obrigatório",
+        variant: "destructive",
       });
       return;
     }
 
     setLoading(true);
+
+    // Testes de chat
+    await runEndpointTest('Find Chats', () => yumerApiV2Service.findChats(instanceName));
+    await runEndpointTest('Find Contacts', () => yumerApiV2Service.findContacts(instanceName));
+    await runEndpointTest('Find Messages', () => yumerApiV2Service.findMessages(instanceName));
+
+    setLoading(false);
+  };
+
+  const testCustomEndpoint = async () => {
     try {
-      const result = await yumerApiV2Service.createBusiness(newBusiness);
+      const data = JSON.parse(testData);
+      setLoading(true);
       
-      if (result.success) {
-        toast({
-          title: "Sucesso",
-          description: `Business ${newBusiness.name} criado com sucesso`
-        });
-        setNewBusiness({ name: "", email: "", phone: "", description: "" });
-        await loadBusinesses();
-      } else {
-        toast({
-          title: "Erro",
-          description: result.error || "Falha ao criar business",
-          variant: "destructive"
-        });
-      }
-    } catch (error: any) {
+      // Exemplo de teste customizado
+      await runEndpointTest('Custom Test', () => 
+        yumerApiV2Service.sendTextMessage(instanceName, {
+          number: data.number || '5511999999999',
+          textMessage: { text: data.message || 'Teste da API' }
+        })
+      );
+      
+      setLoading(false);
+    } catch (error) {
       toast({
         title: "Erro",
-        description: error.message,
-        variant: "destructive"
+        description: "JSON inválido nos dados de teste",
+        variant: "destructive",
       });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleConnectInstance = async (instanceName: string) => {
-    setLoading(true);
-    try {
-      const result = await yumerApiV2Service.connectInstance(instanceName);
-      
-      if (result.success) {
-        toast({
-          title: "Sucesso",
-          description: `Instância ${instanceName} conectada`
-        });
-        await loadInstances();
-      } else {
-        toast({
-          title: "Erro",
-          description: result.error || "Falha ao conectar instância",
-          variant: "destructive"
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Erro",
-        description: error.message,
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDisconnectInstance = async (instanceName: string) => {
-    setLoading(true);
-    try {
-      const result = await yumerApiV2Service.disconnectInstance(instanceName);
-      
-      if (result.success) {
-        toast({
-          title: "Sucesso",
-          description: `Instância ${instanceName} desconectada`
-        });
-        await loadInstances();
-      } else {
-        toast({
-          title: "Erro",
-          description: result.error || "Falha ao desconectar instância",
-          variant: "destructive"
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Erro",
-        description: error.message,
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteInstance = async (instanceName: string) => {
-    if (!confirm(`Tem certeza que deseja deletar a instância ${instanceName}?`)) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await yumerApiV2Service.deleteInstance(instanceName);
-      
-      if (result.success) {
-        toast({
-          title: "Sucesso",
-          description: `Instância ${instanceName} deletada`
-        });
-        await loadInstances();
-      } else {
-        toast({
-          title: "Erro",
-          description: result.error || "Falha ao deletar instância",
-          variant: "destructive"
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Erro",
-        description: error.message,
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'open': return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'connecting': return <RefreshCw className="w-4 h-4 text-yellow-500" />;
-      case 'close': return <XCircle className="w-4 h-4 text-red-500" />;
-      default: return <XCircle className="w-4 h-4 text-gray-400" />;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'open': return 'default';
-      case 'connecting': return 'secondary';
-      case 'close': return 'destructive';
-      default: return 'outline';
     }
   };
 
   return (
     <div className="space-y-6">
-      
-      {/* Server Status */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="flex items-center space-x-2">
-              <Server className="w-5 h-5" />
-              <span>Status do Servidor Yumer v2</span>
-            </CardTitle>
-            <Button onClick={loadServerHealth} disabled={loading} size="sm">
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Atualizar
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {serverHealth ? (
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-4 h-4 text-green-500" />
-                <span className="text-sm">Servidor Online</span>
-              </div>
-              <pre className="text-xs bg-gray-50 p-2 rounded">
-                {JSON.stringify(serverHealth, null, 2)}
-              </pre>
+      {/* Header com estatísticas */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="flex items-center p-6">
+            <CheckCircle className="h-8 w-8 text-green-500 mr-3" />
+            <div>
+              <p className="text-2xl font-bold">{coverage.implemented.length}</p>
+              <p className="text-sm text-muted-foreground">Implementados</p>
             </div>
-          ) : (
-            <div className="flex items-center space-x-2">
-              <XCircle className="w-4 h-4 text-red-500" />
-              <span className="text-sm">Status não disponível</span>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center p-6">
+            <XCircle className="h-8 w-8 text-red-500 mr-3" />
+            <div>
+              <p className="text-2xl font-bold">{coverage.missing.length}</p>
+              <p className="text-sm text-muted-foreground">Faltando</p>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center p-6">
+            <Database className="h-8 w-8 text-blue-500 mr-3" />
+            <div>
+              <p className="text-2xl font-bold">{coverage.total}</p>
+              <p className="text-sm text-muted-foreground">Total</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center p-6">
+            <AlertCircle className="h-8 w-8 text-orange-500 mr-3" />
+            <div>
+              <p className="text-2xl font-bold">
+                {Math.round((coverage.implemented.length / coverage.total) * 100)}%
+              </p>
+              <p className="text-sm text-muted-foreground">Cobertura</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Main Tabs */}
-      <Tabs defaultValue="diagnostic" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="diagnostic">Diagnóstico</TabsTrigger>
-          <TabsTrigger value="instances">Instâncias</TabsTrigger>
-          <TabsTrigger value="businesses">Businesses</TabsTrigger>
-          <TabsTrigger value="settings">Configurações</TabsTrigger>
+      <Tabs defaultValue="basic" className="w-full">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="basic">Básico</TabsTrigger>
+          <TabsTrigger value="instance">Instância</TabsTrigger>
+          <TabsTrigger value="chat">Chat</TabsTrigger>
+          <TabsTrigger value="group">Grupos</TabsTrigger>
+          <TabsTrigger value="media">Mídia</TabsTrigger>
+          <TabsTrigger value="custom">Custom</TabsTrigger>
         </TabsList>
 
-        {/* Diagnostic Tab */}
-        <TabsContent value="diagnostic">
-          <YumerV2Diagnostic />
-        </TabsContent>
-
-        {/* Instances Tab */}
-        <TabsContent value="instances" className="space-y-4">
-          
-          {/* Create Instance */}
+        <TabsContent value="basic" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Plus className="w-5 h-5" />
-                <span>Criar Nova Instância</span>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Testes Básicos da API
               </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex space-x-4">
-                <div className="flex-1">
-                  <Label htmlFor="instanceName">Nome da Instância</Label>
-                  <Input
-                    id="instanceName"
-                    value={newInstanceName}
-                    onChange={(e) => setNewInstanceName(e.target.value)}
-                    placeholder="ex: minha-empresa-whatsapp"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button onClick={handleCreateInstance} disabled={loading}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Criar
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Instances List */}
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle className="flex items-center space-x-2">
-                  <Globe className="w-5 h-5" />
-                  <span>Instâncias ({instances.length})</span>
-                </CardTitle>
-                <Button onClick={loadInstances} disabled={loading} size="sm">
-                  <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  Atualizar
-                </Button>
-              </div>
+              <CardDescription>
+                Testar endpoints fundamentais (health, info, business, instances)
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {instances.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Globe className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Nenhuma instância encontrada</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {instances.map((instance) => (
-                    <div key={instance.instanceName} className="flex items-center justify-between p-4 border rounded">
-                      <div className="flex items-center space-x-3">
-                        {getStatusIcon(instance.status)}
-                        <div>
-                          <div className="font-medium">{instance.instanceName}</div>
-                          <div className="text-sm text-gray-500">
-                            Owner: {instance.owner || 'N/A'}
-                          </div>
-                          {instance.profilePicUrl && (
-                            <img src={instance.profilePicUrl} alt="Profile" className="w-8 h-8 rounded-full mt-1" />
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant={getStatusColor(instance.status)}>
-                          {instance.status}
-                        </Badge>
-                        
-                        {instance.status === 'close' && (
-                          <Button 
-                            onClick={() => handleConnectInstance(instance.instanceName)}
-                            disabled={loading}
-                            size="sm"
-                            variant="outline"
-                          >
-                            <Power className="w-4 h-4" />
-                          </Button>
-                        )}
-                        
-                        {instance.status === 'open' && (
-                          <Button 
-                            onClick={() => handleDisconnectInstance(instance.instanceName)}
-                            disabled={loading}
-                            size="sm"
-                            variant="outline"
-                          >
-                            <PowerOff className="w-4 h-4" />
-                          </Button>
-                        )}
-                        
-                        <Button 
-                          onClick={() => handleDeleteInstance(instance.instanceName)}
-                          disabled={loading}
-                          size="sm"
-                          variant="destructive"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Businesses Tab */}
-        <TabsContent value="businesses" className="space-y-4">
-          
-          {/* Create Business */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Plus className="w-5 h-5" />
-                <span>Criar Novo Business</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="businessName">Nome</Label>
-                  <Input
-                    id="businessName"
-                    value={newBusiness.name}
-                    onChange={(e) => setNewBusiness(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Nome da empresa"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="businessEmail">Email</Label>
-                  <Input
-                    id="businessEmail"
-                    type="email"
-                    value={newBusiness.email}
-                    onChange={(e) => setNewBusiness(prev => ({ ...prev, email: e.target.value }))}
-                    placeholder="email@empresa.com"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="businessPhone">Telefone</Label>
-                  <Input
-                    id="businessPhone"
-                    value={newBusiness.phone}
-                    onChange={(e) => setNewBusiness(prev => ({ ...prev, phone: e.target.value }))}
-                    placeholder="5511999999999"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="businessDescription">Descrição (Opcional)</Label>
-                <Textarea
-                  id="businessDescription"
-                  value={newBusiness.description}
-                  onChange={(e) => setNewBusiness(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Descrição do negócio"
-                />
-              </div>
-              <Button onClick={handleCreateBusiness} disabled={loading}>
-                <Plus className="w-4 h-4 mr-2" />
-                Criar Business
+              <Button 
+                onClick={testBasicEndpoints} 
+                disabled={loading}
+                className="w-full"
+              >
+                {loading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                Executar Testes Básicos
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
 
-          {/* Businesses List */}
+        <TabsContent value="instance" className="space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle className="flex items-center space-x-2">
-                  <Database className="w-5 h-5" />
-                  <span>Businesses ({businesses.length})</span>
-                </CardTitle>
-                <Button onClick={loadBusinesses} disabled={loading} size="sm">
-                  <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  Atualizar
-                </Button>
-              </div>
+              <CardTitle className="flex items-center gap-2">
+                <Phone className="h-5 w-5" />
+                Testes de Instância
+              </CardTitle>
+              <CardDescription>
+                Testar gerenciamento de instâncias WhatsApp
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              {businesses.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Database className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Nenhum business encontrado</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {businesses.map((business) => (
-                    <div key={business.businessId} className="flex items-center justify-between p-4 border rounded">
-                      <div>
-                        <div className="font-medium">{business.name}</div>
-                        <div className="text-sm text-gray-500">
-                          {business.email} • {business.phone}
-                        </div>
-                        {business.description && (
-                          <div className="text-sm text-gray-400 mt-1">
-                            {business.description}
-                          </div>
-                        )}
-                      </div>
-                      <Badge variant="outline">
-                        {business.businessId}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <CardContent className="space-y-4">
+              <Input
+                placeholder="Nome da instância"
+                value={instanceName}
+                onChange={(e) => setInstanceName(e.target.value)}
+              />
+              <Button 
+                onClick={testInstanceEndpoints} 
+                disabled={loading || !instanceName}
+                className="w-full"
+              >
+                {loading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                Testar Instância
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Settings Tab */}
-        <TabsContent value="settings">
+        <TabsContent value="chat" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Settings className="w-5 h-5" />
-                <span>Configurações da API</span>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Testes de Chat
               </CardTitle>
+              <CardDescription>
+                Testar funcionalidades de chat e mensagens
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Input
+                placeholder="Nome da instância"
+                value={instanceName}
+                onChange={(e) => setInstanceName(e.target.value)}
+              />
+              <Button 
+                onClick={testChatEndpoints} 
+                disabled={loading || !instanceName}
+                className="w-full"
+              >
+                {loading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
+                Testar Chat
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="group" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Testes de Grupos
+              </CardTitle>
+              <CardDescription>
+                Em desenvolvimento - Endpoints de grupos
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <Alert>
-                <Settings className="h-4 w-4" />
-                <AlertDescription>
-                  As configurações da API são gerenciadas pelo <strong>serverConfigService</strong>.
-                  Acesse o painel de configuração do servidor para fazer alterações.
-                </AlertDescription>
-              </Alert>
+              <Badge variant="secondary">Em breve</Badge>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="media" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Image className="h-5 w-5" />
+                Testes de Mídia
+              </CardTitle>
+              <CardDescription>
+                Em desenvolvimento - Upload/Download de mídia
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Badge variant="secondary">Em breve</Badge>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="custom" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Tag className="h-5 w-5" />
+                Teste Customizado
+              </CardTitle>
+              <CardDescription>
+                Executar teste personalizado com dados JSON
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Input
+                placeholder="Nome da instância"
+                value={instanceName}
+                onChange={(e) => setInstanceName(e.target.value)}
+              />
+              <Textarea
+                placeholder='{"number": "5511999999999", "message": "Teste"}'
+                value={testData}
+                onChange={(e) => setTestData(e.target.value)}
+                rows={4}
+              />
+              <Button 
+                onClick={testCustomEndpoint} 
+                disabled={loading || !instanceName}
+                className="w-full"
+              >
+                {loading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                Executar Teste Custom
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Resultados dos testes */}
+      {testResults.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resultados dos Testes</CardTitle>
+            <CardDescription>
+              Últimos testes executados
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {testResults.map((result, index) => (
+                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    {result.success ? (
+                      <CheckCircle className="h-5 w-5 text-green-500" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-red-500" />
+                    )}
+                    <span className="font-medium">{result.endpoint}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={result.success ? "default" : "destructive"}>
+                      {result.duration}ms
+                    </Badge>
+                    {result.error && (
+                      <Badge variant="outline" className="text-xs">
+                        {result.error}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Endpoints faltando */}
+      {coverage.missing.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-orange-600">Endpoints Faltando</CardTitle>
+            <CardDescription>
+              Endpoints da API oficial que ainda não foram implementados
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {coverage.missing.map((endpoint, index) => (
+                <Badge key={index} variant="outline" className="justify-start">
+                  {endpoint}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

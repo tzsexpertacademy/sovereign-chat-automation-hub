@@ -1,7 +1,7 @@
 
 import { serverConfigService } from './serverConfigService';
 
-// Tipos oficiais da API Yumer v2 baseados na documentação
+// ===== TIPOS OFICIAIS DA API YUMER V2 =====
 export interface YumerV2Instance {
   instanceName: string;
   status: 'open' | 'connecting' | 'close';
@@ -46,6 +46,69 @@ export interface YumerV2Chat {
   unreadCount: number;
 }
 
+export interface YumerV2Contact {
+  remoteJid: string;
+  pushName?: string;
+  profilePicUrl?: string;
+  isGroup: boolean;
+  isWAContact: boolean;
+  verifiedName?: string;
+}
+
+export interface YumerV2Group {
+  id: string;
+  subject: string;
+  subjectOwner?: string;
+  subjectTime?: number;
+  creation?: number;
+  owner?: string;
+  desc?: string;
+  descId?: string;
+  restrict?: boolean;
+  announce?: boolean;
+  size?: number;
+  participants: YumerV2GroupParticipant[];
+}
+
+export interface YumerV2GroupParticipant {
+  id: string;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+}
+
+export interface YumerV2Media {
+  mediatype: 'image' | 'audio' | 'video' | 'document';
+  media: string; // base64 ou URL
+  caption?: string;
+  fileName?: string;
+}
+
+export interface YumerV2Profile {
+  name?: string;
+  status?: string;
+  profilePicUrl?: string;
+}
+
+export interface YumerV2Settings {
+  readreceipts?: boolean;
+  profile?: YumerV2Profile;
+  privacy?: {
+    readreceipts?: 'all' | 'contacts' | 'none';
+    profile?: 'all' | 'contacts' | 'none';
+    status?: 'all' | 'contacts' | 'none';
+    online?: 'all' | 'match_last_seen';
+    last?: 'all' | 'contacts' | 'none';
+    groupadd?: 'all' | 'contacts' | 'contact_blacklist';
+  };
+}
+
+export interface YumerV2Label {
+  id: string;
+  name: string;
+  color: number;
+  predefinedId?: string;
+}
+
 export interface YumerV2Webhook {
   enabled: boolean;
   url: string;
@@ -62,11 +125,7 @@ export interface YumerV2SendMessageRequest {
   textMessage?: {
     text: string;
   };
-  mediaMessage?: {
-    mediatype: 'image' | 'audio' | 'video' | 'document';
-    media: string; // base64 ou URL
-    caption?: string;
-  };
+  mediaMessage?: YumerV2Media;
 }
 
 export interface YumerV2ApiResponse<T = any> {
@@ -77,8 +136,8 @@ export interface YumerV2ApiResponse<T = any> {
 }
 
 /**
- * Serviço oficial da API Yumer v2
- * Baseado na documentação: https://api.yumer.com.br/docs
+ * Serviço completo da API Yumer v2.1.3
+ * Implementa TODOS os endpoints da documentação oficial
  */
 class YumerApiV2Service {
   private config = serverConfigService.getConfig();
@@ -222,6 +281,245 @@ class YumerApiV2Service {
     return this.makeRequest(`/instance/fetchInstances/${instanceName}`, { method: 'GET' });
   }
 
+  async restartInstance(instanceName: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/instance/restart/${instanceName}`, { method: 'PUT' });
+  }
+
+  // ===== CONTACT ENDPOINTS =====
+  async findContacts(instanceName: string, filters?: any): Promise<YumerV2ApiResponse<YumerV2Contact[]>> {
+    return this.makeRequest(`/chat/findContacts/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(filters || {})
+    });
+  }
+
+  async createContact(instanceName: string, contact: Partial<YumerV2Contact>): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/upsertContact/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(contact)
+    });
+  }
+
+  async updateContactProfilePic(instanceName: string, remoteJid: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/updateContactProfilePicture/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({ remoteJid })
+    });
+  }
+
+  async fetchContactProfilePic(instanceName: string, remoteJid: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/fetchProfilePictureUrl/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify({ number: remoteJid })
+    });
+  }
+
+  async blockContact(instanceName: string, remoteJid: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/blockContact/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({ remoteJid })
+    });
+  }
+
+  async unblockContact(instanceName: string, remoteJid: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/unblockContact/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({ remoteJid })
+    });
+  }
+
+  // ===== GROUP ENDPOINTS =====
+  async findGroups(instanceName: string, filters?: any): Promise<YumerV2ApiResponse<YumerV2Group[]>> {
+    return this.makeRequest(`/group/findGroupByJid/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(filters || {})
+    });
+  }
+
+  async createGroup(instanceName: string, groupData: {
+    subject: string;
+    participants: string[];
+  }): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/group/create/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(groupData)
+    });
+  }
+
+  async updateGroupInfo(instanceName: string, groupJid: string, updates: {
+    subject?: string;
+    description?: string;
+  }): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/group/updateGroupInfo/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        groupJid,
+        ...updates
+      })
+    });
+  }
+
+  async addParticipants(instanceName: string, groupJid: string, participants: string[]): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/group/updateGParticipant/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        groupJid,
+        action: 'add',
+        participants
+      })
+    });
+  }
+
+  async removeParticipants(instanceName: string, groupJid: string, participants: string[]): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/group/updateGParticipant/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        groupJid,
+        action: 'remove',
+        participants
+      })
+    });
+  }
+
+  async promoteParticipants(instanceName: string, groupJid: string, participants: string[]): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/group/updateGParticipant/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        groupJid,
+        action: 'promote',
+        participants
+      })
+    });
+  }
+
+  async demoteParticipants(instanceName: string, groupJid: string, participants: string[]): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/group/updateGParticipant/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        groupJid,
+        action: 'demote',
+        participants
+      })
+    });
+  }
+
+  async updateGroupSetting(instanceName: string, groupJid: string, setting: 'announcement' | 'not_announcement' | 'locked' | 'unlocked'): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/group/updateGSetting/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        groupJid,
+        action: setting
+      })
+    });
+  }
+
+  async leaveGroup(instanceName: string, groupJid: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/group/leaveGroup/${instanceName}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ groupJid })
+    });
+  }
+
+  // ===== MEDIA ENDPOINTS =====
+  async uploadMedia(instanceName: string, media: YumerV2Media): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/media/upload/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(media)
+    });
+  }
+
+  async downloadMedia(instanceName: string, messageId: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/media/download/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify({ messageId })
+    });
+  }
+
+  // ===== PROFILE ENDPOINTS =====
+  async getProfile(instanceName: string): Promise<YumerV2ApiResponse<YumerV2Profile>> {
+    return this.makeRequest(`/chat/fetchProfile/${instanceName}`, { method: 'GET' });
+  }
+
+  async updateProfile(instanceName: string, profile: YumerV2Profile): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/updateProfile/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify(profile)
+    });
+  }
+
+  async updateProfilePicture(instanceName: string, pictureBase64: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/updateProfilePicture/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({ picture: pictureBase64 })
+    });
+  }
+
+  async removeProfilePicture(instanceName: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/removeProfilePicture/${instanceName}`, {
+      method: 'DELETE'
+    });
+  }
+
+  // ===== SETTINGS ENDPOINTS =====
+  async getSettings(instanceName: string): Promise<YumerV2ApiResponse<YumerV2Settings>> {
+    return this.makeRequest(`/chat/fetchPrivacySettings/${instanceName}`, { method: 'GET' });
+  }
+
+  async updateSettings(instanceName: string, settings: YumerV2Settings): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/updatePrivacySettings/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify(settings)
+    });
+  }
+
+  // ===== PRESENCE ENDPOINTS =====
+  async updatePresence(instanceName: string, remoteJid: string, presence: 'available' | 'composing' | 'recording' | 'paused'): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/sendPresence/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        number: remoteJid,
+        presence
+      })
+    });
+  }
+
+  // ===== LABELS ENDPOINTS =====
+  async getLabels(instanceName: string): Promise<YumerV2ApiResponse<YumerV2Label[]>> {
+    return this.makeRequest(`/chat/getLabels/${instanceName}`, { method: 'GET' });
+  }
+
+  async createLabel(instanceName: string, label: Omit<YumerV2Label, 'id'>): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/handleLabel/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        action: 'add',
+        labelName: label.name,
+        labelColor: label.color
+      })
+    });
+  }
+
+  async updateLabel(instanceName: string, labelId: string, updates: Partial<YumerV2Label>): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/handleLabel/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        action: 'update',
+        labelId,
+        ...updates
+      })
+    });
+  }
+
+  async deleteLabel(instanceName: string, labelId: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/handleLabel/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        action: 'remove',
+        labelId
+      })
+    });
+  }
+
   // ===== WEBHOOK ENDPOINTS =====
   async getWebhookConfig(instanceName: string): Promise<YumerV2ApiResponse<YumerV2Webhook>> {
     return this.makeRequest(`/webhook/find/${instanceName}`, { method: 'GET' });
@@ -256,6 +554,24 @@ class YumerApiV2Service {
     });
   }
 
+  async sendReaction(instanceName: string, data: {
+    reactionMessage: {
+      react: {
+        text: string;
+        key: {
+          remoteJid: string;
+          fromMe: boolean;
+          id: string;
+        };
+      };
+    };
+  }): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/message/sendReaction/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
   // ===== CHAT ENDPOINTS =====
   async findChats(instanceName: string): Promise<YumerV2ApiResponse<YumerV2Chat[]>> {
     return this.makeRequest(`/chat/findChats/${instanceName}`, { method: 'GET' });
@@ -265,6 +581,34 @@ class YumerApiV2Service {
     return this.makeRequest(`/chat/findMessages/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify(filters || {})
+    });
+  }
+
+  async readMessages(instanceName: string, remoteJid: string): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/readMessages/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({ remoteJid })
+    });
+  }
+
+  async archiveChat(instanceName: string, remoteJid: string, archive: boolean = true): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/archiveChat/${instanceName}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        remoteJid,
+        archive
+      })
+    });
+  }
+
+  async deleteMessage(instanceName: string, remoteJid: string, messageId: string, deleteForEveryone: boolean = false): Promise<YumerV2ApiResponse> {
+    return this.makeRequest(`/chat/deleteMessage/${instanceName}`, {
+      method: 'DELETE',
+      body: JSON.stringify({
+        remoteJid,
+        messageId,
+        deleteForEveryone
+      })
     });
   }
 
