@@ -1,678 +1,865 @@
-import { useState } from "react";
+
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Globe, Server, Database, Clock, Wifi } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { 
+  CheckCircle, 
+  XCircle, 
+  Loader2, 
+  AlertTriangle,
+  Server, 
+  Shield, 
+  Network, 
+  Database,
+  Webhook,
+  MessageSquare,
+  Activity,
+  Trash2,
+  RefreshCw,
+  Eye,
+  Settings
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { useServerConfig } from "@/hooks/useServerConfig";
 
-interface EndpointTest {
+interface TestResult {
+  status: 'idle' | 'testing' | 'success' | 'error' | 'warning' | 'skipped';
+  message: string;
+  details?: any;
+  duration?: number;
+  endpoint?: string;
+  method?: string;
+  httpStatus?: number;
+  usedRealId?: boolean;
+}
+
+interface ApiEndpoint {
   name: string;
   url: string;
-  method: string;
-  category: 'docs' | 'admin' | 'business' | 'instance' | 'webhook' | 'message' | 'chat';
-  status: 'pending' | 'success' | 'cors_error' | 'not_found' | 'server_error' | 'auth_error' | 'timeout_error' | 'network_error';
-  details?: string;
-  httpStatus?: number;
-  responseTime?: number;
-  headers?: Record<string, string>;
-  responseHeaders?: Record<string, string>;
-  requiresAuth?: boolean;
-  requiresBusiness?: boolean;
-  requiresInstance?: boolean;
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  category: string;
+  description: string;
+  requiresBusinessId?: boolean;
+  requiresInstanceId?: boolean;
+  tokenType: 'admin' | 'business' | 'instance';
+  body?: any;
+  dependency?: string; // ID do teste que deve ser executado antes
+}
+
+interface DiagnosticState {
+  realBusinessId?: string;
+  realBusinessToken?: string;
+  realInstanceId?: string;
+  realInstanceToken?: string;
 }
 
 const YumerV2Diagnostic = () => {
-  const { config, status: serverStatus, isLoading: configLoading } = useServerConfig();
-  const [tests, setTests] = useState<EndpointTest[]>([
-    // Documentação (público, sem auth)
-    { name: "API Documentation", url: "/docs", method: "GET", category: "docs", status: "pending" },
-    { name: "Swagger/OpenAPI", url: "/api/v2/reference/swagger.json", method: "GET", category: "docs", status: "pending" },
-    
-    // Admin endpoints (v2.2.1) - Precisa ADMIN_TOKEN
-    { name: "List All Businesses", url: "/api/v2/admin/business", method: "GET", category: "admin", status: "pending", requiresAuth: true },
-    { name: "Create Business", url: "/api/v2/admin/business", method: "POST", category: "admin", status: "pending", requiresAuth: true },
-    
-    // Business endpoints (v2.2.1) - Precisa businessId válido
-    { name: "Get Business Info", url: "/api/v2/business/{businessId}", method: "GET", category: "business", status: "pending", requiresAuth: true, requiresBusiness: true },
-    { name: "Create Business Instance", url: "/api/v2/business/{businessId}/instance", method: "POST", category: "business", status: "pending", requiresAuth: true, requiresBusiness: true },
-    { name: "Get Business Webhook", url: "/api/v2/business/{businessId}/webhook", method: "GET", category: "business", status: "pending", requiresAuth: true, requiresBusiness: true },
-    
-    // Instance endpoints (v2.2.1) - Precisa instanceId válido
-    { name: "Get Instance Info", url: "/api/v2/instance/{instanceId}", method: "GET", category: "instance", status: "pending", requiresAuth: true, requiresInstance: true },
-    { name: "Connect Instance", url: "/api/v2/instance/{instanceId}/connect", method: "GET", category: "instance", status: "pending", requiresAuth: true, requiresInstance: true },
-    { name: "Connection State", url: "/api/v2/instance/{instanceId}/connection-state", method: "GET", category: "instance", status: "pending", requiresAuth: true, requiresInstance: true },
-    { name: "Get QR Code", url: "/api/v2/instance/{instanceId}/qrcode", method: "GET", category: "instance", status: "pending", requiresAuth: true, requiresInstance: true },
-    
-    // Webhook endpoints (v2.2.1) - Corrigidos para estrutura real
-    { name: "Set Instance Webhook", url: "/api/v2/instance/{instanceId}/webhook", method: "POST", category: "webhook", status: "pending", requiresAuth: true, requiresInstance: true },
-    { name: "Get Instance Webhook", url: "/api/v2/instance/{instanceId}/webhook", method: "GET", category: "webhook", status: "pending", requiresAuth: true, requiresInstance: true },
-    
-    // Message endpoints (v2.2.1) - Corrigidos para estrutura real
-    { name: "Send Text Message", url: "/api/v2/instance/{instanceId}/send/text", method: "POST", category: "message", status: "pending", requiresAuth: true, requiresInstance: true },
-    { name: "Send Media Message", url: "/api/v2/instance/{instanceId}/send/media", method: "POST", category: "message", status: "pending", requiresAuth: true, requiresInstance: true },
-    
-    // Chat endpoints (v2.2.1) - Novos da documentação
-    { name: "Search Contacts", url: "/api/v2/instance/{instanceId}/chat/search/contacts", method: "GET", category: "chat", status: "pending", requiresAuth: true, requiresInstance: true },
-    { name: "Search Chats", url: "/api/v2/instance/{instanceId}/chat/search/chats", method: "GET", category: "chat", status: "pending", requiresAuth: true, requiresInstance: true }
-  ]);
-  
-  const [testing, setTesting] = useState(false);
-  const [serverInfo, setServerInfo] = useState<any>(null);
-  const [detailedLogs, setDetailedLogs] = useState<string[]>([]);
-  const [dynamicIds, setDynamicIds] = useState<{
-    businessId?: string;
-    instanceId?: string;
-  }>({});
+  const { config } = useServerConfig();
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
+  const [isRunningSequential, setIsRunningSequential] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [diagnosticState, setDiagnosticState] = useState<DiagnosticState>({});
+  const { toast } = useToast();
 
-  const addLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const logMessage = `[${timestamp}] ${message}`;
-    console.log(`🧪 [YUMER-v2.2.1] ${logMessage}`);
-    setDetailedLogs(prev => [...prev, logMessage]);
+  // ============ ENDPOINTS CORRIGIDOS PARA API v2.2.1 ============
+  const endpoints: ApiEndpoint[] = [
+    // 🔧 Básicos (não precisam de autenticação)
+    { 
+      name: 'API Documentation', 
+      url: '/docs', 
+      method: 'GET', 
+      category: 'docs',
+      description: 'Documentação Swagger da API',
+      tokenType: 'admin'
+    },
+    { 
+      name: 'Swagger/OpenAPI', 
+      url: '/api/v2/reference/swagger.json', 
+      method: 'GET', 
+      category: 'docs',
+      description: 'Especificação OpenAPI completa',
+      tokenType: 'admin'
+    },
+    
+    // 🏢 Admin Controller - ADMIN_TOKEN
+    { 
+      name: 'List All Businesses', 
+      url: '/api/v2/admin/business', 
+      method: 'GET', 
+      category: 'admin',
+      description: 'Listar todos os negócios (Admin)',
+      tokenType: 'admin'
+    },
+    { 
+      name: 'Create Business', 
+      url: '/api/v2/admin/business', 
+      method: 'POST', 
+      category: 'admin',
+      description: 'Criar novo negócio (Admin)',
+      tokenType: 'admin',
+      body: {
+        name: 'Test Business v2.2.1',
+        attributes: {
+          category: 'diagnostic',
+          environment: 'test',
+          createdBy: 'YumerDiagnostic'
+        }
+      }
+    },
+    
+    // 🏪 Business Controller - BUSINESS_TOKEN
+    { 
+      name: 'Get Business Info', 
+      url: '/api/v2/business/{businessId}', 
+      method: 'GET', 
+      category: 'business',
+      description: 'Buscar informações do negócio',
+      requiresBusinessId: true,
+      tokenType: 'business',
+      dependency: 'Create Business'
+    },
+    { 
+      name: 'Create Business Instance', 
+      url: '/api/v2/business/{businessId}/instance', 
+      method: 'POST', 
+      category: 'business',
+      description: 'Criar instância no negócio',
+      requiresBusinessId: true,
+      tokenType: 'business',
+      dependency: 'Create Business',
+      body: {
+        name: 'diagnostic-instance-v221'
+      }
+    },
+    { 
+      name: 'Get Business Webhook', 
+      url: '/api/v2/business/{businessId}/webhook', 
+      method: 'GET', 
+      category: 'business',
+      description: 'Buscar webhook do negócio',
+      requiresBusinessId: true,
+      tokenType: 'business',
+      dependency: 'Create Business'
+    },
+    
+    // 📱 Instance Controller - INSTANCE_TOKEN
+    { 
+      name: 'Get Instance Info', 
+      url: '/api/v2/instance/{instanceId}', 
+      method: 'GET', 
+      category: 'instance',
+      description: 'Buscar informações da instância',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance'
+    },
+    { 
+      name: 'Connect Instance', 
+      url: '/api/v2/instance/{instanceId}/connect', 
+      method: 'GET', 
+      category: 'instance',
+      description: 'Conectar instância ao WhatsApp',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance'
+    },
+    { 
+      name: 'Connection State', 
+      url: '/api/v2/instance/{instanceId}/connection-state', 
+      method: 'GET', 
+      category: 'instance',
+      description: 'Verificar estado da conexão',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance'
+    },
+    { 
+      name: 'Get QR Code', 
+      url: '/api/v2/instance/{instanceId}/qrcode', 
+      method: 'GET', 
+      category: 'instance',
+      description: 'Obter QR code para conexão',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance'
+    },
+    
+    // 🔔 Webhook Controller - INSTANCE_TOKEN
+    { 
+      name: 'Set Instance Webhook', 
+      url: '/api/v2/instance/{instanceId}/webhook', 
+      method: 'POST', 
+      category: 'webhook',
+      description: 'Configurar webhook da instância',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance',
+      body: {
+        url: 'https://webhook.site/test-diagnostic-v221',
+        enabled: true
+      }
+    },
+    { 
+      name: 'Get Instance Webhook', 
+      url: '/api/v2/instance/{instanceId}/webhook', 
+      method: 'GET', 
+      category: 'webhook',
+      description: 'Buscar webhook da instância',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance'
+    },
+    
+    // 💬 Message Controller - INSTANCE_TOKEN
+    { 
+      name: 'Send Text Message', 
+      url: '/api/v2/instance/{instanceId}/send/text', 
+      method: 'POST', 
+      category: 'message',
+      description: 'Enviar mensagem de texto',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance',
+      body: {
+        number: '5511999999999',
+        text: 'Test message from YumerDiagnostic v2.2.1'
+      }
+    },
+    { 
+      name: 'Send Media Message', 
+      url: '/api/v2/instance/{instanceId}/send/media', 
+      method: 'POST', 
+      category: 'message',
+      description: 'Enviar mensagem com mídia',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance',
+      body: {
+        number: '5511999999999',
+        mediatype: 'image',
+        media: 'https://picsum.photos/300/200',
+        caption: 'Test image from diagnostic'
+      }
+    },
+    
+    // 💬 Chat Controller - INSTANCE_TOKEN
+    { 
+      name: 'Search Contacts', 
+      url: '/api/v2/instance/{instanceId}/chat/search/contacts', 
+      method: 'GET', 
+      category: 'chat',
+      description: 'Buscar contatos da instância',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance'
+    },
+    { 
+      name: 'Search Chats', 
+      url: '/api/v2/instance/{instanceId}/chat/search/chats', 
+      method: 'GET', 
+      category: 'chat',
+      description: 'Buscar conversas da instância',
+      requiresInstanceId: true,
+      tokenType: 'instance',
+      dependency: 'Create Business Instance'
+    }
+  ];
+
+  const categories = {
+    docs: { name: '📖 Documentação', icon: Shield },
+    admin: { name: '🔧 Administração', icon: Settings },
+    business: { name: '🏪 Negócios', icon: Database },
+    instance: { name: '📱 Instâncias', icon: Server },
+    webhook: { name: '🔔 Webhooks', icon: Webhook },
+    message: { name: '💬 Mensagens', icon: MessageSquare },
+    chat: { name: '💬 Chat', icon: MessageSquare }
   };
 
-  const testEndpoint = async (endpoint: EndpointTest): Promise<EndpointTest> => {
-    let fullUrl = `${config.serverUrl}${endpoint.url}`;
-    const startTime = Date.now();
+  const getStatusIcon = (status: TestResult['status']) => {
+    switch (status) {
+      case 'success': return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'error': return <XCircle className="w-4 h-4 text-red-500" />;
+      case 'warning': return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+      case 'testing': return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
+      case 'skipped': return <div className="w-4 h-4 bg-gray-400 rounded-full" />;
+      default: return <div className="w-4 h-4 bg-gray-300 rounded-full" />;
+    }
+  };
+
+  const getStatusBadge = (status: TestResult['status']) => {
+    switch (status) {
+      case 'success': return <Badge className="bg-green-500">✅ Sucesso</Badge>;
+      case 'error': return <Badge variant="destructive">❌ Erro</Badge>;
+      case 'warning': return <Badge className="bg-yellow-500">⚠️ Aviso</Badge>;
+      case 'testing': return <Badge variant="secondary">🔄 Testando</Badge>;
+      case 'skipped': return <Badge variant="outline">⏭️ Pulado</Badge>;
+      default: return <Badge variant="outline">⏸️ Aguardando</Badge>;
+    }
+  };
+
+  // Obter token correto baseado no tipo
+  const getAuthToken = (tokenType: 'admin' | 'business' | 'instance'): string => {
+    switch (tokenType) {
+      case 'admin':
+        return config.globalApiKey || '';
+      case 'business':
+        return diagnosticState.realBusinessToken || config.globalApiKey || '';
+      case 'instance':
+        return diagnosticState.realInstanceToken || diagnosticState.realBusinessToken || config.globalApiKey || '';
+      default:
+        return config.globalApiKey || '';
+    }
+  };
+
+  // Obter header de autenticação correto
+  const getAuthHeaders = (tokenType: 'admin' | 'business' | 'instance'): Record<string, string> => {
+    const token = getAuthToken(tokenType);
     
+    if (!token) {
+      return {};
+    }
+
+    // Para Admin endpoints, usar header 'apikey'
+    if (tokenType === 'admin') {
+      return { 'apikey': token };
+    }
+    
+    // Para Business/Instance endpoints, usar Authorization Bearer
+    return { 'Authorization': `Bearer ${token}` };
+  };
+
+  // Substituir IDs dinâmicos nas URLs
+  const buildEndpointUrl = (endpoint: ApiEndpoint): string => {
+    let url = `${config.serverUrl}${endpoint.url}`;
+    
+    // Substituir businessId real se necessário
+    if (endpoint.requiresBusinessId && diagnosticState.realBusinessId) {
+      url = url.replace('{businessId}', diagnosticState.realBusinessId);
+    }
+    
+    // Substituir instanceId real se necessário
+    if (endpoint.requiresInstanceId && diagnosticState.realInstanceId) {
+      url = url.replace('{instanceId}', diagnosticState.realInstanceId);
+    }
+    
+    return url;
+  };
+
+  // Executar teste único
+  const executeTest = async (endpoint: ApiEndpoint): Promise<TestResult> => {
+    const startTime = Date.now();
+    const testKey = `${endpoint.category}-${endpoint.name}`;
+    
+    // Verificar dependências
+    if (endpoint.dependency) {
+      const dependencyKey = endpoints.find(e => e.name === endpoint.dependency);
+      const dependencyResult = testResults[`${dependencyKey?.category}-${endpoint.dependency}`];
+      
+      if (!dependencyResult || dependencyResult.status !== 'success') {
+        return {
+          status: 'skipped',
+          message: `❌ Dependência falhou: ${endpoint.dependency}`,
+          details: { dependency: endpoint.dependency, reason: 'Teste anterior falhou' },
+          duration: 0,
+          endpoint: endpoint.url,
+          method: endpoint.method
+        };
+      }
+    }
+
+    // Marcar como testing
+    setTestResults(prev => ({
+      ...prev,
+      [testKey]: { 
+        status: 'testing', 
+        message: 'Executando...', 
+        endpoint: endpoint.url,
+        method: endpoint.method 
+      }
+    }));
+
     try {
-      // Substituir placeholders dinâmicos
-      if (endpoint.requiresBusiness && dynamicIds.businessId) {
-        fullUrl = fullUrl.replace('{businessId}', dynamicIds.businessId);
-      } else if (endpoint.requiresBusiness) {
-        // Se precisa de businessId mas não temos, usar ID de teste
-        fullUrl = fullUrl.replace('{businessId}', 'test-business-id');
-      }
+      const url = buildEndpointUrl(endpoint);
+      const authHeaders = getAuthHeaders(endpoint.tokenType);
       
-      if (endpoint.requiresInstance && dynamicIds.instanceId) {
-        fullUrl = fullUrl.replace('{instanceId}', dynamicIds.instanceId);
-      } else if (endpoint.requiresInstance) {
-        // Se precisa de instanceId mas não temos, usar ID de teste
-        fullUrl = fullUrl.replace('{instanceId}', 'test-instance-id');
-      }
-      
-      addLog(`Testando ${endpoint.method} ${fullUrl}`);
-      
+      console.log(`🧪 [API-TEST-v2.2.1] ${endpoint.method} ${url}`);
+      console.log(`🔑 [API-TEST-v2.2.1] Token Type: ${endpoint.tokenType}`, {
+        hasToken: !!getAuthToken(endpoint.tokenType),
+        authHeaders: Object.keys(authHeaders)
+      });
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Origin': window.location.origin
+        'Origin': window.location.origin,
+        ...authHeaders
       };
 
-      // Adicionar autenticação baseada na documentação v2.2.1
-      if (endpoint.requiresAuth) {
-        if (config.globalApiKey) {
-          // Para admin endpoints, usar Authorization Bearer
-          if (endpoint.category === 'admin') {
-            headers['Authorization'] = `Bearer ${config.globalApiKey}`;
-          } else {
-            // Para outros endpoints, pode usar apikey header ou bearer
-            headers['apikey'] = config.globalApiKey;
-            headers['Authorization'] = `Bearer ${config.globalApiKey}`;
-          }
-        }
-      }
-
-      addLog(`Headers: ${JSON.stringify({ ...headers, Authorization: headers.Authorization ? 'Bearer ***' : undefined, apikey: headers.apikey ? '***' : undefined }, null, 2)}`);
-
-      // Criar payload para POSTs
-      let body: string | undefined;
-      if (endpoint.method === 'POST') {
-        body = JSON.stringify(getTestPayload(endpoint));
-        addLog(`Body: ${body}`);
-      }
-
-      // Criar AbortController para timeout de 15 segundos
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-        addLog(`Timeout após 15 segundos para ${endpoint.name}`);
-      }, 15000);
-
-      const response = await fetch(fullUrl, {
+      const response = await fetch(url, {
         method: endpoint.method,
         headers,
+        body: endpoint.body ? JSON.stringify(endpoint.body) : undefined,
         mode: 'cors',
-        credentials: 'omit',
-        signal: controller.signal,
-        ...(body && { body })
+        credentials: 'omit'
       });
 
-      clearTimeout(timeoutId);
-      const responseTime = Date.now() - startTime;
-      const httpStatus = response.status;
+      const duration = Date.now() - startTime;
+      const responseText = await response.text();
+      let responseData;
       
-      // Capturar headers de resposta
-      const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
-        responseHeaders[key] = value;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = responseText;
+      }
+
+      console.log(`📊 [API-TEST-v2.2.1] Response ${response.status}:`, {
+        url,
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        data: responseData
       });
-      
-      addLog(`Resposta HTTP ${httpStatus} em ${responseTime}ms`);
-      addLog(`Response Headers: ${JSON.stringify(responseHeaders, null, 2)}`);
-      
+
+      // Processar sucesso e armazenar dados importantes
       if (response.ok) {
-        let data;
-        const contentType = response.headers.get('content-type');
-        
-        if (contentType && contentType.includes('application/json')) {
-          try {
-            data = await response.json();
-            addLog(`Response Data: ${JSON.stringify(data, null, 2)}`);
-            
-            // Extrair IDs dinâmicos das respostas para usar em outros testes
-            if (endpoint.name === "List All Businesses" && Array.isArray(data) && data.length > 0) {
-              const businessId = data[0].businessId;
-              setDynamicIds(prev => ({ ...prev, businessId }));
-              addLog(`🎯 Business ID extraído: ${businessId}`);
-            } else if (endpoint.name === "Create Business" && data.businessId) {
-              const businessId = data.businessId;
-              setDynamicIds(prev => ({ ...prev, businessId }));
-              addLog(`🎯 Business ID criado: ${businessId}`);
-            }
-            
-          } catch (parseError) {
-            const textData = await response.text();
-            addLog(`Response Text (JSON parse failed): ${textData}`);
-            data = { raw: textData };
-          }
-        } else {
-          data = await response.text();
-          addLog(`Response Text: ${data}`);
+        // Armazenar businessId e businessToken se criarmos um business
+        if (endpoint.name === 'Create Business' && responseData) {
+          setDiagnosticState(prev => ({
+            ...prev,
+            realBusinessId: responseData.businessId,
+            realBusinessToken: responseData.businessToken
+          }));
+          console.log(`🏪 [BUSINESS-CREATED] ID: ${responseData.businessId}, Token: ${responseData.businessToken?.substring(0, 10)}...`);
         }
         
-        // Salvar info do servidor
-        if (endpoint.url === '/docs' && data) {
-          setServerInfo({
-            version: 'v2.2.1',
-            endpoint: '/docs',
-            status: 'online',
-            responseTime: responseTime,
-            timestamp: new Date().toISOString()
+        // Armazenar instanceId se criarmos uma instância
+        if (endpoint.name === 'Create Business Instance' && responseData) {
+          setDiagnosticState(prev => ({
+            ...prev,
+            realInstanceId: responseData.instanceId,
+            realInstanceToken: responseData.Auth?.jwt
+          }));
+          console.log(`📱 [INSTANCE-CREATED] ID: ${responseData.instanceId}, Token: ${responseData.Auth?.jwt?.substring(0, 10)}...`);
+        }
+
+        return {
+          status: 'success',
+          message: `✅ Sucesso - ${duration}ms - Status ${response.status}`,
+          details: { 
+            httpStatus: response.status,
+            data: responseData,
+            url,
+            tokenType: endpoint.tokenType,
+            usedRealIds: !!(endpoint.requiresBusinessId ? diagnosticState.realBusinessId : true) && 
+                        !!(endpoint.requiresInstanceId ? diagnosticState.realInstanceId : true)
+          },
+          duration,
+          endpoint: endpoint.url,
+          method: endpoint.method,
+          httpStatus: response.status,
+          usedRealId: true
+        };
+      }
+
+      // Processar erros
+      let status: TestResult['status'] = 'error';
+      let message = `❌ Erro HTTP ${response.status}`;
+      
+      if (response.status === 401) {
+        message = `🔐 Não autorizado (${response.status}) - Token inválido ou expirado`;
+        status = 'warning';
+      } else if (response.status === 403) {
+        message = `🚫 Acesso negado (${response.status}) - Sem permissões`;
+        status = 'warning';
+      } else if (response.status === 404) {
+        message = `🔍 Não encontrado (${response.status}) - Endpoint inexistente`;
+        status = 'error';
+      }
+
+      return {
+        status,
+        message: `${message} - ${duration}ms`,
+        details: { 
+          httpStatus: response.status,
+          response: responseData,
+          url,
+          tokenType: endpoint.tokenType
+        },
+        duration,
+        endpoint: endpoint.url,
+        method: endpoint.method,
+        httpStatus: response.status
+      };
+
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.error(`❌ [API-TEST-v2.2.1] Erro testando ${endpoint.name}:`, error);
+
+      let status: TestResult['status'] = 'error';
+      let message = `❌ ${error.message}`;
+
+      if (error.message === 'Failed to fetch' || error.message.includes('CORS')) {
+        message = `🌐 Network Error: ${error.message} - Pode ser CORS, conectividade ou endpoint inexistente`;
+        status = 'error';
+      } else if (error.message.includes('timeout')) {
+        message = `⏱️ Timeout: ${error.message}`;
+        status = 'warning';
+      }
+
+      return {
+        status,
+        message: `${message} - ${duration}ms`,
+        details: { 
+          error: error.message,
+          url: buildEndpointUrl(endpoint),
+          tokenType: endpoint.tokenType
+        },
+        duration,
+        endpoint: endpoint.url,
+        method: endpoint.method
+      };
+    }
+  };
+
+  // Teste sequencial completo
+  const runSequentialTest = async () => {
+    setIsRunningSequential(true);
+    setProgress(0);
+    
+    // Limpar estado anterior
+    setDiagnosticState({});
+    setTestResults({});
+    
+    console.log(`🚀 [SEQUENTIAL-v2.2.1] Iniciando diagnóstico completo da API CodeChat v2.2.1...`);
+    console.log(`📍 [SEQUENTIAL-v2.2.1] Servidor: ${config.serverUrl}`);
+    console.log(`🔑 [SEQUENTIAL-v2.2.1] API Key configurada: ${config.globalApiKey ? 'Sim' : 'Não'}`);
+    console.log(`🌐 [SEQUENTIAL-v2.2.1] Frontend Origin: ${window.location.origin}`);
+    console.log(`📝 [SEQUENTIAL-v2.2.1] Sequência de teste: ${endpoints.map(e => `${e.category}/${e.name}`).join(', ')}`);
+    
+    try {
+      for (let i = 0; i < endpoints.length; i++) {
+        const endpoint = endpoints[i];
+        const testKey = `${endpoint.category}-${endpoint.name}`;
+        
+        console.log(`🔄 [SEQUENTIAL-v2.2.1] (${i+1}/${endpoints.length}) Executando: ${endpoint.category}/${endpoint.name}`);
+        
+        const result = await executeTest(endpoint);
+        
+        setTestResults(prev => ({ ...prev, [testKey]: result }));
+        setProgress(((i + 1) / endpoints.length) * 100);
+        
+        // Se criação de business falhar, interromper alguns testes dependentes
+        if (endpoint.name === 'Create Business' && result.status === 'error') {
+          console.error(`❌ [SEQUENTIAL-v2.2.1] Falha crítica na criação do business`);
+          toast({
+            title: "Teste Sequencial com Problemas",
+            description: "Falha ao criar business - alguns testes serão pulados",
+            variant: "destructive"
           });
         }
         
-        return {
-          ...endpoint,
-          status: 'success',
-          httpStatus,
-          responseTime,
-          headers,
-          responseHeaders,
-          details: `✅ Sucesso - ${responseTime}ms - Status ${httpStatus} - Content-Type: ${contentType || 'N/A'}`
-        };
-        
-      } else if (httpStatus === 401 || httpStatus === 403) {
-        const errorText = await response.text().catch(() => 'Unknown auth error');
-        addLog(`Auth Error ${httpStatus}: ${errorText}`);
-        return {
-          ...endpoint,
-          status: 'auth_error',
-          httpStatus,
-          responseTime,
-          headers,
-          responseHeaders,
-          details: `🔐 Auth Error - Status ${httpStatus} - Verificar tokens de autenticação: ${errorText}`
-        };
-      } else if (httpStatus === 404) {
-        const errorText = await response.text().catch(() => 'Not found');
-        addLog(`Not Found ${httpStatus}: ${errorText}`);
-        return {
-          ...endpoint,
-          status: 'not_found',
-          httpStatus,
-          responseTime,
-          headers,
-          responseHeaders,
-          details: `⚠️ Endpoint não encontrado - Status ${httpStatus}: ${errorText} - Verifique se o endpoint existe na v2.2.1`
-        };
-      } else {
-        const errorText = await response.text().catch(() => 'Unknown server error');
-        addLog(`Server Error ${httpStatus}: ${errorText}`);
-        return {
-          ...endpoint,
-          status: 'server_error',
-          httpStatus,
-          responseTime,
-          headers,
-          responseHeaders,
-          details: `❌ Erro servidor - Status ${httpStatus}: ${errorText}`
-        };
+        // Pausas estratégicas
+        if (['Create Business', 'Create Business Instance'].includes(endpoint.name)) {
+          console.log(`⏱️ [SEQUENTIAL-v2.2.1] Aguardando 1s após ${endpoint.name}...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
       }
-      
-    } catch (error: any) {
-      const responseTime = Date.now() - startTime;
-      addLog(`Erro: ${error.message}`);
-      
-      if (error.name === 'AbortError') {
-        return {
-          ...endpoint,
-          status: 'timeout_error',
-          responseTime,
-          details: `⏱️ Timeout após 15 segundos - Servidor pode estar sobrecarregado`
-        };
-      } else if (error.message.includes('CORS') || 
-          error.message.includes('Access-Control-Allow-Origin') ||
-          error.message.includes('preflight')) {
-        return {
-          ...endpoint,
-          status: 'cors_error',
-          responseTime,
-          details: `❌ CORS Error: ${error.message} - Servidor precisa configurar CORS para ${window.location.origin}`
-        };
-      } else if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
-        return {
-          ...endpoint,
-          status: 'network_error',
-          responseTime,
-          details: `🌐 Network Error: ${error.message} - Pode ser CORS, conectividade ou endpoint inexistente`
-        };
-      } else {
-        return {
-          ...endpoint,
-          status: 'server_error',
-          responseTime,
-          details: `❌ Error: ${error.message}`
-        };
-      }
+
+      const results = Object.values(testResults);
+      const successCount = results.filter(r => r.status === 'success').length;
+      const errorCount = results.filter(r => r.status === 'error').length;
+      const warningCount = results.filter(r => r.status === 'warning').length;
+      const skippedCount = results.filter(r => r.status === 'skipped').length;
+
+      console.log(`🎯 [SEQUENTIAL-v2.2.1] Diagnóstico concluído:`, {
+        total: endpoints.length,
+        success: successCount,
+        errors: errorCount,
+        warnings: warningCount,
+        skipped: skippedCount,
+        realBusinessId: diagnosticState.realBusinessId,
+        realInstanceId: diagnosticState.realInstanceId
+      });
+
+      toast({
+        title: "Diagnóstico Concluído",
+        description: `✅ ${successCount} sucessos, ❌ ${errorCount} erros, ⚠️ ${warningCount} avisos, ⏭️ ${skippedCount} pulados`,
+      });
+
+    } finally {
+      setIsRunningSequential(false);
     }
   };
 
-  const getTestPayload = (endpoint: EndpointTest) => {
-    switch (endpoint.url) {
-      case '/api/v2/admin/business':
-        return {
-          name: "Test Business v2.2.1",
-          attributes: {
-            category: "testing",
-            description: "Business criado para teste do diagnóstico v2.2.1",
-            active: true
-          }
-        };
-      case '/api/v2/business/{businessId}/instance':
-        return {
-          name: `test-instance-${Date.now()}`,
-          description: "Instância de teste criada pelo diagnóstico v2.2.1"
-        };
-      case '/api/v2/instance/{instanceId}/webhook':
-        return {
-          url: "https://webhook.test.com/codechat",
-          enabled: true,
-          events: ["messages.upsert", "qrcode.updated", "connection.update"]
-        };
-      case '/api/v2/instance/{instanceId}/send/text':
-        return {
-          number: "5511999999999",
-          text: "Mensagem de teste do diagnóstico CodeChat v2.2.1"
-        };
-      case '/api/v2/instance/{instanceId}/send/media':
-        return {
-          number: "5511999999999",
-          mediatype: "image",
-          media: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
-          caption: "Teste de mídia v2.2.1"
-        };
-      default:
-        return {};
+  // Teste de categoria específica
+  const testCategory = async (category: string) => {
+    const categoryEndpoints = endpoints.filter(e => e.category === category);
+    
+    for (const endpoint of categoryEndpoints) {
+      const testKey = `${endpoint.category}-${endpoint.name}`;
+      const result = await executeTest(endpoint);
+      setTestResults(prev => ({ ...prev, [testKey]: result }));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   };
 
-  const runAllTests = async () => {
-    setTesting(true);
-    setDetailedLogs([]);
-    setDynamicIds({});
-    addLog('🧪 Iniciando diagnóstico completo da API CodeChat v2.2.1...');
-    addLog(`📍 Servidor: ${config.serverUrl}`);
-    addLog(`🔑 API Key configurada: ${config.globalApiKey ? 'Sim' : 'Não'}`);
-    addLog(`🌐 Frontend Origin: ${window.location.origin}`);
-    
-    const updatedTests: EndpointTest[] = [];
-    
-    // Testar em ordem estratégica: docs → admin → business → instance → outros
-    const orderedTests = [
-      ...tests.filter(t => t.category === 'docs'),
-      ...tests.filter(t => t.category === 'admin'),
-      ...tests.filter(t => t.category === 'business'),
-      ...tests.filter(t => t.category === 'instance'),
-      ...tests.filter(t => !['docs', 'admin', 'business', 'instance'].includes(t.category))
-    ];
-    
-    addLog(`📝 Sequência de teste: ${orderedTests.map(t => `${t.category}/${t.name}`).join(', ')}`);
-    
-    for (let i = 0; i < orderedTests.length; i++) {
-      const test = orderedTests[i];
-      addLog(`🔄 (${i+1}/${orderedTests.length}) Executando: ${test.category}/${test.name}`);
-      
-      const result = await testEndpoint(test);
-      updatedTests.push(result);
-      
-      // Atualizar estado incremental
-      setTests([...updatedTests, ...tests.slice(updatedTests.length)]);
-      
-      // Pausas estratégicas
-      if (['Create Business', 'Create Business Instance'].includes(test.name)) {
-        addLog(`⏱️ Aguardando 2s após ${test.name}...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-    }
-    
-    setTests(updatedTests);
-    setTesting(false);
-    
-    // Análise final
-    const successes = updatedTests.filter(t => t.status === 'success').length;
-    const authErrors = updatedTests.filter(t => t.status === 'auth_error').length;
-    const notFound = updatedTests.filter(t => t.status === 'not_found').length;
-    const networkErrors = updatedTests.filter(t => t.status === 'network_error').length;
-    
-    addLog(`🎯 Diagnóstico v2.2.1 concluído: ${successes} sucessos, ${authErrors} auth, ${notFound} não encontrados, ${networkErrors} rede`);
-    
-    if (authErrors > 0) {
-      addLog(`🔐 AUTENTICAÇÃO: Verificar se o token tem permissões adequadas para endpoints admin/business/instance`);
-    }
-    
-    if (notFound > 0) {
-      addLog(`📋 ENDPOINTS NÃO ENCONTRADOS: Alguns endpoints podem não estar implementados na sua versão da API`);
-    }
+  // Limpar todos os resultados
+  const clearResults = () => {
+    setTestResults({});
+    setDiagnosticState({});
+    setProgress(0);
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'success': return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'cors_error': return <XCircle className="w-4 h-4 text-red-500" />;
-      case 'auth_error': return <XCircle className="w-4 h-4 text-orange-500" />;
-      case 'not_found': return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
-      case 'server_error': return <XCircle className="w-4 h-4 text-red-600" />;
-      case 'timeout_error': return <Clock className="w-4 h-4 text-purple-500" />;
-      case 'network_error': return <Wifi className="w-4 h-4 text-blue-500" />;
-      default: return <RefreshCw className="w-4 h-4 text-gray-400" />;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'success': return 'default';
-      case 'cors_error': return 'destructive';
-      case 'auth_error': return 'destructive';
-      case 'not_found': return 'secondary';
-      case 'server_error': return 'destructive';
-      case 'timeout_error': return 'destructive';
-      case 'network_error': return 'destructive';
-      default: return 'outline';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'success': return 'OK';
-      case 'cors_error': return 'CORS Error';
-      case 'auth_error': return 'Auth Error';
-      case 'not_found': return 'Não encontrado';
-      case 'server_error': return 'Erro servidor';
-      case 'timeout_error': return 'Timeout';
-      case 'network_error': return 'Erro rede';
-      default: return 'Aguardando';
-    }
-  };
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'docs': return <Server className="w-4 h-4" />;
-      case 'admin': return <Database className="w-4 h-4" />;
-      case 'business': return <Database className="w-4 h-4" />;
-      case 'instance': return <Globe className="w-4 h-4" />;
-      default: return <RefreshCw className="w-4 h-4" />;
-    }
-  };
-
-  const hasErrors = tests.some(t => ['cors_error', 'network_error', 'timeout_error', 'auth_error', 'server_error'].includes(t.status));
-  const hasAuthIssues = tests.some(t => t.status === 'auth_error');
-  const hasNotFound = tests.some(t => t.status === 'not_found');
-
-  if (configLoading) {
+  // Renderizar resultado de teste
+  const renderTestResult = (endpoint: ApiEndpoint) => {
+    const testKey = `${endpoint.category}-${endpoint.name}`;
+    const result = testResults[testKey];
+    
     return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <RefreshCw className="w-6 h-6 animate-spin mr-2" />
-            <span>Carregando configuração do servidor...</span>
+      <div key={testKey} className="border rounded-lg p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            {getStatusIcon(result?.status || 'idle')}
+            <div>
+              <h4 className="font-medium">{endpoint.name}</h4>
+              <p className="text-sm text-muted-foreground">
+                {endpoint.method} {endpoint.url}
+              </p>
+              <p className="text-xs text-muted-foreground">{endpoint.description}</p>
+              {endpoint.requiresBusinessId && (
+                <p className="text-xs text-blue-600">🏪 Requer businessId</p>
+              )}
+              {endpoint.requiresInstanceId && (
+                <p className="text-xs text-green-600">📱 Requer instanceId</p>
+              )}
+              {endpoint.tokenType !== 'admin' && (
+                <p className="text-xs text-purple-600">🔐 Token: {endpoint.tokenType}</p>
+              )}
+            </div>
           </div>
-        </CardContent>
-      </Card>
+          <div className="text-right">
+            {getStatusBadge(result?.status || 'idle')}
+            {result?.duration && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {result.duration}ms
+              </p>
+            )}
+            {result?.httpStatus && (
+              <p className="text-xs text-muted-foreground">
+                {result.httpStatus}
+              </p>
+            )}
+          </div>
+        </div>
+        
+        {result?.message && (
+          <div className="text-sm">
+            <span className={
+              result.status === 'success' ? 'text-green-600' :
+              result.status === 'error' ? 'text-red-600' :
+              result.status === 'warning' ? 'text-yellow-600' :
+              result.status === 'skipped' ? 'text-gray-600' :
+              'text-gray-600'
+            }>
+              {result.message}
+            </span>
+          </div>
+        )}
+        
+        {result?.details && (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted-foreground">Ver detalhes</summary>
+            <pre className="mt-2 p-2 bg-gray-50 rounded overflow-auto max-h-40">
+              {JSON.stringify(result.details, null, 2)}
+            </pre>
+          </details>
+        )}
+        
+        <Button 
+          size="sm" 
+          variant="outline"
+          onClick={() => executeTest(endpoint).then(result => {
+            setTestResults(prev => ({ ...prev, [testKey]: result }));
+          })}
+          disabled={result?.status === 'testing'}
+        >
+          {result?.status === 'testing' ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3 h-3" />
+          )}
+          Testar
+        </Button>
+      </div>
     );
-  }
+  };
+
+  // Cálculo de estatísticas
+  const results = Object.values(testResults);
+  const stats = {
+    total: endpoints.length,
+    tested: results.length,
+    success: results.filter(r => r.status === 'success').length,
+    error: results.filter(r => r.status === 'error').length,
+    warning: results.filter(r => r.status === 'warning').length,
+    skipped: results.filter(r => r.status === 'skipped').length
+  };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle>🚀 Diagnóstico API CodeChat v2.2.1 (Corrigido)</CardTitle>
-          <Button onClick={runAllTests} disabled={testing}>
-            {testing ? (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                Testando...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Testar API v2.2.1
-              </>
-            )}
-          </Button>
-        </div>
-        
-        {/* Server Configuration Info */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div className="p-3 bg-gray-50 rounded">
-            <p><strong>Servidor:</strong> {config.serverUrl}</p>
-            <p><strong>Versão:</strong> v{config.apiVersion}</p>
-            <p><strong>Endpoints corrigidos:</strong> {tests.length}</p>
-          </div>
-          <div className="p-3 bg-gray-50 rounded">
-            <p><strong>Status:</strong> {serverStatus.isOnline ? '🟢 Online' : '🔴 Offline'}</p>
-            <p><strong>Latência:</strong> {serverStatus.latency}ms</p>
-            <p><strong>Business ID:</strong> {dynamicIds.businessId || 'Não obtido'}</p>
-          </div>
-          <div className="p-3 bg-gray-50 rounded">
-            <p><strong>API Key:</strong> {config.globalApiKey ? '✅ Configurada' : '❌ Não configurada'}</p>
-            <p><strong>Instance ID:</strong> {dynamicIds.instanceId || 'Não obtido'}</p>
-            <p><strong>Frontend:</strong> {window.location.hostname}</p>
-          </div>
-        </div>
-        
-        {serverInfo && (
-          <div className="p-3 bg-blue-50 rounded">
-            <p><strong>Server Info:</strong></p>
-            <pre className="text-xs mt-1 overflow-auto">{JSON.stringify(serverInfo, null, 2)}</pre>
-          </div>
-        )}
-      </CardHeader>
-      
-      <CardContent className="space-y-4">
-        
-        {/* Status Summary */}
-        {!testing && tests.some(t => t.status !== 'pending') && (
-          <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {tests.filter(t => t.status === 'success').length}
-              </div>
-              <div className="text-sm text-gray-600">Funcionando</div>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            🚀 Diagnóstico API CodeChat v2.2.1 (Corrigido)
+            <div className="flex space-x-2">
+              <Button onClick={clearResults} variant="outline" size="sm">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Limpar
+              </Button>
+              <Button 
+                onClick={runSequentialTest} 
+                disabled={isRunningSequential}
+                size="sm"
+              >
+                {isRunningSequential ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Executando...
+                  </>
+                ) : (
+                  <>
+                    <Activity className="w-4 h-4 mr-2" />
+                    Testar API v2.2.1
+                  </>
+                )}
+              </Button>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">
-                {tests.filter(t => t.status === 'auth_error').length}
+          </CardTitle>
+          {isRunningSequential && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Progresso do diagnóstico</span>
+                <span>{Math.round(progress)}%</span>
               </div>
-              <div className="text-sm text-gray-600">Auth Error</div>
+              <Progress value={progress} className="w-full" />
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-600">
-                {tests.filter(t => t.status === 'not_found').length}
-              </div>
-              <div className="text-sm text-gray-600">Não encontrado</div>
+          )}
+        </CardHeader>
+        <CardContent>
+          {/* Status do Sistema */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg mb-6">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Servidor</p>
+              <p className="text-sm truncate">{config.serverUrl}</p>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">
-                {tests.filter(t => t.status === 'network_error').length}
-              </div>
-              <div className="text-sm text-gray-600">Rede/CORS</div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Versão</p>
+              <p className="text-sm">v2.2.1</p>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">
-                {tests.filter(t => t.status === 'timeout_error').length}
-              </div>
-              <div className="text-sm text-gray-600">Timeout</div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Endpoints corrigidos</p>
+              <p className="text-sm">{endpoints.length}</p>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">
-                {tests.filter(t => t.status === 'cors_error').length}
-              </div>
-              <div className="text-sm text-gray-600">CORS Error</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-red-700">
-                {tests.filter(t => t.status === 'server_error').length}
-              </div>
-              <div className="text-sm text-gray-600">Erro servidor</div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">API Key</p>
+              <p className={`text-sm ${config.globalApiKey ? 'text-green-600' : 'text-red-600'}`}>
+                {config.globalApiKey ? '✅ Configurada' : '❌ Não configurada'}
+              </p>
             </div>
           </div>
-        )}
 
-        {/* Auth Issues Alert */}
-        {hasAuthIssues && (
-          <Alert variant="destructive">
-            <XCircle className="h-4 w-4" />
-            <AlertDescription>
-              <div className="space-y-2">
-                <p className="font-medium">🔐 PROBLEMA DE AUTENTICAÇÃO:</p>
-                <p>• <strong>Token inválido:</strong> Verifique se o token tem permissões adequadas</p>
-                <p>• <strong>Admin endpoints:</strong> Precisam de ADMIN_TOKEN válido</p>
-                <p>• <strong>Business/Instance endpoints:</strong> Precisam de BUSINESS_TOKEN ou JWT válido</p>
-                <div className="text-xs bg-red-100 p-2 rounded">
-                  <p><strong>Documentação de autenticação:</strong></p>
-                  <p>• Admin: Authorization: Bearer ADMIN_TOKEN</p>
-                  <p>• Business: Authorization: Bearer BUSINESS_TOKEN</p>
-                  <p>• Instance: Authorization: Bearer JWT_TOKEN</p>
-                </div>
+          {/* Estado do Diagnóstico */}
+          {(diagnosticState.realBusinessId || diagnosticState.realInstanceId) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-blue-50 rounded-lg mb-6">
+              <div>
+                <p className="text-sm font-medium text-blue-700">Business ID</p>
+                <p className="text-xs font-mono">{diagnosticState.realBusinessId || 'Não obtido'}</p>
               </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Not Found Issues Alert */}
-        {hasNotFound && (
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <div className="space-y-2">
-                <p className="font-medium">⚠️ ENDPOINTS NÃO ENCONTRADOS:</p>
-                <p>• Alguns endpoints podem não estar implementados na sua versão da API</p>
-                <p>• Verifique se a documentação está atualizada</p>
-                <p>• Alguns endpoints podem ter mudado na v2.2.1</p>
+              <div>
+                <p className="text-sm font-medium text-blue-700">Instance ID</p>
+                <p className="text-xs font-mono">{diagnosticState.realInstanceId || 'Não obtido'}</p>
               </div>
-            </AlertDescription>
-          </Alert>
-        )}
+            </div>
+          )}
 
-        {/* Test Results by Category */}
-        <div className="space-y-3">
-          <h4 className="font-medium">Resultados por Categoria (v2.2.1):</h4>
-          
-          {['docs', 'admin', 'business', 'instance', 'webhook', 'message', 'chat'].map(category => {
-            const categoryTests = tests.filter(t => t.category === category);
-            if (categoryTests.length === 0) return null;
-            
-            return (
-              <div key={category} className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  {getCategoryIcon(category)}
-                  <h5 className="font-medium capitalize">
-                    {category === 'docs' ? 'Documentação' : 
-                     category === 'admin' ? 'Administração' :
-                     category === 'business' ? 'Negócios' :
-                     category === 'instance' ? 'Instâncias' :
-                     category === 'webhook' ? 'Webhooks' :
-                     category === 'message' ? 'Mensagens' :
-                     category === 'chat' ? 'Chat' : category}
-                  </h5>
-                </div>
-                
-                {categoryTests.map((test, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 border rounded ml-6">
-                    <div className="flex items-center space-x-3">
-                      {getStatusIcon(test.status)}
-                      <div>
-                        <div className="font-medium">{test.name}</div>
-                        <div className="text-sm text-gray-500">
-                          {test.method} {config.serverUrl}{test.url}
-                        </div>
-                        {test.requiresAuth && (
-                          <div className="text-xs text-orange-600">
-                            🔐 Requer autenticação
-                          </div>
-                        )}
-                        {test.responseTime && (
-                          <div className="text-xs text-gray-400">
-                            {test.responseTime}ms
-                          </div>
-                        )}
-                        {test.details && (
-                          <div className="text-xs text-gray-600 mt-1">
-                            {test.details}
-                          </div>
-                        )}
+          {/* Estatísticas */}
+          {stats.tested > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-6">
+              <div className="text-center p-2 bg-gray-50 rounded">
+                <div className="text-lg font-bold">{stats.tested}</div>
+                <div className="text-xs text-gray-600">Testados</div>
+              </div>
+              <div className="text-center p-2 bg-green-50 rounded">
+                <div className="text-lg font-bold text-green-600">{stats.success}</div>
+                <div className="text-xs text-green-600">Funcionando</div>
+              </div>
+              <div className="text-center p-2 bg-yellow-50 rounded">
+                <div className="text-lg font-bold text-yellow-600">{stats.warning}</div>
+                <div className="text-xs text-yellow-600">Auth Error</div>
+              </div>
+              <div className="text-center p-2 bg-red-50 rounded">
+                <div className="text-lg font-bold text-red-600">{stats.error}</div>
+                <div className="text-xs text-red-600">Rede/CORS</div>
+              </div>
+              <div className="text-center p-2 bg-gray-50 rounded">
+                <div className="text-lg font-bold text-gray-600">{stats.skipped}</div>
+                <div className="text-xs text-gray-600">Pulados</div>
+              </div>
+              <div className="text-center p-2 bg-purple-50 rounded">
+                <div className="text-lg font-bold text-purple-600">{stats.total - stats.tested}</div>
+                <div className="text-xs text-purple-600">Pendentes</div>
+              </div>
+            </div>
+          )}
+
+          <Tabs defaultValue="docs" className="w-full">
+            <TabsList className="grid w-full grid-cols-7">
+              {Object.entries(categories).map(([key, category]) => (
+                <TabsTrigger key={key} value={key} className="flex items-center space-x-1">
+                  <category.icon className="w-3 h-3" />
+                  <span className="hidden sm:inline text-xs">{category.name.split(' ')[1]}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            {Object.entries(categories).map(([key, category]) => (
+              <TabsContent key={key} value={key} className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between text-lg">
+                      <div className="flex items-center space-x-2">
+                        <category.icon className="w-5 h-5" />
+                        <span>{category.name}</span>
                       </div>
+                      <Button 
+                        onClick={() => testCategory(key)} 
+                        size="sm"
+                        variant="outline"
+                      >
+                        Testar Categoria
+                      </Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {endpoints
+                        .filter(endpoint => endpoint.category === key)
+                        .map(endpoint => renderTestResult(endpoint))
+                      }
                     </div>
-                    <div className="flex items-center space-x-2">
-                      {test.httpStatus && (
-                        <span className="text-sm text-gray-500">
-                          {test.httpStatus}
-                        </span>
-                      )}
-                      <Badge variant={getStatusColor(test.status)}>
-                        {getStatusText(test.status)}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Detailed Logs */}
-        {detailedLogs.length > 0 && (
-          <div className="bg-gray-900 text-green-400 p-4 rounded text-xs font-mono max-h-64 overflow-auto">
-            <h4 className="text-white mb-2">📋 Logs Detalhados v2.2.1:</h4>
-            {detailedLogs.map((log, index) => (
-              <div key={index} className="mb-1">{log}</div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
             ))}
-          </div>
-        )}
-
-        {/* Instructions */}
-        <div className="bg-blue-50 p-4 rounded">
-          <h4 className="font-medium text-blue-900 mb-2">📋 Diagnóstico CodeChat v2.2.1:</h4>
-          <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-            <li><strong>✅ ENDPOINTS CORRIGIDOS:</strong> Usando estrutura real da API v2.2.1</li>
-            <li><strong>🔐 AUTENTICAÇÃO:</strong> Implementada conforme documentação (Admin/Business/Instance)</li>
-            <li><strong>📋 IDs DINÂMICOS:</strong> Extração automática de businessId/instanceId</li>
-            <li><strong>🎯 FEEDBACK ESPECÍFICO:</strong> Diferenciação entre CORS, Auth, Not Found</li>
-            <li><strong>📖 BASEADO NA DOCUMENTAÇÃO:</strong> Endpoints da documentação oficial v2.2.1</li>
-          </ol>
-          
-          <div className="mt-3 p-2 bg-green-100 rounded">
-            <p className="text-sm text-green-800">
-              <strong>✅ DIAGNÓSTICO v2.2.1:</strong> Endpoints corrigidos e testando com a estrutura real da API!
-            </p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
