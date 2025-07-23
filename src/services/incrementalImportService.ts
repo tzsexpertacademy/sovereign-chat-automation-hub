@@ -78,7 +78,7 @@ export const incrementalImportService = {
 
               if (messagesResponse.success && messagesResponse.data) {
                 const newMessages = messagesResponse.data.filter(msg => 
-                  new Date(msg.timestamp * 1000) > fromDate
+                  new Date(msg.messageTimestamp * 1000) > fromDate
                 );
 
                 console.log(`📨 [INCREMENTAL] ${newMessages.length} mensagens novas no chat ${chat.id}`);
@@ -145,7 +145,7 @@ export const incrementalImportService = {
         body: message.body || '',
         message_type: message.type || 'text',
         from_me: message.fromMe || false,
-        timestamp: new Date(message.timestamp * 1000).toISOString(),
+        timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
         is_processed: false
       });
 

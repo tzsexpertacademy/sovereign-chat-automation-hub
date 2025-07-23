@@ -56,7 +56,7 @@ export const webhookConfigService = {
         }
       };
 
-      const response = await yumerWhatsappService.configureWebhook(instanceId, webhookConfig);
+      const response = await yumerWhatsappService.configureWebhook(instanceId);
       
       if (response.success) {
         console.log(`✅ [WEBHOOK-CONFIG] Webhook configurado com sucesso para: ${instanceId}`);
