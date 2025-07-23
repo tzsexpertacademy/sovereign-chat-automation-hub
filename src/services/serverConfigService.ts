@@ -1,3 +1,4 @@
+
 // Dynamic Server Configuration Service
 interface ServerConfig {
   // Primary Backend Configuration - CodeChat API v2.1.3
@@ -63,6 +64,7 @@ interface ServerConfig {
   // Metadata
   lastUpdated: string;
   version: string;
+  configVersion: number; // NEW: Para controle de migração
 }
 
 interface ServerStatus {
@@ -78,6 +80,7 @@ class ServerConfigService {
   private status: ServerStatus;
   private listeners: Array<(config: ServerConfig) => void> = [];
   private backupConfig: ServerConfig | null = null;
+  private readonly CURRENT_CONFIG_VERSION = 2; // Versão atual da configuração
 
   private constructor() {
     this.config = this.getDefaultConfig();
@@ -86,7 +89,7 @@ class ServerConfigService {
       latency: 0,
       lastCheck: new Date().toISOString()
     };
-    this.loadConfig();
+    this.loadConfigWithMigration();
   }
 
   static getInstance(): ServerConfigService {
@@ -98,7 +101,7 @@ class ServerConfigService {
 
   private getDefaultConfig(): ServerConfig {
     return {
-      // Primary Backend - CodeChat API v2.1.3 - SERVIDOR OFICIAL YUMER
+      // Primary Backend - CodeChat API v2.1.3 - SERVIDOR OFICIAL ATUALIZADO
       serverUrl: 'https://api.yumer.com.br',
       host: 'api.yumer.com.br',
       port: 443,
@@ -106,7 +109,7 @@ class ServerConfigService {
       basePath: '/api/v2',
       apiVersion: '2.1.3',
       
-      // Authentication - CodeChat API v2.1.3 - TOKENS OFICIAIS
+      // Authentication - CodeChat API v2.1.3 - TOKENS OFICIAIS ATUALIZADOS
       adminToken: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
       globalApiKey: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
       jwtSecret: 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe',
@@ -162,31 +165,117 @@ class ServerConfigService {
         }
       },
       
-      // Metadata
+      // Metadata - ATUALIZADO
       lastUpdated: new Date().toISOString(),
-      version: '2.1.3'
+      version: '2.1.3',
+      configVersion: 2
     };
   }
 
-  private loadConfig(): void {
+  private loadConfigWithMigration(): void {
     try {
       const stored = localStorage.getItem('yumer_server_config');
+      
       if (stored) {
         const parsed = JSON.parse(stored);
-        this.config = { ...this.getDefaultConfig(), ...parsed };
-        console.log('🔧 Configuração do servidor carregada:', this.config);
+        
+        // Verificar se é uma configuração antiga que precisa ser migrada
+        if (this.needsMigration(parsed)) {
+          console.log('🔄 Detectada configuração antiga. Iniciando migração automática...');
+          this.migrateOldConfig(parsed);
+        } else {
+          this.config = { ...this.getDefaultConfig(), ...parsed };
+          console.log('✅ Configuração v2.1.3 carregada:', this.config);
+        }
+      } else {
+        console.log('🆕 Primeira execução - aplicando configuração padrão CodeChat v2.1.3');
+        this.config = this.getDefaultConfig();
+        this.saveConfig();
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar configuração:', error);
-      this.config = this.getDefaultConfig();
+      console.error('❌ Erro ao carregar configuração, aplicando padrões:', error);
+      this.forceResetToDefaults();
     }
+  }
+
+  private needsMigration(config: any): boolean {
+    const oldIndicators = [
+      config.serverUrl?.includes('yumer.yumerflow.app'),
+      config.host?.includes('yumer.yumerflow.app'),
+      config.port === 8083,
+      config.basePath === '',
+      !config.configVersion || config.configVersion < this.CURRENT_CONFIG_VERSION
+    ];
+    
+    return oldIndicators.some(indicator => indicator);
+  }
+
+  private migrateOldConfig(oldConfig: any): void {
+    console.log('🔧 Migrando configuração antiga para CodeChat API v2.1.3...');
+    
+    // Preservar apenas configurações customizadas válidas (não relacionadas ao servidor)
+    const preservableSettings = {
+      environment: oldConfig.environment,
+      requestTimeout: oldConfig.requestTimeout,
+      retryAttempts: oldConfig.retryAttempts,
+      webSocketEnabled: oldConfig.webSocketEnabled,
+      corsEnabled: oldConfig.corsEnabled,
+      sslRequired: oldConfig.sslRequired,
+      offlineMode: oldConfig.offlineMode,
+      configCache: oldConfig.configCache,
+      // Preservar integrações frontend se não forem padrão
+      ...(oldConfig.lovableDomain && !oldConfig.lovableDomain.includes('lovableproject.com') && {
+        lovableDomain: oldConfig.lovableDomain
+      }),
+      ...(oldConfig.supabaseUrl && !oldConfig.supabaseUrl.includes('supabase.co') && {
+        supabaseUrl: oldConfig.supabaseUrl
+      })
+    };
+    
+    // Aplicar novos padrões + configurações preservadas
+    this.config = {
+      ...this.getDefaultConfig(),
+      ...preservableSettings,
+      configVersion: this.CURRENT_CONFIG_VERSION
+    };
+    
+    // Salvar configuração migrada
+    this.saveConfig();
+    
+    console.log('✅ Migração concluída para CodeChat API v2.1.3:', {
+      serverUrl: this.config.serverUrl,
+      host: this.config.host,
+      port: this.config.port,
+      basePath: this.config.basePath,
+      version: this.config.version
+    });
+  }
+
+  private forceResetToDefaults(): void {
+    console.log('🔄 Forçando reset completo para configurações padrão...');
+    
+    // Limpar localStorage
+    localStorage.removeItem('yumer_server_config');
+    localStorage.removeItem('yumer_server_config_backup');
+    
+    // Aplicar configuração padrão
+    this.config = this.getDefaultConfig();
+    this.saveConfig();
+    
+    console.log('✅ Reset concluído - CodeChat API v2.1.3 configurado');
   }
 
   private saveConfig(): void {
     try {
       this.config.lastUpdated = new Date().toISOString();
+      this.config.configVersion = this.CURRENT_CONFIG_VERSION;
       localStorage.setItem('yumer_server_config', JSON.stringify(this.config));
-      console.log('💾 Configuração salva:', this.config);
+      console.log('💾 Configuração CodeChat v2.1.3 salva:', {
+        serverUrl: this.config.serverUrl,
+        host: this.config.host,
+        port: this.config.port,
+        basePath: this.config.basePath
+      });
       this.notifyListeners();
     } catch (error) {
       console.error('❌ Erro ao salvar configuração:', error);
@@ -206,7 +295,7 @@ class ServerConfigService {
 
   updateConfig(updates: Partial<ServerConfig>): void {
     this.createBackup();
-    this.config = { ...this.config, ...updates };
+    this.config = { ...this.config, ...updates, configVersion: this.CURRENT_CONFIG_VERSION };
     this.saveConfig();
   }
 
@@ -292,7 +381,11 @@ class ServerConfigService {
     try {
       const imported = JSON.parse(configJson);
       this.createBackup();
-      this.config = { ...this.getDefaultConfig(), ...imported };
+      this.config = { 
+        ...this.getDefaultConfig(), 
+        ...imported, 
+        configVersion: this.CURRENT_CONFIG_VERSION 
+      };
       this.saveConfig();
       return true;
     } catch (error) {
@@ -303,8 +396,7 @@ class ServerConfigService {
 
   resetToDefaults(): void {
     this.createBackup();
-    this.config = this.getDefaultConfig();
-    this.saveConfig();
+    this.forceResetToDefaults();
   }
 
   // Event listeners
@@ -456,6 +548,12 @@ class ServerConfigService {
         environment: this.config.environment
       }
     };
+  }
+
+  // Método público para forçar migração manual
+  forceMigration(): void {
+    console.log('🔄 Forçando migração manual da configuração...');
+    this.forceResetToDefaults();
   }
 }
 
