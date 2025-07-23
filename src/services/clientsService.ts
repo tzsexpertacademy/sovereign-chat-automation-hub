@@ -12,6 +12,8 @@ export interface ClientData {
   current_instances: number;
   instance_id?: string;
   instance_status?: string;
+  business_id?: string;
+  business_token?: string;
   created_at: string;
   updated_at: string;
   last_activity: string;
@@ -67,6 +69,34 @@ export const clientsService = {
   // Create new client
   async createClient(clientData: CreateClientData): Promise<ClientData> {
     try {
+      console.log('🏢 Criando cliente e business no servidor Yumer...');
+      
+      // 1. Criar business no servidor Yumer
+      const yumerResponse = await fetch('https://api.yumer.com.br/v2/business', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: clientData.name,
+          email: clientData.email,
+          phone: clientData.phone || '',
+          country: 'BR',
+          language: 'pt-BR',
+          timezone: 'America/Sao_Paulo'
+        })
+      });
+
+      if (!yumerResponse.ok) {
+        const errorText = await yumerResponse.text();
+        console.error('Erro na API Yumer:', errorText);
+        throw new Error('Failed to create business in Yumer API');
+      }
+
+      const businessData = await yumerResponse.json();
+      console.log('✅ Business criado no Yumer:', businessData.business_id);
+      
+      // 2. Criar cliente com business_id
       const plan = clientData.plan || 'basic';
       const maxInstances = getMaxInstancesForPlan(plan);
 
@@ -75,13 +105,16 @@ export const clientsService = {
         .insert([{
           ...clientData,
           plan,
-          max_instances: maxInstances
+          max_instances: maxInstances,
+          business_id: businessData.business_id,
+          business_token: businessData.business_token
         }])
         .select()
         .single();
 
       if (error) throw error;
       
+      console.log('✅ Cliente criado com business_id:', businessData.business_id);
       return data as ClientData;
     } catch (error) {
       console.error('Error creating client:', error);
@@ -116,12 +149,45 @@ export const clientsService = {
   // Delete client
   async deleteClient(id: string): Promise<void> {
     try {
+      console.log('🗑️ Deletando cliente e business associado...');
+      
+      // 1. Buscar client para obter business_id
+      const { data: client } = await supabase
+        .from('clients')
+        .select('business_id')
+        .eq('id', id)
+        .single();
+
+      // 2. Deletar business do servidor Yumer se existir
+      if (client?.business_id) {
+        try {
+          console.log('🗑️ Deletando business do Yumer:', client.business_id);
+          const response = await fetch(`https://api.yumer.com.br/v2/business/${client.business_id}`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+          
+          if (response.ok) {
+            console.log('✅ Business deletado do Yumer');
+          } else {
+            console.warn('⚠️ Falha ao deletar business do Yumer:', await response.text());
+          }
+        } catch (error) {
+          console.warn('⚠️ Erro ao deletar business do Yumer:', error);
+        }
+      }
+
+      // 3. Deletar cliente do banco local
       const { error } = await supabase
         .from('clients')
         .delete()
         .eq('id', id);
 
       if (error) throw error;
+      
+      console.log('✅ Cliente deletado com sucesso');
     } catch (error) {
       console.error('Error deleting client:', error);
       throw error;

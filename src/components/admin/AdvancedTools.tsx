@@ -2,6 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Settings, Database, Shield, Wrench } from "lucide-react";
+import OrphanBusinessCleaner from "./OrphanBusinessCleaner";
 
 const AdvancedTools = () => {
   return (
@@ -119,6 +120,9 @@ const AdvancedTools = () => {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Limpeza de Businesses Órfãos */}
+      <OrphanBusinessCleaner />
     </div>
   );
 };

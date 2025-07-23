@@ -250,25 +250,21 @@ const InstancesManagerV2 = () => {
         }
       }
 
+      // 2. Verificar se cliente tem business_id (sistema 1:1)
+      if (!client.business_id) {
+        updateInstanceState(tempInstanceId, {
+          status: 'error',
+          progress: 0,
+          message: 'Cliente não possui business associado. Exclua e recrie o cliente.'
+        });
+        return;
+      }
+
       updateInstanceState(tempInstanceId, {
         status: 'loading',
-        progress: 30,
-        message: 'Verificando/criando business...'
+        progress: 40,
+        message: 'Usando business do cliente...'
       });
-
-      // 2. Usar o novo serviço para garantir business
-      const businessId = await businessSyncService.ensureBusinessForClient(
-        client.id, 
-        client.company || client.name, 
-        client.email, 
-        client.phone || '5511999999999'
-      );
-
-      // Buscar business local
-      const business = await businessSyncService.getLocalBusinessById(businessId);
-      if (!business) {
-        throw new Error('Erro ao obter business local');
-      }
 
       updateInstanceState(tempInstanceId, {
         status: 'loading',
@@ -280,7 +276,7 @@ const InstancesManagerV2 = () => {
       const instanceId = `${client.id}_${Date.now()}`;
       const customName = `${client.name}_${Date.now()}`;
       
-      const createResult = await unifiedYumerService.createBusinessInstance(business.business_id, {
+      const createResult = await unifiedYumerService.createBusinessInstance(client.business_id, {
         instanceName: instanceId,
         qrcode: true
       });
@@ -301,7 +297,7 @@ const InstancesManagerV2 = () => {
         instance_id: instanceId,
         status: 'disconnected',
         custom_name: customName,
-        business_business_id: business.business_id
+        business_business_id: client.business_id
       });
 
       updateInstanceState(tempInstanceId, {

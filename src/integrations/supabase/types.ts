@@ -355,6 +355,8 @@ export type Database = {
           avatar_url: string | null
           billing_address: Json | null
           brand_colors: Json | null
+          business_id: string | null
+          business_token: string | null
           company: string | null
           company_logo_url: string | null
           created_at: string
@@ -383,6 +385,8 @@ export type Database = {
           avatar_url?: string | null
           billing_address?: Json | null
           brand_colors?: Json | null
+          business_id?: string | null
+          business_token?: string | null
           company?: string | null
           company_logo_url?: string | null
           created_at?: string
@@ -411,6 +415,8 @@ export type Database = {
           avatar_url?: string | null
           billing_address?: Json | null
           brand_colors?: Json | null
+          business_id?: string | null
+          business_token?: string | null
           company?: string | null
           company_logo_url?: string | null
           created_at?: string
