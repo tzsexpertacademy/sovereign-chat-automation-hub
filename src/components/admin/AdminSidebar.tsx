@@ -1,84 +1,66 @@
 
-import { BarChart3, Users, Activity, FileText, Settings, Shield, Wifi, Stethoscope, Server, CreditCard } from "lucide-react";
+import { BarChart3, Users, Activity, FileText, Settings, Shield, Stethoscope, Server, CreditCard } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarTrigger,
-  useSidebar,
-} from "@/components/ui/sidebar";
 
 const adminItems = [
-  { title: "Overview", url: "overview", icon: BarChart3 },
-  { title: "Clientes", url: "clients", icon: Users },
-  { title: "Instâncias", url: "instances", icon: Activity },
-  { title: "Planos", url: "plans", icon: CreditCard },
-  { title: "Configuração Servidor", url: "server-config", icon: Server },
-  { title: "Diagnóstico", url: "diagnostics", icon: Stethoscope },
-  { title: "Logs", url: "logs", icon: FileText },
-  { title: "Ferramentas Avançadas", url: "advanced", icon: Settings },
+  { title: "Overview", url: "/admin/overview", icon: BarChart3 },
+  { title: "Clientes", url: "/admin/clients", icon: Users },
+  { title: "Instâncias", url: "/admin/instances", icon: Activity },
+  { title: "Planos", url: "/admin/plans", icon: CreditCard },
+  { title: "Configuração Servidor", url: "/admin/server-config", icon: Server },
+  { title: "Diagnóstico", url: "/admin/diagnostics", icon: Stethoscope },
+  { title: "Logs", url: "/admin/logs", icon: FileText },
+  { title: "Ferramentas Avançadas", url: "/admin/advanced", icon: Settings },
 ];
 
 const AdminSidebar = () => {
-  const { state } = useSidebar();
   const location = useLocation();
   const currentPath = location.pathname;
-  const collapsed = state === "collapsed";
 
-  const isActive = (path: string) => currentPath.endsWith(path);
+  const isActive = (path: string) => currentPath === path;
 
   return (
-    <Sidebar className={collapsed ? "w-14" : "w-64"} collapsible="icon">
-      <SidebarContent className="bg-background border-r border-border">
-        {/* Logo/Header */}
-        <div className="p-3 lg:p-4 border-b border-border">
-          <div className="flex items-center space-x-2 lg:space-x-3">
-            <div className="w-7 h-7 lg:w-8 lg:h-8 bg-gradient-to-r from-primary to-primary/80 rounded-lg flex items-center justify-center">
-              <Shield className="w-4 h-4 lg:w-5 lg:h-5 text-primary-foreground" />
-            </div>
-            {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <h2 className="text-base lg:text-lg font-bold text-foreground truncate">Admin Panel</h2>
-                <p className="text-xs lg:text-sm text-muted-foreground truncate">YumerFlow</p>
-              </div>
-            )}
+    <div className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
+      {/* Logo/Header */}
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-500 rounded-lg flex items-center justify-center">
+            <Shield className="w-5 h-5 text-white" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-bold text-gray-900 truncate">Admin Panel</h2>
+            <p className="text-sm text-gray-500 truncate">YumerFlow</p>
           </div>
         </div>
+      </div>
 
-        <SidebarGroup className="px-2">
-          <SidebarGroupLabel className="text-xs text-muted-foreground px-2">Administração</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="space-y-1">
-              {adminItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url} 
-                      className={({ isActive }) => 
-                        `flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
-                          isActive 
-                            ? "bg-primary/10 text-primary font-medium" 
-                            : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`
-                      }
-                    >
-                      <item.icon className={`h-4 w-4 ${collapsed ? '' : 'mr-3'} flex-shrink-0`} />
-                      {!collapsed && <span className="truncate">{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-    </Sidebar>
+      {/* Navigation */}
+      <div className="flex-1 px-3 py-4">
+        <div className="mb-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 mb-3">
+            Administração
+          </h3>
+          <nav className="space-y-1">
+            {adminItems.map((item) => (
+              <NavLink
+                key={item.title}
+                to={item.url}
+                className={({ isActive }) =>
+                  `flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
+                    isActive
+                      ? "bg-blue-50 text-blue-700 font-medium border-r-2 border-blue-700"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                  }`
+                }
+              >
+                <item.icon className="h-5 w-5 mr-3 flex-shrink-0" />
+                <span className="truncate">{item.title}</span>
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+      </div>
+    </div>
   );
 };
 
