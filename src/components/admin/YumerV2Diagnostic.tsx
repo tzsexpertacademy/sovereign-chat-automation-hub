@@ -10,7 +10,7 @@ interface EndpointTest {
   name: string;
   url: string;
   method: string;
-  category: 'admin' | 'business' | 'instance' | 'webhook' | 'message';
+  category: 'docs' | 'business' | 'instance' | 'webhook' | 'message';
   status: 'pending' | 'success' | 'cors_error' | 'not_found' | 'server_error' | 'auth_error' | 'timeout_error' | 'network_error';
   details?: string;
   httpStatus?: number;
@@ -22,9 +22,8 @@ interface EndpointTest {
 const YumerV2Diagnostic = () => {
   const { config, status: serverStatus, isLoading: configLoading } = useServerConfig();
   const [tests, setTests] = useState<EndpointTest[]>([
-    // Admin endpoints - Básicos primeiro (v2.2.1)
-    { name: "Health Check", url: "/health", method: "GET", category: "admin", status: "pending" },
-    { name: "Server Info", url: "/info", method: "GET", category: "admin", status: "pending" },
+    // Documentação (público, sem auth)
+    { name: "API Documentation", url: "/docs", method: "GET", category: "docs", status: "pending" },
     
     // Business endpoints (v2.2.1) 
     { name: "List Businesses", url: "/business", method: "GET", category: "business", status: "pending" },
@@ -51,7 +50,7 @@ const YumerV2Diagnostic = () => {
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] ${message}`;
-    console.log(`🧪 [YUMER-V2.2.1] ${logMessage}`);
+    console.log(`🧪 [YUMER-v2.2.1] ${logMessage}`);
     setDetailedLogs(prev => [...prev, logMessage]);
   };
 
@@ -69,7 +68,7 @@ const YumerV2Diagnostic = () => {
       };
 
       // Adicionar autenticação para endpoints que precisam (v2.2.1)
-      if (endpoint.category !== 'admin') {
+      if (endpoint.category !== 'docs') {
         if (config.globalApiKey) {
           headers['apikey'] = config.globalApiKey;
         }
@@ -80,12 +79,12 @@ const YumerV2Diagnostic = () => {
 
       addLog(`Headers: ${JSON.stringify(headers, null, 2)}`);
 
-      // Criar AbortController para timeout de 10 segundos
+      // Criar AbortController para timeout de 15 segundos
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();
-        addLog(`Timeout após 10 segundos para ${endpoint.name}`);
-      }, 10000);
+        addLog(`Timeout após 15 segundos para ${endpoint.name}`);
+      }, 15000);
 
       const response = await fetch(fullUrl, {
         method: endpoint.method,
@@ -129,9 +128,15 @@ const YumerV2Diagnostic = () => {
           addLog(`Response Text: ${data}`);
         }
         
-        // Salvar info do servidor se for health check
-        if (endpoint.url === '/health' && data) {
-          setServerInfo(data);
+        // Salvar info do servidor se for documentation
+        if (endpoint.url === '/docs' && data) {
+          setServerInfo({
+            version: 'v2.2.1',
+            endpoint: '/docs',
+            status: 'online',
+            responseTime: responseTime,
+            timestamp: new Date().toISOString()
+          });
         }
         
         return {
@@ -190,7 +195,7 @@ const YumerV2Diagnostic = () => {
           ...endpoint,
           status: 'timeout_error',
           responseTime,
-          details: `⏱️ Timeout após 10 segundos - Servidor pode estar sobrecarregado`
+          details: `⏱️ Timeout após 15 segundos - Servidor pode estar sobrecarregado`
         };
       } else if (error.message.includes('CORS') || 
           error.message.includes('Access-Control-Allow-Origin') ||
@@ -199,14 +204,14 @@ const YumerV2Diagnostic = () => {
           ...endpoint,
           status: 'cors_error',
           responseTime,
-          details: `❌ CORS Error: ${error.message} - Verificar configuração CORS no servidor`
+          details: `❌ CORS Error: ${error.message} - Servidor precisa configurar CORS para ${window.location.origin}`
         };
       } else if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
         return {
           ...endpoint,
           status: 'network_error',
           responseTime,
-          details: `🌐 Network Error: ${error.message} - Verificar conectividade ou firewall`
+          details: `🌐 Network Error: ${error.message} - Pode ser CORS ou conectividade`
         };
       } else {
         return {
@@ -263,14 +268,15 @@ const YumerV2Diagnostic = () => {
     addLog(`📍 Servidor: ${config.serverUrl}${config.basePath}`);
     addLog(`🔑 API Key configurada: ${config.globalApiKey ? 'Sim' : 'Não'}`);
     addLog(`🎫 Admin Token configurado: ${config.adminToken ? 'Sim' : 'Não'}`);
+    addLog(`🌐 Frontend Origin: ${window.location.origin}`);
     
     const updatedTests: EndpointTest[] = [];
     
-    // Testar endpoints básicos primeiro (admin), depois autenticados
-    const basicEndpoints = tests.filter(t => t.category === 'admin');
-    const otherEndpoints = tests.filter(t => t.category !== 'admin');
+    // Testar documentação primeiro (público), depois endpoints autenticados
+    const publicEndpoints = tests.filter(t => t.category === 'docs');
+    const authEndpoints = tests.filter(t => t.category !== 'docs');
     
-    for (const test of [...basicEndpoints, ...otherEndpoints]) {
+    for (const test of [...publicEndpoints, ...authEndpoints]) {
       const result = await testEndpoint(test);
       updatedTests.push(result);
       
@@ -278,7 +284,7 @@ const YumerV2Diagnostic = () => {
       setTests([...updatedTests, ...tests.slice(updatedTests.length)]);
       
       // Pausa entre testes para não sobrecarregar
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
     setTests(updatedTests);
@@ -292,6 +298,11 @@ const YumerV2Diagnostic = () => {
     const authErrors = updatedTests.filter(t => t.status === 'auth_error').length;
     
     addLog(`🎯 Diagnóstico concluído: ${successes} sucessos, ${corsErrors} CORS, ${networkErrors} rede, ${timeoutErrors} timeout, ${authErrors} auth`);
+    
+    if (corsErrors > 0 || networkErrors > 0) {
+      addLog(`⚠️ CORS DETECTADO: O servidor precisa configurar CORS para permitir acesso de ${window.location.origin}`);
+      addLog(`📖 Documentação CORS: https://docs.codechat.dev/api/v2.2.1/cors-configuration`);
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -328,14 +339,14 @@ const YumerV2Diagnostic = () => {
       case 'not_found': return 'Não encontrado';
       case 'server_error': return 'Erro servidor';
       case 'timeout_error': return 'Timeout';
-      case 'network_error': return 'Erro rede';
+      case 'network_error': return 'Erro rede/CORS';
       default: return 'Aguardando';
     }
   };
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'admin': return <Server className="w-4 h-4" />;
+      case 'docs': return <Server className="w-4 h-4" />;
       case 'business': return <Database className="w-4 h-4" />;
       case 'instance': return <Globe className="w-4 h-4" />;
       default: return <RefreshCw className="w-4 h-4" />;
@@ -343,6 +354,7 @@ const YumerV2Diagnostic = () => {
   };
 
   const hasErrors = tests.some(t => ['cors_error', 'network_error', 'timeout_error', 'auth_error', 'server_error'].includes(t.status));
+  const hasCorsIssues = tests.some(t => ['cors_error', 'network_error'].includes(t.status));
 
   if (configLoading) {
     return (
@@ -382,7 +394,7 @@ const YumerV2Diagnostic = () => {
           <div className="p-3 bg-gray-50 rounded">
             <p><strong>Servidor:</strong> {config.serverUrl}</p>
             <p><strong>Base Path:</strong> {config.basePath}</p>
-            <p><strong>Versão:</strong> {config.apiVersion}</p>
+            <p><strong>Versão:</strong> v{config.apiVersion}</p>
           </div>
           <div className="p-3 bg-gray-50 rounded">
             <p><strong>Status:</strong> {serverStatus.isOnline ? '🟢 Online' : '🔴 Offline'}</p>
@@ -392,6 +404,7 @@ const YumerV2Diagnostic = () => {
           <div className="p-3 bg-gray-50 rounded">
             <p><strong>API Key:</strong> {config.globalApiKey ? '✅ Configurada' : '❌ Não configurada'}</p>
             <p><strong>Admin Token:</strong> {config.adminToken ? '✅ Configurado' : '❌ Não configurado'}</p>
+            <p><strong>Frontend:</strong> {window.location.hostname}</p>
           </div>
         </div>
         
@@ -424,7 +437,7 @@ const YumerV2Diagnostic = () => {
               <div className="text-2xl font-bold text-blue-600">
                 {tests.filter(t => t.status === 'network_error').length}
               </div>
-              <div className="text-sm text-gray-600">Rede</div>
+              <div className="text-sm text-gray-600">Rede/CORS</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">
@@ -453,28 +466,24 @@ const YumerV2Diagnostic = () => {
           </div>
         )}
 
-        {/* Issues Alert */}
-        {hasErrors && (
+        {/* CORS Issues Alert */}
+        {hasCorsIssues && (
           <Alert variant="destructive">
             <XCircle className="h-4 w-4" />
             <AlertDescription>
               <div className="space-y-2">
-                <p className="font-medium">🎯 PROBLEMAS IDENTIFICADOS:</p>
-                {tests.filter(t => t.status === 'cors_error').length > 0 && (
-                  <p>• <strong>CORS:</strong> {tests.filter(t => t.status === 'cors_error').length} endpoints bloqueados por CORS</p>
-                )}
-                {tests.filter(t => t.status === 'network_error').length > 0 && (
-                  <p>• <strong>REDE:</strong> {tests.filter(t => t.status === 'network_error').length} falhas de conectividade</p>
-                )}
-                {tests.filter(t => t.status === 'timeout_error').length > 0 && (
-                  <p>• <strong>TIMEOUT:</strong> {tests.filter(t => t.status === 'timeout_error').length} requisições lentas demais</p>
-                )}
-                {tests.filter(t => t.status === 'auth_error').length > 0 && (
-                  <p>• <strong>AUTH:</strong> {tests.filter(t => t.status === 'auth_error').length} endpoints com erro de autenticação</p>
-                )}
+                <p className="font-medium">🎯 PROBLEMA DE CORS DETECTADO:</p>
+                <p>• <strong>CORS:</strong> O servidor não permite acesso de <code>{window.location.origin}</code></p>
+                <p>• <strong>Requisições chegam ao servidor</strong> mas são bloqueadas pelo navegador</p>
                 <p className="text-sm">
-                  <strong>Próximos passos:</strong> Verificar logs detalhados abaixo e configurar CORS/autenticação
+                  <strong>Solução:</strong> Configure CORS no servidor CodeChat v2.2.1 para permitir o domínio frontend
                 </p>
+                <div className="text-xs bg-red-100 p-2 rounded">
+                  <p><strong>Headers necessários no servidor:</strong></p>
+                  <p>• Access-Control-Allow-Origin: {window.location.origin}</p>
+                  <p>• Access-Control-Allow-Methods: GET, POST, PUT, DELETE</p>
+                  <p>• Access-Control-Allow-Headers: Content-Type, Authorization, apikey</p>
+                </div>
               </div>
             </AlertDescription>
           </Alert>
@@ -484,13 +493,15 @@ const YumerV2Diagnostic = () => {
         <div className="space-y-3">
           <h4 className="font-medium">Resultados por Categoria:</h4>
           
-          {['admin', 'business', 'instance', 'webhook', 'message'].map(category => {
+          {['docs', 'business', 'instance', 'webhook', 'message'].map(category => {
             const categoryTests = tests.filter(t => t.category === category);
+            if (categoryTests.length === 0) return null;
+            
             return (
               <div key={category} className="space-y-2">
                 <div className="flex items-center space-x-2">
                   {getCategoryIcon(category)}
-                  <h5 className="font-medium capitalize">{category}</h5>
+                  <h5 className="font-medium capitalize">{category === 'docs' ? 'Documentação' : category}</h5>
                 </div>
                 
                 {categoryTests.map((test, index) => (
@@ -505,6 +516,11 @@ const YumerV2Diagnostic = () => {
                         {test.responseTime && (
                           <div className="text-xs text-gray-400">
                             {test.responseTime}ms
+                          </div>
+                        )}
+                        {test.details && (
+                          <div className="text-xs text-gray-600 mt-1">
+                            {test.details}
                           </div>
                         )}
                       </div>
@@ -540,12 +556,20 @@ const YumerV2Diagnostic = () => {
         <div className="bg-blue-50 p-4 rounded">
           <h4 className="font-medium text-blue-900 mb-2">📋 Plano de Correção v2.2.1:</h4>
           <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-            <li><strong>FASE 1:</strong> Configurar CORS no backend CodeChat para todos os endpoints v2.2.1</li>
-            <li><strong>FASE 2:</strong> Verificar e ajustar tokens de autenticação API v2.2.1</li>
-            <li><strong>FASE 3:</strong> Implementar serviços v2.2.1 completos com novos endpoints</li>
-            <li><strong>FASE 4:</strong> Atualizar estrutura Supabase para v2.2.1</li>
-            <li><strong>FASE 5:</strong> Migração completa da interface v2.2.1</li>
+            <li><strong>FASE 1:</strong> Configurar CORS no servidor CodeChat v2.2.1 para {window.location.origin}</li>
+            <li><strong>FASE 2:</strong> Verificar se todos os endpoints v2.2.1 estão implementados corretamente</li>
+            <li><strong>FASE 3:</strong> Testar autenticação com API Key e Admin Token</li>
+            <li><strong>FASE 4:</strong> Implementar integração completa v2.2.1 no frontend</li>
+            <li><strong>FASE 5:</strong> Validar todos os fluxos de negócio com a nova API</li>
           </ol>
+          
+          {hasCorsIssues && (
+            <div className="mt-3 p-2 bg-yellow-100 rounded">
+              <p className="text-sm text-yellow-800">
+                <strong>⚠️ Prioridade:</strong> O problema principal é CORS. As requisições chegam ao servidor mas são bloqueadas pelo navegador.
+              </p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

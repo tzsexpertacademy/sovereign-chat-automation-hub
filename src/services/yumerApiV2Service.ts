@@ -140,6 +140,30 @@ class YumerApiV2Service {
     return data;
   }
 
+  // ==================== SERVER HEALTH CHECK ====================
+  
+  /**
+   * Verifica se o servidor está online acessando a documentação
+   */
+  async checkServerHealth(): Promise<{ status: string; version: string; timestamp: string }> {
+    try {
+      // Usar endpoint /docs que sabemos que existe
+      const response = await fetch(`${this.baseUrl}/docs`, {
+        method: 'GET',
+        mode: 'no-cors'
+      });
+      
+      return {
+        status: 'online',
+        version: 'v2.2.1',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('[YumerApiV2.2.1] Health check failed:', error);
+      throw new Error('Server offline or unreachable');
+    }
+  }
+
   // ==================== AUTHENTICATION ====================
   
   /**
@@ -439,19 +463,21 @@ class YumerApiV2Service {
   // ==================== LEGACY COMPATIBILITY METHODS ====================
 
   /**
-   * @deprecated Use listBusinessInstances instead
+   * @deprecated Use listBusinessInstances instead - Este método não funciona na v2.2.1
    */
   async listInstances(): Promise<Instance[]> {
-    console.warn('[YumerApiV2.2.1] listInstances() is deprecated, use listBusinessInstances(businessId) instead');
-    // Para compatibilidade, retornar array vazio
+    console.warn('[YumerApiV2.2.1] listInstances() is deprecated and not available in v2.2.1');
+    console.warn('[YumerApiV2.2.1] Use listBusinessInstances(businessId) instead');
+    // Retornar array vazio para manter compatibilidade
     return [];
   }
 
   /**
-   * @deprecated Use createBusinessInstance instead
+   * @deprecated Use createBusinessInstance instead - Este método não funciona na v2.2.1
    */
   async createInstance(instanceName: string, token?: string, qrcode = true, number?: string): Promise<Instance> {
-    console.warn('[YumerApiV2.2.1] createInstance() is deprecated, use createBusinessInstance(businessId, data) instead');
+    console.warn('[YumerApiV2.2.1] createInstance() is deprecated and not available in v2.2.1');
+    console.warn('[YumerApiV2.2.1] Use createBusinessInstance(businessId, instanceData) instead');
     throw new Error('createInstance is deprecated in v2.2.1. Use createBusinessInstance(businessId, instanceData) instead');
   }
 

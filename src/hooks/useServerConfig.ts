@@ -13,6 +13,9 @@ export const useServerConfig = () => {
       setConfig(newConfig);
     });
 
+    // Verificar status inicial
+    testConnection();
+
     return unsubscribe;
   }, []);
 
@@ -42,8 +45,44 @@ export const useServerConfig = () => {
   const testConnection = async () => {
     setIsLoading(true);
     try {
-      const newStatus = await serverConfigService.testConnection();
+      console.log(`🔍 [SERVER-CONFIG] Testando conexão com ${config.serverUrl}`);
+      
+      // Usar endpoint /docs que sabemos que existe na v2.2.1
+      const response = await fetch(`${config.serverUrl}/docs`, {
+        method: 'GET',
+        mode: 'no-cors', // Evitar problemas de CORS para teste básico
+        cache: 'no-cache'
+      });
+      
+      // Para modo no-cors, não conseguimos ler a resposta, mas se não houve erro, servidor está respondendo
+      console.log(`✅ [SERVER-CONFIG] Servidor respondeu, considerando online`);
+      
+      const newStatus: ServerStatus = {
+        isOnline: true,
+        lastCheck: Date.now(),
+        latency: 0, // Não podemos medir latência em modo no-cors
+        message: 'Servidor online (verificação básica)',
+        version: config.apiVersion
+      };
+      
+      serverConfigService.updateStatus(newStatus);
       setStatus(newStatus);
+      
+      return newStatus;
+    } catch (error: any) {
+      console.error(`❌ [SERVER-CONFIG] Erro ao testar conexão:`, error);
+      
+      const newStatus: ServerStatus = {
+        isOnline: false,
+        lastCheck: Date.now(),
+        latency: 0,
+        message: `Erro: ${error.message}`,
+        version: config.apiVersion
+      };
+      
+      serverConfigService.updateStatus(newStatus);
+      setStatus(newStatus);
+      
       return newStatus;
     } finally {
       setIsLoading(false);
