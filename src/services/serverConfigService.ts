@@ -333,13 +333,12 @@ class ServerConfigService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout);
       
-      // Test endpoint for CodeChat API v2.1.3 - ENDPOINT CORRETO
-      const response = await fetch(`${this.config.serverUrl}/health`, {
+      // Test Swagger docs endpoint - endpoint que sabemos que existe
+      const response = await fetch(`${this.config.serverUrl}/docs`, {
         method: 'GET',
         signal: controller.signal,
         headers: {
-          'Authorization': `Bearer ${this.config.adminToken}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'text/html'
         }
       });
       
