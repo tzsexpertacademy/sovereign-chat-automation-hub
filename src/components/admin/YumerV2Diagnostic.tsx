@@ -84,7 +84,7 @@ const YumerV2Diagnostic = () => {
       tokenType: 'admin' // Será ignorado para endpoints públicos
     },
     
-    // 🏢 Admin Controller - ADMIN_TOKEN
+    // 🏢 Admin Controller - ADMIN_TOKEN (Completo)
     { 
       name: 'List All Businesses', 
       url: '/api/v2/admin/business', 
@@ -108,6 +108,42 @@ const YumerV2Diagnostic = () => {
           createdBy: 'YumerDiagnostic'
         }
       }
+    },
+    { 
+      name: 'Refresh Business Token', 
+      url: '/api/v2/admin/business/{businessId}/refresh-token', 
+      method: 'PATCH', 
+      category: 'admin',
+      description: 'Atualizar token do negócio (Admin)',
+      requiresBusinessId: true,
+      tokenType: 'admin',
+      dependency: 'Create Business',
+      body: {
+        oldToken: ''  // Será preenchido dinamicamente
+      }
+    },
+    { 
+      name: 'Move Instance to Business', 
+      url: '/api/v2/admin/business/move-instance', 
+      method: 'PATCH', 
+      category: 'admin',
+      description: 'Mover instância entre negócios (Admin)',
+      tokenType: 'admin',
+      dependency: 'Create Business Instance',
+      body: {
+        sourceInstanceId: '',  // Será preenchido dinamicamente
+        businessIdTarget: ''   // Será preenchido dinamicamente
+      }
+    },
+    { 
+      name: 'Delete Business', 
+      url: '/api/v2/admin/business/{businessId}', 
+      method: 'DELETE', 
+      category: 'admin',
+      description: 'Deletar negócio (Admin) - Cleanup',
+      requiresBusinessId: true,
+      tokenType: 'admin',
+      dependency: 'Create Business'
     },
     
     // 🏪 Business Controller - BUSINESS_TOKEN
@@ -547,28 +583,42 @@ const YumerV2Diagnostic = () => {
       }
     }
 
-    // Marcar como testing
-    setTestResults(prev => ({
-      ...prev,
-      [testKey]: { 
-        status: 'testing', 
-        message: 'Executando...', 
-        endpoint: endpoint.url,
-        method: endpoint.method 
-      }
-    }));
+      // Marcar como testing
+      setTestResults(prev => ({
+        ...prev,
+        [testKey]: { 
+          status: 'testing', 
+          message: 'Executando...', 
+          endpoint: endpoint.url,
+          method: endpoint.method 
+        }
+      }));
 
-    try {
-      // Construir URL usando estado local
-      let url = `${config.serverUrl}${endpoint.url}`;
-      
-      if (endpoint.requiresBusinessId && localState.realBusinessId) {
-        url = url.replace('{businessId}', localState.realBusinessId);
-      }
-      
-      if (endpoint.requiresInstanceId && localState.realInstanceId) {
-        url = url.replace('{instanceId}', localState.realInstanceId);
-      }
+      try {
+        // Construir URL usando estado local
+        let url = `${config.serverUrl}${endpoint.url}`;
+        
+        if (endpoint.requiresBusinessId && localState.realBusinessId) {
+          url = url.replace('{businessId}', localState.realBusinessId);
+        }
+        
+        if (endpoint.requiresInstanceId && localState.realInstanceId) {
+          url = url.replace('{instanceId}', localState.realInstanceId);
+        }
+
+        // Preencher dinamicamente o body baseado no endpoint
+        let requestBody = endpoint.body ? { ...endpoint.body } : undefined;
+        
+        if (endpoint.name === 'Refresh Business Token' && localState.realBusinessToken) {
+          requestBody = { oldToken: localState.realBusinessToken };
+        }
+        
+        if (endpoint.name === 'Move Instance to Business' && localState.realInstanceId && localState.realBusinessId) {
+          requestBody = {
+            sourceInstanceId: localState.realInstanceId,
+            businessIdTarget: localState.realBusinessId
+          };
+        }
 
       // Obter token do estado local
       const getLocalAuthToken = (tokenType: 'admin' | 'business' | 'instance'): string => {
@@ -607,7 +657,7 @@ const YumerV2Diagnostic = () => {
       const response = await fetch(url, {
         method: endpoint.method,
         headers,
-        body: endpoint.body ? JSON.stringify(endpoint.body) : undefined,
+        body: requestBody ? JSON.stringify(requestBody) : undefined,
         mode: 'cors',
         credentials: 'omit'
       });
