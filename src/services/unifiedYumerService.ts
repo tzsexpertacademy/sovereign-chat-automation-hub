@@ -496,30 +496,14 @@ class UnifiedYumerService {
   }
 
   async connectInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
-    console.log(`🔗 [UNIFIED-YUMER] Conectando instância: ${instanceId}`);
+    console.log(`🔗 [UNIFIED-YUMER] Conectando instância: ${instanceId} - Usando ADMIN_TOKEN`);
     
-    // Buscar business_id da instância para usar business_token
-    let businessId = '';
-    try {
-      const { supabase } = await import('@/integrations/supabase/client');
-      const { data: instance } = await supabase
-        .from('whatsapp_instances')
-        .select('business_business_id')
-        .eq('instance_id', instanceId)
-        .single();
-      
-      businessId = instance?.business_business_id || '';
-      console.log('🔑 [CONNECT-INSTANCE] Business ID encontrado:', businessId);
-    } catch (error) {
-      console.warn('⚠️ [CONNECT-INSTANCE] Erro ao buscar business_id:', error);
-    }
-    
+    // Connect endpoint requires ADMIN_TOKEN, not business_token
     return this.makeRequest(
       `/api/v2/instance/${instanceId}/connect`,
       { method: 'GET' },
       true,
-      true,
-      businessId
+      false // Use ADMIN_TOKEN instead of business_token
     );
   }
 
