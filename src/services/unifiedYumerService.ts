@@ -79,9 +79,9 @@ interface RequestConfig {
 }
 
 const DEFAULT_CONFIG: RequestConfig = {
-  timeout: 30000,
+  timeout: 45000, // Aumentado para 45s
   retries: 3,
-  retryDelay: 1000
+  retryDelay: 2000 // Aumentado delay entre tentativas
 };
 
 // ==================== SERVIÇO UNIFICADO ====================

@@ -66,19 +66,34 @@ export const useAdminStats = () => {
     loadStats();
   }, [loadStats]);
 
+  // Cache persistente
+  const [lastLoadTime, setLastLoadTime] = useState<number>(0);
+  const CACHE_DURATION = 5000; // 5 segundos de cache
+
+  // Carregar com cache
+  const loadWithCache = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastLoadTime < CACHE_DURATION) {
+      console.log('📊 [ADMIN-HOOK] Usando cache...');
+      return;
+    }
+    setLastLoadTime(now);
+    await loadStats();
+  }, [loadStats, lastLoadTime]);
+
   // Carregar inicialmente
   useEffect(() => {
-    loadStats();
-  }, [loadStats]);
+    loadWithCache();
+  }, [loadWithCache]);
 
-  // Auto-refresh a cada 30 segundos
+  // Auto-refresh a cada 15 segundos (otimizado)
   useEffect(() => {
     const interval = setInterval(() => {
-      loadStats();
-    }, 30000);
+      loadWithCache();
+    }, 15000);
 
     return () => clearInterval(interval);
-  }, [loadStats]);
+  }, [loadWithCache]);
 
   return {
     stats,

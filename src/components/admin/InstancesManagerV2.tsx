@@ -29,6 +29,7 @@ import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whats
 // Removido businessSyncService - usando sistema 1:1 simplificado
 import unifiedYumerService from "@/services/unifiedYumerService";
 import { InstancesCleanupManager } from "./InstancesCleanupManager";
+import { InstanceConnectionMonitor } from "./InstanceConnectionMonitor";
 
 interface InstanceState {
   status: 'idle' | 'loading' | 'success' | 'error' | 'timeout';
@@ -66,11 +67,22 @@ const InstancesManagerV2 = () => {
   const OPERATION_TIMEOUT = 10000;
   const CONNECTION_TIMEOUT = 30000;
 
+  // Cache para clientes
+  const [clientsCache, setClientsCache] = useState<{ data: ClientData[], timestamp: number }>({ data: [], timestamp: 0 });
+  const CLIENT_CACHE_DURATION = 10000; // 10 segundos
+
   useEffect(() => {
     loadInitialData();
-    const interval = setInterval(refreshInstancesStatus, 30000);
+    
+    // Auto-refresh otimizado
+    const interval = setInterval(() => {
+      // Só atualizar se não estiver carregando
+      if (!globalLoading) {
+        refreshInstancesStatus();
+      }
+    }, 15000); // Reduzido para 15 segundos
     return () => clearInterval(interval);
-  }, []);
+  }, [globalLoading]);
 
   const updateInstanceState = (instanceId: string, updates: Partial<InstanceState>) => {
     setInstanceStates(prev => ({
@@ -113,10 +125,30 @@ const InstancesManagerV2 = () => {
 
   const loadClients = async () => {
     try {
+      const now = Date.now();
+      
+      // Usar cache se ainda válido
+      if (clientsCache.data.length > 0 && now - clientsCache.timestamp < CLIENT_CACHE_DURATION) {
+        console.log('📋 [CLIENTS] Usando cache...');
+        setClients(clientsCache.data);
+        return;
+      }
+
+      console.log('📋 [CLIENTS] Carregando clientes...');
       const clientsData = await clientsService.getAllClients();
+      
       setClients(clientsData);
+      setClientsCache({ data: clientsData, timestamp: now });
+      
+      console.log(`✅ [CLIENTS] ${clientsData.length} clientes carregados`);
     } catch (error) {
-      console.error('Erro ao carregar clientes:', error);
+      console.error('❌ [CLIENTS] Erro ao carregar clientes:', error);
+      
+      // Fallback para cache se houver erro
+      if (clientsCache.data.length > 0) {
+        console.log('🔄 [CLIENTS] Usando cache como fallback');
+        setClients(clientsCache.data);
+      }
     }
   };
 
@@ -146,9 +178,14 @@ const InstancesManagerV2 = () => {
     
     // Verificar se há clientes carregados antes de atualizar
     if (clients.length === 0) {
-      console.log('⚠️ Nenhum cliente carregado, recarregando...');
+      console.log('⚠️ Nenhum cliente carregado, carregando...');
       await loadClients();
-      return;
+      
+      // Se ainda não há clientes após carregamento, aguardar próximo ciclo
+      if (clients.length === 0) {
+        console.log('⚠️ Nenhum cliente encontrado no sistema');
+        return;
+      }
     }
 
     for (const instance of instances) {
@@ -739,8 +776,16 @@ const InstancesManagerV2 = () => {
         </CardContent>
       </Card>
 
+      {/* Monitor de Conexões */}
+      <InstanceConnectionMonitor
+        instances={instances}
+        onRefresh={loadInitialData}
+      />
+      
       {/* Limpeza de Instâncias */}
-      <InstancesCleanupManager />
+      <InstancesCleanupManager 
+        onInstancesUpdated={loadInitialData}
+      />
 
       {/* Lista de Instâncias */}
       <div className="grid gap-4">

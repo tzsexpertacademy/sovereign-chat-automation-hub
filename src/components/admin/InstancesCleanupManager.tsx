@@ -6,7 +6,11 @@ import { AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
 import { cleanupInstancesService } from '@/services/cleanupInstancesService';
 import { toast } from 'sonner';
 
-export const InstancesCleanupManager = () => {
+interface InstancesCleanupManagerProps {
+  onInstancesUpdated?: () => void;
+}
+
+export const InstancesCleanupManager = ({ onInstancesUpdated }: InstancesCleanupManagerProps) => {
   const [isCleaningInstances, setIsCleaningInstances] = useState(false);
   const [isCleaningWebhooks, setIsCleaningWebhooks] = useState(false);
   const [lastCleanupResult, setLastCleanupResult] = useState<{
@@ -32,6 +36,11 @@ export const InstancesCleanupManager = () => {
       
       if (result.errors.length > 0) {
         result.errors.forEach(error => toast.error(error));
+      }
+      
+      // Notificar atualização
+      if (onInstancesUpdated) {
+        onInstancesUpdated();
       }
     } catch (error: any) {
       console.error('Erro na limpeza de instâncias:', error);
@@ -59,6 +68,11 @@ export const InstancesCleanupManager = () => {
       
       if (result.errors.length > 0) {
         result.errors.forEach(error => toast.error(error));
+      }
+      
+      // Notificar atualização
+      if (onInstancesUpdated) {
+        onInstancesUpdated();
       }
     } catch (error: any) {
       console.error('Erro na limpeza de webhooks:', error);
