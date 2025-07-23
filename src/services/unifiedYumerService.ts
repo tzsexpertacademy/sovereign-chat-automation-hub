@@ -8,15 +8,18 @@ import { serverConfigService } from './serverConfigService';
 // ==================== TIPOS PRINCIPAIS ====================
 
 export interface YumerInstance {
-  id: number;
-  instanceName: string;
+  id?: number;
+  instanceId?: string;
+  instanceName?: string;
   name: string;
   description?: string;
-  connectionStatus: string;
+  connectionStatus?: string;
+  connection?: string;
+  state?: string;
   ownerJid?: string;
   profilePicUrl?: string;
   businessId?: string;
-  Auth: {
+  Auth?: {
     token: string;
     jwt?: string;
   };
@@ -102,12 +105,13 @@ class UnifiedYumerService {
     };
   }
 
-  // Request com retry e timeout
+  // Request com retry e timeout - CORRIGIDO para suportar business_token
   private async makeRequest<T>(
     endpoint: string, 
     options: RequestInit = {},
     useRetry = true,
-    instanceJWT?: string
+    useBusinessToken = false,
+    businessId?: string
   ): Promise<{ success: boolean; data?: T; error?: string }> {
     const url = `${this.config.serverUrl}${endpoint}`;
     let attempt = 0;
@@ -121,10 +125,35 @@ class UnifiedYumerService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.requestConfig.timeout);
 
+        // Autenticação corrigida: usar business_token para operações de instância
+        let authHeaders = this.getAuthHeaders();
+        
+        if (useBusinessToken && businessId) {
+          try {
+            const { supabase } = await import('@/integrations/supabase/client');
+            const { data: client } = await supabase
+              .from('clients')
+              .select('business_token')
+              .eq('business_id', businessId)
+              .single();
+            
+            if (client?.business_token) {
+              authHeaders = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'authorization': `Bearer ${client.business_token}`
+              };
+              console.log('🔑 [UNIFIED-YUMER] Usando business_token para business:', businessId);
+            }
+          } catch (error) {
+            console.warn('⚠️ [UNIFIED-YUMER] Erro ao buscar business_token:', error);
+          }
+        }
+
         const response = await fetch(url, {
           ...options,
           headers: {
-            ...this.getAuthHeaders(instanceJWT),
+            ...authHeaders,
             ...options.headers
           },
           signal: controller.signal
@@ -136,10 +165,16 @@ class UnifiedYumerService {
           const errorText = await response.text();
           console.error(`❌ [UNIFIED-YUMER] Erro HTTP ${response.status}:`, errorText);
           
-          // Análise específica de erro
+          // Análise específica de erro com tokens
           if (response.status === 401) {
+            if (errorText.includes('expired') || errorText.includes('jwt')) {
+              throw new Error('TOKEN_EXPIRED');
+            }
             throw new Error(`Token inválido ou expirado (${response.status})`);
           } else if (response.status === 403) {
+            if (errorText.includes('Inactive instance')) {
+              throw new Error('INSTANCE_INACTIVE');
+            }
             throw new Error(`Acesso negado - verifique permissões (${response.status})`);
           } else if (response.status === 404) {
             throw new Error(`Endpoint não encontrado (${response.status})`);
@@ -168,8 +203,14 @@ class UnifiedYumerService {
       } catch (error: any) {
         console.error(`❌ [UNIFIED-YUMER] Erro na tentativa ${attempt}:`, error);
         
-        // Retry lógico
-        if (useRetry && attempt < this.requestConfig.retries && !error.name?.includes('AbortError')) {
+        // Retry lógico - não retry para erros específicos
+        const shouldRetry = useRetry && 
+          attempt < this.requestConfig.retries && 
+          !error.name?.includes('AbortError') &&
+          !error.message?.includes('INSTANCE_INACTIVE') &&
+          !error.message?.includes('TOKEN_EXPIRED');
+          
+        if (shouldRetry) {
           console.log(`🔄 [UNIFIED-YUMER] Tentando novamente em ${this.requestConfig.retryDelay}ms...`);
           await new Promise(resolve => setTimeout(resolve, this.requestConfig.retryDelay));
           return executeRequest();
@@ -183,6 +224,137 @@ class UnifiedYumerService {
     };
 
     return executeRequest();
+  }
+
+  // ==================== NOVOS MÉTODOS CORRIGIDOS ====================
+  
+  // Refresh token para instâncias com tokens expirados
+  async refreshInstanceToken(businessId: string, instanceId: string, oldToken: string): Promise<{ success: boolean; newToken?: string; error?: string }> {
+    console.log('🔄 [UNIFIED-YUMER] Fazendo refresh do token para instância:', instanceId);
+    
+    const result = await this.makeRequest<{ newToken: string }>(`/api/v2/business/${businessId}/instance/${instanceId}/refresh-token`, {
+      method: 'PATCH',
+      body: JSON.stringify({ oldToken })
+    }, true, true, businessId);
+    
+    if (result.success && result.data?.newToken) {
+      // Atualizar token no Supabase
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        await supabase
+          .from('whatsapp_instances')
+          .update({ 
+            auth_token: result.data.newToken,
+            updated_at: new Date().toISOString()
+          })
+          .eq('instance_id', instanceId);
+        
+        console.log('✅ [UNIFIED-YUMER] Token atualizado no Supabase');
+      } catch (error) {
+        console.warn('⚠️ [UNIFIED-YUMER] Erro ao atualizar token no Supabase:', error);
+      }
+      
+      return { success: true, newToken: result.data.newToken };
+    }
+    
+    return result;
+  }
+
+  // Ativar/desativar instância
+  async toggleActivate(businessId: string, instanceId: string, action: 'activate' | 'deactivate' = 'activate'): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`🔄 [UNIFIED-YUMER] ${action === 'activate' ? 'Ativando' : 'Desativando'} instância:`, instanceId);
+    
+    return this.makeRequest(`/api/v2/business/${businessId}/instance/${instanceId}/toggle-activate`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action })
+    }, true, true, businessId);
+  }
+
+  // Sincronizar instância Supabase ↔ YUMER
+  async syncInstanceToSupabase(instanceId: string, instanceData: any): Promise<void> {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      const updateData = {
+        status: instanceData.connection || 'disconnected',
+        state: instanceData.state || 'inactive',
+        auth_token: instanceData.Auth?.jwt,
+        yumer_instance_id: instanceData.instanceId,
+        updated_at: new Date().toISOString()
+      };
+      
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .update(updateData)
+        .eq('instance_id', instanceId);
+        
+      if (error) {
+        console.error('❌ [SYNC] Erro ao sincronizar com Supabase:', error);
+      } else {
+        console.log('✅ [SYNC] Instância sincronizada com Supabase:', instanceId);
+      }
+    } catch (error) {
+      console.error('❌ [SYNC] Erro na sincronização:', error);
+    }
+  }
+
+  // Fluxo completo de criação de instância corrigido
+  async createInstanceCompleteFlow(businessId: string, clientId: string, instanceName?: string): Promise<{ success: boolean; instanceId?: string; error?: string }> {
+    console.log('🚀 [UNIFIED-YUMER] Iniciando fluxo completo de criação de instância');
+    
+    try {
+      // 1. Criar instância
+      const createResult = await this.createBusinessInstance(businessId, { instanceName });
+      if (!createResult.success) {
+        return { success: false, error: `Erro ao criar instância: ${createResult.error}` };
+      }
+      
+      const instanceId = createResult.data?.instanceId || createResult.data?.id;
+      if (!instanceId) {
+        return { success: false, error: 'ID da instância não retornado' };
+      }
+      
+      console.log('✅ [FLOW] Instância criada:', instanceId);
+      
+      // 2. Aguardar e verificar estado
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const instanceResult = await this.getInstance(String(instanceId));
+      if (!instanceResult.success) {
+        return { success: false, error: `Erro ao verificar instância: ${instanceResult.error}` };
+      }
+      
+      // 3. Ativar se necessário
+      if (instanceResult.data?.state !== 'active') {
+        console.log('🔄 [FLOW] Ativando instância...');
+        const activateResult = await this.toggleActivate(businessId, String(instanceId), 'activate');
+        if (!activateResult.success) {
+          console.warn('⚠️ [FLOW] Erro ao ativar instância:', activateResult.error);
+        }
+        
+        // Aguardar ativação
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+      
+      // 4. Sincronizar com Supabase
+      await this.syncInstanceToSupabase(String(instanceId), instanceResult.data);
+      
+      // 5. Configurar webhook
+      const webhookResult = await this.ensureWebhookConfigured(String(instanceId));
+      if (!webhookResult.success) {
+        console.warn('⚠️ [FLOW] Erro ao configurar webhook:', webhookResult.error);
+      }
+      
+      console.log('🎉 [FLOW] Fluxo completo de criação concluído com sucesso');
+      return { success: true, instanceId: String(instanceId) };
+      
+    } catch (error) {
+      console.error('❌ [FLOW] Erro no fluxo completo:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Erro desconhecido no fluxo' 
+      };
+    }
   }
 
   // ==================== HEALTH CHECK ====================
@@ -259,19 +431,19 @@ class UnifiedYumerService {
     return this.makeRequest<YumerInstance>(`/api/v2/business/${businessId}/instance`, {
       method: 'POST',
       body: instanceData ? JSON.stringify(instanceData) : null
-    });
+    }, true, true, businessId); // useRetry=true, useBusinessToken=true
   }
 
   async getInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
     return this.makeRequest<YumerInstance>(`/api/v2/instance/${instanceId}`, {
       method: 'GET'
-    }, true, instanceJWT);
+    }, true, false);
   }
 
   async connectInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
     return this.makeRequest<YumerInstance>(`/api/v2/instance/${instanceId}/connect`, {
       method: 'GET'
-    }, true, instanceJWT);
+    }, true, false);
   }
 
   async deleteInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
@@ -285,13 +457,13 @@ class UnifiedYumerService {
   async getConnectionState(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: ConnectionState; error?: string }> {
     return this.makeRequest<ConnectionState>(`/api/v2/instance/${instanceId}/connection-state`, {
       method: 'GET'
-    }, true, instanceJWT);
+    }, true, false);
   }
 
   async getQRCode(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: QRCodeResponse; error?: string }> {
     return this.makeRequest<QRCodeResponse>(`/api/v2/instance/${instanceId}/qrcode`, {
       method: 'GET'
-    }, true, instanceJWT);
+    }, true, false);
   }
 
   // ==================== WEBHOOK MANAGEMENT ====================
@@ -462,5 +634,9 @@ export const yumerApiV2 = {
   connectInstance: (instanceId: string) => unifiedYumerService.connectInstance(instanceId),
   deleteInstance: (instanceId: string) => unifiedYumerService.deleteInstance(instanceId),
   getConnectionState: (instanceId: string) => unifiedYumerService.getConnectionState(instanceId),
-  getQRCode: (instanceId: string) => unifiedYumerService.getQRCode(instanceId)
+  getQRCode: (instanceId: string) => unifiedYumerService.getQRCode(instanceId),
+  // Novos métodos
+  refreshInstanceToken: (businessId: string, instanceId: string, oldToken: string) => unifiedYumerService.refreshInstanceToken(businessId, instanceId, oldToken),
+  toggleActivate: (businessId: string, instanceId: string, action: 'activate' | 'deactivate') => unifiedYumerService.toggleActivate(businessId, instanceId, action),
+  createInstanceCompleteFlow: (businessId: string, clientId: string, instanceName?: string) => unifiedYumerService.createInstanceCompleteFlow(businessId, clientId, instanceName)
 };

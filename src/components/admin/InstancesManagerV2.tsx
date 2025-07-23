@@ -262,32 +262,38 @@ const InstancesManagerV2 = () => {
         message: 'Criando instância na API...'
       });
 
-      // 3. Criar instância na API primeiro
-      const instanceId = `${client.id}_${Date.now()}`;
-      const customName = `${client.name}_${Date.now()}`;
+      // 3. Usar fluxo completo corrigido
+      const instanceName = `${client.name.replace(/\s+/g, '_')}_${Date.now()}`;
       
-      const createResult = await unifiedYumerService.createBusinessInstance(client.business_id, {
-        instanceName: instanceId
+      updateInstanceState(tempInstanceId, {
+        status: 'loading',
+        progress: 60,
+        message: 'Executando fluxo completo de criação...'
       });
       
+      const createResult = await unifiedYumerService.createInstanceCompleteFlow(
+        client.business_id,
+        client.id,
+        instanceName
+      );
+      
       if (!createResult.success) {
-        throw new Error(createResult.error || 'Falha ao criar instância');
+        throw new Error(createResult.error || 'Falha no fluxo de criação');
       }
 
       updateInstanceState(tempInstanceId, {
         status: 'loading',
-        progress: 70,
+        progress: 80,
         message: 'Salvando instância no banco...'
       });
 
-      // 4. Salvar no banco com JWT
+      // 4. Salvar no banco com dados corrigidos
       const newInstance = await whatsappInstancesService.createInstance({
         client_id: client.id,
-        instance_id: instanceId,
+        instance_id: createResult.instanceId!,
         status: 'disconnected',
-        custom_name: customName,
-        business_business_id: client.business_id,
-        auth_jwt: createResult.data?.Auth?.jwt || null
+        custom_name: instanceName,
+        business_business_id: client.business_id
       });
 
       updateInstanceState(tempInstanceId, {
