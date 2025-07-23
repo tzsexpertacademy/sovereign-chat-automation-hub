@@ -1,175 +1,136 @@
 
-import { useState, useEffect } from 'react';
-import whatsappService from '@/services/whatsappMultiClient';
+import { useState, useEffect, useCallback } from 'react';
+import { whatsappService, type WhatsAppClient } from '@/services/whatsappMultiClient';
 import { useToast } from '@/hooks/use-toast';
 
-interface QRCodeData {
-  instanceId: string;
+interface QRCodeStatus {
+  clientId: string;
   qrCode: string | null;
-  status: string;
+  status: 'disconnected' | 'qr_ready' | 'connected' | 'connecting';
   hasQrCode: boolean;
-  lastUpdate: Date;
 }
 
-export const useQRCodeManager = (instanceId?: string) => {
-  const [qrCodeData, setQrCodeData] = useState<QRCodeData | null>(null);
-  const [websocketConnected, setWebsocketConnected] = useState(false);
-  const [loading, setLoading] = useState(false);
+export const useQRCodeManager = () => {
+  const [qrCodes, setQrCodes] = useState<Record<string, QRCodeStatus>>({});
+  const [loading, setLoading] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (!instanceId) return;
+  const socket = whatsappService.connectSocket();
 
-    console.log(`🔍 Iniciando gerenciamento QR Code para instância: ${instanceId}`);
-    
-    // Conectar ao WebSocket
-    const socket = whatsappService.connectSocket();
-    
+  useEffect(() => {
     if (socket) {
-      socket.on('connect', () => {
-        console.log('🔌 WebSocket conectado para QR Code Manager');
-        setWebsocketConnected(true);
-        
-        // Entrar na sala da instância
-        whatsappService.joinClientRoom(instanceId);
+      socket.on('qr-code', (data: { clientId: string; qrCode: string }) => {
+        setQrCodes(prev => ({
+          ...prev,
+          [data.clientId]: {
+            clientId: data.clientId,
+            qrCode: data.qrCode,
+            status: 'qr_ready',
+            hasQrCode: true
+          }
+        }));
+      });
+
+      socket.on('connection-update', (client: WhatsAppClient) => {
+        setQrCodes(prev => ({
+          ...prev,
+          [client.instanceId]: {
+            clientId: client.instanceId,
+            qrCode: client.status === 'connected' ? null : prev[client.instanceId]?.qrCode || null,
+            status: client.status,
+            hasQrCode: client.hasQrCode || false
+          }
+        }));
       });
 
       socket.on('disconnect', () => {
-        console.log('❌ WebSocket desconectado');
-        setWebsocketConnected(false);
-      });
-
-      socket.on('connect_error', (error) => {
-        console.error('❌ Erro de conexão WebSocket:', error);
-        setWebsocketConnected(false);
-      });
-
-      // Escutar status da instância
-      whatsappService.onClientStatus(instanceId, (clientData) => {
-        console.log(`📱 Status recebido para ${instanceId}:`, clientData);
-        
-        const newQRData: QRCodeData = {
-          instanceId: clientData.clientId,
-          qrCode: clientData.qrCode || null,
-          status: clientData.status,
-          hasQrCode: clientData.hasQrCode || false,
-          lastUpdate: new Date()
-        };
-
-        setQrCodeData(newQRData);
-
-        if (clientData.hasQrCode && clientData.qrCode) {
-          console.log('📱 QR Code recebido via WebSocket!');
-          toast({
-            title: "QR Code Disponível!",
-            description: `Escaneie o QR Code para conectar a instância ${instanceId}`,
-          });
-        }
-
-        if (clientData.status === 'connected') {
-          toast({
-            title: "WhatsApp Conectado!",
-            description: `Instância ${instanceId} conectada com sucesso`,
-          });
-        }
+        console.log('Socket desconectado');
       });
     }
 
     return () => {
-      console.log(`🧹 Limpando gerenciamento QR Code para ${instanceId}`);
       if (socket) {
-        whatsappService.offClientStatus(instanceId);
+        whatsappService.disconnect();
       }
     };
-  }, [instanceId, toast]);
+  }, []);
 
-  const connectInstance = async () => {
-    if (!instanceId) return;
-
+  const generateQRCode = useCallback(async (clientId: string) => {
     try {
-      setLoading(true);
-      console.log(`🚀 Conectando instância: ${instanceId}`);
+      setLoading(prev => ({ ...prev, [clientId]: true }));
       
-      await whatsappService.connectClient(instanceId);
+      await whatsappService.connectInstance(clientId);
       
-      toast({
-        title: "Conectando...",
-        description: "Aguarde o QR Code aparecer",
-      });
+      // Simular geração de QR Code
+      const qrCode = await whatsappService.getQRCode(clientId);
       
-    } catch (error: any) {
-      console.error('❌ Erro ao conectar instância:', error);
-      toast({
-        title: "Erro na Conexão",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getInstanceStatus = async () => {
-    if (!instanceId) return null;
-
-    try {
-      const status = await whatsappService.getClientStatus(instanceId);
-      console.log(`📊 Status obtido para ${instanceId}:`, status);
-      
-      const qrData: QRCodeData = {
-        instanceId: status.clientId,
-        qrCode: status.qrCode || null,
-        status: status.status,
-        hasQrCode: status.hasQrCode || false,
-        lastUpdate: new Date()
-      };
-
-      setQrCodeData(qrData);
-      return qrData;
+      if (qrCode) {
+        setQrCodes(prev => ({
+          ...prev,
+          [clientId]: {
+            clientId,
+            qrCode,
+            status: 'qr_ready',
+            hasQrCode: true
+          }
+        }));
+        
+        toast({
+          title: "QR Code Gerado",
+          description: "QR Code está pronto para escaneamento",
+        });
+      }
     } catch (error) {
-      console.error('❌ Erro ao obter status:', error);
-      return null;
-    }
-  };
-
-  const disconnectInstance = async () => {
-    if (!instanceId) return;
-
-    try {
-      setLoading(true);
-      await whatsappService.disconnectClient(instanceId);
-      
-      setQrCodeData(prev => prev ? {
-        ...prev,
-        status: 'disconnected',
-        qrCode: null,
-        hasQrCode: false,
-        lastUpdate: new Date()
-      } : null);
-
-      toast({
-        title: "Desconectado",
-        description: `Instância ${instanceId} desconectada`,
-      });
-      
-    } catch (error: any) {
-      console.error('❌ Erro ao desconectar:', error);
+      console.error('Erro ao gerar QR Code:', error);
       toast({
         title: "Erro",
-        description: error.message,
-        variant: "destructive",
+        description: "Falha ao gerar QR Code",
+        variant: "destructive",  
       });
     } finally {
-      setLoading(false);
+      setLoading(prev => ({ ...prev, [clientId]: false }));
     }
-  };
+  }, [toast]);
+
+  const refreshQRCode = useCallback(async (clientId: string) => {
+    await generateQRCode(clientId);
+  }, [generateQRCode]);
+
+  const getQRCodeStatus = useCallback((clientId: string): QRCodeStatus => {
+    return qrCodes[clientId] || {
+      clientId,
+      qrCode: null,
+      status: 'disconnected',
+      hasQrCode: false
+    };
+  }, [qrCodes]);
+
+  const isGenerating = useCallback((clientId: string): boolean => {
+    return loading[clientId] || false;
+  }, [loading]);
+
+  const startListening = useCallback((clientId: string) => {
+    if (socket) {
+      whatsappService.joinClientRoom(clientId);
+    }
+  }, []);
+
+  const stopListening = useCallback((clientId: string) => {
+    // Remover listener específico se necessário
+    setQrCodes(prev => {
+      const updated = { ...prev };
+      delete updated[clientId];
+      return updated;
+    });
+  }, []);
 
   return {
-    qrCodeData,
-    websocketConnected,
-    loading,
-    connectInstance,
-    disconnectInstance,
-    getInstanceStatus
+    qrCodes,
+    generateQRCode,
+    refreshQRCode,
+    getQRCodeStatus,
+    isGenerating,
+    startListening,
+    stopListening
   };
 };

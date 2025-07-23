@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import whatsappService from '@/services/whatsappMultiClient';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
 import { useToast } from '@/hooks/use-toast';
-import { codechatQRService } from '@/services/codechatQRService';
+import { codechatQRService, type InstanceDetails, type ConnectResult } from '@/services/codechatQRService';
 
 interface InstanceStatus {
   instanceId: string;
@@ -59,12 +59,12 @@ export const useInstanceManager = () => {
         console.log(`ℹ️ [INSTANCE-MANAGER] Instância pode já existir: ${createError.message}`);
       }
 
-      // ETAPA 2: Conectar e obter QR direto - ESTRATÉGIA QUE FUNCIONOU!
+      // ETAPA 2: Conectar e obter QR direto
       console.log(`🔌 [INSTANCE-MANAGER] Conectando instância...`);
-      const connectResult = await codechatQRService.connectInstance(instanceId);
+      const connectResult: ConnectResult = await codechatQRService.connectInstance(instanceId);
       console.log(`📡 [INSTANCE-MANAGER] Connect executado:`, connectResult);
       
-      // VERIFICAR SE QR VEIO DIRETO DO CONNECT (método que funcionou!)
+      // VERIFICAR SE QR VEIO DIRETO DO CONNECT
       if (connectResult?.base64) {
         console.log(`🎯 [INSTANCE-MANAGER] QR Code obtido DIRETAMENTE do connect!`);
         
@@ -84,7 +84,7 @@ export const useInstanceManager = () => {
           description: "Escaneie o QR Code para conectar o WhatsApp",
         });
         
-        // ETAPA 3: Iniciar polling para detectar scan (igual ao diagnóstico)
+        // ETAPA 3: Iniciar polling para detectar scan
         console.log(`🔄 [INSTANCE-MANAGER] Iniciando polling para detectar scan...`);
         startConnectionPolling(instanceId);
         return;
@@ -152,9 +152,9 @@ export const useInstanceManager = () => {
     
     const pollInterval = setInterval(async () => {
       try {
-        const details = await codechatQRService.getInstanceDetails(instanceId);
+        const details: InstanceDetails = await codechatQRService.getInstanceDetails(instanceId);
         
-        if (details.connectionStatus === 'ONLINE' && details.ownerJid) {
+        if (details.success && details.connectionStatus === 'ONLINE' && details.ownerJid) {
           console.log(`✅ [INSTANCE-MANAGER] WhatsApp conectado! ${details.ownerJid}`);
           
           setInstances(prev => ({
@@ -276,7 +276,6 @@ export const useInstanceManager = () => {
   };
 
   const cleanup = (instanceId: string) => {
-    whatsappService.offClientStatus(instanceId);
     setInstances(prev => {
       const newInstances = { ...prev };
       delete newInstances[instanceId];

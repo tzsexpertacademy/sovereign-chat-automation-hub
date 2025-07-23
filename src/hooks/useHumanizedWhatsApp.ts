@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { useHumanizedTyping } from './useHumanizedTyping';
@@ -283,17 +284,18 @@ Responda apenas com a mensagem, sem explicações adicionais.`;
         await humanizedTyping.simulateHumanTyping(chatId, chunk);
         
         // Send message
-        await whatsappService.sendMessage(clientId, chatId, chunk);
+        const result = await whatsappService.sendMessage(clientId, chatId, chunk);
         
         logEntry.actions.push({
           type: 'message_sent',
           chunk: i + 1,
           totalChunks: chunks.length,
           delay,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          result
         });
         
-        console.log(`📤 RESPOSTA HUMANIZADA ${i + 1}/${chunks.length}: "${chunk.substring(0, 50)}..."`);
+        console.log(`📤 RESPOSTA HUMANIZADA ${i + 1}/${chunks.length}: "${chunk.substring(0, 50)}..."`, result);
       }
       
     } catch (error) {

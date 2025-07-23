@@ -1,8 +1,16 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { QueuedMessage } from '@/services/whatsappMultiClient';
 import whatsappService from '@/services/whatsappMultiClient';
+
+export interface QueuedMessage {
+  id: string;
+  to: string;
+  message: string;
+  timestamp: number;
+  from?: string;
+  body?: string;
+}
 
 interface UseMessageQueueProps {
   clientId: string;
@@ -33,6 +41,7 @@ export const useMessageQueue = ({
       id: uuidv4(),
       from: clientId,
       to,
+      message: message,
       body: message,
       timestamp: Date.now()
     };
@@ -47,6 +56,7 @@ export const useMessageQueue = ({
       id: uuidv4(),
       from: clientId,
       to: msg.to,
+      message: msg.message,
       body: msg.message,
       timestamp: Date.now()
     }));
@@ -88,14 +98,19 @@ export const useMessageQueue = ({
     try {
       console.log(`📤 Enviando mensagem ${message.id} de ${message.from} para ${message.to}`);
       
-      const result = await whatsappService.sendMessage(clientId, message.to, message.body);
+      const result = await whatsappService.sendMessage(clientId, message.to, message.message);
       
-      if (result.success) {
+      if (result && typeof result === 'object' && 'success' in result && result.success) {
+        console.log(`✅ Mensagem ${message.id} enviada com sucesso`);
+        setSentMessages(prev => [...prev, message.id]);
+        return true;
+      } else if (result === true) {
         console.log(`✅ Mensagem ${message.id} enviada com sucesso`);
         setSentMessages(prev => [...prev, message.id]);
         return true;
       } else {
-        throw new Error(result.error || 'Falha ao enviar mensagem');
+        const errorMessage = typeof result === 'object' && 'error' in result ? result.error : 'Falha ao enviar mensagem';
+        throw new Error(errorMessage);
       }
     } catch (error: any) {
       console.error(`❌ Erro ao enviar mensagem ${message.id}:`, error);

@@ -26,7 +26,7 @@ export const useMessageMedia = (clientId: string) => {
   });
   const { toast } = useToast();
 
-  // Enviar mídia via endpoint correto /api/clients/{id}/send-media
+  // Enviar mídia via endpoint correto
   const sendMedia = useCallback(async (mediaMessage: MediaMessage) => {
     if (!clientId) {
       toast({
@@ -34,7 +34,7 @@ export const useMessageMedia = (clientId: string) => {
         description: "Cliente não encontrado",
         variant: "destructive"
       });
-      return false;
+      return { success: false, error: 'Cliente não encontrado' };
     }
 
     try {
@@ -49,14 +49,21 @@ export const useMessageMedia = (clientId: string) => {
       // Usar endpoint correto para envio de mídia
       const result = await whatsappService.sendMedia(clientId, mediaMessage.to, mediaMessage.file, mediaMessage.caption);
 
-      if (result.success) {
+      if (result && typeof result === 'object' && 'success' in result && result.success) {
         toast({
           title: "Mídia enviada",
           description: `${mediaMessage.type} enviado com sucesso`,
         });
-        return true;
+        return result;
+      } else if (result === true) {
+        toast({
+          title: "Mídia enviada",
+          description: `${mediaMessage.type} enviado com sucesso`,
+        });
+        return { success: true };
       } else {
-        throw new Error(result.error || 'Falha ao enviar mídia');
+        const errorMessage = typeof result === 'object' && 'error' in result ? result.error : 'Falha ao enviar mídia';
+        throw new Error(errorMessage);
       }
 
     } catch (error: any) {
@@ -66,7 +73,7 @@ export const useMessageMedia = (clientId: string) => {
         description: error.message || "Falha ao enviar arquivo",
         variant: "destructive"
       });
-      return false;
+      return { success: false, error: error.message || 'Falha ao enviar mídia' };
     } finally {
       setIsUploading(false);
     }
@@ -83,12 +90,14 @@ export const useMessageMedia = (clientId: string) => {
       return false;
     }
 
-    return await sendMedia({
+    const result = await sendMedia({
       type: 'image',
       file,
       caption,
       to
     });
+    
+    return result.success || false;
   }, [sendMedia, toast]);
 
   // Processar vídeo
@@ -112,12 +121,14 @@ export const useMessageMedia = (clientId: string) => {
       return false;
     }
 
-    return await sendMedia({
+    const result = await sendMedia({
       type: 'video',
       file,
       caption,
       to
     });
+    
+    return result.success || false;
   }, [sendMedia, toast]);
 
   // Processar documento
@@ -132,12 +143,14 @@ export const useMessageMedia = (clientId: string) => {
       return false;
     }
 
-    return await sendMedia({
+    const result = await sendMedia({
       type: 'document',
       file,
       caption,
       to
     });
+    
+    return result.success || false;
   }, [sendMedia, toast]);
 
   // Processar áudio de arquivo com estratégia avançada
@@ -178,7 +191,7 @@ export const useMessageMedia = (clientId: string) => {
         to
       });
 
-      return result;
+      return result.success || false;
     } catch (error) {
       console.error('❌ Erro no upload de áudio:', error);
       return false;
@@ -249,7 +262,7 @@ export const useMessageMedia = (clientId: string) => {
     try {
       setIsUploading(true);
       
-      // ✅ CORREÇÃO: Manter formato original e duração correta
+      // Manter formato original e duração correta
       const originalType = audioRecording.audioBlob.type || 'audio/webm';
       const extension = originalType.includes('webm') ? 'webm' : 'wav';
       const filename = `recording_${Date.now()}.${extension}`;
@@ -265,13 +278,13 @@ export const useMessageMedia = (clientId: string) => {
         type: originalType 
       });
       
-      const success = await sendMedia({
+      const result = await sendMedia({
         type: 'audio',
         file: audioFile,
         to
       });
 
-      if (success) {
+      if (result.success) {
         setAudioRecording({
           isRecording: false,
           audioBlob: null,
@@ -284,7 +297,7 @@ export const useMessageMedia = (clientId: string) => {
         });
       }
 
-      return success;
+      return result.success || false;
     } catch (error) {
       console.error('❌ Erro ao enviar gravação:', error);
       return false;

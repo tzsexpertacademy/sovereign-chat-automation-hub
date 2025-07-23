@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
-import { codechatQRService } from '@/services/codechatQRService';
+import { codechatQRService, type InstanceDetails, type ConnectResult } from '@/services/codechatQRService';
 import { useToast } from '@/hooks/use-toast';
 
 interface InstanceStatus {
@@ -41,7 +41,7 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
     try {
       console.log(`🔄 [SIMPLIFIED] Buscando status REST: ${instanceId}`);
       
-      const details = await codechatQRService.getInstanceDetails(instanceId);
+      const details: InstanceDetails = await codechatQRService.getInstanceDetails(instanceId);
       console.log(`📊 [SIMPLIFIED] Detalhes obtidos:`, details);
       
       let status = 'disconnected';
@@ -49,10 +49,10 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
       let hasQrCode = false;
       let phoneNumber = undefined;
       
-      if (details.connectionStatus === 'ONLINE' && details.ownerJid) {
+      if (details.success && details.connectionStatus === 'ONLINE' && details.ownerJid) {
         status = 'connected';
         phoneNumber = details.ownerJid;
-      } else if (details.connectionStatus === 'OFFLINE') {
+      } else if (details.success && details.connectionStatus === 'OFFLINE') {
         const qrResult = await codechatQRService.getQRCodeSimple(instanceId);
         if (qrResult.success && qrResult.qrCode) {
           status = 'qr_ready';
@@ -80,16 +80,14 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
     } catch (error) {
       console.error(`❌ [SIMPLIFIED] Erro ao buscar status ${instanceId}:`, error);
       
-      if (error.message?.includes('404')) {
-        setInstances(prev => ({
-          ...prev,
-          [instanceId]: {
-            instanceId,
-            status: 'not_found',
-            lastUpdated: Date.now()
-          }
-        }));
-      }
+      setInstances(prev => ({
+        ...prev,
+        [instanceId]: {
+          instanceId,
+          status: 'not_found',
+          lastUpdated: Date.now()
+        }
+      }));
       
       throw error;
     }
@@ -112,7 +110,7 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
       }));
 
       // 1. Conectar via REST (método que funcionou!)
-      const connectResult = await codechatQRService.connectInstance(instanceId);
+      const connectResult: ConnectResult = await codechatQRService.connectInstance(instanceId);
       console.log(`✅ [SIMPLIFIED] Connect executado:`, connectResult);
       
       // 2. VERIFICAR SE QR VEIO DIRETO DO CONNECT (estratégia que funcionou!)
@@ -200,9 +198,9 @@ export const useSimplifiedInstanceManager = (): UseSimplifiedInstanceManagerRetu
     
     const pollInterval = setInterval(async () => {
       try {
-        const details = await codechatQRService.getInstanceDetails(instanceId);
+        const details: InstanceDetails = await codechatQRService.getInstanceDetails(instanceId);
         
-        if (details.connectionStatus === 'ONLINE' && details.ownerJid) {
+        if (details.success && details.connectionStatus === 'ONLINE' && details.ownerJid) {
           console.log(`✅ [SIMPLIFIED] WhatsApp conectado! ${details.ownerJid}`);
           
           setInstances(prev => ({

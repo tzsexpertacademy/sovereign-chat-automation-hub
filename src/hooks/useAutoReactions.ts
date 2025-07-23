@@ -69,9 +69,9 @@ export const useAutoReactions = (clientId: string, enabled = true) => {
       // Para demonstrar reação, vamos apenas enviar uma mensagem com emoji
       // Já que o método sendReaction não está disponível no serviço
       const reactionMessage = `${reactionEmojis[emotion]}`;
-      await whatsappService.sendMessage(clientId, chatId, reactionMessage);
+      const result = await whatsappService.sendMessage(clientId, chatId, reactionMessage);
       
-      console.log(`🎭 Reação automática enviada: ${reactionEmojis[emotion]} para mensagem ${messageId}`);
+      console.log(`🎭 Reação automática enviada: ${reactionEmojis[emotion]} para mensagem ${messageId}`, result);
       
     } catch (error) {
       console.error('❌ Erro ao enviar reação automática:', error);
