@@ -523,7 +523,222 @@ const YumerV2Diagnostic = () => {
     }
   };
 
-  // Teste sequencial completo
+  // Executar teste único com estado local (para sequencial)
+  const executeTestWithLocalState = async (endpoint: ApiEndpoint, localState: any): Promise<TestResult> => {
+    const startTime = Date.now();
+    const testKey = `${endpoint.category}-${endpoint.name}`;
+    
+    // Verificar dependências
+    if (endpoint.dependency) {
+      const dependencyKey = endpoints.find(e => e.name === endpoint.dependency);
+      const dependencyResult = testResults[`${dependencyKey?.category}-${endpoint.dependency}`];
+      
+      if (!dependencyResult || dependencyResult.status !== 'success') {
+        console.log(`⏭️ [SEQUENTIAL-v2.2.1] Pulando ${endpoint.name} - dependência ${endpoint.dependency} falhou`);
+        return {
+          status: 'skipped',
+          message: `❌ Dependência falhou: ${endpoint.dependency}`,
+          details: { dependency: endpoint.dependency, reason: 'Teste anterior falhou' },
+          duration: 0,
+          endpoint: endpoint.url,
+          method: endpoint.method
+        };
+      }
+    }
+
+    // Marcar como testing
+    setTestResults(prev => ({
+      ...prev,
+      [testKey]: { 
+        status: 'testing', 
+        message: 'Executando...', 
+        endpoint: endpoint.url,
+        method: endpoint.method 
+      }
+    }));
+
+    try {
+      // Construir URL usando estado local
+      let url = `${config.serverUrl}${endpoint.url}`;
+      
+      if (endpoint.requiresBusinessId && localState.realBusinessId) {
+        url = url.replace('{businessId}', localState.realBusinessId);
+      }
+      
+      if (endpoint.requiresInstanceId && localState.realInstanceId) {
+        url = url.replace('{instanceId}', localState.realInstanceId);
+      }
+
+      // Obter token do estado local
+      const getLocalAuthToken = (tokenType: 'admin' | 'business' | 'instance'): string => {
+        switch (tokenType) {
+          case 'admin':
+            return config.globalApiKey || '';
+          case 'business':
+            return localState.realBusinessToken || config.globalApiKey || '';
+          case 'instance':
+            return localState.realInstanceToken || localState.realBusinessToken || config.globalApiKey || '';
+          default:
+            return config.globalApiKey || '';
+        }
+      };
+
+      // Headers de autenticação usando estado local
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+
+      // Endpoints públicos não precisam de autenticação
+      if (endpoint.category !== 'docs') {
+        const token = getLocalAuthToken(endpoint.tokenType);
+        if (token) {
+          headers['authorization'] = `Bearer ${token}`;
+        }
+      }
+      
+      console.log(`🧪 [API-TEST-v2.2.1] ${endpoint.method} ${url}`);
+      console.log(`🔑 [API-TEST-v2.2.1] Token Type: ${endpoint.tokenType}`, {
+        hasToken: !!getLocalAuthToken(endpoint.tokenType),
+        authHeaders: Object.keys(headers).filter(h => h.includes('auth'))
+      });
+
+      const response = await fetch(url, {
+        method: endpoint.method,
+        headers,
+        body: endpoint.body ? JSON.stringify(endpoint.body) : undefined,
+        mode: 'cors',
+        credentials: 'omit'
+      });
+
+      const duration = Date.now() - startTime;
+      const responseText = await response.text();
+      let responseData;
+      
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = responseText;
+      }
+
+      console.log(`📊 [API-TEST-v2.2.1] Response ${response.status}:`, {
+        url,
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        data: responseData
+      });
+
+      // Processar sucesso e armazenar dados importantes no estado local
+      if (response.ok) {
+        // Armazenar businessId e businessToken se criarmos um business
+        if (endpoint.name === 'Create Business' && responseData) {
+          localState.realBusinessId = responseData.businessId;
+          localState.realBusinessToken = responseData.businessToken;
+          
+          // Também atualizar o estado React para a UI
+          setDiagnosticState(prev => ({
+            ...prev,
+            realBusinessId: responseData.businessId,
+            realBusinessToken: responseData.businessToken
+          }));
+          
+          console.log(`🏪 [BUSINESS-CREATED] ID: ${responseData.businessId}, Token: ${responseData.businessToken?.substring(0, 10)}...`);
+        }
+        
+        // Armazenar instanceId se criarmos uma instância
+        if (endpoint.name === 'Create Business Instance' && responseData) {
+          localState.realInstanceId = responseData.instanceId;
+          localState.realInstanceToken = responseData.Auth?.jwt;
+          
+          // Também atualizar o estado React para a UI
+          setDiagnosticState(prev => ({
+            ...prev,
+            realInstanceId: responseData.instanceId,
+            realInstanceToken: responseData.Auth?.jwt
+          }));
+          
+          console.log(`📱 [INSTANCE-CREATED] ID: ${responseData.instanceId}, Token: ${responseData.Auth?.jwt?.substring(0, 10)}...`);
+        }
+
+        return {
+          status: 'success',
+          message: `✅ Sucesso - ${duration}ms - Status ${response.status}`,
+          details: { 
+            httpStatus: response.status,
+            data: responseData,
+            url,
+            tokenType: endpoint.tokenType,
+            usedLocalState: true
+          },
+          duration,
+          endpoint: endpoint.url,
+          method: endpoint.method,
+          httpStatus: response.status,
+          usedRealId: true
+        };
+      }
+
+      // Processar erros
+      let status: TestResult['status'] = 'error';
+      let message = `❌ Erro HTTP ${response.status}`;
+      
+      if (response.status === 401) {
+        message = `🔐 Não autorizado (${response.status}) - Token inválido ou expirado`;
+        status = 'warning';
+      } else if (response.status === 403) {
+        message = `🚫 Acesso negado (${response.status}) - Sem permissões`;
+        status = 'warning';
+      } else if (response.status === 404) {
+        message = `🔍 Não encontrado (${response.status}) - Endpoint inexistente`;
+        status = 'error';
+      }
+
+      return {
+        status,
+        message: `${message} - ${duration}ms`,
+        details: { 
+          httpStatus: response.status,
+          response: responseData,
+          url,
+          tokenType: endpoint.tokenType
+        },
+        duration,
+        endpoint: endpoint.url,
+        method: endpoint.method,
+        httpStatus: response.status
+      };
+
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.error(`❌ [API-TEST-v2.2.1] Erro testando ${endpoint.name}:`, error);
+
+      let status: TestResult['status'] = 'error';
+      let message = `❌ ${error.message}`;
+
+      if (error.message === 'Failed to fetch' || error.message.includes('CORS')) {
+        message = `🌐 Network Error: ${error.message} - Pode ser CORS, conectividade ou endpoint inexistente`;
+        status = 'error';
+      } else if (error.message.includes('timeout')) {
+        message = `⏱️ Timeout: ${error.message}`;
+        status = 'warning';
+      }
+
+      return {
+        status,
+        message: `${message} - ${duration}ms`,
+        details: { 
+          error: error.message,
+          url: `${config.serverUrl}${endpoint.url}`,
+          tokenType: endpoint.tokenType
+        },
+        duration,
+        endpoint: endpoint.url,
+        method: endpoint.method
+      };
+    }
+  };
+
+  // Teste sequencial completo COM ESTADO LOCAL
   const runSequentialTest = async () => {
     setIsRunningSequential(true);
     setProgress(0);
@@ -531,6 +746,14 @@ const YumerV2Diagnostic = () => {
     // Limpar estado anterior
     setDiagnosticState({});
     setTestResults({});
+    
+    // Estado local para manter IDs/tokens durante o loop sequencial
+    let localState = {
+      realBusinessId: '',
+      realBusinessToken: '',
+      realInstanceId: '',
+      realInstanceToken: ''
+    };
     
     console.log(`🚀 [SEQUENTIAL-v2.2.1] Iniciando diagnóstico completo da API CodeChat v2.2.1...`);
     console.log(`📍 [SEQUENTIAL-v2.2.1] Servidor: ${config.serverUrl}`);
@@ -545,7 +768,8 @@ const YumerV2Diagnostic = () => {
         
         console.log(`🔄 [SEQUENTIAL-v2.2.1] (${i+1}/${endpoints.length}) Executando: ${endpoint.category}/${endpoint.name}`);
         
-        const result = await executeTest(endpoint);
+        // Executar teste com estado local
+        const result = await executeTestWithLocalState(endpoint, localState);
         
         setTestResults(prev => ({ ...prev, [testKey]: result }));
         setProgress(((i + 1) / endpoints.length) * 100);
