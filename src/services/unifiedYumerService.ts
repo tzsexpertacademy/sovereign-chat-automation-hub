@@ -277,9 +277,10 @@ class UnifiedYumerService {
       
       const updateData = {
         status: instanceData.connection || 'disconnected',
-        state: instanceData.state || 'inactive',
-        auth_token: instanceData.Auth?.jwt,
-        yumer_instance_id: instanceData.instanceId,
+        connection_state: instanceData.state || 'close',
+        auth_jwt: instanceData.Auth?.jwt,
+        api_version: 'v2.2.1',
+        yumer_instance_name: instanceData.name || instanceId,
         updated_at: new Date().toISOString()
       };
       
@@ -290,6 +291,7 @@ class UnifiedYumerService {
         
       if (error) {
         console.error('❌ [SYNC] Erro ao sincronizar com Supabase:', error);
+        throw error;
       } else {
         console.log('✅ [SYNC] Instância sincronizada com Supabase:', instanceId);
       }
@@ -337,12 +339,20 @@ class UnifiedYumerService {
       }
       
       // 4. Sincronizar com Supabase
-      await this.syncInstanceToSupabase(String(instanceId), instanceResult.data);
+      try {
+        await this.syncInstanceToSupabase(String(instanceId), instanceResult.data);
+      } catch (error) {
+        console.warn('⚠️ [FLOW] Erro ao sincronizar com Supabase (não bloqueia):', error);
+      }
       
       // 5. Configurar webhook
-      const webhookResult = await this.ensureWebhookConfigured(String(instanceId));
-      if (!webhookResult.success) {
-        console.warn('⚠️ [FLOW] Erro ao configurar webhook:', webhookResult.error);
+      try {
+        const webhookResult = await this.ensureWebhookConfigured(String(instanceId));
+        if (!webhookResult.success) {
+          console.warn('⚠️ [FLOW] Erro ao configurar webhook:', webhookResult.error);
+        }
+      } catch (error) {
+        console.warn('⚠️ [FLOW] Erro ao configurar webhook (não bloqueia):', error);
       }
       
       console.log('🎉 [FLOW] Fluxo completo de criação concluído com sucesso');

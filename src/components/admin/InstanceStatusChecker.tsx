@@ -14,7 +14,7 @@ import {
   Shield
 } from "lucide-react";
 import { SERVER_URL, getYumerGlobalApiKey } from "@/config/environment";
-import cleanupInstancesService from "@/services/cleanupInstancesService";
+import { cleanupInstancesService } from "@/services/cleanupInstancesService";
 import { instancesUnifiedService } from "@/services/instancesUnifiedService";
 
 interface Instance {
@@ -173,10 +173,10 @@ const InstanceStatusChecker = () => {
             console.warn(`⚠️ [CLEANUP] Erro API para ${instanceName}:`, apiError);
           }
 
-          // Deletar do Supabase também
+          // Usar o novo serviço de limpeza
           try {
-            await cleanupInstancesService.deleteInstanceFromSupabase(instance.id, instanceName);
-            console.log(`✅ [CLEANUP] Removido do Supabase: ${instanceName}`);
+            await cleanupInstancesService.cleanupOrphanedInstances();
+            console.log(`✅ [CLEANUP] Limpeza executada: ${instanceName}`);
           } catch (dbError) {
             console.warn(`⚠️ [CLEANUP] Erro Supabase para ${instanceName}:`, dbError);
           }
