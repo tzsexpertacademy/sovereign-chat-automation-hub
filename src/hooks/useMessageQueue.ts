@@ -104,7 +104,7 @@ export const useMessageQueue = ({
         console.log(`✅ Mensagem ${message.id} enviada com sucesso`);
         setSentMessages(prev => [...prev, message.id]);
         return true;
-      } else if (result === true) {
+      } else if (typeof result === 'boolean' && result === true) {
         console.log(`✅ Mensagem ${message.id} enviada com sucesso`);
         setSentMessages(prev => [...prev, message.id]);
         return true;

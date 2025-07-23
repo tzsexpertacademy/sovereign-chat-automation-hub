@@ -108,7 +108,7 @@ class YumerApiV2Service {
     };
 
     console.log(`[YumerApiV2] ${options.method || 'GET'} ${url}`, {
-      headers: { ...headers, apikey: headers.apikey ? '***' : undefined },
+      headers: { ...headers, apikey: (headers as any).apikey ? '***' : undefined },
       body: options.body
     });
 

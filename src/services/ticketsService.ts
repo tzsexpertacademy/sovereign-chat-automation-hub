@@ -1,6 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { codeChatApiService } from './codechatApiService';
+import yumerApiV2Service from './yumerApiV2Service';
 
 export interface TicketMessage {
   id: string;
@@ -289,14 +289,9 @@ class TicketsService {
 
   private async importChatsFromInstance(clientId: string, instanceId: string): Promise<{ success: number; errors: number }> {
     try {
-      // Buscar chats da API CodeChat
-      const chats = await codeChatApiService.findChats(instanceId, {
-        limit: 50,
-        useMessages: true,
-        onProgress: (current, total) => {
-          console.log(`📊 [IMPORT] Progresso: ${current}/${total} chats processados`);
-        }
-      });
+      // Buscar chats da API Yumer V2
+      const chats = await yumerApiV2Service.findChats(instanceId);
+      console.log(`📊 [IMPORT] Progresso: chats encontrados`);
 
       console.log(`📊 [IMPORT] ${chats.length} chats encontrados na instância ${instanceId}`);
 
@@ -309,7 +304,7 @@ class TicketsService {
           await this.createTicketFromChat(clientId, chat, instanceId);
           success++;
         } catch (error) {
-          console.error(`❌ [IMPORT] Erro ao processar chat ${chat.id}:`, error);
+          console.error(`❌ [IMPORT] Erro ao processar chat ${chat.remoteJid}:`, error);
           errors++;
         }
       }
@@ -323,18 +318,19 @@ class TicketsService {
 
   // === CRIAÇÃO DE TICKETS A PARTIR DE CHATS ===
   async createTicketFromChat(clientId: string, chat: any, instanceId?: string): Promise<ConversationTicket> {
-    console.log('🎫 [CREATE-TICKET] Criando ticket a partir de chat:', chat.id);
+    console.log('🎫 [CREATE-TICKET] Criando ticket a partir de chat:', chat.remoteJid || chat.id);
     
     try {
       // 1. Extrair informações do chat
-      const phoneNumber = this.extractPhoneNumber(chat.id);
+      const chatId = chat.remoteJid || chat.id;
+      const phoneNumber = this.extractPhoneNumber(chatId);
       const contactName = this.formatContactName(chat.name, phoneNumber);
       
       // 2. Criar/atualizar customer
       const customerId = await this.createOrUpdateCustomer(clientId, {
         phoneNumber,
         contactName,
-        chatId: chat.id
+        chatId: chatId
       });
 
       // 3. Verificar se ticket já existe
@@ -342,7 +338,7 @@ class TicketsService {
         .from('conversation_tickets')
         .select('id')
         .eq('client_id', clientId)
-        .eq('chat_id', chat.id)
+        .eq('chat_id', chatId)
         .single();
 
       if (existingTicket) {
@@ -374,7 +370,7 @@ class TicketsService {
         .insert({
           client_id: clientId,
           customer_id: customerId,
-          chat_id: chat.id,
+          chat_id: chatId,
           instance_id: instanceId || '',
           title: title,
           status: 'open',

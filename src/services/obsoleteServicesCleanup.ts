@@ -4,30 +4,30 @@
  * Remove duplicações e migra para yumerApiV2Service
  */
 
-import { yumerApiV2Service } from './yumerApiV2Service';
+import yumerApiV2Service from './yumerApiV2Service';
 
 // Mapeamento de funcionalidades obsoletas para novas
 export const obsoleteServiceMigration = {
   // codechatApiService.ts - OBSOLETO
   findChats: (instanceName: string) => yumerApiV2Service.findChats(instanceName),
-  findMessages: (instanceName: string, filters?: any) => yumerApiV2Service.findMessages(instanceName, filters),
-  findContacts: (instanceName: string, filters?: any) => yumerApiV2Service.findContacts(instanceName, filters),
+  findMessages: (instanceName: string, remoteJid: string = '') => yumerApiV2Service.findMessages(instanceName, remoteJid),
+  findContacts: (instanceName: string) => yumerApiV2Service.findContacts(instanceName),
   
   // codechatQRService.ts - OBSOLETO
-  getQRCode: (instanceName: string) => yumerApiV2Service.fetchQRCode(instanceName),
+  getQRCode: (instanceName: string) => yumerApiV2Service.getQRCode(instanceName),
   connectInstance: (instanceName: string) => yumerApiV2Service.connectInstance(instanceName),
-  disconnectInstance: (instanceName: string) => yumerApiV2Service.disconnectInstance(instanceName),
-  getInstanceStatus: (instanceName: string) => yumerApiV2Service.getInstanceStatus(instanceName),
+  disconnectInstance: (instanceName: string) => yumerApiV2Service.logoutInstance(instanceName),
+  getInstanceStatus: (instanceName: string) => yumerApiV2Service.getConnectionState(instanceName),
   
   // codechatBusinessService.ts - OBSOLETO  
-  createBusiness: (business: any) => yumerApiV2Service.createBusiness(business),
-  getBusiness: (businessId: string) => yumerApiV2Service.getBusiness(businessId),
-  updateBusiness: (businessId: string, updates: any) => yumerApiV2Service.updateBusiness(businessId, updates),
+  createBusiness: (business: any) => ({ message: 'Business functionality not implemented in v2.2.1' }),
+  getBusiness: (businessId: string) => ({ message: 'Business functionality not implemented in v2.2.1' }),
+  updateBusiness: (businessId: string, updates: any) => ({ message: 'Business functionality not implemented in v2.2.1' }),
   
   // whatsappMultiClient.ts - OBSOLETO
-  sendTextMessage: (instanceName: string, request: any) => yumerApiV2Service.sendTextMessage(instanceName, request),
-  sendMediaMessage: (instanceName: string, request: any) => yumerApiV2Service.sendMediaMessage(instanceName, request),
-  sendAudioMessage: (instanceName: string, request: any) => yumerApiV2Service.sendAudioMessage(instanceName, request)
+  sendTextMessage: (instanceName: string, number: string, text: string) => yumerApiV2Service.sendText(instanceName, number, text),
+  sendMediaMessage: (instanceName: string, data: any) => yumerApiV2Service.sendMedia(instanceName, data),
+  sendAudioMessage: (instanceName: string, number: string, audio: string) => yumerApiV2Service.sendWhatsAppAudio(instanceName, number, audio)
 };
 
 /**

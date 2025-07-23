@@ -55,7 +55,7 @@ export const useMessageMedia = (clientId: string) => {
           description: `${mediaMessage.type} enviado com sucesso`,
         });
         return result;
-      } else if (result === true) {
+      } else if (typeof result === 'boolean' && result === true) {
         toast({
           title: "Mídia enviada",
           description: `${mediaMessage.type} enviado com sucesso`,

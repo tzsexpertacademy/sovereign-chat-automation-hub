@@ -26,7 +26,7 @@ export class AudioSendService {
       const statusResponse = await whatsappService.getClientStatus(clientId);
       
       return {
-        isConnected: statusResponse?.status === 'connected',
+        isConnected: typeof statusResponse === 'string' ? statusResponse === 'connected' : false,
         canSendMedia: true, // assumir que pode até prova em contrário
         supportedFormats: ['audio/ogg', 'audio/wav', 'audio/webm'],
         clientInfo: statusResponse || {}
@@ -120,7 +120,7 @@ export class AudioSendService {
               type: 'audio/ogg'
             });
             
-            const result = await whatsappService.sendAudio(clientId, to, audioFile);
+            const result = await whatsappService.sendMedia(clientId, to, audioFile);
             
             console.log('📤 Resultado API SendAudio:', result);
             return result;
@@ -155,10 +155,10 @@ export class AudioSendService {
           
           // ✅ DETECÇÃO REAL DE SUCESSO
           const isRealSuccess = result && (
-            result.success === true ||
-            result.id ||
-            result.messageId ||
-            (result.status && result.status !== 'error')
+            (typeof result === 'object' && 'success' in result && result.success === true) ||
+            (typeof result === 'object' && 'id' in result) ||
+            (typeof result === 'object' && 'messageId' in result) ||
+            (typeof result === 'object' && 'status' in result && result.status !== 'error')
           );
 
           if (isRealSuccess) {
@@ -171,7 +171,8 @@ export class AudioSendService {
               attemptedFormats
             };
           } else {
-            lastError = result?.error || result?.message || 'API retornou falha';
+            lastError = (typeof result === 'object' && result && 'error' in result ? (result.error as string) : 
+                         typeof result === 'object' && result && 'message' in result ? (result.message as string) : 'API retornou falha');
             console.warn(`⚠️ FALHA REAL ${strategy.name}:`, { result, lastError });
           }
 

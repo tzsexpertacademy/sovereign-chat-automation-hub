@@ -1,6 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { codeChatApiService } from './codechatApiService';
+import yumerApiV2Service from './yumerApiV2Service';
 import { ticketsService } from './ticketsService';
 
 interface RealTimeConfig {
@@ -188,13 +188,8 @@ class RealTimeMessageSync {
     if (!this.config) return;
     
     try {
-      // Buscar mensagens recentes da API CodeChat
-      const messages = await codeChatApiService.findMessages(
-        this.config.instanceId,
-        '', // Todas as conversas
-        20,  // Últimas 20 mensagens
-        0    // Offset 0
-      );
+      // Buscar mensagens recentes da API Yumer V2
+      const messages = await yumerApiV2Service.findMessages(this.config.instanceId, '', 20) || [];
       
       if (messages.length > 0) {
         console.log(`🔄 [SYNC] ${messages.length} mensagens sincronizadas`);
@@ -214,11 +209,9 @@ class RealTimeMessageSync {
     if (!this.config) return;
     
     try {
-      // Buscar chats recentes da API CodeChat
-      const chats = await codeChatApiService.findChats(this.config.instanceId, {
-        limit: 20,
-        useMessages: true
-      });
+      // Buscar chats recentes da API Yumer V2
+      const response = await yumerApiV2Service.findChats(this.config.instanceId);
+      const chats = response || [];
       
       if (chats.length > 0) {
         console.log(`🔄 [SYNC] ${chats.length} chats sincronizados`);
