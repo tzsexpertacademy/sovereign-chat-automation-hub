@@ -59,13 +59,9 @@ export const useServerConfig = () => {
       
       const newStatus: ServerStatus = {
         isOnline: true,
-        lastCheck: Date.now(),
+        lastCheck: new Date().toISOString(),
         latency: 0, // Não podemos medir latência em modo no-cors
-        message: 'Servidor online (verificação básica)',
-        version: config.apiVersion
       };
-      
-      serverConfigService.updateStatus(newStatus);
       setStatus(newStatus);
       
       return newStatus;
@@ -74,13 +70,11 @@ export const useServerConfig = () => {
       
       const newStatus: ServerStatus = {
         isOnline: false,
-        lastCheck: Date.now(),
+        lastCheck: new Date().toISOString(),
         latency: 0,
-        message: `Erro: ${error.message}`,
-        version: config.apiVersion
+        error: error.message
       };
       
-      serverConfigService.updateStatus(newStatus);
       setStatus(newStatus);
       
       return newStatus;
