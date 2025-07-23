@@ -54,6 +54,11 @@ interface DiagnosticState {
   realBusinessToken?: string;
   realInstanceId?: string;
   realInstanceToken?: string;
+  previousBusinessToken?: string; // Para armazenar o token anterior
+  createdResources?: {
+    businessIds: string[];
+    instanceIds: string[];
+  };
 }
 
 const YumerV2Diagnostic = () => {
@@ -61,7 +66,9 @@ const YumerV2Diagnostic = () => {
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
   const [isRunningSequential, setIsRunningSequential] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [diagnosticState, setDiagnosticState] = useState<DiagnosticState>({});
+  const [diagnosticState, setDiagnosticState] = useState<DiagnosticState>({
+    createdResources: { businessIds: [], instanceIds: [] }
+  });
   const { toast } = useToast();
 
   // ============ ENDPOINTS CORRIGIDOS PARA API CodeChat v2.2.1 ============
@@ -465,8 +472,13 @@ const YumerV2Diagnostic = () => {
         if (endpoint.name === 'Create Business' && responseData) {
           setDiagnosticState(prev => ({
             ...prev,
+            previousBusinessToken: prev.realBusinessToken, // Salvar token anterior
             realBusinessId: responseData.businessId,
-            realBusinessToken: responseData.businessToken
+            realBusinessToken: responseData.businessToken,
+            createdResources: {
+              ...prev.createdResources,
+              businessIds: [...(prev.createdResources?.businessIds || []), responseData.businessId]
+            }
           }));
           console.log(`🏪 [BUSINESS-CREATED] ID: ${responseData.businessId}, Token: ${responseData.businessToken?.substring(0, 10)}...`);
         }
@@ -476,9 +488,23 @@ const YumerV2Diagnostic = () => {
           setDiagnosticState(prev => ({
             ...prev,
             realInstanceId: responseData.instanceId,
-            realInstanceToken: responseData.Auth?.jwt
+            realInstanceToken: responseData.Auth?.jwt,
+            createdResources: {
+              ...prev.createdResources,
+              instanceIds: [...(prev.createdResources?.instanceIds || []), responseData.instanceId]
+            }
           }));
           console.log(`📱 [INSTANCE-CREATED] ID: ${responseData.instanceId}, Token: ${responseData.Auth?.jwt?.substring(0, 10)}...`);
+        }
+        
+        // Atualizar token anterior após refresh de token
+        if (endpoint.name === 'Refresh Business Token' && responseData?.newToken) {
+          setDiagnosticState(prev => ({
+            ...prev,
+            previousBusinessToken: prev.realBusinessToken,
+            realBusinessToken: responseData.newToken
+          }));
+          console.log(`🔄 [TOKEN-REFRESHED] Novo token: ${responseData.newToken.substring(0, 10)}...`);
         }
 
         return {
@@ -611,7 +637,7 @@ const YumerV2Diagnostic = () => {
         
         if (endpoint.name === 'Refresh Business Token' && localState.realBusinessToken) {
           requestBody = { oldToken: localState.realBusinessToken };
-          console.log(`🔄 [REFRESH-TOKEN] Usando businessToken: ${localState.realBusinessToken.substring(0, 20)}...`);
+          console.log(`🔄 [REFRESH-TOKEN] Usando token anterior: ${localState.realBusinessToken.substring(0, 20)}... para refresh`);
         }
         
         if (endpoint.name === 'Move Instance to Business' && localState.realInstanceId && localState.realBusinessId) {
@@ -884,11 +910,66 @@ const YumerV2Diagnostic = () => {
     }
   };
 
+  // Cleanup automático de recursos criados
+  const cleanupCreatedResources = async () => {
+    if (!diagnosticState.createdResources) return;
+    
+    const { businessIds, instanceIds } = diagnosticState.createdResources;
+    
+    // Cleanup instances primeiro
+    for (const instanceId of instanceIds) {
+      try {
+        console.log(`🧹 [CLEANUP] Removendo instância: ${instanceId}`);
+        await fetch(`${config.serverUrl}/api/v2/instance/${instanceId}`, {
+          method: 'DELETE',
+          headers: {
+            'authorization': `Bearer ${config.globalApiKey}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      } catch (error) {
+        console.warn(`⚠️ [CLEANUP] Erro ao remover instância ${instanceId}:`, error);
+      }
+    }
+    
+    // Cleanup businesses depois
+    for (const businessId of businessIds) {
+      try {
+        console.log(`🧹 [CLEANUP] Removendo business: ${businessId}`);
+        await fetch(`${config.serverUrl}/api/v2/admin/business/${businessId}?force=true`, {
+          method: 'DELETE',
+          headers: {
+            'authorization': `Bearer ${config.globalApiKey}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      } catch (error) {
+        console.warn(`⚠️ [CLEANUP] Erro ao remover business ${businessId}:`, error);
+      }
+    }
+  };
+
   // Limpar todos os resultados
-  const clearResults = () => {
+  const clearResults = async () => {
+    // Cleanup automático antes de limpar
+    if (diagnosticState.createdResources?.businessIds?.length || diagnosticState.createdResources?.instanceIds?.length) {
+      toast({
+        title: "Limpando recursos...",
+        description: "Removendo businesses e instâncias criadas durante os testes"
+      });
+      await cleanupCreatedResources();
+    }
+    
     setTestResults({});
-    setDiagnosticState({});
+    setDiagnosticState({
+      createdResources: { businessIds: [], instanceIds: [] }
+    });
     setProgress(0);
+    
+    toast({
+      title: "Resultados limpos",
+      description: "Todos os testes e recursos foram removidos"
+    });
   };
 
   // Renderizar resultado de teste
