@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,7 +31,9 @@ import {
   Webhook,
   Copy,
   ExternalLink,
-  Key
+  Key,
+  AlertCircle,
+  Info
 } from 'lucide-react';
 
 const ServerConfiguration = () => {
@@ -99,7 +100,7 @@ const ServerConfiguration = () => {
       if (result.isOnline) {
         toast({
           title: "✅ Conexão bem-sucedida",
-          description: `Latência: ${result.latency}ms`,
+          description: `CodeChat API v2.1.3 - Latência: ${result.latency}ms`,
         });
       } else {
         toast({
@@ -125,7 +126,7 @@ const ServerConfiguration = () => {
       if (results.valid) {
         toast({
           title: "✅ Configuração válida",
-          description: "Todas as validações passaram",
+          description: "CodeChat API v2.1.3 configurado corretamente",
         });
       } else {
         toast({
@@ -149,7 +150,7 @@ const ServerConfiguration = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `yumer-config-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `codechat-v2-config-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -157,7 +158,7 @@ const ServerConfiguration = () => {
     
     toast({
       title: "📁 Configuração exportada",
-      description: "Arquivo baixado com sucesso",
+      description: "Arquivo CodeChat v2.1.3 baixado com sucesso",
     });
   };
 
@@ -168,7 +169,7 @@ const ServerConfiguration = () => {
       if (success) {
         toast({
           title: "📂 Configuração importada",
-          description: "Configuração aplicada com sucesso",
+          description: "Configuração CodeChat v2.1.3 aplicada com sucesso",
         });
         setImportData('');
       } else {
@@ -191,7 +192,7 @@ const ServerConfiguration = () => {
     resetToDefaults();
     toast({
       title: "🔄 Configuração resetada",
-      description: "Valores padrão restaurados",
+      description: "Valores padrão CodeChat API v2.1.3 restaurados",
     });
   };
 
@@ -229,11 +230,11 @@ const ServerConfiguration = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header com Status - Responsivo */}
+      {/* Header com Status - Atualizado */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-foreground">Configuração do Servidor</h1>
-          <p className="text-muted-foreground text-sm lg:text-base">Gerencie as configurações de conexão com o backend</p>
+          <h1 className="text-2xl lg:text-3xl font-bold text-foreground">Configuração CodeChat API v2.1.3</h1>
+          <p className="text-muted-foreground text-sm lg:text-base">Gerencie conexões com o servidor oficial Yumer</p>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
           {getStatusBadge()}
@@ -243,6 +244,51 @@ const ServerConfiguration = () => {
           </div>
         </div>
       </div>
+
+      {/* API Info Card - NOVO */}
+      <Card className="border-blue-200 bg-blue-50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-blue-800">
+            <Info className="w-5 h-5" />
+            Informações da API CodeChat v2.1.3
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+            <div>
+              <div className="font-medium text-blue-900">URL Base</div>
+              <div className="text-blue-700 font-mono">{config.serverUrl}</div>
+            </div>
+            <div>
+              <div className="font-medium text-blue-900">API Path</div>
+              <div className="text-blue-700 font-mono">{config.basePath}</div>
+            </div>
+            <div>
+              <div className="font-medium text-blue-900">Versão</div>
+              <div className="text-blue-700 font-mono">{config.apiVersion}</div>
+            </div>
+            <div>
+              <div className="font-medium text-blue-900">Ambiente</div>
+              <div className="text-blue-700 font-mono capitalize">{config.environment}</div>
+            </div>
+          </div>
+          
+          <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+            <div className="flex items-center gap-2 text-blue-800 text-sm">
+              <ExternalLink className="w-4 h-4" />
+              <span>Documentação Swagger:</span>
+              <a 
+                href={`${config.serverUrl}/docs`} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="underline hover:text-blue-600"
+              >
+                {config.serverUrl}/docs
+              </a>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Save Button Global - Responsivo */}
       <div className="flex flex-col sm:flex-row justify-start sm:justify-end gap-2">
@@ -256,12 +302,12 @@ const ServerConfiguration = () => {
         </Button>
       </div>
 
-      {/* Status Card */}
+      {/* Status Card - Atualizado */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wifi className="w-5 h-5" />
-            Status da Conexão
+            Status da Conexão CodeChat API v2.1.3
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -275,13 +321,14 @@ const ServerConfiguration = () => {
               <div className="text-sm text-gray-500">Latência</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{config.serverUrl}</div>
+              <div className="text-2xl font-bold text-gray-900 truncate">{config.serverUrl}</div>
               <div className="text-sm text-gray-500">Servidor Atual</div>
             </div>
           </div>
           
           {status.error && (
             <Alert className="mt-4" variant="destructive">
+              <AlertCircle className="h-4 w-4" />
               <AlertDescription>{status.error}</AlertDescription>
             </Alert>
           )}
@@ -293,7 +340,7 @@ const ServerConfiguration = () => {
         <Card>
           <CardHeader>
             <CardTitle className={validationResults.valid ? "text-green-700" : "text-red-700"}>
-              {validationResults.valid ? "✅ Configuração Válida" : "⚠️ Problemas Encontrados"}
+              {validationResults.valid ? "✅ Configuração CodeChat v2.1.3 Válida" : "⚠️ Problemas Encontrados"}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -343,12 +390,12 @@ const ServerConfiguration = () => {
           </TabsTrigger>
         </TabsList>
 
-        {/* Primary Server Configuration */}
+        {/* Primary Server Configuration - ATUALIZADO */}
         <TabsContent value="primary">
           <Card>
             <CardHeader>
-              <CardTitle>Configuração Primária do Servidor</CardTitle>
-              <CardDescription>Configure a URL e porta do servidor backend</CardDescription>
+              <CardTitle>Configuração Servidor CodeChat API v2.1.3</CardTitle>
+              <CardDescription>Configure a URL e porta do servidor oficial Yumer</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -358,7 +405,7 @@ const ServerConfiguration = () => {
                     id="serverUrl"
                     value={config.serverUrl}
                     onChange={(e) => handleConfigChange('serverUrl', e.target.value)}
-                    placeholder="https://yumer.yumerflow.app:8083"
+                    placeholder="https://api.yumer.com.br"
                   />
                 </div>
                 <div className="space-y-2">
@@ -367,7 +414,7 @@ const ServerConfiguration = () => {
                     id="host"
                     value={config.host}
                     onChange={(e) => handleConfigChange('host', e.target.value)}
-                    placeholder="yumer.yumerflow.app"
+                    placeholder="api.yumer.com.br"
                   />
                 </div>
               </div>
@@ -380,6 +427,7 @@ const ServerConfiguration = () => {
                     type="number"
                     value={config.port}
                     onChange={(e) => handleConfigChange('port', parseInt(e.target.value))}
+                    placeholder="443"
                   />
                 </div>
                 <div className="space-y-2">
@@ -395,13 +443,22 @@ const ServerConfiguration = () => {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="basePath">Path Base (opcional)</Label>
+                  <Label htmlFor="basePath">Path Base da API</Label>
                   <Input
                     id="basePath"
                     value={config.basePath}
                     onChange={(e) => handleConfigChange('basePath', e.target.value)}
-                    placeholder="/api/v1"
+                    placeholder="/api/v2"
                   />
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-2">🔗 URLs Geradas:</h4>
+                <div className="space-y-1 text-sm text-gray-600 font-mono">
+                  <div><strong>API URL:</strong> {config.serverUrl}{config.basePath}</div>
+                  <div><strong>WebSocket:</strong> {config.webSocketEnabled ? `wss://${config.host}:${config.port}${config.basePath}/ws` : 'Desabilitado'}</div>
+                  <div><strong>Swagger Docs:</strong> {config.serverUrl}/docs</div>
                 </div>
               </div>
 
@@ -415,7 +472,7 @@ const ServerConfiguration = () => {
           </Card>
         </TabsContent>
 
-        {/* Authentication Configuration */}
+        {/* Authentication Configuration - ATUALIZADO */}
         <TabsContent value="auth">
           <div className="space-y-6">
             {/* API Key Configuration */}
@@ -423,10 +480,10 @@ const ServerConfiguration = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Key className="w-5 h-5" />
-                  Configuração API Key YUMER
+                  Configuração API Key CodeChat v2.1.3
                 </CardTitle>
                 <CardDescription>
-                  Configure sua chave de acesso para conectar ao servidor YUMER
+                  Configure sua chave de acesso para conectar ao servidor oficial Yumer
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -441,6 +498,17 @@ const ServerConfiguration = () => {
                 <CardDescription>Configure timeouts e outras configurações de segurança</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="adminToken">Token de Administrador (CodeChat API v2.1.3)</Label>
+                  <Input
+                    id="adminToken"
+                    type="password"
+                    value={config.adminToken}
+                    onChange={(e) => handleConfigChange('adminToken', e.target.value)}
+                    placeholder="Token oficial do servidor Yumer"
+                  />
+                </div>
+                
                 <div>
                   <Label htmlFor="jwtSecret">JWT Secret (WebSocket)</Label>
                   <Input
@@ -484,12 +552,11 @@ const ServerConfiguration = () => {
           </div>
         </TabsContent>
 
-        {/* Advanced Configuration */}
         <TabsContent value="advanced">
           <Card>
             <CardHeader>
               <CardTitle>Configurações Avançadas</CardTitle>
-              <CardDescription>WebSocket, CORS e outras configurações técnicas</CardDescription>
+              <CardDescription>WebSocket, CORS e outras configurações técnicas do CodeChat v2.1.3</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -529,7 +596,7 @@ const ServerConfiguration = () => {
                     type="number"
                     value={config.webSocketPort || ''}
                     onChange={(e) => handleConfigChange('webSocketPort', e.target.value ? parseInt(e.target.value) : undefined)}
-                    placeholder="Mesma porta da API"
+                    placeholder="443 (mesma porta HTTPS)"
                   />
                 </div>
                 
@@ -558,12 +625,11 @@ const ServerConfiguration = () => {
           </Card>
         </TabsContent>
 
-        {/* Frontend Integration */}
         <TabsContent value="frontend">
           <Card>
             <CardHeader>
               <CardTitle>Integração Frontend</CardTitle>
-              <CardDescription>Informações necessárias para configurar o backend</CardDescription>
+              <CardDescription>Informações necessárias para configurar o backend CodeChat v2.1.3</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -656,12 +722,14 @@ const ServerConfiguration = () => {
               </div>
 
               <div className="p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">ℹ️ Informações para o Backend:</h4>
+                <h4 className="font-medium text-gray-900 mb-2">ℹ️ Informações para o Backend CodeChat v2.1.3:</h4>
                 <div className="space-y-1 text-sm text-gray-600">
                   <div><strong>Adicionar ao CORS:</strong> {config.lovableDomain}</div>
                   <div><strong>Webhook QR Code:</strong> {frontendIntegration.webhookUrls.qrCode}</div>
                   <div><strong>Webhook Mensagens:</strong> {frontendIntegration.webhookUrls.message}</div>
                   <div><strong>Rate Limit:</strong> {config.rateLimitRequests} req/{config.rateLimitWindow}s</div>
+                  <div><strong>API URL:</strong> {frontendIntegration.serverInfo.apiUrl}</div>
+                  <div><strong>Versão:</strong> {frontendIntegration.serverInfo.version}</div>
                 </div>
               </div>
 
@@ -675,13 +743,12 @@ const ServerConfiguration = () => {
           </Card>
         </TabsContent>
 
-        {/* Administrative Webhooks */}
         <TabsContent value="webhooks">
           <div className="space-y-4">
             {/* QR Code Webhook */}
             <Card>
               <CardHeader>
-                <CardTitle>Webhook QR Code</CardTitle>
+                <CardTitle>Webhook QR Code - CodeChat v2.1.3</CardTitle>
                 <CardDescription>Configurações para receber QR Codes via webhook</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -699,6 +766,7 @@ const ServerConfiguration = () => {
                     id="qrWebhookUrl"
                     value={config.adminWebhooks.qrCodeWebhook.url}
                     onChange={(e) => handleWebhookChange('qrCodeWebhook', 'url', e.target.value)}
+                    placeholder="https://supabase.co/functions/v1/codechat-v2-webhook"
                   />
                 </div>
 
@@ -708,6 +776,7 @@ const ServerConfiguration = () => {
                     id="qrWebhookEvents"
                     value={config.adminWebhooks.qrCodeWebhook.events.join(', ')}
                     onChange={(e) => handleWebhookChange('qrCodeWebhook', 'events', e.target.value.split(',').map(s => s.trim()))}
+                    placeholder="qrcodeUpdated, qr.updated, QR_CODE_UPDATED"
                   />
                 </div>
 
@@ -737,7 +806,7 @@ const ServerConfiguration = () => {
             {/* Message Webhook */}
             <Card>
               <CardHeader>
-                <CardTitle>Webhook Mensagens</CardTitle>
+                <CardTitle>Webhook Mensagens - CodeChat v2.1.3</CardTitle>
                 <CardDescription>Configurações para receber mensagens via webhook</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -755,6 +824,7 @@ const ServerConfiguration = () => {
                     id="msgWebhookUrl"
                     value={config.adminWebhooks.messageWebhook.url}
                     onChange={(e) => handleWebhookChange('messageWebhook', 'url', e.target.value)}
+                    placeholder="https://supabase.co/functions/v1/codechat-v2-webhook"
                   />
                 </div>
 
@@ -790,7 +860,7 @@ const ServerConfiguration = () => {
             {/* Status Webhook */}
             <Card>
               <CardHeader>
-                <CardTitle>Webhook Status</CardTitle>
+                <CardTitle>Webhook Status - CodeChat v2.1.3</CardTitle>
                 <CardDescription>Configurações para receber atualizações de status</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -808,6 +878,7 @@ const ServerConfiguration = () => {
                     id="statusWebhookUrl"
                     value={config.adminWebhooks.statusWebhook.url}
                     onChange={(e) => handleWebhookChange('statusWebhook', 'url', e.target.value)}
+                    placeholder="https://supabase.co/functions/v1/codechat-v2-webhook"
                   />
                 </div>
 
@@ -817,6 +888,7 @@ const ServerConfiguration = () => {
                     id="statusWebhookEvents"
                     value={config.adminWebhooks.statusWebhook.events.join(', ')}
                     onChange={(e) => handleWebhookChange('statusWebhook', 'events', e.target.value.split(',').map(s => s.trim()))}
+                    placeholder="connectionUpdated, statusInstance"
                   />
                 </div>
               </CardContent>
@@ -831,12 +903,11 @@ const ServerConfiguration = () => {
           </div>
         </TabsContent>
 
-        {/* Backup Configuration */}
         <TabsContent value="backup">
           <Card>
             <CardHeader>
               <CardTitle>Backup e Fallback</CardTitle>
-              <CardDescription>Configure opções de backup e recuperação</CardDescription>
+              <CardDescription>Configure opções de backup e recuperação para CodeChat v2.1.3</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -845,7 +916,7 @@ const ServerConfiguration = () => {
                   id="fallbackServerUrl"
                   value={config.fallbackServerUrl || ''}
                   onChange={(e) => handleConfigChange('fallbackServerUrl', e.target.value)}
-                  placeholder="https://backup-server.com:8083"
+                  placeholder="https://backup-api.yumer.com.br"
                 />
               </div>
               
@@ -892,7 +963,7 @@ const ServerConfiguration = () => {
                     id="importData"
                     value={importData}
                     onChange={(e) => setImportData(e.target.value)}
-                    placeholder="Cole aqui o JSON da configuração..."
+                    placeholder="Cole aqui o JSON da configuração CodeChat v2.1.3..."
                     rows={4}
                   />
                   <Button onClick={handleImportConfig} disabled={!importData.trim()} className="mt-2">
@@ -913,10 +984,10 @@ const ServerConfiguration = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Tests and Validation Section */}
+      {/* Tests and Validation Section - ATUALIZADO */}
       <Card>
         <CardHeader>
-          <CardTitle>Testes e Validação</CardTitle>
+          <CardTitle>Testes e Validação CodeChat v2.1.3</CardTitle>
           <CardDescription>Verifique se a configuração está funcionando corretamente</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -932,13 +1003,15 @@ const ServerConfiguration = () => {
             </Button>
           </div>
           
-          {/* Test Results Display */}
+          {/* Test Results Display - ATUALIZADO */}
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <h4 className="font-medium text-gray-900 mb-2">Informações da Configuração Atual:</h4>
+            <h4 className="font-medium text-gray-900 mb-2">Informações da Configuração CodeChat v2.1.3:</h4>
             <div className="space-y-1 text-sm text-gray-600">
               <div><strong>API URL:</strong> {config.serverUrl}{config.basePath}</div>
-              <div><strong>WebSocket URL:</strong> {config.webSocketEnabled ? `wss://${config.host}:${config.webSocketPort || config.port}${config.basePath}` : 'Desabilitado'}</div>
+              <div><strong>WebSocket URL:</strong> {config.webSocketEnabled ? `wss://${config.host}:${config.webSocketPort || config.port}${config.basePath}/ws` : 'Desabilitado'}</div>
               <div><strong>Ambiente:</strong> {config.environment}</div>
+              <div><strong>Versão API:</strong> {config.apiVersion}</div>
+              <div><strong>Swagger Docs:</strong> {config.serverUrl}/docs</div>
               <div><strong>Última atualização:</strong> {new Date(config.lastUpdated).toLocaleString()}</div>
             </div>
           </div>

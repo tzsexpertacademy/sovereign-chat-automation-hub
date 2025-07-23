@@ -98,7 +98,7 @@ class ServerConfigService {
 
   private getDefaultConfig(): ServerConfig {
     return {
-      // Primary Backend - CodeChat API v2.1.3 - NOVO SERVIDOR
+      // Primary Backend - CodeChat API v2.1.3 - SERVIDOR OFICIAL YUMER
       serverUrl: 'https://api.yumer.com.br',
       host: 'api.yumer.com.br',
       port: 443,
@@ -106,7 +106,7 @@ class ServerConfigService {
       basePath: '/api/v2',
       apiVersion: '2.1.3',
       
-      // Authentication - v2.1.3 Tokens CORRETOS DO SERVIDOR
+      // Authentication - CodeChat API v2.1.3 - TOKENS OFICIAIS
       adminToken: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
       globalApiKey: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
       jwtSecret: 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe',
@@ -124,7 +124,7 @@ class ServerConfigService {
       offlineMode: false,
       configCache: true,
       
-      // Frontend Integration
+      // Frontend Integration - ATUALIZADO PARA NOVA INFRAESTRUTURA
       lovableDomain: 'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
       supabaseUrl: 'https://ymygyagbvbsdfkduxmgu.supabase.co',
       supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI',
@@ -135,7 +135,7 @@ class ServerConfigService {
       rateLimitRequests: 100,
       rateLimitWindow: 60,
       
-      // Administrative Webhooks - v2.1.3
+      // Administrative Webhooks - CodeChat API v2.1.3 - ENDPOINTS CORRETOS
       adminWebhooks: {
         qrCodeWebhook: {
           enabled: true,
@@ -239,12 +239,12 @@ class ServerConfigService {
     const startTime = Date.now();
     
     try {
-      console.log(`🔍 Testando conexão com: ${this.config.serverUrl}`);
+      console.log(`🔍 Testando conexão com CodeChat API v2.1.3: ${this.config.serverUrl}`);
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout);
       
-      // Test endpoint for CodeChat API v2.1.3
+      // Test endpoint for CodeChat API v2.1.3 - ENDPOINT CORRETO
       const response = await fetch(`${this.config.serverUrl}/health`, {
         method: 'GET',
         signal: controller.signal,
@@ -264,7 +264,7 @@ class ServerConfigService {
         error: response.ok ? undefined : `HTTP ${response.status}`
       };
       
-      console.log(`✅ Teste de conexão concluído:`, this.status);
+      console.log(`✅ Teste de conexão CodeChat API v2.1.3 concluído:`, this.status);
       
     } catch (error: any) {
       this.status = {
@@ -274,7 +274,7 @@ class ServerConfigService {
         error: error.message || 'Connection failed'
       };
       
-      console.error('❌ Teste de conexão falhou:', this.status);
+      console.error('❌ Teste de conexão CodeChat API v2.1.3 falhou:', this.status);
     }
     
     return this.status;
@@ -345,7 +345,7 @@ class ServerConfigService {
     
     // Validate API key
     if (!this.config.adminToken.trim()) {
-      errors.push('Chave API global é obrigatória');
+      errors.push('Token de administrador é obrigatório');
     }
     
     // Validate Lovable domain
@@ -374,7 +374,7 @@ class ServerConfigService {
     };
   }
 
-  // Generate URLs based on current config - v2.1.3
+  // Generate URLs based on current config - CodeChat API v2.1.3
   getApiUrl(): string {
     return `${this.config.serverUrl}${this.config.basePath}`;
   }
@@ -403,11 +403,11 @@ class ServerConfigService {
     };
   }
 
-  // WebSocket URL Generation
+  // WebSocket URL Generation - CORRIGIDO PARA NOVA INFRAESTRUTURA
   getWebSocketUrl(): string {
     const protocol = this.config.protocol === 'https' ? 'wss' : 'ws';
-    const port = this.config.webSocketPort || this.config.port;
-    return `${protocol}://${this.config.host}:${port}`;
+    const port = this.config.webSocketPort || (this.config.protocol === 'https' ? 443 : 80);
+    return `${protocol}://${this.config.host}:${port}${this.config.basePath}/ws`;
   }
 
   // Headers utility
@@ -429,6 +429,12 @@ class ServerConfigService {
       requests: number;
       window: number;
     };
+    serverInfo: {
+      apiUrl: string;
+      swaggerDocs: string;
+      version: string;
+      environment: string;
+    };
   } {
     return {
       lovableDomain: this.config.lovableDomain,
@@ -442,6 +448,12 @@ class ServerConfigService {
       rateLimits: {
         requests: this.config.rateLimitRequests,
         window: this.config.rateLimitWindow
+      },
+      serverInfo: {
+        apiUrl: this.getApiUrl(),
+        swaggerDocs: `${this.config.serverUrl}/docs`,
+        version: this.config.apiVersion,
+        environment: this.config.environment
       }
     };
   }
