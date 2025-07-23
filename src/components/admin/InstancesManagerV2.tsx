@@ -382,83 +382,137 @@ const InstancesManagerV2 = () => {
   const connectInstance = async (instanceId: string) => {
     if (!instanceId) return;
     
-    try {
-      updateInstanceState(instanceId, {
-        status: 'loading',
-        progress: 30,
-        message: 'Conectando instância...'
-      });
-
-      // Conectar e capturar QR Code diretamente
-      const connectResult = await unifiedYumerService.connectInstance(instanceId);
-      
-      if (connectResult.success && connectResult.data?.base64) {
-        // QR Code recebido imediatamente!
+    const maxRetries = 3;
+    const maxPollingTime = 60000; // 60 segundos
+    const pollingInterval = 3000; // 3 segundos
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
         updateInstanceState(instanceId, {
           status: 'loading',
-          progress: 80,
-          message: 'Salvando QR Code...'
+          progress: 10,
+          message: `Verificando status da instância... (${attempt}/${maxRetries})`
         });
+
+        // Fase 1: Verificar se instância está ativa
+        const instanceStatus = await unifiedYumerService.getInstance(instanceId);
         
-        // Salvar QR Code no banco
-        const { supabase } = await import('@/integrations/supabase/client');
-        await supabase
-          .from('whatsapp_instances')
-          .update({
-            qr_code: connectResult.data.base64,
-            has_qr_code: true,
-            qr_expires_at: new Date(Date.now() + 60000).toISOString(), // 1 minuto
-            status: 'qr_ready'
-          })
-          .eq('instance_id', instanceId);
+        if (!instanceStatus.success) {
+          if (attempt < maxRetries) {
+            updateInstanceState(instanceId, {
+              status: 'loading',
+              progress: 20,
+              message: `Instância não encontrada, aguardando... (${attempt}/${maxRetries})`
+            });
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Aguarda 5s
+            continue;
+          }
+          throw new Error('Instância não encontrada após tentativas');
+        }
 
         updateInstanceState(instanceId, {
-          status: 'success',
-          progress: 100,
-          message: 'QR Code disponível!',
-          data: { qrCode: connectResult.data.base64 }
+          status: 'loading',
+          progress: 30,
+          message: 'Instância ativa, iniciando conexão...'
         });
+
+        // Fase 2: Tentar conectar com polling
+        const connectResult = await unifiedYumerService.connectInstance(instanceId);
         
-        toast({ 
-          title: "QR Code Disponível", 
-          description: "QR Code obtido instantaneamente!" 
-        });
+        if (connectResult.success && connectResult.data?.base64) {
+          // QR Code recebido imediatamente!
+          updateInstanceState(instanceId, {
+            status: 'loading',
+            progress: 80,
+            message: 'Salvando QR Code...'
+          });
+          
+          // Salvar QR Code no banco
+          const { supabase } = await import('@/integrations/supabase/client');
+          await supabase
+            .from('whatsapp_instances')
+            .update({
+              qr_code: connectResult.data.base64,
+              has_qr_code: true,
+              qr_expires_at: new Date(Date.now() + 60000).toISOString(), // 1 minuto
+              status: 'qr_ready'
+            })
+            .eq('instance_id', instanceId);
+
+          updateInstanceState(instanceId, {
+            status: 'success',
+            progress: 100,
+            message: 'QR Code disponível!',
+            data: { qrCode: connectResult.data.base64 }
+          });
+          
+          toast({ 
+            title: "QR Code Disponível", 
+            description: "QR Code obtido com sucesso!" 
+          });
+          
+          await loadInstances();
+          return; // Sucesso, sair do loop
+          
+        } else if (connectResult.success) {
+          // Conexão realizada mas sem QR (já conectado)
+          updateInstanceState(instanceId, {
+            status: 'success',
+            progress: 100,
+            message: 'Instância já conectada!'
+          });
+          
+          toast({ 
+            title: "Conectado", 
+            description: "Instância já está conectada!" 
+          });
+          
+          await loadInstances();
+          return; // Sucesso, sair do loop
+          
+        } else if (connectResult.error?.includes('404') || connectResult.error?.includes('not found')) {
+          // Erro 404: instância não está pronta ainda
+          if (attempt < maxRetries) {
+            updateInstanceState(instanceId, {
+              status: 'loading',
+              progress: 40,
+              message: `Instância não está pronta, aguardando... (${attempt}/${maxRetries})`
+            });
+            await new Promise(resolve => setTimeout(resolve, 10000)); // Aguarda 10s
+            continue;
+          }
+          throw new Error('Instância não ficou pronta após tentativas');
+        } else {
+          throw new Error(connectResult.error || 'Falha na conexão');
+        }
         
-        await loadInstances();
+      } catch (error: any) {
+        console.error(`Erro na tentativa ${attempt}:`, error);
         
-      } else if (connectResult.success) {
-        // Conexão realizada mas sem QR (talvez já conectado)
-        updateInstanceState(instanceId, {
-          status: 'success',
-          progress: 100,
-          message: 'Instância conectada!'
-        });
+        if (error.message?.includes('aborted') && attempt < maxRetries) {
+          updateInstanceState(instanceId, {
+            status: 'loading',
+            progress: 25,
+            message: `Timeout na conexão, tentando novamente... (${attempt}/${maxRetries})`
+          });
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          continue;
+        }
         
-        toast({ 
-          title: "Conectado", 
-          description: "Instância já está conectada!" 
-        });
-        
-        await loadInstances();
-        
-      } else {
-        throw new Error(connectResult.error || 'Falha na conexão');
+        if (attempt === maxRetries) {
+          updateInstanceState(instanceId, {
+            status: 'error',
+            progress: 0,
+            message: error.message || 'Erro na conexão após todas as tentativas'
+          });
+          
+          toast({ 
+            title: "Erro", 
+            description: `Falha ao conectar instância após ${maxRetries} tentativas: ${error.message}`, 
+            variant: "destructive" 
+          });
+        }
       }
-      
-    } catch (error: any) {
-      console.error('Erro ao conectar instância:', error);
-      
-      updateInstanceState(instanceId, {
-        status: 'error',
-        progress: 0,
-        message: error.message || 'Erro na conexão'
-      });
-      
-      toast({ 
-        title: "Erro", 
-        description: error.message || "Falha ao conectar instância", 
-        variant: "destructive" 
-      });
     }
   };
 
