@@ -1,8 +1,8 @@
 
-import { CodeChatV2Manager } from "./CodeChatV2Manager";
+import InstancesManagerV2 from "./InstancesManagerV2";
 
 const InstancesManager = () => {
-  return <CodeChatV2Manager />;
+  return <InstancesManagerV2 />;
 };
 
 export default InstancesManager;
