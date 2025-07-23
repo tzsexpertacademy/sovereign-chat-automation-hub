@@ -1,9 +1,8 @@
 
-import { getYumerGlobalApiKey } from '@/config/environment';
-import { serverConfigService } from './serverConfigService';
+import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
 
 export class CodechatQRService {
-  private config = serverConfigService.getConfig();
+  private baseURL = API_BASE_URL;
 
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
     const apiKey = getYumerGlobalApiKey();
@@ -29,7 +28,7 @@ export class CodechatQRService {
     });
 
     try {
-      const response = await fetch(`${this.config.serverUrl}${endpoint}`, {
+      const response = await fetch(`${this.baseURL}${endpoint}`, {
         ...options,
         headers
       });
@@ -66,7 +65,7 @@ export class CodechatQRService {
 
   async getInstanceStatus(instanceName: string) {
     console.log(`📊 [CODECHAT-QR] Buscando status via /instance/connectionState/${instanceName}`);
-    console.log(`🌐 [CODECHAT-QR] GET ${this.config.serverUrl}/instance/connectionState/${instanceName}`);
+    console.log(`🌐 [CODECHAT-QR] GET ${this.baseURL}/instance/connectionState/${instanceName}`);
     
     return this.makeRequest(`/instance/connectionState/${instanceName}`);
   }

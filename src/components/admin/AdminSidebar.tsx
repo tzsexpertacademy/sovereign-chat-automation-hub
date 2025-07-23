@@ -1,5 +1,5 @@
 
-import { BarChart3, Users, Activity, FileText, Settings, Shield, Wifi, Stethoscope, Server, CreditCard, Smartphone } from "lucide-react";
+import { BarChart3, Users, Activity, FileText, Settings, Shield, Wifi, Stethoscope, Server, CreditCard } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -20,7 +20,6 @@ const adminItems = [
   { title: "Instâncias", url: "instances", icon: Activity },
   { title: "Planos", url: "plans", icon: CreditCard },
   { title: "Configuração Servidor", url: "server-config", icon: Server },
-  { title: "CodeChat v2.1.3", url: "codechat-v2", icon: Smartphone },
   { title: "Diagnóstico", url: "diagnostics", icon: Stethoscope },
   { title: "Logs", url: "logs", icon: FileText },
   { title: "Ferramentas Avançadas", url: "advanced", icon: Settings },

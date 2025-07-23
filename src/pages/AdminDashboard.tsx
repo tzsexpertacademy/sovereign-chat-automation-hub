@@ -13,7 +13,6 @@ import AdvancedTools from "@/components/admin/AdvancedTools";
 import YumerApiKeyConfig from "@/components/admin/YumerApiKeyConfig";
 import ConnectionDiagnostics from "@/components/admin/ConnectionDiagnostics";
 import ServerConfiguration from "@/components/admin/ServerConfiguration";
-import { CodeChatV2Dashboard } from "@/components/admin/CodeChatV2Dashboard";
 
 const AdminDashboard = () => {
   return (
@@ -31,7 +30,6 @@ const AdminDashboard = () => {
               <Route path="plans" element={<PlansManagement />} />
               <Route path="server-config" element={<ServerConfiguration />} />
               <Route path="diagnostics" element={<ConnectionDiagnostics />} />
-              <Route path="codechat-v2" element={<CodeChatV2Dashboard />} />
               <Route path="logs" element={<SystemLogsModern />} />
               <Route path="advanced" element={<AdvancedTools />} />
             </Routes>
