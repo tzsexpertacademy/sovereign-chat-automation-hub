@@ -123,7 +123,7 @@ class UnifiedYumerService {
         console.log(`🌐 [UNIFIED-YUMER] ${options.method || 'GET'} ${endpoint} (tentativa ${attempt})`);
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.requestConfig.timeout);
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
 
         // Autenticação corrigida: usar business_token para operações de instância
         let authHeaders = this.getAuthHeaders();

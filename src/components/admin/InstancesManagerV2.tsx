@@ -28,6 +28,7 @@ import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 // Removido businessSyncService - usando sistema 1:1 simplificado
 import unifiedYumerService from "@/services/unifiedYumerService";
+import { InstancesCleanupManager } from "./InstancesCleanupManager";
 
 interface InstanceState {
   status: 'idle' | 'loading' | 'success' | 'error' | 'timeout';
@@ -737,6 +738,9 @@ const InstancesManagerV2 = () => {
           ))}
         </CardContent>
       </Card>
+
+      {/* Limpeza de Instâncias */}
+      <InstancesCleanupManager />
 
       {/* Lista de Instâncias */}
       <div className="grid gap-4">
