@@ -198,6 +198,7 @@ const YumerV2Diagnostic = () => {
       tokenType: 'instance',
       dependency: 'Get Instance Info',
       body: {
+        name: 'diagnostic-webhook',
         url: 'https://webhook.site/test-diagnostic-v221',
         enabled: true
       }
