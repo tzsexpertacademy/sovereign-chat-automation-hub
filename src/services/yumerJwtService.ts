@@ -1,10 +1,10 @@
 
 // YUMER JWT Service - Gerencia autenticação JWT para WebSockets
-import { API_BASE_URL, getYumerGlobalApiKey } from '@/config/environment';
+import { API_BASE_URL, getYumerGlobalApiKey, auth } from '@/config/environment';
 import { SignJWT } from 'jose';
 
 // JWT Secret do servidor YUMER (deve coincidir com AUTHENTICATION_JWT_SECRET no .env)
-const YUMER_JWT_SECRET = 'sfdgs8152g5s1s5';
+const YUMER_JWT_SECRET = auth.jwtSecret;
 
 export interface YumerJwtResponse {
   token: string;
@@ -29,7 +29,7 @@ class YumerJwtService {
 
   // ============ GERAÇÃO JWT PARA INSTÂNCIAS ESPECÍFICAS ============
   async generateInstanceJWT(instanceId: string, businessId: string, customSecret?: string): Promise<string> {
-    const jwtSecret = customSecret || 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe';
+    const jwtSecret = customSecret || auth.jwtSecret;
     
     try {
       console.log('🔐 [INSTANCE-JWT] Gerando JWT específico para instância...', { 
