@@ -27,6 +27,50 @@ class YumerJwtService {
   private tokenExpiry: number | null = null;
   private renewalTimer: NodeJS.Timeout | null = null;
 
+  // ============ GERAÇÃO JWT PARA INSTÂNCIAS ESPECÍFICAS ============
+  async generateInstanceJWT(instanceId: string, businessId: string, customSecret?: string): Promise<string> {
+    const jwtSecret = customSecret || 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe';
+    
+    try {
+      console.log('🔐 [INSTANCE-JWT] Gerando JWT específico para instância...', { 
+        instanceId, 
+        businessId,
+        secretUsed: jwtSecret.substring(0, 8) + '...' 
+      });
+      
+      const now = Math.floor(Date.now() / 1000);
+      const exp = now + (4 * 60 * 60); // 4 horas de expiração
+      
+      // Payload específico para instância conforme documentação Yumer
+      const payload = {
+        I_ID: instanceId,      // Instance ID
+        B_ID: businessId,      // Business ID  
+        A_N: "codechat_api",   // Application Name
+        iat: now,
+        exp: exp,
+        sub: "I_T"             // Subject: Instance Token
+      };
+      
+      const secret = new TextEncoder().encode(jwtSecret);
+      
+      const token = await new SignJWT(payload)
+        .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+        .setIssuedAt(now)
+        .setExpirationTime(exp)
+        .setSubject('I_T')
+        .sign(secret);
+      
+      console.log('✅ [INSTANCE-JWT] JWT de instância gerado com sucesso');
+      console.log('📋 [INSTANCE-JWT] Payload:', payload);
+      console.log('🔑 [INSTANCE-JWT] Token:', token.substring(0, 50) + '...');
+      
+      return token;
+    } catch (error: any) {
+      console.error('❌ [INSTANCE-JWT] Erro ao gerar JWT:', error);
+      throw error;
+    }
+  }
+
   // ============ GERAÇÃO LOCAL DE JWT PARA CODECHAT API v1.3.5 ============
   async generateLocalJWT(instanceName: string, customSecret?: string): Promise<string> {
     // SECRET OBRIGATORIAMENTE DEVE SER CONSTANTE DO .ENV DO SERVIDOR

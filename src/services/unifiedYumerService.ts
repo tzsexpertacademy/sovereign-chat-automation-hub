@@ -435,25 +435,84 @@ class UnifiedYumerService {
   async createBusinessInstance(businessId: string, instanceData?: {
     instanceName?: string;
     externalId?: string;
-  }): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
+  }): Promise<{ success: boolean; data?: YumerInstance; error?: string; instanceJWT?: string }> {
     console.log('🔄 Criando instância no business:', businessId, 'com dados:', instanceData);
     
-    return this.makeRequest<YumerInstance>(`/api/v2/business/${businessId}/instance`, {
+    const result = await this.makeRequest<YumerInstance>(`/api/v2/business/${businessId}/instance`, {
       method: 'POST',
       body: instanceData ? JSON.stringify(instanceData) : null
-    }, true, true, businessId); // useRetry=true, useBusinessToken=true
+    }, true, true, businessId);
+    
+    // Se instância criada com sucesso, gerar JWT específico
+    if (result.success && result.data?.instanceId) {
+      try {
+        const { yumerJwtService } = await import('./yumerJwtService');
+        const instanceJWT = await yumerJwtService.generateInstanceJWT(
+          result.data.instanceId, 
+          businessId
+        );
+        
+        // Salvar JWT no Supabase
+        const { whatsappInstancesService } = await import('./whatsappInstancesService');
+        await whatsappInstancesService.saveInstanceJWT(result.data.instanceId, instanceJWT);
+        
+        console.log('✅ [CREATE-INSTANCE] JWT gerado e salvo para instância:', result.data.instanceId);
+        
+        return {
+          ...result,
+          instanceJWT
+        };
+      } catch (jwtError) {
+        console.warn('⚠️ [CREATE-INSTANCE] Erro ao gerar JWT (não bloqueia):', jwtError);
+        return result;
+      }
+    }
+    
+    return result;
   }
 
   async getInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
+    // Buscar JWT específico da instância se não fornecido
+    if (!instanceJWT) {
+      try {
+        const { whatsappInstancesService } = await import('./whatsappInstancesService');
+        const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
+        instanceJWT = instance?.auth_jwt || undefined;
+      } catch (error) {
+        console.warn('⚠️ [GET-INSTANCE] Erro ao buscar JWT da instância:', error);
+      }
+    }
+    
     return this.makeRequest<YumerInstance>(`/api/v2/instance/${instanceId}`, {
-      method: 'GET'
+      method: 'GET',
+      headers: instanceJWT ? {
+        'authorization': `Bearer ${instanceJWT}`
+      } : {}
     }, true, false);
   }
 
   async connectInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; qrCode?: string; error?: string }> {
     try {
+      // Buscar JWT específico da instância se não fornecido
+      if (!instanceJWT) {
+        try {
+          const { whatsappInstancesService } = await import('./whatsappInstancesService');
+          const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
+          instanceJWT = instance?.auth_jwt || undefined;
+          
+          if (!instanceJWT) {
+            console.warn('⚠️ [CONNECT] JWT não encontrado para instância:', instanceId);
+          }
+        } catch (error) {
+          console.warn('⚠️ [CONNECT] Erro ao buscar JWT da instância:', error);
+        }
+      }
+      
       const result = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/connect`, {
-        method: 'GET'
+        method: 'GET',
+        headers: instanceJWT ? {
+          'authorization': `Bearer ${instanceJWT}`
+        } : {}
       }, true, false);
       
       // Capturar QR Code da resposta
