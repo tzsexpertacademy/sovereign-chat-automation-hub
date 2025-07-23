@@ -87,18 +87,18 @@ class UnifiedYumerService {
   private config = serverConfigService.getConfig();
   private requestConfig: RequestConfig = DEFAULT_CONFIG;
 
-  // Headers corrigidos baseados no diagnóstico validado
-  private getAuthHeaders(): Record<string, string> {
-    if (!this.config.globalApiKey) {
+  // Configurações de autenticação multi-nível
+  private getAuthHeaders(instanceJWT?: string): Record<string, string> {
+    if (!this.config.globalApiKey && !instanceJWT) {
       console.warn('🔑 [UNIFIED-YUMER] API Key não configurada');
       return {};
     }
 
-    // CORREÇÃO CORS: Usar apenas Authorization Bearer (como no diagnóstico)
+    const token = instanceJWT || this.config.globalApiKey;
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'authorization': `Bearer ${this.config.globalApiKey}`
+      'authorization': `Bearer ${token}`
     };
   }
 
@@ -106,7 +106,8 @@ class UnifiedYumerService {
   private async makeRequest<T>(
     endpoint: string, 
     options: RequestInit = {},
-    useRetry = true
+    useRetry = true,
+    instanceJWT?: string
   ): Promise<{ success: boolean; data?: T; error?: string }> {
     const url = `${this.config.serverUrl}${endpoint}`;
     let attempt = 0;
@@ -123,7 +124,7 @@ class UnifiedYumerService {
         const response = await fetch(url, {
           ...options,
           headers: {
-            ...this.getAuthHeaders(),
+            ...this.getAuthHeaders(instanceJWT),
             ...options.headers
           },
           signal: controller.signal
@@ -256,10 +257,10 @@ class UnifiedYumerService {
     });
   }
 
-  async connectInstance(instanceId: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
+  async connectInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
     return this.makeRequest<YumerInstance>(`/api/v2/instance/${instanceId}/connect`, {
       method: 'GET'
-    });
+    }, true, instanceJWT);
   }
 
   async deleteInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
@@ -270,16 +271,16 @@ class UnifiedYumerService {
 
   // ==================== CONNECTION & QR CODE ====================
   
-  async getConnectionState(instanceId: string): Promise<{ success: boolean; data?: ConnectionState; error?: string }> {
+  async getConnectionState(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: ConnectionState; error?: string }> {
     return this.makeRequest<ConnectionState>(`/api/v2/instance/${instanceId}/connection-state`, {
       method: 'GET'
-    });
+    }, true, instanceJWT);
   }
 
-  async getQRCode(instanceId: string): Promise<{ success: boolean; data?: QRCodeResponse; error?: string }> {
+  async getQRCode(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: QRCodeResponse; error?: string }> {
     return this.makeRequest<QRCodeResponse>(`/api/v2/instance/${instanceId}/qrcode`, {
       method: 'GET'
-    });
+    }, true, instanceJWT);
   }
 
   // ==================== WEBHOOK MANAGEMENT ====================

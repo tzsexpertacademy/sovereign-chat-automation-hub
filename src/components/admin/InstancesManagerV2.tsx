@@ -267,13 +267,14 @@ const InstancesManagerV2 = () => {
         message: 'Salvando instância no banco...'
       });
 
-      // 4. Salvar no banco
-      await whatsappInstancesService.createInstance({
+      // 4. Salvar no banco com JWT
+      const newInstance = await whatsappInstancesService.createInstance({
         client_id: client.id,
         instance_id: instanceId,
         status: 'disconnected',
         custom_name: customName,
-        business_business_id: client.business_id
+        business_business_id: client.business_id,
+        auth_jwt: createResult.data?.Auth?.jwt || null
       });
 
       updateInstanceState(tempInstanceId, {
@@ -328,8 +329,8 @@ const InstancesManagerV2 = () => {
         message: 'Verificando status atual...'
       });
 
-      // 1. Verificar status atual
-      const stateResult = await unifiedYumerService.getConnectionState(instanceId);
+      // 1. Verificar status atual usando JWT da instância
+      const stateResult = await unifiedYumerService.getConnectionState(instanceId, instance.auth_jwt || undefined);
       if (!stateResult.success) {
         throw new Error(stateResult.error || 'Falha ao obter status');
       }
@@ -351,8 +352,8 @@ const InstancesManagerV2 = () => {
         message: 'Iniciando conexão...'
       });
 
-      // 2. Conectar instância
-      const connectResult = await unifiedYumerService.connectInstance(instanceId);
+      // 2. Conectar instância usando JWT
+      const connectResult = await unifiedYumerService.connectInstance(instanceId, instance.auth_jwt || undefined);
       if (!connectResult.success) {
         throw new Error(connectResult.error || 'Falha ao conectar');
       }
@@ -372,7 +373,7 @@ const InstancesManagerV2 = () => {
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         try {
-          const qrResult = await unifiedYumerService.getQRCode(instanceId);
+          const qrResult = await unifiedYumerService.getQRCode(instanceId, instance.auth_jwt || undefined);
           if (!qrResult.success) continue;
           if (qrResult.data?.qrcode?.code) {
             qrCode = qrResult.data.qrcode.code;

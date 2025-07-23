@@ -80,6 +80,15 @@ export class WhatsAppInstancesService {
     return data;
   }
 
+  async saveInstanceJWT(instanceId: string, authJWT: string): Promise<WhatsAppInstanceData | null> {
+    console.log('🔑 Salvando JWT da instância:', instanceId);
+    
+    return this.updateInstance(instanceId, {
+      auth_jwt: authJWT,
+      updated_at: new Date().toISOString()
+    });
+  }
+
   async updateInstanceById(id: string, updates: WhatsAppInstanceUpdate): Promise<WhatsAppInstanceData | null> {
     console.log('🔄 Atualizando instância por ID:', { id, updates });
     
