@@ -5,6 +5,7 @@ import ClientsManagement from "./ClientsManagement";
 import InstancesManager from "./InstancesManager";
 import PlansManagement from "./PlansManagement";
 import ServerConfiguration from "./ServerConfiguration";
+import ServerConfigurationV2 from "./ServerConfigurationV2";
 import YumerV2Diagnostic from "./YumerV2Diagnostic";
 import SystemLogs from "./SystemLogs";
 import AdvancedTools from "./AdvancedTools";
@@ -18,6 +19,7 @@ const AdminRouter = () => {
       <Route path="/instances" element={<InstancesManager />} />
       <Route path="/plans" element={<PlansManagement />} />
       <Route path="/server-config" element={<ServerConfiguration />} />
+      <Route path="/server-config-v2" element={<ServerConfigurationV2 />} />
       <Route path="/diagnostics" element={<YumerV2Diagnostic />} />
       <Route path="/logs" element={<SystemLogs />} />
       <Route path="/advanced" element={<AdvancedTools />} />
