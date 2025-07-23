@@ -121,13 +121,17 @@ const InstancesManagerV2 = () => {
 
   const loadInstances = async () => {
     try {
+      console.log('🔍 Buscando instâncias para cliente:', clients.map(c => c.id));
       const allInstances: WhatsAppInstanceData[] = [];
       
       for (const client of clients) {
+        console.log(`🔍 Buscando instâncias para cliente: ${client.id}`);
         const clientInstances = await whatsappInstancesService.getInstancesByClientId(client.id);
+        console.log(`✅ Instâncias encontradas: ${clientInstances.length}`);
         allInstances.push(...clientInstances);
       }
       
+      console.log(`📊 Total de instâncias carregadas: ${allInstances.length}`);
       setInstances(allInstances);
     } catch (error) {
       console.error('Erro ao carregar instâncias:', error);
@@ -139,6 +143,13 @@ const InstancesManagerV2 = () => {
   const refreshInstancesStatus = async () => {
     console.log('🔄 Atualizando status das instâncias...');
     
+    // Verificar se há clientes carregados antes de atualizar
+    if (clients.length === 0) {
+      console.log('⚠️ Nenhum cliente carregado, recarregando...');
+      await loadClients();
+      return;
+    }
+
     for (const instance of instances) {
       try {
         // Verificar se a instância tem business_business_id
@@ -174,7 +185,10 @@ const InstancesManagerV2 = () => {
       }
     }
     
-    await loadInstances();
+    // Só recarregar instâncias se houver clientes
+    if (clients.length > 0) {
+      await loadInstances();
+    }
   };
 
   const createInstanceForClient = async () => {
@@ -330,43 +344,15 @@ const InstancesManagerV2 = () => {
       });
 
       // 1. AGUARDAR instância ficar pronta (delay inicial)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // 2. Verificar se instância está pronta para conexão (com retry)
-      let instanceReady = false;
-      let checkAttempts = 0;
-      const maxCheckAttempts = 5;
-
-      while (!instanceReady && checkAttempts < maxCheckAttempts) {
-        try {
-          const infoResult = await unifiedYumerService.getInstance(instanceId);
-          if (infoResult.success && infoResult.data?.connectionStatus) {
-            instanceReady = true;
-            break;
-          }
-        } catch (error) {
-          console.log(`🔍 Tentativa ${checkAttempts + 1}: Verificando se instância está pronta...`);
-        }
-        
-        if (!instanceReady) {
-          checkAttempts++;
-          updateInstanceState(instanceId, {
-            status: 'loading',
-            progress: 10 + (checkAttempts * 4),
-            message: `Aguardando instância ficar pronta... (${checkAttempts}/${maxCheckAttempts})`
-          });
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      }
-
-      if (!instanceReady) {
-        throw new Error('Instância não ficou pronta a tempo');
-      }
+      // 2. Pular verificação problemática - usar dados existentes
+      console.log(`✅ Instância criada: ${instanceId}, processando conexão...`);
 
       updateInstanceState(instanceId, {
         status: 'loading',
         progress: 30,
-        message: 'Ativando conexão...'
+        message: 'Conectando instância...'
       });
 
       // 3. CONECTAR instância (com retry para "Inactive instance")

@@ -148,10 +148,22 @@ class UnifiedYumerService {
           }
         }
 
-        const data = await response.json();
-        console.log(`✅ [UNIFIED-YUMER] Resposta recebida (${attempt}/${this.requestConfig.retries}):`, data);
+        // Verificar se a resposta tem conteúdo antes de tentar fazer parse
+        const responseText = await response.text();
         
-        return { success: true, data };
+        if (!responseText || responseText.trim() === '') {
+          console.log(`⚠️ [UNIFIED-YUMER] Resposta vazia recebida (${attempt}/${this.requestConfig.retries})`);
+          return { success: true, data: null };
+        }
+
+        try {
+          const data = JSON.parse(responseText);
+          console.log(`✅ [UNIFIED-YUMER] Resposta recebida (${attempt}/${this.requestConfig.retries}):`, data);
+          return { success: true, data };
+        } catch (parseError) {
+          console.error(`❌ [UNIFIED-YUMER] Erro ao fazer parse do JSON:`, responseText);
+          throw new Error(`Resposta inválida do servidor: ${responseText.substring(0, 100)}`);
+        }
 
       } catch (error: any) {
         console.error(`❌ [UNIFIED-YUMER] Erro na tentativa ${attempt}:`, error);
@@ -251,10 +263,10 @@ class UnifiedYumerService {
     });
   }
 
-  async getInstance(instanceId: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
+  async getInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
     return this.makeRequest<YumerInstance>(`/api/v2/instance/${instanceId}`, {
       method: 'GET'
-    });
+    }, true, instanceJWT);
   }
 
   async connectInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
