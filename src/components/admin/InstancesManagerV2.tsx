@@ -326,13 +326,82 @@ const InstancesManagerV2 = () => {
       updateInstanceState(instanceId, {
         status: 'loading',
         progress: 10,
-        message: 'Ativando instância...'
+        message: 'Aguardando instância ficar pronta...'
       });
 
-      // 1. PRIMEIRO: Conectar/ativar instância usando JWT
-      const connectResult = await unifiedYumerService.connectInstance(instanceId, instance.auth_jwt || undefined);
-      if (!connectResult.success) {
-        throw new Error(connectResult.error || 'Falha ao ativar instância');
+      // 1. AGUARDAR instância ficar pronta (delay inicial)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // 2. Verificar se instância está pronta para conexão (com retry)
+      let instanceReady = false;
+      let checkAttempts = 0;
+      const maxCheckAttempts = 5;
+
+      while (!instanceReady && checkAttempts < maxCheckAttempts) {
+        try {
+          const infoResult = await unifiedYumerService.getInstance(instanceId);
+          if (infoResult.success && infoResult.data?.connectionStatus) {
+            instanceReady = true;
+            break;
+          }
+        } catch (error) {
+          console.log(`🔍 Tentativa ${checkAttempts + 1}: Verificando se instância está pronta...`);
+        }
+        
+        if (!instanceReady) {
+          checkAttempts++;
+          updateInstanceState(instanceId, {
+            status: 'loading',
+            progress: 10 + (checkAttempts * 4),
+            message: `Aguardando instância ficar pronta... (${checkAttempts}/${maxCheckAttempts})`
+          });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      if (!instanceReady) {
+        throw new Error('Instância não ficou pronta a tempo');
+      }
+
+      updateInstanceState(instanceId, {
+        status: 'loading',
+        progress: 30,
+        message: 'Ativando conexão...'
+      });
+
+      // 3. CONECTAR instância (com retry para "Inactive instance")
+      let connectSuccess = false;
+      let connectAttempts = 0;
+      const maxConnectAttempts = 3;
+
+      while (!connectSuccess && connectAttempts < maxConnectAttempts) {
+        try {
+          const connectResult = await unifiedYumerService.connectInstance(instanceId, instance.auth_jwt || undefined);
+          if (connectResult.success) {
+            connectSuccess = true;
+            break;
+          } else if (connectResult.error?.includes('Inactive instance')) {
+            console.log(`🔄 Instância ainda inativa, tentativa ${connectAttempts + 1}/${maxConnectAttempts}`);
+            connectAttempts++;
+            if (connectAttempts < maxConnectAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+          } else {
+            throw new Error(connectResult.error || 'Falha ao ativar instância');
+          }
+        } catch (error: any) {
+          if (error.message?.includes('Inactive instance') && connectAttempts < maxConnectAttempts - 1) {
+            console.log(`🔄 Erro "Inactive instance", tentativa ${connectAttempts + 1}/${maxConnectAttempts}`);
+            connectAttempts++;
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      if (!connectSuccess) {
+        throw new Error('Falha ao conectar após múltiplas tentativas');
       }
 
       updateInstanceState(instanceId, {
