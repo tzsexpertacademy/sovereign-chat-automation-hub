@@ -64,16 +64,16 @@ const YumerV2Diagnostic = () => {
   const [diagnosticState, setDiagnosticState] = useState<DiagnosticState>({});
   const { toast } = useToast();
 
-  // ============ ENDPOINTS CORRIGIDOS PARA API v2.2.1 ============
+  // ============ ENDPOINTS CORRIGIDOS PARA API CodeChat v2.2.1 ============
   const endpoints: ApiEndpoint[] = [
-    // 🔧 Básicos (não precisam de autenticação)
+    // 🔧 Básicos (não precisam de autenticação - públicos)
     { 
       name: 'API Documentation', 
       url: '/docs', 
       method: 'GET', 
       category: 'docs',
       description: 'Documentação Swagger da API',
-      tokenType: 'admin'
+      tokenType: 'admin' // Será ignorado para endpoints públicos
     },
     { 
       name: 'Swagger/OpenAPI', 
@@ -81,7 +81,7 @@ const YumerV2Diagnostic = () => {
       method: 'GET', 
       category: 'docs',
       description: 'Especificação OpenAPI completa',
-      tokenType: 'admin'
+      tokenType: 'admin' // Será ignorado para endpoints públicos
     },
     
     // 🏢 Admin Controller - ADMIN_TOKEN
@@ -314,21 +314,21 @@ const YumerV2Diagnostic = () => {
     }
   };
 
-  // Obter header de autenticação correto
-  const getAuthHeaders = (tokenType: 'admin' | 'business' | 'instance'): Record<string, string> => {
-    const token = getAuthToken(tokenType);
+  // Obter header de autenticação correto baseado na documentação CodeChat v2.2.1
+  const getAuthHeaders = (endpoint: ApiEndpoint): Record<string, string> => {
+    // Endpoints públicos não precisam de autenticação
+    if (endpoint.category === 'docs') {
+      return {};
+    }
+    
+    const token = getAuthToken(endpoint.tokenType);
     
     if (!token) {
       return {};
     }
 
-    // Para Admin endpoints, usar header 'apikey'
-    if (tokenType === 'admin') {
-      return { 'apikey': token };
-    }
-    
-    // Para Business/Instance endpoints, usar Authorization Bearer
-    return { 'Authorization': `Bearer ${token}` };
+    // Todos os endpoints autenticados usam Authorization Bearer
+    return { 'authorization': `Bearer ${token}` };
   };
 
   // Substituir IDs dinâmicos nas URLs
@@ -383,7 +383,7 @@ const YumerV2Diagnostic = () => {
 
     try {
       const url = buildEndpointUrl(endpoint);
-      const authHeaders = getAuthHeaders(endpoint.tokenType);
+      const authHeaders = getAuthHeaders(endpoint);
       
       console.log(`🧪 [API-TEST-v2.2.1] ${endpoint.method} ${url}`);
       console.log(`🔑 [API-TEST-v2.2.1] Token Type: ${endpoint.tokenType}`, {
@@ -394,7 +394,6 @@ const YumerV2Diagnostic = () => {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Origin': window.location.origin,
         ...authHeaders
       };
 
