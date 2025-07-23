@@ -462,6 +462,133 @@ class CodeChatV2ApiService {
     });
   }
 
+  // ============ BUSINESS CATALOG ============
+  async getBusinessCollections(instanceJWT: string, instanceId: string) {
+    return this.makeRequest(`api/v2/business/${instanceId}/catalog/collections`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` }
+    });
+  }
+
+  async createBusinessCollection(instanceJWT: string, instanceId: string, data: {
+    name: string;
+    description?: string;
+    image_url?: string;
+  }) {
+    return this.makeRequest(`api/v2/business/${instanceId}/catalog/collections`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateBusinessCollection(instanceJWT: string, instanceId: string, collectionId: string, data: {
+    name?: string;
+    description?: string;
+    image_url?: string;
+    is_active?: boolean;
+  }) {
+    return this.makeRequest(`api/v2/business/${instanceId}/catalog/collections/${collectionId}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteBusinessCollection(instanceJWT: string, instanceId: string, collectionId: string) {
+    return this.makeRequest(`api/v2/business/${instanceId}/catalog/collections/${collectionId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` }
+    });
+  }
+
+  async getBusinessProducts(instanceJWT: string, instanceId: string, collectionId?: string) {
+    const endpoint = collectionId 
+      ? `api/v2/business/${instanceId}/catalog/products?collection_id=${collectionId}`
+      : `api/v2/business/${instanceId}/catalog/products`;
+    
+    return this.makeRequest(endpoint, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` }
+    });
+  }
+
+  async createBusinessProduct(instanceJWT: string, instanceId: string, data: {
+    collection_id?: string;
+    name: string;
+    description?: string;
+    price?: number;
+    currency?: string;
+    sku?: string;
+    stock_quantity?: number;
+    images?: string[];
+    metadata?: any;
+  }) {
+    return this.makeRequest(`api/v2/business/${instanceId}/catalog/products`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateBusinessProduct(instanceJWT: string, instanceId: string, productId: string, data: {
+    collection_id?: string;
+    name?: string;
+    description?: string;
+    price?: number;
+    currency?: string;
+    sku?: string;
+    stock_quantity?: number;
+    images?: string[];
+    metadata?: any;
+    is_active?: boolean;
+  }) {
+    return this.makeRequest(`api/v2/business/${instanceId}/catalog/products/${productId}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async deleteBusinessProduct(instanceJWT: string, instanceId: string, productId: string) {
+    return this.makeRequest(`api/v2/business/${instanceId}/catalog/products/${productId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` }
+    });
+  }
+
+  async sendCatalogMessage(instanceJWT: string, instanceId: string, chatId: string, data: {
+    header?: string;
+    body: string;
+    footer?: string;
+    action_text?: string;
+  }) {
+    return this.makeRequest(`api/v2/instance/${instanceId}/message/catalog`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` },
+      body: JSON.stringify({
+        number: chatId,
+        catalogMessage: data
+      })
+    });
+  }
+
+  async sendProductMessage(instanceJWT: string, instanceId: string, chatId: string, data: {
+    product_id: string;
+    header?: string;
+    body: string;
+    footer?: string;
+  }) {
+    return this.makeRequest(`api/v2/instance/${instanceId}/message/product`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${instanceJWT}` },
+      body: JSON.stringify({
+        number: chatId,
+        productMessage: data
+      })
+    });
+  }
+
   // ============ UTILITIES ============
   async checkWhatsAppNumber(instanceJWT: string, instanceId: string, numbers: string[]) {
     return this.makeRequest(`api/v2/instance/${instanceId}/check`, {

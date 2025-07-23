@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { useCodeChatV2Complete } from '@/hooks/useCodeChatV2Complete';
+import { useBusinessCatalog } from '@/hooks/useBusinessCatalog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +28,15 @@ import {
   CheckCircle,
   XCircle,
   MessageCircle,
-  UserPlus
+  UserPlus,
+  ShoppingBag,
+  Package,
+  FolderOpen,
+  Tag,
+  DollarSign,
+  Plus,
+  Edit,
+  Trash2
 } from 'lucide-react';
 
 interface Props {
@@ -36,10 +45,21 @@ interface Props {
 
 const CodeChatV2CompleteManager: React.FC<Props> = ({ clientId }) => {
   const manager = useCodeChatV2Complete(clientId);
+  const catalog = useBusinessCatalog();
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>('');
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('');
   const [newMessage, setNewMessage] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
+  
+  // Estados para o catálogo
+  const [showCreateCollection, setShowCreateCollection] = useState(false);
+  const [showCreateProduct, setShowCreateProduct] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [newCollectionDescription, setNewCollectionDescription] = useState('');
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductDescription, setNewProductDescription] = useState('');
+  const [newProductPrice, setNewProductPrice] = useState('');
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
 
   const selectedBusiness = manager.businesses.find(b => b.id === selectedBusinessId);
   const selectedInstance = selectedBusiness?.instances.find(i => i.instanceId === selectedInstanceId);
@@ -142,10 +162,11 @@ const CodeChatV2CompleteManager: React.FC<Props> = ({ clientId }) => {
           </div>
 
           <Tabs defaultValue="businesses" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="businesses">Businesses</TabsTrigger>
               <TabsTrigger value="chats">Chats</TabsTrigger>
               <TabsTrigger value="contacts">Contatos</TabsTrigger>
+              <TabsTrigger value="catalog">Catálogo</TabsTrigger>
               <TabsTrigger value="messages">Mensagens</TabsTrigger>
               <TabsTrigger value="settings">Configurações</TabsTrigger>
             </TabsList>
@@ -377,6 +398,200 @@ const CodeChatV2CompleteManager: React.FC<Props> = ({ clientId }) => {
                           </div>
                         </div>
                       )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Tab Catálogo */}
+            <TabsContent value="catalog" className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Catálogo de Produtos</h3>
+                <div className="flex gap-2">
+                  <Dialog open={showCreateCollection} onOpenChange={setShowCreateCollection}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline">
+                        <FolderOpen className="h-4 w-4 mr-2" />
+                        Nova Coleção
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Criar Nova Coleção</DialogTitle>
+                        <DialogDescription>Crie uma nova coleção para organizar seus produtos</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div>
+                          <Label>Nome da Coleção</Label>
+                          <Input 
+                            value={newCollectionName}
+                            onChange={(e) => setNewCollectionName(e.target.value)}
+                            placeholder="Ex: Eletrônicos"
+                          />
+                        </div>
+                        <div>
+                          <Label>Descrição</Label>
+                          <Textarea 
+                            value={newCollectionDescription}
+                            onChange={(e) => setNewCollectionDescription(e.target.value)}
+                            placeholder="Descrição da coleção..."
+                          />
+                        </div>
+                        <Button 
+                          onClick={async () => {
+                            if (selectedBusinessId && newCollectionName) {
+                              await catalog.createCollection(selectedBusinessId, {
+                                name: newCollectionName,
+                                description: newCollectionDescription
+                              });
+                              setNewCollectionName('');
+                              setNewCollectionDescription('');
+                              setShowCreateCollection(false);
+                              catalog.loadCollections(selectedBusinessId);
+                            }
+                          }}
+                          disabled={!newCollectionName}
+                        >
+                          Criar Coleção
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog open={showCreateProduct} onOpenChange={setShowCreateProduct}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Package className="h-4 w-4 mr-2" />
+                        Novo Produto
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Criar Novo Produto</DialogTitle>
+                        <DialogDescription>Adicione um novo produto ao catálogo</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div>
+                          <Label>Nome do Produto</Label>
+                          <Input 
+                            value={newProductName}
+                            onChange={(e) => setNewProductName(e.target.value)}
+                            placeholder="Ex: iPhone 15"
+                          />
+                        </div>
+                        <div>
+                          <Label>Descrição</Label>
+                          <Textarea 
+                            value={newProductDescription}
+                            onChange={(e) => setNewProductDescription(e.target.value)}
+                            placeholder="Descrição do produto..."
+                          />
+                        </div>
+                        <div>
+                          <Label>Preço (R$)</Label>
+                          <Input 
+                            type="number"
+                            value={newProductPrice}
+                            onChange={(e) => setNewProductPrice(e.target.value)}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <Button 
+                          onClick={async () => {
+                            if (selectedBusinessId && newProductName) {
+                              await catalog.createProduct(selectedBusinessId, {
+                                name: newProductName,
+                                description: newProductDescription,
+                                price: parseFloat(newProductPrice) || 0,
+                                collection_id: selectedCollectionId || undefined
+                              });
+                              setNewProductName('');
+                              setNewProductDescription('');
+                              setNewProductPrice('');
+                              setShowCreateProduct(false);
+                              catalog.loadProducts(selectedBusinessId);
+                            }
+                          }}
+                          disabled={!newProductName}
+                        >
+                          Criar Produto
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+
+              {!selectedBusinessId ? (
+                <Card>
+                  <CardContent className="p-6 text-center">
+                    <ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">Selecione um business para gerenciar o catálogo</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Coleções */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <FolderOpen className="h-5 w-5" />
+                        Coleções ({catalog.collections.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-64">
+                        <div className="space-y-2">
+                          {catalog.collections.map((collection) => (
+                            <div key={collection.id} className="p-3 border rounded-lg">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium">{collection.name}</p>
+                                  <p className="text-sm text-muted-foreground">{collection.description}</p>
+                                </div>
+                                <Badge variant={collection.is_active ? "default" : "secondary"}>
+                                  {collection.is_active ? "Ativo" : "Inativo"}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+
+                  {/* Produtos */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Package className="h-5 w-5" />
+                        Produtos ({catalog.products.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-64">
+                        <div className="space-y-2">
+                          {catalog.products.map((product) => (
+                            <div key={product.id} className="p-3 border rounded-lg">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium">{product.name}</p>
+                                  <p className="text-sm text-muted-foreground">{product.description}</p>
+                                  {product.price && (
+                                    <p className="text-sm font-medium text-green-600">
+                                      R$ {product.price.toFixed(2)}
+                                    </p>
+                                  )}
+                                </div>
+                                <Badge variant={product.is_active ? "default" : "secondary"}>
+                                  {product.is_active ? "Ativo" : "Inativo"}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
                     </CardContent>
                   </Card>
                 </div>
