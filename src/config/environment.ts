@@ -1,5 +1,17 @@
 
 // Environment Configuration for CodeChat API v2.2.1
+import { domainDetector } from '@/utils/domainDetector';
+
+// Detectar domínio atual automaticamente
+const currentDomainInfo = typeof window !== 'undefined' ? domainDetector.detectCurrentDomain() : {
+  current: 'https://id-preview--19c6b746-780c-41f1-97e3-86e1c8f2c488.lovable.app',
+  corsOrigins: [
+    'https://id-preview--19c6b746-780c-41f1-97e3-86e1c8f2c488.lovable.app',
+    'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
+    'https://ymygyagbvbsdfkduxmgu.supabase.co'
+  ]
+};
+
 export const environment = {
   // API Configuration - CodeChat v2.2.1
   api: {
@@ -25,29 +37,34 @@ export const environment = {
     sessionSecret: 'M^r6Z!Lp9vAqTrXc@kYwFh#D2zGjTbUq'
   },
   
-  // Frontend Integration
+  // Frontend Integration - CORS dinâmico baseado no domínio atual
   frontend: {
-    lovableDomain: 'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
+    lovableDomain: currentDomainInfo.current,
+    lovableDomainFallback: 'https://19c6b746-780c-41f1-97e3-86e1c8f2c488.lovableproject.com',
     supabaseUrl: 'https://ymygyagbvbsdfkduxmgu.supabase.co',
-    supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI'
+    supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlteWd5YWdidmJzZGZrZHV4bWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTQxNjksImV4cCI6MjA2NjAzMDE2OX0.DNbFrX49olS0EtLFe8aj-hBakaY5e9EJE6Qoy7hYjCI',
+    corsOrigins: currentDomainInfo.corsOrigins
   },
   
-  // Webhooks Configuration - CodeChat API v2.2.1
+  // Webhooks Configuration - CodeChat API v2.2.1 - URLs corretas
   webhooks: {
     qrCodeWebhook: {
       enabled: true,
-      url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-v2-webhook',
+      url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook',
+      name: 'QR Code Updates',
       events: ['qrcodeUpdated', 'qr.updated', 'QR_CODE_UPDATED']
     },
     messageWebhook: {
       enabled: true,
-      url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-v2-webhook',
-      events: ['messagesUpsert', 'sendMessage']
+      url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook',
+      name: 'Message Processing',
+      events: ['messagesUpsert', 'sendMessage', 'messages.upsert']
     },
     statusWebhook: {
       enabled: true,
-      url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-v2-webhook',
-      events: ['connectionUpdated', 'statusInstance']
+      url: 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook',
+      name: 'Instance Status',
+      events: ['connectionUpdated', 'statusInstance', 'connection.update']
     }
   },
   

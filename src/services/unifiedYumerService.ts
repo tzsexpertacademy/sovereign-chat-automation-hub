@@ -470,6 +470,7 @@ class UnifiedYumerService {
   
   async configureWebhook(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
     const webhookConfig = {
+      name: `Instance ${instanceId} Webhook`, // Nome obrigatório 
       enabled: true,
       url: this.config.adminWebhooks.messageWebhook.url,
       events: {

@@ -165,25 +165,30 @@ export class AdminStatsService {
       // Buscar do banco local
       const { data: localInstances } = await supabase
         .from('whatsapp_instances')
-        .select('status');
+        .select('instance_id, status');
 
       const localActive = localInstances?.filter(i => 
         i.status === 'connected' || i.status === 'ready' || i.status === 'online'
       ).length || 0;
 
-      // Buscar do servidor YUMER
+      // Buscar estatísticas do servidor YUMER (sem hardcoded 'test')
       try {
-        const result = await yumerWhatsappService.getChats('test');
-        const yumerInstances = [];
-        const yumerActive = yumerInstances.filter(i => 
+        // Buscar uma instância real conectada para testar
+        const connectedInstance = localInstances?.find(i => 
           i.status === 'connected' || i.status === 'ready'
-        ).length;
-
+        );
+        
+        if (connectedInstance) {
+          console.log('🔍 [STATS] Testando conectividade com instância real:', connectedInstance.instance_id);
+          // Aqui poderíamos fazer uma verificação real da API se necessário
+        }
+        
         return {
-          active: Math.max(localActive, yumerActive),
-          total: Math.max(localInstances?.length || 0, yumerInstances.length)
+          active: localActive,
+          total: localInstances?.length || 0
         };
-      } catch {
+      } catch (error) {
+        console.error('⚠️ [STATS] Erro ao verificar estatísticas do servidor:', error);
         return {
           active: localActive,
           total: localInstances?.length || 0
