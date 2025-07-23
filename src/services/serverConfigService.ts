@@ -98,19 +98,19 @@ class ServerConfigService {
 
   private getDefaultConfig(): ServerConfig {
     return {
-      // Primary Backend - CodeChat API v2.1.3
-      serverUrl: 'https://yumer.yumerflow.app:8083',
-      host: 'yumer.yumerflow.app',
-      port: 8083,
+      // Primary Backend - CodeChat API v2.1.3 - NOVO SERVIDOR
+      serverUrl: 'https://api.yumer.com.br',
+      host: 'api.yumer.com.br',
+      port: 443,
       protocol: 'https',
-      basePath: '',
+      basePath: '/api/v2',
       apiVersion: '2.1.3',
       
-      // Authentication - v2.1.3 Tokens
-      adminToken: 'df1afd525fs5f15df1afd525fs5f15',
-      globalApiKey: 'df1afd525fs5f15df1afd525fs5f15',
-      jwtSecret: 'sfdgs8152g5s1s5sfdgs8152g5s1s5',
-      sessionSecret: '1af6454dg5afdg1af6454dg5afdg',
+      // Authentication - v2.1.3 Tokens CORRETOS DO SERVIDOR
+      adminToken: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
+      globalApiKey: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
+      jwtSecret: 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe',
+      sessionSecret: 'M^r6Z!Lp9vAqTrXc@kYwFh#D2zGjTbUq',
       requestTimeout: 15000,
       retryAttempts: 3,
       
@@ -244,11 +244,13 @@ class ServerConfigService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.config.requestTimeout);
       
+      // Test endpoint for CodeChat API v2.1.3
       const response = await fetch(`${this.config.serverUrl}/health`, {
         method: 'GET',
         signal: controller.signal,
         headers: {
-          'Authorization': `Bearer ${this.config.adminToken}`
+          'Authorization': `Bearer ${this.config.adminToken}`,
+          'Content-Type': 'application/json'
         }
       });
       

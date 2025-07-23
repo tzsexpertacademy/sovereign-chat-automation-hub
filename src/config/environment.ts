@@ -2,18 +2,18 @@
 // Dynamic Environment Configuration using ServerConfigService
 import { serverConfigService } from '@/services/serverConfigService';
 
-console.log('🚀 Configurando ambiente dinâmico YUMER Backend...');
+console.log('🚀 Configurando ambiente dinâmico YUMER Backend CodeChat API v2.1.3...');
 
 // Get current configuration from service
 const config = serverConfigService.getConfig();
 
-// Dynamic URLs based on current configuration
-export const SERVER_URL = config.serverUrl;
-export const API_BASE_URL = config.serverUrl + config.basePath;
+// Dynamic URLs based on current configuration - NOVO SERVIDOR
+export const SERVER_URL = config.serverUrl; // https://api.yumer.com.br
+export const API_BASE_URL = config.serverUrl + config.basePath; // https://api.yumer.com.br/api/v2
 export const SOCKET_URL = serverConfigService.getWebSocketUrl();
 export const HTTPS_SERVER_URL = config.serverUrl;
 export const YUMER_SERVER_URL = config.serverUrl;
-export const YUMER_API_URL = config.serverUrl;
+export const YUMER_API_URL = config.serverUrl + config.basePath;
 
 // Detect environment dynamically
 const isProduction = config.environment === 'production';
@@ -59,13 +59,13 @@ export const getServerConfig = () => {
     protocol: currentConfig.protocol + ':',
     serverUrl: currentConfig.serverUrl,
     requiresHttps: currentConfig.sslRequired,
-    nginxProxy: false,
+    nginxProxy: true, // CloudPanel Nginx configurado
     corsEnabled: currentConfig.corsEnabled,
     sslRequired: currentConfig.sslRequired,
     yumerServer: currentConfig.host + ':' + currentConfig.port,
     yumerPort: currentConfig.port,
     directConnection: true,
-    backendType: 'yumer',
+    backendType: 'codechat-v2',
     hasApiKey: hasYumerGlobalApiKey(),
     getApiKey: getYumerGlobalApiKey,
     
@@ -83,13 +83,18 @@ export const getServerConfig = () => {
     corsOrigins: currentConfig.corsOrigins,
     
     // Webhooks for admin
-    adminWebhooks: currentConfig.adminWebhooks
+    adminWebhooks: currentConfig.adminWebhooks,
+    
+    // CodeChat API v2.1.3 específico
+    swaggerDocs: currentConfig.serverUrl + '/docs',
+    apiVersion: currentConfig.apiVersion,
+    basePath: currentConfig.basePath
   };
 };
 
 // Subscribe to configuration changes and update global variables
 serverConfigService.subscribe((newConfig) => {
-  console.log('🔄 Configuração do servidor atualizada:', newConfig);
+  console.log('🔄 Configuração do servidor CodeChat v2.1.3 atualizada:', newConfig);
   
   // Update global variables (for compatibility with existing code)
   (window as any).YUMER_CONFIG = {
@@ -111,16 +116,17 @@ serverConfigService.subscribe((newConfig) => {
   config: config
 };
 
-console.log('✅ Configuração YUMER Backend Dinâmica:', {
+console.log('✅ Configuração YUMER Backend CodeChat API v2.1.3:', {
   SERVER_URL,
   API_BASE_URL,
   SOCKET_URL,
   isHttps: config.protocol === 'https',
-  backendType: 'yumer',
+  backendType: 'codechat-v2',
   environment: config.environment,
   configurable: true,
   adminConfigurable: true,
-  note: 'Sistema 100% configurável via Admin Panel'
+  swaggerDocs: config.serverUrl + '/docs',
+  note: 'Sistema 100% configurável via Admin Panel - CodeChat API v2.1.3'
 });
 
 // Export compatibility functions for existing code
