@@ -6,13 +6,9 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminHeader from "@/components/admin/AdminHeader";
 import AdminOverview from "@/components/admin/AdminOverview";
 import ClientsManagement from "@/components/admin/ClientsManagement";
-import InstancesMonitor from "@/components/admin/InstancesMonitor";
 import PlansManagement from "@/components/admin/PlansManagement";
 import SystemLogsModern from "@/components/admin/SystemLogsModern";
-import AdvancedTools from "@/components/admin/AdvancedTools";
-import YumerApiKeyConfig from "@/components/admin/YumerApiKeyConfig";
-import ConnectionDiagnostics from "@/components/admin/ConnectionDiagnostics";
-import ServerConfiguration from "@/components/admin/ServerConfiguration";
+import YumerApiManager from "@/components/admin/YumerApiManager";
 
 const AdminDashboard = () => {
   return (
