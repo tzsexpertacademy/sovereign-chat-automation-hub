@@ -370,100 +370,61 @@ const InstancesManagerV2 = () => {
     try {
       updateInstanceState(instanceId, {
         status: 'loading',
-        progress: 20,
-        message: 'Iniciando conexão...'
+        progress: 30,
+        message: 'Conectando instância...'
       });
 
-      // Simplesmente conectar e aguardar webhook
+      // Conectar e capturar QR Code diretamente
       const connectResult = await unifiedYumerService.connectInstance(instanceId);
       
-      if (connectResult.success) {
+      if (connectResult.success && connectResult.qrCode) {
+        // QR Code recebido imediatamente!
         updateInstanceState(instanceId, {
           status: 'loading',
-          progress: 60,
-          message: 'Aguardando QR Code via webhook...'
+          progress: 80,
+          message: 'Salvando QR Code...'
         });
         
-        // Aguardar QR Code via webhook (timeout 90s)
-        let waitTime = 0;
-        const maxWait = 90000; // 90 segundos
-        const checkInterval = 2000; // 2 segundos
+        // Salvar QR Code no banco
+        const { supabase } = await import('@/integrations/supabase/client');
+        await supabase
+          .from('whatsapp_instances')
+          .update({
+            qr_code: connectResult.qrCode,
+            has_qr_code: true,
+            qr_expires_at: new Date(Date.now() + 60000).toISOString(), // 1 minuto
+            status: 'qr_ready'
+          })
+          .eq('instance_id', instanceId);
+
+        updateInstanceState(instanceId, {
+          status: 'success',
+          progress: 100,
+          message: 'QR Code disponível!',
+          data: { qrCode: connectResult.qrCode }
+        });
         
-        const checkForQR = async (): Promise<boolean> => {
-          try {
-            const { supabase } = await import('@/integrations/supabase/client');
-            const { data } = await supabase
-              .from('whatsapp_instances')
-              .select('qr_code, has_qr_code, status')
-              .eq('instance_id', instanceId)
-              .single();
-            
-            if (data?.has_qr_code && data.qr_code) {
-              updateInstanceState(instanceId, {
-                status: 'success',
-                progress: 100,
-                message: 'QR Code recebido!',
-                data: { qrCode: data.qr_code }
-              });
-              
-              toast({ 
-                title: "QR Code Disponível", 
-                description: "QR Code recebido via webhook!" 
-              });
-              return true;
-            }
-            
-            if (data?.status === 'connected') {
-              updateInstanceState(instanceId, {
-                status: 'success',
-                progress: 100,
-                message: 'Instância conectada!'
-              });
-              
-              toast({ 
-                title: "Conectado", 
-                description: "Instância conectada com sucesso!" 
-              });
-              return true;
-            }
-            
-            return false;
-          } catch (error) {
-            console.warn('Erro ao verificar QR:', error);
-            return false;
-          }
-        };
+        toast({ 
+          title: "QR Code Disponível", 
+          description: "QR Code obtido instantaneamente!" 
+        });
         
-        const waitForQR = async () => {
-          while (waitTime < maxWait) {
-            if (await checkForQR()) return;
-            
-            await new Promise(resolve => setTimeout(resolve, checkInterval));
-            waitTime += checkInterval;
-            
-            const progress = Math.min(60 + (waitTime / maxWait) * 30, 90);
-            updateInstanceState(instanceId, {
-              status: 'loading',
-              progress,
-              message: `Aguardando QR Code... (${Math.floor((maxWait - waitTime) / 1000)}s)`
-            });
-          }
-          
-          // Timeout
-          updateInstanceState(instanceId, {
-            status: 'error',
-            progress: 0,
-            message: 'Timeout: QR Code não recebido'
-          });
-          
-          toast({ 
-            title: "Timeout", 
-            description: "QR Code não foi recebido em 90 segundos", 
-            variant: "destructive" 
-          });
-        };
+        await loadInstances();
         
-        await waitForQR();
+      } else if (connectResult.success) {
+        // Conexão realizada mas sem QR (talvez já conectado)
+        updateInstanceState(instanceId, {
+          status: 'success',
+          progress: 100,
+          message: 'Instância conectada!'
+        });
+        
+        toast({ 
+          title: "Conectado", 
+          description: "Instância já está conectada!" 
+        });
+        
+        await loadInstances();
         
       } else {
         throw new Error(connectResult.error || 'Falha na conexão');

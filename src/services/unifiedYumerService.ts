@@ -450,10 +450,27 @@ class UnifiedYumerService {
     }, true, false);
   }
 
-  async connectInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
-    return this.makeRequest<YumerInstance>(`/api/v2/instance/${instanceId}/connect`, {
-      method: 'GET'
-    }, true, false);
+  async connectInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; qrCode?: string; error?: string }> {
+    try {
+      const result = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/connect`, {
+        method: 'GET'
+      }, true, false);
+      
+      // Capturar QR Code da resposta
+      const qrCode = result.data?.base64 || result.data?.code;
+      
+      return {
+        success: result.success,
+        data: result.data,
+        qrCode: qrCode,
+        error: result.error
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 
   async deleteInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
