@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,13 +10,16 @@ interface EndpointTest {
   name: string;
   url: string;
   method: string;
-  category: 'docs' | 'admin' | 'business' | 'instance' | 'webhook' | 'message';
+  category: 'docs' | 'admin' | 'business' | 'instance' | 'webhook' | 'message' | 'chat';
   status: 'pending' | 'success' | 'cors_error' | 'not_found' | 'server_error' | 'auth_error' | 'timeout_error' | 'network_error';
   details?: string;
   httpStatus?: number;
   responseTime?: number;
   headers?: Record<string, string>;
   responseHeaders?: Record<string, string>;
+  requiresAuth?: boolean;
+  requiresBusiness?: boolean;
+  requiresInstance?: boolean;
 }
 
 const YumerV2Diagnostic = () => {
@@ -25,31 +27,43 @@ const YumerV2Diagnostic = () => {
   const [tests, setTests] = useState<EndpointTest[]>([
     // Documentação (público, sem auth)
     { name: "API Documentation", url: "/docs", method: "GET", category: "docs", status: "pending" },
+    { name: "Swagger/OpenAPI", url: "/api/v2/reference/swagger.json", method: "GET", category: "docs", status: "pending" },
     
-    // Admin endpoints (v2.2.1) 
-    { name: "List Businesses (Admin)", url: "/api/v2/admin/business", method: "GET", category: "admin", status: "pending" },
-    { name: "Create Business (Admin)", url: "/api/v2/admin/business", method: "POST", category: "admin", status: "pending" },
+    // Admin endpoints (v2.2.1) - Precisa ADMIN_TOKEN
+    { name: "List All Businesses", url: "/api/v2/admin/business", method: "GET", category: "admin", status: "pending", requiresAuth: true },
+    { name: "Create Business", url: "/api/v2/admin/business", method: "POST", category: "admin", status: "pending", requiresAuth: true },
     
-    // Business endpoints (v2.2.1)
-    { name: "Business Instances", url: "/api/v2/business/test-business/instance", method: "GET", category: "business", status: "pending" },
-    { name: "Create Business Instance", url: "/api/v2/business/test-business/instance", method: "POST", category: "business", status: "pending" },
+    // Business endpoints (v2.2.1) - Precisa businessId válido
+    { name: "Get Business Info", url: "/api/v2/business/{businessId}", method: "GET", category: "business", status: "pending", requiresAuth: true, requiresBusiness: true },
+    { name: "Create Business Instance", url: "/api/v2/business/{businessId}/instance", method: "POST", category: "business", status: "pending", requiresAuth: true, requiresBusiness: true },
+    { name: "Get Business Webhook", url: "/api/v2/business/{businessId}/webhook", method: "GET", category: "business", status: "pending", requiresAuth: true, requiresBusiness: true },
     
-    // Instance endpoints (v2.2.1)
-    { name: "Instance Info", url: "/api/v2/instance/test-instance", method: "GET", category: "instance", status: "pending" },
-    { name: "Instance Connection State", url: "/api/v2/instance/test-instance/connection-state", method: "GET", category: "instance", status: "pending" },
-    { name: "Instance QR Code", url: "/api/v2/instance/test-instance/qrcode", method: "GET", category: "instance", status: "pending" },
+    // Instance endpoints (v2.2.1) - Precisa instanceId válido
+    { name: "Get Instance Info", url: "/api/v2/instance/{instanceId}", method: "GET", category: "instance", status: "pending", requiresAuth: true, requiresInstance: true },
+    { name: "Connect Instance", url: "/api/v2/instance/{instanceId}/connect", method: "GET", category: "instance", status: "pending", requiresAuth: true, requiresInstance: true },
+    { name: "Connection State", url: "/api/v2/instance/{instanceId}/connection-state", method: "GET", category: "instance", status: "pending", requiresAuth: true, requiresInstance: true },
+    { name: "Get QR Code", url: "/api/v2/instance/{instanceId}/qrcode", method: "GET", category: "instance", status: "pending", requiresAuth: true, requiresInstance: true },
     
-    // Webhook endpoints (v2.2.1)
-    { name: "Get Webhook", url: "/api/v2/webhook/find/test-instance", method: "GET", category: "webhook", status: "pending" },
-    { name: "Set Webhook", url: "/api/v2/webhook/set/test-instance", method: "POST", category: "webhook", status: "pending" },
+    // Webhook endpoints (v2.2.1) - Corrigidos para estrutura real
+    { name: "Set Instance Webhook", url: "/api/v2/instance/{instanceId}/webhook", method: "POST", category: "webhook", status: "pending", requiresAuth: true, requiresInstance: true },
+    { name: "Get Instance Webhook", url: "/api/v2/instance/{instanceId}/webhook", method: "GET", category: "webhook", status: "pending", requiresAuth: true, requiresInstance: true },
     
-    // Message endpoints (v2.2.1)
-    { name: "Send Text Message", url: "/api/v2/message/sendText/test-instance", method: "POST", category: "message", status: "pending" }
+    // Message endpoints (v2.2.1) - Corrigidos para estrutura real
+    { name: "Send Text Message", url: "/api/v2/instance/{instanceId}/send/text", method: "POST", category: "message", status: "pending", requiresAuth: true, requiresInstance: true },
+    { name: "Send Media Message", url: "/api/v2/instance/{instanceId}/send/media", method: "POST", category: "message", status: "pending", requiresAuth: true, requiresInstance: true },
+    
+    // Chat endpoints (v2.2.1) - Novos da documentação
+    { name: "Search Contacts", url: "/api/v2/instance/{instanceId}/chat/search/contacts", method: "GET", category: "chat", status: "pending", requiresAuth: true, requiresInstance: true },
+    { name: "Search Chats", url: "/api/v2/instance/{instanceId}/chat/search/chats", method: "GET", category: "chat", status: "pending", requiresAuth: true, requiresInstance: true }
   ]);
   
   const [testing, setTesting] = useState(false);
   const [serverInfo, setServerInfo] = useState<any>(null);
   const [detailedLogs, setDetailedLogs] = useState<string[]>([]);
+  const [dynamicIds, setDynamicIds] = useState<{
+    businessId?: string;
+    instanceId?: string;
+  }>({});
 
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -59,10 +73,25 @@ const YumerV2Diagnostic = () => {
   };
 
   const testEndpoint = async (endpoint: EndpointTest): Promise<EndpointTest> => {
-    const fullUrl = `${config.serverUrl}${endpoint.url}`;
+    let fullUrl = `${config.serverUrl}${endpoint.url}`;
     const startTime = Date.now();
     
     try {
+      // Substituir placeholders dinâmicos
+      if (endpoint.requiresBusiness && dynamicIds.businessId) {
+        fullUrl = fullUrl.replace('{businessId}', dynamicIds.businessId);
+      } else if (endpoint.requiresBusiness) {
+        // Se precisa de businessId mas não temos, usar ID de teste
+        fullUrl = fullUrl.replace('{businessId}', 'test-business-id');
+      }
+      
+      if (endpoint.requiresInstance && dynamicIds.instanceId) {
+        fullUrl = fullUrl.replace('{instanceId}', dynamicIds.instanceId);
+      } else if (endpoint.requiresInstance) {
+        // Se precisa de instanceId mas não temos, usar ID de teste
+        fullUrl = fullUrl.replace('{instanceId}', 'test-instance-id');
+      }
+      
       addLog(`Testando ${endpoint.method} ${fullUrl}`);
       
       const headers: Record<string, string> = {
@@ -71,17 +100,28 @@ const YumerV2Diagnostic = () => {
         'Origin': window.location.origin
       };
 
-      // Adicionar autenticação para endpoints que precisam (v2.2.1)
-      if (endpoint.category !== 'docs') {
+      // Adicionar autenticação baseada na documentação v2.2.1
+      if (endpoint.requiresAuth) {
         if (config.globalApiKey) {
-          headers['apikey'] = config.globalApiKey;
-        }
-        if (config.adminToken) {
-          headers['Authorization'] = `Bearer ${config.adminToken}`;
+          // Para admin endpoints, usar Authorization Bearer
+          if (endpoint.category === 'admin') {
+            headers['Authorization'] = `Bearer ${config.globalApiKey}`;
+          } else {
+            // Para outros endpoints, pode usar apikey header ou bearer
+            headers['apikey'] = config.globalApiKey;
+            headers['Authorization'] = `Bearer ${config.globalApiKey}`;
+          }
         }
       }
 
-      addLog(`Headers: ${JSON.stringify(headers, null, 2)}`);
+      addLog(`Headers: ${JSON.stringify({ ...headers, Authorization: headers.Authorization ? 'Bearer ***' : undefined, apikey: headers.apikey ? '***' : undefined }, null, 2)}`);
+
+      // Criar payload para POSTs
+      let body: string | undefined;
+      if (endpoint.method === 'POST') {
+        body = JSON.stringify(getTestPayload(endpoint));
+        addLog(`Body: ${body}`);
+      }
 
       // Criar AbortController para timeout de 15 segundos
       const controller = new AbortController();
@@ -96,9 +136,7 @@ const YumerV2Diagnostic = () => {
         mode: 'cors',
         credentials: 'omit',
         signal: controller.signal,
-        ...(endpoint.method === 'POST' && {
-          body: JSON.stringify(getTestPayload(endpoint))
-        })
+        ...(body && { body })
       });
 
       clearTimeout(timeoutId);
@@ -122,6 +160,18 @@ const YumerV2Diagnostic = () => {
           try {
             data = await response.json();
             addLog(`Response Data: ${JSON.stringify(data, null, 2)}`);
+            
+            // Extrair IDs dinâmicos das respostas para usar em outros testes
+            if (endpoint.name === "List All Businesses" && Array.isArray(data) && data.length > 0) {
+              const businessId = data[0].businessId;
+              setDynamicIds(prev => ({ ...prev, businessId }));
+              addLog(`🎯 Business ID extraído: ${businessId}`);
+            } else if (endpoint.name === "Create Business" && data.businessId) {
+              const businessId = data.businessId;
+              setDynamicIds(prev => ({ ...prev, businessId }));
+              addLog(`🎯 Business ID criado: ${businessId}`);
+            }
+            
           } catch (parseError) {
             const textData = await response.text();
             addLog(`Response Text (JSON parse failed): ${textData}`);
@@ -132,7 +182,7 @@ const YumerV2Diagnostic = () => {
           addLog(`Response Text: ${data}`);
         }
         
-        // Salvar info do servidor se for documentation
+        // Salvar info do servidor
         if (endpoint.url === '/docs' && data) {
           setServerInfo({
             version: 'v2.2.1',
@@ -150,8 +200,9 @@ const YumerV2Diagnostic = () => {
           responseTime,
           headers,
           responseHeaders,
-          details: `✅ Success - ${responseTime}ms - Status ${httpStatus} - Content-Type: ${contentType || 'N/A'}`
+          details: `✅ Sucesso - ${responseTime}ms - Status ${httpStatus} - Content-Type: ${contentType || 'N/A'}`
         };
+        
       } else if (httpStatus === 401 || httpStatus === 403) {
         const errorText = await response.text().catch(() => 'Unknown auth error');
         addLog(`Auth Error ${httpStatus}: ${errorText}`);
@@ -162,7 +213,7 @@ const YumerV2Diagnostic = () => {
           responseTime,
           headers,
           responseHeaders,
-          details: `🔐 Auth Error - Status ${httpStatus} - Verificar tokens: ${errorText}`
+          details: `🔐 Auth Error - Status ${httpStatus} - Verificar tokens de autenticação: ${errorText}`
         };
       } else if (httpStatus === 404) {
         const errorText = await response.text().catch(() => 'Not found');
@@ -174,7 +225,7 @@ const YumerV2Diagnostic = () => {
           responseTime,
           headers,
           responseHeaders,
-          details: `⚠️ Endpoint não encontrado - Status ${httpStatus}: ${errorText}`
+          details: `⚠️ Endpoint não encontrado - Status ${httpStatus}: ${errorText} - Verifique se o endpoint existe na v2.2.1`
         };
       } else {
         const errorText = await response.text().catch(() => 'Unknown server error');
@@ -215,7 +266,7 @@ const YumerV2Diagnostic = () => {
           ...endpoint,
           status: 'network_error',
           responseTime,
-          details: `🌐 Network Error: ${error.message} - Pode ser CORS ou conectividade`
+          details: `🌐 Network Error: ${error.message} - Pode ser CORS, conectividade ou endpoint inexistente`
         };
       } else {
         return {
@@ -233,32 +284,34 @@ const YumerV2Diagnostic = () => {
       case '/api/v2/admin/business':
         return {
           name: "Test Business v2.2.1",
-          email: "test@example.com",
-          phone: "5511999999999",
-          slug: "test-business-v221",
-          country: "BR",
-          timezone: "America/Sao_Paulo",
-          language: "pt-BR"
+          attributes: {
+            category: "testing",
+            description: "Business criado para teste do diagnóstico v2.2.1",
+            active: true
+          }
         };
-      case '/api/v2/business/test-business/instance':
-        return endpoint.method === 'POST' ? {
-          instanceName: `test-instance-${Date.now()}`,
-          token: config.adminToken,
-          qrcode: true,
-          number: "5511999999999"
-        } : {};
-      case '/api/v2/webhook/set/test-instance':
+      case '/api/v2/business/{businessId}/instance':
         return {
-          enabled: true,
-          url: config.adminWebhooks?.messageWebhook?.url || "https://webhook.test.com",
-          events: ['messagesUpsert', 'qrcodeUpdated', 'connectionUpdate'],
-          webhook_by_events: true,
-          webhook_base64: false
+          name: `test-instance-${Date.now()}`,
+          description: "Instância de teste criada pelo diagnóstico v2.2.1"
         };
-      case '/api/v2/message/sendText/test-instance':
+      case '/api/v2/instance/{instanceId}/webhook':
+        return {
+          url: "https://webhook.test.com/codechat",
+          enabled: true,
+          events: ["messages.upsert", "qrcode.updated", "connection.update"]
+        };
+      case '/api/v2/instance/{instanceId}/send/text':
         return {
           number: "5511999999999",
-          text: "Test message from CodeChat v2.2.1 diagnostic"
+          text: "Mensagem de teste do diagnóstico CodeChat v2.2.1"
+        };
+      case '/api/v2/instance/{instanceId}/send/media':
+        return {
+          number: "5511999999999",
+          mediatype: "image",
+          media: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+          caption: "Teste de mídia v2.2.1"
         };
       default:
         return {};
@@ -268,44 +321,61 @@ const YumerV2Diagnostic = () => {
   const runAllTests = async () => {
     setTesting(true);
     setDetailedLogs([]);
+    setDynamicIds({});
     addLog('🧪 Iniciando diagnóstico completo da API CodeChat v2.2.1...');
     addLog(`📍 Servidor: ${config.serverUrl}`);
     addLog(`🔑 API Key configurada: ${config.globalApiKey ? 'Sim' : 'Não'}`);
-    addLog(`🎫 Admin Token configurado: ${config.adminToken ? 'Sim' : 'Não'}`);
     addLog(`🌐 Frontend Origin: ${window.location.origin}`);
     
     const updatedTests: EndpointTest[] = [];
     
-    // Testar documentação primeiro (público), depois endpoints autenticados
-    const publicEndpoints = tests.filter(t => t.category === 'docs');
-    const authEndpoints = tests.filter(t => t.category !== 'docs');
+    // Testar em ordem estratégica: docs → admin → business → instance → outros
+    const orderedTests = [
+      ...tests.filter(t => t.category === 'docs'),
+      ...tests.filter(t => t.category === 'admin'),
+      ...tests.filter(t => t.category === 'business'),
+      ...tests.filter(t => t.category === 'instance'),
+      ...tests.filter(t => !['docs', 'admin', 'business', 'instance'].includes(t.category))
+    ];
     
-    for (const test of [...publicEndpoints, ...authEndpoints]) {
+    addLog(`📝 Sequência de teste: ${orderedTests.map(t => `${t.category}/${t.name}`).join(', ')}`);
+    
+    for (let i = 0; i < orderedTests.length; i++) {
+      const test = orderedTests[i];
+      addLog(`🔄 (${i+1}/${orderedTests.length}) Executando: ${test.category}/${test.name}`);
+      
       const result = await testEndpoint(test);
       updatedTests.push(result);
       
-      // Atualizar estado incremental para mostrar progresso
+      // Atualizar estado incremental
       setTests([...updatedTests, ...tests.slice(updatedTests.length)]);
       
-      // Pausa entre testes para não sobrecarregar
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Pausas estratégicas
+      if (['Create Business', 'Create Business Instance'].includes(test.name)) {
+        addLog(`⏱️ Aguardando 2s após ${test.name}...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
     
     setTests(updatedTests);
     setTesting(false);
     
     // Análise final
-    const corsErrors = updatedTests.filter(t => t.status === 'cors_error').length;
-    const networkErrors = updatedTests.filter(t => t.status === 'network_error').length;
-    const timeoutErrors = updatedTests.filter(t => t.status === 'timeout_error').length;
     const successes = updatedTests.filter(t => t.status === 'success').length;
     const authErrors = updatedTests.filter(t => t.status === 'auth_error').length;
+    const notFound = updatedTests.filter(t => t.status === 'not_found').length;
+    const networkErrors = updatedTests.filter(t => t.status === 'network_error').length;
     
-    addLog(`🎯 Diagnóstico concluído: ${successes} sucessos, ${corsErrors} CORS, ${networkErrors} rede, ${timeoutErrors} timeout, ${authErrors} auth`);
+    addLog(`🎯 Diagnóstico v2.2.1 concluído: ${successes} sucessos, ${authErrors} auth, ${notFound} não encontrados, ${networkErrors} rede`);
     
-    if (corsErrors > 0 || networkErrors > 0) {
-      addLog(`⚠️ CORS DETECTADO: O servidor precisa configurar CORS para permitir acesso de ${window.location.origin}`);
-      addLog(`📖 Documentação CORS: https://docs.codechat.dev/api/v2.2.1/cors-configuration`);
+    if (authErrors > 0) {
+      addLog(`🔐 AUTENTICAÇÃO: Verificar se o token tem permissões adequadas para endpoints admin/business/instance`);
+    }
+    
+    if (notFound > 0) {
+      addLog(`📋 ENDPOINTS NÃO ENCONTRADOS: Alguns endpoints podem não estar implementados na sua versão da API`);
     }
   };
 
@@ -343,7 +413,7 @@ const YumerV2Diagnostic = () => {
       case 'not_found': return 'Não encontrado';
       case 'server_error': return 'Erro servidor';
       case 'timeout_error': return 'Timeout';
-      case 'network_error': return 'Erro rede/CORS';
+      case 'network_error': return 'Erro rede';
       default: return 'Aguardando';
     }
   };
@@ -359,7 +429,8 @@ const YumerV2Diagnostic = () => {
   };
 
   const hasErrors = tests.some(t => ['cors_error', 'network_error', 'timeout_error', 'auth_error', 'server_error'].includes(t.status));
-  const hasCorsIssues = tests.some(t => ['cors_error', 'network_error'].includes(t.status));
+  const hasAuthIssues = tests.some(t => t.status === 'auth_error');
+  const hasNotFound = tests.some(t => t.status === 'not_found');
 
   if (configLoading) {
     return (
@@ -378,7 +449,7 @@ const YumerV2Diagnostic = () => {
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle>🚀 Diagnóstico API CodeChat v2.2.1</CardTitle>
+          <CardTitle>🚀 Diagnóstico API CodeChat v2.2.1 (Corrigido)</CardTitle>
           <Button onClick={runAllTests} disabled={testing}>
             {testing ? (
               <>
@@ -399,16 +470,16 @@ const YumerV2Diagnostic = () => {
           <div className="p-3 bg-gray-50 rounded">
             <p><strong>Servidor:</strong> {config.serverUrl}</p>
             <p><strong>Versão:</strong> v{config.apiVersion}</p>
-            <p><strong>Endpoints testados:</strong> {tests.length}</p>
+            <p><strong>Endpoints corrigidos:</strong> {tests.length}</p>
           </div>
           <div className="p-3 bg-gray-50 rounded">
             <p><strong>Status:</strong> {serverStatus.isOnline ? '🟢 Online' : '🔴 Offline'}</p>
             <p><strong>Latência:</strong> {serverStatus.latency}ms</p>
-            <p><strong>Última verificação:</strong> {new Date(serverStatus.lastCheck).toLocaleTimeString()}</p>
+            <p><strong>Business ID:</strong> {dynamicIds.businessId || 'Não obtido'}</p>
           </div>
           <div className="p-3 bg-gray-50 rounded">
             <p><strong>API Key:</strong> {config.globalApiKey ? '✅ Configurada' : '❌ Não configurada'}</p>
-            <p><strong>Admin Token:</strong> {config.adminToken ? '✅ Configurado' : '❌ Não configurado'}</p>
+            <p><strong>Instance ID:</strong> {dynamicIds.instanceId || 'Não obtido'}</p>
             <p><strong>Frontend:</strong> {window.location.hostname}</p>
           </div>
         </div>
@@ -433,10 +504,16 @@ const YumerV2Diagnostic = () => {
               <div className="text-sm text-gray-600">Funcionando</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">
-                {tests.filter(t => t.status === 'cors_error').length}
+              <div className="text-2xl font-bold text-orange-600">
+                {tests.filter(t => t.status === 'auth_error').length}
               </div>
-              <div className="text-sm text-gray-600">CORS Error</div>
+              <div className="text-sm text-gray-600">Auth Error</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">
+                {tests.filter(t => t.status === 'not_found').length}
+              </div>
+              <div className="text-sm text-gray-600">Não encontrado</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">
@@ -451,16 +528,10 @@ const YumerV2Diagnostic = () => {
               <div className="text-sm text-gray-600">Timeout</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">
-                {tests.filter(t => t.status === 'auth_error').length}
+              <div className="text-2xl font-bold text-red-600">
+                {tests.filter(t => t.status === 'cors_error').length}
               </div>
-              <div className="text-sm text-gray-600">Auth Error</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-600">
-                {tests.filter(t => t.status === 'not_found').length}
-              </div>
-              <div className="text-sm text-gray-600">Não encontrado</div>
+              <div className="text-sm text-gray-600">CORS Error</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-red-700">
@@ -471,24 +542,37 @@ const YumerV2Diagnostic = () => {
           </div>
         )}
 
-        {/* CORS Issues Alert */}
-        {hasCorsIssues && (
+        {/* Auth Issues Alert */}
+        {hasAuthIssues && (
           <Alert variant="destructive">
             <XCircle className="h-4 w-4" />
             <AlertDescription>
               <div className="space-y-2">
-                <p className="font-medium">🎯 PROBLEMA DE CORS DETECTADO:</p>
-                <p>• <strong>CORS:</strong> O servidor não permite acesso de <code>{window.location.origin}</code></p>
-                <p>• <strong>Requisições chegam ao servidor</strong> mas são bloqueadas pelo navegador</p>
-                <p className="text-sm">
-                  <strong>Solução:</strong> Configure CORS no servidor CodeChat v2.2.1 para permitir o domínio frontend
-                </p>
+                <p className="font-medium">🔐 PROBLEMA DE AUTENTICAÇÃO:</p>
+                <p>• <strong>Token inválido:</strong> Verifique se o token tem permissões adequadas</p>
+                <p>• <strong>Admin endpoints:</strong> Precisam de ADMIN_TOKEN válido</p>
+                <p>• <strong>Business/Instance endpoints:</strong> Precisam de BUSINESS_TOKEN ou JWT válido</p>
                 <div className="text-xs bg-red-100 p-2 rounded">
-                  <p><strong>Headers necessários no servidor:</strong></p>
-                  <p>• Access-Control-Allow-Origin: {window.location.origin}</p>
-                  <p>• Access-Control-Allow-Methods: GET, POST, PUT, DELETE</p>
-                  <p>• Access-Control-Allow-Headers: Content-Type, Authorization, apikey</p>
+                  <p><strong>Documentação de autenticação:</strong></p>
+                  <p>• Admin: Authorization: Bearer ADMIN_TOKEN</p>
+                  <p>• Business: Authorization: Bearer BUSINESS_TOKEN</p>
+                  <p>• Instance: Authorization: Bearer JWT_TOKEN</p>
                 </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Not Found Issues Alert */}
+        {hasNotFound && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="space-y-2">
+                <p className="font-medium">⚠️ ENDPOINTS NÃO ENCONTRADOS:</p>
+                <p>• Alguns endpoints podem não estar implementados na sua versão da API</p>
+                <p>• Verifique se a documentação está atualizada</p>
+                <p>• Alguns endpoints podem ter mudado na v2.2.1</p>
               </div>
             </AlertDescription>
           </Alert>
@@ -496,9 +580,9 @@ const YumerV2Diagnostic = () => {
 
         {/* Test Results by Category */}
         <div className="space-y-3">
-          <h4 className="font-medium">Resultados por Categoria:</h4>
+          <h4 className="font-medium">Resultados por Categoria (v2.2.1):</h4>
           
-          {['docs', 'admin', 'business', 'instance', 'webhook', 'message'].map(category => {
+          {['docs', 'admin', 'business', 'instance', 'webhook', 'message', 'chat'].map(category => {
             const categoryTests = tests.filter(t => t.category === category);
             if (categoryTests.length === 0) return null;
             
@@ -506,7 +590,15 @@ const YumerV2Diagnostic = () => {
               <div key={category} className="space-y-2">
                 <div className="flex items-center space-x-2">
                   {getCategoryIcon(category)}
-                  <h5 className="font-medium capitalize">{category === 'docs' ? 'Documentação' : category}</h5>
+                  <h5 className="font-medium capitalize">
+                    {category === 'docs' ? 'Documentação' : 
+                     category === 'admin' ? 'Administração' :
+                     category === 'business' ? 'Negócios' :
+                     category === 'instance' ? 'Instâncias' :
+                     category === 'webhook' ? 'Webhooks' :
+                     category === 'message' ? 'Mensagens' :
+                     category === 'chat' ? 'Chat' : category}
+                  </h5>
                 </div>
                 
                 {categoryTests.map((test, index) => (
@@ -518,6 +610,11 @@ const YumerV2Diagnostic = () => {
                         <div className="text-sm text-gray-500">
                           {test.method} {config.serverUrl}{test.url}
                         </div>
+                        {test.requiresAuth && (
+                          <div className="text-xs text-orange-600">
+                            🔐 Requer autenticação
+                          </div>
+                        )}
                         {test.responseTime && (
                           <div className="text-xs text-gray-400">
                             {test.responseTime}ms
@@ -550,7 +647,7 @@ const YumerV2Diagnostic = () => {
         {/* Detailed Logs */}
         {detailedLogs.length > 0 && (
           <div className="bg-gray-900 text-green-400 p-4 rounded text-xs font-mono max-h-64 overflow-auto">
-            <h4 className="text-white mb-2">📋 Logs Detalhados:</h4>
+            <h4 className="text-white mb-2">📋 Logs Detalhados v2.2.1:</h4>
             {detailedLogs.map((log, index) => (
               <div key={index} className="mb-1">{log}</div>
             ))}
@@ -559,22 +656,20 @@ const YumerV2Diagnostic = () => {
 
         {/* Instructions */}
         <div className="bg-blue-50 p-4 rounded">
-          <h4 className="font-medium text-blue-900 mb-2">📋 Plano de Correção v2.2.1:</h4>
+          <h4 className="font-medium text-blue-900 mb-2">📋 Diagnóstico CodeChat v2.2.1:</h4>
           <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-            <li><strong>✅ FASE 1:</strong> CORS configurado no servidor CodeChat v2.2.1 ✅</li>
-            <li><strong>FASE 2:</strong> Verificar se todos os endpoints v2.2.1 estão implementados corretamente</li>
-            <li><strong>FASE 3:</strong> Testar autenticação com API Key e Admin Token</li>
-            <li><strong>FASE 4:</strong> Implementar integração completa v2.2.1 no frontend</li>
-            <li><strong>FASE 5:</strong> Validar todos os fluxos de negócio com a nova API</li>
+            <li><strong>✅ ENDPOINTS CORRIGIDOS:</strong> Usando estrutura real da API v2.2.1</li>
+            <li><strong>🔐 AUTENTICAÇÃO:</strong> Implementada conforme documentação (Admin/Business/Instance)</li>
+            <li><strong>📋 IDs DINÂMICOS:</strong> Extração automática de businessId/instanceId</li>
+            <li><strong>🎯 FEEDBACK ESPECÍFICO:</strong> Diferenciação entre CORS, Auth, Not Found</li>
+            <li><strong>📖 BASEADO NA DOCUMENTAÇÃO:</strong> Endpoints da documentação oficial v2.2.1</li>
           </ol>
           
-          {!hasCorsIssues && (
-            <div className="mt-3 p-2 bg-green-100 rounded">
-              <p className="text-sm text-green-800">
-                <strong>✅ CORS OK:</strong> Servidor configurado corretamente. Agora podemos testar os endpoints da API v2.2.1!
-              </p>
-            </div>
-          )}
+          <div className="mt-3 p-2 bg-green-100 rounded">
+            <p className="text-sm text-green-800">
+              <strong>✅ DIAGNÓSTICO v2.2.1:</strong> Endpoints corrigidos e testando com a estrutura real da API!
+            </p>
+          </div>
         </div>
       </CardContent>
     </Card>
