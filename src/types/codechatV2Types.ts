@@ -45,6 +45,45 @@ export interface MoveInstanceRequest {
   businessIdTarget: string;
 }
 
+export interface ToggleActionDTO {
+  action: 'activate' | 'deactivate';
+}
+
+export interface SearchInstanceDTO {
+  search: string;
+}
+
+export interface AdminMoveInstanceResponse extends BusinessCreateResponse {
+  Instance: InstanceCreateResponse[];
+}
+
+export interface BusinessInstancesConnectedResponse {
+  businessId: string;
+  name: string;
+  Instances: InstanceCreateResponse[];
+}
+
+export interface BusinessPageResponse {
+  totalRecords: number;
+  totalPages: number;
+  currentPage: number;
+  records: any[];
+}
+
+export interface BusinessMoveWAResponse extends InstanceCreateResponse {
+  WhatsApp: any;
+}
+
+export interface BusinessWebhookCreateResponse {
+  webhookId: string;
+  url: string;
+  enabled: boolean;
+  headers: object;
+  createdAt: string;
+  updatedAt: string;
+  businessBusinessId: string;
+}
+
 export interface MoveWhatsAppRequest {
   sourceWhatsAppId: string;
   instanceIdTarget: string;

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,11 +42,7 @@ import { useCodeChatV2Complete } from '@/hooks/useCodeChatV2Complete';
 import * as Types from '@/types/codechatV2Types';
 import { useToast } from '@/hooks/use-toast';
 
-interface CodeChatV2UltimateManagerProps {
-  clientId: string;
-}
-
-const CodeChatV2UltimateManager: React.FC<CodeChatV2UltimateManagerProps> = ({ clientId }) => {
+const CodeChatV2UltimateManager: React.FC = () => {
   // Estados principais
   const [businesses, setBusinesses] = useState<Types.BusinessFindResponse[]>([]);
   const [selectedBusiness, setSelectedBusiness] = useState<Types.BusinessFindResponse | null>(null);
@@ -58,8 +53,9 @@ const CodeChatV2UltimateManager: React.FC<CodeChatV2UltimateManagerProps> = ({ c
   // Estados de UI
   const [activeTab, setActiveTab] = useState('admin');
   const [adminToken, setAdminToken] = useState('');
+  const [businessToken, setBuinessToken] = useState('');
+  const [instanceJWT, setInstanceJWT] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
 
   // Hook principal
   const { loading, error, admin, business, instance, webhook, message, chat, group } = useCodeChatV2Complete();
@@ -99,618 +95,474 @@ const CodeChatV2UltimateManager: React.FC<CodeChatV2UltimateManagerProps> = ({ c
       }
     };
 
-    const handleDeleteBusiness = async (businessId: string) => {
-      if (!adminToken || !confirm('Tem certeza que deseja deletar este business?')) return;
-
-      try {
-        await admin.deleteBusiness(businessId, adminToken);
-        setBusinesses(prev => prev.filter(b => b.businessId !== businessId));
-      } catch (error) {
-        console.error('Erro ao deletar business:', error);
-      }
-    };
-
     return (
       <div className="space-y-6">
-        {/* Admin Token */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Configuração Admin
-            </CardTitle>
-            <CardDescription>Token de administrador para gerenciar businesses</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="adminToken">Token de Admin</Label>
-              <Input
-                id="adminToken"
-                type="password"
-                placeholder="Insira o token de administrador"
-                value={adminToken}
-                onChange={(e) => setAdminToken(e.target.value)}
-              />
-            </div>
-            <Button onClick={loadBusinesses} disabled={!adminToken || loading}>
-              {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
-              Carregar Businesses
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Lista de Businesses */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Businesses</CardTitle>
-              <CardDescription>Gerenciar todos os businesses da plataforma</CardDescription>
-            </div>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button disabled={!adminToken}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Novo Business
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Criar Novo Business</DialogTitle>
-                  <DialogDescription>Preencha as informações do business</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="businessName">Nome do Business</Label>
-                    <Input
-                      id="businessName"
-                      placeholder="Nome do business"
-                      value={businessForm.name}
-                      onChange={(e) => setBusinessForm(prev => ({ ...prev, name: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="businessAttributes">Atributos (JSON)</Label>
-                    <Textarea
-                      id="businessAttributes"
-                      placeholder='{"category": "sales", "active": true}'
-                      value={JSON.stringify(businessForm.attributes, null, 2)}
-                      onChange={(e) => {
-                        try {
-                          const attrs = JSON.parse(e.target.value || '{}');
-                          setBusinessForm(prev => ({ ...prev, attributes: attrs }));
-                        } catch (error) {
-                          // Ignore JSON parse errors while typing
-                        }
-                      }}
-                    />
-                  </div>
-                  <Button onClick={handleCreateBusiness} disabled={loading || !businessForm.name}>
-                    {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-                    Criar Business
-                  </Button>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Administração</h3>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Criar Business
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Criar Novo Business</DialogTitle>
+                <DialogDescription>
+                  Preencha os dados para criar um novo business.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="name">Nome</Label>
+                  <Input
+                    id="name"
+                    value={businessForm.name}
+                    onChange={(e) => setBusinessForm(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Nome do business"
+                  />
                 </div>
-              </DialogContent>
-            </Dialog>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[400px]">
-              <div className="space-y-3">
-                {businesses.map((business) => (
-                  <Card key={business.businessId} className="cursor-pointer hover:bg-accent/50" 
-                        onClick={() => setSelectedBusiness(business)}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <h4 className="font-semibold">{business.name}</h4>
-                          <p className="text-sm text-muted-foreground">ID: {business.businessId}</p>
-                          <div className="flex gap-2">
-                            <Badge variant="secondary">
-                              Token: {business.businessToken.substring(0, 12)}...
-                            </Badge>
-                            {business.BusinessWebhook && (
-                              <Badge variant={business.BusinessWebhook.enabled ? "default" : "secondary"}>
-                                Webhook: {business.BusinessWebhook.enabled ? "Ativo" : "Inativo"}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedBusiness(business);
-                              setActiveTab('business');
-                            }}
-                          >
-                            <Settings className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteBusiness(business.businessId);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                <div>
+                  <Label htmlFor="attributes">Atributos (JSON)</Label>
+                  <Textarea
+                    id="attributes"
+                    value={JSON.stringify(businessForm.attributes, null, 2)}
+                    onChange={(e) => {
+                      try {
+                        const attrs = JSON.parse(e.target.value);
+                        setBusinessForm(prev => ({ ...prev, attributes: attrs }));
+                      } catch (error) {
+                        // Ignorar erro de parsing durante a digitação
+                      }
+                    }}
+                    placeholder='{"category": "sales"}'
+                    rows={3}
+                  />
+                </div>
+                <Button onClick={handleCreateBusiness} disabled={loading}>
+                  {loading ? 'Criando...' : 'Criar Business'}
+                </Button>
               </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="adminToken">Token de Admin</Label>
+            <Input
+              id="adminToken"
+              type="password"
+              value={adminToken}
+              onChange={(e) => setAdminToken(e.target.value)}
+              placeholder="Inserir token de admin"
+            />
+          </div>
+          <Button onClick={loadBusinesses} disabled={!adminToken || loading}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Carregar Businesses
+          </Button>
+        </div>
+
+        <div className="grid gap-4">
+          {businesses.map((business) => (
+            <Card key={business.businessId} className="cursor-pointer hover:shadow-md transition-shadow">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">{business.name}</CardTitle>
+                  <Badge variant="outline">{business.businessId}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Token: {business.businessToken.substring(0, 20)}...
+                  </p>
+                  <div className="flex gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => setSelectedBusiness(business)}
+                    >
+                      <Eye className="h-4 w-4 mr-1" />
+                      Selecionar
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   };
 
   // ============ BUSINESS TAB ============
   const BusinessTab = () => {
-    if (!selectedBusiness) {
-      return (
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            Selecione um business na aba Admin para gerenciá-lo.
-          </AlertDescription>
-        </Alert>
-      );
-    }
-
-    const loadInstances = async () => {
-      try {
-        const connected = await business.getConnectedInstances(selectedBusiness.businessId, selectedBusiness.businessToken);
-        setInstances(connected.Instances || []);
-      } catch (error) {
-        console.error('Erro ao carregar instâncias:', error);
-      }
-    };
+    const [instanceForm, setInstanceForm] = useState<Types.InstanceCreateRequest>({
+      instanceName: '',
+      externalId: ''
+    });
 
     const handleCreateInstance = async () => {
+      if (!selectedBusiness || !businessToken) {
+        toast({ title: "Erro", description: "Selecione um business e insira o token", variant: "destructive" });
+        return;
+      }
+
       try {
-        const newInstance = await business.createInstance(
-          selectedBusiness.businessId,
-          { instanceName: `instance_${Date.now()}` },
-          selectedBusiness.businessToken
-        );
+        const newInstance = await business.createInstance(selectedBusiness.businessId, instanceForm, businessToken);
         setInstances(prev => [...prev, newInstance]);
+        setInstanceForm({ instanceName: '', externalId: '' });
       } catch (error) {
         console.error('Erro ao criar instância:', error);
       }
     };
 
+    const loadInstances = async () => {
+      if (!selectedBusiness || !businessToken) return;
+      
+      try {
+        const data = await business.getConnectedInstances(selectedBusiness.businessId, businessToken);
+        setInstances(data.Instances || []);
+      } catch (error) {
+        console.error('Erro ao carregar instâncias:', error);
+      }
+    };
+
     return (
       <div className="space-y-6">
-        {/* Business Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5" />
-              Business: {selectedBusiness.name}
-            </CardTitle>
-            <CardDescription>ID: {selectedBusiness.businessId}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Business Token</Label>
-                <div className="flex gap-2">
-                  <Input value={selectedBusiness.businessToken} readOnly />
-                  <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(selectedBusiness.businessToken)}>
-                    Copiar
-                  </Button>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Gerenciamento de Business</h3>
+        </div>
+
+        {!selectedBusiness ? (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Selecione um business na aba Admin primeiro.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Business Selecionado</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <p><strong>Nome:</strong> {selectedBusiness.name}</p>
+                  <p><strong>ID:</strong> {selectedBusiness.businessId}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div>
+              <Label htmlFor="businessToken">Token do Business</Label>
+              <Input
+                id="businessToken"
+                type="password"
+                value={businessToken}
+                onChange={(e) => setBuinessToken(e.target.value)}
+                placeholder="Inserir token do business"
+              />
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="font-medium">Criar Nova Instância</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="instanceName">Nome da Instância</Label>
+                  <Input
+                    id="instanceName"
+                    value={instanceForm.instanceName}
+                    onChange={(e) => setInstanceForm(prev => ({ ...prev, instanceName: e.target.value }))}
+                    placeholder="nome-instancia"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="externalId">ID Externo</Label>
+                  <Input
+                    id="externalId"
+                    value={instanceForm.externalId}
+                    onChange={(e) => setInstanceForm(prev => ({ ...prev, externalId: e.target.value }))}
+                    placeholder="id-externo-opcional"
+                  />
                 </div>
               </div>
-              <div>
-                <Label>Criado em</Label>
-                <Input value={new Date(selectedBusiness.createdAt).toLocaleDateString()} readOnly />
+              <div className="flex gap-2">
+                <Button onClick={handleCreateInstance} disabled={loading}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Criar Instância
+                </Button>
+                <Button variant="outline" onClick={loadInstances} disabled={loading}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Carregar Instâncias
+                </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Instâncias */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Instâncias</CardTitle>
-              <CardDescription>Gerenciar instâncias do business</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={loadInstances} variant="outline" disabled={loading}>
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Atualizar
-              </Button>
-              <Button onClick={handleCreateInstance} disabled={loading}>
-                <Plus className="h-4 w-4 mr-2" />
-                Nova Instância
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[300px]">
-              <div className="space-y-3">
-                {instances.map((inst) => (
-                  <Card key={inst.instanceId} className="cursor-pointer hover:bg-accent/50"
-                        onClick={() => {
-                          setSelectedInstance(inst);
-                          setActiveTab('instance');
-                        }}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <h4 className="font-semibold">{inst.name}</h4>
-                          <p className="text-sm text-muted-foreground">ID: {inst.instanceId}</p>
-                          <div className="flex gap-2">
-                            <Badge variant={inst.state === 'active' ? 'default' : 'secondary'}>
-                              {inst.state}
-                            </Badge>
-                            <Badge variant={inst.connection === 'open' ? 'default' : 'destructive'}>
-                              {inst.connection}
-                            </Badge>
-                          </div>
-                        </div>
-                        <Button size="sm" variant="outline">
-                          <Settings className="h-4 w-4" />
+            <div className="grid gap-4">
+              {instances.map((inst) => (
+                <Card key={inst.instanceId} className="cursor-pointer hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">{inst.name}</CardTitle>
+                      <div className="flex gap-2">
+                        <Badge variant={inst.state === 'active' ? 'default' : 'secondary'}>
+                          {inst.state}
+                        </Badge>
+                        <Badge variant={inst.connection === 'open' ? 'default' : 'destructive'}>
+                          {inst.connection}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        ID: {inst.instanceId}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => setSelectedInstance(inst)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Selecionar
                         </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
 
   // ============ INSTANCE TAB ============
   const InstanceTab = () => {
-    const [qrCode, setQrCode] = useState<string | null>(null);
-    const [connectionState, setConnectionState] = useState<Types.InstanceConnectionStateResponse | null>(null);
-
-    if (!selectedInstance) {
-      return (
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            Selecione uma instância na aba Business para gerenciá-la.
-          </AlertDescription>
-        </Alert>
-      );
-    }
+    const [qrCode, setQrCode] = useState<string>('');
+    const [connectionState, setConnectionState] = useState<any>(null);
 
     const handleConnect = async () => {
+      if (!selectedInstance || !instanceJWT) {
+        toast({ title: "Erro", description: "Selecione uma instância e insira o JWT", variant: "destructive" });
+        return;
+      }
+
       try {
-        const result = await instance.connect(selectedInstance.instanceId, selectedInstance.Auth.jwt);
+        const result = await instance.connect(selectedInstance.instanceId, instanceJWT);
         setQrCode(result.base64);
       } catch (error) {
-        console.error('Erro ao conectar instância:', error);
+        console.error('Erro ao conectar:', error);
       }
     };
 
-    const handleGetConnectionState = async () => {
+    const checkConnectionState = async () => {
+      if (!selectedInstance || !instanceJWT) return;
+      
       try {
-        const state = await instance.getConnectionState(selectedInstance.instanceId, selectedInstance.Auth.jwt);
+        const state = await instance.getConnectionState(selectedInstance.instanceId, instanceJWT);
         setConnectionState(state);
       } catch (error) {
-        console.error('Erro ao obter estado da conexão:', error);
-      }
-    };
-
-    const handleGetQRCode = async () => {
-      try {
-        const result = await instance.getQRCode(selectedInstance.instanceId, selectedInstance.Auth.jwt);
-        setQrCode(result.base64);
-      } catch (error) {
-        console.error('Erro ao obter QR Code:', error);
+        console.error('Erro ao verificar conexão:', error);
       }
     };
 
     return (
       <div className="space-y-6">
-        {/* Instance Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5" />
-              Instância: {selectedInstance.name}
-            </CardTitle>
-            <CardDescription>ID: {selectedInstance.instanceId}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Estado</Label>
-                <Badge variant={selectedInstance.state === 'active' ? 'default' : 'secondary'}>
-                  {selectedInstance.state}
-                </Badge>
-              </div>
-              <div>
-                <Label>Conexão</Label>
-                <Badge variant={selectedInstance.connection === 'open' ? 'default' : 'destructive'}>
-                  {selectedInstance.connection}
-                </Badge>
-              </div>
-              <div>
-                <Label>JWT Token</Label>
-                <div className="flex gap-2">
-                  <Input value={selectedInstance.Auth.jwt.substring(0, 20) + '...'} readOnly />
-                  <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(selectedInstance.Auth.jwt)}>
-                    Copiar
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Gerenciamento de Instância</h3>
+        </div>
 
-        {/* Connection Controls */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Controles de Conexão</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {!selectedInstance ? (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Selecione uma instância na aba Business primeiro.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Instância Selecionada</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <p><strong>Nome:</strong> {selectedInstance.name}</p>
+                  <p><strong>ID:</strong> {selectedInstance.instanceId}</p>
+                  <p><strong>Estado:</strong> 
+                    <Badge className="ml-2" variant={selectedInstance.state === 'active' ? 'default' : 'secondary'}>
+                      {selectedInstance.state}
+                    </Badge>
+                  </p>
+                  <p><strong>Conexão:</strong> 
+                    <Badge className="ml-2" variant={selectedInstance.connection === 'open' ? 'default' : 'destructive'}>
+                      {selectedInstance.connection}
+                    </Badge>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div>
+              <Label htmlFor="instanceJWT">JWT da Instância</Label>
+              <Input
+                id="instanceJWT"
+                type="password"
+                value={instanceJWT}
+                onChange={(e) => setInstanceJWT(e.target.value)}
+                placeholder="Inserir JWT da instância"
+              />
+            </div>
+
             <div className="flex gap-2">
               <Button onClick={handleConnect} disabled={loading}>
-                <Zap className="h-4 w-4 mr-2" />
+                <Smartphone className="h-4 w-4 mr-2" />
                 Conectar
               </Button>
-              <Button onClick={handleGetQRCode} variant="outline" disabled={loading}>
-                <Eye className="h-4 w-4 mr-2" />
-                Obter QR Code
-              </Button>
-              <Button onClick={handleGetConnectionState} variant="outline" disabled={loading}>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Estado da Conexão
+              <Button variant="outline" onClick={checkConnectionState} disabled={loading}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Verificar Status
               </Button>
             </div>
 
             {qrCode && (
-              <div className="text-center">
-                <Label>QR Code para Conexão</Label>
-                <div className="mt-2">
-                  <img src={qrCode} alt="QR Code" className="mx-auto max-w-xs border rounded" />
-                </div>
-              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>QR Code para Conexão</CardTitle>
+                </CardHeader>
+                <CardContent className="flex justify-center">
+                  <img src={qrCode} alt="QR Code" className="max-w-xs" />
+                </CardContent>
+              </Card>
             )}
 
             {connectionState && (
-              <div>
-                <Label>Estado da Conexão</Label>
-                <div className="mt-2 p-3 bg-muted rounded">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={connectionState.state === 'open' ? 'default' : 'destructive'}>
-                      {connectionState.state}
-                    </Badge>
-                    <span className="text-sm">Status: {connectionState.statusReason}</span>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Estado da Conexão</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <p><strong>Estado:</strong> 
+                      <Badge className="ml-2" variant={connectionState.state === 'open' ? 'default' : 'destructive'}>
+                        {connectionState.state}
+                      </Badge>
+                    </p>
+                    <p><strong>Status Reason:</strong> {connectionState.statusReason}</p>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        )}
       </div>
     );
   };
 
   // ============ MESSAGES TAB ============
   const MessagesTab = () => {
-    const [messageForm, setMessageForm] = useState({
+    const [textMessage, setTextMessage] = useState({
       recipient: '',
-      text: '',
-      mediaUrl: '',
-      mediaType: 'image' as 'image' | 'video' | 'document' | 'audio',
-      latitude: '',
-      longitude: '',
-      contacts: []
+      text: ''
     });
 
-    if (!selectedInstance) {
-      return (
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            Selecione uma instância para enviar mensagens.
-          </AlertDescription>
-        </Alert>
-      );
-    }
-
     const handleSendText = async () => {
-      if (!messageForm.recipient || !messageForm.text) return;
+      if (!selectedInstance || !instanceJWT || !textMessage.recipient || !textMessage.text) {
+        toast({ title: "Erro", description: "Preencha todos os campos", variant: "destructive" });
+        return;
+      }
 
       try {
         await message.sendText(selectedInstance.instanceId, {
-          recipient: messageForm.recipient,
-          textMessage: { text: messageForm.text },
-          options: { delay: 1200, presence: 'composing' }
-        }, selectedInstance.Auth.jwt);
+          recipient: textMessage.recipient,
+          textMessage: { text: textMessage.text }
+        }, instanceJWT);
         
-        setMessageForm(prev => ({ ...prev, text: '' }));
+        toast({ title: "Sucesso", description: "Mensagem enviada!" });
+        setTextMessage({ recipient: '', text: '' });
       } catch (error) {
         console.error('Erro ao enviar mensagem:', error);
       }
     };
 
-    const handleSendMedia = async () => {
-      if (!messageForm.recipient || !messageForm.mediaUrl) return;
-
-      try {
-        await message.sendMedia(selectedInstance.instanceId, {
-          recipient: messageForm.recipient,
-          mediaMessage: {
-            mediaType: messageForm.mediaType,
-            url: messageForm.mediaUrl,
-            caption: 'Mídia enviada via CodeChat'
-          }
-        }, selectedInstance.Auth.jwt);
-        
-        setMessageForm(prev => ({ ...prev, mediaUrl: '' }));
-      } catch (error) {
-        console.error('Erro ao enviar mídia:', error);
-      }
-    };
-
-    const handleSendLocation = async () => {
-      if (!messageForm.recipient || !messageForm.latitude || !messageForm.longitude) return;
-
-      try {
-        await message.sendLocation(selectedInstance.instanceId, {
-          recipient: messageForm.recipient,
-          locationMessage: {
-            latitude: parseFloat(messageForm.latitude),
-            longitude: parseFloat(messageForm.longitude),
-            name: 'Localização compartilhada'
-          }
-        }, selectedInstance.Auth.jwt);
-        
-        setMessageForm(prev => ({ ...prev, latitude: '', longitude: '' }));
-      } catch (error) {
-        console.error('Erro ao enviar localização:', error);
-      }
-    };
-
     return (
       <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5" />
-              Enviar Mensagens
-            </CardTitle>
-            <CardDescription>Instância: {selectedInstance.name}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Destinatário */}
-            <div>
-              <Label htmlFor="recipient">Destinatário (Número com DDI)</Label>
-              <Input
-                id="recipient"
-                placeholder="5511999999999"
-                value={messageForm.recipient}
-                onChange={(e) => setMessageForm(prev => ({ ...prev, recipient: e.target.value }))}
-              />
-            </div>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Envio de Mensagens</h3>
+        </div>
 
-            <Tabs defaultValue="text">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="text">Texto</TabsTrigger>
-                <TabsTrigger value="media">Mídia</TabsTrigger>
-                <TabsTrigger value="location">Localização</TabsTrigger>
-                <TabsTrigger value="advanced">Avançado</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="text" className="space-y-4">
+        {!selectedInstance ? (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Selecione uma instância conectada primeiro.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Enviar Mensagem de Texto</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <Label htmlFor="textMessage">Mensagem</Label>
-                  <Textarea
-                    id="textMessage"
-                    placeholder="Digite sua mensagem..."
-                    value={messageForm.text}
-                    onChange={(e) => setMessageForm(prev => ({ ...prev, text: e.target.value }))}
-                  />
-                </div>
-                <Button onClick={handleSendText} disabled={loading || !messageForm.recipient || !messageForm.text}>
-                  {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-                  Enviar Texto
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="media" className="space-y-4">
-                <div>
-                  <Label htmlFor="mediaType">Tipo de Mídia</Label>
-                  <Select value={messageForm.mediaType} onValueChange={(value: any) => setMessageForm(prev => ({ ...prev, mediaType: value }))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="image">Imagem</SelectItem>
-                      <SelectItem value="video">Vídeo</SelectItem>
-                      <SelectItem value="document">Documento</SelectItem>
-                      <SelectItem value="audio">Áudio</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="mediaUrl">URL da Mídia</Label>
+                  <Label htmlFor="recipient">Destinatário</Label>
                   <Input
-                    id="mediaUrl"
-                    placeholder="https://exemplo.com/imagem.jpg"
-                    value={messageForm.mediaUrl}
-                    onChange={(e) => setMessageForm(prev => ({ ...prev, mediaUrl: e.target.value }))}
+                    id="recipient"
+                    value={textMessage.recipient}
+                    onChange={(e) => setTextMessage(prev => ({ ...prev, recipient: e.target.value }))}
+                    placeholder="5511999999999"
                   />
                 </div>
-                <Button onClick={handleSendMedia} disabled={loading || !messageForm.recipient || !messageForm.mediaUrl}>
-                  {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Image className="h-4 w-4 mr-2" />}
-                  Enviar Mídia
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="location" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="latitude">Latitude</Label>
-                    <Input
-                      id="latitude"
-                      placeholder="-23.5505"
-                      value={messageForm.latitude}
-                      onChange={(e) => setMessageForm(prev => ({ ...prev, latitude: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="longitude">Longitude</Label>
-                    <Input
-                      id="longitude"
-                      placeholder="-46.6333"
-                      value={messageForm.longitude}
-                      onChange={(e) => setMessageForm(prev => ({ ...prev, longitude: e.target.value }))}
-                    />
-                  </div>
+                <div>
+                  <Label htmlFor="text">Mensagem</Label>
+                  <Textarea
+                    id="text"
+                    value={textMessage.text}
+                    onChange={(e) => setTextMessage(prev => ({ ...prev, text: e.target.value }))}
+                    placeholder="Digite sua mensagem..."
+                    rows={3}
+                  />
                 </div>
-                <Button onClick={handleSendLocation} disabled={loading || !messageForm.recipient || !messageForm.latitude || !messageForm.longitude}>
-                  {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <MapPin className="h-4 w-4 mr-2" />}
-                  Enviar Localização
+                <Button onClick={handleSendText} disabled={loading}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Enviar Mensagem
                 </Button>
-              </TabsContent>
-
-              <TabsContent value="advanced" className="space-y-4">
-                <Alert>
-                  <MessageSquare className="h-4 w-4" />
-                  <AlertDescription>
-                    Funcionalidades avançadas como botões, listas e encaminhamento estão disponíveis via API.
-                  </AlertDescription>
-                </Alert>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     );
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">CodeChat API v2.2.1 - Ultimate Manager</h1>
-        <p className="text-muted-foreground">Gerenciamento completo da API CodeChat com todos os endpoints implementados</p>
+        <h1 className="text-3xl font-bold">CodeChat API v2.2.1 - Gerenciador Completo</h1>
+        <p className="text-muted-foreground mt-2">
+          Interface completa para gerenciamento da API CodeChat v2.2.1
+        </p>
       </div>
 
       {error && (
-        <Alert variant="destructive" className="mb-6">
+        <Alert className="mb-6" variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid grid-cols-4 w-full">
           <TabsTrigger value="admin" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
             Admin
@@ -726,10 +578,6 @@ const CodeChatV2UltimateManager: React.FC<CodeChatV2UltimateManagerProps> = ({ c
           <TabsTrigger value="messages" className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
             Mensagens
-          </TabsTrigger>
-          <TabsTrigger value="advanced" className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            Avançado
           </TabsTrigger>
         </TabsList>
 
@@ -747,24 +595,6 @@ const CodeChatV2UltimateManager: React.FC<CodeChatV2UltimateManagerProps> = ({ c
 
         <TabsContent value="messages">
           <MessagesTab />
-        </TabsContent>
-
-        <TabsContent value="advanced">
-          <Card>
-            <CardHeader>
-              <CardTitle>Funcionalidades Avançadas</CardTitle>
-              <CardDescription>WebHooks, Grupos, Mídia e integrações</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Alert>
-                <Settings className="h-4 w-4" />
-                <AlertDescription>
-                  Esta seção será implementada com WebHooks, gerenciamento de grupos, 
-                  controle de mídia, integrações MinIO e Chatwoot.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>
