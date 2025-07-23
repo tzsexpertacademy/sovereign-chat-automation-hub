@@ -51,12 +51,8 @@ const ServerConfiguration = () => {
   };
 
   const handleSaveConfig = async () => {
-    const success = await saveConfig();
-    if (success) {
-      toast.success('Configuração CodeChat API v2.2.1 salva com sucesso!');
-    } else {
-      toast.error('Erro ao salvar configuração da API v2.2.1');
-    }
+    await saveConfig();
+    // Toast is handled inside saveConfig
   };
 
   const handleTestConnection = async () => {
@@ -69,54 +65,33 @@ const ServerConfiguration = () => {
   };
 
   const handleValidateConfig = async () => {
-    const isValid = await validateConfig();
-    if (isValid) {
-      toast.success('Configuração CodeChat API v2.2.1 válida!');
-    } else {
-      toast.error('Configuração CodeChat API v2.2.1 inválida');
-    }
+    await validateConfig();
+    // Toast is handled inside validateConfig
   };
 
   const handleExportConfig = () => {
-    const exported = exportConfig();
-    const blob = new Blob([exported], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `codechat-v2.2.1-config-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Configuração CodeChat API v2.2.1 exportada!');
+    exportConfig();
+    // Export handling is done inside exportConfig
   };
 
   const handleImportConfig = () => {
-    try {
-      const success = importConfig(configJson);
-      if (success) {
-        setLocalConfig(config);
-        setConfigJson('');
-        setShowImport(false);
-        toast.success('Configuração CodeChat API v2.2.1 importada com sucesso!');
-      }
-    } catch (error) {
-      toast.error('Erro ao importar configuração da API v2.2.1');
-    }
+    importConfig(configJson);
+    setLocalConfig(config);
+    setConfigJson('');
+    setShowImport(false);
+    // Toast is handled inside importConfig
   };
 
   const handleResetToDefaults = () => {
     resetToDefaults();
     setLocalConfig(config);
-    toast.success('Configuração resetada para padrões CodeChat API v2.2.1');
+    // Toast is handled inside resetToDefaults
   };
 
   const handleRollback = () => {
-    const success = rollbackConfig();
-    if (success) {
-      setLocalConfig(config);
-      toast.success('Configuração anterior da API v2.2.1 restaurada');
-    } else {
-      toast.error('Nenhuma configuração anterior da API v2.2.1 encontrada');
-    }
+    rollbackConfig();
+    setLocalConfig(config);
+    // Toast is handled inside rollbackConfig
   };
 
   const getStatusIcon = () => {

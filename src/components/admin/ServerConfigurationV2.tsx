@@ -52,12 +52,8 @@ const ServerConfigurationV2 = () => {
   };
 
   const handleSaveConfig = async () => {
-    const success = await saveConfig();
-    if (success) {
-      toast.success('Configuração salva com sucesso!');
-    } else {
-      toast.error('Erro ao salvar configuração');
-    }
+    await saveConfig();
+    // Toast is handled inside saveConfig
   };
 
   const handleTestConnection = async () => {
@@ -70,38 +66,21 @@ const ServerConfigurationV2 = () => {
   };
 
   const handleValidateConfig = async () => {
-    const isValid = await validateConfig();
-    if (isValid) {
-      toast.success('Configuração válida!');
-    } else {
-      toast.error('Configuração inválida');
-    }
+    await validateConfig();
+    // Toast is handled inside validateConfig
   };
 
   const handleExportConfig = () => {
-    const exported = exportConfig();
-    const blob = new Blob([exported], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `server-config-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Configuração exportada!');
+    exportConfig();
+    // Export handling is done inside exportConfig
   };
 
   const handleImportConfig = () => {
-    try {
-      const success = importConfig(configJson);
-      if (success) {
-        setLocalConfig(config);
-        setConfigJson('');
-        setShowImport(false);
-        toast.success('Configuração importada com sucesso!');
-      }
-    } catch (error) {
-      toast.error('Erro ao importar configuração');
-    }
+    importConfig(configJson);
+    setLocalConfig(config);
+    setConfigJson('');
+    setShowImport(false);
+    // Toast is handled inside importConfig
   };
 
   const handleResetToDefaults = () => {
@@ -111,13 +90,9 @@ const ServerConfigurationV2 = () => {
   };
 
   const handleRollback = () => {
-    const success = rollbackConfig();
-    if (success) {
-      setLocalConfig(config);
-      toast.success('Configuração anterior restaurada');
-    } else {
-      toast.error('Nenhuma configuração anterior encontrada');
-    }
+    rollbackConfig();
+    setLocalConfig(config);
+    // Toast is handled inside rollbackConfig
   };
 
   const getStatusIcon = () => {
