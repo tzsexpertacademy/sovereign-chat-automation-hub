@@ -472,54 +472,54 @@ class UnifiedYumerService {
   }
 
   async getInstance(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: YumerInstance; error?: string }> {
-    // Buscar JWT específico da instância se não fornecido
-    if (!instanceJWT) {
-      try {
-        const { whatsappInstancesService } = await import('./whatsappInstancesService');
-        const instance = await whatsappInstancesService.getInstanceByInstanceId(instanceId);
-        instanceJWT = instance?.auth_jwt || undefined;
-      } catch (error) {
-        console.warn('⚠️ [GET-INSTANCE] Erro ao buscar JWT da instância:', error);
-      }
+    console.log(`🔍 [UNIFIED-YUMER] Buscando instância: ${instanceId}`);
+    
+    // Buscar business_id da instância para usar business_token
+    let businessId = '';
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('business_business_id')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      businessId = instance?.business_business_id || '';
+      console.log('🔑 [GET-INSTANCE] Business ID encontrado:', businessId);
+    } catch (error) {
+      console.warn('⚠️ [GET-INSTANCE] Erro ao buscar business_id:', error);
     }
     
     return this.makeRequest<YumerInstance>(`/api/v2/instance/${instanceId}`, {
-      method: 'GET',
-      headers: instanceJWT ? {
-        'authorization': `Bearer ${instanceJWT}`
-      } : {}
-    }, true, false);
+      method: 'GET'
+    }, true, true, businessId);
   }
 
   async connectInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
     console.log(`🔗 [UNIFIED-YUMER] Conectando instância: ${instanceId}`);
     
-    // Buscar JWT da instância no banco
-    let authToken = this.config.globalApiKey;
-    
+    // Buscar business_id da instância para usar business_token
+    let businessId = '';
     try {
       const { supabase } = await import('@/integrations/supabase/client');
       const { data: instance } = await supabase
         .from('whatsapp_instances')
-        .select('auth_jwt')
+        .select('business_business_id')
         .eq('instance_id', instanceId)
-        .maybeSingle();
+        .single();
       
-      if (instance?.auth_jwt) {
-        authToken = instance.auth_jwt;
-        console.log('🔑 [UNIFIED-YUMER] Usando JWT específico da instância');
-      } else {
-        console.log('⚠️ [UNIFIED-YUMER] JWT não encontrado, usando ADMIN_TOKEN');
-      }
+      businessId = instance?.business_business_id || '';
+      console.log('🔑 [CONNECT-INSTANCE] Business ID encontrado:', businessId);
     } catch (error) {
-      console.warn('⚠️ [UNIFIED-YUMER] Erro ao buscar JWT, usando ADMIN_TOKEN:', error);
+      console.warn('⚠️ [CONNECT-INSTANCE] Erro ao buscar business_id:', error);
     }
-
+    
     return this.makeRequest(
       `/api/v2/instance/${instanceId}/connect`,
-      { method: 'GET', headers: { 'authorization': `Bearer ${authToken}` } },
+      { method: 'GET' },
       true,
-      false
+      true,
+      businessId
     );
   }
 
@@ -532,20 +532,74 @@ class UnifiedYumerService {
   // ==================== CONNECTION & QR CODE ====================
   
   async getConnectionState(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: ConnectionState; error?: string }> {
+    console.log(`🔍 [UNIFIED-YUMER] Verificando estado da conexão: ${instanceId}`);
+    
+    // Buscar business_id da instância para usar business_token
+    let businessId = '';
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('business_business_id')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      businessId = instance?.business_business_id || '';
+      console.log('🔑 [CONNECTION-STATE] Business ID encontrado:', businessId);
+    } catch (error) {
+      console.warn('⚠️ [CONNECTION-STATE] Erro ao buscar business_id:', error);
+    }
+    
     return this.makeRequest<ConnectionState>(`/api/v2/instance/${instanceId}/connection-state`, {
       method: 'GET'
-    }, true, false);
+    }, true, true, businessId);
   }
 
   async getQRCode(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: QRCodeResponse; error?: string }> {
+    console.log(`🔍 [UNIFIED-YUMER] Buscando QR Code: ${instanceId}`);
+    
+    // Buscar business_id da instância para usar business_token
+    let businessId = '';
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('business_business_id')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      businessId = instance?.business_business_id || '';
+      console.log('🔑 [QR-CODE] Business ID encontrado:', businessId);
+    } catch (error) {
+      console.warn('⚠️ [QR-CODE] Erro ao buscar business_id:', error);
+    }
+    
     return this.makeRequest<QRCodeResponse>(`/api/v2/instance/${instanceId}/qrcode`, {
       method: 'GET'
-    }, true, false);
+    }, true, true, businessId);
   }
 
   // ==================== WEBHOOK MANAGEMENT ====================
   
   async configureWebhook(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`🔧 [UNIFIED-YUMER] Configurando webhook para instância: ${instanceId}`);
+    
+    // Buscar business_id da instância para usar business_token
+    let businessId = '';
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('business_business_id')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      businessId = instance?.business_business_id || '';
+      console.log('🔑 [WEBHOOK] Business ID encontrado:', businessId);
+    } catch (error) {
+      console.warn('⚠️ [WEBHOOK] Erro ao buscar business_id:', error);
+    }
+    
     const webhookConfig = {
       name: `Instance ${instanceId} Webhook`, // Nome obrigatório 
       enabled: true,
@@ -576,13 +630,31 @@ class UnifiedYumerService {
     return this.makeRequest(`/api/v2/instance/${instanceId}/webhook`, {
       method: 'POST',
       body: JSON.stringify(webhookConfig)
-    });
+    }, true, true, businessId);
   }
 
   async getWebhookConfig(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`🔍 [UNIFIED-YUMER] Verificando webhook para instância: ${instanceId}`);
+    
+    // Buscar business_id da instância para usar business_token
+    let businessId = '';
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('business_business_id')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      businessId = instance?.business_business_id || '';
+      console.log('🔑 [GET-WEBHOOK] Business ID encontrado:', businessId);
+    } catch (error) {
+      console.warn('⚠️ [GET-WEBHOOK] Erro ao buscar business_id:', error);
+    }
+    
     return this.makeRequest(`/api/v2/instance/${instanceId}/webhook`, {
       method: 'GET'
-    });
+    }, true, true, businessId);
   }
 
   // ==================== MESSAGING ====================
