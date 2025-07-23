@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
-import { yumerApiV2 } from "@/services/yumerApiV2Service";
+import unifiedYumerService from "@/services/unifiedYumerService";
 
 interface InstanceState {
   status: 'idle' | 'loading' | 'success' | 'error' | 'timeout';
@@ -97,7 +97,7 @@ const InstancesManagerV2 = () => {
 
   const checkServerHealth = async () => {
     try {
-      const health = await yumerApiV2.checkServerHealth();
+      const health = await unifiedYumerService.checkServerHealth();
       setServerOnline(true);
       console.log('✅ Servidor online:', health.version);
     } catch (error) {
@@ -136,7 +136,8 @@ const InstancesManagerV2 = () => {
 
   const loadBusinesses = async () => {
     try {
-      const businessData = await yumerApiV2.listBusinesses();
+      const result = await unifiedYumerService.listBusinesses();
+      const businessData = result.success ? result.data : [];
       setBusinesses(businessData);
     } catch (error) {
       console.log('Erro ao carregar businesses (normal se não houver):', error);
@@ -154,7 +155,9 @@ const InstancesManagerV2 = () => {
         if (!business) continue;
 
         // Verificar status atual
-        const connectionState = await yumerApiV2.getConnectionState(instance.instance_id);
+        const result = await unifiedYumerService.getConnectionState(instance.instance_id);
+        if (!result.success) continue;
+        const connectionState = result.data;
         
         // Atualizar no banco se mudou
         const statusMapping = { 'open': 'connected', 'close': 'disconnected', 'connecting': 'connecting' };
@@ -241,7 +244,7 @@ const InstancesManagerV2 = () => {
       
       if (!business) {
         // Criar business
-        business = await yumerApiV2.createBusiness({
+        const result = await unifiedYumerService.createBusiness({
           name: client.company || client.name,
           email: client.email,
           phone: client.phone || '5511999999999',
@@ -250,6 +253,12 @@ const InstancesManagerV2 = () => {
           timezone: 'America/Sao_Paulo',
           language: 'pt-BR'
         });
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Falha ao criar business');
+        }
+        
+        business = result.data;
         
         await loadBusinesses();
       }
@@ -264,11 +273,14 @@ const InstancesManagerV2 = () => {
       const instanceId = `${client.id}_${Date.now()}`;
       const customName = `${client.name}_${Date.now()}`;
       
-      await yumerApiV2.createBusinessInstance(business.businessId, {
+      const createResult = await unifiedYumerService.createBusinessInstance(business.businessId, {
         instanceName: instanceId,
-        token: '',
         qrcode: true
       });
+      
+      if (!createResult.success) {
+        throw new Error(createResult.error || 'Falha ao criar instância');
+      }
 
       updateInstanceState(tempInstanceId, {
         status: 'loading',
@@ -337,7 +349,11 @@ const InstancesManagerV2 = () => {
       });
 
       // 1. Verificar status atual
-      const connectionState = await yumerApiV2.getConnectionState(instanceId);
+      const stateResult = await unifiedYumerService.getConnectionState(instanceId);
+      if (!stateResult.success) {
+        throw new Error(stateResult.error || 'Falha ao obter status');
+      }
+      const connectionState = stateResult.data;
       
       if (connectionState.state === 'open') {
         updateInstanceState(instanceId, {
@@ -356,7 +372,10 @@ const InstancesManagerV2 = () => {
       });
 
       // 2. Conectar instância
-      await yumerApiV2.connectInstance(instanceId);
+      const connectResult = await unifiedYumerService.connectInstance(instanceId);
+      if (!connectResult.success) {
+        throw new Error(connectResult.error || 'Falha ao conectar');
+      }
 
       updateInstanceState(instanceId, {
         status: 'loading',
@@ -373,9 +392,10 @@ const InstancesManagerV2 = () => {
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         try {
-          const qrResult = await yumerApiV2.getQRCode(instanceId);
-          if (qrResult?.qrcode?.code) {
-            qrCode = qrResult.qrcode.code;
+          const qrResult = await unifiedYumerService.getQRCode(instanceId);
+          if (!qrResult.success) continue;
+          if (qrResult.data?.qrcode?.code) {
+            qrCode = qrResult.data.qrcode.code;
             break;
           }
         } catch (error) {
@@ -431,8 +451,8 @@ const InstancesManagerV2 = () => {
       
       // Se não tem QR no banco, buscar da API
       if (!qrCode) {
-        const qrResult = await yumerApiV2.getQRCode(instanceId);
-        qrCode = qrResult?.qrcode?.code;
+        const qrResult = await unifiedYumerService.getQRCode(instanceId);
+        qrCode = qrResult.success ? qrResult.data?.qrcode?.code : null;
       }
 
       if (qrCode) {
@@ -476,7 +496,7 @@ const InstancesManagerV2 = () => {
       // Tentar remover da API (se business existe)
       if (business) {
         try {
-          await yumerApiV2.deleteInstance(instanceId);
+          await unifiedYumerService.deleteInstance(instanceId);
         } catch (error) {
           console.log('Instância não existe na API, apenas no banco');
         }

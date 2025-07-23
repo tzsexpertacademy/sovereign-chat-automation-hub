@@ -108,13 +108,13 @@ class YumerApiV2Service {
     
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       ...options.headers,
     };
 
-    if (useInstanceAuth && instanceName) {
-      headers['apikey'] = this.globalApiKey;
-    } else if (!useInstanceAuth) {
-      headers['apikey'] = this.globalApiKey;
+    // CORREÇÃO CORS: Usar apenas Authorization Bearer
+    if (this.globalApiKey) {
+      headers['authorization'] = `Bearer ${this.globalApiKey}`;
     }
 
     const config: RequestInit = {
