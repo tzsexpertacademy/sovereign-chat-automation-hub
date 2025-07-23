@@ -1,6 +1,7 @@
 
-// CodeChat API v1.3.0 Service - Integração com a API oficial
+// CodeChat API - ATUALIZADO PARA v2.1.3 
 import { yumerJwtService } from './yumerJwtService';
+import { serverConfigService } from './serverConfigService';
 
 export interface CodeChatChat {
   id: string;
@@ -35,9 +36,9 @@ export interface CodeChatContact {
   profilePictureUrl?: string;
 }
 
-// Service para integração com CodeChat API v1.3.0
+// Service para integração com CodeChat API v2.1.3
 class CodeChatApiService {
-  private baseUrl = 'https://yumer.yumerflow.app:8083';
+  private config = serverConfigService.getConfig();
   private instanceTokens: Map<string, string> = new Map();
 
   setInstanceToken(instanceName: string, token: string): void {
@@ -74,7 +75,7 @@ class CodeChatApiService {
   }
 
   private async makeRequest(endpoint: string, options: RequestInit = {}, instanceName?: string): Promise<any> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = `${this.config.serverUrl}${endpoint}`;
     
     const requestOptions: RequestInit = {
       headers: instanceName ? await this.getAuthHeaders(instanceName) : {

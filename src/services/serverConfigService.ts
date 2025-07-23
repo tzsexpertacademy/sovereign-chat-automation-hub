@@ -96,16 +96,16 @@ class ServerConfigService {
 
   private getDefaultConfig(): ServerConfig {
     return {
-      // Primary Backend
-      serverUrl: 'https://yumer.yumerflow.app:8083',
-      host: 'yumer.yumerflow.app',
-      port: 8083,
+      // Primary Backend - ATUALIZADO PARA CODECHAT API v2.1.3
+      serverUrl: 'https://api.yumer.com.br',
+      host: 'api.yumer.com.br',
+      port: 443,
       protocol: 'https',
       basePath: '',
       
-      // Authentication
-      globalApiKey: 'df1afd525fs5f15',
-      jwtSecret: 'sfdgs8152g5s1s5',
+      // Authentication - NOVOS TOKENS CODECHAT v2.1.3
+      globalApiKey: 'qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB',
+      jwtSecret: 'eZf#9vPpGq^3x@ZbWcNvJskH*mL74DwYcFgxKwUaTrpQgzVe',
       requestTimeout: 10000,
       retryAttempts: 3,
       
@@ -130,7 +130,7 @@ class ServerConfigService {
       rateLimitRequests: 100,
       rateLimitWindow: 60,
       
-      // Administrative Webhooks
+      // Administrative Webhooks - ATUALIZADO PARA CODECHAT v2.1.3
       adminWebhooks: {
         qrCodeWebhook: {
           enabled: true,
@@ -157,9 +157,9 @@ class ServerConfigService {
         }
       },
       
-      // Metadata
+      // Metadata - ATUALIZADO PARA v2.1.3
       lastUpdated: new Date().toISOString(),
-      version: '1.0.0'
+      version: '2.1.3'
     };
   }
 
