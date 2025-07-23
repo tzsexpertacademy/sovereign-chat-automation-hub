@@ -78,9 +78,48 @@ export const VERSION_INFO = {
   lastUpdated: '2025-01-23'
 };
 
+// Legacy exports for backward compatibility
+export const SERVER_URL = getServerUrl();
+export const API_BASE_URL = getApiUrl();
+export const SOCKET_URL = `wss://${server.host}:${server.port}/ws`;
+
+// API Key management functions
+let globalApiKey: string | null = null;
+
+export const getYumerGlobalApiKey = (): string | null => {
+  if (globalApiKey) return globalApiKey;
+  return localStorage.getItem('yumer_global_api_key') || auth.adminToken;
+};
+
+export const setYumerGlobalApiKey = (key: string): void => {
+  globalApiKey = key;
+  localStorage.setItem('yumer_global_api_key', key);
+};
+
+export const clearYumerGlobalApiKey = (): void => {
+  globalApiKey = null;
+  localStorage.removeItem('yumer_global_api_key');
+};
+
+export const hasYumerGlobalApiKey = (): boolean => {
+  return !!getYumerGlobalApiKey();
+};
+
+// Server config compatibility function
+export const getServerConfig = () => ({
+  SERVER_URL: getServerUrl(),
+  API_BASE_URL: getApiUrl(),
+  API_KEY: getYumerGlobalApiKey(),
+  ADMIN_TOKEN: auth.adminToken,
+  JWT_SECRET: auth.jwtSecret,
+  protocol: server.protocol,
+  isHttps: server.ssl,
+  nginxProxy: false // Default value for backward compatibility
+});
+
 console.log('🚀 Environment loaded for CodeChat API v2.2.1:', {
   apiVersion: api.version,
   serverUrl: getApiUrl(),
   swaggerDocs: getSwaggerUrl(),
-  environment: isDevelopment ? 'development' : 'production'
+  environment: environment.isDevelopment ? 'development' : 'production'
 });
