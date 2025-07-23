@@ -326,10 +326,22 @@ const InstancesManagerV2 = () => {
       updateInstanceState(instanceId, {
         status: 'loading',
         progress: 10,
-        message: 'Verificando status atual...'
+        message: 'Ativando instância...'
       });
 
-      // 1. Verificar status atual usando JWT da instância
+      // 1. PRIMEIRO: Conectar/ativar instância usando JWT
+      const connectResult = await unifiedYumerService.connectInstance(instanceId, instance.auth_jwt || undefined);
+      if (!connectResult.success) {
+        throw new Error(connectResult.error || 'Falha ao ativar instância');
+      }
+
+      updateInstanceState(instanceId, {
+        status: 'loading',
+        progress: 30,
+        message: 'Verificando status da conexão...'
+      });
+
+      // 2. DEPOIS: Verificar status da conexão
       const stateResult = await unifiedYumerService.getConnectionState(instanceId, instance.auth_jwt || undefined);
       if (!stateResult.success) {
         throw new Error(stateResult.error || 'Falha ao obter status');
@@ -344,18 +356,6 @@ const InstancesManagerV2 = () => {
           data: connectionState
         });
         return;
-      }
-
-      updateInstanceState(instanceId, {
-        status: 'loading',
-        progress: 30,
-        message: 'Iniciando conexão...'
-      });
-
-      // 2. Conectar instância usando JWT
-      const connectResult = await unifiedYumerService.connectInstance(instanceId, instance.auth_jwt || undefined);
-      if (!connectResult.success) {
-        throw new Error(connectResult.error || 'Falha ao conectar');
       }
 
       updateInstanceState(instanceId, {
