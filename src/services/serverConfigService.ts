@@ -1,7 +1,7 @@
 
 // Dynamic Server Configuration Service
 interface ServerConfig {
-  // Primary Backend Configuration - CodeChat API v2.1.3
+  // Primary Backend Configuration - CodeChat API v2.2.1
   serverUrl: string;
   host: string;
   port: number;
@@ -9,7 +9,7 @@ interface ServerConfig {
   basePath: string;
   apiVersion: string;
   
-  // Authentication & Security - v2.1.3
+  // Authentication & Security - v2.2.1
   adminToken: string;
   globalApiKey: string;
   jwtSecret: string;
@@ -37,7 +37,7 @@ interface ServerConfig {
   rateLimitRequests: number;
   rateLimitWindow: number;
   
-  // Administrative Webhooks - v2.1.3
+  // Administrative Webhooks - v2.2.1
   adminWebhooks: {
     qrCodeWebhook: {
       enabled: boolean;
@@ -138,7 +138,7 @@ class ServerConfigService {
       rateLimitRequests: 100,
       rateLimitWindow: 60,
       
-      // Administrative Webhooks - CodeChat API v2.1.3 - ENDPOINTS CORRETOS
+      // Administrative Webhooks - CodeChat API v2.2.1 - ENDPOINTS CORRETOS
       adminWebhooks: {
         qrCodeWebhook: {
           enabled: true,
@@ -181,14 +181,14 @@ class ServerConfigService {
         
         // Verificar se é uma configuração antiga que precisa ser migrada
         if (this.needsMigration(parsed)) {
-          console.log('🔄 Detectada configuração antiga. Iniciando migração automática...');
+          console.log('🔄 Detectada configuração antiga. Iniciando migração automática para CodeChat v2.2.1...');
           this.migrateOldConfig(parsed);
         } else {
           this.config = { ...this.getDefaultConfig(), ...parsed };
-          console.log('✅ Configuração v2.1.3 carregada:', this.config);
+          console.log('✅ Configuração CodeChat v2.2.1 carregada:', this.config);
         }
       } else {
-        console.log('🆕 Primeira execução - aplicando configuração padrão CodeChat v2.1.3');
+        console.log('🆕 Primeira execução - aplicando configuração padrão CodeChat v2.2.1');
         this.config = this.getDefaultConfig();
         this.saveConfig();
       }
@@ -211,7 +211,7 @@ class ServerConfigService {
   }
 
   private migrateOldConfig(oldConfig: any): void {
-    console.log('🔧 Migrando configuração antiga para CodeChat API v2.1.3...');
+    console.log('🔧 Migrando configuração antiga para CodeChat API v2.2.1...');
     
     // Preservar apenas configurações customizadas válidas (não relacionadas ao servidor)
     const preservableSettings = {
@@ -242,7 +242,7 @@ class ServerConfigService {
     // Salvar configuração migrada
     this.saveConfig();
     
-    console.log('✅ Migração concluída para CodeChat API v2.1.3:', {
+    console.log('✅ Migração concluída para CodeChat API v2.2.1:', {
       serverUrl: this.config.serverUrl,
       host: this.config.host,
       port: this.config.port,
@@ -252,7 +252,7 @@ class ServerConfigService {
   }
 
   private forceResetToDefaults(): void {
-    console.log('🔄 Forçando reset completo para configurações padrão...');
+    console.log('🔄 Forçando reset completo para configurações padrão CodeChat v2.2.1...');
     
     // Limpar localStorage
     localStorage.removeItem('yumer_server_config');
@@ -262,7 +262,7 @@ class ServerConfigService {
     this.config = this.getDefaultConfig();
     this.saveConfig();
     
-    console.log('✅ Reset concluído - CodeChat API v2.1.3 configurado');
+    console.log('✅ Reset concluído - CodeChat API v2.2.1 configurado');
   }
 
   private saveConfig(): void {
@@ -270,7 +270,7 @@ class ServerConfigService {
       this.config.lastUpdated = new Date().toISOString();
       this.config.configVersion = this.CURRENT_CONFIG_VERSION;
       localStorage.setItem('yumer_server_config', JSON.stringify(this.config));
-      console.log('💾 Configuração CodeChat v2.1.3 salva:', {
+      console.log('💾 Configuração CodeChat v2.2.1 salva:', {
         serverUrl: this.config.serverUrl,
         host: this.config.host,
         port: this.config.port,
@@ -288,7 +288,7 @@ class ServerConfigService {
     console.log('🗂️ Backup da configuração criado');
   }
 
-  // Public API - Updated for v2.1.3
+  // Public API - Updated for v2.2.1
   getConfig(): ServerConfig {
     return { ...this.config };
   }
@@ -465,7 +465,7 @@ class ServerConfigService {
     };
   }
 
-  // Generate URLs based on current config - CodeChat API v2.1.3
+  // Generate URLs based on current config - CodeChat API v2.2.1
   getApiUrl(): string {
     return `${this.config.serverUrl}${this.config.basePath}`;
   }
