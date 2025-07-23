@@ -43,27 +43,33 @@ const WhatsAppSystemStatus = () => {
       setServerStatus('checking');
       console.log(`🧪 [SERVER-STATUS-v2.2.1] Verificando status do servidor: ${config.serverUrl}`);
       
-      // Usar endpoint /docs que sabemos que existe e retorna 200
+      // Usar endpoint /docs que existe e retorna HTML
       const response = await fetch(`${config.serverUrl}/docs`, {
         method: 'GET',
-        mode: 'no-cors', // Evitar problemas de CORS para check básico
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        },
+        mode: 'cors',
         cache: 'no-cache'
       });
       
-      // Para no-cors, response.ok será sempre false, mas se não houve erro de rede, servidor está online
-      console.log(`✅ [SERVER-STATUS-v2.2.1] Servidor respondeu, considerando online`);
-      
-      setServerInfo({
-        version: `v${config.apiVersion}`,
-        timestamp: new Date().toISOString(),
-        uptime: 0,
-        activeClients: 'N/A (CORS limitation)',
-        endpoint: '/docs',
-        note: 'Status básico - CORS impede verificação completa'
-      });
-      
-      setServerStatus('online');
-      setLastCheck(new Date());
+      if (response.ok) {
+        console.log(`✅ [SERVER-STATUS-v2.2.1] Servidor online - Status ${response.status}`);
+        
+        setServerInfo({
+          version: `v${config.apiVersion}`,
+          timestamp: new Date().toISOString(),
+          httpStatus: response.status,
+          contentType: response.headers.get('content-type'),
+          endpoint: '/docs',
+          cors: response.headers.get('access-control-allow-origin') ? 'Configurado' : 'Não detectado'
+        });
+        
+        setServerStatus('online');
+        setLastCheck(new Date());
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
       
     } catch (error) {
       console.error('❌ [SERVER-STATUS-v2.2.1] Erro ao verificar status do servidor:', error);
@@ -155,16 +161,16 @@ const WhatsAppSystemStatus = () => {
                 <p className="text-lg font-bold">{serverInfo.version}</p>
               </div>
               <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-600">Endpoint Testado</p>
-                <p className="text-sm font-mono">{serverInfo.endpoint}</p>
+                <p className="text-sm font-medium text-gray-600">Status HTTP</p>
+                <p className="text-sm font-mono">{serverInfo.httpStatus}</p>
               </div>
               <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-600">Status</p>
-                <p className="text-sm">{serverInfo.note}</p>
+                <p className="text-sm font-medium text-gray-600">Content-Type</p>
+                <p className="text-sm">{serverInfo.contentType}</p>
               </div>
               <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-600">Timestamp</p>
-                <p className="text-sm">{new Date(serverInfo.timestamp).toLocaleString()}</p>
+                <p className="text-sm font-medium text-gray-600">CORS</p>
+                <p className="text-sm">{serverInfo.cors}</p>
               </div>
             </div>
           )}
@@ -174,10 +180,10 @@ const WhatsAppSystemStatus = () => {
             <h4 className="font-medium text-blue-900 mb-2">📋 Configuração v{config.apiVersion}:</h4>
             <div className="text-sm text-blue-800 space-y-1">
               <p><strong>Servidor:</strong> {config.serverUrl}</p>
-              <p><strong>Base Path:</strong> {config.basePath}</p>
               <p><strong>API Version:</strong> v{config.apiVersion}</p>
               <p><strong>API Key:</strong> {config.globalApiKey ? '✅ Configurada' : '❌ Não configurada'}</p>
               <p><strong>Admin Token:</strong> {config.adminToken ? '✅ Configurado' : '❌ Não configurado'}</p>
+              <p><strong>Frontend Origin:</strong> {window.location.origin}</p>
             </div>
           </div>
 
@@ -229,14 +235,15 @@ const WhatsAppSystemStatus = () => {
               <div className="flex items-start space-x-2">
                 <CheckCircle className="w-5 h-5 text-green-500 mt-0.5" />
                 <div>
-                  <p className="font-medium text-green-900">Servidor Online</p>
+                  <p className="font-medium text-green-900">Servidor Online ✅</p>
                   <p className="text-sm text-green-700">
                     CodeChat API v{config.apiVersion} funcionando corretamente
                   </p>
                   <div className="mt-2 text-xs text-green-600">
-                    <p>URL do Servidor: <code className="bg-green-100 px-1 rounded">{config.serverUrl}</code></p>
-                    <p className="mt-1">Hostname Frontend: <code className="bg-green-100 px-1 rounded">{window.location.hostname}</code></p>
-                    <p className="mt-1">⚠️ CORS pode impedir acesso completo às APIs desde este domínio</p>
+                    <p>✅ Endpoint /docs acessível</p>
+                    <p>✅ CORS configurado corretamente</p>
+                    <p>✅ Servidor respondendo a requisições</p>
+                    <p className="mt-1">🌐 Frontend: <code className="bg-green-100 px-1 rounded">{window.location.hostname}</code></p>
                   </div>
                 </div>
               </div>

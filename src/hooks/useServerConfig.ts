@@ -4,69 +4,71 @@ import { serverConfigService, ServerConfig, ServerStatus } from '@/services/serv
 
 export const useServerConfig = () => {
   const [config, setConfig] = useState<ServerConfig>(serverConfigService.getConfig());
-  const [status, setStatus] = useState<ServerStatus>(serverConfigService.getStatus());
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [status, setStatus] = useState<ServerStatus>({
+    isOnline: false,
+    lastCheck: new Date().toISOString(),
+    latency: 0
+  });
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = serverConfigService.subscribe((newConfig) => {
+    console.log('🔧 [useServerConfig] Hook inicializado');
+    
+    // Carregar configuração inicial
+    const initialConfig = serverConfigService.getConfig();
+    setConfig(initialConfig);
+    
+    // Verificar status do servidor
+    checkServerStatus();
+    
+    // Configurar listeners para mudanças
+    const configChangeHandler = (newConfig: ServerConfig) => {
+      console.log('📡 [useServerConfig] Configuração atualizada:', newConfig);
       setConfig(newConfig);
-    });
+    };
 
-    // Verificar status inicial
-    testConnection();
+    const statusChangeHandler = (newStatus: ServerStatus) => {
+      console.log('📊 [useServerConfig] Status atualizado:', newStatus);
+      setStatus(newStatus);
+    };
 
-    return unsubscribe;
+    // Adicionar listeners (simulação, já que não temos eventos reais)
+    // Em uma implementação real, você poderia usar EventEmitter ou similar
+    
+    setIsLoading(false);
+    
+    return () => {
+      // Cleanup listeners se necessário
+    };
   }, []);
 
-  const updateConfig = async (updates: Partial<ServerConfig>) => {
-    setIsLoading(true);
+  const checkServerStatus = async (): Promise<ServerStatus> => {
     try {
-      serverConfigService.updateConfig(updates);
-      setConfig(serverConfigService.getConfig());
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const saveConfig = async (): Promise<boolean> => {
-    setIsSaving(true);
-    try {
-      const success = serverConfigService.saveConfigExplicitly();
-      if (success) {
-        setConfig(serverConfigService.getConfig());
-      }
-      return success;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const testConnection = async () => {
-    setIsLoading(true);
-    try {
-      console.log(`🔍 [SERVER-CONFIG] Testando conexão com ${config.serverUrl}`);
+      console.log(`🧪 [useServerConfig] Verificando status: ${config.serverUrl}/docs`);
       
-      // Usar endpoint /docs que sabemos que existe na v2.2.1
+      // Usar endpoint /docs que sabemos que existe
       const response = await fetch(`${config.serverUrl}/docs`, {
         method: 'GET',
-        mode: 'no-cors', // Evitar problemas de CORS para teste básico
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        },
+        mode: 'cors',
         cache: 'no-cache'
       });
       
-      // Para modo no-cors, não conseguimos ler a resposta, mas se não houve erro, servidor está respondendo
-      console.log(`✅ [SERVER-CONFIG] Servidor respondeu, considerando online`);
-      
       const newStatus: ServerStatus = {
-        isOnline: true,
+        isOnline: response.ok,
         lastCheck: new Date().toISOString(),
-        latency: 0, // Não podemos medir latência em modo no-cors
+        latency: 0, // Não podemos medir latência facilmente aqui
       };
+      
       setStatus(newStatus);
+      console.log(`✅ [useServerConfig] Status verificado:`, newStatus);
       
       return newStatus;
+      
     } catch (error: any) {
-      console.error(`❌ [SERVER-CONFIG] Erro ao testar conexão:`, error);
+      console.error(`❌ [useServerConfig] Erro ao verificar status:`, error);
       
       const newStatus: ServerStatus = {
         isOnline: false,
@@ -78,62 +80,40 @@ export const useServerConfig = () => {
       setStatus(newStatus);
       
       return newStatus;
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  const validateConfig = async () => {
-    setIsLoading(true);
-    try {
-      return await serverConfigService.validateConfiguration();
-    } finally {
-      setIsLoading(false);
+  const updateConfig = (updates: Partial<ServerConfig>) => {
+    console.log('🔄 [useServerConfig] Atualizando configuração:', updates);
+    const newConfig = serverConfigService.updateConfig(updates);
+    setConfig(newConfig);
+    
+    // Re-verificar status se a URL do servidor mudou
+    if (updates.serverUrl) {
+      checkServerStatus();
     }
   };
 
-  const exportConfig = () => {
-    return serverConfigService.exportConfig();
-  };
-
-  const importConfig = (configJson: string) => {
-    const success = serverConfigService.importConfig(configJson);
-    if (success) {
-      setConfig(serverConfigService.getConfig());
-    }
-    return success;
-  };
-
-  const resetToDefaults = () => {
-    serverConfigService.resetToDefaults();
-    setConfig(serverConfigService.getConfig());
-  };
-
-  const rollbackConfig = () => {
-    const success = serverConfigService.rollbackConfig();
-    if (success) {
-      setConfig(serverConfigService.getConfig());
-    }
-    return success;
+  const resetConfig = () => {
+    console.log('🔄 [useServerConfig] Resetando configuração');
+    const defaultConfig = serverConfigService.resetToDefaults();
+    setConfig(defaultConfig);
+    checkServerStatus();
   };
 
   return {
     config,
     status,
     isLoading,
-    isSaving,
     updateConfig,
-    saveConfig,
-    testConnection,
-    validateConfig,
-    exportConfig,
-    importConfig,
-    resetToDefaults,
-    rollbackConfig,
-    // Convenience getters
-    apiUrl: serverConfigService.getApiUrl(),
-    webSocketUrl: serverConfigService.getWebSocketUrl(),
-    headers: serverConfigService.getHeaders(),
-    frontendIntegration: serverConfigService.getFrontendIntegrationInfo()
+    resetConfig,
+    checkServerStatus,
+    
+    // Helpers úteis
+    isServerOnline: status.isOnline,
+    lastStatusCheck: status.lastCheck,
+    hasApiKey: !!config.globalApiKey,
+    hasAdminToken: !!config.adminToken,
+    serverLatency: status.latency
   };
 };

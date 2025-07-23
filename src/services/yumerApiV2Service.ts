@@ -143,21 +143,27 @@ class YumerApiV2Service {
   // ==================== SERVER HEALTH CHECK ====================
   
   /**
-   * Verifica se o servidor está online acessando a documentação
+   * Verifica se o servidor está online usando endpoint /docs
    */
   async checkServerHealth(): Promise<{ status: string; version: string; timestamp: string }> {
     try {
-      // Usar endpoint /docs que sabemos que existe
+      // Usar endpoint /docs que sabemos que existe e retorna 200
       const response = await fetch(`${this.baseUrl}/docs`, {
         method: 'GET',
-        mode: 'no-cors'
+        headers: {
+          'Accept': 'text/html'
+        }
       });
       
-      return {
-        status: 'online',
-        version: 'v2.2.1',
-        timestamp: new Date().toISOString()
-      };
+      if (response.ok) {
+        return {
+          status: 'online',
+          version: 'v2.2.1',
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
     } catch (error) {
       console.error('[YumerApiV2.2.1] Health check failed:', error);
       throw new Error('Server offline or unreachable');
@@ -170,7 +176,7 @@ class YumerApiV2Service {
    * Cria uma nova API Key
    */
   async createApiKey(name: string): Promise<ApiKey> {
-    return this.makeRequest<ApiKey>('/manager/createApikey', {
+    return this.makeRequest<ApiKey>('/api/v2/manager/createApikey', {
       method: 'POST',
       body: JSON.stringify({ name })
     });
@@ -180,14 +186,14 @@ class YumerApiV2Service {
    * Lista todas as API Keys
    */
   async listApiKeys(): Promise<ApiKey[]> {
-    return this.makeRequest<ApiKey[]>('/manager/findApikey');
+    return this.makeRequest<ApiKey[]>('/api/v2/manager/findApikey');
   }
 
   /**
    * Remove uma API Key
    */
   async deleteApiKey(apikey: string): Promise<{ message: string }> {
-    return this.makeRequest(`/manager/deleteApikey/${apikey}`, {
+    return this.makeRequest(`/api/v2/manager/deleteApikey/${apikey}`, {
       method: 'DELETE'
     });
   }
@@ -198,7 +204,7 @@ class YumerApiV2Service {
    * Lista todos os businesses
    */
   async listBusinesses(): Promise<Business[]> {
-    return this.makeRequest<Business[]>('/business');
+    return this.makeRequest<Business[]>('/api/v2/admin/business');
   }
 
   /**
@@ -213,7 +219,7 @@ class YumerApiV2Service {
     timezone?: string;
     language?: string;
   }): Promise<Business> {
-    return this.makeRequest<Business>('/business', {
+    return this.makeRequest<Business>('/api/v2/admin/business', {
       method: 'POST',
       body: JSON.stringify({
         ...businessData,
@@ -228,14 +234,14 @@ class YumerApiV2Service {
    * Obtém um business específico
    */
   async getBusiness(businessId: string): Promise<Business> {
-    return this.makeRequest<Business>(`/business/${businessId}`);
+    return this.makeRequest<Business>(`/api/v2/admin/business/${businessId}`);
   }
 
   /**
    * Atualiza um business
    */
   async updateBusiness(businessId: string, updates: Partial<Business>): Promise<Business> {
-    return this.makeRequest<Business>(`/business/${businessId}`, {
+    return this.makeRequest<Business>(`/api/v2/admin/business/${businessId}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
     });
@@ -245,7 +251,7 @@ class YumerApiV2Service {
    * Remove um business
    */
   async deleteBusiness(businessId: string): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/business/${businessId}`, {
+    return this.makeRequest<{ message: string }>(`/api/v2/admin/business/${businessId}`, {
       method: 'DELETE'
     });
   }
@@ -256,7 +262,7 @@ class YumerApiV2Service {
    * Lista instâncias de um business
    */
   async listBusinessInstances(businessId: string): Promise<Instance[]> {
-    return this.makeRequest<Instance[]>(`/business/${businessId}/instance`, {}, true);
+    return this.makeRequest<Instance[]>(`/api/v2/business/${businessId}/instance`, {}, true);
   }
 
   /**
@@ -268,7 +274,7 @@ class YumerApiV2Service {
     qrcode?: boolean;
     number?: string;
   }): Promise<Instance> {
-    return this.makeRequest<Instance>(`/business/${businessId}/instance`, {
+    return this.makeRequest<Instance>(`/api/v2/business/${businessId}/instance`, {
       method: 'POST',
       body: JSON.stringify(instanceData)
     }, true);
@@ -278,14 +284,14 @@ class YumerApiV2Service {
    * Obtém uma instância específica
    */
   async getInstance(instanceId: string): Promise<Instance> {
-    return this.makeRequest<Instance>(`/instance/${instanceId}`, {}, true, instanceId);
+    return this.makeRequest<Instance>(`/api/v2/instance/${instanceId}`, {}, true, instanceId);
   }
 
   /**
    * Conecta uma instância
    */
   async connectInstance(instanceId: string): Promise<Instance> {
-    return this.makeRequest<Instance>(`/instance/${instanceId}/connect`, {
+    return this.makeRequest<Instance>(`/api/v2/instance/${instanceId}/connect`, {
       method: 'GET'
     }, true, instanceId);
   }
@@ -294,7 +300,7 @@ class YumerApiV2Service {
    * Reinicia uma instância
    */
   async restartInstance(instanceId: string): Promise<Instance> {
-    return this.makeRequest<Instance>(`/instance/${instanceId}/restart`, {
+    return this.makeRequest<Instance>(`/api/v2/instance/${instanceId}/restart`, {
       method: 'PUT'
     }, true, instanceId);
   }
@@ -303,7 +309,7 @@ class YumerApiV2Service {
    * Desconecta uma instância
    */
   async logoutInstance(instanceId: string): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/instance/${instanceId}/logout`, {
+    return this.makeRequest<{ message: string }>(`/api/v2/instance/${instanceId}/logout`, {
       method: 'DELETE'
     }, true, instanceId);
   }
@@ -312,7 +318,7 @@ class YumerApiV2Service {
    * Remove uma instância
    */
   async deleteInstance(instanceId: string): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/instance/${instanceId}`, {
+    return this.makeRequest<{ message: string }>(`/api/v2/instance/${instanceId}`, {
       method: 'DELETE'
     }, true, instanceId);
   }
@@ -323,7 +329,7 @@ class YumerApiV2Service {
    * Obtém status da conexão de uma instância
    */
   async getConnectionState(instanceId: string): Promise<ConnectionState> {
-    return this.makeRequest<ConnectionState>(`/instance/${instanceId}/connection-state`, {
+    return this.makeRequest<ConnectionState>(`/api/v2/instance/${instanceId}/connection-state`, {
       method: 'GET'
     }, true, instanceId);
   }
@@ -332,7 +338,7 @@ class YumerApiV2Service {
    * Obtém QR Code para conexão
    */
   async getQRCode(instanceId: string): Promise<QRCode> {
-    return this.makeRequest<QRCode>(`/instance/${instanceId}/qrcode`, {
+    return this.makeRequest<QRCode>(`/api/v2/instance/${instanceId}/qrcode`, {
       method: 'GET'
     }, true, instanceId);
   }
@@ -343,7 +349,7 @@ class YumerApiV2Service {
    * Configura webhook para instância
    */
   async setWebhook(instanceId: string, webhookData: WebhookData): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/webhook/set/${instanceId}`, {
+    return this.makeRequest<{ message: string }>(`/api/v2/webhook/set/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify(webhookData)
     }, true, instanceId);
@@ -353,7 +359,7 @@ class YumerApiV2Service {
    * Obtém configuração do webhook
    */
   async getWebhook(instanceId: string): Promise<WebhookData> {
-    return this.makeRequest<WebhookData>(`/webhook/find/${instanceId}`, {
+    return this.makeRequest<WebhookData>(`/api/v2/webhook/find/${instanceId}`, {
       method: 'GET'
     }, true, instanceId);
   }
@@ -364,7 +370,7 @@ class YumerApiV2Service {
    * Envia mensagem de texto
    */
   async sendText(instanceId: string, number: string, text: string): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/message/sendText/${instanceId}`, {
+    return this.makeRequest<MessageInfo>(`/api/v2/message/sendText/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify({ number, text })
     }, true, instanceId);
@@ -374,7 +380,7 @@ class YumerApiV2Service {
    * Envia mídia (imagem, vídeo, áudio, documento)
    */
   async sendMedia(instanceId: string, data: SendMessageData): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/message/sendMedia/${instanceId}`, {
+    return this.makeRequest<MessageInfo>(`/api/v2/message/sendMedia/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify(data)
     }, true, instanceId);
@@ -384,7 +390,7 @@ class YumerApiV2Service {
    * Envia áudio
    */
   async sendWhatsAppAudio(instanceId: string, number: string, audioBase64: string): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/message/sendWhatsAppAudio/${instanceId}`, {
+    return this.makeRequest<MessageInfo>(`/api/v2/message/sendWhatsAppAudio/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify({
         number,
@@ -402,7 +408,7 @@ class YumerApiV2Service {
    * Lista todos os chats
    */
   async findChats(instanceId: string): Promise<ChatInfo[]> {
-    return this.makeRequest<ChatInfo[]>(`/chat/findChats/${instanceId}`, {
+    return this.makeRequest<ChatInfo[]>(`/api/v2/chat/findChats/${instanceId}`, {
       method: 'GET'
     }, true, instanceId);
   }
@@ -411,7 +417,7 @@ class YumerApiV2Service {
    * Busca mensagens de um chat
    */
   async findMessages(instanceId: string, remoteJid: string, limit = 20): Promise<MessageInfo[]> {
-    return this.makeRequest<MessageInfo[]>(`/chat/findMessages/${instanceId}`, {
+    return this.makeRequest<MessageInfo[]>(`/api/v2/chat/findMessages/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify({ remoteJid, limit })
     }, true, instanceId);
@@ -423,7 +429,7 @@ class YumerApiV2Service {
    * Lista todos os contatos
    */
   async findContacts(instanceId: string): Promise<ContactInfo[]> {
-    return this.makeRequest<ContactInfo[]>(`/chat/findContacts/${instanceId}`, {
+    return this.makeRequest<ContactInfo[]>(`/api/v2/chat/findContacts/${instanceId}`, {
       method: 'GET'
     }, true, instanceId);
   }
@@ -432,7 +438,7 @@ class YumerApiV2Service {
    * Obtém foto do perfil de um contato
    */
   async getProfilePic(instanceId: string, number: string): Promise<{ profilePicUrl: string }> {
-    return this.makeRequest<{ profilePicUrl: string }>(`/chat/getProfilePic/${instanceId}`, {
+    return this.makeRequest<{ profilePicUrl: string }>(`/api/v2/chat/getProfilePic/${instanceId}`, {
       method: 'POST',
       body: JSON.stringify({ number })
     }, true, instanceId);
@@ -444,7 +450,7 @@ class YumerApiV2Service {
    * Define foto do perfil da instância
    */
   async setProfilePic(instanceId: string, picture: string): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/chat/setProfilePic/${instanceId}`, {
+    return this.makeRequest<{ message: string }>(`/api/v2/chat/setProfilePic/${instanceId}`, {
       method: 'PUT',
       body: JSON.stringify({ picture })
     }, true, instanceId);
@@ -454,7 +460,7 @@ class YumerApiV2Service {
    * Define nome do perfil da instância
    */
   async setProfileName(instanceId: string, name: string): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/chat/setProfileName/${instanceId}`, {
+    return this.makeRequest<{ message: string }>(`/api/v2/chat/setProfileName/${instanceId}`, {
       method: 'PUT',
       body: JSON.stringify({ name })
     }, true, instanceId);
