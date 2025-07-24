@@ -337,7 +337,7 @@ class YumerApiV2Service {
    */
   async getQRCode(instanceId: string): Promise<{ code: string; base64: string }> {
     const result = await this.makeRequest<{ code: string; base64: string }>(`/api/v2/instance/${instanceId}/connect`, {
-      method: 'GET'
+      method: 'POST'
     }, true, instanceId);
     return result;
   }
