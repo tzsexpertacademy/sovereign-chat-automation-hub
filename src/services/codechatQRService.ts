@@ -37,7 +37,7 @@ export class CodechatQRService {
   async getQRCodeSimple(instanceName: string): Promise<{ success: boolean; qrCode?: string; error?: string }> {
     try {
       const result = await yumerApiV2.getQRCode(instanceName);
-      return { success: true, qrCode: result.qrcode?.code };
+      return { success: true, qrCode: result.base64 };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
@@ -127,8 +127,8 @@ export class CodechatQRService {
         return {
           ...result,
           success: true,
-          base64: qrResult.qrcode?.code,
-          qrCode: qrResult.qrcode?.code
+          base64: qrResult.base64,
+          qrCode: qrResult.base64
         };
       } catch (qrError) {
         return {

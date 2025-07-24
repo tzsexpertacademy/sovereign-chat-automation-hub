@@ -140,7 +140,7 @@ export class WhatsAppMultiClient {
   async getQRCode(instanceName: string): Promise<string | null> {
     try {
       const result = await yumerApiV2.getQRCode(instanceName);
-      return result.qrcode?.code || null;
+      return result.base64 || null;
     } catch (error) {
       console.error('[WhatsAppMultiClient] Error getting QR code:', error);
       return null;

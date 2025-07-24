@@ -76,9 +76,10 @@ export const QRCodeDisplay = ({
       </div>
       
       <div className="bg-white p-4 rounded-lg border-2 border-blue-200 inline-block">
-        <div 
-          dangerouslySetInnerHTML={{ __html: qrCode }}
-          className="max-w-[200px] mx-auto block [&>img]:max-w-full [&>img]:h-auto"
+        <img 
+          src={qrCode} 
+          alt={`QR Code WhatsApp - ${instanceName}`}
+          className="max-w-[200px] mx-auto block"
         />
       </div>
       

@@ -39,10 +39,8 @@ export interface ConnectionState {
 }
 
 export interface QRCode {
-  qrcode: {
-    instance: string;
-    code: string;
-  };
+  code: string;
+  base64: string;
 }
 
 export interface SendMessageData {
@@ -335,12 +333,13 @@ class YumerApiV2Service {
   }
 
   /**
-   * Obtém QR Code para conexão
+   * Obtém QR Code para conexão via endpoint /connect
    */
-  async getQRCode(instanceId: string): Promise<QRCode> {
-    return this.makeRequest<QRCode>(`/api/v2/instance/${instanceId}/qrcode`, {
+  async getQRCode(instanceId: string): Promise<{ code: string; base64: string }> {
+    const result = await this.makeRequest<{ code: string; base64: string }>(`/api/v2/instance/${instanceId}/connect`, {
       method: 'GET'
     }, true, instanceId);
+    return result;
   }
 
   // ==================== WEBHOOK MANAGEMENT (v2.2.1) ====================
