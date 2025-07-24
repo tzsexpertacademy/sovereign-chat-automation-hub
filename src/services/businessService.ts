@@ -121,16 +121,62 @@ class BusinessService {
     try {
       const result = await unifiedYumerService.listBusinesses();
       if (result.success && result.data) {
-        return result.data.map(business => ({
-          businessId: business.businessId,
-          name: business.name,
-          businessToken: business.businessToken,
-          attributes: {},
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          instances: 0,
-          connectedInstances: 0
-        }));
+        // Para cada business, buscar suas instâncias
+        const businessesWithInstances = await Promise.all(
+          result.data.map(async (business) => {
+            try {
+              // Buscar instâncias do business
+              const instancesResult = await unifiedYumerService.listBusinessInstances(business.businessId);
+              const instances = instancesResult.success ? instancesResult.data || [] : [];
+              
+              // Calcular estatísticas
+              const connectedInstances = instances.filter(i => i.connection === 'open' || i.connectionStatus === 'open').length;
+              
+              return {
+                businessId: business.businessId,
+                name: business.name,
+                businessToken: business.businessToken,
+                attributes: {},
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                Instance: instances.map(instance => ({
+                  instanceId: instance.instanceId || instance.id?.toString() || '',
+                  name: instance.name,
+                  state: (instance.state as 'active' | 'inactive') || 'inactive',
+                  connection: (instance.connection === 'open' ? 'open' : instance.connection === 'refused' ? 'refused' : 'close') as 'open' | 'close' | 'refused',
+                  createdAt: new Date().toISOString(),
+                  businessBusinessId: business.businessId,
+                  Auth: instance.Auth ? {
+                    authId: instance.Auth.token || '',
+                    jwt: instance.Auth.jwt || instance.Auth.token || '',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                  } : undefined,
+                  WhatsApp: instance.WhatsApp ? {
+                    ...instance.WhatsApp,
+                    createdAt: instance.WhatsApp.createdAt || new Date().toISOString()
+                  } : undefined
+                })),
+                instances: instances.length,
+                connectedInstances: connectedInstances
+              };
+            } catch (error) {
+              console.warn(`⚠️ Erro ao buscar instâncias do business ${business.businessId}:`, error);
+              return {
+                businessId: business.businessId,
+                name: business.name,
+                businessToken: business.businessToken,
+                attributes: {},
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                instances: 0,
+                connectedInstances: 0
+              };
+            }
+          })
+        );
+        
+        return businessesWithInstances;
       }
       throw new Error(result.error || 'Erro ao listar businesses');
     } catch (error) {
@@ -307,9 +353,16 @@ class BusinessService {
    */
   async deleteInstance(businessId: string, instanceId: string, force = false): Promise<void> {
     try {
-      // TODO: Implementar endpoint DELETE /api/v2/business/{businessId}/instance
-      console.log('Deletando instância:', businessId, instanceId, force);
-      throw new Error('Endpoint de remoção de instância não implementado');
+      const result = await unifiedYumerService.makeRequest(`/api/v2/business/${businessId}/instance/${instanceId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ force })
+      }, true, true, businessId);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Erro ao deletar instância');
+      }
+      
+      console.log('✅ Instância deletada com sucesso:', instanceId);
     } catch (error) {
       console.error('Erro ao deletar instância:', error);
       throw error;

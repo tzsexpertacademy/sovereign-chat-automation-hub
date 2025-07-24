@@ -144,20 +144,27 @@ const BusinessManagement = () => {
     }
   };
 
-  const handleConfigureWebhook = async (businessId: string) => {
+  const handleDeleteInstance = async (businessId: string, instanceId: string) => {
     try {
-      // TODO: Implementar modal de configuração de webhook
+      setLoading(true);
+      
+      await businessService.deleteInstance(businessId, instanceId);
+      
       toast({
-        title: "Em desenvolvimento",
-        description: "Funcionalidade de configuração de webhook será implementada em breve",
+        title: "Instância Removida",
+        description: "Instância foi removida com sucesso",
       });
+      
+      await loadBusinesses();
     } catch (error: any) {
-      console.error("Erro ao configurar webhook:", error);
+      console.error("Erro ao deletar instância:", error);
       toast({
         title: "Erro",
-        description: error.message || "Falha ao configurar webhook",
+        description: error.message || "Falha ao remover instância",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -397,10 +404,6 @@ const BusinessManagement = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleConfigureWebhook(business.businessId)}>
-                              <Settings className="w-4 h-4 mr-2" />
-                              Configurar Webhook
-                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleRefreshToken(business.businessId)}>
                               <RotateCw className="w-4 h-4 mr-2" />
                               Refresh Token
@@ -499,6 +502,13 @@ const BusinessManagement = () => {
                                     ) : (
                                       <Power className="w-3 h-3" />
                                     )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDeleteInstance(business.businessId, instance.instanceId)}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
                                   </Button>
                                   {instance.WhatsApp?.remoteJid && (
                                     <Badge variant="outline" className="text-xs">
