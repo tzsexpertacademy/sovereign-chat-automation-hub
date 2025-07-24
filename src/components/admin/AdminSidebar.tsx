@@ -8,7 +8,7 @@ const adminItems = [
   { title: "Instâncias", url: "/admin/instances", icon: Activity },
   { title: "Planos", url: "/admin/plans", icon: CreditCard },
   { title: "Servidor", url: "/admin/server", icon: Server },
-  { title: "Logs", url: "/admin/logs", icon: FileText },
+  { title: "Sistema Logs", url: "/admin/logs", icon: FileText },
   { title: "Api Codechat", url: "/admin/diagnostics", icon: TestTube },
   { title: "Avançado", url: "/admin/advanced", icon: Wrench },
 ];
