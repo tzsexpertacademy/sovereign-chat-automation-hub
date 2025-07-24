@@ -19,8 +19,12 @@ import {
   Calendar,
   Activity,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Database,
+  Globe
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import BusinessManagement from "./BusinessManagement";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData, CreateClientData } from "@/services/clientsService";
@@ -196,11 +200,25 @@ const ClientsManagement = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Gerenciamento de Clientes</h1>
-          <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
-        </div>
+      {/* Tabs */}
+      <Tabs defaultValue="clients" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="clients" className="flex items-center space-x-2">
+            <Users className="w-4 h-4" />
+            <span>Clientes</span>
+          </TabsTrigger>
+          <TabsTrigger value="businesses" className="flex items-center space-x-2">
+            <Building2 className="w-4 h-4" />
+            <span>Businesses</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="clients" className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Gerenciamento de Clientes</h1>
+              <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
+            </div>
         <div className="flex space-x-2">
           <Button onClick={loadClients} variant="outline" disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -478,7 +496,13 @@ const ClientsManagement = () => {
             </Card>
           ))
         )}
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="businesses" className="space-y-6">
+          <BusinessManagement />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
