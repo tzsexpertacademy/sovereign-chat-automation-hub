@@ -86,7 +86,7 @@ const InstancesManagerV2 = () => {
     }, 5000); // Polling a cada 5 segundos
     
     return () => clearInterval(interval);
-  }, [globalLoading, pollingActive]);
+  }, []); // Dependências vazias para evitar loop
 
   const updateInstanceState = (instanceId: string, updates: Partial<InstanceState>) => {
     setInstanceStates(prev => ({
