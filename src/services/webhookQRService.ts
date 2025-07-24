@@ -286,7 +286,11 @@ class WebhookQRService {
         }
         // Se for string longa mas não base64, pode ser código QR texto
         if (path.length > 100 && !path.includes(' ')) {
-          return `data:image/png;base64,${path}`;
+          // Se já não contém prefixo, adicionar
+          if (!path.startsWith('data:image/')) {
+            return `data:image/png;base64,${path}`;
+          }
+          return path;
         }
       }
     }

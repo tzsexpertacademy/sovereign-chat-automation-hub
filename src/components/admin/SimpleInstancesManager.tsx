@@ -588,7 +588,7 @@ const SimpleInstancesManager = () => {
             {qrModal.qrCode && (
               <div className="flex justify-center p-4 bg-white rounded-lg">
                 <img 
-                  src={`data:image/png;base64,${qrModal.qrCode}`}
+                  src={qrModal.qrCode}
                   alt="QR Code WhatsApp"
                   className="w-64 h-64"
                 />

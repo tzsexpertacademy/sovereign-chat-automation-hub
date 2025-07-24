@@ -226,7 +226,7 @@ export const InstanceConnectionMonitor = ({ instances, onRefresh }: InstanceConn
                       onClick={() => {
                         // Mostrar QR code em modal
                         if (status.qrCode) {
-                          window.open(`data:image/png;base64,${status.qrCode}`, '_blank');
+                          window.open(status.qrCode, '_blank');
                         }
                       }}
                     >

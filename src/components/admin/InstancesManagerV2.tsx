@@ -353,7 +353,16 @@ const InstancesManagerV2 = () => {
       toast({ title: "Sucesso", description: "Instância criada e configurada!" });
       
       setSelectedClient("");
+      
+      // Recarregar dados automaticamente para mostrar nova instância
+      console.log('🔄 [AUTO-REFRESH] Atualizando lista após criação...');
       await loadInitialData();
+      
+      // Aguardar um pouco e recarregar novamente para garantir sincronização
+      setTimeout(async () => {
+        console.log('🔄 [AUTO-REFRESH] Segunda atualização...');
+        await loadInitialData();
+      }, 2000);
       
       // Limpar estado temporário
       setTimeout(() => {
@@ -985,7 +994,7 @@ const InstancesManagerV2 = () => {
             {qrModal.qrCode && (
               <div className="flex justify-center p-4 bg-white rounded-lg">
                 <img 
-                  src={`data:image/png;base64,${qrModal.qrCode}`}
+                  src={qrModal.qrCode}
                   alt="QR Code WhatsApp"
                   className="w-64 h-64"
                 />
