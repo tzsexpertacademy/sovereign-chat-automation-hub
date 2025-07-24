@@ -302,14 +302,6 @@ const ClientsManagement = () => {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
-          <Button onClick={handleRecalculateInstanceCounts} variant="outline" disabled={loading}>
-            <Database className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Recalcular Contadores
-          </Button>
-          <Button onClick={handleSyncAllInstances} variant="outline" disabled={loading}>
-            <Sync className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Sincronizar Instâncias
-          </Button>
           <Button onClick={() => setShowCreateForm(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Novo Cliente
