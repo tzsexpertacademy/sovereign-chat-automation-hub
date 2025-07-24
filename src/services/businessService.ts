@@ -218,9 +218,32 @@ class BusinessService {
    */
   async refreshBusinessToken(businessId: string, oldToken: string): Promise<{ newToken: string }> {
     try {
-      // TODO: Implementar endpoint PATCH /api/v2/admin/business/{businessId}/refresh-token
-      console.log('Refresh token business:', businessId, oldToken);
-      throw new Error('Endpoint de refresh token não implementado');
+      const result = await unifiedYumerService.makeRequest(`/api/v2/admin/business/${businessId}/refresh-token`, {
+        method: 'PATCH',
+        body: JSON.stringify({ oldToken })
+      });
+      
+      if (result.success && result.data) {
+        const responseData = result.data as any;
+        if (responseData.newToken) {
+          // Atualizar token no Supabase
+          try {
+            const { supabase } = await import('@/integrations/supabase/client');
+            await supabase
+              .from('clients')
+              .update({ business_token: responseData.newToken })
+              .eq('business_id', businessId);
+            
+            console.log('✅ Token business atualizado no Supabase');
+          } catch (error) {
+            console.warn('⚠️ Erro ao atualizar token no Supabase:', error);
+          }
+          
+          return { newToken: responseData.newToken };
+        }
+      }
+      
+      throw new Error(result.error || 'Erro ao fazer refresh do token');
     } catch (error) {
       console.error('Erro ao fazer refresh token business:', error);
       throw error;
@@ -396,9 +419,20 @@ class BusinessService {
     headers?: Record<string, any>;
   }): Promise<WebhookData> {
     try {
-      // TODO: Implementar endpoint POST /api/v2/business/{businessId}/webhook
-      console.log('Criando webhook:', businessId, webhookData);
-      throw new Error('Endpoint de criação de webhook não implementado');
+      const result = await unifiedYumerService.makeRequest(`/api/v2/business/${businessId}/webhook`, {
+        method: 'POST',
+        body: JSON.stringify({
+          url: webhookData.url,
+          enabled: webhookData.enabled !== false,
+          headers: webhookData.headers || {}
+        })
+      });
+      
+      if (result.success && result.data) {
+        return result.data as WebhookData;
+      }
+      
+      throw new Error(result.error || 'Erro ao criar webhook');
     } catch (error) {
       console.error('Erro ao criar webhook:', error);
       throw error;
@@ -410,9 +444,15 @@ class BusinessService {
    */
   async getWebhook(businessId: string): Promise<WebhookData> {
     try {
-      // TODO: Implementar endpoint GET /api/v2/business/{businessId}/webhook
-      console.log('Buscando webhook:', businessId);
-      throw new Error('Endpoint de busca de webhook não implementado');
+      const result = await unifiedYumerService.makeRequest(`/api/v2/business/${businessId}/webhook`, {
+        method: 'GET'
+      });
+      
+      if (result.success && result.data) {
+        return result.data as WebhookData;
+      }
+      
+      throw new Error(result.error || 'Webhook não encontrado');
     } catch (error) {
       console.error('Erro ao buscar webhook:', error);
       throw error;
@@ -428,9 +468,20 @@ class BusinessService {
     headers?: Record<string, any>;
   }): Promise<WebhookData> {
     try {
-      // TODO: Implementar endpoint PUT /api/v2/business/{businessId}/webhook
-      console.log('Atualizando webhook:', businessId, webhookData);
-      throw new Error('Endpoint de atualização de webhook não implementado');
+      const result = await unifiedYumerService.makeRequest(`/api/v2/business/${businessId}/webhook`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          url: webhookData.url,
+          enabled: webhookData.enabled !== false,
+          headers: webhookData.headers || {}
+        })
+      });
+      
+      if (result.success && result.data) {
+        return result.data as WebhookData;
+      }
+      
+      throw new Error(result.error || 'Erro ao atualizar webhook');
     } catch (error) {
       console.error('Erro ao atualizar webhook:', error);
       throw error;

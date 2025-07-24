@@ -113,7 +113,7 @@ class UnifiedYumerService {
   }
 
   // Request com retry e timeout - CORRIGIDO para suportar business_token
-  private async makeRequest<T>(
+  public async makeRequest<T>(
     endpoint: string, 
     options: RequestInit = {},
     useRetry = true,

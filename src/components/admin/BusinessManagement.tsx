@@ -144,24 +144,46 @@ const BusinessManagement = () => {
     }
   };
 
-  const handleCreateInstance = async (businessId: string) => {
+  const handleConfigureWebhook = async (businessId: string) => {
+    try {
+      // TODO: Implementar modal de configuração de webhook
+      toast({
+        title: "Em desenvolvimento",
+        description: "Funcionalidade de configuração de webhook será implementada em breve",
+      });
+    } catch (error: any) {
+      console.error("Erro ao configurar webhook:", error);
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao configurar webhook",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRefreshToken = async (businessId: string) => {
     try {
       setLoading(true);
-      const instanceName = `instance_${Date.now()}`;
       
-      await businessService.createInstance(businessId, { instanceName });
+      // Buscar token atual do business
+      const business = businesses.find(b => b.businessId === businessId);
+      if (!business) {
+        throw new Error("Business não encontrado");
+      }
+      
+      const result = await businessService.refreshBusinessToken(businessId, business.businessToken);
       
       toast({
-        title: "Instância Criada",
-        description: "Nova instância criada com sucesso",
+        title: "Token Atualizado",
+        description: `Novo token: ${result.newToken.slice(0, 16)}...`,
       });
       
       await loadBusinesses();
     } catch (error: any) {
-      console.error("Erro ao criar instância:", error);
+      console.error("Erro ao fazer refresh do token:", error);
       toast({
         title: "Erro",
-        description: error.message || "Falha ao criar instância",
+        description: error.message || "Falha ao fazer refresh do token",
         variant: "destructive",
       });
     } finally {
@@ -375,15 +397,11 @@ const BusinessManagement = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleCreateInstance(business.businessId)}>
-                              <Plus className="w-4 h-4 mr-2" />
-                              Nova Instância
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleConfigureWebhook(business.businessId)}>
                               <Settings className="w-4 h-4 mr-2" />
                               Configurar Webhook
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleRefreshToken(business.businessId)}>
                               <RotateCw className="w-4 h-4 mr-2" />
                               Refresh Token
                             </DropdownMenuItem>
