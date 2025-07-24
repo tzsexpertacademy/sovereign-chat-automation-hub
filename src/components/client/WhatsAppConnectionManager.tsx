@@ -26,6 +26,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useUnifiedInstanceManager } from '@/hooks/useUnifiedInstanceManager';
 import { clientsService } from '@/services/clientsService';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
+import clientYumerService from '@/services/clientYumerService';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 
@@ -115,12 +116,29 @@ const WhatsAppConnectionManager = () => {
     try {
       setCreating(true);
       
+      // Gerar nome único para a instância
+      const instanceName = `yumerflow_${clientId.slice(-8)}_${Date.now()}`;
+      
+      // Criar instância via API Yumer
+      const yumerInstance = await clientYumerService.createInstance(
+        clientId, 
+        instanceName, 
+        `WhatsApp ${instances.length + 1}`
+      );
+      
+      // Salvar no banco local
       const newInstance = await whatsappInstancesService.createInstance({
         client_id: clientId,
-        instance_id: `instance_${Date.now()}`,
+        instance_id: instanceName,
+        yumer_instance_name: instanceName,
         custom_name: `WhatsApp ${instances.length + 1}`,
-        status: 'disconnected'
+        status: 'disconnected',
+        api_version: 'v2.2.1'
       });
+      
+      // Configurar webhook
+      const webhookUrl = `${window.location.origin}/functions/v1/yumer-unified-webhook`;
+      await clientYumerService.setWebhook(clientId, instanceName, webhookUrl);
       
       setInstances(prev => [...prev, newInstance]);
       
