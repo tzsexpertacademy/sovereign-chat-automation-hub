@@ -7,7 +7,7 @@ import { PlansManagement } from "./PlansManagementModern";
 import ServerManagement from "./ServerManagement";
 import ApiCodechat from "./ApiCodechat";
 import SystemLogsModern from "./SystemLogsModern";
-import AdvancedTools from "./AdvancedTools";
+import DevelopmentPlan from "./DevelopmentPlan";
 
 const AdminRouter = () => {
   return (
@@ -22,7 +22,7 @@ const AdminRouter = () => {
       <Route path="/server-config-v2" element={<ServerManagement />} />
       <Route path="/diagnostics" element={<ApiCodechat />} />
       <Route path="/logs" element={<SystemLogsModern />} />
-      <Route path="/advanced" element={<AdvancedTools />} />
+      <Route path="/advanced" element={<DevelopmentPlan />} />
     </Routes>
   );
 };

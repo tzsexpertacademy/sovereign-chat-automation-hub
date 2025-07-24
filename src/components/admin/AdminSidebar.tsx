@@ -10,7 +10,7 @@ const adminItems = [
   { title: "Servidor", url: "/admin/server", icon: Server },
   { title: "Sistema Logs", url: "/admin/logs", icon: FileText },
   { title: "Api Codechat", url: "/admin/diagnostics", icon: TestTube },
-  { title: "Avançado", url: "/admin/advanced", icon: Wrench },
+  { title: "Em Desenvolvimento", url: "/admin/advanced", icon: Wrench },
 ];
 
 const AdminSidebar = () => {
