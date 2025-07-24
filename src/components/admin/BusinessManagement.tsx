@@ -129,7 +129,10 @@ const BusinessManagement = () => {
 
   const handleDeleteBusiness = async (businessId: string) => {
     try {
-      await businessService.deleteBusiness(businessId);
+      await businessService.deleteBusiness(businessId, true); // Usar force=true
+      
+      // Remover business da lista local imediatamente
+      setBusinesses(prev => prev.filter(b => b.businessId !== businessId));
       
       toast({
         title: "Business Removido",
@@ -137,7 +140,6 @@ const BusinessManagement = () => {
       });
       
       setBusinessToDelete(null);
-      await loadBusinesses();
     } catch (error: any) {
       console.error("Erro ao deletar business:", error);
       toast({

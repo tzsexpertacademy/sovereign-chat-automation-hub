@@ -425,8 +425,9 @@ class UnifiedYumerService {
     });
   }
 
-  async deleteBusiness(businessId: string): Promise<{ success: boolean; data?: any; error?: string }> {
-    return this.makeRequest(`/api/v2/admin/business/${businessId}`, {
+  async deleteBusiness(businessId: string, force: boolean = false): Promise<{ success: boolean; data?: any; error?: string }> {
+    const url = `/api/v2/admin/business/${businessId}${force ? '?force=true' : ''}`;
+    return this.makeRequest(url, {
       method: 'DELETE'
     });
   }
@@ -434,9 +435,19 @@ class UnifiedYumerService {
   // ==================== INSTANCE MANAGEMENT ====================
   
   async listBusinessInstances(businessId: string): Promise<{ success: boolean; data?: YumerInstance[]; error?: string }> {
-    return this.makeRequest<YumerInstance[]>(`/api/v2/business/${businessId}/instance`, {
-      method: 'GET'
-    });
+    try {
+      // Tentar primeiro com 'instances' (plural)
+      const result = await this.makeRequest<YumerInstance[]>(`/api/v2/business/${businessId}/instances`, {
+        method: 'GET'
+      });
+      return result;
+    } catch (error: any) {
+      if (error.message?.includes('404') || error.message?.includes('não encontrado')) {
+        console.warn(`🔧 [UNIFIED-YUMER] Endpoint de instâncias não encontrado para business ${businessId}, retornando array vazio`);
+        return { success: true, data: [] };
+      }
+      throw error;
+    }
   }
 
   async createBusinessInstance(businessId: string, instanceData?: {

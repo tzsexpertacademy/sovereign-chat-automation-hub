@@ -199,7 +199,7 @@ class BusinessService {
           })
         );
         
-        return businessesWithInstances;
+    return businessesWithInstances;
       }
       throw new Error(result.error || 'Erro ao listar businesses');
     } catch (error) {
