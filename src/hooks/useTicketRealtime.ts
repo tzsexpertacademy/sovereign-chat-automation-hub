@@ -782,7 +782,8 @@ export const useTicketRealtime = (clientId: string) => {
       initializationRef.current = false;
       
       if (socketRef.current) {
-        socketRef.current.disconnect();
+        whatsappService.disconnect();
+        socketRef.current = null;
       }
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
