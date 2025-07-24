@@ -304,10 +304,10 @@ const YumerV2Diagnostic = () => {
       url: '/api/v2/instance/{instanceId}/qrcode', 
       method: 'GET', 
       category: 'instance',
-      description: 'Obter QR code (pode não existir)',
+      description: 'Obter QR code HTML (após conectar)',
       requiresInstanceId: true,
       tokenType: 'instance',
-      dependency: 'Create Business Instance'
+      dependency: 'Connect Instance'
     },
     { 
       name: 'Connection State', 
@@ -322,12 +322,12 @@ const YumerV2Diagnostic = () => {
     { 
       name: 'Connect Instance', 
       url: '/api/v2/instance/{instanceId}/connect', 
-      method: 'GET', 
+      method: 'POST', 
       category: 'instance',
-      description: 'Conectar instância (opcional - pode demorar)',
+      description: 'Conectar instância WhatsApp - GERA o QR code',
       requiresInstanceId: true,
       tokenType: 'instance',
-      dependency: 'Get QR Code'
+      dependency: 'Get Instance Info'
     },
     
     // 🔔 Webhook Controller - INSTANCE_TOKEN (OPCIONAIS)
