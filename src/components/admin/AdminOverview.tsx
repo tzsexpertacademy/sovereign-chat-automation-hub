@@ -70,20 +70,6 @@ const AdminOverview = () => {
 
   return (
     <div className="space-y-8">
-      {/* Header com controles */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard Administrativo</h1>
-          <p className="text-muted-foreground">
-            Visão geral completa do sistema e métricas em tempo real
-          </p>
-        </div>
-        <Button onClick={refreshStats} variant="outline" className="flex items-center gap-2">
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar Dados
-        </Button>
-      </div>
-
       {/* KPIs Principais - 6 cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card>
