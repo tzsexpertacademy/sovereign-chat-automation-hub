@@ -8,10 +8,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
   Plus, 
   Search, 
-  Edit, 
   Trash2, 
   MessageSquare,
-  Settings,
   Users,
   Building2,
   Phone,
@@ -20,9 +18,10 @@ import {
   Activity,
   RefreshCw,
   ExternalLink,
-  Database,
-  Globe,
-  RotateCw as Sync
+  Filter,
+  TrendingUp,
+  Star,
+  CheckCircle
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BusinessManagement from "./BusinessManagement";
@@ -35,6 +34,8 @@ const ClientsManagement = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [planFilter, setPlanFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newClient, setNewClient] = useState<CreateClientData>({
     name: "",
@@ -111,30 +112,6 @@ const ClientsManagement = () => {
       toast({
         title: "Erro ao Criar Cliente",
         description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSyncClientBusiness = async (clientId: string) => {
-    try {
-      setLoading(true);
-      
-      await clientsService.syncClientWithBusiness(clientId);
-      
-      toast({
-        title: "Sincronização Concluída",
-        description: "Cliente sincronizado com business",
-      });
-      
-      await loadClients();
-    } catch (error: any) {
-      console.error("Erro ao sincronizar:", error);
-      toast({
-        title: "Erro de Sincronização",
-        description: error.message || "Falha ao sincronizar cliente",
         variant: "destructive",
       });
     } finally {
@@ -230,39 +207,48 @@ const ClientsManagement = () => {
     window.open(`/client/${client.id}`, '_blank');
   };
 
-  const filteredClients = clients.filter(client =>
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredClients = clients.filter(client => {
+    const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchesPlan = planFilter === "all" || client.plan === planFilter;
+    
+    const hasInstances = (client.current_instances || 0) > 0;
+    const matchesStatus = statusFilter === "all" || 
+      (statusFilter === "active" && hasInstances) ||
+      (statusFilter === "inactive" && !hasInstances);
+    
+    return matchesSearch && matchesPlan && matchesStatus;
+  });
 
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'connected': return 'bg-green-500';
-      case 'qr_ready': return 'bg-blue-500';
-      case 'connecting': return 'bg-yellow-500';
-      case 'disconnected': return 'bg-gray-500';
-      default: return 'bg-gray-300';
-    }
+  const getStatusColor = (instanceCount: number) => {
+    if (instanceCount > 0) return 'text-green-600';
+    return 'text-gray-500';
   };
 
-  const getStatusText = (status?: string) => {
-    switch (status) {
-      case 'connected': return 'Conectado';
-      case 'qr_ready': return 'QR Pronto';
-      case 'connecting': return 'Conectando';
-      case 'disconnected': return 'Desconectado';
-      default: return 'Sem Instância';
-    }
+  const getStatusText = (instanceCount: number) => {
+    if (instanceCount > 0) return 'Ativo';
+    return 'Inativo';
   };
 
   const getPlanColor = (plan: string) => {
     switch (plan) {
-      case 'basic': return 'bg-gray-100 text-gray-800';
-      case 'standard': return 'bg-blue-100 text-blue-800';
-      case 'premium': return 'bg-purple-100 text-purple-800';
-      case 'enterprise': return 'bg-gold-100 text-gold-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'basic': return 'default';
+      case 'standard': return 'secondary';
+      case 'premium': return 'outline';
+      case 'enterprise': return 'destructive';
+      default: return 'default';
+    }
+  };
+
+  const getPlanIcon = (plan: string) => {
+    switch (plan) {
+      case 'basic': return Users;
+      case 'standard': return TrendingUp;
+      case 'premium': return Star;
+      case 'enterprise': return CheckCircle;
+      default: return Users;
     }
   };
 
@@ -292,305 +278,366 @@ const ClientsManagement = () => {
         </TabsList>
 
         <TabsContent value="clients" className="space-y-6">
-          <div className="flex justify-between items-center">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Gerenciamento de Clientes</h1>
-              <p className="text-gray-600">Gerencie clientes e suas instâncias WhatsApp</p>
+              <h1 className="text-3xl font-bold tracking-tight">Gerenciamento de Clientes</h1>
+              <p className="text-muted-foreground">Gerencie clientes e suas instâncias WhatsApp</p>
             </div>
-        <div className="flex space-x-2">
-          <Button onClick={loadClients} variant="outline" disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
-          <Button onClick={() => setShowCreateForm(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Novo Cliente
-          </Button>
-        </div>
-      </div>
-
-      {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Clientes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{clients.length}</div>
-            <p className="text-xs text-gray-500">Clientes cadastrados</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Instâncias Ativas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {clients.reduce((sum, c) => sum + (c.current_instances || 0), 0)}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button onClick={loadClients} variant="outline" disabled={loading} size="sm">
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline ml-2">Atualizar</span>
+              </Button>
+              <Button onClick={() => setShowCreateForm(true)} size="sm">
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline ml-2">Novo Cliente</span>
+              </Button>
             </div>
-            <p className="text-xs text-green-600">Conectadas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Plano Básico</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {clients.filter(c => c.plan === 'basic').length}
-            </div>
-            <p className="text-xs text-blue-600">Clientes</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Plano Premium</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {clients.filter(c => c.plan === 'premium' || c.plan === 'enterprise').length}
-            </div>
-            <p className="text-xs text-purple-600">Clientes</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Ativos Hoje</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {clients.filter(c => {
-                const today = new Date().toDateString();
-                return new Date(c.last_activity).toDateString() === today;
-              }).length}
-            </div>
-            <p className="text-xs text-orange-600">Atividade hoje</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search */}
-      <Card>
-        <CardHeader>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <Input
-              placeholder="Buscar clientes por nome, email ou empresa..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
           </div>
-        </CardHeader>
-      </Card>
 
-      {/* Create Client Form */}
-      {showCreateForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Criar Novo Cliente</CardTitle>
-            <CardDescription>Preencha os dados do cliente</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">Nome *</label>
-                <Input
-                  placeholder="Nome completo"
-                  value={newClient.name}
-                  onChange={(e) => setNewClient(prev => ({ ...prev, name: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Email *</label>
-                <Input
-                  type="email"
-                  placeholder="email@exemplo.com"
-                  value={newClient.email}
-                  onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Telefone</label>
-                <Input
-                  placeholder="(11) 99999-9999"
-                  value={newClient.phone}
-                  onChange={(e) => setNewClient(prev => ({ ...prev, phone: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Empresa</label>
-                <Input
-                  placeholder="Nome da empresa"
-                  value={newClient.company}
-                  onChange={(e) => setNewClient(prev => ({ ...prev, company: e.target.value }))}
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="text-sm font-medium">Plano</label>
-                <select
-                  value={newClient.plan}
-                  onChange={(e) => setNewClient(prev => ({ ...prev, plan: e.target.value as any }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="basic">Básico (1 instância)</option>
-                  <option value="standard">Padrão (3 instâncias)</option>
-                  <option value="premium">Premium (10 instâncias)</option>
-                  <option value="enterprise">Enterprise (50 instâncias)</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <Button onClick={handleCreateClient} disabled={loading}>
-                {loading ? "Criando..." : "Criar Cliente"}
-              </Button>
-              <Button variant="outline" onClick={() => setShowCreateForm(false)}>
-                Cancelar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+          {/* Summary Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span className="ml-2 text-sm font-medium">Total</span>
+                </div>
+                <div className="text-2xl font-bold">{clients.length}</div>
+                <p className="text-xs text-muted-foreground">Clientes cadastrados</p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span className="ml-2 text-sm font-medium">Instâncias</span>
+                </div>
+                <div className="text-2xl font-bold text-green-600">
+                  {clients.reduce((sum, c) => sum + (c.current_instances || 0), 0)}
+                </div>
+                <p className="text-xs text-muted-foreground">Ativas no total</p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <Users className="h-4 w-4 text-blue-600" />
+                  <span className="ml-2 text-sm font-medium">Básico</span>
+                </div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {clients.filter(c => c.plan === 'basic').length}
+                </div>
+                <p className="text-xs text-muted-foreground">Plano básico</p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <Star className="h-4 w-4 text-purple-600" />
+                  <span className="ml-2 text-sm font-medium">Premium+</span>
+                </div>
+                <div className="text-2xl font-bold text-purple-600">
+                  {clients.filter(c => c.plan === 'premium' || c.plan === 'enterprise').length}
+                </div>
+                <p className="text-xs text-muted-foreground">Planos premium</p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <Activity className="h-4 w-4 text-orange-600" />
+                  <span className="ml-2 text-sm font-medium">Ativos</span>
+                </div>
+                <div className="text-2xl font-bold text-orange-600">
+                  {clients.filter(c => (c.current_instances || 0) > 0).length}
+                </div>
+                <p className="text-xs text-muted-foreground">Com instâncias</p>
+              </CardContent>
+            </Card>
+          </div>
 
-      {/* Clients List */}
-      <div className="grid gap-4">
-        {filteredClients.length === 0 ? (
+          {/* Search and Filters */}
           <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-8">
-                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  {clients.length === 0 ? "Nenhum cliente criado" : "Nenhum cliente encontrado"}
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  {clients.length === 0 
-                    ? "Crie seu primeiro cliente usando o botão 'Novo Cliente'"
-                    : "Tente ajustar os termos de busca"
-                  }
-                </p>
-                {clients.length === 0 && (
-                  <Button onClick={() => setShowCreateForm(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Criar Primeiro Cliente
-                  </Button>
-                )}
+            <CardContent className="p-6">
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  <Input
+                    placeholder="Buscar clientes por nome, email ou empresa..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={planFilter}
+                    onChange={(e) => setPlanFilter(e.target.value)}
+                    className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+                  >
+                    <option value="all">Todos os planos</option>
+                    <option value="basic">Básico</option>
+                    <option value="standard">Padrão</option>
+                    <option value="premium">Premium</option>
+                    <option value="enterprise">Enterprise</option>
+                  </select>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+                  >
+                    <option value="all">Todos status</option>
+                    <option value="active">Ativos</option>
+                    <option value="inactive">Inativos</option>
+                  </select>
+                </div>
               </div>
             </CardContent>
           </Card>
-        ) : (
-          filteredClients.map((client) => (
-            <Card key={client.id} className="hover:shadow-lg transition-shadow">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <Avatar className="w-12 h-12">
-                      <AvatarFallback>{client.name.split(' ').map(n => n[0]).join('').toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h3 className="font-semibold text-lg">{client.name}</h3>
-                      <div className="flex items-center space-x-4 text-sm text-gray-600">
-                        <div className="flex items-center">
-                          <Mail className="w-4 h-4 mr-1" />
-                          {client.email}
-                        </div>
-                        {client.phone && (
-                          <div className="flex items-center">
-                            <Phone className="w-4 h-4 mr-1" />
-                            {client.phone}
-                          </div>
-                        )}
-                        {client.company && (
-                          <div className="flex items-center">
-                            <Building2 className="w-4 h-4 mr-1" />
-                            {client.company}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+
+          {/* Create Client Form */}
+          {showCreateForm && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Criar Novo Cliente</CardTitle>
+                <CardDescription>Preencha os dados do cliente</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Nome *</label>
+                    <Input
+                      placeholder="Nome completo"
+                      value={newClient.name}
+                      onChange={(e) => setNewClient(prev => ({ ...prev, name: e.target.value }))}
+                      className="mt-1"
+                    />
                   </div>
-
-                   <div className="flex items-center space-x-4">
-                     {/* Plan and Instance Info */}
-                     <div className="text-center">
-                       <div className="flex items-center space-x-2 mb-1">
-                         <Badge className={getPlanColor(client.plan)}>
-                           {client.plan.toUpperCase()}
-                         </Badge>
-                         <Badge variant="outline">
-                           {client.current_instances || 0}/{getMaxInstancesForPlan(client.plan)} instâncias
-                         </Badge>
-                       </div>
-                       <div className="flex items-center space-x-2 text-xs text-gray-500">
-                         <span>ID: {client.id.slice(0, 8)}...</span>
-                         {client.business_id && (
-                           <Badge variant="secondary" className="text-xs">
-                             <Building2 className="w-3 h-3 mr-1" />
-                             Business: {client.business_id.slice(0, 8)}...
-                           </Badge>
-                         )}
-                       </div>
-                     </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex space-x-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSyncClientBusiness(client.id)}
-                          className="bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
-                          disabled={loading}
-                        >
-                          <Sync className="w-4 h-4 mr-1" />
-                          {client.business_id ? 'Re-sincronizar' : 'Sincronizar'}
-                        </Button>
-                        
-                        <Button
-                         size="sm"
-                         variant="outline"
-                         onClick={() => handleOpenClientPanel(client)}
-                         className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
-                       >
-                         <ExternalLink className="w-4 h-4 mr-1" />
-                         Painel Cliente
-                       </Button>
-                       
-                       <Button
-                         size="sm"
-                         onClick={() => handleOpenChat(client)}
-                         className="bg-green-600 hover:bg-green-700"
-                         disabled={!client.current_instances || client.current_instances === 0}
-                       >
-                         <MessageSquare className="w-4 h-4 mr-1" />
-                         Chat
-                       </Button>
-                       
-                       <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDeleteClient(client.id)}
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Remover
-                      </Button>
-                    </div>
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Email *</label>
+                    <Input
+                      type="email"
+                      placeholder="email@exemplo.com"
+                      value={newClient.email}
+                      onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Telefone</label>
+                    <Input
+                      placeholder="(11) 99999-9999"
+                      value={newClient.phone}
+                      onChange={(e) => setNewClient(prev => ({ ...prev, phone: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Empresa</label>
+                    <Input
+                      placeholder="Nome da empresa"
+                      value={newClient.company}
+                      onChange={(e) => setNewClient(prev => ({ ...prev, company: e.target.value }))}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium text-foreground">Plano</label>
+                    <select
+                      value={newClient.plan}
+                      onChange={(e) => setNewClient(prev => ({ ...prev, plan: e.target.value as any }))}
+                      className="w-full mt-1 px-3 py-2 border border-input bg-background rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="basic">Básico (1 instância)</option>
+                      <option value="standard">Padrão (3 instâncias)</option>
+                      <option value="premium">Premium (10 instâncias)</option>
+                      <option value="enterprise">Enterprise (50 instâncias)</option>
+                    </select>
                   </div>
                 </div>
-
-                {/* Additional Info */}
-                <div className="mt-4 pt-4 border-t flex justify-between items-center text-sm text-gray-500">
-                  <div className="flex items-center">
-                    <Calendar className="w-4 h-4 mr-1" />
-                    Criado em {new Date(client.created_at).toLocaleDateString('pt-BR')}
-                  </div>
-                  <div className="flex items-center">
-                    <Activity className="w-4 h-4 mr-1" />
-                    Última atividade: {new Date(client.last_activity).toLocaleDateString('pt-BR')}
-                  </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button onClick={handleCreateClient} disabled={loading} className="flex-1 sm:flex-none">
+                    {loading ? "Criando..." : "Criar Cliente"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowCreateForm(false)} className="flex-1 sm:flex-none">
+                    Cancelar
+                  </Button>
                 </div>
               </CardContent>
             </Card>
-          ))
-        )}
+          )}
+
+          {/* Clients List */}
+          <div className="space-y-4">
+            {filteredClients.length === 0 ? (
+              <Card>
+                <CardContent className="p-8">
+                  <div className="text-center">
+                    <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">
+                      {clients.length === 0 ? "Nenhum cliente criado" : "Nenhum cliente encontrado"}
+                    </h3>
+                    <p className="text-muted-foreground mb-4 max-w-sm mx-auto">
+                      {clients.length === 0 
+                        ? "Crie seu primeiro cliente usando o botão 'Novo Cliente'"
+                        : "Tente ajustar os termos de busca ou filtros"
+                      }
+                    </p>
+                    {clients.length === 0 && (
+                      <Button onClick={() => setShowCreateForm(true)}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Criar Primeiro Cliente
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              filteredClients.map((client) => {
+                const PlanIcon = getPlanIcon(client.plan);
+                const instanceCount = client.current_instances || 0;
+                
+                return (
+                  <Card key={client.id} className="hover:shadow-md transition-all duration-200 border-l-4 border-l-primary">
+                    <CardContent className="p-6">
+                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        {/* Client Info */}
+                        <div className="flex items-start gap-4">
+                          <Avatar className="w-12 h-12 shrink-0">
+                            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                              {client.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-semibold text-lg truncate">{client.name}</h3>
+                              <Badge variant={getPlanColor(client.plan)} className="shrink-0">
+                                <PlanIcon className="w-3 h-3 mr-1" />
+                                {client.plan}
+                              </Badge>
+                            </div>
+                            
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                                <div className="flex items-center gap-1">
+                                  <Mail className="w-4 h-4" />
+                                  <span className="truncate">{client.email}</span>
+                                </div>
+                                {client.phone && (
+                                  <div className="flex items-center gap-1">
+                                    <Phone className="w-4 h-4" />
+                                    <span>{client.phone}</span>
+                                  </div>
+                                )}
+                                {client.company && (
+                                  <div className="flex items-center gap-1">
+                                    <Building2 className="w-4 h-4" />
+                                    <span className="truncate">{client.company}</span>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1">
+                                  <Activity className="w-3 h-3" />
+                                  <span className={getStatusColor(instanceCount)}>
+                                    {getStatusText(instanceCount)}
+                                  </span>
+                                </div>
+                                <div>
+                                  {instanceCount}/{getMaxInstancesForPlan(client.plan)} instâncias
+                                </div>
+                                <div>
+                                  ID: {client.id.slice(0, 8)}...
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 lg:shrink-0">
+                          <div className="hidden sm:flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenClientPanel(client)}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                              <span className="hidden md:inline ml-2">Painel</span>
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenChat(client)}
+                              disabled={instanceCount === 0}
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                              <span className="hidden md:inline ml-2">Chat</span>
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteClient(client.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              <span className="hidden md:inline ml-2">Remover</span>
+                            </Button>
+                          </div>
+                          
+                          {/* Mobile buttons */}
+                          <div className="flex sm:hidden gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenClientPanel(client)}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenChat(client)}
+                              disabled={instanceCount === 0}
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteClient(client.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Footer Info */}
+                      <div className="mt-4 pt-4 border-t border-border/50 flex flex-col sm:flex-row sm:justify-between gap-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          Criado em {new Date(client.created_at).toLocaleDateString('pt-BR')}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Activity className="w-3 h-3" />
+                          Última atividade: {new Date(client.last_activity).toLocaleDateString('pt-BR')}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
           </div>
         </TabsContent>
 
