@@ -369,6 +369,150 @@ class BusinessService {
   }
 
   /**
+   * Sincroniza instâncias entre Yumer API e Supabase para todos os clientes
+   */
+  async syncAllInstancesWithClients(): Promise<{ synced: number, failed: string[] }> {
+    try {
+      console.log('🔄 [BUSINESS-SERVICE] Iniciando sincronização de instâncias...');
+      
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: clients } = await supabase
+        .from('clients')
+        .select('*')
+        .not('business_id', 'is', null);
+
+      if (!clients) {
+        throw new Error('Nenhum cliente com business_id encontrado');
+      }
+
+      const results = { synced: 0, failed: [] as string[] };
+
+      for (const client of clients) {
+        try {
+          console.log(`🔄 [SYNC] Sincronizando instâncias do cliente ${client.name}...`);
+          
+          // Buscar instâncias do business na API Yumer
+          const instancesResult = await unifiedYumerService.listBusinessInstances(client.business_id);
+          const apiInstances = instancesResult.success ? instancesResult.data || [] : [];
+          
+          console.log(`📊 [SYNC] Cliente ${client.name}: ${apiInstances.length} instâncias na API`);
+          
+          // Atualizar ou criar instâncias no Supabase
+          for (const apiInstance of apiInstances) {
+            try {
+              const instanceId = apiInstance.instanceId || apiInstance.id?.toString();
+              if (!instanceId) continue;
+
+              const instanceData = {
+                instance_id: instanceId,
+                client_id: client.id,
+                codechat_business_id: client.business_id,
+                business_business_id: client.business_id,
+                yumer_instance_name: apiInstance.name,
+                status: this.mapConnectionStatus(apiInstance.connection || apiInstance.connectionStatus),
+                connection_state: apiInstance.state || 'close',
+                auth_jwt: apiInstance.Auth?.jwt || apiInstance.Auth?.token,
+                api_version: 'v2.2.1',
+                updated_at: new Date().toISOString()
+              };
+
+              // Upsert na tabela whatsapp_instances
+              const { error } = await supabase
+                .from('whatsapp_instances')
+                .upsert(instanceData, {
+                  onConflict: 'instance_id',
+                  ignoreDuplicates: false
+                });
+
+              if (error) {
+                console.error(`❌ [SYNC] Erro ao sincronizar instância ${instanceId}:`, error);
+              } else {
+                console.log(`✅ [SYNC] Instância ${instanceId} sincronizada`);
+              }
+            } catch (instanceError) {
+              console.error(`❌ [SYNC] Erro na instância individual:`, instanceError);
+            }
+          }
+
+          // Atualizar contador de instâncias do cliente
+          await this.updateClientInstanceCount(client.id);
+          results.synced++;
+          
+        } catch (error) {
+          console.error(`❌ [SYNC] Erro ao sincronizar cliente ${client.name}:`, error);
+          results.failed.push(client.id);
+        }
+      }
+
+      console.log(`🏁 [SYNC] Sincronização concluída: ${results.synced} clientes sincronizados, ${results.failed.length} falharam`);
+      return results;
+    } catch (error) {
+      console.error('❌ [BUSINESS-SERVICE] Erro na sincronização de instâncias:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Atualiza o contador de instâncias de um cliente
+   */
+  private async updateClientInstanceCount(clientId: string): Promise<void> {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      // Contar instâncias do cliente
+      const { data: instances, error: countError } = await supabase
+        .from('whatsapp_instances')
+        .select('id, status, instance_id')
+        .eq('client_id', clientId);
+
+      if (countError) throw countError;
+
+      const instanceCount = instances?.length || 0;
+      const connectedInstance = instances?.find(i => i.status === 'connected');
+
+      // Atualizar cliente com contadores corretos
+      const updateData: any = {
+        current_instances: instanceCount,
+        last_activity: new Date().toISOString()
+      };
+
+      // Se há instância conectada, definir como principal
+      if (connectedInstance) {
+        updateData.instance_id = connectedInstance.instance_id;
+        updateData.instance_status = 'connected';
+      } else if (instances && instances.length > 0) {
+        // Se não há conectada, usar a primeira disponível
+        updateData.instance_id = instances[0].instance_id;
+        updateData.instance_status = instances[0].status;
+      }
+
+      const { error } = await supabase
+        .from('clients')
+        .update(updateData)
+        .eq('id', clientId);
+
+      if (error) throw error;
+
+      console.log(`✅ [SYNC] Cliente ${clientId} atualizado: ${instanceCount} instâncias`);
+    } catch (error) {
+      console.error('❌ [SYNC] Erro ao atualizar contador do cliente:', error);
+    }
+  }
+
+  /**
+   * Mapeia status de conexão da API para o formato interno
+   */
+  private mapConnectionStatus(apiStatus?: string): string {
+    switch (apiStatus) {
+      case 'open': return 'connected';
+      case 'close': return 'disconnected';
+      case 'connecting': return 'connecting';
+      case 'qr_ready': return 'qr_ready';
+      default: return 'disconnected';
+    }
+  }
+
+  /**
    * Cria um novo business (Admin)
    */
   async createBusiness(businessData: {

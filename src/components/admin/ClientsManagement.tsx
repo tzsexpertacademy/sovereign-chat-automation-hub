@@ -29,6 +29,7 @@ import BusinessManagement from "./BusinessManagement";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { clientsService, ClientData, CreateClientData } from "@/services/clientsService";
+import { businessService } from "@/services/businessService";
 
 const ClientsManagement = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
@@ -134,6 +135,30 @@ const ClientsManagement = () => {
       toast({
         title: "Erro de Sincronização",
         description: error.message || "Falha ao sincronizar cliente",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSyncAllInstances = async () => {
+    try {
+      setLoading(true);
+      
+      const result = await businessService.syncAllInstancesWithClients();
+      
+      toast({
+        title: "Sincronização de Instâncias Concluída",
+        description: `${result.synced} clientes sincronizados. ${result.failed.length > 0 ? `${result.failed.length} falharam.` : ''}`,
+      });
+      
+      await loadClients();
+    } catch (error: any) {
+      console.error("Erro ao sincronizar instâncias:", error);
+      toast({
+        title: "Erro na Sincronização",
+        description: error.message || "Falha ao sincronizar instâncias",
         variant: "destructive",
       });
     } finally {
@@ -248,6 +273,10 @@ const ClientsManagement = () => {
           <Button onClick={loadClients} variant="outline" disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
+          </Button>
+          <Button onClick={handleSyncAllInstances} variant="outline" disabled={loading}>
+            <Sync className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Sincronizar Instâncias
           </Button>
           <Button onClick={() => setShowCreateForm(true)}>
             <Plus className="w-4 h-4 mr-2" />
