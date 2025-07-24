@@ -99,7 +99,13 @@ const InstancesManagerV2 = () => {
 
   const location = useLocation();
 
-  // Auto-refresh quando acessar a página
+  // Carregamento inicial quando o componente monta
+  useEffect(() => {
+    console.log('🔄 [INITIAL-LOAD] Componente montado, carregando dados iniciais...');
+    loadInitialData();
+  }, []); // Array vazio = executa apenas na montagem
+
+  // Auto-refresh quando acessar a página (rota específica)
   useEffect(() => {
     if (location.pathname === '/admin/instances') {
       console.log('🔄 [AUTO-REFRESH] Página de instâncias acessada, recarregando dados...');
