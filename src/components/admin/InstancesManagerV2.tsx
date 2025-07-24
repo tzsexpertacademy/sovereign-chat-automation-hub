@@ -61,6 +61,7 @@ const InstancesManagerV2 = () => {
   const [serverOnline, setServerOnline] = useState(false);
   const [qrModal, setQrModal] = useState<QRModalData>({ show: false });
   const [instanceStates, setInstanceStates] = useState<InstanceStates>({});
+  const [pollingActive, setPollingActive] = useState(false);
   // Removido businesses state - usando business_id do cliente diretamente
   
   const { toast } = useToast();
@@ -77,14 +78,15 @@ const InstancesManagerV2 = () => {
   useEffect(() => {
     loadInitialData();
     
-    // Auto-refresh otimizado - DESABILITADO temporariamente para corrigir loop
-    // const interval = setInterval(() => {
-    //   if (!globalLoading) {
-    //     refreshInstancesStatus();
-    //   }
-    // }, 30000); // Aumentado para 30 segundos
-    // return () => clearInterval(interval);
-  }, []);
+    // Polling automático para detectar mudanças de status
+    const interval = setInterval(() => {
+      if (!globalLoading && !pollingActive) {
+        refreshInstancesStatus();
+      }
+    }, 5000); // Polling a cada 5 segundos
+    
+    return () => clearInterval(interval);
+  }, [globalLoading, pollingActive]);
 
   const updateInstanceState = (instanceId: string, updates: Partial<InstanceState>) => {
     setInstanceStates(prev => ({
@@ -209,20 +211,65 @@ const InstancesManagerV2 = () => {
   // Removido loadBusinesses - usando business_id diretamente do cliente
 
   const refreshInstancesStatus = async () => {
-    console.log('🔄 [MANUAL] Atualizando status das instâncias...');
+    console.log('🔄 [POLLING] Atualizando status das instâncias...');
+    setPollingActive(true);
     
-    if (instances.length === 0) {
-      console.log('⚠️ Nenhuma instância para atualizar');
-      return;
-    }
+    try {
+      if (instances.length === 0) {
+        console.log('⚠️ Nenhuma instância para atualizar');
+        return;
+      }
 
-    // Simples recarregamento via webhook/database
-    await loadInstances();
-    
-    toast({ 
-      title: "Status Atualizado", 
-      description: "Status das instâncias atualizado via database" 
-    });
+      // Verificar status das instâncias via API
+      const updatedInstances = [...instances];
+      let hasChanges = false;
+
+      for (const instance of instances) {
+        try {
+          // Verificar status atual na API
+          const status = await unifiedYumerService.getInstance(instance.instance_id);
+          
+          if (status.success && status.data) {
+            const apiStatus = status.data.connectionStatus;
+            
+            // Se mudou de qr_ready para connected, atualizar no banco
+            if (instance.status === 'qr_ready' && apiStatus === 'open') {
+              console.log(`🔄 Detectada conexão para instância: ${instance.instance_id}`);
+              
+              const { supabase } = await import('@/integrations/supabase/client');
+              await supabase
+                .from('whatsapp_instances')
+                .update({
+                  status: 'connected',
+                  has_qr_code: false,
+                  qr_code: null,
+                  qr_expires_at: null
+                })
+                .eq('instance_id', instance.instance_id);
+              
+              hasChanges = true;
+              
+              toast({
+                title: "Instância Conectada!",
+                description: `${instance.custom_name || instance.instance_id} conectou ao WhatsApp`,
+              });
+            }
+          }
+        } catch (error) {
+          console.log(`⚠️ Erro ao verificar status da instância ${instance.instance_id}:`, error);
+        }
+      }
+
+      // Se houve mudanças, recarregar lista
+      if (hasChanges) {
+        await loadInstances();
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro no polling:', error);
+    } finally {
+      setPollingActive(false);
+    }
   };
 
   const createInstanceForClient = async () => {
