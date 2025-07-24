@@ -105,13 +105,21 @@ const InstancesManagerV2 = () => {
     loadInitialData();
   }, []); // Array vazio = executa apenas na montagem
 
-  // Auto-refresh quando acessar a página (rota específica)
+  // Auto-refresh quando acessar a página (rota específica) - remover para evitar duplicação
+  // useEffect(() => {
+  //   if (location.pathname === '/admin/instances') {
+  //     console.log('🔄 [AUTO-REFRESH] Página de instâncias acessada, recarregando dados...');
+  //     loadInitialData();
+  //   }
+  // }, [location.pathname]);
+
+  // Recarregar instâncias quando clientes mudarem
   useEffect(() => {
-    if (location.pathname === '/admin/instances') {
-      console.log('🔄 [AUTO-REFRESH] Página de instâncias acessada, recarregando dados...');
-      loadInitialData();
+    if (clients.length > 0) {
+      console.log('🔄 [CLIENTS-CHANGE] Clientes carregados, buscando instâncias...');
+      loadInstances();
     }
-  }, [location.pathname]);
+  }, [clients]);
 
   useEffect(() => {
     // Polling inteligente para detectar conexões
@@ -216,27 +224,21 @@ const InstancesManagerV2 = () => {
   };
 
   const loadInitialData = async () => {
+    console.log('🔄 [LOAD-INITIAL] Iniciando carregamento...');
     setGlobalLoading(true);
     try {
-      // Executar sequencialmente para garantir que clientes sejam carregados antes das instâncias
+      // Apenas carregar servidor e clientes aqui
       await checkServerHealth();
+      console.log('🔄 [LOAD-INITIAL] Carregando clientes...');
       const loadedClients = await loadClients();
+      console.log('🔄 [LOAD-INITIAL] Clientes carregados:', loadedClients?.length || 0);
       
-      // Só carregar instâncias se há clientes
-      if (loadedClients && loadedClients.length > 0) {
-        await loadInstances();
-      } else {
-        console.log('🔍 Nenhum cliente disponível, pulando carregamento de instâncias');
-        setInstances([]);
-      }
+      // As instâncias serão carregadas automaticamente pelo useEffect que observa mudanças em 'clients'
       
       // Auto-selecionar primeiro cliente se não há nenhum selecionado
-      if (!selectedClient || selectedClient === "none") {
-        const firstClient = clients[0];
-        if (firstClient) {
-          setSelectedClient(firstClient.id);
-          console.log('🔄 Auto-selecionando primeiro cliente:', firstClient.name);
-        }
+      if (loadedClients && loadedClients.length > 0 && (!selectedClient || selectedClient === "none")) {
+        setSelectedClient(loadedClients[0].id);
+        console.log('🔄 Auto-selecionando primeiro cliente:', loadedClients[0].name);
       }
     } catch (error) {
       console.error('❌ Erro no carregamento inicial:', error);
@@ -306,34 +308,38 @@ const InstancesManagerV2 = () => {
   };
 
   const loadInstances = async () => {
+    console.log('🔍 [LOAD-INSTANCES] Iniciando carregamento de instâncias...');
+    console.log('🔍 [LOAD-INSTANCES] Clientes no state:', clients.length);
+    console.log('🔍 [LOAD-INSTANCES] Clientes no cache:', clientsCache.data.length);
+    
     try {
       // Usar state atualizado de clientes ao invés de verificar o array diretamente
       const currentClients = clients.length > 0 ? clients : clientsCache.data;
       
       if (currentClients.length === 0) {
-        console.log('🔍 Nenhum cliente disponível para buscar instâncias');
+        console.log('🔍 [LOAD-INSTANCES] Nenhum cliente disponível para buscar instâncias');
         setInstances([]);
         return;
       }
       
-      console.log('🔍 Buscando instâncias para clientes:', currentClients.map(c => c.id));
+      console.log('🔍 [LOAD-INSTANCES] Buscando instâncias para clientes:', currentClients.map(c => c.name));
       const allInstances: WhatsAppInstanceData[] = [];
       
       // Usar Promise.all para otimizar
       const instancePromises = currentClients.map(async (client) => {
-        console.log(`🔍 Buscando instâncias para cliente: ${client.id}`);
+        console.log(`🔍 [LOAD-INSTANCES] Buscando instâncias para cliente: ${client.name} (${client.id})`);
         const clientInstances = await whatsappInstancesService.getInstancesByClientId(client.id);
-        console.log(`✅ Instâncias encontradas: ${clientInstances.length}`);
+        console.log(`✅ [LOAD-INSTANCES] Instâncias encontradas para ${client.name}: ${clientInstances.length}`);
         return clientInstances;
       });
       
       const results = await Promise.all(instancePromises);
       results.forEach(instances => allInstances.push(...instances));
       
-      console.log(`📊 Total de instâncias carregadas: ${allInstances.length}`);
+      console.log(`📊 [LOAD-INSTANCES] Total de instâncias carregadas: ${allInstances.length}`);
       setInstances(allInstances);
     } catch (error) {
-      console.error('❌ Erro ao carregar instâncias:', error);
+      console.error('❌ [LOAD-INSTANCES] Erro ao carregar instâncias:', error);
     }
   };
 
