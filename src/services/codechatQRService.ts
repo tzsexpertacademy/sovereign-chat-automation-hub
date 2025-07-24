@@ -36,9 +36,22 @@ export interface ConnectResult {
 export class CodechatQRService {
   async getQRCodeSimple(instanceName: string): Promise<{ success: boolean; qrCode?: string; error?: string }> {
     try {
+      console.log('📱 [CODECHAT-QR] Buscando QR Code simples para:', instanceName);
+      
       const result = await yumerApiV2.getQRCode(instanceName);
+      
+      console.log('🔍 [CODECHAT-QR] Resultado do yumerApiV2Service:', {
+        result,
+        hasBase64: !!result?.base64,
+        base64Type: typeof result?.base64,
+        base64Length: result?.base64?.length,
+        base64Preview: result?.base64?.substring(0, 100),
+        base64IsDataUrl: result?.base64?.startsWith('data:'),
+      });
+      
       return { success: true, qrCode: result.base64 };
     } catch (error: any) {
+      console.error('❌ [CODECHAT-QR] Erro ao obter QR Code:', error);
       return { success: false, error: error.message };
     }
   }

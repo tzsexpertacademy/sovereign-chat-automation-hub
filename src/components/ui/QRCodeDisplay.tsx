@@ -25,6 +25,16 @@ export const QRCodeDisplay = ({
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
+  // 🔍 DEBUG: Log detalhado do QR Code recebido
+  console.log('🔍 [QR-DEBUG] QR Code recebido:', {
+    qrCode,
+    qrCodeType: typeof qrCode,
+    qrCodeLength: qrCode?.length,
+    qrCodeStart: qrCode?.substring(0, 50),
+    instanceName,
+    startsWithData: qrCode?.startsWith('data:'),
+  });
+
   useEffect(() => {
     if (!autoRefreshInterval) return;
 
