@@ -1107,44 +1107,53 @@ const InstancesManagerV2 = () => {
                     )}
                   </div>
 
-                   {/* Ações */}
-                  <div className="flex space-x-2">
-                    {/* Botões principais baseados no status */}
-                    {instance.status === 'qr_ready' && instance.has_qr_code && (
-                      <Button size="sm" onClick={() => showQRCode(instance.instance_id)}>
-                        <QrCode className="w-4 h-4 mr-1" />
-                        Ver QR
-                      </Button>
-                    )}
-                    
-                    {instance.status === 'connected' ? (
-                      <Button 
-                        size="sm" 
-                        onClick={() => openChat(instance.instance_id)}
-                        className="bg-success hover:bg-success/90"
-                      >
-                        <MessageSquare className="w-4 h-4 mr-1" />
-                        Abrir Chat
-                      </Button>
-                    ) : (
-                      <Button 
-                        size="sm"
-                        onClick={() => connectInstance(instance.instance_id)}
-                        disabled={state.status === 'loading'}
-                      >
-                        {state.status === 'loading' ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                            Conectando...
-                          </>
-                        ) : (
-                          <>
-                            <Wifi className="w-4 h-4 mr-1" />
-                            Conectar
-                          </>
-                        )}
-                      </Button>
-                    )}
+                    {/* Ações */}
+                   <div className="flex space-x-2">
+                     {/* Debug: Mostrar status atual */}
+                     <div className="text-xs text-muted-foreground">
+                       Status: {instance.status} | Connection: {instance.connection_state}
+                     </div>
+                     
+                     {/* Botões principais baseados no status */}
+                     {instance.status === 'qr_ready' && instance.has_qr_code && (
+                       <Button size="sm" onClick={() => showQRCode(instance.instance_id)}>
+                         <QrCode className="w-4 h-4 mr-1" />
+                         Ver QR
+                       </Button>
+                     )}
+                     
+                     {/* Mostrar botão Abrir Chat se conectado */}
+                     {(instance.status === 'connected' || instance.connection_state === 'open') && (
+                       <Button 
+                         size="sm" 
+                         onClick={() => openChat(instance.instance_id)}
+                         className="bg-green-600 hover:bg-green-700 text-white"
+                       >
+                         <MessageSquare className="w-4 h-4 mr-1" />
+                         Abrir Chat
+                       </Button>
+                     )}
+                     
+                     {/* Mostrar botão Conectar se não conectado */}
+                     {instance.status !== 'connected' && instance.connection_state !== 'open' && (
+                       <Button 
+                         size="sm"
+                         onClick={() => connectInstance(instance.instance_id)}
+                         disabled={state.status === 'loading'}
+                       >
+                         {state.status === 'loading' ? (
+                           <>
+                             <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                             Conectando...
+                           </>
+                         ) : (
+                           <>
+                             <Wifi className="w-4 h-4 mr-1" />
+                             Conectar
+                           </>
+                         )}
+                       </Button>
+                     )}
                     
                     {/* Menu de ações */}
                     <DropdownMenu>
@@ -1165,7 +1174,17 @@ const InstancesManagerV2 = () => {
                           Editar Nome
                         </DropdownMenuItem>
                         
-                        {instance.status === 'connected' && (
+                        {/* Adicionar opção de Abrir Chat no menu também */}
+                        {(instance.status === 'connected' || instance.connection_state === 'open') && (
+                          <DropdownMenuItem
+                            onClick={() => openChat(instance.instance_id)}
+                          >
+                            <MessageSquare className="w-4 h-4 mr-2" />
+                            Abrir Chat
+                          </DropdownMenuItem>
+                        )}
+                        
+                        {(instance.status === 'connected' || instance.connection_state === 'open') && (
                           <>
                             <DropdownMenuItem
                               onClick={() => handleLogoutInstance(instance.instance_id)}
