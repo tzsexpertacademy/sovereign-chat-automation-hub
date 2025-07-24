@@ -118,25 +118,40 @@ class BusinessService {
    * Lista todos os businesses com dados dos clientes vinculados (Admin)
    */
   async getAllBusinesses(): Promise<BusinessData[]> {
+    console.log('🔍 [BUSINESS-SERVICE] Buscando todos os businesses...');
+    
     try {
       const result = await unifiedYumerService.listBusinesses();
       if (result.success && result.data) {
+        console.log(`📋 [BUSINESS-SERVICE] ${result.data.length} businesses encontrados na API`);
+        
+        // Filtrar businesses que foram excluídos na sessão atual
+        const filteredBusinesses = result.data.filter((business: any) => {
+          const isDeleted = BusinessService.deletedBusinessesCache.has(business.businessId);
+          if (isDeleted) {
+            console.log(`🗑️ [BUSINESS-SERVICE] Filtrando business excluído: ${business.businessId}`);
+          }
+          return !isDeleted;
+        });
+
+        console.log(`📋 [BUSINESS-SERVICE] ${filteredBusinesses.length} businesses após filtrar excluídos`);
+        
         // Buscar clientes do Supabase
         const { supabase } = await import('@/integrations/supabase/client');
         const { data: clients } = await supabase
           .from('clients')
           .select('*');
         
-        // Para cada business, buscar suas instâncias e cliente vinculado
+        // Para cada business não excluído, buscar suas instâncias e cliente vinculado
         const businessesWithInstances = await Promise.all(
-          result.data.map(async (business) => {
+          filteredBusinesses.map(async (business: any) => {
             try {
               // Buscar instâncias do business
               const instancesResult = await unifiedYumerService.listBusinessInstances(business.businessId);
               const instances = instancesResult.success ? instancesResult.data || [] : [];
               
               // Calcular estatísticas
-              const connectedInstances = instances.filter(i => i.connection === 'open' || i.connectionStatus === 'open').length;
+              const connectedInstances = instances.filter((i: any) => i.connection === 'open' || i.connectionStatus === 'open').length;
               
               // Encontrar cliente proprietário
               const ownerClient = clients?.find(c => c.business_id === business.businessId);
@@ -153,7 +168,7 @@ class BusinessService {
                 },
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
-                Instance: instances.map(instance => ({
+                Instance: instances.map((instance: any) => ({
                   instanceId: instance.instanceId || instance.id?.toString() || '',
                   name: instance.name,
                   state: (instance.state as 'active' | 'inactive') || 'inactive',
@@ -175,7 +190,7 @@ class BusinessService {
                 connectedInstances: connectedInstances
               };
             } catch (error) {
-              console.warn(`⚠️ Erro ao buscar instâncias do business ${business.businessId}:`, error);
+              console.warn(`⚠️ [BUSINESS-SERVICE] Erro ao buscar instâncias do business ${business.businessId}:`, error);
               
               // Encontrar cliente proprietário mesmo em caso de erro
               const ownerClient = clients?.find(c => c.business_id === business.businessId);
@@ -199,11 +214,11 @@ class BusinessService {
           })
         );
         
-    return businessesWithInstances;
+        return businessesWithInstances;
       }
       throw new Error(result.error || 'Erro ao listar businesses');
     } catch (error) {
-      console.error('Erro ao buscar businesses:', error);
+      console.error('❌ [BUSINESS-SERVICE] Erro ao buscar businesses:', error);
       throw error;
     }
   }
@@ -312,19 +327,40 @@ class BusinessService {
     }
   }
 
+  // Cache para businesses excluídos na sessão atual
+  private static deletedBusinessesCache = new Set<string>();
+
   /**
    * Remove um business (Admin)
    */
-  async deleteBusiness(businessId: string, force = false): Promise<void> {
+  async deleteBusiness(businessId: string, force = true): Promise<void> {
     try {
-      const result = await unifiedYumerService.deleteBusiness(businessId);
+      console.log(`🗑️ [BUSINESS-SERVICE] Deletando business ${businessId} com force=${force}`);
+      const result = await unifiedYumerService.deleteBusiness(businessId, force);
       if (!result.success) {
         throw new Error(result.error || 'Erro ao deletar business');
       }
+      console.log(`✅ [BUSINESS-SERVICE] Business ${businessId} deletado com sucesso`);
     } catch (error) {
       console.error('Erro ao deletar business:', error);
       throw error;
     }
+  }
+
+  /**
+   * Marca business como excluído no cache
+   */
+  markBusinessAsDeleted(businessId: string): void {
+    console.log(`🗑️ [BUSINESS-SERVICE] Marcando business ${businessId} como excluído no cache`);
+    BusinessService.deletedBusinessesCache.add(businessId);
+  }
+
+  /**
+   * Limpa cache de exclusões
+   */
+  clearDeletedCache(): void {
+    console.log(`🧹 [BUSINESS-SERVICE] Limpando cache de businesses excluídos`);
+    BusinessService.deletedBusinessesCache.clear();
   }
 
   /**

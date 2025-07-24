@@ -129,6 +129,9 @@ const BusinessManagement = () => {
 
   const handleDeleteBusiness = async (businessId: string) => {
     try {
+      // Marcar como excluído no cache imediatamente
+      businessService.markBusinessAsDeleted(businessId);
+      
       await businessService.deleteBusiness(businessId, true); // Usar force=true
       
       // Remover business da lista local imediatamente
@@ -147,12 +150,18 @@ const BusinessManagement = () => {
         description: error.message || "Falha ao remover business",
         variant: "destructive",
       });
+      // Se falhou, remover do cache de excluídos
+      businessService.clearDeletedCache();
+      await loadBusinesses(); // Recarregar para estado consistente
     }
   };
 
   const handleSyncBusinesses = async () => {
     setSyncingBusinesses(true);
     try {
+      // Limpar cache de exclusões antes da sincronização
+      businessService.clearDeletedCache();
+      
       await businessService.syncBusinessesWithClients();
       toast({
         title: "Sincronização concluída",
