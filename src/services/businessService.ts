@@ -142,75 +142,103 @@ class BusinessService {
           .from('clients')
           .select('*');
         
+        // Buscar instâncias do Supabase como fallback
+        const { data: supabaseInstances } = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .not('business_business_id', 'is', null);
+
+        // Mapear instâncias por business_id
+        const instancesMap = new Map<string, any[]>();
+        supabaseInstances?.forEach(instance => {
+          const businessId = instance.business_business_id;
+          if (!instancesMap.has(businessId)) {
+            instancesMap.set(businessId, []);
+          }
+          instancesMap.get(businessId)?.push(instance);
+        });
+
         // Para cada business não excluído, buscar suas instâncias e cliente vinculado
         const businessesWithInstances = await Promise.all(
           filteredBusinesses.map(async (business: any) => {
+            // Encontrar cliente proprietário
+            const ownerClient = clients?.find(c => c.business_id === business.businessId);
+            
+            let instances: any[] = [];
+            let useSupabaseData = false;
+            
             try {
-              // Buscar instâncias do business
+              // Tentar buscar instâncias da API Yumer primeiro
               const instancesResult = await unifiedYumerService.listBusinessInstances(business.businessId);
-              const instances = instancesResult.success ? instancesResult.data || [] : [];
-              
-              // Calcular estatísticas
-              const connectedInstances = instances.filter((i: any) => i.connection === 'open' || i.connectionStatus === 'open').length;
-              
-              // Encontrar cliente proprietário
-              const ownerClient = clients?.find(c => c.business_id === business.businessId);
-              
-              return {
-                businessId: business.businessId,
-                name: business.name,
-                businessToken: business.businessToken,
-                attributes: {
-                  clientId: ownerClient?.id,
-                  clientName: ownerClient?.name,
-                  clientEmail: ownerClient?.email,
-                  clientPlan: ownerClient?.plan
-                },
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                Instance: instances.map((instance: any) => ({
-                  instanceId: instance.instanceId || instance.id?.toString() || '',
-                  name: instance.name,
-                  state: (instance.state as 'active' | 'inactive') || 'inactive',
-                  connection: (instance.connection === 'open' ? 'open' : instance.connection === 'refused' ? 'refused' : 'close') as 'open' | 'close' | 'refused',
-                  createdAt: new Date().toISOString(),
-                  businessBusinessId: business.businessId,
-                  Auth: instance.Auth ? {
-                    authId: instance.Auth.token || '',
-                    jwt: instance.Auth.jwt || instance.Auth.token || '',
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                  } : undefined,
-                  WhatsApp: instance.WhatsApp ? {
-                    ...instance.WhatsApp,
-                    createdAt: instance.WhatsApp.createdAt || new Date().toISOString()
-                  } : undefined
-                })),
-                instances: instances.length,
-                connectedInstances: connectedInstances
-              };
+              if (instancesResult.success && instancesResult.data) {
+                instances = instancesResult.data;
+                console.log(`✅ [BUSINESS-SERVICE] API data for ${business.businessId}: ${instances.length} instances`);
+              } else {
+                throw new Error('API returned no data');
+              }
             } catch (error) {
-              console.warn(`⚠️ [BUSINESS-SERVICE] Erro ao buscar instâncias do business ${business.businessId}:`, error);
+              console.warn(`⚠️ [BUSINESS-SERVICE] API failed for ${business.businessId}, using Supabase data:`, error);
               
-              // Encontrar cliente proprietário mesmo em caso de erro
-              const ownerClient = clients?.find(c => c.business_id === business.businessId);
-              
-              return {
-                businessId: business.businessId,
-                name: business.name,
-                businessToken: business.businessToken,
-                attributes: {
-                  clientId: ownerClient?.id,
-                  clientName: ownerClient?.name,
-                  clientEmail: ownerClient?.email,
-                  clientPlan: ownerClient?.plan
-                },
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                instances: 0,
-                connectedInstances: 0
-              };
+              // Usar dados do Supabase como fallback
+              const supabaseData = instancesMap.get(business.businessId) || [];
+              instances = supabaseData.map(instance => ({
+                instanceId: instance.instance_id,
+                name: instance.yumer_instance_name || instance.custom_name || instance.instance_id,
+                state: instance.status === 'connected' ? 'active' : 'inactive',
+                connection: instance.connection_state === 'open' ? 'open' : 'close',
+                connectionStatus: instance.connection_state,
+                Auth: instance.auth_jwt ? {
+                  jwt: instance.auth_jwt,
+                  token: instance.auth_jwt
+                } : undefined,
+                WhatsApp: instance.phone_number ? {
+                  remoteJid: instance.phone_number,
+                  createdAt: instance.created_at
+                } : undefined
+              }));
+              useSupabaseData = true;
+              console.log(`📦 [BUSINESS-SERVICE] Supabase fallback for ${business.businessId}: ${instances.length} instances`);
             }
+            
+            // Calcular estatísticas
+            const connectedInstances = instances.filter((i: any) => 
+              i.connection === 'open' || i.connectionStatus === 'open' || i.state === 'active'
+            ).length;
+            
+            return {
+              businessId: business.businessId,
+              name: business.name,
+              businessToken: business.businessToken,
+              attributes: {
+                clientId: ownerClient?.id,
+                clientName: ownerClient?.name,
+                clientEmail: ownerClient?.email,
+                clientPlan: ownerClient?.plan,
+                dataSource: useSupabaseData ? 'supabase' : 'api'
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              Instance: instances.map((instance: any) => ({
+                instanceId: instance.instanceId || instance.id?.toString() || '',
+                name: instance.name,
+                state: (instance.state as 'active' | 'inactive') || 'inactive',
+                connection: (instance.connection === 'open' ? 'open' : instance.connection === 'refused' ? 'refused' : 'close') as 'open' | 'close' | 'refused',
+                createdAt: new Date().toISOString(),
+                businessBusinessId: business.businessId,
+                Auth: instance.Auth ? {
+                  authId: instance.Auth.token || '',
+                  jwt: instance.Auth.jwt || instance.Auth.token || '',
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                } : undefined,
+                WhatsApp: instance.WhatsApp ? {
+                  ...instance.WhatsApp,
+                  createdAt: instance.WhatsApp.createdAt || new Date().toISOString()
+                } : undefined
+              })),
+              instances: instances.length,
+              connectedInstances: connectedInstances
+            };
           })
         );
         
