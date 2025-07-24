@@ -35,7 +35,7 @@ import { InstancesCleanupManager } from "./InstancesCleanupManager";
 import { InstanceConnectionMonitor } from "./InstanceConnectionMonitor";
 
 interface InstanceState {
-  status: 'idle' | 'loading' | 'success' | 'error' | 'timeout';
+  status: 'idle' | 'loading' | 'success' | 'error' | 'timeout' | 'connecting' | 'deleting' | 'editing' | 'disconnecting' | 'restarting';
   progress: number;
   message: string;
   data?: any;
@@ -53,6 +53,12 @@ interface QRModalData {
   businessId?: string;
 }
 
+interface EditModalData {
+  isOpen: boolean;
+  instanceId: string;
+  currentName: string;
+}
+
 const InstancesManagerV2 = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
@@ -60,6 +66,11 @@ const InstancesManagerV2 = () => {
   const [globalLoading, setGlobalLoading] = useState(false);
   const [serverOnline, setServerOnline] = useState(false);
   const [qrModal, setQrModal] = useState<QRModalData>({ show: false });
+  const [editModal, setEditModal] = useState<EditModalData>({
+    isOpen: false,
+    instanceId: '',
+    currentName: ''
+  });
   const [instanceStates, setInstanceStates] = useState<InstanceStates>({});
   const [pollingActive, setPollingActive] = useState(false);
   // Removido businesses state - usando business_id do cliente diretamente
@@ -686,6 +697,108 @@ const InstancesManagerV2 = () => {
     }
   };
 
+  const handleEditInstance = async (instanceId: string, newName: string) => {
+    try {
+      updateInstanceState(instanceId, { status: 'editing', message: 'Atualizando nome...', progress: 50 });
+      
+      await whatsappInstancesService.updateCustomName(instanceId, newName);
+      
+      toast({
+        title: "Nome atualizado",
+        description: "Nome da instância atualizado com sucesso",
+      });
+      
+      setEditModal({ isOpen: false, instanceId: '', currentName: '' });
+      await loadInstances();
+    } catch (error) {
+      console.error('Erro ao editar instância:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar nome da instância",
+        variant: "destructive",
+      });
+    } finally {
+      setInstanceStates(prev => {
+        const newStates = { ...prev };
+        delete newStates[instanceId];
+        return newStates;
+      });
+    }
+  };
+
+  const handleLogoutInstance = async (instanceId: string) => {
+    try {
+      updateInstanceState(instanceId, { status: 'disconnecting', message: 'Desconectando...', progress: 50 });
+      
+      const result = await unifiedYumerService.logoutInstance(instanceId);
+      
+      if (result.success) {
+        await whatsappInstancesService.updateInstanceByInstanceId(instanceId, {
+          status: 'disconnected',
+          connection_state: 'close',
+          phone_number: null,
+          has_qr_code: false,
+          qr_code: null,
+          qr_expires_at: null
+        });
+        
+        toast({
+          title: "Instância desconectada",
+          description: "Instância desconectada com sucesso",
+        });
+        
+        await loadInstances();
+      } else {
+        throw new Error(result.error || 'Erro ao desconectar');
+      }
+    } catch (error) {
+      console.error('Erro ao desconectar instância:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao desconectar instância",
+        variant: "destructive",
+      });
+    } finally {
+      setInstanceStates(prev => {
+        const newStates = { ...prev };
+        delete newStates[instanceId];
+        return newStates;
+      });
+    }
+  };
+
+  const handleRestartInstance = async (instanceId: string) => {
+    try {
+      updateInstanceState(instanceId, { status: 'restarting', message: 'Reiniciando...', progress: 50 });
+      
+      const result = await unifiedYumerService.restartInstance(instanceId);
+      
+      if (result.success) {
+        toast({
+          title: "Instância reiniciada",
+          description: "Instância reiniciada com sucesso",
+        });
+        
+        await loadInstances();
+      } else {
+        throw new Error(result.error || 'Erro ao reiniciar');
+      }
+    } catch (error) {
+      console.error('Erro ao reiniciar instância:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao reiniciar instância",
+        variant: "destructive",
+      });
+    } finally {
+      setInstanceStates(prev => {
+        const newStates = { ...prev };
+        delete newStates[instanceId];
+        return newStates;
+      });
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'connected': return 'bg-success';
@@ -985,8 +1098,9 @@ const InstancesManagerV2 = () => {
                     )}
                   </div>
 
-                  {/* Ações */}
+                   {/* Ações */}
                   <div className="flex space-x-2">
+                    {/* Botões principais baseados no status */}
                     {instance.status === 'qr_ready' && instance.has_qr_code && (
                       <Button size="sm" onClick={() => showQRCode(instance.instance_id)}>
                         <QrCode className="w-4 h-4 mr-1" />
@@ -1023,15 +1137,75 @@ const InstancesManagerV2 = () => {
                       </Button>
                     )}
                     
-                    <Button 
-                      size="sm" 
-                      variant="destructive"
-                      onClick={() => deleteInstance(instance.instance_id)}
-                      disabled={state.status === 'loading'}
-                    >
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      Remover
-                    </Button>
+                    {/* Menu de ações */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="px-3">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => setEditModal({
+                            isOpen: true,
+                            instanceId: instance.instance_id,
+                            currentName: instance.custom_name || instance.instance_id
+                          })}
+                        >
+                          <Edit className="w-4 h-4 mr-2" />
+                          Editar Nome
+                        </DropdownMenuItem>
+                        
+                        {instance.status === 'connected' && (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => handleLogoutInstance(instance.instance_id)}
+                              disabled={state.status === 'disconnecting'}
+                            >
+                              <LogOut className="w-4 h-4 mr-2" />
+                              {state.status === 'disconnecting' ? 'Desconectando...' : 'Desconectar'}
+                            </DropdownMenuItem>
+                            
+                            <DropdownMenuItem
+                              onClick={() => handleRestartInstance(instance.instance_id)}
+                              disabled={state.status === 'restarting'}
+                            >
+                              <RotateCw className="w-4 h-4 mr-2" />
+                              {state.status === 'restarting' ? 'Reiniciando...' : 'Reiniciar'}
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        
+                        <DropdownMenuSeparator />
+                        
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Remover
+                            </DropdownMenuItem>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Tem certeza que deseja remover a instância "{instance.custom_name || instance.instance_id}"? 
+                                Esta ação não pode ser desfeita.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteInstance(instance.instance_id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Remover
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </CardContent>
@@ -1083,6 +1257,40 @@ const InstancesManagerV2 = () => {
                 </ol>
               </AlertDescription>
             </Alert>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Edição */}
+      <Dialog open={editModal.isOpen} onOpenChange={(open) => setEditModal(prev => ({ ...prev, isOpen: open }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Nome da Instância</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="instanceName">Nome da Instância</Label>
+              <Input
+                id="instanceName"
+                value={editModal.currentName}
+                onChange={(e) => setEditModal(prev => ({ ...prev, currentName: e.target.value }))}
+                placeholder="Digite o nome da instância"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setEditModal({ isOpen: false, instanceId: '', currentName: '' })}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={() => handleEditInstance(editModal.instanceId, editModal.currentName)}
+                disabled={!editModal.currentName.trim()}
+              >
+                Salvar
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

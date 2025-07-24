@@ -520,6 +520,22 @@ class UnifiedYumerService {
     });
   }
 
+  async logoutInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`🔌 [UNIFIED-YUMER] Desconectando instância: ${instanceId}`);
+    
+    return this.makeRequest(`/api/v2/instance/${instanceId}/logout`, {
+      method: 'DELETE'
+    });
+  }
+
+  async restartInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`🔄 [UNIFIED-YUMER] Reiniciando instância: ${instanceId}`);
+    
+    return this.makeRequest(`/api/v2/instance/${instanceId}/restart`, {
+      method: 'PUT'
+    });
+  }
+
   // ==================== CONNECTION & QR CODE ====================
   
   async getConnectionState(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: ConnectionState; error?: string }> {
@@ -779,6 +795,8 @@ export const yumerApiV2 = {
   getInstance: (instanceId: string) => unifiedYumerService.getInstance(instanceId),
   connectInstance: (instanceId: string) => unifiedYumerService.connectInstance(instanceId),
   deleteInstance: (instanceId: string) => unifiedYumerService.deleteInstance(instanceId),
+  logoutInstance: (instanceId: string) => unifiedYumerService.logoutInstance(instanceId),
+  restartInstance: (instanceId: string) => unifiedYumerService.restartInstance(instanceId),
   getConnectionState: (instanceId: string) => unifiedYumerService.getConnectionState(instanceId),
   getQRCode: (instanceId: string) => unifiedYumerService.getQRCode(instanceId),
   // Novos métodos
