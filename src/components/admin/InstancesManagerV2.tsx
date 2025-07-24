@@ -218,11 +218,17 @@ const InstancesManagerV2 = () => {
   const loadInitialData = async () => {
     setGlobalLoading(true);
     try {
-      await Promise.all([
-        checkServerHealth(),
-        loadClients(),
-        loadInstances()
-      ]);
+      // Executar sequencialmente para garantir que clientes sejam carregados antes das instâncias
+      await checkServerHealth();
+      const loadedClients = await loadClients();
+      
+      // Só carregar instâncias se há clientes
+      if (loadedClients && loadedClients.length > 0) {
+        await loadInstances();
+      } else {
+        console.log('🔍 Nenhum cliente disponível, pulando carregamento de instâncias');
+        setInstances([]);
+      }
       
       // Auto-selecionar primeiro cliente se não há nenhum selecionado
       if (!selectedClient || selectedClient === "none") {
@@ -283,6 +289,9 @@ const InstancesManagerV2 = () => {
       }
       
       console.log(`✅ [CLIENTS] ${clientsData.length} clientes carregados`);
+      
+      // Retornar os dados carregados para uso na sequência
+      return clientsData;
     } catch (error) {
       console.error('❌ [CLIENTS] Erro ao carregar clientes:', error);
       
@@ -290,24 +299,28 @@ const InstancesManagerV2 = () => {
       if (clientsCache.data.length > 0) {
         console.log('🔄 [CLIENTS] Usando cache como fallback');
         setClients(clientsCache.data);
+        return clientsCache.data;
       }
+      return [];
     }
   };
 
   const loadInstances = async () => {
     try {
-      // Não executar se não há clientes
-      if (clients.length === 0) {
-        console.log('🔍 Nenhum cliente carregado para buscar instâncias');
+      // Usar state atualizado de clientes ao invés de verificar o array diretamente
+      const currentClients = clients.length > 0 ? clients : clientsCache.data;
+      
+      if (currentClients.length === 0) {
+        console.log('🔍 Nenhum cliente disponível para buscar instâncias');
         setInstances([]);
         return;
       }
       
-      console.log('🔍 Buscando instâncias para cliente:', clients.map(c => c.id));
+      console.log('🔍 Buscando instâncias para clientes:', currentClients.map(c => c.id));
       const allInstances: WhatsAppInstanceData[] = [];
       
       // Usar Promise.all para otimizar
-      const instancePromises = clients.map(async (client) => {
+      const instancePromises = currentClients.map(async (client) => {
         console.log(`🔍 Buscando instâncias para cliente: ${client.id}`);
         const clientInstances = await whatsappInstancesService.getInstancesByClientId(client.id);
         console.log(`✅ Instâncias encontradas: ${clientInstances.length}`);
