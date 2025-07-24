@@ -31,10 +31,12 @@ import {
   Edit,
   Power,
   RotateCw,
-  LogOut
+  LogOut,
+  Search,
+  Filter
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 // Removido businessSyncService - usando sistema 1:1 simplificado
@@ -95,9 +97,17 @@ const InstancesManagerV2 = () => {
   const [clientsCache, setClientsCache] = useState<{ data: ClientData[], timestamp: number }>({ data: [], timestamp: 0 });
   const CLIENT_CACHE_DURATION = 10000; // 10 segundos
 
+  const location = useLocation();
+
+  // Auto-refresh quando acessar a página
   useEffect(() => {
-    loadInitialData();
-    
+    if (location.pathname === '/admin/instances') {
+      console.log('🔄 [AUTO-REFRESH] Página de instâncias acessada, recarregando dados...');
+      loadInitialData();
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
     // Polling inteligente para detectar conexões
     let pollingTimeouts = new Map<string, NodeJS.Timeout>();
     
@@ -874,60 +884,118 @@ const InstancesManagerV2 = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Instâncias WhatsApp v2.2.1</h1>
-          <p className="text-muted-foreground">Gerenciamento baseado no diagnóstico validado</p>
+      {/* Header Profissional */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 bg-gradient-to-r from-background to-muted/50 rounded-xl border">
+        <div className="space-y-1">
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+            Gerenciador de Instâncias
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Sistema unificado de gestão de instâncias WhatsApp
+          </p>
         </div>
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-1">
-            <Wifi className="w-4 h-4 text-success" />
-            <span className="text-xs text-success">API Online</span>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-xs font-medium">
+            <Wifi className="w-3 h-3" />
+            API Online
           </div>
-          <Button onClick={loadInitialData} disabled={globalLoading}>
+          <Button 
+            onClick={loadInitialData} 
+            disabled={globalLoading}
+            size="sm"
+            className="w-full sm:w-auto"
+          >
             <RefreshCw className={`w-4 h-4 mr-2 ${globalLoading ? 'animate-spin' : ''}`} />
-            Atualizar
+            <span className="hidden sm:inline">Atualizar</span>
+            <span className="sm:hidden">Atualizar Dados</span>
           </Button>
         </div>
       </div>
 
-      {/* Status Geral */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-5 h-5 text-success" />
-                <span className="font-medium">Sistema Operacional</span>
+      {/* Métricas do Sistema */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-l-4 border-l-primary">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total de Instâncias</p>
+                <p className="text-2xl font-bold text-primary">{instances.length}</p>
               </div>
-              <Badge variant="outline">
-                {instances.length} Instâncias
-              </Badge>
-              <Badge variant="outline">
-                {instances.filter(i => i.status === 'connected').length} Conectadas
-              </Badge>
-              <Badge variant="outline">
-                {clients.filter(c => c.business_id).length} Businesses
-              </Badge>
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <MessageSquare className="w-5 h-5 text-primary" />
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-success">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Conectadas</p>
+                <p className="text-2xl font-bold text-success">
+                  {instances.filter(i => i.status === 'connected').length}
+                </p>
+              </div>
+              <div className="p-2 bg-success/10 rounded-lg">
+                <CheckCircle className="w-5 h-5 text-success" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-warning">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">QR Prontos</p>
+                <p className="text-2xl font-bold text-warning">
+                  {instances.filter(i => i.status === 'qr_ready').length}
+                </p>
+              </div>
+              <div className="p-2 bg-warning/10 rounded-lg">
+                <QrCode className="w-5 h-5 text-warning" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-info">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Clientes Ativos</p>
+                <p className="text-2xl font-bold text-info">
+                  {clients.filter(c => c.business_id).length}
+                </p>
+              </div>
+              <div className="p-2 bg-info/10 rounded-lg">
+                <User className="w-5 h-5 text-info" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Criar Nova Instância */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Plus className="w-5 h-5" />
-            <span>Nova Instância</span>
-          </CardTitle>
-          <CardDescription>
-            Criar instância seguindo fluxo validado: Business → Instance → Connect → QR
-          </CardDescription>
+      <Card className="shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Plus className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Nova Instância</CardTitle>
+                <CardDescription className="text-sm">
+                  Fluxo validado: Business → Instance → Connect → QR
+                </CardDescription>
+              </div>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <div className="flex space-x-4">
+        <CardContent className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3">
             <Select value={selectedClient} onValueChange={setSelectedClient}>
               <SelectTrigger className="flex-1">
                 <SelectValue placeholder="Selecione um cliente..." />
@@ -941,7 +1009,7 @@ const InstancesManagerV2 = () => {
                       <div className="flex items-center space-x-2">
                         <User className="w-4 h-4" />
                         <span>{client.name}</span>
-                        <Badge variant="outline">{client.plan}</Badge>
+                        <Badge variant="outline" className="text-xs">{client.plan}</Badge>
                         <span className="text-xs text-muted-foreground">
                           ({instances.filter(i => i.client_id === client.id).length}/{client.max_instances})
                         </span>
@@ -954,73 +1022,45 @@ const InstancesManagerV2 = () => {
             <Button 
               onClick={createInstanceForClient} 
               disabled={globalLoading || !selectedClient || selectedClient === "none" || clients.length === 0}
+              className="w-full sm:w-auto px-6"
             >
               {globalLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Carregando...
+                  <span className="hidden sm:inline">Carregando...</span>
+                  <span className="sm:hidden">Carregando</span>
                 </>
               ) : clients.length === 0 ? (
                 <>
                   <AlertCircle className="w-4 h-4 mr-2" />
-                  Sem Clientes
+                  <span>Sem Clientes</span>
                 </>
               ) : (
                 <>
                   <Plus className="w-4 h-4 mr-2" />
-                  Criar Instância
+                  <span className="hidden sm:inline">Criar Instância</span>
+                  <span className="sm:hidden">Criar</span>
                 </>
               )}
             </Button>
           </div>
           
-          {/* Mostrar progresso de criação */}
+          {/* Progresso de criação */}
           {Object.entries(instanceStates).filter(([id]) => id.startsWith('temp_')).map(([id, state]) => (
-            <div key={id} className="mt-4 p-4 border rounded-lg">
+            <div key={id} className="p-4 bg-muted/50 rounded-lg border-l-4 border-l-primary">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium">Criando instância...</span>
                 <Badge variant={state.status === 'error' ? 'destructive' : 'default'}>
                   {state.status}
                 </Badge>
               </div>
-              <Progress value={state.progress} className="mb-2" />
+              <Progress value={state.progress} className="mb-2 h-2" />
               <p className="text-xs text-muted-foreground">{state.message}</p>
             </div>
           ))}
         </CardContent>
       </Card>
 
-      {/* Manual Refresh Button */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-medium">Status das Instâncias</h3>
-              <p className="text-sm text-muted-foreground">
-                Atualização manual via database (sem polling)
-              </p>
-            </div>
-            <Button 
-              onClick={refreshInstancesStatus}
-              disabled={globalLoading}
-              variant="outline"
-              size="sm"
-            >
-              {globalLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Atualizando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Atualizar Status
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
       
       {/* Limpeza de Instâncias */}
       <InstancesCleanupManager 
@@ -1028,227 +1068,269 @@ const InstancesManagerV2 = () => {
       />
 
       {/* Lista de Instâncias */}
-      <div className="grid gap-4">
-        {instances.map(instance => {
-          const client = clients.find(c => c.id === instance.client_id);
-          const state = instanceStates[instance.instance_id] || { status: 'idle', progress: 0, message: '' };
-          
-          return (
-            <Card key={instance.id}>
-              <CardContent className="pt-6">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1 space-y-3">
-                    {/* Header da Instância */}
-                    <div className="flex items-center space-x-2">
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`} />
-                      <h3 className="font-semibold">{instance.custom_name || instance.instance_id}</h3>
-                      {client && (
-                        <Badge variant="outline">
-                          <User className="w-3 h-3 mr-1" />
-                          {client.name}
-                        </Badge>
-                      )}
-                      <Badge variant="secondary" className="flex items-center space-x-1">
-                        {getStatusIcon(instance.status)}
-                        <span>{getStatusText(instance.status)}</span>
-                      </Badge>
-                    </div>
-                    
-                    {/* Informações */}
-                    <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                      <span>ID: {instance.instance_id.split('_').pop()}</span>
-                      {instance.status === 'connected' && (
-                        <span className="flex items-center space-x-1 text-success">
-                          <Phone className="w-3 h-3" />
-                          <span>Conectado</span>
-                        </span>
-                      )}
-                      {instance.has_qr_code && (
-                        <span className="flex items-center space-x-1 text-primary">
-                          <QrCode className="w-3 h-3" />
-                          <span>QR Disponível</span>
-                        </span>
-                      )}
-                    </div>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Instâncias Ativas</h2>
+          <Badge variant="secondary" className="text-xs">
+            {instances.length} {instances.length === 1 ? 'instância' : 'instâncias'}
+          </Badge>
+        </div>
 
-                    {/* Estado da Operação */}
-                    {state.status !== 'idle' && (
-                      <div className="p-3 bg-muted rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium">Operação em andamento</span>
-                          <Badge variant={state.status === 'error' ? 'destructive' : 'default'}>
-                            {state.status}
+        <div className="grid gap-4">
+          {instances.map(instance => {
+            const client = clients.find(c => c.id === instance.client_id);
+            const state = instanceStates[instance.instance_id] || { status: 'idle', progress: 0, message: '' };
+            
+            return (
+              <Card key={instance.id} className="shadow-sm hover:shadow-md transition-shadow duration-200">
+                <CardContent className="p-6">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex-1 space-y-3">
+                      {/* Header da Instância */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full shadow-sm ${getStatusColor(instance.status)}`} />
+                          <h3 className="font-semibold text-lg truncate">
+                            {instance.custom_name || instance.instance_id}
+                          </h3>
+                        </div>
+                        
+                        <div className="flex flex-wrap items-center gap-2">
+                          {client && (
+                            <Badge variant="outline" className="text-xs">
+                              <User className="w-3 h-3 mr-1" />
+                              {client.name}
+                            </Badge>
+                          )}
+                          <Badge 
+                            variant="secondary" 
+                            className={`flex items-center gap-1 text-xs ${
+                              instance.status === 'connected' ? 'bg-success/10 text-success border-success/20' :
+                              instance.status === 'qr_ready' ? 'bg-primary/10 text-primary border-primary/20' :
+                              'bg-muted'
+                            }`}
+                          >
+                            {getStatusIcon(instance.status)}
+                            <span>{getStatusText(instance.status)}</span>
                           </Badge>
                         </div>
-                        {state.status === 'loading' && (
-                          <Progress value={state.progress} className="mb-2" />
-                        )}
-                        <p className="text-xs text-muted-foreground">{state.message}</p>
                       </div>
-                    )}
+                      
+                      {/* Informações */}
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                        <span className="font-mono text-xs bg-muted px-2 py-1 rounded">
+                          ID: {instance.instance_id.split('_').pop()}
+                        </span>
+                        {instance.status === 'connected' && (
+                          <div className="flex items-center gap-1 text-success">
+                            <Phone className="w-3 h-3" />
+                            <span className="text-xs">Conectado</span>
+                          </div>
+                        )}
+                        {instance.has_qr_code && (
+                          <div className="flex items-center gap-1 text-primary">
+                            <QrCode className="w-3 h-3" />
+                            <span className="text-xs">QR Disponível</span>
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Alerts de Status */}
-                    {instance.status === 'qr_ready' && instance.has_qr_code && (
-                      <Alert>
-                        <QrCode className="h-4 w-4" />
-                        <AlertDescription>
-                          <strong>QR Code pronto!</strong> Clique em "Ver QR" para escanear com WhatsApp.
-                        </AlertDescription>
-                      </Alert>
-                    )}
+                      {/* Estado da Operação */}
+                      {state.status !== 'idle' && (
+                        <div className="p-3 bg-muted/50 rounded-lg border-l-4 border-l-primary">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium">Operação em andamento</span>
+                            <Badge variant={state.status === 'error' ? 'destructive' : 'default'}>
+                              {state.status}
+                            </Badge>
+                          </div>
+                          {state.status === 'loading' && (
+                            <Progress value={state.progress} className="mb-2 h-2" />
+                          )}
+                          <p className="text-xs text-muted-foreground">{state.message}</p>
+                        </div>
+                      )}
 
-                    {instance.status === 'connected' && (
-                      <Alert>
-                        <CheckCircle className="h-4 w-4" />
-                        <AlertDescription>
-                          <strong>WhatsApp conectado!</strong> Instância funcionando normalmente.
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </div>
+                      {/* Alerts de Status */}
+                      {instance.status === 'qr_ready' && instance.has_qr_code && (
+                        <Alert className="border-primary/20 bg-primary/5">
+                          <QrCode className="h-4 w-4 text-primary" />
+                          <AlertDescription className="text-primary">
+                            <strong>QR Code pronto!</strong> Clique em "Ver QR" para escanear.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      {instance.status === 'connected' && (
+                        <Alert className="border-success/20 bg-success/5">
+                          <CheckCircle className="h-4 w-4 text-success" />
+                          <AlertDescription className="text-success">
+                            <strong>WhatsApp conectado!</strong> Instância funcionando.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
 
                     {/* Ações */}
-                   <div className="flex space-x-2">
-                     {/* Debug: Mostrar status atual */}
-                     <div className="text-xs text-muted-foreground">
-                       Status: {instance.status} | Connection: {instance.connection_state}
-                     </div>
-                     
-                     {/* Botões principais baseados no status */}
-                     {instance.status === 'qr_ready' && instance.has_qr_code && (
-                       <Button size="sm" onClick={() => showQRCode(instance.instance_id)}>
-                         <QrCode className="w-4 h-4 mr-1" />
-                         Ver QR
-                       </Button>
-                     )}
-                     
-                     {/* Mostrar botão Abrir Chat se conectado */}
-                     {(instance.status === 'connected' || instance.connection_state === 'open') && (
-                       <Button 
-                         size="sm" 
-                         onClick={() => openChat(instance.instance_id)}
-                         className="bg-green-600 hover:bg-green-700 text-white"
-                       >
-                         <MessageSquare className="w-4 h-4 mr-1" />
-                         Abrir Chat
-                       </Button>
-                     )}
-                     
-                     {/* Mostrar botão Conectar se não conectado */}
-                     {instance.status !== 'connected' && instance.connection_state !== 'open' && (
-                       <Button 
-                         size="sm"
-                         onClick={() => connectInstance(instance.instance_id)}
-                         disabled={state.status === 'loading'}
-                       >
-                         {state.status === 'loading' ? (
-                           <>
-                             <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                             Conectando...
-                           </>
-                         ) : (
-                           <>
-                             <Wifi className="w-4 h-4 mr-1" />
-                             Conectar
-                           </>
-                         )}
-                       </Button>
-                     )}
-                    
-                    {/* Menu de ações */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="px-3">
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => setEditModal({
-                            isOpen: true,
-                            instanceId: instance.instance_id,
-                            currentName: instance.custom_name || instance.instance_id
-                          })}
-                        >
-                          <Edit className="w-4 h-4 mr-2" />
-                          Editar Nome
-                        </DropdownMenuItem>
-                        
-                        {/* Adicionar opção de Abrir Chat no menu também */}
-                        {(instance.status === 'connected' || instance.connection_state === 'open') && (
-                          <DropdownMenuItem
-                            onClick={() => openChat(instance.instance_id)}
+                    <div className="flex flex-col sm:flex-row lg:flex-col gap-2 min-w-fit">
+                      {/* Botões principais */}
+                      <div className="flex flex-wrap gap-2">
+                        {instance.status === 'qr_ready' && instance.has_qr_code && (
+                          <Button 
+                            size="sm" 
+                            onClick={() => showQRCode(instance.instance_id)}
+                            className="flex-1 sm:flex-none"
                           >
-                            <MessageSquare className="w-4 h-4 mr-2" />
-                            Abrir Chat
-                          </DropdownMenuItem>
+                            <QrCode className="w-4 h-4 mr-1" />
+                            <span className="hidden sm:inline">Ver QR</span>
+                            <span className="sm:hidden">QR</span>
+                          </Button>
                         )}
                         
+                        {/* Abrir Chat se conectado */}
                         {(instance.status === 'connected' || instance.connection_state === 'open') && (
-                          <>
-                            <DropdownMenuItem
-                              onClick={() => handleLogoutInstance(instance.instance_id)}
-                              disabled={state.status === 'disconnecting'}
-                            >
-                              <LogOut className="w-4 h-4 mr-2" />
-                              {state.status === 'disconnecting' ? 'Desconectando...' : 'Desconectar'}
-                            </DropdownMenuItem>
-                            
-                            <DropdownMenuItem
-                              onClick={() => handleRestartInstance(instance.instance_id)}
-                              disabled={state.status === 'restarting'}
-                            >
-                              <RotateCw className="w-4 h-4 mr-2" />
-                              {state.status === 'restarting' ? 'Reiniciando...' : 'Reiniciar'}
-                            </DropdownMenuItem>
-                          </>
+                          <Button 
+                            size="sm" 
+                            onClick={() => openChat(instance.instance_id)}
+                            className="bg-success hover:bg-success/90 text-success-foreground flex-1 sm:flex-none"
+                          >
+                            <MessageSquare className="w-4 h-4 mr-1" />
+                            <span className="hidden sm:inline">Abrir Chat</span>
+                            <span className="sm:hidden">Chat</span>
+                          </Button>
                         )}
                         
-                        <DropdownMenuSeparator />
-                        
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Remover
-                            </DropdownMenuItem>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Tem certeza que deseja remover a instância "{instance.custom_name || instance.instance_id}"? 
-                                Esta ação não pode ser desfeita.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => deleteInstance(instance.instance_id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        {/* Conectar se não conectado */}
+                        {instance.status !== 'connected' && instance.connection_state !== 'open' && (
+                          <Button 
+                            size="sm"
+                            onClick={() => connectInstance(instance.instance_id)}
+                            disabled={state.status === 'loading'}
+                            className="flex-1 sm:flex-none"
+                          >
+                            {state.status === 'loading' ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                                <span className="hidden sm:inline">Conectando...</span>
+                                <span className="sm:hidden">...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Wifi className="w-4 h-4 mr-1" />
+                                <span className="hidden sm:inline">Conectar</span>
+                                <span className="sm:hidden">Conectar</span>
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                      
+                      {/* Menu de ações */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="px-3">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem
+                            onClick={() => setEditModal({
+                              isOpen: true,
+                              instanceId: instance.instance_id,
+                              currentName: instance.custom_name || instance.instance_id
+                            })}
+                          >
+                            <Edit className="w-4 h-4 mr-2" />
+                            Editar Nome
+                          </DropdownMenuItem>
+                          
+                          {(instance.status === 'connected' || instance.connection_state === 'open') && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => openChat(instance.instance_id)}
                               >
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                Abrir Chat
+                              </DropdownMenuItem>
+                              
+                              <DropdownMenuItem
+                                onClick={() => handleLogoutInstance(instance.instance_id)}
+                                disabled={state.status === 'disconnecting'}
+                              >
+                                <LogOut className="w-4 h-4 mr-2" />
+                                {state.status === 'disconnecting' ? 'Desconectando...' : 'Desconectar'}
+                              </DropdownMenuItem>
+                              
+                              <DropdownMenuItem
+                                onClick={() => handleRestartInstance(instance.instance_id)}
+                                disabled={state.status === 'restarting'}
+                              >
+                                <RotateCw className="w-4 h-4 mr-2" />
+                                {state.status === 'restarting' ? 'Reiniciando...' : 'Reiniciar'}
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          
+                          <DropdownMenuSeparator />
+                          
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                <Trash2 className="w-4 h-4 mr-2" />
                                 Remover
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                              </DropdownMenuItem>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Tem certeza que deseja remover a instância "{instance.custom_name || instance.instance_id}"? 
+                                  Esta ação não pode ser desfeita.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deleteInstance(instance.instance_id)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Remover
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
       {instances.length === 0 && (
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <div className="space-y-2">
-              <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground" />
-              <h3 className="font-medium">Nenhuma instância encontrada</h3>
-              <p className="text-sm text-muted-foreground">Crie a primeira instância para começar</p>
+        <Card className="border-dashed">
+          <CardContent className="pt-12 pb-12 text-center">
+            <div className="space-y-4">
+              <div className="p-4 bg-muted/50 rounded-full w-fit mx-auto">
+                <MessageSquare className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-semibold text-lg">Nenhuma instância encontrada</h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  Crie sua primeira instância WhatsApp para começar a gerenciar suas conversas
+                </p>
+              </div>
+              <Button 
+                onClick={() => setSelectedClient("")}
+                variant="outline"
+                className="mt-4"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Criar Primeira Instância
+              </Button>
             </div>
           </CardContent>
         </Card>
