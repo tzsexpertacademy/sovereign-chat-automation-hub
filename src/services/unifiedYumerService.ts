@@ -534,9 +534,14 @@ class UnifiedYumerService {
       console.warn('⚠️ [CONNECTION-STATE] Erro ao buscar business_id:', error);
     }
     
-    return this.makeRequest<ConnectionState>(`/api/v2/instance/${instanceId}/connection-state`, {
+    // Usar o endpoint correto para conexão
+    const result = await this.makeRequest<ConnectionState>(`/api/v2/instance/${instanceId}/connection-state`, {
       method: 'GET'
     }, true, true, businessId);
+    
+    console.log(`📊 [CONNECTION-STATE] Resultado da API para ${instanceId}:`, result);
+    
+    return result;
   }
 
   async getQRCode(instanceId: string, instanceJWT?: string): Promise<{ success: boolean; data?: QRCodeResponse; error?: string }> {
