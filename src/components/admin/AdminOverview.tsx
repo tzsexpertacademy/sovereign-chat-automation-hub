@@ -1,10 +1,28 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Activity, CreditCard, AlertCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { 
+  Users, 
+  Activity, 
+  CreditCard, 
+  AlertCircle, 
+  TrendingUp, 
+  MessageSquare,
+  Wifi,
+  Target,
+  DollarSign,
+  Clock,
+  RefreshCw,
+  BarChart3
+} from "lucide-react";
 import { useAdminStats } from "@/hooks/useAdminStats";
+import { MetricsCharts } from "./MetricsCharts";
+import { SystemHealthCard } from "./SystemHealthCard";
+import { RecentActivityCard } from "./RecentActivityCard";
 
 const AdminOverview = () => {
-  const { stats, loading, error } = useAdminStats();
+  const { stats, recentActivity, loading, error, refreshStats } = useAdminStats();
 
   if (loading) {
     return (
@@ -39,39 +57,80 @@ const AdminOverview = () => {
     );
   }
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value);
+  };
+
+  const formatPercentage = (value: number) => {
+    return `${value.toFixed(1)}%`;
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="space-y-8">
+      {/* Header com controles */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard Administrativo</h1>
+          <p className="text-muted-foreground">
+            Visão geral completa do sistema e métricas em tempo real
+          </p>
+        </div>
+        <Button onClick={refreshStats} variant="outline" className="flex items-center gap-2">
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          Atualizar Dados
+        </Button>
+      </div>
+
+      {/* KPIs Principais - 6 cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Clientes</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Clientes</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.totalClients || 0}</div>
             <p className="text-xs text-muted-foreground">
-              Clientes cadastrados no sistema
+              {stats?.growthRate && stats.growthRate > 0 ? `+${formatPercentage(stats.growthRate)}` : '0%'} este mês
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Instâncias Ativas</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            <Wifi className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.activeInstances || 0}</div>
+            <div className="text-2xl font-bold text-green-600">{stats?.activeInstances || 0}</div>
             <p className="text-xs text-muted-foreground">
               de {stats?.totalInstances || 0} instâncias totais
             </p>
           </CardContent>
         </Card>
-        
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">MRR Total</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrency(stats?.totalMRR || 0)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Receita mensal recorrente
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Mensagens Hoje</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.messagesToday || 0}</div>
@@ -80,50 +139,110 @@ const AdminOverview = () => {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Status do Servidor</CardTitle>
-            <AlertCircle className={`h-4 w-4 ${stats?.serverStatus === 'online' ? 'text-green-500' : 'text-red-500'}`} />
+            <CardTitle className="text-sm font-medium">Taxa Conversão</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold capitalize">
-              {stats?.serverStatus || 'Desconhecido'}
+            <div className="text-2xl font-bold text-blue-600">
+              {formatPercentage(stats?.conversionRate || 0)}
             </div>
             <p className="text-xs text-muted-foreground">
-              Uptime: {stats?.serverUptime || 'N/A'}
+              Clientes ativos vs total
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Tickets Hoje</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.ticketsPerDay || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats?.openTickets || 0} tickets abertos
             </p>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Visão Geral do Sistema</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Total de Mensagens:</span>
-              <span className="font-medium">{stats?.totalMessages || 0}</span>
+      {/* Métricas Secundárias */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2">
+              <TrendingUp className="h-5 w-5 text-blue-500" />
+              <div>
+                <p className="text-sm font-medium">Média Instâncias/Cliente</p>
+                <p className="text-2xl font-bold">{stats?.avgInstancesPerClient || 0}</p>
+              </div>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Tickets Abertos:</span>
-              <span className="font-medium">{stats?.openTickets || 0}</span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2">
+              <Clock className="h-5 w-5 text-green-500" />
+              <div>
+                <p className="text-sm font-medium">Tempo Resposta</p>
+                <p className="text-2xl font-bold">{stats?.avgResponseTime || 0}s</p>
+              </div>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Total de Tickets:</span>
-              <span className="font-medium">{stats?.totalTickets || 0}</span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2">
+              <Activity className="h-5 w-5 text-purple-500" />
+              <div>
+                <p className="text-sm font-medium">Uptime Sistema</p>
+                <p className="text-2xl font-bold">{formatPercentage(stats?.systemUptime || 0)}</p>
+              </div>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Última Atividade:</span>
-              <span className="font-medium">
-                {stats?.lastActivity ? new Date(stats.lastActivity).toLocaleString('pt-BR') : 'N/A'}
-              </span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-orange-500" />
+              <div>
+                <p className="text-sm font-medium">Retenção</p>
+                <p className="text-2xl font-bold">{formatPercentage(stats?.clientRetentionRate || 0)}</p>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Gráficos */}
+      {stats && (
+        <MetricsCharts
+          messagesByDay={stats.messagesByDay || []}
+          instancesDistribution={stats.instancesDistribution || []}
+          recentGrowth={stats.recentGrowth || []}
+        />
+      )}
+
+      {/* Seção de Status e Atividade */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SystemHealthCard
+          serverStatus={stats?.serverStatus || 'offline'}
+          serverUptime={stats?.serverUptime || 'N/A'}
+          systemUptime={stats?.systemUptime || 0}
+          avgResponseTime={stats?.avgResponseTime || 0}
+          onRefresh={refreshStats}
+        />
+        
+        <RecentActivityCard 
+          activities={recentActivity || []}
+        />
+      </div>
     </div>
   );
 };

@@ -14,6 +14,22 @@ interface SystemStats {
   serverStatus: 'online' | 'offline';
   serverUptime: string;
   lastActivity: Date | null;
+  // KPIs Financeiros
+  totalMRR: number;
+  totalRevenue: number;
+  conversionRate: number;
+  // Métricas de Negócio
+  growthRate: number;
+  avgInstancesPerClient: number;
+  clientRetentionRate: number;
+  // Performance
+  avgResponseTime: number;
+  systemUptime: number;
+  ticketsPerDay: number;
+  // Novos dados para gráficos
+  messagesByDay: { date: string; sent: number; received: number; }[];
+  instancesDistribution: { status: string; count: number; color: string; }[];
+  recentGrowth: { period: string; clients: number; revenue: number; }[];
 }
 
 interface RecentActivity {
