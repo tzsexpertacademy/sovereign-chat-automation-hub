@@ -23,7 +23,8 @@ import {
   Zap,
   Building2,
   Layers3,
-  UserCheck
+  UserCheck,
+  Target
 } from "lucide-react";
 import { clientsService, ClientData } from "@/services/clientsService";
 
@@ -81,6 +82,12 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
       icon: Layers3, 
       path: `/client/${clientId}/queues`,
       description: "Gerenciar Filas"
+    },
+    { 
+      title: "Campanhas", 
+      icon: Target, 
+      path: `/client/${clientId}/campaigns`,
+      description: "Marketing Auto"
     },
     { 
       title: "Instâncias", 
