@@ -180,6 +180,52 @@ const BusinessManagement = () => {
     }
   };
 
+  const handleIdentifyOrphans = async () => {
+    setLoading(true);
+    try {
+      const result = await businessService.identifyOrphanBusinesses();
+      toast({
+        title: "Análise Concluída",
+        description: `Encontrados ${result.orphans.length} businesses órfãos de ${result.total} total`
+      });
+      await loadBusinesses();
+    } catch (error: any) {
+      console.error('Erro ao identificar órfãos:', error);
+      toast({
+        title: "Erro na Análise",
+        description: error.message || "Erro ao identificar businesses órfãos",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCleanupOrphans = async () => {
+    if (!confirm('Esta ação irá deletar TODOS os businesses órfãos (sem cliente vinculado). Tem certeza?')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await businessService.cleanupOrphanBusinesses();
+      toast({
+        title: "Limpeza Concluída",
+        description: `${result.deleted} businesses órfãos deletados${result.failed.length > 0 ? `, ${result.failed.length} falharam` : ''}`
+      });
+      await loadBusinesses();
+    } catch (error: any) {
+      console.error('Erro na limpeza:', error);
+      toast({
+        title: "Erro na Limpeza",
+        description: error.message || "Erro ao limpar businesses órfãos",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteInstance = async (businessId: string, instanceId: string) => {
     try {
       setLoading(true);
@@ -284,6 +330,22 @@ const BusinessManagement = () => {
           >
             <Sync className={`w-4 h-4 mr-2 ${syncingBusinesses ? 'animate-spin' : ''}`} />
             Sincronizar
+          </Button>
+          <Button 
+            onClick={handleIdentifyOrphans}
+            variant="outline"
+            disabled={loading}
+          >
+            <AlertCircle className={`w-4 h-4 mr-2`} />
+            Analisar Órfãos
+          </Button>
+          <Button 
+            onClick={handleCleanupOrphans}
+            variant="destructive"
+            disabled={loading}
+          >
+            <Trash2 className={`w-4 h-4 mr-2`} />
+            Limpar Órfãos
           </Button>
           <Button onClick={() => setShowCreateForm(true)}>
             <Plus className="w-4 h-4 mr-2" />

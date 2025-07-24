@@ -223,8 +223,96 @@ class BusinessService {
     }
   }
 
+  /**
+   * Identifica businesses órfãos (sem cliente vinculado)
+   */
+  async identifyOrphanBusinesses(): Promise<{ orphans: BusinessData[], total: number }> {
+    try {
+      console.log('🔍 [BUSINESS-SERVICE] Identificando businesses órfãos...');
+      
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: clients, error } = await supabase
+        .from('clients')
+        .select('business_id')
+        .not('business_id', 'is', null);
+
+      if (error) throw error;
+
+      const clientBusinessIds = new Set(clients?.map(c => c.business_id) || []);
+      
+      // Buscar todos os businesses da API
+      const result = await unifiedYumerService.listBusinesses();
+      if (!result.success || !result.data) {
+        throw new Error('Erro ao buscar businesses da API');
+      }
+      
+      const orphanBusinesses = result.data
+        .filter((business: any) => !clientBusinessIds.has(business.businessId))
+        .map((business: any) => ({
+          businessId: business.businessId,
+          name: business.name,
+          businessToken: business.businessToken,
+          attributes: business.attributes || {},
+          createdAt: business.createdAt || new Date().toISOString(),
+          updatedAt: business.updatedAt || new Date().toISOString(),
+          instances: 0,
+          connectedInstances: 0
+        }));
+
+      console.log(`📊 [BUSINESS-SERVICE] Encontrados ${orphanBusinesses.length} businesses órfãos de ${result.data.length} total`);
+      
+      return {
+        orphans: orphanBusinesses,
+        total: result.data.length
+      };
+    } catch (error) {
+      console.error('❌ [BUSINESS-SERVICE] Erro ao identificar órfãos:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Limpa businesses órfãos em lote
+   */
+  async cleanupOrphanBusinesses(): Promise<{ deleted: number, failed: string[] }> {
+    try {
+      console.log('🧹 [BUSINESS-SERVICE] Iniciando limpeza de businesses órfãos...');
+      
+      const { orphans } = await this.identifyOrphanBusinesses();
+      const results = { deleted: 0, failed: [] as string[] };
+
+      if (orphans.length === 0) {
+        console.log('✅ [BUSINESS-SERVICE] Nenhum business órfão encontrado');
+        return results;
+      }
+
+      for (const business of orphans) {
+        try {
+          await this.deleteBusiness(business.businessId, true);
+          this.markBusinessAsDeleted(business.businessId);
+          results.deleted++;
+          console.log(`✅ [BUSINESS-SERVICE] Business órfão deletado: ${business.name} (${business.businessId})`);
+        } catch (error) {
+          console.error(`❌ [BUSINESS-SERVICE] Falha ao deletar business ${business.businessId}:`, error);
+          results.failed.push(business.businessId);
+        }
+      }
+
+      console.log(`🏁 [BUSINESS-SERVICE] Limpeza concluída: ${results.deleted} deletados, ${results.failed.length} falharam`);
+      return results;
+    } catch (error) {
+      console.error('❌ [BUSINESS-SERVICE] Falha na limpeza:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sincroniza businesses com clientes
+   */
   async syncBusinessesWithClients(): Promise<void> {
     try {
+      console.log('🔄 [BUSINESS-SERVICE] Iniciando sincronização businesses-clientes...');
+      
       // 1. Buscar todos os businesses da API
       const businesses = await unifiedYumerService.listBusinesses();
       if (!businesses.success || !businesses.data) {
@@ -237,19 +325,25 @@ class BusinessService {
         .from('clients')
         .select('*');
 
-      if (!clients) return;
+      if (!clients) {
+        console.log('⚠️ [BUSINESS-SERVICE] Nenhum cliente encontrado no banco');
+        return;
+      }
+
+      let vinculados = 0;
+      let jaVinculados = 0;
 
       // 3. Para cada cliente sem business_id, tentar encontrar um business correspondente
       for (const client of clients) {
         if (!client.business_id) {
           // Tentar encontrar business pelo nome ou email
-          const matchingBusiness = businesses.data.find(business => 
+          const matchingBusiness = businesses.data.find((business: any) => 
             business.name.toLowerCase().includes(client.name.toLowerCase()) ||
             business.email === client.email
           );
 
           if (matchingBusiness) {
-            console.log(`Vinculando cliente ${client.name} ao business ${matchingBusiness.name}`);
+            console.log(`🔗 [BUSINESS-SERVICE] Vinculando cliente "${client.name}" ao business "${matchingBusiness.name}"`);
             await supabase
               .from('clients')
               .update({ 
@@ -257,13 +351,19 @@ class BusinessService {
                 business_token: matchingBusiness.businessToken 
               })
               .eq('id', client.id);
+            vinculados++;
           }
+        } else {
+          jaVinculados++;
         }
       }
 
-      console.log('Sincronização concluída');
+      console.log(`✅ [BUSINESS-SERVICE] Sincronização concluída: ${vinculados} novos vínculos, ${jaVinculados} já vinculados`);
+      
+      // Limpar cache para recarregar dados atualizados
+      this.clearDeletedCache();
     } catch (error) {
-      console.error('Erro na sincronização:', error);
+      console.error('❌ [BUSINESS-SERVICE] Erro na sincronização:', error);
       throw error;
     }
   }
