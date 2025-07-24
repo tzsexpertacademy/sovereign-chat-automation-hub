@@ -39,7 +39,7 @@ interface TestResult {
 interface ApiEndpoint {
   name: string;
   url: string;
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   category: string;
   description: string;
   requiresBusinessId?: boolean;
@@ -153,7 +153,7 @@ const YumerV2Diagnostic = () => {
       dependency: 'Create Business'
     },
     
-    // 🏪 Business Controller - BUSINESS_TOKEN
+    // 🏪 Business Controller - BUSINESS_TOKEN (COMPLETO)
     { 
       name: 'Get Business Info', 
       url: '/api/v2/business/{businessId}', 
@@ -165,6 +165,24 @@ const YumerV2Diagnostic = () => {
       dependency: 'Create Business'
     },
     { 
+      name: 'Update Business', 
+      url: '/api/v2/business/{businessId}', 
+      method: 'PUT', 
+      category: 'business',
+      description: 'Atualizar informações do negócio',
+      requiresBusinessId: true,
+      tokenType: 'business',
+      dependency: 'Create Business',
+      body: {
+        name: 'Updated Test Business v2.2.1',
+        attributes: {
+          category: 'diagnostic-updated',
+          environment: 'test',
+          updatedBy: 'YumerDiagnostic'
+        }
+      }
+    },
+    { 
       name: 'Create Business Instance', 
       url: '/api/v2/business/{businessId}/instance', 
       method: 'POST', 
@@ -174,7 +192,89 @@ const YumerV2Diagnostic = () => {
       tokenType: 'business',
       dependency: 'Create Business',
       body: {
-        name: 'diagnostic-instance-v221'
+        instanceName: 'diagnostic-instance-v221',
+        externalId: 'diag-ext-' + Date.now()
+      }
+    },
+    { 
+      name: 'Delete Business Instance', 
+      url: '/api/v2/business/{businessId}/instance', 
+      method: 'DELETE', 
+      category: 'business',
+      description: 'Deletar instância do negócio',
+      requiresBusinessId: true,
+      requiresInstanceId: true,
+      tokenType: 'business',
+      dependency: 'Create Business Instance'
+    },
+    { 
+      name: 'Refresh Instance Token', 
+      url: '/api/v2/business/{businessId}/instance/{instanceId}/refresh-token', 
+      method: 'PATCH', 
+      category: 'business',
+      description: 'Atualizar token da instância',
+      requiresBusinessId: true,
+      requiresInstanceId: true,
+      tokenType: 'business',
+      dependency: 'Create Business Instance',
+      body: {
+        oldToken: ''  // Será preenchido dinamicamente
+      }
+    },
+    { 
+      name: 'Toggle Instance Activate', 
+      url: '/api/v2/business/{businessId}/instance/{instanceId}/toggle-activate', 
+      method: 'PATCH', 
+      category: 'business',
+      description: 'Ativar/Desativar instância',
+      requiresBusinessId: true,
+      requiresInstanceId: true,
+      tokenType: 'business',
+      dependency: 'Create Business Instance',
+      body: {
+        action: 'activate'
+      }
+    },
+    { 
+      name: 'Get Connected Instances', 
+      url: '/api/v2/business/{businessId}/instance/connected', 
+      method: 'GET', 
+      category: 'business',
+      description: 'Buscar instâncias conectadas',
+      requiresBusinessId: true,
+      tokenType: 'business',
+      dependency: 'Create Business Instance'
+    },
+    { 
+      name: 'Search Business Instances', 
+      url: '/api/v2/business/{businessId}/instance/search', 
+      method: 'POST', 
+      category: 'business',
+      description: 'Buscar instâncias com filtros',
+      requiresBusinessId: true,
+      tokenType: 'business',
+      dependency: 'Create Business Instance',
+      body: {
+        search: {
+          name: 'diagnostic',
+          state: 'active',
+          connection: 'close'
+        },
+        page: 1
+      }
+    },
+    { 
+      name: 'Move WhatsApp Between Instances', 
+      url: '/api/v2/business/{businessId}/instance/move-whatsapp', 
+      method: 'PATCH', 
+      category: 'business',
+      description: 'Mover WhatsApp entre instâncias',
+      requiresBusinessId: true,
+      tokenType: 'business',
+      dependency: 'Create Business Instance',
+      body: {
+        sourceWhatsAppId: '',  // Será preenchido dinamicamente
+        instanceIdTarget: ''   // Será preenchido dinamicamente
       }
     },
     { 
