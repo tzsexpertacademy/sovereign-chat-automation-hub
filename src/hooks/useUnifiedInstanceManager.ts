@@ -32,11 +32,32 @@ interface UseUnifiedInstanceManagerReturn {
   stopPollingForInstance: (instanceId: string) => void;
 }
 
-export const useUnifiedInstanceManager = (): UseUnifiedInstanceManagerReturn => {
+export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedInstanceManagerReturn => {
   const [instances, setInstances] = useState<Record<string, InstanceStatus>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [serverOnline, setServerOnline] = useState(true);
   const { toast } = useToast();
+
+  // ============ INICIALIZAÇÃO COM DADOS EXISTENTES ============
+  useEffect(() => {
+    if (initialInstances && initialInstances.length > 0) {
+      console.log(`🔄 [UNIFIED] Inicializando com ${initialInstances.length} instâncias`);
+      
+      const initialState: Record<string, InstanceStatus> = {};
+      initialInstances.forEach(instance => {
+        initialState[instance.instance_id] = {
+          instanceId: instance.instance_id,
+          status: instance.status || 'disconnected',
+          phoneNumber: instance.phone_number,
+          qrCode: instance.has_qr_code ? instance.qr_code : undefined,
+          hasQrCode: instance.has_qr_code || false,
+          lastUpdated: Date.now()
+        };
+      });
+      
+      setInstances(initialState);
+    }
+  }, [initialInstances]);
 
   // ============ SYNC REALTIME APENAS QUANDO NECESSÁRIO ============
   const { manualSync } = useInstanceSync({

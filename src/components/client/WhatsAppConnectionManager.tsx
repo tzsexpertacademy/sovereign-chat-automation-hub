@@ -57,7 +57,7 @@ const WhatsAppConnectionManager = () => {
     getInstanceStatus, 
     isLoading: isInstanceLoading,
     refreshStatus
-  } = useUnifiedInstanceManager();
+  } = useUnifiedInstanceManager(instances);
 
   useEffect(() => {
     if (clientId) {
@@ -268,8 +268,19 @@ const WhatsAppConnectionManager = () => {
   }
 
   const usagePercentage = (client.current_instances / client.max_instances) * 100;
-  const connectedInstances = instances.filter(i => getInstanceStatus(i.instance_id)?.status === 'connected').length;
-  const qrReadyInstances = instances.filter(i => getInstanceStatus(i.instance_id)?.status === 'qr_ready').length;
+  
+  // Usar dados combinados: primeiro manager, depois fallback para banco
+  const connectedInstances = instances.filter(i => {
+    const managerStatus = getInstanceStatus(i.instance_id);
+    const status = managerStatus?.status || i.status;
+    return status === 'connected';
+  }).length;
+  
+  const qrReadyInstances = instances.filter(i => {
+    const managerStatus = getInstanceStatus(i.instance_id);
+    const status = managerStatus?.status || i.status;
+    return status === 'qr_ready';
+  }).length;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -373,7 +384,11 @@ const WhatsAppConnectionManager = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {instances.map((instance) => {
             const managerInstance = getInstanceStatus(instance.instance_id);
+            // Priorizar dados do manager, fallback para banco
             const status = managerInstance?.status || instance.status || 'disconnected';
+            const phoneNumber = managerInstance?.phoneNumber || instance.phone_number;
+            const qrCode = managerInstance?.qrCode || (instance.has_qr_code ? instance.qr_code : undefined);
+            
             const statusInfo = getStatusInfo(status);
             const isEditing = editingId === instance.instance_id;
             const isConnected = status === 'connected';
@@ -437,16 +452,16 @@ const WhatsAppConnectionManager = () => {
                     </Badge>
                   </div>
                   <CardDescription className="text-xs">
-                    ID: {instance.instance_id} • {instance.phone_number || 'Não conectado'}
+                    ID: {instance.instance_id} • {phoneNumber || 'Não conectado'}
                   </CardDescription>
                 </CardHeader>
 
                 <CardContent className="space-y-4">
                   {/* QR Code */}
-                  {status === 'qr_ready' && managerInstance?.qrCode && (
+                  {status === 'qr_ready' && qrCode && (
                     <div className="text-center space-y-2">
                       <QRCodeDisplay 
-                        qrCode={managerInstance.qrCode} 
+                        qrCode={qrCode} 
                         instanceName={instance.custom_name || `Instância ${instance.instance_id.slice(-4)}`}
                         showInstructions={false}
                       />
