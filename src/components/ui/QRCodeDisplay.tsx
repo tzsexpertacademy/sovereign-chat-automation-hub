@@ -77,7 +77,7 @@ export const QRCodeDisplay = ({
       
       <div className="bg-white p-4 rounded-lg border-2 border-blue-200 inline-block">
         <img 
-          src={qrCode} 
+          src={qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`} 
           alt={`QR Code WhatsApp - ${instanceName}`}
           className="max-w-[200px] mx-auto block"
         />
