@@ -88,41 +88,57 @@ const InstancesManagerV2 = () => {
       const startTime = Date.now();
       const MAX_POLLING_TIME = 10 * 60 * 1000; // 10 minutos max
       
-      const pollInstance = async () => {
+    const pollInstance = async () => {
         try {
-          const connectionResult = await unifiedYumerService.getConnectionState(instanceId);
+          console.log(`🔍 [POLLING] Verificando status da instância: ${instanceId}`);
           
-          if (connectionResult.success && connectionResult.data?.state === 'open') {
-            // Conectou! Atualizar no banco
-            const { supabase } = await import('@/integrations/supabase/client');
-            await supabase
-              .from('whatsapp_instances')
-              .update({
-                status: 'connected',
-                has_qr_code: false,
-                qr_code: null,
-                qr_expires_at: null
-              })
-              .eq('instance_id', instanceId);
+          // Usar getInstance() para instâncias qr_ready - ele verifica se tem dados do WhatsApp
+          const instanceResult = await unifiedYumerService.getInstance(instanceId);
+          
+          if (instanceResult.success && instanceResult.data) {
+            const instanceData = instanceResult.data;
+            console.log(`📊 [POLLING] Dados da instância:`, instanceData);
             
-            // Parar polling
-            const timeout = pollingTimeouts.get(instanceId);
-            if (timeout) clearTimeout(timeout);
-            pollingTimeouts.delete(instanceId);
-            
-            toast({
-              title: "Instância Conectada!",
-              description: `${instance.custom_name || instanceId} conectou ao WhatsApp`,
-            });
-            
-            // Recarregar lista
-            await loadInstances();
-            return;
+            // Verificar se tem dados do WhatsApp (significa que conectou)
+            if (instanceData.WhatsApp && instanceData.WhatsApp.remoteJid) {
+              console.log(`✅ [POLLING] Instância ${instanceId} conectou! remoteJid: ${instanceData.WhatsApp.remoteJid}`);
+              
+              // Conectou! Atualizar no banco
+              const { supabase } = await import('@/integrations/supabase/client');
+              await supabase
+                .from('whatsapp_instances')
+                .update({
+                  status: 'connected',
+                  connection_state: 'open',
+                  phone_number: instanceData.WhatsApp.remoteJid,
+                  has_qr_code: false,
+                  qr_code: null,
+                  qr_expires_at: null,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('instance_id', instanceId);
+              
+              // Parar polling
+              const timeout = pollingTimeouts.get(instanceId);
+              if (timeout) clearTimeout(timeout);
+              pollingTimeouts.delete(instanceId);
+              
+              toast({
+                title: "Instância Conectada!",
+                description: `${instance.custom_name || instanceId} conectou ao WhatsApp`,
+              });
+              
+              // Recarregar lista
+              await loadInstances();
+              return;
+            } else {
+              console.log(`⏳ [POLLING] Instância ${instanceId} ainda aguardando conexão...`);
+            }
           }
           
           // Continuar polling se não passou do tempo limite
           if (Date.now() - startTime < MAX_POLLING_TIME) {
-            const timeout = setTimeout(pollInstance, 3000); // 3 segundos
+            const timeout = setTimeout(pollInstance, 6000); // 6 segundos - reduzido a frequência
             pollingTimeouts.set(instanceId, timeout);
           } else {
             console.log(`⏰ [POLLING] Timeout para instância: ${instanceId}`);
@@ -132,7 +148,7 @@ const InstancesManagerV2 = () => {
           console.log(`⚠️ [POLLING] Erro na instância ${instanceId}:`, error);
           // Continuar tentando em caso de erro, mas com intervalo maior
           if (Date.now() - startTime < MAX_POLLING_TIME) {
-            const timeout = setTimeout(pollInstance, 5000); // 5 segundos em caso de erro
+            const timeout = setTimeout(pollInstance, 8000); // 8 segundos em caso de erro
             pollingTimeouts.set(instanceId, timeout);
           }
         }

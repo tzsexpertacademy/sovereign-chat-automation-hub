@@ -23,6 +23,13 @@ export interface YumerInstance {
     token: string;
     jwt?: string;
   };
+  WhatsApp?: {
+    whatsappId: string;
+    remoteJid: string;
+    pictureUrl?: string;
+    pushName?: string;
+    createdAt?: string;
+  };
 }
 
 export interface YumerBusiness {
