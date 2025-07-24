@@ -166,6 +166,34 @@ const ClientsManagement = () => {
     }
   };
 
+  const handleRecalculateInstanceCounts = async () => {
+    try {
+      setLoading(true);
+      
+      const result = await clientsService.recalculateAllInstanceCounts();
+      
+      toast({
+        title: "Contadores Recalculados",
+        description: `${result.updated} clientes atualizados. ${result.errors.length > 0 ? `${result.errors.length} erros encontrados.` : ''}`,
+      });
+      
+      if (result.errors.length > 0) {
+        console.warn('Erros durante recálculo:', result.errors);
+      }
+      
+      await loadClients();
+    } catch (error: any) {
+      console.error("Erro ao recalcular contadores:", error);
+      toast({
+        title: "Erro no Recálculo",
+        description: error.message || "Falha ao recalcular contadores",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteClient = async (clientId: string) => {
     try {
       await clientsService.deleteClient(clientId);
@@ -273,6 +301,10 @@ const ClientsManagement = () => {
           <Button onClick={loadClients} variant="outline" disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
+          </Button>
+          <Button onClick={handleRecalculateInstanceCounts} variant="outline" disabled={loading}>
+            <Database className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Recalcular Contadores
           </Button>
           <Button onClick={handleSyncAllInstances} variant="outline" disabled={loading}>
             <Sync className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />

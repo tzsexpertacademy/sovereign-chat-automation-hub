@@ -381,5 +381,103 @@ export const clientsService = {
       console.error('Error checking instance limit:', error);
       return false;
     }
+  },
+
+  // Recalcular contadores de instâncias para todos os clientes
+  async recalculateAllInstanceCounts(): Promise<{ updated: number; errors: string[] }> {
+    try {
+      console.log('🔄 Recalculando contadores de instâncias...');
+      
+      const { data: clients, error } = await supabase
+        .from('clients')
+        .select('id, name');
+
+      if (error) throw error;
+
+      let updated = 0;
+      const errors: string[] = [];
+
+      for (const client of clients || []) {
+        try {
+          // Contar instâncias reais do cliente
+          const { data: instances, error: instancesError } = await supabase
+            .from('whatsapp_instances')
+            .select('id, status, instance_id')
+            .eq('client_id', client.id);
+
+          if (instancesError) {
+            errors.push(`Erro ao contar instâncias do cliente ${client.name}: ${instancesError.message}`);
+            continue;
+          }
+
+          const currentInstances = instances?.length || 0;
+          
+          // Encontrar instância principal (conectada ou mais recente)
+          const connectedInstance = instances?.find(i => i.status === 'connected');
+          const mainInstance = connectedInstance || instances?.[0];
+
+          // Atualizar cliente com dados corretos
+          const { error: updateError } = await supabase
+            .from('clients')
+            .update({
+              current_instances: currentInstances,
+              instance_id: mainInstance?.instance_id || null,
+              instance_status: mainInstance?.status || 'disconnected',
+              last_activity: new Date().toISOString()
+            })
+            .eq('id', client.id);
+
+          if (updateError) {
+            errors.push(`Erro ao atualizar cliente ${client.name}: ${updateError.message}`);
+            continue;
+          }
+
+          updated++;
+          console.log(`✅ Cliente ${client.name}: ${currentInstances} instâncias`);
+          
+        } catch (error: any) {
+          errors.push(`Erro ao processar cliente ${client.name}: ${error.message}`);
+        }
+      }
+
+      console.log(`🎯 Recálculo concluído: ${updated} clientes atualizados`);
+      
+      return { updated, errors };
+    } catch (error) {
+      console.error('Erro ao recalcular contadores:', error);
+      throw error;
+    }
+  },
+
+  // Sincronizar status de instância específica
+  async syncInstanceStatus(clientId: string, instanceId: string): Promise<void> {
+    try {
+      // Buscar dados atuais da instância
+      const { data: instance, error } = await supabase
+        .from('whatsapp_instances')
+        .select('status, instance_id')
+        .eq('client_id', clientId)
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (error) throw error;
+
+      // Atualizar dados do cliente
+      const { error: updateError } = await supabase
+        .from('clients')
+        .update({
+          instance_id: instance.instance_id,
+          instance_status: instance.status,
+          last_activity: new Date().toISOString()
+        })
+        .eq('id', clientId);
+
+      if (updateError) throw updateError;
+      
+      console.log(`✅ Status sincronizado para cliente ${clientId}: ${instance.status}`);
+    } catch (error) {
+      console.error('Erro ao sincronizar status da instância:', error);
+      throw error;
+    }
   }
 };
