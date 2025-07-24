@@ -7,7 +7,7 @@ const adminItems = [
   { title: "Clientes", url: "/admin/clients", icon: Users },
   { title: "Instâncias", url: "/admin/instances", icon: Activity },
   { title: "Planos", url: "/admin/plans", icon: CreditCard },
-  { title: "Configuração Servidor", url: "/admin/server-config", icon: Server },
+  { title: "Servidor", url: "/admin/server", icon: Server },
   { title: "Diagnóstico", url: "/admin/diagnostics", icon: Stethoscope },
   { title: "Logs", url: "/admin/logs", icon: FileText },
   { title: "Ferramentas Avançadas", url: "/admin/advanced", icon: Settings },
