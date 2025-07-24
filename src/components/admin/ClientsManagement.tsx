@@ -21,7 +21,8 @@ import {
   RefreshCw,
   ExternalLink,
   Database,
-  Globe
+  Globe,
+  RotateCw as Sync
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BusinessManagement from "./BusinessManagement";
@@ -477,22 +478,20 @@ const ClientsManagement = () => {
                        </div>
                      </div>
 
-                     {/* Action Buttons */}
-                     <div className="flex space-x-2">
-                       {!client.business_id && (
-                         <Button
-                           size="sm"
-                           variant="outline"
-                           onClick={() => handleSyncClientBusiness(client.id)}
-                           className="bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
-                           disabled={loading}
-                         >
-                           <Database className="w-4 h-4 mr-1" />
-                           Sincronizar
-                         </Button>
-                       )}
-                       
-                       <Button
+                      {/* Action Buttons */}
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleSyncClientBusiness(client.id)}
+                          className="bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
+                          disabled={loading}
+                        >
+                          <Sync className="w-4 h-4 mr-1" />
+                          {client.business_id ? 'Re-sincronizar' : 'Sincronizar'}
+                        </Button>
+                        
+                        <Button
                          size="sm"
                          variant="outline"
                          onClick={() => handleOpenClientPanel(client)}

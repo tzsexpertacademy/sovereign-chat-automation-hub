@@ -208,6 +208,51 @@ class BusinessService {
     }
   }
 
+  async syncBusinessesWithClients(): Promise<void> {
+    try {
+      // 1. Buscar todos os businesses da API
+      const businesses = await unifiedYumerService.listBusinesses();
+      if (!businesses.success || !businesses.data) {
+        throw new Error('Erro ao buscar businesses da API');
+      }
+      
+      // 2. Buscar todos os clientes do Supabase
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: clients } = await supabase
+        .from('clients')
+        .select('*');
+
+      if (!clients) return;
+
+      // 3. Para cada cliente sem business_id, tentar encontrar um business correspondente
+      for (const client of clients) {
+        if (!client.business_id) {
+          // Tentar encontrar business pelo nome ou email
+          const matchingBusiness = businesses.data.find(business => 
+            business.name.toLowerCase().includes(client.name.toLowerCase()) ||
+            business.email === client.email
+          );
+
+          if (matchingBusiness) {
+            console.log(`Vinculando cliente ${client.name} ao business ${matchingBusiness.name}`);
+            await supabase
+              .from('clients')
+              .update({ 
+                business_id: matchingBusiness.businessId,
+                business_token: matchingBusiness.businessToken 
+              })
+              .eq('id', client.id);
+          }
+        }
+      }
+
+      console.log('Sincronização concluída');
+    } catch (error) {
+      console.error('Erro na sincronização:', error);
+      throw error;
+    }
+  }
+
   /**
    * Cria um novo business (Admin)
    */

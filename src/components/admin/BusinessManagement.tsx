@@ -31,7 +31,8 @@ import {
   Power,
   PowerOff,
   RotateCw,
-  MoveHorizontal
+  MoveHorizontal,
+  RotateCw as Sync
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { businessService, BusinessData, InstanceData } from "@/services/businessService";
@@ -48,6 +49,8 @@ const BusinessManagement = () => {
     name: "",
     attributes: "{}"
   });
+  const [businessToDelete, setBusinessToDelete] = useState<string | null>(null);
+  const [syncingBusinesses, setSyncingBusinesses] = useState(false);
 
   const { toast } = useToast();
 
@@ -133,6 +136,7 @@ const BusinessManagement = () => {
         description: "Business foi removido com sucesso",
       });
       
+      setBusinessToDelete(null);
       await loadBusinesses();
     } catch (error: any) {
       console.error("Erro ao deletar business:", error);
@@ -141,6 +145,27 @@ const BusinessManagement = () => {
         description: error.message || "Falha ao remover business",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleSyncBusinesses = async () => {
+    setSyncingBusinesses(true);
+    try {
+      await businessService.syncBusinessesWithClients();
+      toast({
+        title: "Sincronização concluída",
+        description: "Businesses foram sincronizados com os clientes.",
+      });
+      loadBusinesses();
+    } catch (error: any) {
+      console.error('Erro ao sincronizar businesses:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Falha na sincronização. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setSyncingBusinesses(false);
     }
   };
 
@@ -240,6 +265,14 @@ const BusinessManagement = () => {
           <Button onClick={loadBusinesses} variant="outline" disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
+          </Button>
+          <Button 
+            onClick={handleSyncBusinesses}
+            variant="outline"
+            disabled={syncingBusinesses}
+          >
+            <Sync className={`w-4 h-4 mr-2 ${syncingBusinesses ? 'animate-spin' : ''}`} />
+            Sincronizar
           </Button>
           <Button onClick={() => setShowCreateForm(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -422,32 +455,13 @@ const BusinessManagement = () => {
                               Refresh Token
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <DropdownMenuItem className="text-red-600">
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  Remover Business
-                                </DropdownMenuItem>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Tem certeza que deseja remover o business "{business.name}"? 
-                                    Esta ação não pode ser desfeita.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction 
-                                    onClick={() => handleDeleteBusiness(business.businessId)}
-                                    className="bg-red-600 hover:bg-red-700"
-                                  >
-                                    Remover
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                            <DropdownMenuItem 
+                              onClick={() => setBusinessToDelete(business.businessId)}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Remover Business
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -559,6 +573,26 @@ const BusinessManagement = () => {
           })
         )}
       </div>
+
+      <AlertDialog open={!!businessToDelete} onOpenChange={() => setBusinessToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir este business? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => businessToDelete && handleDeleteBusiness(businessToDelete)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
