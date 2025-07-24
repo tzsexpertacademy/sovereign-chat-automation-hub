@@ -24,7 +24,8 @@ import {
   Building2,
   Layers3,
   UserCheck,
-  Target
+  Target,
+  Home
 } from "lucide-react";
 import { clientsService, ClientData } from "@/services/clientsService";
 
@@ -53,6 +54,12 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
   }, [clientId]);
   
   const menuItems = [
+    { 
+      title: "Dashboard", 
+      icon: Home, 
+      path: `/client/${clientId}/dashboard`,
+      description: "Visão Geral"
+    },
     { 
       title: "Conexão", 
       icon: Wifi, 

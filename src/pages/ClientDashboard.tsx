@@ -14,6 +14,7 @@ import BookingManager from "@/components/booking/BookingManager";
 import FunnelKanban from "@/components/client/FunnelKanban";
 import QueuesManager from "@/components/client/QueuesManager";
 import QueueConnectionManager from "@/components/client/QueueConnectionManager";
+import ClientDashboardOverview from "@/components/client/ClientDashboardOverview";
 
 const ClientDashboard = () => {
   const { clientId } = useParams();
@@ -35,7 +36,8 @@ const ClientDashboard = () => {
           <ClientHeader clientId={clientId} />
           <main className="flex-1 p-6">
             <Routes>
-              <Route path="/" element={<Navigate to="connect" replace />} />
+              <Route path="/" element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<ClientDashboardOverview clientId={clientId} />} />
               <Route path="connect" element={<WhatsAppConnectionManager />} />
               <Route 
                 path="chat" 
