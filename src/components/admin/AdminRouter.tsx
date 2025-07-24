@@ -5,7 +5,7 @@ import ClientsManagement from "./ClientsManagement";
 import InstancesManager from "./InstancesManager";
 import { PlansManagement } from "./PlansManagementModern";
 import ServerManagement from "./ServerManagement";
-import YumerV2Diagnostic from "./YumerV2Diagnostic";
+import ApiCodechat from "./ApiCodechat";
 import SystemLogs from "./SystemLogs";
 import AdvancedTools from "./AdvancedTools";
 
@@ -20,7 +20,7 @@ const AdminRouter = () => {
       <Route path="/server" element={<ServerManagement />} />
       <Route path="/server-config" element={<ServerManagement />} />
       <Route path="/server-config-v2" element={<ServerManagement />} />
-      <Route path="/diagnostics" element={<YumerV2Diagnostic />} />
+      <Route path="/diagnostics" element={<ApiCodechat />} />
       <Route path="/logs" element={<SystemLogs />} />
       <Route path="/advanced" element={<AdvancedTools />} />
     </Routes>
