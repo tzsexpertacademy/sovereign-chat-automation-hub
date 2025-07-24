@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import AdminOverview from "./AdminOverview";
 import ClientsManagement from "./ClientsManagement";
 import InstancesManager from "./InstancesManager";
-import PlansManagement from "./PlansManagement";
+import { PlansManagement } from "./PlansManagementModern";
 import ServerConfiguration from "./ServerConfiguration";
 import ServerConfigurationV2 from "./ServerConfigurationV2";
 import YumerV2Diagnostic from "./YumerV2Diagnostic";

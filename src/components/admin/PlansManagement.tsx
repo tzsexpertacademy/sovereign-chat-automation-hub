@@ -23,9 +23,17 @@ const PlansManagement = () => {
   const [selectedPlanMetrics, setSelectedPlanMetrics] = useState<PlanMetrics | null>(null);
   const { toast } = useToast();
 
+  // Auto-refresh when accessing the page
   useEffect(() => {
     loadData();
   }, []);
+
+  // Refresh when route changes to plans
+  useEffect(() => {
+    if (location.pathname === '/admin/plans') {
+      loadData();
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     filterPlans();
