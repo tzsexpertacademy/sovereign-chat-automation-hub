@@ -115,13 +115,19 @@ class BusinessService {
   // ==================== ADMIN BUSINESS MANAGEMENT ====================
   
   /**
-   * Lista todos os businesses (Admin)
+   * Lista todos os businesses com dados dos clientes vinculados (Admin)
    */
   async getAllBusinesses(): Promise<BusinessData[]> {
     try {
       const result = await unifiedYumerService.listBusinesses();
       if (result.success && result.data) {
-        // Para cada business, buscar suas instâncias
+        // Buscar clientes do Supabase
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: clients } = await supabase
+          .from('clients')
+          .select('*');
+        
+        // Para cada business, buscar suas instâncias e cliente vinculado
         const businessesWithInstances = await Promise.all(
           result.data.map(async (business) => {
             try {
@@ -132,11 +138,19 @@ class BusinessService {
               // Calcular estatísticas
               const connectedInstances = instances.filter(i => i.connection === 'open' || i.connectionStatus === 'open').length;
               
+              // Encontrar cliente proprietário
+              const ownerClient = clients?.find(c => c.business_id === business.businessId);
+              
               return {
                 businessId: business.businessId,
                 name: business.name,
                 businessToken: business.businessToken,
-                attributes: {},
+                attributes: {
+                  clientId: ownerClient?.id,
+                  clientName: ownerClient?.name,
+                  clientEmail: ownerClient?.email,
+                  clientPlan: ownerClient?.plan
+                },
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 Instance: instances.map(instance => ({
@@ -162,11 +176,20 @@ class BusinessService {
               };
             } catch (error) {
               console.warn(`⚠️ Erro ao buscar instâncias do business ${business.businessId}:`, error);
+              
+              // Encontrar cliente proprietário mesmo em caso de erro
+              const ownerClient = clients?.find(c => c.business_id === business.businessId);
+              
               return {
                 businessId: business.businessId,
                 name: business.name,
                 businessToken: business.businessToken,
-                attributes: {},
+                attributes: {
+                  clientId: ownerClient?.id,
+                  clientName: ownerClient?.name,
+                  clientEmail: ownerClient?.email,
+                  clientPlan: ownerClient?.plan
+                },
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 instances: 0,

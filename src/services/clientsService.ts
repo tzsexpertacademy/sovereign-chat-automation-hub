@@ -44,7 +44,7 @@ export const getMaxInstancesForPlan = (plan: string): number => {
 };
 
 export const clientsService = {
-  // Get all clients
+  // Get all clients with business sync
   async getAllClients(): Promise<ClientData[]> {
     try {
       const { data, error } = await supabase
@@ -54,15 +54,129 @@ export const clientsService = {
 
       if (error) throw error;
       
-      // Garantir que o max_instances está correto baseado no plano
-      const clientsWithCorrectLimits = (data || []).map(client => ({
-        ...client,
-        max_instances: getMaxInstancesForPlan(client.plan)
-      })) as ClientData[];
+      // Garantir que todo cliente tenha um business associado
+      const clientsWithBusiness = await Promise.all(
+        (data || []).map(async (client) => {
+          let clientData = {
+            ...client,
+            max_instances: getMaxInstancesForPlan(client.plan)
+          } as ClientData;
+
+          // Se cliente não tem business_id, criar business automaticamente
+          if (!client.business_id) {
+            console.log(`🔧 Cliente ${client.name} sem business_id, criando business...`);
+            try {
+              await this.ensureClientHasBusiness(client.id);
+              // Buscar dados atualizados
+              const { data: updatedClient } = await supabase
+                .from('clients')
+                .select('*')
+                .eq('id', client.id)
+                .single();
+              
+              if (updatedClient) {
+                clientData = {
+                  ...updatedClient,
+                  max_instances: getMaxInstancesForPlan(updatedClient.plan)
+                } as ClientData;
+              }
+            } catch (error) {
+              console.warn(`⚠️ Erro ao criar business para cliente ${client.name}:`, error);
+            }
+          }
+
+          return clientData;
+        })
+      );
       
-      return clientsWithCorrectLimits;
+      return clientsWithBusiness;
     } catch (error) {
       console.error('Error fetching clients:', error);
+      throw error;
+    }
+  },
+
+  // Garantir que cliente tenha business associado
+  async ensureClientHasBusiness(clientId: string): Promise<void> {
+    try {
+      // Buscar cliente
+      const { data: client, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', clientId)
+        .single();
+
+      if (error) throw error;
+
+      // Se já tem business, não fazer nada
+      if (client.business_id) return;
+
+      console.log(`🏢 Criando business para cliente ${client.name}...`);
+      
+      // Criar business usando unifiedYumerService
+      const businessResult = await unifiedYumerService.createBusiness({
+        name: client.name,
+        email: client.email,
+        phone: client.phone || '',
+        slug: client.name.toLowerCase().replace(/\s+/g, '-'),
+        country: 'BR',
+        language: 'pt-BR',
+        timezone: 'America/Sao_Paulo'
+      });
+
+      if (!businessResult.success || !businessResult.data) {
+        throw new Error(businessResult.error || 'Falha ao criar business');
+      }
+
+      const businessData = businessResult.data;
+      
+      // Atualizar cliente com business_id
+      const { error: updateError } = await supabase
+        .from('clients')
+        .update({
+          business_id: businessData.businessId,
+          business_token: businessData.businessToken
+        })
+        .eq('id', clientId);
+
+      if (updateError) throw updateError;
+      
+      console.log(`✅ Business ${businessData.businessId} criado para cliente ${client.name}`);
+    } catch (error) {
+      console.error('Erro ao garantir business para cliente:', error);
+      throw error;
+    }
+  },
+
+  // Sincronizar dados cliente-business
+  async syncClientWithBusiness(clientId: string): Promise<ClientData> {
+    try {
+      const { data: client, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', clientId)
+        .single();
+
+      if (error) throw error;
+
+      // Garantir que tem business
+      await this.ensureClientHasBusiness(clientId);
+
+      // Buscar dados atualizados
+      const { data: updatedClient, error: fetchError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', clientId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      return {
+        ...updatedClient,
+        max_instances: getMaxInstancesForPlan(updatedClient.plan)
+      } as ClientData;
+    } catch (error) {
+      console.error('Erro ao sincronizar cliente com business:', error);
       throw error;
     }
   },

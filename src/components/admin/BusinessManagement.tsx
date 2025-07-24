@@ -383,13 +383,26 @@ const BusinessManagement = () => {
                         <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                           <Building2 className="w-6 h-6 text-blue-600" />
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-lg">{business.name}</h3>
-                          <div className="flex items-center space-x-4 text-sm text-gray-600">
-                            <span>ID: {business.businessId.slice(0, 8)}...</span>
-                            <span>Token: {business.businessToken.slice(0, 8)}...</span>
-                          </div>
-                        </div>
+                         <div>
+                           <h3 className="font-semibold text-lg">{business.name}</h3>
+                           <div className="flex items-center space-x-4 text-sm text-gray-600">
+                             <span>ID: {business.businessId.slice(0, 8)}...</span>
+                             <span>Token: {business.businessToken.slice(0, 8)}...</span>
+                           </div>
+                           {business.attributes?.clientName && (
+                             <div className="flex items-center space-x-2 mt-1">
+                               <Badge variant="secondary" className="text-xs">
+                                 <Users className="w-3 h-3 mr-1" />
+                                 Cliente: {business.attributes.clientName}
+                               </Badge>
+                               {business.attributes?.clientPlan && (
+                                 <Badge variant="outline" className="text-xs">
+                                   Plano: {business.attributes.clientPlan.toUpperCase()}
+                                 </Badge>
+                               )}
+                             </div>
+                           )}
+                         </div>
                       </div>
 
                       <div className="flex items-center space-x-2">

@@ -90,7 +90,7 @@ const ClientsManagement = () => {
 
       toast({
         title: "Sucesso",
-        description: `Cliente ${clientData.name} criado com sucesso!`,
+        description: `Cliente ${clientData.name} criado com sucesso! Business: ${clientData.business_id?.slice(0, 8)}...`,
       });
 
       // Reset form and reload clients
@@ -109,6 +109,30 @@ const ClientsManagement = () => {
       toast({
         title: "Erro ao Criar Cliente",
         description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSyncClientBusiness = async (clientId: string) => {
+    try {
+      setLoading(true);
+      
+      await clientsService.syncClientWithBusiness(clientId);
+      
+      toast({
+        title: "Sincronização Concluída",
+        description: "Cliente sincronizado com business",
+      });
+      
+      await loadClients();
+    } catch (error: any) {
+      console.error("Erro ao sincronizar:", error);
+      toast({
+        title: "Erro de Sincronização",
+        description: error.message || "Falha ao sincronizar cliente",
         variant: "destructive",
       });
     } finally {
@@ -431,45 +455,64 @@ const ClientsManagement = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-4">
-                    {/* Plan and Instance Info */}
-                    <div className="text-center">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <Badge className={getPlanColor(client.plan)}>
-                          {client.plan.toUpperCase()}
-                        </Badge>
-                        <Badge variant="outline">
-                          {client.current_instances || 0}/{getMaxInstancesForPlan(client.plan)} instâncias
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        ID: {client.id.slice(0, 8)}...
-                      </p>
-                    </div>
+                   <div className="flex items-center space-x-4">
+                     {/* Plan and Instance Info */}
+                     <div className="text-center">
+                       <div className="flex items-center space-x-2 mb-1">
+                         <Badge className={getPlanColor(client.plan)}>
+                           {client.plan.toUpperCase()}
+                         </Badge>
+                         <Badge variant="outline">
+                           {client.current_instances || 0}/{getMaxInstancesForPlan(client.plan)} instâncias
+                         </Badge>
+                       </div>
+                       <div className="flex items-center space-x-2 text-xs text-gray-500">
+                         <span>ID: {client.id.slice(0, 8)}...</span>
+                         {client.business_id && (
+                           <Badge variant="secondary" className="text-xs">
+                             <Building2 className="w-3 h-3 mr-1" />
+                             Business: {client.business_id.slice(0, 8)}...
+                           </Badge>
+                         )}
+                       </div>
+                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex space-x-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleOpenClientPanel(client)}
-                        className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
-                      >
-                        <ExternalLink className="w-4 h-4 mr-1" />
-                        Painel Cliente
-                      </Button>
-                      
-                      <Button
-                        size="sm"
-                        onClick={() => handleOpenChat(client)}
-                        className="bg-green-600 hover:bg-green-700"
-                        disabled={!client.current_instances || client.current_instances === 0}
-                      >
-                        <MessageSquare className="w-4 h-4 mr-1" />
-                        Chat
-                      </Button>
-                      
-                      <Button
+                     {/* Action Buttons */}
+                     <div className="flex space-x-2">
+                       {!client.business_id && (
+                         <Button
+                           size="sm"
+                           variant="outline"
+                           onClick={() => handleSyncClientBusiness(client.id)}
+                           className="bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
+                           disabled={loading}
+                         >
+                           <Database className="w-4 h-4 mr-1" />
+                           Sincronizar
+                         </Button>
+                       )}
+                       
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         onClick={() => handleOpenClientPanel(client)}
+                         className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                       >
+                         <ExternalLink className="w-4 h-4 mr-1" />
+                         Painel Cliente
+                       </Button>
+                       
+                       <Button
+                         size="sm"
+                         onClick={() => handleOpenChat(client)}
+                         className="bg-green-600 hover:bg-green-700"
+                         disabled={!client.current_instances || client.current_instances === 0}
+                       >
+                         <MessageSquare className="w-4 h-4 mr-1" />
+                         Chat
+                       </Button>
+                       
+                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleDeleteClient(client.id)}
