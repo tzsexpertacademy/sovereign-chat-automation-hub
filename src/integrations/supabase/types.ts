@@ -154,6 +154,71 @@ export type Database = {
           },
         ]
       }
+      automated_campaigns: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          last_run_at: string | null
+          message_template: string
+          name: string
+          next_run_at: string | null
+          queue_id: string | null
+          schedule_config: Json | null
+          send_count: number | null
+          success_count: number | null
+          target_filters: Json | null
+          trigger_conditions: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_run_at?: string | null
+          message_template: string
+          name: string
+          next_run_at?: string | null
+          queue_id?: string | null
+          schedule_config?: Json | null
+          send_count?: number | null
+          success_count?: number | null
+          target_filters?: Json | null
+          trigger_conditions?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_run_at?: string | null
+          message_template?: string
+          name?: string
+          next_run_at?: string | null
+          queue_id?: string | null
+          schedule_config?: Json | null
+          send_count?: number | null
+          success_count?: number | null
+          target_filters?: Json | null
+          trigger_conditions?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automated_campaigns_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       booking_settings: {
         Row: {
           advance_booking_days: number | null
@@ -589,8 +654,10 @@ export type Database = {
       }
       conversation_tickets: {
         Row: {
+          ai_processing_attempts: number | null
           assigned_assistant_id: string | null
           assigned_queue_id: string | null
+          auto_close_at: string | null
           chat_id: string
           client_id: string
           closed_at: string | null
@@ -598,13 +665,18 @@ export type Database = {
           custom_fields: Json | null
           customer_id: string | null
           customer_satisfaction_score: number | null
+          escalation_level: number | null
+          first_response_at: string | null
+          human_takeover_reason: string | null
           id: string
           instance_id: string
           internal_notes: Json | null
           is_archived: boolean | null
+          last_activity_at: string | null
           last_message_at: string | null
           last_message_preview: string | null
           priority: number
+          queue_assignment_history: Json | null
           resolution_time_minutes: number | null
           status: string
           tags: Json | null
@@ -612,8 +684,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_processing_attempts?: number | null
           assigned_assistant_id?: string | null
           assigned_queue_id?: string | null
+          auto_close_at?: string | null
           chat_id: string
           client_id: string
           closed_at?: string | null
@@ -621,13 +695,18 @@ export type Database = {
           custom_fields?: Json | null
           customer_id?: string | null
           customer_satisfaction_score?: number | null
+          escalation_level?: number | null
+          first_response_at?: string | null
+          human_takeover_reason?: string | null
           id?: string
           instance_id: string
           internal_notes?: Json | null
           is_archived?: boolean | null
+          last_activity_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
           priority?: number
+          queue_assignment_history?: Json | null
           resolution_time_minutes?: number | null
           status?: string
           tags?: Json | null
@@ -635,8 +714,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_processing_attempts?: number | null
           assigned_assistant_id?: string | null
           assigned_queue_id?: string | null
+          auto_close_at?: string | null
           chat_id?: string
           client_id?: string
           closed_at?: string | null
@@ -644,13 +725,18 @@ export type Database = {
           custom_fields?: Json | null
           customer_id?: string | null
           customer_satisfaction_score?: number | null
+          escalation_level?: number | null
+          first_response_at?: string | null
+          human_takeover_reason?: string | null
           id?: string
           instance_id?: string
           internal_notes?: Json | null
           is_archived?: boolean | null
+          last_activity_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
           priority?: number
+          queue_assignment_history?: Json | null
           resolution_time_minutes?: number | null
           status?: string
           tags?: Json | null
@@ -1179,36 +1265,156 @@ export type Database = {
           },
         ]
       }
+      queue_metrics: {
+        Row: {
+          ai_success_rate: number | null
+          avg_resolution_time_minutes: number | null
+          avg_response_time_minutes: number | null
+          created_at: string | null
+          customer_satisfaction_avg: number | null
+          date: string
+          human_handoff_rate: number | null
+          id: string
+          queue_id: string
+          tickets_received: number | null
+          tickets_resolved: number | null
+        }
+        Insert: {
+          ai_success_rate?: number | null
+          avg_resolution_time_minutes?: number | null
+          avg_response_time_minutes?: number | null
+          created_at?: string | null
+          customer_satisfaction_avg?: number | null
+          date: string
+          human_handoff_rate?: number | null
+          id?: string
+          queue_id: string
+          tickets_received?: number | null
+          tickets_resolved?: number | null
+        }
+        Update: {
+          ai_success_rate?: number | null
+          avg_resolution_time_minutes?: number | null
+          avg_response_time_minutes?: number | null
+          created_at?: string | null
+          customer_satisfaction_avg?: number | null
+          date?: string
+          human_handoff_rate?: number | null
+          id?: string
+          queue_id?: string
+          tickets_received?: number | null
+          tickets_resolved?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "queue_metrics_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      queue_transfers: {
+        Row: {
+          created_at: string | null
+          from_queue_id: string | null
+          id: string
+          initiated_by: string | null
+          ticket_id: string
+          to_queue_id: string | null
+          transfer_reason: string
+          transfer_type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          from_queue_id?: string | null
+          id?: string
+          initiated_by?: string | null
+          ticket_id: string
+          to_queue_id?: string | null
+          transfer_reason: string
+          transfer_type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          from_queue_id?: string | null
+          id?: string
+          initiated_by?: string | null
+          ticket_id?: string
+          to_queue_id?: string | null
+          transfer_reason?: string
+          transfer_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "queue_transfers_from_queue_id_fkey"
+            columns: ["from_queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "queue_transfers_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "queue_transfers_to_queue_id_fkey"
+            columns: ["to_queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       queues: {
         Row: {
           assistant_id: string | null
+          auto_assignment: boolean | null
           client_id: string
           created_at: string
           description: string | null
+          handoff_triggers: Json | null
           id: string
           is_active: boolean | null
+          max_concurrent_tickets: number | null
           name: string
+          priority_level: number | null
           updated_at: string
+          working_hours: Json | null
         }
         Insert: {
           assistant_id?: string | null
+          auto_assignment?: boolean | null
           client_id: string
           created_at?: string
           description?: string | null
+          handoff_triggers?: Json | null
           id?: string
           is_active?: boolean | null
+          max_concurrent_tickets?: number | null
           name: string
+          priority_level?: number | null
           updated_at?: string
+          working_hours?: Json | null
         }
         Update: {
           assistant_id?: string | null
+          auto_assignment?: boolean | null
           client_id?: string
           created_at?: string
           description?: string | null
+          handoff_triggers?: Json | null
           id?: string
           is_active?: boolean | null
+          max_concurrent_tickets?: number | null
           name?: string
+          priority_level?: number | null
           updated_at?: string
+          working_hours?: Json | null
         }
         Relationships: [
           {
@@ -1669,6 +1875,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      auto_assign_queue: {
+        Args: {
+          p_client_id: string
+          p_instance_id: string
+          p_message_content?: string
+        }
+        Returns: string
+      }
       cleanup_expired_qr_codes: {
         Args: Record<PropertyKey, never>
         Returns: number
