@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
 import { QRCodeDisplay } from "@/components/ui/QRCodeDisplay";
 import { 
   Plus, 
@@ -19,7 +20,10 @@ import {
   Settings,
   Wifi,
   WifiOff,
-  Clock
+  Clock,
+  Edit3,
+  Save,
+  X
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -37,8 +41,10 @@ const WhatsAppConnection = () => {
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
 
-  // Hook unificado corrigido
+  // Hook unificado corrigido com sincronização de dados reais
   const { 
     connectInstance, 
     disconnectInstance,
@@ -46,7 +52,7 @@ const WhatsAppConnection = () => {
     isLoading,
     serverOnline,
     refreshStatus
-  } = useUnifiedInstanceManager();
+  } = useUnifiedInstanceManager(instances);
 
   useEffect(() => {
     if (clientId) {
@@ -67,12 +73,16 @@ const WhatsAppConnection = () => {
       console.log('📱 [WHATSAPP] Instâncias carregadas:', instancesData.length);
       setInstances(instancesData);
 
-      // Verificar status das instâncias carregadas automaticamente
-      for (const instance of instancesData) {
-        setTimeout(() => {
-          refreshStatus(instance.instance_id);
-        }, 1000);
-      }
+      // Log das instâncias reais carregadas
+      instancesData.forEach(instance => {
+        console.log(`📊 [WHATSAPP] Instância real:`, {
+          id: instance.instance_id,
+          status: instance.status,
+          phone: instance.phone_number,
+          hasQR: instance.has_qr_code,
+          customName: instance.custom_name
+        });
+      });
 
     } catch (error) {
       console.error('❌ [WHATSAPP] Erro ao carregar dados:', error);
@@ -200,6 +210,48 @@ const WhatsAppConnection = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleEditName = (instanceId: string, currentName: string) => {
+    setEditingName(instanceId);
+    setNewName(currentName);
+  };
+
+  const handleSaveName = async (instanceId: string) => {
+    if (!newName.trim()) {
+      toast({
+        title: "Erro",
+        description: "Nome não pode estar vazio",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await whatsappInstancesService.updateCustomName(instanceId, newName.trim());
+      
+      toast({
+        title: "Sucesso",
+        description: "Nome atualizado com sucesso",
+      });
+      
+      setEditingName(null);
+      setNewName("");
+      await loadData();
+      
+    } catch (error: any) {
+      console.error('❌ [WHATSAPP] Erro ao atualizar nome:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao atualizar nome",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingName(null);
+    setNewName("");
   };
 
   const getInstanceDisplayName = (instance: WhatsAppInstanceData) => {
@@ -426,20 +478,56 @@ const WhatsAppConnection = () => {
                     <div className={`w-3 h-3 rounded-full ${getStatusColor(instanceStatus.status)}`} />
                     {getStatusIcon(instanceStatus.status)}
                   </div>
-                  <div>
-                    <CardTitle className="text-lg flex items-center space-x-2">
-                      <span>{displayName}</span>
-                      <Badge variant={instanceStatus.status === 'connected' ? 'default' : 'secondary'}>
-                        {getStatusLabel(instanceStatus.status)}
-                      </Badge>
-                    </CardTitle>
-                    <CardDescription className="flex items-center mt-1">
-                      <Smartphone className="w-4 h-4 mr-1" />
-                      {instanceStatus.phoneNumber || 'Não conectado'}
-                      <span className="mx-2">•</span>
-                      ID: {instance.instance_id.split('_').pop()}
-                    </CardDescription>
-                  </div>
+                   <div className="flex-1">
+                     <CardTitle className="text-lg flex items-center space-x-2">
+                       {editingName === instance.instance_id ? (
+                         <div className="flex items-center space-x-2">
+                           <Input
+                             value={newName}
+                             onChange={(e) => setNewName(e.target.value)}
+                             className="text-lg font-semibold max-w-48"
+                             placeholder="Nome da instância"
+                           />
+                           <Button 
+                             size="sm" 
+                             onClick={() => handleSaveName(instance.instance_id)}
+                             className="h-8 w-8 p-0"
+                           >
+                             <Save className="w-4 h-4" />
+                           </Button>
+                           <Button 
+                             size="sm" 
+                             variant="outline" 
+                             onClick={handleCancelEdit}
+                             className="h-8 w-8 p-0"
+                           >
+                             <X className="w-4 h-4" />
+                           </Button>
+                         </div>
+                       ) : (
+                         <div className="flex items-center space-x-2">
+                           <span>{displayName}</span>
+                           <Button
+                             size="sm"
+                             variant="ghost"
+                             onClick={() => handleEditName(instance.instance_id, displayName)}
+                             className="h-6 w-6 p-0"
+                           >
+                             <Edit3 className="w-3 h-3" />
+                           </Button>
+                         </div>
+                       )}
+                       <Badge variant={instanceStatus.status === 'connected' ? 'default' : 'secondary'}>
+                         {getStatusLabel(instanceStatus.status)}
+                       </Badge>
+                     </CardTitle>
+                     <CardDescription className="flex items-center mt-1">
+                       <Smartphone className="w-4 h-4 mr-1" />
+                       {instanceStatus.phoneNumber || 'Não conectado'}
+                       <span className="mx-2">•</span>
+                       ID: {instance.instance_id.split('_').pop()}
+                     </CardDescription>
+                   </div>
                 </div>
               </div>
             </CardHeader>

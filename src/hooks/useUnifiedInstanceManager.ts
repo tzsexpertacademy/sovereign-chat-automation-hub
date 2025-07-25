@@ -39,25 +39,60 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
   const [serverOnline, setServerOnline] = useState(true);
   const { toast } = useToast();
 
-  // ============ INICIALIZAÇÃO COM DADOS EXISTENTES ============
+  // ============ INICIALIZAÇÃO COM DADOS EXISTENTES E SINCRONIZAÇÃO ============
   useEffect(() => {
-    if (initialInstances && initialInstances.length > 0) {
-      console.log(`🔄 [UNIFIED] Inicializando com ${initialInstances.length} instâncias`);
-      
-      const initialState: Record<string, InstanceStatus> = {};
-      initialInstances.forEach(instance => {
-        initialState[instance.instance_id] = {
-          instanceId: instance.instance_id,
-          status: instance.status || 'disconnected',
-          phoneNumber: instance.phone_number,
-          qrCode: instance.has_qr_code ? instance.qr_code : undefined,
-          hasQrCode: instance.has_qr_code || false,
-          lastUpdated: Date.now()
-        };
-      });
-      
-      setInstances(initialState);
-    }
+    const initializeAndSync = async () => {
+      if (initialInstances && initialInstances.length > 0) {
+        console.log(`🔄 [UNIFIED] Inicializando com ${initialInstances.length} instâncias`);
+        
+        const initialState: Record<string, InstanceStatus> = {};
+        
+        // Carregar dados reais das instâncias do banco imediatamente
+        for (const instance of initialInstances) {
+          try {
+            const realInstance = await whatsappInstancesService.getInstanceByInstanceId(instance.instance_id);
+            
+            if (realInstance) {
+              initialState[instance.instance_id] = {
+                instanceId: instance.instance_id,
+                status: realInstance.status || 'disconnected',
+                phoneNumber: realInstance.phone_number,
+                qrCode: realInstance.has_qr_code ? realInstance.qr_code : undefined,
+                hasQrCode: realInstance.has_qr_code || false,
+                lastUpdated: Date.now()
+              };
+              
+              console.log(`📱 [UNIFIED] Instância sincronizada:`, {
+                id: instance.instance_id,
+                status: realInstance.status,
+                phone: realInstance.phone_number,
+                hasQR: realInstance.has_qr_code
+              });
+            } else {
+              initialState[instance.instance_id] = {
+                instanceId: instance.instance_id,
+                status: 'disconnected',
+                lastUpdated: Date.now()
+              };
+            }
+          } catch (error) {
+            console.error(`❌ [UNIFIED] Erro ao sincronizar instância ${instance.instance_id}:`, error);
+            initialState[instance.instance_id] = {
+              instanceId: instance.instance_id,
+              status: 'disconnected',
+              lastUpdated: Date.now()
+            };
+          }
+        }
+        
+        setInstances(initialState);
+        
+        // Verificar status do servidor após inicialização
+        await checkServerOnline();
+      }
+    };
+    
+    initializeAndSync();
   }, [initialInstances]);
 
   // ============ SYNC REALTIME APENAS QUANDO NECESSÁRIO ============
@@ -117,17 +152,23 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      const response = await fetch(`${getServerUrl()}/health`, { 
+      // Usar endpoint correto da API Yumer
+      const response = await fetch(`https://api.yumer.com.br/api/v2/instance/status`, { 
         method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB`
+        },
         signal: controller.signal
       });
       
       clearTimeout(timeoutId);
       const isOnline = response.ok;
       setServerOnline(isOnline);
+      console.log(`🌐 [UNIFIED] Status do servidor: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
       return isOnline;
     } catch (error) {
-      console.warn('⚠️ [UNIFIED] Servidor offline detectado');
+      console.warn('⚠️ [UNIFIED] Servidor offline detectado:', error);
       setServerOnline(false);
       return false;
     }
@@ -621,17 +662,45 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
     }
   }, [toast, stopPollingForInstance]);
 
-  // ============ INICIALIZAÇÃO SIMPLES ============
+  // ============ SINCRONIZAÇÃO EM TEMPO REAL VIA SUPABASE ============
   useEffect(() => {
-    console.log('🔧 [UNIFIED] Inicializando Instance Manager OTIMIZADO');
-    console.log('📡 [UNIFIED] Sem loops infinitos - Polling apenas quando necessário');
+    if (!initialInstances || initialInstances.length === 0) return;
     
-    // Verificar servidor inicial
-    checkServerOnline();
+    console.log('🔧 [UNIFIED] Configurando sync em tempo real para instâncias do cliente');
     
-    // Cleanup na desmontagem
+    const channel = supabase
+      .channel('whatsapp-instances-realtime')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'whatsapp_instances',
+        filter: `client_id=eq.${initialInstances[0]?.client_id}`
+      }, (payload) => {
+        const updatedInstance = payload.new;
+        console.log(`🔄 [UNIFIED-REALTIME] Instância atualizada:`, {
+          id: updatedInstance.instance_id,
+          status: updatedInstance.status,
+          phone: updatedInstance.phone_number,
+          hasQR: updatedInstance.has_qr_code
+        });
+        
+        setInstances(prev => ({
+          ...prev,
+          [updatedInstance.instance_id]: {
+            instanceId: updatedInstance.instance_id,
+            status: updatedInstance.status,
+            phoneNumber: updatedInstance.phone_number,
+            qrCode: updatedInstance.has_qr_code ? updatedInstance.qr_code : undefined,
+            hasQrCode: updatedInstance.has_qr_code || false,
+            lastUpdated: Date.now()
+          }
+        }));
+      })
+      .subscribe();
+
     return () => {
-      console.log('🧹 [UNIFIED] Cleanup do manager');
+      console.log('🧹 [UNIFIED] Cleanup do manager e realtime');
+      supabase.removeChannel(channel);
       pollingIntervals.forEach((interval, instanceId) => {
         clearInterval(interval);
         console.log(`⏹️ [UNIFIED] Parando polling: ${instanceId}`);
@@ -639,6 +708,15 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
       pollingIntervals.clear();
       webhookQRService.cleanup();
     };
+  }, [initialInstances]);
+
+  // ============ INICIALIZAÇÃO SIMPLES ============
+  useEffect(() => {
+    console.log('🔧 [UNIFIED] Inicializando Instance Manager OTIMIZADO');
+    console.log('📡 [UNIFIED] Sem loops infinitos - Polling apenas quando necessário');
+    
+    // Verificar servidor inicial
+    checkServerOnline();
   }, [checkServerOnline]);
 
   // ============ FUNÇÕES AUXILIARES ============
