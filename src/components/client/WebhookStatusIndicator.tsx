@@ -48,17 +48,22 @@ export const WebhookStatusIndicator: React.FC<WebhookStatusIndicatorProps> = ({
     
     setIsConfiguring(true);
     try {
-      console.log(`🔧 [WEBHOOK-STATUS] Configurando webhook: ${instanceId}`);
+      console.log(`🔧 [WEBHOOK-STATUS] Configurando webhook manualmente: ${instanceId}`);
       
-      const result = await unifiedYumerService.ensureWebhookConfigured(instanceId);
+      // Forçar reconfiguração
+      const result = await unifiedYumerService.configureWebhook(instanceId);
       
       if (result.success) {
         setWebhookStatus('configured');
         toast({
           title: "✅ Webhook Configurado",
-          description: "Webhook configurado com sucesso! As mensagens serão processadas agora.",
+          description: "Webhook configurado com sucesso! Envie uma mensagem de teste no WhatsApp para verificar.",
+          duration: 6000,
         });
         console.log(`✅ [WEBHOOK-STATUS] Webhook configurado com sucesso: ${instanceId}`);
+        
+        // Verificar novamente após configurar
+        setTimeout(() => checkWebhookStatus(), 2000);
       } else {
         setWebhookStatus('error');
         toast({

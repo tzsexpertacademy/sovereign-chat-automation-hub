@@ -13,6 +13,7 @@ import FunnelKanban from '@/components/client/FunnelKanban';
 import BookingManager from '@/components/booking/BookingManager';
 import MultipleInstancesManagerFixed from '@/components/client/MultipleInstancesManagerFixed';
 import { AutoWebhookConfigurator } from '@/components/client/AutoWebhookConfigurator';
+import { WebhookDebugConsole } from '@/components/client/WebhookDebugConsole';
 
 import AIConfigForm from '@/components/client/AIConfigForm';
 
@@ -39,6 +40,10 @@ const ClientDashboardImproved = () => {
       case 'instances':
         return (
           <div className="p-6 space-y-6">
+            <WebhookDebugConsole 
+              instanceId="01K11NBE1QB0GVFMME8NA4YPCB"
+              clientId={clientId}
+            />
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4">Gerenciar Instâncias WhatsApp</h2>
               <div>Componente MultipleInstancesManagerFixed necessário</div>
