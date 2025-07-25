@@ -82,7 +82,7 @@ serve(async (req) => {
       console.log('📋 [YUMER-WEBHOOK] Dados YUMER recebidos:', JSON.stringify(webhookData, null, 2));
 
       // DETECTAR MENSAGENS YUMER pelo evento e estrutura
-      if (webhookData.event === 'messages.upsert' && webhookData.data && webhookData.instance?.id) {
+      if (webhookData.event === 'messages.upsert' && webhookData.data && webhookData.instance?.instanceId) {
         console.log('🎯 [YUMER-WEBHOOK] Detectada mensagem YUMER - processando...');
         return await processYumerMessage(webhookData);
       }
