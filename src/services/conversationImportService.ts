@@ -163,14 +163,29 @@ export class ConversationImportService {
       const customerName = chat.name || chat.pushName || chatId.split('@')[0];
       const customerPhone = chatId.includes('@s.whatsapp.net') ? chatId.split('@')[0] : chatId;
       
-      // Última mensagem
+      // Última mensagem (corrigido para API v2.2.1)
       const lastMessage = messages.length > 0 ? messages[0] : null;
-      const lastMessagePreview = lastMessage?.message?.conversation || 
-                                 lastMessage?.message?.extendedTextMessage?.text || 
-                                 '[Mídia]';
-      const lastMessageAt = lastMessage?.messageTimestamp ? 
-                           new Date(lastMessage.messageTimestamp * 1000).toISOString() : 
-                           new Date().toISOString();
+      let lastMessagePreview = '[Sem mensagens]';
+      
+      if (lastMessage?.content) {
+        if (lastMessage.contentType === 'text' || lastMessage.contentType === 'extendedText') {
+          lastMessagePreview = lastMessage.content?.text || lastMessage.content || '[Texto]';
+        } else {
+          lastMessagePreview = `[${lastMessage.contentType || 'Mídia'}]`;
+        }
+      }
+      
+      // Timestamp correto
+      let lastMessageAt = new Date().toISOString();
+      if (lastMessage?.messageTimestamp) {
+        if (typeof lastMessage.messageTimestamp === 'number') {
+          lastMessageAt = new Date(lastMessage.messageTimestamp * 1000).toISOString();
+        } else {
+          lastMessageAt = new Date(lastMessage.messageTimestamp).toISOString();
+        }
+      } else if (lastMessage?.createdAt) {
+        lastMessageAt = new Date(lastMessage.createdAt).toISOString();
+      }
 
       // Usar função do Supabase para criar/atualizar ticket
       const { data, error } = await supabase.rpc('upsert_conversation_ticket', {
@@ -203,21 +218,58 @@ export class ConversationImportService {
 
     for (const message of messages) {
       try {
-        // Extrair conteúdo da mensagem
-        const content = message.message?.conversation || 
-                       message.message?.extendedTextMessage?.text ||
-                       message.message?.imageMessage?.caption ||
-                       message.message?.videoMessage?.caption ||
-                       '[Mídia não suportada]';
+        // Validar estrutura da mensagem (API v2.2.1)
+        if (!message || !message.content) {
+          console.warn('⚠️ [IMPORT] Mensagem inválida - estrutura ausente:', message);
+          continue;
+        }
+
+        // Extrair conteúdo correto para API v2.2.1
+        let content = '[Mensagem não suportada]';
+        
+        if (message.contentType === 'text' || message.contentType === 'extendedText') {
+          content = message.content?.text || message.content || '[Texto vazio]';
+        } else if (message.contentType === 'image') {
+          content = message.content?.caption || '[Imagem]';
+        } else if (message.contentType === 'video') {
+          content = message.content?.caption || '[Vídeo]';
+        } else if (message.contentType === 'audio') {
+          content = '[Áudio]';
+        } else if (message.contentType === 'document') {
+          content = message.content?.fileName || '[Documento]';
+        } else if (message.contentType === 'sticker') {
+          content = '[Sticker]';
+        } else {
+          content = `[${message.contentType || 'Mídia'}]`;
+        }
+
+        // Extrair nome do remetente (melhorado para v2.2.1)
+        const senderName = message.pushName || 
+                          message.senderName || 
+                          (message.fromMe ? 'Você' : 'Cliente');
+
+        // Converter timestamp correto (ISO string para timestamp)
+        let timestamp = new Date().toISOString();
+        if (message.messageTimestamp) {
+          // Se for número (timestamp em segundos)
+          if (typeof message.messageTimestamp === 'number') {
+            timestamp = new Date(message.messageTimestamp * 1000).toISOString();
+          } else if (typeof message.messageTimestamp === 'string') {
+            // Se for string ISO
+            timestamp = new Date(message.messageTimestamp).toISOString();
+          }
+        } else if (message.createdAt) {
+          timestamp = new Date(message.createdAt).toISOString();
+        }
 
         const messageData = {
           ticket_id: ticketId,
-          message_id: message.key?.id || `imported_${Date.now()}_${Math.random()}`,
-          from_me: message.key?.fromMe || false,
-          sender_name: message.pushName || (message.key?.fromMe ? 'Você' : 'Cliente'),
+          message_id: message.messageId || message.id || `imported_${Date.now()}_${Math.random()}`,
+          from_me: message.fromMe || false,
+          sender_name: senderName,
           content: content,
-          message_type: this.getMessageType(message.message),
-          timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
+          message_type: this.getMessageType(message),
+          timestamp: timestamp,
           processing_status: 'received',
           is_ai_response: false
         };
@@ -240,11 +292,35 @@ export class ConversationImportService {
   }
 
   private getMessageType(message: any): string {
+    // Usar contentType da API v2.2.1
+    if (message.contentType) {
+      switch (message.contentType) {
+        case 'text':
+        case 'extendedText':
+          return 'text';
+        case 'image':
+          return 'image';
+        case 'video':
+          return 'video';
+        case 'audio':
+        case 'ptt':
+          return 'audio';
+        case 'document':
+          return 'document';
+        case 'sticker':
+          return 'sticker';
+        default:
+          return message.contentType;
+      }
+    }
+    
+    // Fallback para estrutura antiga (compatibilidade)
     if (message.conversation || message.extendedTextMessage) return 'text';
     if (message.imageMessage) return 'image';
     if (message.videoMessage) return 'video';
     if (message.audioMessage) return 'audio';
     if (message.documentMessage) return 'document';
+    
     return 'unknown';
   }
 
