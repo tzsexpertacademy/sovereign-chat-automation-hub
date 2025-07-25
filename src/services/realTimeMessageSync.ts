@@ -2,6 +2,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import yumerApiV2Service from './yumerApiV2Service';
 import { ticketsService } from './ticketsService';
+import { getServerUrl } from '@/config/environment';
 
 interface RealTimeConfig {
   clientId: string;
@@ -137,7 +138,7 @@ class RealTimeMessageSync {
       const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook';
       
       // Configurar webhook na instância
-      const response = await fetch(`https://yumer.yumerflow.app:8083/webhook/set/${this.config.instanceId}`, {
+      const response = await fetch(`${getServerUrl()}/webhook/set/${this.config.instanceId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
