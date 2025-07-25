@@ -12,7 +12,7 @@ import WhatsAppConnectionManager from "@/components/client/WhatsAppConnectionMan
 import AssistantsManager from "@/components/client/AssistantsManager";
 import BookingManager from "@/components/booking/BookingManager";
 import FunnelKanban from "@/components/client/FunnelKanban";
-import QueuesManager from "@/components/client/QueuesManager";
+import QueueManagementCenter from "@/components/client/QueueManagementCenter";
 import QueueConnectionManager from "@/components/client/QueueConnectionManager";
 import ClientDashboardOverview from "@/components/client/ClientDashboardOverview";
 import SafeComponent from "@/components/SafeComponent";
@@ -66,7 +66,8 @@ const ClientDashboard = () => {
                 />
                 <Route path="funnel" element={<FunnelKanban clientId={clientId} />} />
                 <Route path="assistants" element={<AssistantsManager />} />
-                <Route path="queues" element={<QueuesManager />} />
+                <Route path="queues" element={<QueueManagementCenter clientId={clientId} />} />
+                <Route path="campaigns" element={<CampaignsManager clientId={clientId} />} />
                 <Route path="instances" element={<QueueConnectionManager />} />
                 <Route path="booking" element={<BookingManager clientId={clientId} />} />
                 <Route path="automation" element={<AutomationCenter />} />

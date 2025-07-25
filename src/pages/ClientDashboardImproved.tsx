@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import ClientHeader from '@/components/client/ClientHeader';
 import ClientSidebar from '@/components/client/ClientSidebar';
 import ChatInterfaceImproved from '@/components/client/ChatInterfaceImproved';
-import QueuesManager from '@/components/client/QueuesManager';
+import QueueManagementCenter from '@/components/client/QueueManagementCenter';
 import ContactsManager from '@/components/client/ContactsManager';
 import AnalyticsDashboard from '@/components/client/AnalyticsDashboard';
 import AutomationCenter from '@/components/client/AutomationCenter';
@@ -45,7 +45,7 @@ const ClientDashboardImproved = () => {
           </div>
         );
       case 'queues':
-        return <div>Queues Manager - {clientId}</div>;
+        return <QueueManagementCenter />;
       case 'ai-config':
         return showAIConfig ? (
           <AIConfigForm 

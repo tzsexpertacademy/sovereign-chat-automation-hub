@@ -34,8 +34,13 @@ import { queueOrchestrationService } from '@/services/queueOrchestrationService'
 import { supabase } from '@/integrations/supabase/client';
 import QueuesKanbanView from './QueuesKanbanView';
 
-const QueueManagementCenter = () => {
-  const { clientId } = useParams<{ clientId: string }>();
+interface QueueManagementCenterProps {
+  clientId?: string;
+}
+
+const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId: propClientId }) => {
+  const params = useParams<{ clientId: string }>();
+  const clientId = propClientId || params.clientId;
   const { toast } = useToast();
   
   // Estados
