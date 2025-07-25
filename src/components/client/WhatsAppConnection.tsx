@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { QRCodeDisplay } from "@/components/ui/QRCodeDisplay";
+import { RealTimeStatusIndicator } from "@/components/client/RealTimeStatusIndicator";
 import { 
   Plus, 
   Smartphone, 
@@ -24,7 +25,8 @@ import {
   Edit3,
   Save,
   X,
-  Zap
+  Zap,
+  Activity
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +34,7 @@ import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 import { useNavigate } from "react-router-dom";
+import { useAutoSync } from "@/hooks/useAutoSync";
 import instanceStatusSyncService from "@/services/instanceStatusSyncService";
 
 const WhatsAppConnection = () => {
@@ -56,6 +59,23 @@ const WhatsAppConnection = () => {
     serverOnline,
     refreshStatus
   } = useUnifiedInstanceManager(instances);
+
+  // Auto-sync em tempo real para todas as instâncias
+  const instanceIds = instances.map(i => i.instance_id);
+  const { 
+    getSyncInfo, 
+    isActive: autoSyncActive,
+    manualSync: autoManualSync 
+  } = useAutoSync(instanceIds, {
+    enableNotifications: true,
+    onStatusChange: (instanceId, status) => {
+      console.log(`🔄 [AUTO-SYNC] Status alterado: ${instanceId} → ${status.status}`);
+      // Recarregar dados quando detectar mudança
+      loadData();
+    }
+  });
+
+  const syncInfo = getSyncInfo();
 
   // Sincronizar status após escaneamento do QR
   const handleStatusSync = async (instanceId: string) => {
@@ -356,16 +376,35 @@ const WhatsAppConnection = () => {
               <Badge variant="outline">
                 Plano {clientData.plan.toUpperCase()}: {instances.length} / {clientData.email === 'thalisportal@gmail.com' ? '∞' : clientData.max_instances} conexões
               </Badge>
+              
+              {/* Status do Servidor */}
               <div className="flex items-center space-x-1">
                 {serverOnline ? (
                   <div className="flex items-center space-x-1">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                     <span className="text-xs text-green-600">Servidor Online</span>
                   </div>
                 ) : (
                   <div className="flex items-center space-x-1">
                     <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                     <span className="text-xs text-red-600">Servidor Offline</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Auto-Sync Status */}
+              <div className="flex items-center space-x-1">
+                {autoSyncActive ? (
+                  <div className="flex items-center space-x-1">
+                    <Activity className="w-3 h-3 text-blue-500 animate-pulse" />
+                    <span className="text-xs text-blue-600">
+                      Auto-Sync ({syncInfo.connectedCount}/{syncInfo.totalCount})
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-1">
+                    <Activity className="w-3 h-3 text-gray-400" />
+                    <span className="text-xs text-gray-500">Sync Manual</span>
                   </div>
                 )}
               </div>
@@ -575,6 +614,17 @@ const WhatsAppConnection = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               
+              {/* Status em Tempo Real */}
+              <RealTimeStatusIndicator
+                instanceId={instance.instance_id}
+                initialStatus={instance.status}
+                showDetails={instanceStatus.status !== 'connected'}
+                onStatusChange={(status) => {
+                  console.log(`🔄 [REAL-TIME] Status mudou: ${instance.instance_id} → ${status}`);
+                }}
+                className="mb-4"
+              />
+
               {/* Status de Conectando */}
               {instanceStatus.status === 'connecting' && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
