@@ -816,11 +816,29 @@ class UnifiedYumerService {
   
   async ensureWebhookConfigured(instanceId: string): Promise<{ success: boolean; error?: string }> {
     try {
+      console.log(`🔄 [WEBHOOK] Verificando/configurando webhook para: ${instanceId}`);
+      
       // Verificar se webhook já está configurado
       const configResult = await this.getWebhookConfig(instanceId);
       
       if (configResult.success && configResult.data?.enabled) {
         console.log(`✅ [WEBHOOK] Webhook já configurado para: ${instanceId}`);
+        
+        // Atualizar flag no banco de dados
+        try {
+          const { supabase } = await import('@/integrations/supabase/client');
+          await supabase
+            .from('whatsapp_instances')
+            .update({ 
+              webhook_enabled: true,
+              updated_at: new Date().toISOString()
+            })
+            .eq('instance_id', instanceId);
+          console.log(`📝 [WEBHOOK] Flag webhook_enabled atualizado: ${instanceId}`);
+        } catch (dbError) {
+          console.warn('⚠️ [WEBHOOK] Erro ao atualizar flag no banco:', dbError);
+        }
+        
         return { success: true };
       }
 
@@ -830,10 +848,28 @@ class UnifiedYumerService {
       
       if (setupResult.success) {
         console.log(`✅ [WEBHOOK] Webhook configurado com sucesso para: ${instanceId}`);
+        
+        // Atualizar flag no banco de dados após configurar
+        try {
+          const { supabase } = await import('@/integrations/supabase/client');
+          await supabase
+            .from('whatsapp_instances')
+            .update({ 
+              webhook_enabled: true,
+              updated_at: new Date().toISOString()
+            })
+            .eq('instance_id', instanceId);
+          console.log(`📝 [WEBHOOK] Flag webhook_enabled definido como true: ${instanceId}`);
+        } catch (dbError) {
+          console.warn('⚠️ [WEBHOOK] Erro ao atualizar flag no banco:', dbError);
+        }
+        
         return { success: true };
       }
 
+      console.error(`❌ [WEBHOOK] Falha ao configurar webhook: ${setupResult.error}`);
       return { success: false, error: setupResult.error };
+      
     } catch (error) {
       console.error(`❌ [WEBHOOK] Erro ao garantir configuração:`, error);
       return { 
