@@ -379,9 +379,18 @@ class YumerApiV2Service {
    * Envia mensagem de texto
    */
   async sendText(instanceId: string, number: string, text: string): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/api/v2/message/sendText/${instanceId}`, {
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/text`, {
       method: 'POST',
-      body: JSON.stringify({ number, text })
+      body: JSON.stringify({
+        recipient: number,
+        textMessage: {
+          text: text
+        },
+        options: {
+          delay: 1200,
+          presence: "composing"
+        }
+      })
     }, true, instanceId);
   }
 
@@ -389,9 +398,21 @@ class YumerApiV2Service {
    * Envia mídia (imagem, vídeo, áudio, documento)
    */
   async sendMedia(instanceId: string, data: SendMessageData): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/api/v2/message/sendMedia/${instanceId}`, {
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/media`, {
       method: 'POST',
-      body: JSON.stringify(data)
+      body: JSON.stringify({
+        recipient: data.number,
+        mediaMessage: {
+          mediatype: data.media?.mediatype,
+          url: data.media?.media,
+          caption: data.media?.caption,
+          fileName: data.media?.filename
+        },
+        options: {
+          delay: 1200,
+          presence: "composing"
+        }
+      })
     }, true, instanceId);
   }
 
