@@ -91,13 +91,14 @@ export class HumanizedMessageProcessor {
         mimeType: messageData.mime_type
       };
 
-      // Processar mensagem
+      // Processar mensagem com comportamento humanizado
       const result = await realTimeWhatsAppService.processIncomingMessage(message);
       
-      console.log('✅ Mensagem processada:', {
+      console.log('✅ Mensagem processada com humanização:', {
         ticketId: result.ticketId,
         shouldProcess: result.shouldProcess,
-        transferQueue: result.transferQueue
+        transferQueue: result.transferQueue,
+        humanizedBehavior: true
       });
 
     } catch (error) {

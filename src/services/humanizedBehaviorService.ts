@@ -1,431 +1,287 @@
-// Simulação de serviços (será implementado depois)
-const mockClientService = {
-  setTypingStatus: async () => true,
-  setRecordingStatus: async () => true,
-  setOnlineStatus: async () => true,
-  markAsRead: async () => true
-};
+/**
+ * Serviço de Comportamento Humanizado
+ * Implementa simulação de typing, presença e delays naturais usando CodeChat v2.2.1
+ */
 
-interface HumanizedConfig {
-  typingWPM: number;
+import unifiedYumerService from './unifiedYumerService';
+
+export interface HumanizedConfig {
+  enabled: boolean;
+  typingSpeedWPM: number;
   minDelay: number;
   maxDelay: number;
-  baseDelay: number;
-  showTyping: boolean;
-  showRecording: boolean;
-  showOnline: boolean;
-  cancelOnNewMessage: boolean;
-  variationFactor: number;
+  maxChunkSize: number;
+  chunkDelay: number;
 }
 
-interface DelayConfig {
-  typingTime: number;
-  beforeSend: number;
-  afterSend: number;
-}
-
-const defaultConfig: HumanizedConfig = {
-  typingWPM: 45,
-  minDelay: 1500,
-  maxDelay: 8000,
-  baseDelay: 3000,
-  showTyping: true,
-  showRecording: true,
-  showOnline: true,
-  cancelOnNewMessage: true,
-  variationFactor: 0.3
+const DEFAULT_CONFIG: HumanizedConfig = {
+  enabled: true,
+  typingSpeedWPM: 45,
+  minDelay: 2000,
+  maxDelay: 5000,
+  maxChunkSize: 350,
+  chunkDelay: 2500
 };
 
-class HumanizedBehaviorService {
-  private config: HumanizedConfig = defaultConfig;
-  private activeTimers: Map<string, NodeJS.Timeout> = new Map();
-  private isProcessing: Map<string, boolean> = new Map();
-  private ongoingOperations: Map<string, 'typing' | 'recording' | 'online'> = new Map();
-
-  constructor() {
-    console.log('🤖 HumanizedBehaviorService inicializado');
-  }
-
-  updateConfig(newConfig: Partial<HumanizedConfig>) {
+export class HumanizedBehaviorService {
+  private config: HumanizedConfig = DEFAULT_CONFIG;
+  private activeProcessing = new Map<string, NodeJS.Timeout>();
+  
+  // Configurar comportamento humanizado
+  setConfig(newConfig: Partial<HumanizedConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    console.log('⚙️ Configuração humanizada atualizada:', this.config);
+    console.log('🎭 [HUMANIZED] Configuração atualizada:', this.config);
   }
 
-  /**
-   * Calcula tempo de digitação baseado no conteúdo
-   */
-  calculateTypingTime(text: string): number {
-    const words = text.trim().split(/\s+/).length;
-    const baseTime = (words / this.config.typingWPM) * 60 * 1000;
+  // Calcular delay baseado no tamanho do texto
+  private calculateTypingDelay(text: string): number {
+    const words = text.split(' ').length;
+    const baseTime = (words / this.config.typingSpeedWPM) * 60 * 1000; // Converter para ms
+    const randomFactor = 0.3; // 30% de variação
+    const variation = baseTime * randomFactor * (Math.random() - 0.5) * 2;
     
-    // Adicionar variação natural
-    const variation = 1 + (Math.random() - 0.5) * this.config.variationFactor;
-    
-    // Fator de complexidade para textos longos
-    const complexityFactor = text.length > 200 ? 1.3 : 
-                            text.length > 100 ? 1.15 : 1.0;
-    
-    const finalTime = Math.max(
+    return Math.max(
       this.config.minDelay,
-      Math.min(this.config.maxDelay, baseTime * variation * complexityFactor)
+      Math.min(this.config.maxDelay, baseTime + variation)
     );
-
-    console.log(`⌨️ Tempo calculado: ${finalTime}ms para ${words} palavras (${text.length} chars)`);
-    return finalTime;
   }
 
-  /**
-   * Calcula tempo de gravação de áudio baseado na duração
-   */
-  calculateRecordingTime(audioDuration: number): number {
-    // Simular tempo de "gravação" (processar + gravar)
-    const processingTime = audioDuration * 1000 * 1.5; // 1.5x a duração do áudio
-    const variation = 1 + (Math.random() - 0.5) * 0.2; // 20% de variação
-    
-    const finalTime = Math.max(
-      this.config.minDelay,
-      Math.min(this.config.maxDelay, processingTime * variation)
-    );
-
-    console.log(`🎤 Tempo de gravação calculado: ${finalTime}ms para ${audioDuration}s de áudio`);
-    return finalTime;
-  }
-
-  /**
-   * Divide mensagem longa em blocos naturais
-   */
-  splitMessage(text: string, maxLength: number = 350): string[] {
-    if (text.length <= maxLength) {
+  // Dividir mensagem em chunks naturais
+  private splitMessage(text: string): string[] {
+    if (text.length <= this.config.maxChunkSize) {
       return [text];
     }
 
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim());
-    const blocks: string[] = [];
-    let currentBlock = '';
+    const chunks: string[] = [];
+    let currentChunk = '';
+    const sentences = text.split(/(?<=[.!?])\s+/);
 
     for (const sentence of sentences) {
-      const trimmedSentence = sentence.trim();
-      if (!trimmedSentence) continue;
-
-      const potentialBlock = currentBlock 
-        ? `${currentBlock}. ${trimmedSentence}`
-        : trimmedSentence;
-
-      if (potentialBlock.length <= maxLength) {
-        currentBlock = potentialBlock;
+      if (currentChunk.length + sentence.length + 1 <= this.config.maxChunkSize) {
+        currentChunk += (currentChunk ? ' ' : '') + sentence;
       } else {
-        if (currentBlock) {
-          blocks.push(currentBlock + '.');
-          currentBlock = trimmedSentence;
-        } else {
-          // Sentença muito longa, dividir por espaços
-          const words = trimmedSentence.split(' ');
-          let wordBlock = '';
+        if (currentChunk) {
+          chunks.push(currentChunk.trim());
+        }
+        
+        // Se a frase é muito longa, quebrar por palavras
+        if (sentence.length > this.config.maxChunkSize) {
+          const words = sentence.split(' ');
+          let wordChunk = '';
           
           for (const word of words) {
-            if ((wordBlock + ' ' + word).length <= maxLength) {
-              wordBlock = wordBlock ? `${wordBlock} ${word}` : word;
+            if (wordChunk.length + word.length + 1 <= this.config.maxChunkSize) {
+              wordChunk += (wordChunk ? ' ' : '') + word;
             } else {
-              if (wordBlock) {
-                blocks.push(wordBlock);
-                wordBlock = word;
-              } else {
-                blocks.push(word); // Palavra muito longa
+              if (wordChunk) {
+                chunks.push(wordChunk.trim());
               }
+              wordChunk = word;
             }
           }
           
-          if (wordBlock) {
-            currentBlock = wordBlock;
+          if (wordChunk) {
+            currentChunk = wordChunk;
+          } else {
+            currentChunk = '';
           }
+        } else {
+          currentChunk = sentence;
         }
       }
     }
 
-    if (currentBlock) {
-      blocks.push(currentBlock + (currentBlock.endsWith('.') ? '' : '.'));
+    if (currentChunk) {
+      chunks.push(currentChunk.trim());
     }
 
-    console.log(`📝 Mensagem dividida em ${blocks.length} blocos:`, blocks.map(b => b.substring(0, 30) + '...'));
-    return blocks;
+    return chunks;
   }
 
-  /**
-   * Simula comportamento humano de digitação
-   */
-  async simulateTyping(chatId: string, instanceId: string): Promise<boolean> {
-    if (!this.config.showTyping) return true;
-
+  // Simular presença online
+  async setOnline(instanceId: string, chatId: string): Promise<void> {
     try {
-      console.log(`⌨️ Iniciando simulação de digitação para ${chatId}`);
-      this.ongoingOperations.set(chatId, 'typing');
+      await unifiedYumerService.setPresence(instanceId, chatId, 'available');
+      console.log(`🟢 [HUMANIZED] Definido como online: ${chatId}`);
+    } catch (error) {
+      console.warn('⚠️ [HUMANIZED] Erro ao definir presença online:', error);
+    }
+  }
 
-      const success = await mockClientService.setTypingStatus();
+  // Simular typing indicator
+  async simulateTyping(instanceId: string, chatId: string, duration: number): Promise<void> {
+    try {
+      // Iniciar typing
+      await unifiedYumerService.setTyping(instanceId, chatId, true);
+      console.log(`⌨️ [HUMANIZED] Iniciando typing por ${duration}ms: ${chatId}`);
       
-      if (success) {
-        console.log(`✅ Status de digitação ativado para ${chatId}`);
-        return true;
-      } else {
-        console.log(`❌ Falha ao ativar digitação para ${chatId}`);
-        this.ongoingOperations.delete(chatId);
-        return false;
+      // Aguardar duração
+      await new Promise(resolve => setTimeout(resolve, duration));
+      
+      // Parar typing
+      await unifiedYumerService.setTyping(instanceId, chatId, false);
+      console.log(`⌨️ [HUMANIZED] Parando typing: ${chatId}`);
+    } catch (error) {
+      console.warn('⚠️ [HUMANIZED] Erro ao simular typing:', error);
+      // Tentar parar typing mesmo com erro
+      try {
+        await unifiedYumerService.setTyping(instanceId, chatId, false);
+      } catch (stopError) {
+        console.warn('⚠️ [HUMANIZED] Erro ao parar typing:', stopError);
       }
-    } catch (error) {
-      console.error(`❌ Erro na simulação de digitação ${chatId}:`, error);
-      this.ongoingOperations.delete(chatId);
-      return false;
     }
   }
 
-  /**
-   * Para simulação de digitação
-   */
-  async stopTyping(chatId: string, instanceId: string): Promise<void> {
-    if (!this.config.showTyping) return;
-
-    try {
-      console.log(`⌨️ Parando simulação de digitação para ${chatId}`);
-      
-      await mockClientService.setTypingStatus();
-      this.ongoingOperations.delete(chatId);
-      
-      console.log(`✅ Digitação parada para ${chatId}`);
-    } catch (error) {
-      console.error(`❌ Erro ao parar digitação ${chatId}:`, error);
+  // Cancelar processamento ativo
+  cancelProcessing(chatId: string): void {
+    const timeoutId = this.activeProcessing.get(chatId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      this.activeProcessing.delete(chatId);
+      console.log(`❌ [HUMANIZED] Processamento cancelado: ${chatId}`);
     }
   }
 
-  /**
-   * Simula comportamento humano de gravação
-   */
-  async simulateRecording(chatId: string, instanceId: string): Promise<boolean> {
-    if (!this.config.showRecording) return true;
-
-    try {
-      console.log(`🎤 Iniciando simulação de gravação para ${chatId}`);
-      this.ongoingOperations.set(chatId, 'recording');
-
-      const success = await mockClientService.setRecordingStatus();
-      
-      if (success) {
-        console.log(`✅ Status de gravação ativado para ${chatId}`);
-        return true;
-      } else {
-        console.log(`❌ Falha ao ativar gravação para ${chatId}`);
-        this.ongoingOperations.delete(chatId);
-        return false;
+  // Enviar mensagem com comportamento humanizado completo
+  async sendHumanizedMessage(
+    instanceId: string, 
+    chatId: string, 
+    message: string,
+    onCancel?: () => boolean
+  ): Promise<{ success: boolean; chunks: number; error?: string }> {
+    
+    if (!this.config.enabled) {
+      // Se humanização desabilitada, enviar direto
+      try {
+        const result = await unifiedYumerService.sendTextMessage(instanceId, chatId, message);
+        return { success: result.success, chunks: 1, error: result.error };
+      } catch (error) {
+        return { 
+          success: false, 
+          chunks: 0, 
+          error: error instanceof Error ? error.message : 'Erro desconhecido' 
+        };
       }
-    } catch (error) {
-      console.error(`❌ Erro na simulação de gravação ${chatId}:`, error);
-      this.ongoingOperations.delete(chatId);
-      return false;
     }
-  }
-
-  /**
-   * Para simulação de gravação
-   */
-  async stopRecording(chatId: string, instanceId: string): Promise<void> {
-    if (!this.config.showRecording) return;
 
     try {
-      console.log(`🎤 Parando simulação de gravação para ${chatId}`);
-      
-      await mockClientService.setRecordingStatus();
-      this.ongoingOperations.delete(chatId);
-      
-      console.log(`✅ Gravação parada para ${chatId}`);
+      // 1. Definir como online
+      await this.setOnline(instanceId, chatId);
+
+      // 2. Dividir mensagem em chunks
+      const chunks = this.splitMessage(message);
+      console.log(`📝 [HUMANIZED] Enviando ${chunks.length} chunks para ${chatId}:`);
+
+      // 3. Enviar cada chunk com comportamento humanizado
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        
+        // Verificar cancelamento
+        if (onCancel && onCancel()) {
+          console.log(`❌ [HUMANIZED] Envio cancelado pelo usuário: ${chatId}`);
+          return { success: false, chunks: i, error: 'Cancelado pelo usuário' };
+        }
+
+        // Calcular delay de typing
+        const typingDuration = this.calculateTypingDelay(chunk);
+        
+        console.log(`📤 [HUMANIZED] Chunk ${i + 1}/${chunks.length}: "${chunk.substring(0, 50)}..." (typing: ${typingDuration}ms)`);
+
+        // Simular typing
+        await this.simulateTyping(instanceId, chatId, typingDuration);
+        
+        // Verificar cancelamento após typing
+        if (onCancel && onCancel()) {
+          console.log(`❌ [HUMANIZED] Envio cancelado após typing: ${chatId}`);
+          return { success: false, chunks: i, error: 'Cancelado após typing' };
+        }
+
+        // Enviar chunk
+        const result = await unifiedYumerService.sendTextMessage(instanceId, chatId, chunk);
+        
+        if (!result.success) {
+          console.error(`❌ [HUMANIZED] Erro ao enviar chunk ${i + 1}:`, result.error);
+          return { success: false, chunks: i, error: result.error };
+        }
+
+        // Delay entre chunks (exceto no último)
+        if (i < chunks.length - 1) {
+          const chunkDelay = this.config.chunkDelay + (Math.random() - 0.5) * 1000; // ±500ms de variação
+          console.log(`⏳ [HUMANIZED] Aguardando ${chunkDelay}ms antes do próximo chunk...`);
+          await new Promise(resolve => setTimeout(resolve, chunkDelay));
+        }
+      }
+
+      console.log(`✅ [HUMANIZED] Mensagem completa enviada: ${chunks.length} chunks`);
+      return { success: true, chunks: chunks.length };
+
     } catch (error) {
-      console.error(`❌ Erro ao parar gravação ${chatId}:`, error);
+      console.error('❌ [HUMANIZED] Erro no envio humanizado:', error);
+      return { 
+        success: false, 
+        chunks: 0, 
+        error: error instanceof Error ? error.message : 'Erro desconhecido' 
+      };
     }
   }
 
-  /**
-   * Define status online
-   */
-  async setOnlineStatus(instanceId: string, online: boolean = true): Promise<void> {
-    if (!this.config.showOnline) return;
-
+  // Marcar mensagem como lida com delay natural
+  async markAsReadWithDelay(instanceId: string, messageId: string, chatId: string): Promise<void> {
     try {
-      console.log(`📱 Definindo status online: ${online}`);
+      // Delay natural para ler a mensagem (1-3 segundos)
+      const readDelay = 1000 + Math.random() * 2000;
+      await new Promise(resolve => setTimeout(resolve, readDelay));
       
-      await mockClientService.setOnlineStatus();
-      
-      console.log(`✅ Status online definido: ${online}`);
+      await unifiedYumerService.markAsRead(instanceId, messageId, chatId);
+      console.log(`✅ [HUMANIZED] Mensagem marcada como lida após ${readDelay}ms: ${messageId}`);
     } catch (error) {
-      console.error(`❌ Erro ao definir status online:`, error);
+      console.warn('⚠️ [HUMANIZED] Erro ao marcar como lida:', error);
     }
   }
 
-  /**
-   * Marca mensagem como lida
-   */
-  async markAsRead(chatId: string, instanceId: string, messageId?: string): Promise<void> {
-    try {
-      console.log(`✓✓ Marcando mensagem como lida para ${chatId}`);
-      
-      await mockClientService.markAsRead();
-      
-      console.log(`✅ Mensagem marcada como lida para ${chatId}`);
-    } catch (error) {
-      console.error(`❌ Erro ao marcar como lida ${chatId}:`, error);
-    }
-  }
-
-  /**
-   * Processo completo humanizado para texto
-   */
-  async processTextWithHumanBehavior(
+  // Processar com delay de 3 segundos (cancelável)
+  async processWithDelay(
     chatId: string,
-    instanceId: string,
-    text: string,
-    onProgress?: (stage: string, progress: number) => void
-  ): Promise<DelayConfig> {
-    const typingTime = this.calculateTypingTime(text);
+    processingFunction: () => Promise<void>,
+    delay: number = 3000
+  ): Promise<boolean> {
     
-    // Cancelar operações anteriores se necessário
-    this.cancelOperation(chatId);
-    
-    const delays: DelayConfig = {
-      typingTime,
-      beforeSend: Math.random() * 1000 + 500, // 0.5-1.5s antes de enviar
-      afterSend: Math.random() * 500 + 200    // 0.2-0.7s depois de enviar
+    // Cancelar processamento anterior se existir
+    this.cancelProcessing(chatId);
+
+    return new Promise((resolve) => {
+      console.log(`⏳ [HUMANIZED] Iniciando delay de ${delay}ms para ${chatId}`);
+      
+      const timeoutId = setTimeout(async () => {
+        this.activeProcessing.delete(chatId);
+        
+        try {
+          await processingFunction();
+          console.log(`✅ [HUMANIZED] Processamento concluído para ${chatId}`);
+          resolve(true);
+        } catch (error) {
+          console.error(`❌ [HUMANIZED] Erro no processamento para ${chatId}:`, error);
+          resolve(false);
+        }
+      }, delay);
+
+      this.activeProcessing.set(chatId, timeoutId);
+    });
+  }
+
+  // Status do serviço
+  getStatus(): {
+    enabled: boolean;
+    config: HumanizedConfig;
+    activeChats: string[];
+  } {
+    return {
+      enabled: this.config.enabled,
+      config: this.config,
+      activeChats: Array.from(this.activeProcessing.keys())
     };
-
-    console.log(`🤖 Processamento humanizado iniciado para ${chatId}:`, delays);
-
-    // Marcar como processando
-    this.isProcessing.set(chatId, true);
-
-    try {
-      // 1. Marcar como lido (se não for nossa mensagem)
-      await this.markAsRead(chatId, instanceId);
-      onProgress?.('reading', 10);
-
-      // 2. Delay inicial
-      await new Promise(resolve => setTimeout(resolve, this.config.baseDelay));
-      onProgress?.('thinking', 30);
-
-      // 3. Simular digitação
-      await this.simulateTyping(chatId, instanceId);
-      onProgress?.('typing', 50);
-
-      // 4. Aguardar tempo de digitação
-      await new Promise(resolve => setTimeout(resolve, typingTime));
-      onProgress?.('finishing', 90);
-
-      // 5. Parar digitação
-      await this.stopTyping(chatId, instanceId);
-      onProgress?.('ready', 100);
-
-      return delays;
-
-    } catch (error) {
-      console.error(`❌ Erro no processamento humanizado ${chatId}:`, error);
-      await this.stopTyping(chatId, instanceId);
-      throw error;
-    } finally {
-      this.isProcessing.delete(chatId);
-    }
-  }
-
-  /**
-   * Processo completo humanizado para áudio
-   */
-  async processAudioWithHumanBehavior(
-    chatId: string,
-    instanceId: string,
-    audioDuration: number,
-    onProgress?: (stage: string, progress: number) => void
-  ): Promise<DelayConfig> {
-    const recordingTime = this.calculateRecordingTime(audioDuration);
-    
-    // Cancelar operações anteriores
-    this.cancelOperation(chatId);
-    
-    const delays: DelayConfig = {
-      typingTime: recordingTime,
-      beforeSend: Math.random() * 1000 + 500,
-      afterSend: Math.random() * 500 + 200
-    };
-
-    console.log(`🎤 Processamento de áudio humanizado iniciado para ${chatId}:`, delays);
-
-    this.isProcessing.set(chatId, true);
-
-    try {
-      // 1. Marcar como lido
-      await this.markAsRead(chatId, instanceId);
-      onProgress?.('reading', 10);
-
-      // 2. Delay inicial
-      await new Promise(resolve => setTimeout(resolve, this.config.baseDelay));
-      onProgress?.('processing', 30);
-
-      // 3. Simular gravação
-      await this.simulateRecording(chatId, instanceId);
-      onProgress?.('recording', 50);
-
-      // 4. Aguardar tempo de gravação
-      await new Promise(resolve => setTimeout(resolve, recordingTime));
-      onProgress?.('finishing', 90);
-
-      // 5. Parar gravação
-      await this.stopRecording(chatId, instanceId);
-      onProgress?.('ready', 100);
-
-      return delays;
-
-    } catch (error) {
-      console.error(`❌ Erro no processamento de áudio humanizado ${chatId}:`, error);
-      await this.stopRecording(chatId, instanceId);
-      throw error;
-    } finally {
-      this.isProcessing.delete(chatId);
-    }
-  }
-
-  /**
-   * Cancela operação em andamento
-   */
-  cancelOperation(chatId: string): void {
-    const timer = this.activeTimers.get(chatId);
-    if (timer) {
-      clearTimeout(timer);
-      this.activeTimers.delete(chatId);
-      console.log(`⏹️ Operação cancelada para ${chatId}`);
-    }
-
-    this.isProcessing.delete(chatId);
-    this.ongoingOperations.delete(chatId);
-  }
-
-  /**
-   * Verifica se está processando
-   */
-  isCurrentlyProcessing(chatId: string): boolean {
-    return this.isProcessing.get(chatId) || false;
-  }
-
-  /**
-   * Obtém status atual
-   */
-  getCurrentOperation(chatId: string): 'typing' | 'recording' | 'online' | null {
-    return this.ongoingOperations.get(chatId) || null;
-  }
-
-  /**
-   * Limpa todos os timers e operações
-   */
-  cleanup(): void {
-    console.log('🧹 Limpando HumanizedBehaviorService');
-    
-    this.activeTimers.forEach(timer => clearTimeout(timer));
-    this.activeTimers.clear();
-    this.isProcessing.clear();
-    this.ongoingOperations.clear();
   }
 }
 
+// Export singleton
 export const humanizedBehaviorService = new HumanizedBehaviorService();
-export type { HumanizedConfig, DelayConfig };

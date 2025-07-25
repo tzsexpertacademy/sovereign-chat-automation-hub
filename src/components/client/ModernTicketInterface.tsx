@@ -126,18 +126,30 @@ const ModernTicketInterface: React.FC<ModernTicketInterfaceProps> = ({
         isProcessing: true,
         stage: 'thinking',
         progress: 10,
-        estimatedTime: humanizedBehaviorService.calculateTypingTime(newMessage)
+        estimatedTime: 3000
       });
 
-      // Simular delays humanizados
-      await humanizedBehaviorService.processTextWithHumanBehavior(
+      // Enviar mensagem com comportamento humanizado
+      const result = await humanizedBehaviorService.sendHumanizedMessage(
+        connectedInstance || '',
         ticket.chat_id,
-        connectedInstance,
-        newMessage,
-        (stage, progress) => {
-          setHumanizedState(prev => ({ ...prev, stage: stage as any, progress }));
-        }
+        newMessage
       );
+
+      if (!result.success) {
+        console.error('❌ Erro ao enviar mensagem humanizada:', result.error);
+        toast({
+          title: "❌ Erro no Envio Humanizado", 
+          description: result.error || 'Falha ao enviar mensagem',
+          variant: "destructive"
+        });
+      } else {
+        console.log(`✅ Mensagem enviada com ${result.chunks} chunks`);
+        toast({
+          title: "✅ Mensagem Humanizada Enviada",
+          description: `Enviado em ${result.chunks} partes com comportamento natural`
+        });
+      }
 
       markActivity();
 

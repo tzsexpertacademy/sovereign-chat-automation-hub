@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { humanizedBehaviorService } from './humanizedBehaviorService';
 import unifiedYumerService from './unifiedYumerService';
 
 export interface RealTimeMessage {
@@ -401,7 +402,7 @@ class RealTimeWhatsAppService {
         await this.delay(typingDuration);
         
         // Enviar bloco
-        await unifiedYumerService.sendMessage(instanceId, chatId, block);
+        await unifiedYumerService.sendTextMessage(instanceId, chatId, block);
         
         // Parar typing
         await this.simulateHumanBehavior(instanceId, chatId, 'stop_typing');

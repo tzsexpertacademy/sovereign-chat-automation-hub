@@ -233,6 +233,75 @@ class UnifiedYumerService {
     return executeRequest();
   }
 
+  // ==================== COMPORTAMENTO HUMANIZADO - CODECHAT V2.2.1 ====================
+  
+  // Presença: Online/Offline
+  async setPresence(instanceId: string, chatId: string, status: 'composing' | 'available' | 'unavailable' = 'available'): Promise<{ success: boolean; error?: string }> {
+    console.log(`🟢 [PRESENCE] Definindo presença ${status} para ${chatId}`);
+    
+    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/presence`, {
+      method: 'POST',
+      body: JSON.stringify({
+        remoteJid: chatId,
+        status
+      })
+    });
+  }
+
+  // Typing: Simulação de digitação
+  async setTyping(instanceId: string, chatId: string, isTyping: boolean = true): Promise<{ success: boolean; error?: string }> {
+    console.log(`⌨️ [TYPING] ${isTyping ? 'Iniciando' : 'Parando'} digitação para ${chatId}`);
+    
+    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/typing`, {
+      method: 'POST',
+      body: JSON.stringify({
+        remoteJid: chatId,
+        typing: isTyping
+      })
+    });
+  }
+
+  // Recording: Simulação de gravação
+  async setRecording(instanceId: string, chatId: string, isRecording: boolean = true): Promise<{ success: boolean; error?: string }> {
+    console.log(`🎙️ [RECORDING] ${isRecording ? 'Iniciando' : 'Parando'} gravação para ${chatId}`);
+    
+    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/recording`, {
+      method: 'POST',
+      body: JSON.stringify({
+        remoteJid: chatId,
+        recording: isRecording
+      })
+    });
+  }
+
+  // Mark as Read: Marcar mensagem como lida
+  async markAsRead(instanceId: string, messageId: string, chatId?: string): Promise<{ success: boolean; error?: string }> {
+    console.log(`✅ [READ] Marcando como lida: ${messageId}`);
+    
+    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/markAsRead`, {
+      method: 'POST',
+      body: JSON.stringify({
+        messageId,
+        remoteJid: chatId
+      })
+    });
+  }
+
+  // Send Text: Enviar mensagem de texto
+  async sendTextMessage(instanceId: string, chatId: string, text: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`📤 [SEND] Enviando texto para ${chatId}: "${text.substring(0, 50)}..."`);
+    
+    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/sendText`, {
+      method: 'POST',
+      body: JSON.stringify({
+        remoteJid: chatId,
+        message: {
+          text
+        }
+      })
+    });
+  }
+
   // ==================== NOVOS MÉTODOS CORRIGIDOS ====================
   
   // Refresh token para instâncias com tokens expirados
