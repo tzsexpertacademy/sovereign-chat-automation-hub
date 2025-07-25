@@ -5,6 +5,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import yumerApiV2 from './yumerApiV2Service';
+import { contactCacheImproved } from './contactCacheImprovedService';
 
 export interface ImportProgress {
   current: number;
@@ -47,18 +48,26 @@ export class ConversationImportService {
 
       const businessId = instanceData.business_business_id;
 
-      // 2. Buscar chats reais extraindo das mensagens (API v2.2.1 corrigida)
+      // 2. PRIMEIRO: Pré-carregar cache de contatos
       this.updateProgress({ 
         totalChats: 0, 
         processedChats: 0, 
         totalMessages: 0, 
         processedMessages: 0, 
         status: 'importing_chats',
-        message: 'Conectando ao WhatsApp e buscando conversas...'
+        message: 'Carregando contatos da instância...'
+      });
+      
+      console.log('📱 [IMPORT] Pré-carregando contatos para nomes corretos...');
+      await contactCacheImproved.loadContactsForInstance(instanceId);
+
+      // 3. SEGUNDO: Buscar chats usando endpoint correto
+      this.updateProgress({ 
+        message: 'Buscando conversas do WhatsApp...'
       });
 
       const chats = await yumerApiV2.getAllChats(instanceId);
-      console.log(`📂 [IMPORT] Encontrados ${chats.length} chats extraídos das mensagens`);
+      console.log(`📂 [IMPORT] Encontrados ${chats.length} chats`);
       
       if (chats.length === 0) {
         console.warn('⚠️ [IMPORT] Nenhum chat encontrado - verificando conectividade...');
@@ -81,7 +90,7 @@ export class ConversationImportService {
         message: `Encontradas ${chats.length} conversas para importar`
       });
 
-      // 3. Processar cada chat
+      // 4. TERCEIRO: Processar cada chat individualmente
       for (let i = 0; i < chats.length; i++) {
         const chat = chats[i];
         
@@ -96,27 +105,28 @@ export class ConversationImportService {
         });
 
         try {
-          // 4. Buscar mensagens reais do chat
+          // 5. Buscar mensagens ESPECÍFICAS do chat (não compartilhadas)
+          console.log(`💬 [IMPORT] Buscando mensagens específicas para chat: ${chat.remoteJid}`);
           const messages = await yumerApiV2.findMessages(instanceId, chat.remoteJid, 50);
-          console.log(`💬 [IMPORT] Chat ${chat.remoteJid}: ${messages.length} mensagens`);
+          console.log(`💬 [IMPORT] Chat ${chat.remoteJid}: ${messages.length} mensagens encontradas`);
 
-          // 5. Criar/atualizar ticket no Supabase
+          // 6. Criar/atualizar ticket no Supabase com nome correto do contato
           const ticketResult = await this.createOrUpdateTicket(clientId, chat, instanceId, messages);
           
           if (ticketResult.success && ticketResult.ticketId) {
-            // 6. Importar mensagens reais
-            const messageCount = await this.importMessagesForTicket(ticketResult.ticketId, messages);
+            // 7. Importar mensagens específicas do chat
+            const messageCount = await this.importMessagesForTicket(ticketResult.ticketId, messages, instanceId);
             totalMessages += messageCount;
             importedConversations++;
             
-            console.log(`✅ [IMPORT] Chat importado: ${chat.remoteJid} (${messageCount} mensagens)`);
+            console.log(`✅ [IMPORT] Chat importado: ${chat.name || chat.remoteJid} (${messageCount} mensagens)`);
           }
         } catch (chatError) {
           console.warn(`⚠️ [IMPORT] Erro ao processar chat ${chat.remoteJid}:`, chatError);
         }
 
         // Delay para evitar rate limit
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
 
       this.updateProgress({ 
@@ -160,7 +170,9 @@ export class ConversationImportService {
     try {
       // Extrair informações do chat
       const chatId = chat.remoteJid;
-      const customerName = chat.name || chat.pushName || chatId.split('@')[0];
+      
+      // Usar cache de contatos para nome correto
+      const customerName = contactCacheImproved.getContactName(instanceId, chatId);
       const customerPhone = chatId.includes('@s.whatsapp.net') ? chatId.split('@')[0] : chatId;
       
       // Última mensagem (corrigido para API v2.2.1)
@@ -213,7 +225,7 @@ export class ConversationImportService {
     }
   }
 
-  private async importMessagesForTicket(ticketId: string, messages: any[]): Promise<number> {
+  private async importMessagesForTicket(ticketId: string, messages: any[], instanceId: string): Promise<number> {
     let importedCount = 0;
 
     for (const message of messages) {
@@ -243,10 +255,15 @@ export class ConversationImportService {
           content = `[${message.contentType || 'Mídia'}]`;
         }
 
-        // Extrair nome do remetente (melhorado para v2.2.1)
-        const senderName = message.pushName || 
-                          message.senderName || 
-                          (message.fromMe ? 'Você' : 'Cliente');
+        // Extrair nome do remetente usando cache de contatos
+        let senderName = 'Cliente';
+        if (message.fromMe) {
+          senderName = 'Você';
+        } else if (message.pushName && message.pushName !== message.remoteJid?.split('@')[0]) {
+          senderName = message.pushName;
+        } else if (message.remoteJid) {
+          senderName = contactCacheImproved.getContactName(instanceId, message.remoteJid);
+        }
 
         // Converter timestamp correto (ISO string para timestamp)
         let timestamp = new Date().toISOString();
