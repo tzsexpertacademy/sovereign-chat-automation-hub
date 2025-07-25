@@ -66,6 +66,7 @@ const ClientDashboardFixed = () => {
               />
               <Route path="funnel" element={<FunnelKanban clientId={clientId} />} />
               <Route path="assistants" element={<AssistantsManager />} />
+              <Route path="campaigns" element={<CampaignsManager clientId={clientId} />} />
               <Route path="queues" element={<QueueManagementCenter />} />
               <Route path="instances" element={<QueueConnectionManagerFixed clientId={clientId} />} />
               <Route path="booking" element={<BookingManager clientId={clientId} />} />
