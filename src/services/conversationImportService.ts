@@ -57,7 +57,7 @@ export class ConversationImportService {
         message: 'Conectando ao WhatsApp e buscando conversas...'
       });
 
-      const chats = await yumerApiV2.extractChatsFromMessages(instanceId);
+      const chats = await yumerApiV2.getAllChats(instanceId);
       console.log(`📂 [IMPORT] Encontrados ${chats.length} chats extraídos das mensagens`);
       
       if (chats.length === 0) {

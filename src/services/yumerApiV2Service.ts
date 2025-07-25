@@ -88,6 +88,34 @@ export interface ChatInfo {
   isWaContact: boolean;
 }
 
+export interface ChatRecord {
+  chatId: string;
+  remoteJid: string;
+  createdAt: string;
+}
+
+export interface ContactRecord {
+  contactId: string;
+  pushName: string;
+  remoteJid: string;
+  pictureUrl: string;
+  createdAt: string;
+}
+
+export interface ChatsPage {
+  totalRecords: number;
+  totalPages: number;
+  currentPage: number;
+  records: ChatRecord[];
+}
+
+export interface ContactsPage {
+  totalRecords: number;
+  totalPages: number;
+  currentPage: number;
+  records: ContactRecord[];
+}
+
 export interface MessageInfo {
   key: {
     remoteJid: string;
@@ -691,8 +719,110 @@ class YumerApiV2Service {
   }
 
   /**
+   * Busca chats diretamente via endpoint search/chats da API v2.2.1
+   */
+  async searchChats(instanceId: string, page: number = 1): Promise<{ chats: ChatInfo[]; totalPages: number }> {
+    try {
+      console.log(`🔍 [YumerApiV2] Buscando chats diretamente - Instância: ${instanceId}, Página: ${page}`);
+      
+      const response = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/chat/search/chats?page=${page}&sort=desc`, {
+        method: 'GET'
+      }, true, instanceId);
+
+      console.log('[YumerApiV2] Resposta searchChats:', {
+        hasChatsPage: response?.ChatsPage ? true : false,
+        totalRecords: response?.ChatsPage?.totalRecords || 0,
+        currentPage: response?.ChatsPage?.currentPage || 0
+      });
+
+      const chats: ChatInfo[] = [];
+      
+      if (response?.ChatsPage?.records && Array.isArray(response.ChatsPage.records)) {
+        response.ChatsPage.records.forEach((chatRecord: ChatRecord) => {
+          chats.push({
+            remoteJid: chatRecord.remoteJid,
+            name: chatRecord.remoteJid.includes('@g.us') ? 'Grupo' : undefined,
+            isGroup: chatRecord.remoteJid.includes('@g.us'),
+            isWaContact: chatRecord.remoteJid.includes('@s.whatsapp.net')
+          });
+        });
+        
+        console.log(`📂 [YumerApiV2] Chats encontrados: ${chats.length}/${response.ChatsPage.totalRecords} (Página ${response.ChatsPage.currentPage}/${response.ChatsPage.totalPages})`);
+        
+        return {
+          chats,
+          totalPages: response.ChatsPage.totalPages || 1
+        };
+      }
+
+      console.log('⚠️ [YumerApiV2] Nenhum chat encontrado na resposta');
+      return { chats: [], totalPages: 1 };
+    } catch (error) {
+      console.error('[YumerApiV2] Erro ao buscar chats:', error);
+      return { chats: [], totalPages: 1 };
+    }
+  }
+
+  /**
+   * Busca contatos diretamente via endpoint search/contacts da API v2.2.1
+   */
+  async searchContacts(instanceId: string, page: number = 1): Promise<{ contacts: ContactRecord[]; totalPages: number }> {
+    try {
+      console.log(`👥 [YumerApiV2] Buscando contatos - Instância: ${instanceId}, Página: ${page}`);
+      
+      const response = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/chat/search/contacts?page=${page}&sort=desc`, {
+        method: 'GET'
+      }, true, instanceId);
+
+      const contacts: ContactRecord[] = [];
+      
+      if (response?.ContactsPage?.records && Array.isArray(response.ContactsPage.records)) {
+        contacts.push(...response.ContactsPage.records);
+        
+        console.log(`👥 [YumerApiV2] Contatos encontrados: ${contacts.length}/${response.ContactsPage.totalRecords} (Página ${response.ContactsPage.currentPage}/${response.ContactsPage.totalPages})`);
+        
+        return {
+          contacts,
+          totalPages: response.ContactsPage.totalPages || 1
+        };
+      }
+
+      return { contacts: [], totalPages: 1 };
+    } catch (error) {
+      console.error('[YumerApiV2] Erro ao buscar contatos:', error);
+      return { contacts: [], totalPages: 1 };
+    }
+  }
+
+  /**
+   * Busca todos os chats com paginação automática
+   */
+  async getAllChats(instanceId: string): Promise<ChatInfo[]> {
+    try {
+      console.log(`📋 [YumerApiV2] Iniciando busca completa de chats para instância: ${instanceId}`);
+      
+      const allChats: ChatInfo[] = [];
+      let currentPage = 1;
+      let totalPages = 1;
+
+      do {
+        const { chats, totalPages: pages } = await this.searchChats(instanceId, currentPage);
+        allChats.push(...chats);
+        totalPages = pages;
+        currentPage++;
+      } while (currentPage <= totalPages && currentPage <= 10); // Limitar a 10 páginas
+
+      console.log(`✅ [YumerApiV2] Busca completa finalizada: ${allChats.length} chats encontrados`);
+      return allChats;
+    } catch (error) {
+      console.error('[YumerApiV2] Erro ao buscar todos os chats:', error);
+      return [];
+    }
+  }
+
+  /**
+   * @deprecated Usar getAllChats() para nova implementação
    * Extrai informações dos chats a partir das mensagens com paginação
-   * Como não há endpoint direto para chats na v2.2.1, extraímos dos remoteJids únicos
    */
   async extractChatsFromMessages(instanceId: string): Promise<ChatInfo[]> {
     try {
