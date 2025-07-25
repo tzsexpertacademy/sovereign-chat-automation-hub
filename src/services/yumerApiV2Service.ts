@@ -723,42 +723,110 @@ class YumerApiV2Service {
    */
   async searchChats(instanceId: string, page: number = 1): Promise<{ chats: ChatInfo[]; totalPages: number }> {
     try {
-      console.log(`🔍 [YumerApiV2] Buscando chats diretamente - Instância: ${instanceId}, Página: ${page}`);
+      console.log(`🔍 [YumerApiV2] searchChats INICIADO - Instância: ${instanceId}, Página: ${page}`);
       
-      const response = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/chat/search/chats?page=${page}&sort=desc`, {
-        method: 'GET'
-      }, true, instanceId);
+      // Testar diferentes formatos de endpoint
+      const endpoints = [
+        `/api/v2/instance/${instanceId}/chat/search/chats?page=${page}&sort=desc`,
+        `/api/v2/instance/${instanceId}/chat/search/chats`,
+        `/api/v2/instance/${instanceId}/chats/search`
+      ];
+      
+      let response = null;
+      let usedEndpoint = '';
+      
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`🌐 [YumerApiV2] Tentando endpoint: ${endpoint}`);
+          
+          if (endpoint.includes('?')) {
+            // GET request
+            response = await this.makeRequest<any>(endpoint, {
+              method: 'GET'
+            }, true, instanceId);
+          } else {
+            // POST request
+            response = await this.makeRequest<any>(endpoint, {
+              method: 'POST',
+              body: JSON.stringify({
+                page: page,
+                limit: 50,
+                sortOrder: 'desc'
+              })
+            }, true, instanceId);
+          }
+          
+          usedEndpoint = endpoint;
+          console.log(`✅ [YumerApiV2] Endpoint ${endpoint} respondeu com sucesso`);
+          break;
+          
+        } catch (endpointError) {
+          console.warn(`⚠️ [YumerApiV2] Endpoint ${endpoint} falhou:`, endpointError);
+          continue;
+        }
+      }
+      
+      if (!response) {
+        throw new Error('Todos os endpoints falharam');
+      }
 
-      console.log('[YumerApiV2] Resposta searchChats:', {
+      console.log(`📨 [YumerApiV2] Resposta completa de ${usedEndpoint}:`, {
+        response,
         hasChatsPage: response?.ChatsPage ? true : false,
-        totalRecords: response?.ChatsPage?.totalRecords || 0,
-        currentPage: response?.ChatsPage?.currentPage || 0
+        hasData: response?.data ? true : false,
+        hasRecords: response?.records ? true : false,
+        keys: Object.keys(response || {})
       });
 
       const chats: ChatInfo[] = [];
+      let totalPages = 1;
       
-      if (response?.ChatsPage?.records && Array.isArray(response.ChatsPage.records)) {
-        response.ChatsPage.records.forEach((chatRecord: ChatRecord) => {
-          chats.push({
-            remoteJid: chatRecord.remoteJid,
-            name: chatRecord.remoteJid.includes('@g.us') ? 'Grupo' : undefined,
-            isGroup: chatRecord.remoteJid.includes('@g.us'),
-            isWaContact: chatRecord.remoteJid.includes('@s.whatsapp.net')
-          });
+      // Tentar diferentes estruturas de resposta
+      let records = null;
+      if (response?.ChatsPage?.records) {
+        records = response.ChatsPage.records;
+        totalPages = response.ChatsPage.totalPages || 1;
+      } else if (response?.data?.records) {
+        records = response.data.records;
+        totalPages = response.data.totalPages || 1;
+      } else if (response?.records) {
+        records = response.records;
+        totalPages = response.totalPages || 1;
+      } else if (Array.isArray(response)) {
+        records = response;
+      }
+      
+      if (records && Array.isArray(records)) {
+        console.log(`📂 [YumerApiV2] Processando ${records.length} registros:`, records.slice(0, 3));
+        
+        records.forEach((chatRecord: any) => {
+          const remoteJid = chatRecord.remoteJid || chatRecord.id || chatRecord.chatId;
+          if (remoteJid) {
+            chats.push({
+              remoteJid,
+              name: chatRecord.name || (remoteJid.includes('@g.us') ? 'Grupo' : undefined),
+              isGroup: remoteJid.includes('@g.us'),
+              isWaContact: remoteJid.includes('@s.whatsapp.net')
+            });
+          }
         });
         
-        console.log(`📂 [YumerApiV2] Chats encontrados: ${chats.length}/${response.ChatsPage.totalRecords} (Página ${response.ChatsPage.currentPage}/${response.ChatsPage.totalPages})`);
+        console.log(`✅ [YumerApiV2] ${chats.length} chats processados (Página ${page}/${totalPages})`);
+        console.log(`📝 [YumerApiV2] Primeiros chats:`, chats.slice(0, 3));
         
-        return {
-          chats,
-          totalPages: response.ChatsPage.totalPages || 1
-        };
+        return { chats, totalPages };
       }
 
-      console.log('⚠️ [YumerApiV2] Nenhum chat encontrado na resposta');
+      console.log(`⚠️ [YumerApiV2] Nenhum chat encontrado na resposta. Estrutura:`, response);
       return { chats: [], totalPages: 1 };
+      
     } catch (error) {
-      console.error('[YumerApiV2] Erro ao buscar chats:', error);
+      console.error(`❌ [YumerApiV2] Erro crítico em searchChats:`, {
+        error,
+        instanceId,
+        page,
+        stack: error instanceof Error ? error.stack : 'No stack'
+      });
       return { chats: [], totalPages: 1 };
     }
   }
@@ -799,24 +867,73 @@ class YumerApiV2Service {
    */
   async getAllChats(instanceId: string): Promise<ChatInfo[]> {
     try {
-      console.log(`📋 [YumerApiV2] Iniciando busca completa de chats para instância: ${instanceId}`);
+      console.log(`🚀 [YumerApiV2] getAllChats INICIADO para instância: ${instanceId}`);
+      
+      // Verificar conectividade antes de buscar
+      console.log(`🔗 [YumerApiV2] Verificando conectividade da instância...`);
+      const connectionState = await this.getConnectionState(instanceId);
+      console.log(`📊 [YumerApiV2] Estado da conexão:`, connectionState);
       
       const allChats: ChatInfo[] = [];
       let currentPage = 1;
       let totalPages = 1;
+      let hasError = false;
 
       do {
-        const { chats, totalPages: pages } = await this.searchChats(instanceId, currentPage);
-        allChats.push(...chats);
-        totalPages = pages;
-        currentPage++;
+        console.log(`📖 [YumerApiV2] Processando página ${currentPage}/${totalPages}...`);
+        
+        try {
+          const { chats, totalPages: pages } = await this.searchChats(instanceId, currentPage);
+          
+          console.log(`📄 [YumerApiV2] Resultado da página ${currentPage}:`, {
+            chatsCount: chats.length,
+            totalPages: pages,
+            chats: chats.slice(0, 3) // Primeiros 3 para debug
+          });
+          
+          allChats.push(...chats);
+          totalPages = pages;
+          currentPage++;
+          
+          // Se não retornou chats na primeira página, pode ser problema na API
+          if (currentPage === 2 && chats.length === 0) {
+            console.warn(`⚠️ [YumerApiV2] Primeira página retornou 0 chats - possível problema na API`);
+            hasError = true;
+            break;
+          }
+          
+        } catch (pageError) {
+          console.error(`❌ [YumerApiV2] Erro na página ${currentPage}:`, pageError);
+          hasError = true;
+          break;
+        }
+        
       } while (currentPage <= totalPages && currentPage <= 10); // Limitar a 10 páginas
 
-      console.log(`✅ [YumerApiV2] Busca completa finalizada: ${allChats.length} chats encontrados`);
+      console.log(`🏁 [YumerApiV2] getAllChats FINALIZADO:`, {
+        totalChats: allChats.length,
+        pagesProcessed: currentPage - 1,
+        hasError,
+        sampleChats: allChats.slice(0, 5) // Primeiros 5 para debug
+      });
+      
+      // Se não encontrou chats e houve erro, tentar fallback
+      if (allChats.length === 0 && hasError) {
+        console.warn(`🔄 [YumerApiV2] Tentando fallback para extractChatsFromMessages...`);
+        return await this.extractChatsFromMessages(instanceId);
+      }
+      
       return allChats;
     } catch (error) {
-      console.error('[YumerApiV2] Erro ao buscar todos os chats:', error);
-      return [];
+      console.error('💥 [YumerApiV2] Erro crítico em getAllChats:', {
+        error,
+        instanceId,
+        stack: error instanceof Error ? error.stack : 'No stack'
+      });
+      
+      // Fallback para método antigo se getAllChats falhar completamente
+      console.warn(`🔄 [YumerApiV2] Fazendo fallback para extractChatsFromMessages devido a erro crítico...`);
+      return await this.extractChatsFromMessages(instanceId);
     }
   }
 
