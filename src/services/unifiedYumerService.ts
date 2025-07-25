@@ -603,9 +603,25 @@ class UnifiedYumerService {
   async logoutInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
     console.log(`🔌 [UNIFIED-YUMER] Desconectando instância: ${instanceId}`);
     
+    // Buscar business_id da instância para usar business_token correto
+    let businessId = '';
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('business_business_id')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      businessId = instance?.business_business_id || '';
+      console.log('🔑 [LOGOUT] Business ID encontrado:', businessId);
+    } catch (error) {
+      console.warn('⚠️ [LOGOUT] Erro ao buscar business_id:', error);
+    }
+    
     return this.makeRequest(`/api/v2/instance/${instanceId}/logout`, {
       method: 'DELETE'
-    });
+    }, true, true, businessId);
   }
 
   async restartInstance(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
