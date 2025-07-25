@@ -139,19 +139,19 @@ class ClientYumerService {
     const businessToken = await this.getBusinessToken(clientId);
     
     try {
-      const instances = await this.makeRequest<any[]>(
-        '/instance',
+      const response = await this.makeRequest<{ data: any[] }>(
+        '/api/v2/business/instances',
         { method: 'GET' },
         businessToken
       );
 
-      return instances.map(instance => ({
-        instanceId: instance.instanceName,
+      return response.data.map(instance => ({
+        instanceId: instance.instanceId,
         instanceName: instance.instanceName,
         status: instance.status || 'close',
         owner: instance.owner,
         profileName: instance.profileName,
-        profilePicUrl: instance.profilePicUrl,
+        profilePicUrl: instance.profilePictureUrl,
         businessId: instance.businessId
       }));
     } catch (error) {
@@ -166,23 +166,23 @@ class ClientYumerService {
   async createInstance(clientId: string, instanceName: string, description?: string): Promise<ClientInstance> {
     const businessToken = await this.getBusinessToken(clientId);
     
-    const response = await this.makeRequest<any>(
-      '/instance/create',
+    const response = await this.makeRequest<{ data: any }>(
+      '/api/v2/instance',
       {
         method: 'POST',
         body: JSON.stringify({
           instanceName,
-          description: description || `Instância ${instanceName}`
+          integration: 'WHATSAPP-BAILEYS'
         })
       },
       businessToken
     );
 
     return {
-      instanceId: response.instanceName,
-      instanceName: response.instanceName,
+      instanceId: response.data.instanceId,
+      instanceName: response.data.instanceName,
       status: 'close',
-      businessId: response.businessId
+      businessId: response.data.businessId
     };
   }
 
@@ -193,13 +193,16 @@ class ClientYumerService {
     const businessToken = await this.getBusinessToken(clientId);
     
     try {
-      const response = await this.makeRequest<QRCodeResponse>(
-        `/instance/connect/${instanceName}`,
+      const response = await this.makeRequest<{ data: { code: string; base64: string } }>(
+        `/api/v2/instance/connect/${instanceName}`,
         { method: 'POST' },
         businessToken
       );
       
-      return response;
+      return {
+        code: response.data.code,
+        base64: response.data.base64
+      };
     } catch (error) {
       console.error('Erro ao conectar instância:', error);
       return null;
@@ -214,8 +217,8 @@ class ClientYumerService {
     
     try {
       await this.makeRequest(
-        `/instance/logout/${instanceName}`,
-        { method: 'DELETE' },
+        `/api/v2/instance/${instanceName}/logout`,
+        { method: 'POST' },
         businessToken
       );
       return true;
@@ -233,7 +236,7 @@ class ClientYumerService {
     
     try {
       await this.makeRequest(
-        `/instance/delete/${instanceName}`,
+        `/api/v2/instance/${instanceName}`,
         { method: 'DELETE' },
         businessToken
       );
@@ -245,18 +248,22 @@ class ClientYumerService {
   }
 
   /**
-   * Obtém estado da conexão
+   * Obtém estado da conexão via getInstance (v2.2.1)
    */
   async getConnectionState(clientId: string, instanceName: string): Promise<ConnectionState | null> {
     const businessToken = await this.getBusinessToken(clientId);
     
     try {
-      const response = await this.makeRequest<ConnectionState>(
-        `/instance/connectionState/${instanceName}`,
+      const response = await this.makeRequest<{ data: any }>(
+        `/api/v2/instance/${instanceName}`,
         { method: 'GET' },
         businessToken
       );
-      return response;
+      
+      return {
+        instance: response.data.instanceId,
+        state: response.data.status || 'close'
+      };
     } catch (error) {
       console.error('Erro ao obter estado da conexão:', error);
       return null;

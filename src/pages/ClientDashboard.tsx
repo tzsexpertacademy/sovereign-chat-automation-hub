@@ -8,7 +8,7 @@ import ChatTabsInterface from "@/components/client/ChatTabsInterface";
 import CampaignsManager from "@/components/client/CampaignsManager";
 import AutomationCenter from "@/components/client/AutomationCenter";
 import AnalyticsDashboard from "@/components/client/AnalyticsDashboard";
-import WhatsAppConnectionManager from "@/components/client/WhatsAppConnectionManager";
+import WhatsAppConnectionManagerV2 from "@/components/client/WhatsAppConnectionManagerV2";
 import AssistantsManager from "@/components/client/AssistantsManager";
 import BookingManager from "@/components/booking/BookingManager";
 import FunnelKanban from "@/components/client/FunnelKanban";
@@ -43,7 +43,7 @@ const ClientDashboard = () => {
               <Routes>
                 <Route path="/" element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<ClientDashboardOverview clientId={clientId} />} />
-                <Route path="connect" element={<WhatsAppConnectionManager />} />
+                <Route path="connect" element={<WhatsAppConnectionManagerV2 />} />
                 <Route 
                   path="chat" 
                   element={

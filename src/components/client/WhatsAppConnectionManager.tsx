@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useUnifiedInstanceManager } from '@/hooks/useUnifiedInstanceManager';
+import { useRealTimeInstanceSync } from '@/hooks/useRealTimeInstanceSync';
 import { clientsService } from '@/services/clientsService';
 import { whatsappInstancesService } from '@/services/whatsappInstancesService';
 import clientYumerService from '@/services/clientYumerService';
@@ -59,6 +60,24 @@ const WhatsAppConnectionManager = () => {
     isLoading: isInstanceLoading,
     refreshStatus
   } = useUnifiedInstanceManager(instances);
+
+  // Inicializar sincronização em tempo real
+  const { startSync, stopSync, manualSync } = useRealTimeInstanceSync({
+    onInstanceUpdate: (instanceId, data) => {
+      setInstances(prev => prev.map(i => 
+        i.instance_id === instanceId 
+          ? { ...i, ...data, updated_at: new Date().toISOString() }
+          : i
+      ));
+    },
+    enableWebhookConfig: true,
+    intervalMs: 30000
+  });
+
+  useEffect(() => {
+    startSync();
+    return () => stopSync();
+  }, [startSync, stopSync]);
 
   useEffect(() => {
     if (clientId) {
