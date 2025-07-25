@@ -39,5 +39,26 @@ export const aiConfigService = {
 
     if (error) throw error;
     return data;
+  },
+
+  async validateOpenAIKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+    try {
+      const response = await fetch('https://api.openai.com/v1/models', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        return { valid: true };
+      } else {
+        const errorData = await response.json();
+        return { valid: false, error: errorData.error?.message || 'Invalid API key' };
+      }
+    } catch (error) {
+      return { valid: false, error: 'Network error during validation' };
+    }
   }
 };

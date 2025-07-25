@@ -6,7 +6,7 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+const globalOpenAIApiKey = Deno.env.get('OPENAI_API_KEY');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,12 +30,36 @@ serve(async (req) => {
       context 
     } = await req.json();
 
+    // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
+    let openAIApiKey = globalOpenAIApiKey;
+    let keySource = 'global';
+
+    try {
+      // Tentar buscar API Key específica do cliente
+      const { data: clientConfig } = await supabase
+        .from('client_ai_configs')
+        .select('openai_api_key, default_model')
+        .eq('client_id', clientId)
+        .single();
+
+      if (clientConfig?.openai_api_key) {
+        openAIApiKey = clientConfig.openai_api_key;
+        keySource = 'client';
+        console.log('🔑 [AI-ASSISTANT] Usando API Key específica do cliente');
+      } else {
+        console.log('🔑 [AI-ASSISTANT] Cliente não tem API Key própria, usando global');
+      }
+    } catch (error) {
+      console.log('🔑 [AI-ASSISTANT] Erro ao buscar config do cliente, usando global:', error.message);
+    }
+
     console.log('🤖 [AI-ASSISTANT] Dados recebidos:', {
       ticketId,
       instanceId,
       assistantName: assistant?.name,
       messageLength: message?.length || 0,
       customerName: context?.customerName,
+      keySource,
       hasOpenAIKey: !!openAIApiKey
     });
 
@@ -45,7 +69,9 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           error: 'OpenAI API key not configured',
-          message: 'Configure OPENAI_API_KEY in Supabase Edge Function Secrets'
+          message: keySource === 'client' 
+            ? 'Cliente precisa configurar sua API Key da OpenAI'
+            : 'Configure OPENAI_API_KEY global nas Edge Function Secrets'
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

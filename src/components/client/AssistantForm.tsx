@@ -8,8 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { X, Plus, Settings, Zap, Brain, Volume2 } from "lucide-react";
+import { X, Plus, Settings, Zap, Brain, Volume2, Key, CheckCircle, XCircle } from "lucide-react";
 import { assistantsService, type Assistant } from "@/services/assistantsService";
+import { aiConfigService } from "@/services/aiConfigService";
+import { useToast } from "@/hooks/use-toast";
 
 interface AssistantFormProps {
   clientId: string;
@@ -143,6 +145,14 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(1000);
   
+  // Configuração OpenAI
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [defaultModel, setDefaultModel] = useState("gpt-4o-mini");
+  const [keyValidationStatus, setKeyValidationStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
+  const [validationError, setValidationError] = useState("");
+  
+  const { toast } = useToast();
+  
   // Configurações avançadas
   const [advancedSettings, setAdvancedSettings] = useState({
     audio_processing_enabled: false,
@@ -186,6 +196,22 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
   });
 
   useEffect(() => {
+    // Carregar configuração da OpenAI do cliente
+    const loadOpenAIConfig = async () => {
+      try {
+        const config = await aiConfigService.getClientConfig(clientId);
+        if (config) {
+          setOpenaiApiKey(config.openai_api_key || "");
+          setDefaultModel(config.default_model || "gpt-4o-mini");
+          setKeyValidationStatus(config.openai_api_key ? 'valid' : 'idle');
+        }
+      } catch (error) {
+        console.error('Erro ao carregar configuração OpenAI:', error);
+      }
+    };
+
+    loadOpenAIConfig();
+
     if (assistant) {
       setName(assistant.name || "");
       setPrompt(assistant.prompt || "");
@@ -208,7 +234,7 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
         }
       }
     }
-  }, [assistant]);
+  }, [assistant, clientId]);
 
   const addTrigger = () => {
     if (newTrigger.trim() && !triggers.includes(newTrigger.trim())) {
@@ -219,6 +245,75 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
 
   const removeTrigger = (trigger: string) => {
     setTriggers(triggers.filter(t => t !== trigger));
+  };
+
+  const validateApiKey = async () => {
+    if (!openaiApiKey.trim()) {
+      setValidationError("API Key é obrigatória");
+      setKeyValidationStatus('invalid');
+      return;
+    }
+
+    setKeyValidationStatus('validating');
+    setValidationError("");
+
+    try {
+      const result = await aiConfigService.validateOpenAIKey(openaiApiKey);
+      if (result.valid) {
+        setKeyValidationStatus('valid');
+        toast({
+          title: "API Key válida!",
+          description: "Sua API Key da OpenAI foi validada com sucesso.",
+        });
+      } else {
+        setKeyValidationStatus('invalid');
+        setValidationError(result.error || "API Key inválida");
+        toast({
+          title: "API Key inválida",
+          description: result.error || "Verifique sua API Key e tente novamente.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      setKeyValidationStatus('invalid');
+      setValidationError("Erro ao validar API Key");
+      toast({
+        title: "Erro de validação",
+        description: "Não foi possível validar a API Key. Verifique sua conexão.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const saveOpenAIConfig = async () => {
+    if (keyValidationStatus !== 'valid') {
+      toast({
+        title: "Validação necessária",
+        description: "Valide a API Key antes de salvar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await aiConfigService.createOrUpdateConfig({
+        client_id: clientId,
+        openai_api_key: openaiApiKey,
+        default_model: defaultModel,
+      });
+
+      toast({
+        title: "Configuração salva!",
+        description: "Configuração da OpenAI salva com sucesso.",
+      });
+    } catch (error) {
+      console.error('Erro ao salvar config OpenAI:', error);
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar a configuração.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -277,10 +372,14 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="basic" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 Básicas
+              </TabsTrigger>
+              <TabsTrigger value="openai" className="flex items-center gap-2">
+                <Key className="h-4 w-4" />
+                OpenAI Config
               </TabsTrigger>
               <TabsTrigger value="ai" className="flex items-center gap-2">
                 <Brain className="h-4 w-4" />
@@ -373,6 +472,125 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
                   Palavras-chave que farão o assistente transferir a conversa para outra fila
                 </p>
               </div>
+            </TabsContent>
+
+            <TabsContent value="openai" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Key className="h-5 w-5" />
+                    Configuração OpenAI
+                  </CardTitle>
+                  <CardDescription>
+                    Configure sua API Key da OpenAI para este cliente
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="openai-key">OpenAI API Key *</Label>
+                      <div className="space-y-2">
+                        <Input
+                          id="openai-key"
+                          type="password"
+                          value={openaiApiKey}
+                          onChange={(e) => {
+                            setOpenaiApiKey(e.target.value);
+                            setKeyValidationStatus('idle');
+                            setValidationError("");
+                          }}
+                          placeholder="sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                          className="font-mono text-sm"
+                        />
+                        
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            onClick={validateApiKey}
+                            disabled={keyValidationStatus === 'validating' || !openaiApiKey.trim()}
+                            size="sm"
+                          >
+                            {keyValidationStatus === 'validating' ? 'Validando...' : 'Testar Conectividade'}
+                          </Button>
+                          
+                          {keyValidationStatus === 'valid' && (
+                            <div className="flex items-center gap-1 text-green-600">
+                              <CheckCircle className="h-4 w-4" />
+                              <span className="text-sm">Válida</span>
+                            </div>
+                          )}
+                          
+                          {keyValidationStatus === 'invalid' && (
+                            <div className="flex items-center gap-1 text-red-600">
+                              <XCircle className="h-4 w-4" />
+                              <span className="text-sm">Inválida</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {validationError && (
+                          <p className="text-sm text-red-600">{validationError}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label htmlFor="default-model">Modelo Padrão</Label>
+                      <Select value={defaultModel} onValueChange={setDefaultModel}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {AI_MODELS.map((aiModel) => (
+                            <SelectItem key={aiModel.value} value={aiModel.value}>
+                              {aiModel.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-muted-foreground">
+                        Modelo padrão que será usado pelos assistentes deste cliente
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-4 border-t">
+                    <Button
+                      type="button"
+                      onClick={saveOpenAIConfig}
+                      disabled={keyValidationStatus !== 'valid'}
+                    >
+                      Salvar Configuração OpenAI
+                    </Button>
+                    
+                    {keyValidationStatus === 'valid' && (
+                      <div className="flex items-center gap-2 text-green-600">
+                        <CheckCircle className="h-4 w-4" />
+                        <span className="text-sm">Configuração válida</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h4 className="font-medium text-blue-900 mb-2">💡 Sobre a Configuração OpenAI</h4>
+                    <ul className="text-sm text-blue-800 space-y-1">
+                      <li>• <strong>Controle de Custos:</strong> Use sua própria API Key para ter controle total dos gastos</li>
+                      <li>• <strong>Segurança:</strong> Sua API Key é armazenada de forma segura e criptografada</li>
+                      <li>• <strong>Flexibilidade:</strong> Escolha diferentes modelos baseado nas suas necessidades</li>
+                      <li>• <strong>Fallback:</strong> Se não configurado, usará a chave global do sistema</li>
+                    </ul>
+                  </div>
+
+                  <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                    <h4 className="font-medium text-amber-900 mb-2">💰 Custos Estimados da OpenAI</h4>
+                    <ul className="text-sm text-amber-800 space-y-1">
+                      <li>• <strong>GPT-4o Mini:</strong> $0.15/1M tokens entrada + $0.60/1M saída (Recomendado)</li>
+                      <li>• <strong>GPT-4o:</strong> $2.50/1M tokens entrada + $10.00/1M saída</li>
+                      <li>• <strong>Média por conversa:</strong> 100-500 tokens (~$0.001-$0.005 por interação)</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="ai" className="space-y-6">
