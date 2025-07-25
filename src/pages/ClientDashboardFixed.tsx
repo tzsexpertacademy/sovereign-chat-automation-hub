@@ -13,7 +13,7 @@ import AssistantsManager from "@/components/client/AssistantsManager";
 import BookingManager from "@/components/booking/BookingManager";
 import FunnelKanban from "@/components/client/FunnelKanban";
 import QueueManagementCenter from "@/components/client/QueueManagementCenter";
-import QueueConnectionManagerFixed from "@/components/client/QueueConnectionManagerFixed";
+
 
 const ClientDashboardFixed = () => {
   const { clientId } = useParams();
@@ -68,7 +68,7 @@ const ClientDashboardFixed = () => {
               <Route path="assistants" element={<AssistantsManager />} />
               <Route path="campaigns" element={<CampaignsManager clientId={clientId} />} />
               <Route path="queues" element={<QueueManagementCenter />} />
-              <Route path="instances" element={<QueueConnectionManagerFixed clientId={clientId} />} />
+              
               <Route path="booking" element={<BookingManager clientId={clientId} />} />
               <Route path="automation" element={<AutomationCenter />} />
               <Route path="analytics" element={<AnalyticsDashboard />} />
