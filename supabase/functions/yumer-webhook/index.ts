@@ -241,6 +241,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
     }
 
     // 2. Extrair e normalizar dados da mensagem
+    console.log('🔍 [YUMER-PROCESS] Dados brutos da mensagem YUMER:', JSON.stringify(messageData, null, 2));
     const processedMessage = extractYumerMessageData(messageData, instance);
     
     if (!processedMessage) {
@@ -251,10 +252,33 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
       );
     }
 
-    console.log('📊 [YUMER-PROCESS] Dados da mensagem extraídos:', processedMessage);
+    console.log('📊 [YUMER-PROCESS] Dados da mensagem extraídos:', JSON.stringify(processedMessage, null, 2));
+
+    // Verificar se os dados essenciais estão presentes
+    if (!processedMessage.messageId || !processedMessage.chatId) {
+      console.error('❌ [YUMER-PROCESS] Dados essenciais da mensagem ausentes:', {
+        messageId: !!processedMessage.messageId,
+        chatId: !!processedMessage.chatId,
+        content: !!processedMessage.content
+      });
+      return new Response(
+        JSON.stringify({ error: 'Dados essenciais da mensagem ausentes' }), 
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // 3. Salvar mensagem bruta no whatsapp_messages
-    await saveYumerMessage(processedMessage, instance.instance_id);
+    console.log('💾 [YUMER-PROCESS] Iniciando salvamento da mensagem...');
+    try {
+      await saveYumerMessage(processedMessage, instance.instance_id);
+      console.log('✅ [YUMER-PROCESS] Mensagem salva no whatsapp_messages com sucesso');
+    } catch (saveError) {
+      console.error('❌ [YUMER-PROCESS] Erro ao salvar mensagem:', saveError);
+      return new Response(
+        JSON.stringify({ error: 'Erro ao salvar mensagem', details: saveError.message }), 
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     // 4. Processar mensagem para tickets
     const ticketId = await processMessageToTickets(processedMessage, instance.client_id, instance.instance_id);
@@ -514,26 +538,39 @@ function formatPhoneForDisplay(phoneNumber: string): string {
 async function saveYumerMessage(messageData: any, instanceId: string) {
   console.log('💾 [SAVE-YUMER] Salvando mensagem YUMER no whatsapp_messages');
   
-  const { error } = await supabase
+  const dataToInsert = {
+    message_id: messageData.messageId,
+    chat_id: messageData.chatId,
+    instance_id: instanceId,
+    sender: messageData.sender,
+    body: messageData.content,
+    message_type: messageData.messageType,
+    from_me: messageData.fromMe,
+    timestamp: messageData.timestamp,
+    is_processed: false // Será marcado como true após processamento completo
+  };
+
+  console.log('💾 [SAVE-YUMER] Dados a serem inseridos:', JSON.stringify(dataToInsert, null, 2));
+
+  const { data, error } = await supabase
     .from('whatsapp_messages')
-    .insert({
-      message_id: messageData.messageId,
-      chat_id: messageData.chatId,
-      instance_id: instanceId,
-      sender: messageData.sender,
-      body: messageData.content,
-      message_type: messageData.messageType,
-      from_me: messageData.fromMe,
-      timestamp: messageData.timestamp,
-      is_processed: false // Será marcado como true após processamento completo
-    });
+    .insert(dataToInsert)
+    .select('id');
 
   if (error) {
-    console.error('❌ [SAVE-YUMER] Erro ao salvar:', error);
+    console.error('❌ [SAVE-YUMER] Erro detalhado ao salvar:', {
+      error: error,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      dataToInsert: dataToInsert
+    });
     throw error;
   }
 
-  console.log('✅ [SAVE-YUMER] Mensagem YUMER salva no whatsapp_messages');
+  console.log('✅ [SAVE-YUMER] Mensagem YUMER salva no whatsapp_messages com ID:', data?.[0]?.id);
+  return data?.[0]?.id;
 }
 
 // Função para processar mensagem para sistema de tickets
