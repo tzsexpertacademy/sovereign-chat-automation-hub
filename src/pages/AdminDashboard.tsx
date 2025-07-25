@@ -4,6 +4,7 @@ import AdminHeader from "@/components/admin/AdminHeader";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminRouter from "@/components/admin/AdminRouter";
 import SafeComponent from "@/components/SafeComponent";
+import { QuickApiTest } from "@/components/admin/QuickApiTest";
 
 const AdminDashboard = () => {
   return (
@@ -20,6 +21,11 @@ const AdminDashboard = () => {
               <p className="text-gray-600 mt-2">
                 Gerencie clientes, planos e monitore o sistema Yumer v2
               </p>
+            </div>
+
+            {/* Teste Rápido da API */}
+            <div className="mb-6">
+              <QuickApiTest />
             </div>
 
             <SafeComponent 

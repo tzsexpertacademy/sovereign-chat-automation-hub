@@ -65,6 +65,18 @@ export class WhatsAppMultiClient {
   setApiKey(apiKey: string) {
     this.apiKey = apiKey;
     yumerApiV2.setGlobalApiKey(apiKey);
+    
+    // Força reconfiguração da API key se não estiver definida
+    if (!apiKey || apiKey.trim() === '') {
+      console.warn('[WhatsAppMultiClient] ⚠️ API Key vazia! Usando padrão...');
+      import('@/config/environment').then(({ auth }) => {
+        if (auth.adminToken) {
+          this.apiKey = auth.adminToken;
+          yumerApiV2.setGlobalApiKey(auth.adminToken);
+          console.log('[WhatsAppMultiClient] 🔑 Usando API Key padrão do environment');
+        }
+      });
+    }
   }
 
   async getClients(): Promise<WhatsAppClient[]> {

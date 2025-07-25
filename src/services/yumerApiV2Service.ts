@@ -94,6 +94,13 @@ class YumerApiV2Service {
   constructor(baseUrl = 'https://api.yumer.com.br', globalApiKey?: string) {
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     this.globalApiKey = globalApiKey || '';
+    
+    // Se não foi fornecida uma API key, tentar buscar do environment
+    if (!this.globalApiKey && typeof window !== 'undefined') {
+      this.globalApiKey = localStorage.getItem('yumer_global_api_key') || '';
+    }
+    
+    console.log(`[YumerApiV2.2.1] Inicializado com API Key: ${this.globalApiKey ? 'Configurada' : 'NÃO CONFIGURADA'}`);
   }
 
   private async makeRequest<T>(
@@ -110,9 +117,14 @@ class YumerApiV2Service {
       ...options.headers,
     };
 
-    // CORREÇÃO CORS: Usar apenas Authorization Bearer
+    // AUTENTICAÇÃO CORRIGIDA - API v2.2.1
     if (this.globalApiKey) {
+      // Para API v2.2.1, usar apikey no header conforme documentação
+      headers['apikey'] = this.globalApiKey;
+      // Manter Authorization Bearer para compatibilidade
       headers['authorization'] = `Bearer ${this.globalApiKey}`;
+    } else {
+      console.warn('[YumerApiV2.2.1] ⚠️ API Key não configurada!');
     }
 
     const config: RequestInit = {
@@ -417,16 +429,19 @@ class YumerApiV2Service {
   }
 
   /**
-   * Envia áudio
+   * Envia áudio WhatsApp (formato .ogg ou .oga)
    */
-  async sendWhatsAppAudio(instanceId: string, number: string, audioBase64: string): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/api/v2/message/sendWhatsAppAudio/${instanceId}`, {
+  async sendWhatsAppAudio(instanceId: string, number: string, audioUrl: string): Promise<MessageInfo> {
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/audio`, {
       method: 'POST',
       body: JSON.stringify({
-        number,
-        media: {
-          mediatype: 'audio',
-          media: audioBase64
+        recipient: number,
+        audioMessage: {
+          url: audioUrl
+        },
+        options: {
+          delay: 1200,
+          presence: "recording"
         }
       })
     }, true, instanceId);
@@ -524,6 +539,12 @@ class YumerApiV2Service {
    */
   setGlobalApiKey(apiKey: string): void {
     this.globalApiKey = apiKey;
+    console.log(`[YumerApiV2.2.1] ✅ API Key configurada: ${apiKey ? 'Sim' : 'Não'}`);
+    
+    // Salvar no localStorage para persistência
+    if (typeof window !== 'undefined' && apiKey) {
+      localStorage.setItem('yumer_global_api_key', apiKey);
+    }
   }
 
   /**
@@ -545,6 +566,24 @@ class YumerApiV2Service {
   }
 }
 
-// Singleton instance
+// Singleton instance com configuração automática da API key
 export const yumerApiV2 = new YumerApiV2Service();
+
+// Configurar API key padrão na inicialização
+if (typeof window !== 'undefined') {
+  // Tentar pegar API key do localStorage primeiro
+  const storedApiKey = localStorage.getItem('yumer_global_api_key');
+  if (storedApiKey) {
+    yumerApiV2.setGlobalApiKey(storedApiKey);
+  } else {
+    // Se não houver API key salva, usar a padrão do environment
+    import('@/config/environment').then(({ auth }) => {
+      if (auth.adminToken) {
+        yumerApiV2.setGlobalApiKey(auth.adminToken);
+        console.log('[YumerApiV2.2.1] 🔑 Usando API Key padrão do environment');
+      }
+    });
+  }
+}
+
 export default yumerApiV2;
