@@ -637,14 +637,18 @@ class YumerApiV2Service {
         type: typeof response,
         keys: response ? Object.keys(response) : 'null',
         isArray: Array.isArray(response),
-        responseData: response
+        hasMessagesPage: response?.MessagesPage ? true : false,
+        messagesPageKeys: response?.MessagesPage ? Object.keys(response.MessagesPage) : 'none'
       });
 
-      // Extrair array de mensagens da resposta
+      // Extrair array de mensagens da estrutura correta da API v2.2.1
       let messages: MessageInfo[] = [];
       
       if (Array.isArray(response)) {
         messages = response;
+      } else if (response?.MessagesPage?.records && Array.isArray(response.MessagesPage.records)) {
+        messages = response.MessagesPage.records;
+        console.log(`[YumerApiV2] Mensagens extraídas do MessagesPage: ${messages.length}/${response.MessagesPage.totalRecords} (Página ${response.MessagesPage.currentPage}/${response.MessagesPage.totalPages})`);
       } else if (response && Array.isArray(response.messages)) {
         messages = response.messages;
       } else if (response && Array.isArray(response.data)) {
@@ -687,16 +691,66 @@ class YumerApiV2Service {
   }
 
   /**
-   * Extrai informações dos chats a partir das mensagens
+   * Extrai informações dos chats a partir das mensagens com paginação
    * Como não há endpoint direto para chats na v2.2.1, extraímos dos remoteJids únicos
    */
   async extractChatsFromMessages(instanceId: string): Promise<ChatInfo[]> {
     try {
-      const messages = await this.getAllRecentMessages(instanceId, 500);
+      console.log(`🔍 [YumerApiV2] Extraindo chats das mensagens para instância: ${instanceId}`);
+      
+      // Buscar primeira página para verificar total de páginas
+      const firstPageResponse = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/chat/search/messages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          limit: 50,
+          offset: 0,
+          sortOrder: 'desc'
+        })
+      }, true, instanceId);
+
+      let allMessages: MessageInfo[] = [];
+      
+      if (firstPageResponse?.MessagesPage?.records) {
+        allMessages = [...firstPageResponse.MessagesPage.records];
+        const totalPages = firstPageResponse.MessagesPage.totalPages || 1;
+        
+        console.log(`📄 [YumerApiV2] Total de páginas: ${totalPages}, primeira página: ${allMessages.length} mensagens`);
+        
+        // Se há mais páginas, buscar todas (limitando a 10 páginas para evitar timeout)
+        const maxPages = Math.min(totalPages, 10);
+        if (maxPages > 1) {
+          console.log(`📋 [YumerApiV2] Buscando ${maxPages - 1} páginas adicionais...`);
+          
+          const pagePromises = [];
+          for (let page = 2; page <= maxPages; page++) {
+            pagePromises.push(
+              this.makeRequest<any>(`/api/v2/instance/${instanceId}/chat/search/messages`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  limit: 50,
+                  offset: (page - 1) * 50,
+                  sortOrder: 'desc'
+                })
+              }, true, instanceId)
+            );
+          }
+          
+          const additionalPages = await Promise.all(pagePromises);
+          
+          additionalPages.forEach(pageResponse => {
+            if (pageResponse?.MessagesPage?.records) {
+              allMessages.push(...pageResponse.MessagesPage.records);
+            }
+          });
+        }
+      }
+
+      console.log(`💬 [YumerApiV2] Total de mensagens coletadas: ${allMessages.length}`);
+
       const chatsMap = new Map<string, ChatInfo>();
 
       // Agrupar mensagens por remoteJid para identificar chats únicos
-      messages.forEach(message => {
+      allMessages.forEach(message => {
         if (message.key?.remoteJid && !chatsMap.has(message.key.remoteJid)) {
           const chat: ChatInfo = {
             remoteJid: message.key.remoteJid,
@@ -708,7 +762,10 @@ class YumerApiV2Service {
         }
       });
 
-      return Array.from(chatsMap.values());
+      const chats = Array.from(chatsMap.values());
+      console.log(`📂 [YumerApiV2] Chats únicos extraídos: ${chats.length}`);
+      
+      return chats;
     } catch (error) {
       console.error('[YumerApiV2] Erro ao extrair chats das mensagens:', error);
       return [];
