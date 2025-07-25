@@ -33,7 +33,6 @@ import { assistantsService } from '@/services/assistantsService';
 import { queueOrchestrationService } from '@/services/queueOrchestrationService';
 import { supabase } from '@/integrations/supabase/client';
 import QueuesKanbanView from './QueuesKanbanView';
-import CampaignsManager from './CampaignsManager';
 
 const QueueManagementCenter = () => {
   const { clientId } = useParams<{ clientId: string }>();
@@ -214,10 +213,9 @@ const QueueManagementCenter = () => {
       </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Visão Geral</TabsTrigger>
             <TabsTrigger value="kanban">Kanban Visual</TabsTrigger>
-            <TabsTrigger value="campaigns">Campanhas</TabsTrigger>
             <TabsTrigger value="queues">Filas</TabsTrigger>
             <TabsTrigger value="metrics">Métricas</TabsTrigger>
           </TabsList>
@@ -308,10 +306,6 @@ const QueueManagementCenter = () => {
           <QueuesKanbanView clientId={clientId!} />
         </TabsContent>
 
-        {/* Campanhas Tab */}
-        <TabsContent value="campaigns">
-          <CampaignsManager clientId={clientId!} />
-        </TabsContent>
 
         {/* Gerenciamento de Filas */}
         <TabsContent value="queues" className="space-y-6">
