@@ -18,6 +18,7 @@ interface YumerWebhookData {
   event?: string;
   instance?: {
     id?: number;
+    instanceId?: string;
     name?: string;
     connectionStatus?: string;
   };
@@ -136,13 +137,13 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
   console.log('🔧 [YUMER-PROCESS] Iniciando processamento de mensagem YUMER');
   
   try {
-    const instanceNumericId = yumerData.instance?.id;
+    const instanceId = yumerData.instance?.instanceId;
     const instanceName = yumerData.instance?.name;
     const messageData = yumerData.data;
 
-    if (!instanceNumericId || !messageData || !instanceName) {
+    if (!instanceId || !messageData || !instanceName) {
       console.error('❌ [YUMER-PROCESS] Dados insuficientes:', { 
-        instanceNumericId, 
+        instanceId, 
         instanceName,
         hasMessageData: !!messageData 
       });
@@ -153,7 +154,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
     }
 
     console.log('🔍 [YUMER-PROCESS] Buscando instância:', {
-      numericId: instanceNumericId,
+      instanceId: instanceId,
       instanceName: instanceName
     });
 
@@ -215,7 +216,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
     if (instanceError || !instance) {
       console.error('❌ [YUMER-PROCESS] Instância não encontrada após todas as tentativas:', {
         instanceName,
-        instanceNumericId,
+        instanceId,
         error: instanceError
       });
 
@@ -223,7 +224,7 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
         JSON.stringify({ 
           error: 'Instance not found', 
           instanceName,
-          instanceNumericId
+          instanceId
         }), 
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
