@@ -7,7 +7,6 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useInstanceSync } from '@/hooks/useInstanceSync';
 import { useRetryWithBackoff } from '@/hooks/useRetryWithBackoff';
-import { getServerUrl } from '@/config/environment';
 
 interface InstanceStatus {
   instanceId: string;
@@ -117,7 +116,7 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      const response = await fetch(`${getServerUrl()}/health`, { 
+      const response = await fetch('https://yumer.yumerflow.app:8083/', { 
         method: 'GET',
         signal: controller.signal
       });

@@ -97,6 +97,12 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
       description: "Marketing Auto"
     },
     { 
+      title: "Instâncias", 
+      icon: Building2, 
+      path: `/client/${clientId}/instances`,
+      description: "Multi-WhatsApp"
+    },
+    { 
       title: "Agendamentos", 
       icon: Calendar, 
       path: `/client/${clientId}/booking`,

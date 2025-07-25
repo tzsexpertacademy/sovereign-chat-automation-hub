@@ -3,7 +3,6 @@ import { Outlet } from "react-router-dom";
 import AdminHeader from "@/components/admin/AdminHeader";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminRouter from "@/components/admin/AdminRouter";
-import SafeComponent from "@/components/SafeComponent";
 
 const AdminDashboard = () => {
   return (
@@ -22,12 +21,7 @@ const AdminDashboard = () => {
               </p>
             </div>
 
-            <SafeComponent 
-              fallbackTitle="Erro no Dashboard Admin"
-              fallbackMessage="Houve um problema ao carregar o dashboard administrativo."
-            >
-              <AdminRouter />
-            </SafeComponent>
+            <AdminRouter />
           </div>
         </main>
       </div>

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Key, Eye, EyeOff, CheckCircle, XCircle } from "lucide-react";
-import { getYumerGlobalApiKey, setYumerGlobalApiKey, clearYumerGlobalApiKey, getServerUrl } from "@/config/environment";
+import { getYumerGlobalApiKey, setYumerGlobalApiKey, clearYumerGlobalApiKey } from "@/config/environment";
 import { useToast } from '@/hooks/use-toast';
 
 const YumerApiKeyConfig = () => {
@@ -65,7 +65,7 @@ const YumerApiKeyConfig = () => {
     setIsTestingKey(true);
     
     try {
-      const response = await fetch(`${getServerUrl()}/instance/fetchInstances`, {
+      const response = await fetch('https://yumer.yumerflow.app:8083/instance/fetchInstances', {
         headers: {
           'Content-Type': 'application/json',
           'apikey': apiKey.trim()

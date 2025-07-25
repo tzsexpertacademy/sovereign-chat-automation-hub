@@ -10,7 +10,7 @@ import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whats
 import { clientsService, ClientData } from "@/services/clientsService";
 import { yumerWhatsappService } from "@/services/yumerWhatsappService";
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
-
+import { InstanceManagerProvider } from "@/contexts/InstanceManagerContext";
 
 const InstancesMonitor = () => {
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
@@ -221,7 +221,8 @@ const InstancesMonitor = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <InstanceManagerProvider>
+      <div className="space-y-6">
         <div className="flex justify-between items-center mb-2">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-gradient bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
@@ -362,6 +363,7 @@ const InstancesMonitor = () => {
           />
         )}
       </div>
+    </InstanceManagerProvider>
   );
 };
 

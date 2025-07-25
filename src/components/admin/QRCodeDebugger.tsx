@@ -4,12 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { QrCode, RefreshCw, CheckCircle, XCircle } from "lucide-react";
-import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
+import { useInstanceManager } from "@/hooks/useInstanceManager";
 import { useToast } from "@/hooks/use-toast";
 
 const QRCodeDebugger = () => {
   const [testInstanceId] = useState("35f36a03-39b2-412c-bba6-01fdd45c2dd3");
-  const { connectInstance, getInstanceStatus, isLoading, serverOnline } = useUnifiedInstanceManager();
+  const { connectInstance, getInstanceStatus, isLoading, websocketConnected } = useInstanceManager();
   const { toast } = useToast();
 
   const instanceStatus = getInstanceStatus(testInstanceId);
@@ -19,10 +19,10 @@ const QRCodeDebugger = () => {
     try {
       console.log('🔍 Iniciando geração de QR Code...');
       
-      if (!serverOnline) {
+      if (!websocketConnected) {
         toast({
-          title: "Servidor Offline",
-          description: "Servidor não está respondendo...",
+          title: "WebSocket Desconectado",
+          description: "Conectando ao WebSocket primeiro...",
           variant: "destructive",
         });
         return;
@@ -74,17 +74,17 @@ const QRCodeDebugger = () => {
       </CardHeader>
       <CardContent className="space-y-4">
         
-        {/* Server Status */}
+        {/* WebSocket Status */}
         <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-          <span className="text-sm font-medium">Servidor:</span>
+          <span className="text-sm font-medium">WebSocket:</span>
           <div className="flex items-center space-x-2">
-            {serverOnline ? (
+            {websocketConnected ? (
               <CheckCircle className="w-4 h-4 text-green-500" />
             ) : (
               <XCircle className="w-4 h-4 text-red-500" />
             )}
-            <span className={`text-sm ${serverOnline ? 'text-green-600' : 'text-red-600'}`}>
-              {serverOnline ? 'Online' : 'Offline'}
+            <span className={`text-sm ${websocketConnected ? 'text-green-600' : 'text-red-600'}`}>
+              {websocketConnected ? 'Conectado' : 'Desconectado'}
             </span>
           </div>
         </div>
@@ -143,7 +143,7 @@ const QRCodeDebugger = () => {
         <div className="flex justify-center">
           <Button 
             onClick={handleGenerateQR} 
-            disabled={loading || !serverOnline}
+            disabled={loading || !websocketConnected}
             className="w-full max-w-sm"
           >
             {loading ? (

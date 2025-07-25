@@ -26,7 +26,6 @@ import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 import { useInstanceCleanup } from "@/hooks/useInstanceCleanup";
-import { getServerUrl } from "@/config/environment";
 import ConnectionDiagnostics from "./ConnectionDiagnostics";
 
 const UnifiedInstancesManager = () => {
@@ -69,7 +68,7 @@ const UnifiedInstancesManager = () => {
 
   const checkServer = async () => {
     try {
-      const result = await fetch(`${getServerUrl()}/health`);
+      const result = await fetch('https://yumer.yumerflow.app:8083/health');
       const isOnline = result.ok;
       setServerOnline(isOnline);
       

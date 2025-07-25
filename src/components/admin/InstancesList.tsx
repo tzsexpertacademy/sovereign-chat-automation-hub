@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
-import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
+import { useInstanceManager } from "@/hooks/useInstanceManager";
 
 interface InstancesListProps {
   instances: WhatsAppInstanceData[];
@@ -39,9 +39,9 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
     disconnectInstance,
     getInstanceStatus,
     isLoading,
-    serverOnline,
+    websocketConnected,
     cleanup
-  } = useUnifiedInstanceManager();
+  } = useInstanceManager();
 
   const getClientName = (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
@@ -160,13 +160,13 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium">Status WebSocket:</span>
                         <div className="flex items-center space-x-1">
-                          {serverOnline ? (
+                          {websocketConnected ? (
                             <Wifi className="w-4 h-4 text-green-500" />
                           ) : (
                             <WifiOff className="w-4 h-4 text-red-500" />
                           )}
                           <span className="text-xs">
-                            {serverOnline ? 'Online' : 'Offline'}
+                            {websocketConnected ? 'Conectado' : 'Desconectado'}
                           </span>
                         </div>
                       </div>

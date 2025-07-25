@@ -12,7 +12,7 @@ import CampaignsManager from '@/components/client/CampaignsManager';
 import FunnelKanban from '@/components/client/FunnelKanban';
 import BookingManager from '@/components/booking/BookingManager';
 import MultipleInstancesManagerFixed from '@/components/client/MultipleInstancesManagerFixed';
-
+import QueueConnectionManagerFixed from '@/components/client/QueueConnectionManagerFixed';
 import AIConfigForm from '@/components/client/AIConfigForm';
 
 const ClientDashboardImproved = () => {
@@ -41,6 +41,10 @@ const ClientDashboardImproved = () => {
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4">Gerenciar Instâncias WhatsApp</h2>
               <div>Componente MultipleInstancesManagerFixed necessário</div>
+            </div>
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">Conectar Filas às Instâncias</h2>
+              <div>Componente QueueConnectionManagerFixed necessário</div>
             </div>
           </div>
         );
