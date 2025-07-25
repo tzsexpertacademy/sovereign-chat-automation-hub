@@ -74,42 +74,83 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
         description: `Importando conversas ${importType} ${importMessages ? 'incluindo mensagens' : 'apenas conversas'}...`
       });
 
-      // Usar o novo serviço de importação real
-      const { conversationImportService } = await import('@/services/conversationImportService');
-      
-      // Configurar callback de progresso
-      conversationImportService.setProgressCallback(setImportProgress);
-      
-      // Buscar instância conectada
-      const { supabase } = await import('@/integrations/supabase/client');
-      const { data: instances } = await supabase
-        .from('whatsapp_instances')
-        .select('instance_id, status')
-        .eq('client_id', clientId)
-        .eq('status', 'connected')
-        .limit(1);
-      
-      const connectedInstance = instances?.[0];
-      if (!connectedInstance) {
-        throw new Error('Nenhuma instância conectada encontrada');
+      // ETAPA 1: Reset/Limpeza se necessário
+      if (resetAllData || clearOldData) {
+        const { databaseResetService } = await import('@/services/databaseResetService');
+        databaseResetService.setProgressCallback((progress) => {
+          setImportProgress({
+            current: progress.current * 0.3, // 30% do progresso total para reset
+            total: 100,
+            message: progress.message
+          });
+        });
+
+        const resetResult = resetAllData 
+          ? await databaseResetService.resetClientData(clientId)
+          : await databaseResetService.clearOldData(clientId, 30); // 30 dias
+
+        if (!resetResult.success) {
+          throw new Error(`Erro no reset: ${resetResult.error}`);
+        }
+
+        toast({
+          title: resetAllData ? "Reset concluído" : "Limpeza concluída",
+          description: "Dados limpos com sucesso. Iniciando importação..."
+        });
       }
 
-      const result = await conversationImportService.syncRealConversations(
-        clientId, 
-        connectedInstance.instance_id
-      );
-      
-      console.log('🎉 [UI] Importação concluída:', result);
+      // ETAPA 2: Importação (API v2.2.1 corrigida)
+      if (importMessages) {
+        const { conversationImportService } = await import('@/services/conversationImportService');
+        
+        // Configurar callback de progresso (70% restante)
+        conversationImportService.setProgressCallback((progress) => {
+          const baseProgress = resetAllData || clearOldData ? 30 : 0;
+          setImportProgress({
+            current: baseProgress + (progress.current * 0.7),
+            total: 100,
+            message: progress.message
+          });
+        });
+        
+        // Buscar instância conectada
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: instances } = await supabase
+          .from('whatsapp_instances')
+          .select('instance_id, status')
+          .eq('client_id', clientId)
+          .in('status', ['connected', 'open']) // Aceitar ambos os status
+          .limit(1);
+        
+        const connectedInstance = instances?.[0];
+        if (!connectedInstance) {
+          throw new Error('Nenhuma instância conectada encontrada. Verifique se o WhatsApp está conectado.');
+        }
+
+        const result = await conversationImportService.syncRealConversations(
+          clientId, 
+          connectedInstance.instance_id
+        );
+        
+        console.log('🎉 [UI] Importação concluída:', result);
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Falha na importação');
+        }
+
+        toast({
+          title: "Importação concluída",
+          description: `${result.imported} conversas importadas com sucesso!`
+        });
+      }
+
+      // Finalizar progresso
+      setImportProgress({ current: 100, total: 100, message: 'Processo concluído!' });
       
       // Manter toast visível por mais tempo ao completar
       setTimeout(() => {
         setShowImportModal(false);
       }, 3000);
-      
-      toast({
-        title: "Importação concluída",
-        description: `${result.imported} conversas importadas com sucesso!`
-      });
 
       // Aguardar 2 segundos antes de recarregar para permitir sincronização
       setTimeout(() => {

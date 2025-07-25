@@ -611,22 +611,77 @@ class YumerApiV2Service {
   // ==================== CHAT MANAGEMENT (v2.2.1) ====================
 
   /**
-   * Lista todos os chats
+   * Busca mensagens com paginação (v2.2.1 - ENDPOINT CORRIGIDO)
+   * Este é o único endpoint funcional para buscar mensagens na API v2.2.1
    */
-  async findChats(instanceId: string): Promise<ChatInfo[]> {
-    return this.makeRequest<ChatInfo[]>(`/api/v2/chat/findChats/${instanceId}`, {
-      method: 'GET'
+  async searchMessages(instanceId: string, options: {
+    remoteJid?: string;
+    limit?: number;
+    offset?: number;
+    fromMe?: boolean;
+    sortOrder?: 'asc' | 'desc';
+  } = {}): Promise<MessageInfo[]> {
+    const searchParams = {
+      limit: options.limit || 50,
+      offset: options.offset || 0,
+      ...options
+    };
+
+    return this.makeRequest<MessageInfo[]>(`/api/v2/instance/${instanceId}/chat/search/messages`, {
+      method: 'POST',
+      body: JSON.stringify(searchParams)
     }, true, instanceId);
   }
 
   /**
-   * Busca mensagens de um chat
+   * Busca todas as mensagens recentes de todos os chats
+   * Usado para identificar chats ativos e suas mensagens
    */
-  async findMessages(instanceId: string, remoteJid: string, limit = 20): Promise<MessageInfo[]> {
-    return this.makeRequest<MessageInfo[]>(`/api/v2/chat/findMessages/${instanceId}`, {
-      method: 'POST',
-      body: JSON.stringify({ remoteJid, limit })
-    }, true, instanceId);
+  async getAllRecentMessages(instanceId: string, limit = 200): Promise<MessageInfo[]> {
+    return this.searchMessages(instanceId, { 
+      limit: Math.min(limit, 500), // API v2.2.1 limita a 50 por página, mas podemos fazer múltiplas requisições
+      sortOrder: 'desc'
+    });
+  }
+
+  /**
+   * Busca mensagens de um chat específico
+   */
+  async findMessages(instanceId: string, remoteJid: string, limit = 50): Promise<MessageInfo[]> {
+    return this.searchMessages(instanceId, { 
+      remoteJid, 
+      limit: Math.min(limit, 50),
+      sortOrder: 'desc'
+    });
+  }
+
+  /**
+   * Extrai informações dos chats a partir das mensagens
+   * Como não há endpoint direto para chats na v2.2.1, extraímos dos remoteJids únicos
+   */
+  async extractChatsFromMessages(instanceId: string): Promise<ChatInfo[]> {
+    try {
+      const messages = await this.getAllRecentMessages(instanceId, 500);
+      const chatsMap = new Map<string, ChatInfo>();
+
+      // Agrupar mensagens por remoteJid para identificar chats únicos
+      messages.forEach(message => {
+        if (message.key?.remoteJid && !chatsMap.has(message.key.remoteJid)) {
+          const chat: ChatInfo = {
+            remoteJid: message.key.remoteJid,
+            name: message.pushName || message.key.remoteJid.split('@')[0],
+            isGroup: message.key.remoteJid.includes('@g.us'),
+            isWaContact: message.key.remoteJid.includes('@s.whatsapp.net')
+          };
+          chatsMap.set(message.key.remoteJid, chat);
+        }
+      });
+
+      return Array.from(chatsMap.values());
+    } catch (error) {
+      console.error('[YumerApiV2] Erro ao extrair chats das mensagens:', error);
+      return [];
+    }
   }
 
   // ==================== CONTACT MANAGEMENT (v2.2.1) ====================

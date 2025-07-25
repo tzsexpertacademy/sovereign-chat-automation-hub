@@ -311,7 +311,7 @@ class TicketsService {
   private async importChatsFromInstance(clientId: string, instanceId: string): Promise<{ success: number; errors: number }> {
     try {
       // Buscar chats da API Yumer V2
-      const chats = await yumerApiV2Service.findChats(instanceId);
+      const chats = await yumerApiV2Service.extractChatsFromMessages(instanceId);
       console.log(`📊 [IMPORT] Progresso: chats encontrados`);
 
       console.log(`📊 [IMPORT] ${chats.length} chats encontrados na instância ${instanceId}`);

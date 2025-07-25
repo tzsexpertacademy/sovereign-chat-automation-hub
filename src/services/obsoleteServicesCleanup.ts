@@ -9,7 +9,7 @@ import yumerApiV2Service from './yumerApiV2Service';
 // Mapeamento de funcionalidades obsoletas para novas
 export const obsoleteServiceMigration = {
   // codechatApiService.ts - OBSOLETO
-  findChats: (instanceName: string) => yumerApiV2Service.findChats(instanceName),
+  findChats: (instanceName: string) => yumerApiV2Service.extractChatsFromMessages(instanceName),
   findMessages: (instanceName: string, remoteJid: string = '') => yumerApiV2Service.findMessages(instanceName, remoteJid),
   findContacts: (instanceName: string) => yumerApiV2Service.findContacts(instanceName),
   

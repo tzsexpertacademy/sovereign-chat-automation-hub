@@ -211,7 +211,7 @@ class RealTimeMessageSync {
     
     try {
       // Buscar chats recentes da API Yumer V2
-      const response = await yumerApiV2Service.findChats(this.config.instanceId);
+      const response = await yumerApiV2Service.extractChatsFromMessages(this.config.instanceId);
       const chats = response || [];
       
       if (chats.length > 0) {

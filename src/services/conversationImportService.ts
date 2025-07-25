@@ -47,19 +47,19 @@ export class ConversationImportService {
 
       const businessId = instanceData.business_business_id;
 
-      // 2. Buscar chats reais da API v2.2.1
+      // 2. Buscar chats reais extraindo das mensagens (API v2.2.1 corrigida)
       this.updateProgress({ 
         totalChats: 0, 
         processedChats: 0, 
         totalMessages: 0, 
         processedMessages: 0, 
         status: 'importing_chats',
-        message: 'Conectando ao WhatsApp...'
+        message: 'Conectando ao WhatsApp e buscando conversas...'
       });
 
-      const chatsData = await yumerApiV2.findChats(instanceId);
+      const chatsData = await yumerApiV2.extractChatsFromMessages(instanceId);
       const chats = Array.isArray(chatsData) ? chatsData : [chatsData];
-      console.log(`📂 [IMPORT] Encontrados ${chats.length} chats reais`);
+      console.log(`📂 [IMPORT] Encontrados ${chats.length} chats extraídos das mensagens`);
 
       let importedConversations = 0;
       let totalMessages = 0;

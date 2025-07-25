@@ -141,7 +141,7 @@ export const YumerApiManager: React.FC = () => {
     setLoading(true);
 
     // Testes de chat
-    await runEndpointTest('Find Chats', async () => ({ success: true, data: await yumerApiV2.findChats(instanceName) }));
+    await runEndpointTest('Find Chats', async () => ({ success: true, data: await yumerApiV2.extractChatsFromMessages(instanceName) }));
     await runEndpointTest('Find Contacts', async () => ({ success: true, data: await yumerApiV2.findContacts(instanceName) }));
     await runEndpointTest('Find Messages', async () => ({ success: true, data: await yumerApiV2.findMessages(instanceName, '5511999999999@c.us') }));
 
