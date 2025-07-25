@@ -201,6 +201,27 @@ class TicketsService {
     }
   }
 
+  // Método para atualizar mensagem existente
+  async updateTicketMessage(messageId: string, updates: Partial<TicketMessage>): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('ticket_messages')
+        .update(updates)
+        .eq('message_id', messageId);
+
+      if (error) {
+        console.error('❌ [TICKETS-SERVICE] Erro ao atualizar mensagem:', error);
+        return false;
+      }
+
+      console.log('✅ [TICKETS-SERVICE] Mensagem atualizada:', messageId, updates);
+      return true;
+    } catch (error) {
+      console.error('❌ [TICKETS-SERVICE] Erro ao atualizar mensagem:', error);
+      return false;
+    }
+  }
+
   async updateTicketTags(ticketId: string, tags: string[]): Promise<void> {
     try {
       const { error } = await supabase

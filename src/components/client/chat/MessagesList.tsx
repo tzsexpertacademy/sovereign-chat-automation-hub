@@ -10,7 +10,7 @@ import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 interface MessagesListProps {
   messages: any[];
   scrollAreaRef: React.RefObject<HTMLDivElement>;
-  getMessageStatus: (messageId: string) => MessageStatusType;
+  getMessageStatus: (messageId: string) => 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 }
 
 const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesListProps) => {

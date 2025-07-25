@@ -33,7 +33,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { toast } = useToast();
   const { markActivity, isOnline } = useOnlineStatus(clientId, true);
   const { simulateHumanTyping, isTyping, isRecording } = useHumanizedTyping(clientId);
-  const { simulateMessageProgression, getMessageStatus } = useMessageStatus();
+  const { getMessageStatus } = useMessageStatus({ ticketId });
   const { ticket, queueInfo, connectedInstance } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
 
@@ -88,7 +88,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       duration, 
       ticket, 
       connectedInstance, 
-      simulateMessageProgression, 
       markActivity
     );
   };
@@ -121,7 +120,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         description: "Configurando webhook e verificando conexão"
       });
 
-      simulateMessageProgression(messageId, false);
+      
       
       console.log('📤 [TICKET-SEND] Iniciando envio:', {
         instanceId: connectedInstance,
@@ -241,7 +240,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       <MessagesList
         messages={messages}
         scrollAreaRef={scrollAreaRef}
-        getMessageStatus={getMessageStatus}
+        getMessageStatus={(messageId: string) => getMessageStatus(messageId)}
       />
 
       {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (

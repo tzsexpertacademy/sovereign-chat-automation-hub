@@ -100,6 +100,17 @@ export interface MessageInfo {
   status: string;
 }
 
+export interface SendMessageResponse {
+  key?: {
+    id: string;
+    fromMe: boolean;
+    remoteJid: string;
+  };
+  message?: any;
+  status?: string;
+  timestamp?: number;
+}
+
 class YumerApiV2Service {
   private baseUrl: string;
   private globalApiKey: string;
@@ -458,20 +469,22 @@ class YumerApiV2Service {
   }
 
   /**
-   * Envia mensagem de texto com suporte completo a opções
+   * Envia mensagem de texto (CORRIGIDO v2.2.1)
    */
-  async sendText(instanceId: string, number: string, text: string, options?: Partial<SendMessageOptions>): Promise<MessageInfo> {
-    const messageOptions = this.prepareMessageOptions(options);
+  async sendText(instanceId: string, number: string, text: string, options?: {
+    delay?: number;
+    presence?: string;
+    externalAttributes?: any;
+  }): Promise<SendMessageResponse> {
+    const body = {
+      number,
+      text, // CORRIGIDO: campo correto da API v2.2.1
+      ...options
+    };
     
-    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/text`, {
+    return this.makeRequest<SendMessageResponse>(`/api/v2/message/sendText/${instanceId}`, {
       method: 'POST',
-      body: JSON.stringify({
-        recipient: number,
-        textMessage: {
-          text: text
-        },
-        options: messageOptions
-      })
+      body: JSON.stringify(body)
     }, true, instanceId);
   }
 

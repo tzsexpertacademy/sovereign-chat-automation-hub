@@ -30,7 +30,7 @@ export const useTicketRealtime = (clientId: string) => {
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
   const { splitMessage } = useSmartMessageSplit();
-  const { simulateMessageProgression } = useMessageStatus();
+  
 
   // Função para normalizar dados da mensagem do WhatsApp - COM LOGS DETALHADOS
   const normalizeWhatsAppMessage = useCallback((message: any) => {
@@ -488,8 +488,6 @@ export const useTicketRealtime = (clientId: string) => {
             console.log(`📤 RESULTADO envio bloco ${i + 1}:`, sendResult.success ? 'SUCCESS' : 'FAILED');
             
             if (sendResult.success) {
-              simulateMessageProgression(aiMessageId, true);
-              
               await ticketsService.addTicketMessage({
                 ticket_id: ticketId,
                 message_id: aiMessageId,
@@ -536,7 +534,7 @@ export const useTicketRealtime = (clientId: string) => {
       processingRef.current.delete(ticketId);
       console.log(`✅ PROCESSAMENTO finalizado (${processingKey})`);
     }
-  }, [clientId, simulateHumanTyping, markAsRead, splitMessage, markActivity, simulateMessageProgression]);
+  }, [clientId, simulateHumanTyping, markAsRead, splitMessage, markActivity]);
 
   // Hook para agrupamento de mensagens
   const { addMessage, getBatchInfo, markBatchAsCompleted } = useMessageBatch(async (chatId: string, messages: any[]) => {

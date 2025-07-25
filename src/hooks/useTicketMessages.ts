@@ -45,7 +45,7 @@ export const useTicketMessages = (ticketId: string) => {
     // Carregamento inicial
     loadMessages();
 
-    // Polling mais frequente (15 segundos)
+    // Polling otimizado (30 segundos ou quando necessário)
     const startPolling = () => {
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current);
@@ -54,13 +54,13 @@ export const useTicketMessages = (ticketId: string) => {
       pollTimeoutRef.current = setTimeout(() => {
         const timeSinceLastLoad = Date.now() - lastLoadRef.current;
         
-        // Fazer polling se realtime não estiver conectado OU se passou mais de 15 segundos
-        if (!realtimeConnectedRef.current || timeSinceLastLoad > 15000) {
-          console.log(`🔄 Polling executado (realtime: ${realtimeConnectedRef.current ? 'conectado' : 'desconectado'})`);
+        // Polling apenas se realtime falhou ou muito tempo sem sync
+        if (!realtimeConnectedRef.current || timeSinceLastLoad > 45000) {
+          console.log(`🔄 Polling backup (realtime: ${realtimeConnectedRef.current ? 'OK' : 'FALHA'})`);
           loadMessages(true);
         }
-        startPolling(); // Continuar polling
-      }, 15000); // Reduzido para 15 segundos
+        startPolling();
+      }, 30000); // Otimizado para 30 segundos
     };
 
     // Função para tentar reconectar realtime

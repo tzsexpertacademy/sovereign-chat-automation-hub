@@ -13,7 +13,6 @@ export const useAudioHandling = (ticketId: string) => {
     duration: number,
     ticket: any,
     connectedInstance: string,
-    simulateMessageProgression: (id: string, isAudio: boolean) => void,
     markActivity: () => void
   ) => {
     if (!ticket || !connectedInstance) {
@@ -38,7 +37,6 @@ export const useAudioHandling = (ticketId: string) => {
       });
 
       // Iniciar indicadores visuais
-      simulateMessageProgression(messageId, true);
       markActivity();
 
       // Registrar mensagem como processando

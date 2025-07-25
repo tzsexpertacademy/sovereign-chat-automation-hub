@@ -153,6 +153,20 @@ const ModernTicketInterface: React.FC<ModernTicketInterfaceProps> = ({
 
       markActivity();
 
+      // Primeiro salvar como "enviando"
+      await ticketsService.addTicketMessage({
+        ticket_id: ticketId,
+        message_id: messageId,
+        from_me: true,
+        sender_name: 'Atendente',
+        content: newMessage,
+        message_type: 'text',
+        is_internal_note: false,
+        is_ai_response: false,
+        processing_status: 'sending',
+        timestamp: new Date().toISOString()
+      });
+
       const response = await whatsappService.sendTextMessage({
         instanceId: connectedInstance,
         to: ticket.chat_id,
@@ -160,26 +174,23 @@ const ModernTicketInterface: React.FC<ModernTicketInterfaceProps> = ({
       });
 
       if (response.success) {
-        await ticketsService.addTicketMessage({
-          ticket_id: ticketId,
-          message_id: response.messageId || messageId,
-          from_me: true,
-          sender_name: 'Atendente',
-          content: newMessage,
-          message_type: 'text',
-          is_internal_note: false,
-          is_ai_response: false,
+        // Atualizar para enviado
+        await ticketsService.updateTicketMessage(messageId, {
           processing_status: 'sent',
-          timestamp: new Date().toISOString()
+          message_id: response.messageId || messageId
         });
 
         setNewMessage('');
         
         toast({
-          title: "✅ Mensagem Enviada",
-          description: "Mensagem entregue com sucesso"
+          title: "✅ Enviada",
+          description: "Mensagem processada com sucesso"
         });
       } else {
+        // Marcar como falha
+        await ticketsService.updateTicketMessage(messageId, {
+          processing_status: 'failed'
+        });
         throw new Error(response.error || 'Falha no envio');
       }
     } catch (error) {
