@@ -59,7 +59,8 @@ export class ConversationImportService {
       });
       
       console.log('📱 [IMPORT] Pré-carregando contatos para nomes corretos...');
-      await contactCacheImproved.loadContactsForInstance(instanceId);
+      const contactsLoaded = await contactCacheImproved.loadContactsForInstance(instanceId);
+      console.log(`📱 [IMPORT] Cache de contatos carregado: ${contactsLoaded.size} contatos disponíveis`);
 
       // 3. SEGUNDO: Buscar chats usando endpoint correto
       this.updateProgress({ 
@@ -109,13 +110,22 @@ export class ConversationImportService {
           console.log(`💬 [IMPORT] Buscando mensagens específicas para chat: ${chat.remoteJid}`);
           const messages = await yumerApiV2.findMessages(instanceId, chat.remoteJid, 50);
           console.log(`💬 [IMPORT] Chat ${chat.remoteJid}: ${messages.length} mensagens encontradas`);
+          
+          // 5.1. Validar que mensagens pertencem ao chat correto
+          const filteredMessages = messages.filter(msg => {
+            const msgRemoteJid = msg.keyRemoteJid || msg.key?.remoteJid;
+            return msgRemoteJid === chat.remoteJid;
+          });
+          if (filteredMessages.length !== messages.length) {
+            console.warn(`⚠️ [IMPORT] Chat ${chat.remoteJid}: ${messages.length - filteredMessages.length} mensagens não pertencem a este chat (filtradas)`);
+          }
 
           // 6. Criar/atualizar ticket no Supabase com nome correto do contato
-          const ticketResult = await this.createOrUpdateTicket(clientId, chat, instanceId, messages);
+          const ticketResult = await this.createOrUpdateTicket(clientId, chat, instanceId, filteredMessages);
           
           if (ticketResult.success && ticketResult.ticketId) {
             // 7. Importar mensagens específicas do chat
-            const messageCount = await this.importMessagesForTicket(ticketResult.ticketId, messages, instanceId);
+            const messageCount = await this.importMessagesForTicket(ticketResult.ticketId, filteredMessages, instanceId);
             totalMessages += messageCount;
             importedConversations++;
             
@@ -259,10 +269,13 @@ export class ConversationImportService {
         let senderName = 'Cliente';
         if (message.fromMe) {
           senderName = 'Você';
-        } else if (message.pushName && message.pushName !== message.remoteJid?.split('@')[0]) {
+        } else if (message.pushName && message.pushName !== (message.keyRemoteJid || message.key?.remoteJid)?.split('@')[0]) {
           senderName = message.pushName;
-        } else if (message.remoteJid) {
-          senderName = contactCacheImproved.getContactName(instanceId, message.remoteJid);
+        } else {
+          const remoteJid = message.keyRemoteJid || message.key?.remoteJid;
+          if (remoteJid) {
+            senderName = contactCacheImproved.getContactName(instanceId, remoteJid);
+          }
         }
 
         // Converter timestamp correto (ISO string para timestamp)

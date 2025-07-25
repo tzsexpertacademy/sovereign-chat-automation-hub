@@ -117,15 +117,26 @@ export interface ContactsPage {
 }
 
 export interface MessageInfo {
-  key: {
+  messageId?: string;
+  keyId?: string;
+  keyFromMe?: boolean;
+  keyRemoteJid?: string;
+  keyParticipant?: string;
+  pushName?: string;
+  contentType?: string;
+  content?: any;
+  messageTimestamp?: number;
+  createdAt?: string;
+  fromMe?: boolean;
+  remoteJid?: string;
+  // Legacy compatibility
+  key?: {
     remoteJid: string;
     fromMe: boolean;
     id: string;
   };
-  pushName?: string;
-  message: any;
-  messageTimestamp: number;
-  status: string;
+  message?: any;
+  status?: string;
 }
 
 export interface SendMessageResponse {
@@ -650,15 +661,27 @@ class YumerApiV2Service {
     sortOrder?: 'asc' | 'desc';
   } = {}): Promise<MessageInfo[]> {
     try {
-      const searchParams = {
-        limit: options.limit || 50,
-        offset: options.offset || 0,
-        ...options
-      };
+      // Estrutura correta para API v2.2.1 conforme documentação
+      const searchBody: any = {};
+      
+      // Adicionar filtros específicos se fornecidos
+      if (options.remoteJid) {
+        searchBody.keyRemoteJid = options.remoteJid; // API v2.2.1 usa keyRemoteJid
+      }
+      
+      if (options.fromMe !== undefined) {
+        searchBody.keyFromMe = options.fromMe;
+      }
 
-      const response = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/chat/search/messages`, {
+      console.log(`📋 [YumerApiV2] Buscando mensagens com filtro:`, {
+        keyRemoteJid: searchBody.keyRemoteJid,
+        keyFromMe: searchBody.keyFromMe,
+        limit: options.limit || 50
+      });
+
+      const response = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/chat/search/messages?page=1&sort=${options.sortOrder || 'desc'}`, {
         method: 'POST',
-        body: JSON.stringify(searchParams)
+        body: JSON.stringify(searchBody)
       }, true, instanceId);
 
       console.log('[YumerApiV2] API Response Structure:', {
