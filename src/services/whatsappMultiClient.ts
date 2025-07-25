@@ -1,11 +1,12 @@
 
 /**
- * LEGACY COMPATIBILITY SERVICE
- * Este serviço mantém compatibilidade TOTAL com código existente
- * Redirecionando para o novo yumerApiV2Service
+ * WHATSAPP MULTI CLIENT SERVICE v2.2.1
+ * Conectado diretamente ao yumerApiV2Service - SEM MOCKS
+ * Mantém compatibilidade total com código existente
  */
 
 import yumerApiV2 from './yumerApiV2Service';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface WhatsAppClient {
   instanceId: string;
@@ -81,7 +82,12 @@ export class WhatsAppMultiClient {
 
   async getClients(): Promise<WhatsAppClient[]> {
     try {
+      console.log('🔍 [WHATSAPP-CLIENT] Buscando clientes reais via API v2.2.1');
+      
+      // Buscar instâncias diretamente da API real
       const instances = await yumerApiV2.listInstances();
+      console.log(`📊 [WHATSAPP-CLIENT] ${instances.length} instâncias encontradas`);
+      
       this.clients = instances.map(instance => ({
         instanceId: instance.instanceName,
         instanceName: instance.instanceName,
@@ -93,9 +99,11 @@ export class WhatsAppMultiClient {
         hasQrCode: false,
         qrCode: undefined
       }));
+      
+      console.log('✅ [WHATSAPP-CLIENT] Clientes carregados com sucesso');
       return this.clients;
     } catch (error) {
-      console.error('[WhatsAppMultiClient] Error getting clients:', error);
+      console.error('❌ [WHATSAPP-CLIENT] Erro ao buscar clientes:', error);
       return [];
     }
   }

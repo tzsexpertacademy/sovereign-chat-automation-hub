@@ -1,6 +1,6 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { whatsappService } from '@/services/whatsappMultiClient';
+import unifiedWhatsAppService, { UnifiedWhatsAppMessage } from '@/services/unifiedWhatsAppService';
 import { useHumanizedTyping } from './useHumanizedTyping';
 import { useMessageBatch } from './useMessageBatch';
 import { useAutoReactions } from './useAutoReactions';
@@ -64,12 +64,12 @@ export const useHumanizedWhatsApp = (clientId: string, initialConfig?: Partial<H
   const smartSplit = useSmartMessageSplit();
   const autoReactions = useAutoReactions(clientId, config.enabled);
 
-  // Message batch processing with humanized callback
+  // Message batch processing with REAL API integration
   const messageBatch = useMessageBatch(
     useCallback(async (chatId: string, messages: any[]) => {
       if (!config.enabled) return;
       
-      console.log(`🤖 PROCESSAMENTO HUMANIZADO: ${messages.length} mensagens para ${chatId}`);
+      console.log(`🤖 [HUMANIZED] Processamento REAL - ${messages.length} mensagens para ${chatId}`);
       
       setIsProcessing(true);
       onlineStatus.setOnline();
@@ -78,6 +78,7 @@ export const useHumanizedWhatsApp = (clientId: string, initialConfig?: Partial<H
         await processMessagesHumanized(chatId, messages);
       } finally {
         setIsProcessing(false);
+        onlineStatus.setOffline();
       }
     }, [config.enabled])
   );
@@ -283,8 +284,29 @@ Responda apenas com a mensagem, sem explicações adicionais.`;
         // Simulate typing
         await humanizedTyping.simulateHumanTyping(chatId, chunk);
         
-        // Send message
-        const result = await whatsappService.sendMessage(clientId, chatId, chunk);
+        // Send message using UNIFIED API (directly connected to v2.2.1)
+        const messageData: UnifiedWhatsAppMessage = {
+          instanceId: clientId,
+          chatId,
+          text: chunk,
+          options: {
+            delay: Math.floor(chunk.length * 100 + Math.random() * 500 + 800),
+            presence: 'composing',
+            humanized: true,
+            personality: config.personality.name,
+            externalAttributes: {
+              source: 'humanized-whatsapp',
+              personality: config.personality.name,
+              chunkIndex: i + 1,
+              totalChunks: chunks.length,
+              tone: config.personality.tone,
+              emotionalLevel: config.personality.emotionalLevel,
+              timestamp: Date.now()
+            }
+          }
+        };
+        
+        const result = await unifiedWhatsAppService.sendTextMessage(messageData);
         
         logEntry.actions.push({
           type: 'message_sent',
@@ -292,17 +314,24 @@ Responda apenas com a mensagem, sem explicações adicionais.`;
           totalChunks: chunks.length,
           delay,
           timestamp: Date.now(),
-          result
+          result: result.success ? 'success' : 'failed',
+          messageId: result.messageId,
+          error: result.error
         });
         
-        console.log(`📤 RESPOSTA HUMANIZADA ${i + 1}/${chunks.length}: "${chunk.substring(0, 50)}..."`, result);
+        console.log(`📤 [HUMANIZED] Resposta enviada ${i + 1}/${chunks.length}:`, {
+          text: chunk.substring(0, 50) + '...',
+          delay,
+          success: result.success,
+          messageId: result.messageId
+        });
       }
       
     } catch (error) {
       console.error('❌ Erro ao enviar resposta humanizada:', error);
       throw error;
     }
-  }, [smartSplit, config.personality, humanizedTyping, whatsappService, clientId]);
+  }, [smartSplit, config.personality, humanizedTyping, unifiedWhatsAppService, clientId]);
 
   // Public methods
   const processIncomingMessage = useCallback((message: any) => {
