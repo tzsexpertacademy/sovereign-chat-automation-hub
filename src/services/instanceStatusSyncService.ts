@@ -5,6 +5,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import yumerApiV2 from './yumerApiV2Service';
+import unifiedYumerService from './unifiedYumerService';
 
 export interface InstanceStatusInfo {
   instanceId: string;
@@ -64,23 +65,37 @@ class InstanceStatusSyncService {
           updated_at: new Date().toISOString()
         };
 
-        // Se conectado, limpar QR code
-        if (isConnected) {
-          updateData.has_qr_code = false;
-          updateData.qr_code = null;
-          updateData.qr_expires_at = null;
+      // Se conectado, limpar QR code e configurar webhook
+      if (isConnected) {
+        updateData.has_qr_code = false;
+        updateData.qr_code = null;
+        updateData.qr_expires_at = null;
+        updateData.webhook_enabled = true; // Marcar webhook como habilitado
+        
+        // Configurar webhook automaticamente
+        try {
+          console.log(`🔧 [STATUS-SYNC] Configurando webhook para instância conectada: ${instanceId}`);
+          const webhookResult = await unifiedYumerService.ensureWebhookConfigured(instanceId);
+          if (webhookResult.success) {
+            console.log(`✅ [STATUS-SYNC] Webhook configurado automaticamente: ${instanceId}`);
+          } else {
+            console.warn(`⚠️ [STATUS-SYNC] Falha ao configurar webhook: ${instanceId}`, webhookResult.error);
+          }
+        } catch (webhookError) {
+          console.error(`❌ [STATUS-SYNC] Erro ao configurar webhook: ${instanceId}`, webhookError);
         }
+      }
 
-        const { error } = await supabase
-          .from('whatsapp_instances')
-          .update(updateData)
-          .eq('instance_id', instanceId);
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .update(updateData)
+        .eq('instance_id', instanceId);
 
-        if (error) {
-          console.error('❌ [STATUS-SYNC] Erro ao atualizar banco:', error);
-        } else {
-          console.log(`✅ [STATUS-SYNC] Status atualizado: ${instanceId} → ${realStatus}`);
-        }
+      if (error) {
+        console.error('❌ [STATUS-SYNC] Erro ao atualizar banco:', error);
+      } else {
+        console.log(`✅ [STATUS-SYNC] Status atualizado: ${instanceId} → ${realStatus}`);
+      }
 
         // Atualizar também na tabela clients se necessário
         if (clientId && isConnected) {

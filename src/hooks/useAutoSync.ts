@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import instanceStatusSyncService from '@/services/instanceStatusSyncService';
 import { useToast } from '@/hooks/use-toast';
+import unifiedYumerService from '@/services/unifiedYumerService';
 
 interface InstanceStatus {
   instanceId: string;
@@ -42,6 +43,21 @@ export const useAutoSync = (instanceIds: string[], options: UseAutoSyncOptions =
             lastSync: new Date(),
             connectionState: statusInfo.connectionState
           };
+          
+          // NOVO: Configurar webhook automaticamente se conectado
+          if (newStatus.isConnected) {
+            try {
+              console.log(`🔧 [AUTO-SYNC] Configurando webhook para instância conectada: ${id}`);
+              const webhookResult = await unifiedYumerService.ensureWebhookConfigured(id);
+              if (webhookResult.success) {
+                console.log(`✅ [AUTO-SYNC] Webhook configurado automaticamente: ${id}`);
+              } else {
+                console.warn(`⚠️ [AUTO-SYNC] Falha ao configurar webhook: ${id}`, webhookResult.error);
+              }
+            } catch (webhookError) {
+              console.error(`❌ [AUTO-SYNC] Erro ao configurar webhook: ${id}`, webhookError);
+            }
+          }
           
           setStatuses(prev => {
             const oldStatus = prev[id];

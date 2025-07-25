@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useAutoSync } from "@/hooks/useAutoSync";
 import { cn } from "@/lib/utils";
+import { WebhookStatusIndicator } from "./WebhookStatusIndicator";
 
 interface RealTimeStatusIndicatorProps {
   instanceId: string;
@@ -193,6 +194,12 @@ export const RealTimeStatusIndicator = ({
           </Button>
         </div>
       </div>
+
+      {/* Webhook Status */}
+      <WebhookStatusIndicator 
+        instanceId={instanceId}
+        className="mt-2"
+      />
 
       {/* Detalhes (opcional) */}
       {showDetails && (
