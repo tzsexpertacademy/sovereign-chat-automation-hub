@@ -17,14 +17,14 @@ import { useParams, useNavigate } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useToast } from "@/hooks/use-toast";
-import { useInstanceManager } from "@/contexts/InstanceManagerContext";
+import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 import EnhancedInstancesManager from "./EnhancedInstancesManager";
 
 const ClientInstancesOverview = () => {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { getInstanceStatus } = useInstanceManager();
+  const { getInstanceStatus } = useUnifiedInstanceManager();
   
   const [client, setClient] = useState<ClientData | null>(null);
   const [instances, setInstances] = useState<WhatsAppInstanceData[]>([]);
