@@ -71,11 +71,20 @@ export const QuickApiTest: React.FC = () => {
 
     setIsLoading(true);
     try {
-      // Testar envio de mensagem para instância existente
+      // Testar envio de mensagem para instância existente com externalAttributes
       const result = await yumerApiV2.sendText(
         '01K0YMVG844Q7FHPSPN0CDZ0T5',
         '5511999999999',
-        'Teste de mensagem do sistema'
+        'Teste de mensagem do sistema v2.2.1 ✅',
+        {
+          delay: 800,
+          presence: 'composing',
+          externalAttributes: {
+            source: 'lovable-test',
+            timestamp: Date.now(),
+            testId: 'api-v2.2.1-test'
+          }
+        }
       );
       
       setTestResult({
@@ -97,6 +106,44 @@ export const QuickApiTest: React.FC = () => {
       } else {
         toast.error(`❌ Erro: ${error.message}`);
       }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTestAdvanced = async () => {
+    if (!apiKey.trim()) {
+      toast.error('Configure a API Key primeiro');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Testar funcionalidades avançadas
+      await yumerApiV2.sendButtons(
+        '01K0YMVG844Q7FHPSPN0CDZ0T5',
+        '5511999999999',
+        'Menu de Teste',
+        'Escolha uma opção:',
+        [
+          { type: 'reply', displayText: 'Opção 1', id: 'opt1' },
+          { type: 'reply', displayText: 'Opção 2', id: 'opt2' }
+        ]
+      );
+      
+      setTestResult({
+        success: true,
+        message: 'Botões interativos enviados com sucesso!'
+      });
+      toast.success('✅ Funcionalidades avançadas funcionando!');
+    } catch (error: any) {
+      console.error('Erro no teste avançado:', error);
+      setTestResult({
+        success: false,
+        error: error.message,
+        message: 'Falha no teste avançado'
+      });
+      toast.error(`❌ Erro: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -142,6 +189,14 @@ export const QuickApiTest: React.FC = () => {
             variant="secondary"
           >
             {isLoading ? 'Enviando...' : 'Testar Envio'}
+          </Button>
+
+          <Button 
+            onClick={handleTestAdvanced}
+            disabled={isLoading || !apiKey.trim()}
+            variant="outline"
+          >
+            {isLoading ? 'Testando...' : 'Testar Avançado'}
           </Button>
         </div>
 

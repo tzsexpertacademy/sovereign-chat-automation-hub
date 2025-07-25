@@ -178,11 +178,25 @@ export class WhatsAppMultiClient {
         return { success: false, error: 'Business ID not found for instance' };
       }
 
-      // Usar novo endpoint v2.2.1 com business_id
+      // Preparar externalAttributes com informações de contexto
+      const externalAttributes = {
+        source: 'whatsapp-multi-client',
+        clientId: instanceData?.client_id,
+        businessId: instanceData?.business_business_id,
+        timestamp: Date.now(),
+        messageType: 'text'
+      };
+
+      // Usar novo endpoint v2.2.1 com business_id e externalAttributes
       const result = await yumerApiV2.sendText(
         options.instanceId, 
         options.to, 
-        options.message
+        options.message,
+        {
+          delay: Math.random() * 1000 + 800, // Delay humanizado entre 800-1800ms
+          presence: 'composing',
+          externalAttributes
+        }
       );
       
       return {

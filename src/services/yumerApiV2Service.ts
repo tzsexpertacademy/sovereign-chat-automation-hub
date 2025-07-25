@@ -43,6 +43,18 @@ export interface QRCode {
   base64: string;
 }
 
+export interface SendMessageOptions {
+  delay?: number;
+  presence?: 'composing' | 'recording' | 'available' | 'unavailable';
+  quoteMessageById?: string;
+  groupMention?: {
+    hidden?: boolean;
+    everyone?: boolean;
+  };
+  externalAttributes?: string | object;
+  messageId?: string;
+}
+
 export interface SendMessageData {
   number: string;
   text?: string;
@@ -52,6 +64,7 @@ export interface SendMessageData {
     caption?: string;
     filename?: string;
   };
+  options?: SendMessageOptions;
 }
 
 export interface WebhookData {
@@ -388,9 +401,30 @@ class YumerApiV2Service {
   // ==================== MESSAGE SENDING (v2.2.1) ====================
 
   /**
-   * Envia mensagem de texto
+   * Helper para preparar opções de mensagem
    */
-  async sendText(instanceId: string, number: string, text: string): Promise<MessageInfo> {
+  private prepareMessageOptions(customOptions?: Partial<SendMessageOptions>): SendMessageOptions {
+    const defaultOptions: SendMessageOptions = {
+      delay: 1200,
+      presence: "composing"
+    };
+
+    const mergedOptions = { ...defaultOptions, ...customOptions };
+
+    // Converter externalAttributes para string se for objeto
+    if (mergedOptions.externalAttributes && typeof mergedOptions.externalAttributes === 'object') {
+      mergedOptions.externalAttributes = JSON.stringify(mergedOptions.externalAttributes);
+    }
+
+    return mergedOptions;
+  }
+
+  /**
+   * Envia mensagem de texto com suporte completo a opções
+   */
+  async sendText(instanceId: string, number: string, text: string, options?: Partial<SendMessageOptions>): Promise<MessageInfo> {
+    const messageOptions = this.prepareMessageOptions(options);
+    
     return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/text`, {
       method: 'POST',
       body: JSON.stringify({
@@ -398,18 +432,17 @@ class YumerApiV2Service {
         textMessage: {
           text: text
         },
-        options: {
-          delay: 1200,
-          presence: "composing"
-        }
+        options: messageOptions
       })
     }, true, instanceId);
   }
 
   /**
-   * Envia mídia (imagem, vídeo, áudio, documento)
+   * Envia mídia (imagem, vídeo, áudio, documento) com suporte completo a opções
    */
   async sendMedia(instanceId: string, data: SendMessageData): Promise<MessageInfo> {
+    const messageOptions = this.prepareMessageOptions(data.options);
+    
     return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/media`, {
       method: 'POST',
       body: JSON.stringify({
@@ -420,6 +453,46 @@ class YumerApiV2Service {
           caption: data.media?.caption,
           fileName: data.media?.filename
         },
+        options: messageOptions
+      })
+    }, true, instanceId);
+  }
+
+  /**
+   * Envia áudio WhatsApp (formato .ogg ou .oga) com suporte completo a opções
+   */
+  async sendWhatsAppAudio(instanceId: string, number: string, audioUrl: string, options?: Partial<SendMessageOptions>): Promise<MessageInfo> {
+    const messageOptions = this.prepareMessageOptions({
+      ...options,
+      presence: "recording" // Força presence de recording para áudios
+    });
+    
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/audio`, {
+      method: 'POST',
+      body: JSON.stringify({
+        recipient: number,
+        audioMessage: {
+          url: audioUrl
+        },
+        options: messageOptions
+      })
+    }, true, instanceId);
+  }
+
+  /**
+   * Envia localização
+   */
+  async sendLocation(instanceId: string, number: string, latitude: number, longitude: number, name?: string, address?: string): Promise<MessageInfo> {
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/location`, {
+      method: 'POST',
+      body: JSON.stringify({
+        recipient: number,
+        locationMessage: {
+          latitude,
+          longitude,
+          name: name || 'Localização',
+          address: address || ''
+        },
         options: {
           delay: 1200,
           presence: "composing"
@@ -429,19 +502,56 @@ class YumerApiV2Service {
   }
 
   /**
-   * Envia áudio WhatsApp (formato .ogg ou .oga)
+   * Envia botões interativos
    */
-  async sendWhatsAppAudio(instanceId: string, number: string, audioUrl: string): Promise<MessageInfo> {
-    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/audio`, {
+  async sendButtons(instanceId: string, number: string, title: string, description: string, buttons: Array<{type: string, displayText: string, id: string}>): Promise<MessageInfo> {
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/buttons`, {
       method: 'POST',
       body: JSON.stringify({
         recipient: number,
-        audioMessage: {
-          url: audioUrl
+        buttonsMessage: {
+          title,
+          description,
+          buttons
         },
         options: {
           delay: 1200,
-          presence: "recording"
+          presence: "composing"
+        }
+      })
+    }, true, instanceId);
+  }
+
+  /**
+   * Envia lista interativa
+   */
+  async sendList(instanceId: string, number: string, title: string, description: string, sections: Array<{buttonText: string, list: Array<{title: string, rows: Array<{title: string, description?: string, id?: string}>}>}>): Promise<MessageInfo> {
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/list`, {
+      method: 'POST',
+      body: JSON.stringify({
+        recipient: number,
+        listMessage: {
+          title,
+          description,
+          sections
+        },
+        options: {
+          delay: 1200,
+          presence: "composing"
+        }
+      })
+    }, true, instanceId);
+  }
+
+  /**
+   * Envia reação a mensagem
+   */
+  async sendReaction(instanceId: string, messageId: string, emoji: string): Promise<MessageInfo> {
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/reaction?message=${messageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        reactionMessage: {
+          reaction: emoji
         }
       })
     }, true, instanceId);
