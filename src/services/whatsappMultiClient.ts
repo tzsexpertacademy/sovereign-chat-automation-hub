@@ -201,7 +201,7 @@ export class WhatsAppMultiClient {
         options.to, 
         options.message,
         {
-          delay: Math.random() * 1000 + 800, // Delay humanizado entre 800-1800ms
+          delay: Math.floor(Math.random() * 1000 + 800), // Delay humanizado entre 800-1800ms (integer)
           presence: 'composing',
           externalAttributes
         }

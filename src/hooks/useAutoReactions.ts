@@ -62,8 +62,8 @@ export const useAutoReactions = (clientId: string, enabled = true) => {
     setProcessingReactions(prev => new Set(prev).add(reactionKey));
     
     try {
-      // Delay natural
-      const delay = Math.random() * (config.delay.max - config.delay.min) + config.delay.min;
+      // Delay natural (convertido para integer)
+      const delay = Math.floor(Math.random() * (config.delay.max - config.delay.min) + config.delay.min);
       await new Promise(resolve => setTimeout(resolve, delay));
       
       // Para demonstrar reação, vamos apenas enviar uma mensagem com emoji

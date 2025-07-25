@@ -153,7 +153,7 @@ const HumanizedChat = ({ clientId, chatId, chatName }: HumanizedChatProps) => {
 
         setMessages(prev => [...prev, aiMessage]);
         setIsLoading(false);
-      }, Math.random() * 3000 + 2000);
+      }, Math.floor(Math.random() * 3000 + 2000));
 
     } catch (error) {
       console.error('Erro ao processar mensagem:', error);
