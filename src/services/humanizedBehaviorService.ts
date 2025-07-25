@@ -186,7 +186,7 @@ class HumanizedBehaviorService {
     try {
       console.log(`⌨️ Parando simulação de digitação para ${chatId}`);
       
-      await clientYumerService.setTypingStatus(instanceId, chatId, false);
+      await mockClientService.setTypingStatus();
       this.ongoingOperations.delete(chatId);
       
       console.log(`✅ Digitação parada para ${chatId}`);
@@ -205,7 +205,7 @@ class HumanizedBehaviorService {
       console.log(`🎤 Iniciando simulação de gravação para ${chatId}`);
       this.ongoingOperations.set(chatId, 'recording');
 
-      const success = await clientYumerService.setRecordingStatus(instanceId, chatId, true);
+      const success = await mockClientService.setRecordingStatus();
       
       if (success) {
         console.log(`✅ Status de gravação ativado para ${chatId}`);
@@ -231,7 +231,7 @@ class HumanizedBehaviorService {
     try {
       console.log(`🎤 Parando simulação de gravação para ${chatId}`);
       
-      await clientYumerService.setRecordingStatus(instanceId, chatId, false);
+      await mockClientService.setRecordingStatus();
       this.ongoingOperations.delete(chatId);
       
       console.log(`✅ Gravação parada para ${chatId}`);
@@ -249,7 +249,7 @@ class HumanizedBehaviorService {
     try {
       console.log(`📱 Definindo status online: ${online}`);
       
-      await clientYumerService.setOnlineStatus(instanceId, online);
+      await mockClientService.setOnlineStatus();
       
       console.log(`✅ Status online definido: ${online}`);
     } catch (error) {
@@ -264,7 +264,7 @@ class HumanizedBehaviorService {
     try {
       console.log(`✓✓ Marcando mensagem como lida para ${chatId}`);
       
-      await clientYumerService.markAsRead(instanceId, chatId);
+      await mockClientService.markAsRead();
       
       console.log(`✅ Mensagem marcada como lida para ${chatId}`);
     } catch (error) {
