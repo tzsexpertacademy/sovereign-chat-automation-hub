@@ -19,10 +19,34 @@ export const useRealTimeInstanceSync = (options: RealTimeInstanceSyncOptions = {
     try {
       console.log(`🔄 [REAL-TIME-SYNC] Verificando ${instanceId} na API Yumer`);
       
+      // Buscar business_id da instância
+      const { data: instanceData } = await supabase
+        .from('whatsapp_instances')
+        .select('business_business_id')
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (!instanceData) {
+        console.error(`❌ [REAL-TIME-SYNC] Instância ${instanceId} não encontrada no banco`);
+        return;
+      }
+
+      // Buscar token do cliente
+      const { data: clientData } = await supabase
+        .from('clients')
+        .select('business_token')
+        .eq('business_id', instanceData.business_business_id)
+        .single();
+
+      if (!clientData?.business_token) {
+        console.error(`❌ [REAL-TIME-SYNC] Token não encontrado para business ${instanceData.business_business_id}`);
+        return;
+      }
+      
       // Verificar status na API Yumer
       const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}`, {
         headers: {
-          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJCX0lEIjoiMDFLMFczNUMxSDZCR1hHVFZBRDIzQlFIMk4iLCJBX04iOiJjb2RlY2hhdF9hcGkiLCJpYXQiOjE3NTMyODk1MDIsImV4cCI6MTc1MzI4OTUwMiwic3ViIjoiQl9UIn0.kor1K2uH4dQyoi3gdp09TdoSS9-TZpVaeatWQbWUreg`,
+          'Authorization': `Bearer ${clientData.business_token}`,
           'Content-Type': 'application/json'
         }
       });
@@ -40,8 +64,12 @@ export const useRealTimeInstanceSync = (options: RealTimeInstanceSyncOptions = {
           newStatus = 'connected';
           isConnected = true;
           phoneNumber = data.WhatsApp?.ownerJid || null;
+          console.log(`✅ [REAL-TIME-SYNC] Instância conectada: ${instanceId}, phone: ${phoneNumber}`);
         } else if (data.state === 'active' && data.connection === 'close') {
           newStatus = 'qr_ready';
+          console.log(`🔶 [REAL-TIME-SYNC] Instância aguardando QR: ${instanceId}`);
+        } else {
+          console.log(`⚠️ [REAL-TIME-SYNC] Status não mapeado: state=${data.state}, connection=${data.connection}`);
         }
 
         // Atualizar banco de dados
