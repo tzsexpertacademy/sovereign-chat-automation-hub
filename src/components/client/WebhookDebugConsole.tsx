@@ -97,7 +97,34 @@ export const WebhookDebugConsole: React.FC<WebhookDebugConsoleProps> = ({
             title: "🔧 Webhook Configurado",
             description: "Webhook foi configurado durante o teste!"
           });
+        } else {
+          toast({
+            title: "❌ Erro no Webhook", 
+            description: `Falha ao configurar webhook: ${configResult.error}`,
+            variant: "destructive"
+          });
         }
+      }
+
+      // 6. Teste de envio de mensagem
+      try {
+        console.log('📤 [DEBUG] Testando envio de mensagem...');
+        const testResult = await unifiedYumerService.sendMessage(instanceId, '5547996451886', '🧪 Teste de envio automático do sistema CRM');
+        
+        if (testResult.success) {
+          toast({
+            title: "✅ Teste de Envio",
+            description: "Mensagem de teste enviada com sucesso!"
+          });
+        } else {
+          toast({
+            title: "❌ Erro no Envio",
+            description: `Falha no teste de envio: ${testResult.error}`,
+            variant: "destructive"
+          });
+        }
+      } catch (sendError) {
+        console.error('❌ [DEBUG] Erro no teste de envio:', sendError);
       }
 
       toast({

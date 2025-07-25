@@ -273,36 +273,54 @@ class ClientYumerService {
   // ========== CONFIGURAÇÃO DE WEBHOOK ==========
 
   /**
-   * Configura webhook para a instância
+   * Configura webhook para a instância - v2.2.1
    */
-  async setWebhook(clientId: string, instanceName: string, webhookUrl: string): Promise<boolean> {
+  async setWebhook(clientId: string, instanceName: string, webhookUrl: string): Promise<{ webhookId?: string; success: boolean }> {
     const businessToken = await this.getBusinessToken(clientId);
     
     try {
-      await this.makeRequest(
-        `/webhook/set/${instanceName}`,
+      // 1. Criar webhook
+      const createResponse = await this.makeRequest<any>(
+        `/api/v2/instance/${instanceName}/webhook`,
         {
-          method: 'PUT',
+          method: 'POST',
           body: JSON.stringify({
-            enabled: true,
+            name: 'CRM Webhook',
             url: webhookUrl,
-            events: [
-              'qrcode.updated',
-              'connection.update',
-              'messages.upsert',
-              'chats.upsert',
-              'contacts.upsert'
-            ],
-            webhook_by_events: true,
-            webhook_base64: false
+            enabled: true,
+            headers: {
+              'Content-Type': 'application/json'
+            }
           })
         },
         businessToken
       );
-      return true;
+
+      const webhookId = createResponse.webhookId;
+      
+      if (webhookId) {
+        // 2. Configurar eventos
+        await this.makeRequest(
+          `/api/v2/instance/${instanceName}/webhook/${webhookId}/events`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({
+              qrcodeUpdate: true,
+              stateInstance: true,
+              messagesUpsert: true,
+              connectionUpdate: true,
+              chatsUpsert: true,
+              contactsUpsert: true
+            })
+          },
+          businessToken
+        );
+      }
+      
+      return { webhookId, success: true };
     } catch (error) {
       console.error('Erro ao configurar webhook:', error);
-      return false;
+      return { success: false };
     }
   }
 
@@ -328,14 +346,14 @@ class ClientYumerService {
   // ========== ENVIO DE MENSAGENS ==========
 
   /**
-   * Envia mensagem de texto
+   * Envia mensagem de texto - Endpoint correto v2.2.1
    */
   async sendTextMessage(clientId: string, instanceName: string, number: string, text: string): Promise<boolean> {
     const businessToken = await this.getBusinessToken(clientId);
     
     try {
       await this.makeRequest(
-        `/message/sendText/${instanceName}`,
+        `/api/v2/instance/${instanceName}/chat/sendText`,
         {
           method: 'POST',
           body: JSON.stringify({ number, text })

@@ -311,49 +311,160 @@ class UnifiedYumerService {
     // URL do webhook correta
     const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-unified-webhook';
     
-    const webhookConfig = {
-      url: webhookUrl,
-      events: [
-        'qr.updated',
-        'connection.update', 
-        'messages.upsert',
-        'chats.upsert',
-        'contacts.upsert'
-      ],
-      enabled: true
-    };
+    try {
+      // Primeiro, verificar se já existe um webhook
+      const existingWebhooks = await this.makeRequest(`/api/v2/instance/${instanceId}/webhook`, {
+        method: 'GET'
+      }, true, false);
 
-    const result = await this.makeRequest(`/api/v2/instance/${instanceId}/webhook`, {
-      method: 'POST',
-      body: JSON.stringify(webhookConfig)
-    });
+      let webhookId: string | undefined;
 
-    if (result.success) {
-      // Atualizar status no banco
-      try {
-        const { supabase } = await import('@/integrations/supabase/client');
-        await supabase
-          .from('whatsapp_instances')
-          .update({ 
-            webhook_enabled: true,
-            updated_at: new Date().toISOString() 
+      // Se já existe webhook, usar o primeiro
+      if (existingWebhooks.success && existingWebhooks.data && Array.isArray(existingWebhooks.data) && existingWebhooks.data.length > 0) {
+        const firstWebhook = existingWebhooks.data[0] as any;
+        webhookId = firstWebhook?.webhookId;
+        console.log(`🔍 [WEBHOOK] Webhook existente encontrado: ${webhookId}`);
+
+        // Atualizar webhook existente
+        const updateResult = await this.makeRequest(`/api/v2/instance/${instanceId}/webhook/${webhookId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name: 'CRM Webhook Updated',
+            url: webhookUrl,
+            enabled: true,
+            headers: {
+              'Content-Type': 'application/json'
+            }
           })
-          .eq('instance_id', instanceId);
-        
-        console.log(`✅ [WEBHOOK] Status atualizado no banco para: ${instanceId}`);
-      } catch (error) {
-        console.warn(`⚠️ [WEBHOOK] Erro ao atualizar banco:`, error);
-      }
-    }
+        }, true, false);
 
-    return result;
+        if (!updateResult.success) {
+          console.warn('⚠️ [WEBHOOK] Erro ao atualizar webhook existente:', updateResult.error);
+        }
+      } else {
+        // Criar novo webhook
+        const createResult = await this.makeRequest(`/api/v2/instance/${instanceId}/webhook`, {
+          method: 'POST',
+          body: JSON.stringify({
+            name: 'CRM Webhook',
+            url: webhookUrl,
+            enabled: true,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          })
+        }, true, false);
+
+        if (createResult.success && createResult.data) {
+          const webhookData = createResult.data as any;
+          webhookId = webhookData?.webhookId;
+          console.log(`✅ [WEBHOOK] Novo webhook criado: ${webhookId}`);
+        } else {
+          console.error('❌ [WEBHOOK] Erro ao criar webhook:', createResult.error);
+          return createResult;
+        }
+      }
+
+      // Configurar eventos específicos
+      if (webhookId) {
+        const eventsResult = await this.makeRequest(`/api/v2/instance/${instanceId}/webhook/${webhookId}/events`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            messagesUpsert: true,
+            connectionUpdate: true,
+            qrcodeUpdate: true,
+            chatsUpsert: true,
+            contactsUpsert: true,
+            messagesUpdate: true,
+            presenceUpdate: true
+          })
+        }, true, false);
+
+        if (eventsResult.success) {
+          // Atualizar status no banco
+          try {
+            const { supabase } = await import('@/integrations/supabase/client');
+            await supabase
+              .from('whatsapp_instances')
+              .update({ 
+                webhook_enabled: true,
+                updated_at: new Date().toISOString()
+              })
+              .eq('instance_id', instanceId);
+            
+            console.log('✅ [WEBHOOK] Status atualizado no banco');
+          } catch (dbError) {
+            console.warn('⚠️ [WEBHOOK] Erro ao atualizar status no banco:', dbError);
+          }
+
+          console.log('✅ [WEBHOOK] Webhook configurado com sucesso');
+          return { success: true, data: { webhookId } };
+        } else {
+          console.error('❌ [WEBHOOK] Erro ao configurar eventos:', eventsResult.error);
+          return eventsResult;
+        }
+      }
+
+      return { success: false, error: 'Webhook ID não encontrado' };
+    } catch (error) {
+      console.error('❌ [WEBHOOK] Erro ao configurar webhook:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Erro desconhecido' 
+      };
+    }
   }
 
   // Verificar configuração do webhook
   async getWebhookConfig(instanceId: string): Promise<{ success: boolean; data?: any; error?: string }> {
-    return this.makeRequest(`/api/v2/instance/${instanceId}/webhook`, {
-      method: 'GET'
-    });
+    console.log(`🔍 [WEBHOOK] Obtendo configuração do webhook para: ${instanceId}`);
+
+    try {
+      const result = await this.makeRequest(`/api/v2/instance/${instanceId}/webhook`, {
+        method: 'GET'
+      }, true, false);
+
+      if (result.success && result.data) {
+        // Se result.data é um array, pegar o primeiro webhook
+        const webhookData = Array.isArray(result.data) ? result.data[0] : result.data;
+        
+        console.log('📋 [WEBHOOK] Configuração do webhook:', webhookData);
+        
+        // Verificar se webhook está habilitado no banco
+        try {
+          const { supabase } = await import('@/integrations/supabase/client');
+          const { data: instance } = await supabase
+            .from('whatsapp_instances')
+            .select('webhook_enabled')
+            .eq('instance_id', instanceId)
+            .single();
+            
+          const webhookEnabled = instance?.webhook_enabled || false;
+          const isApiEnabled = webhookData?.enabled || false;
+          
+          return { 
+            success: true, 
+            data: { 
+              ...webhookData, 
+              enabled: webhookEnabled && isApiEnabled,
+              webhook_enabled: webhookEnabled,
+              api_enabled: isApiEnabled
+            } 
+          };
+        } catch (dbError) {
+          console.warn('⚠️ [WEBHOOK] Erro ao verificar status no banco:', dbError);
+          return { success: true, data: webhookData };
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('❌ [WEBHOOK] Erro ao obter webhook:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Erro desconhecido' 
+      };
+    }
   }
 
   // Garantir que webhook está configurado
@@ -768,7 +879,7 @@ class UnifiedYumerService {
       console.warn(`⚠️ [UNIFIED-YUMER] Webhook não configurado:`, webhookResult.error);
     }
 
-    return this.makeRequest(`/api/v2/instance/${instanceId}/send/text`, {
+    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/sendText`, {
       method: 'POST',
       body: JSON.stringify({
         number: chatId,
