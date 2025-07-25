@@ -1,3 +1,8 @@
+/**
+ * Yumer API v2.2.1 Unified Webhook Handler
+ * Processa todos os eventos da API Yumer incluindo mensagens, status e QR codes
+ */
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -13,6 +18,8 @@ interface WebhookEvent {
   data: any;
   timestamp: number;
   business_id?: string;
+  server_url?: string;
+  apikey?: string;
 }
 
 interface WhatsAppMessage {
@@ -66,10 +73,11 @@ serve(async (req) => {
     // Parse incoming webhook data
     const webhookData: WebhookEvent = await req.json()
     
-    console.log(`📥 [YUMER-UNIFIED-WEBHOOK] Evento recebido:`, {
+    console.log(`📥 [YUMER-WEBHOOK-v2.2.1] Evento recebido:`, {
       instance: webhookData.instance,
       event: webhookData.event,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      dataKeys: Object.keys(webhookData.data || {})
     })
 
     // Verificar se a instância existe no banco
@@ -102,30 +110,39 @@ serve(async (req) => {
       instanceData.client_id = fallbackInstance.client_id
     }
 
-    // Processar evento baseado no tipo
+    // Processar evento baseado no tipo (API v2.2.1)
     switch (webhookData.event) {
+      case 'qr.updated':
       case 'qrcode.updated':
+      case 'qrcodeUpdated':
         await handleQRCodeUpdate(supabase, webhookData, instanceData)
         break
         
       case 'connection.update':
+      case 'connectionUpdated':
         await handleConnectionUpdate(supabase, webhookData, instanceData)
         break
         
       case 'messages.upsert':
+      case 'messagesUpsert':
         await handleMessagesUpsert(supabase, webhookData, instanceData)
         break
         
       case 'chats.upsert':
+      case 'chats.set':
+      case 'chatsUpsert':
         await handleChatsUpsert(supabase, webhookData, instanceData)
         break
         
       case 'contacts.upsert':
+      case 'contactsUpsert':
         await handleContactsUpsert(supabase, webhookData, instanceData)
         break
         
       default:
-        console.log(`📄 [YUMER-UNIFIED-WEBHOOK] Evento não processado: ${webhookData.event}`)
+        console.log(`📄 [YUMER-WEBHOOK-v2.2.1] Evento não processado: ${webhookData.event}`)
+        // Salvar evento não processado para debug
+        await saveUnprocessedEvent(supabase, webhookData)
     }
 
     // Atualizar timestamp da instância
@@ -408,4 +425,25 @@ function extractMessageType(message: any): string {
   if (message.contactMessage) return 'contact'
   
   return 'text'
+}
+
+/**
+ * Salva eventos não processados para debug
+ */
+async function saveUnprocessedEvent(supabase: any, webhookData: WebhookEvent) {
+  try {
+    await supabase.from('system_logs').insert({
+      level: 'info',
+      message: `Evento webhook não processado: ${webhookData.event}`,
+      metadata: {
+        event: webhookData.event,
+        instance: webhookData.instance,
+        dataKeys: Object.keys(webhookData.data || {}),
+        timestamp: webhookData.timestamp || Date.now()
+      },
+      source: 'yumer-webhook-v2.2.1'
+    });
+  } catch (error) {
+    console.error('❌ [UNPROCESSED-EVENT] Erro ao salvar evento:', error);
+  }
 }

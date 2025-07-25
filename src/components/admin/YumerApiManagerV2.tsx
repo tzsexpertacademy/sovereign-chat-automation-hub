@@ -164,13 +164,7 @@ export const YumerApiManagerV2: React.FC = () => {
     
     setLoading(true);
     try {
-      await yumerApiV2.setWebhook(selectedInstance, {
-        enabled: true,
-        url: webhookUrl,
-        events: webhookEvents,
-        webhook_by_events: true,
-        webhook_base64: false
-      });
+      await yumerApiV2.setInstanceWebhook(selectedInstance, webhookUrl, webhookEvents);
       toast({ title: 'Sucesso', description: 'Webhook configurado' });
     } catch (error: any) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });

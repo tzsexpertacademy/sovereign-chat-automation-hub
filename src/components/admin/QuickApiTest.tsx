@@ -149,6 +149,40 @@ export const QuickApiTest: React.FC = () => {
     }
   };
 
+  const handleTestWebhook = async () => {
+    if (!apiKey.trim()) {
+      toast.error('Configure a API Key primeiro');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Configurar webhook automaticamente
+      const result = await yumerApiV2.configureInstanceWebhook('01K0YMVG844Q7FHPSPN0CDZ0T5');
+      
+      setTestResult({
+        success: result,
+        message: result ? 'Webhook configurado com sucesso!' : 'Falha ao configurar webhook'
+      });
+      
+      if (result) {
+        toast.success('✅ Webhook configurado para receber mensagens em tempo real!');
+      } else {
+        toast.error('❌ Falha ao configurar webhook');
+      }
+    } catch (error: any) {
+      console.error('Erro ao configurar webhook:', error);
+      setTestResult({
+        success: false,
+        error: error.message,
+        message: 'Falha na configuração do webhook'
+      });
+      toast.error(`❌ Erro: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <Card className="w-full max-w-2xl">
       <CardHeader>
@@ -197,6 +231,14 @@ export const QuickApiTest: React.FC = () => {
             variant="outline"
           >
             {isLoading ? 'Testando...' : 'Testar Avançado'}
+          </Button>
+
+          <Button 
+            onClick={handleTestWebhook}
+            disabled={isLoading || !apiKey.trim()}
+            variant="secondary"
+          >
+            {isLoading ? 'Configurando...' : 'Config. Webhook'}
           </Button>
         </div>
 

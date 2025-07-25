@@ -377,26 +377,7 @@ class YumerApiV2Service {
     return result;
   }
 
-  // ==================== WEBHOOK MANAGEMENT (v2.2.1) ====================
-
-  /**
-   * Configura webhook para instância
-   */
-  async setWebhook(instanceId: string, webhookData: WebhookData): Promise<{ message: string }> {
-    return this.makeRequest<{ message: string }>(`/api/v2/webhook/set/${instanceId}`, {
-      method: 'POST',
-      body: JSON.stringify(webhookData)
-    }, true, instanceId);
-  }
-
-  /**
-   * Obtém configuração do webhook
-   */
-  async getWebhook(instanceId: string): Promise<WebhookData> {
-    return this.makeRequest<WebhookData>(`/api/v2/webhook/find/${instanceId}`, {
-      method: 'GET'
-    }, true, instanceId);
-  }
+  // ==================== MESSAGE SENDING (v2.2.1) ====================
 
   // ==================== MESSAGE SENDING (v2.2.1) ====================
 
@@ -673,6 +654,60 @@ class YumerApiV2Service {
       hasApiKey: !!this.globalApiKey,
       version: 'v2.2.1'
     };
+  }
+
+  // ==================== WEBHOOK CONFIGURATION (v2.2.1) ====================
+
+  /**
+   * Configura webhook para uma instância (nova implementação v2.2.1)
+   */
+  async setInstanceWebhook(instanceId: string, webhookUrl: string, events?: string[]): Promise<any> {
+    const defaultEvents = [
+      'qr.updated',
+      'connection.update', 
+      'messages.upsert',
+      'chats.upsert',
+      'contacts.upsert'
+    ];
+
+    return this.makeRequest(`/api/v2/webhook/set/${instanceId}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        url: webhookUrl,
+        enabled: true,
+        events: events || defaultEvents,
+        webhook_by_events: true
+      })
+    }, true, instanceId);
+  }
+
+  /**
+   * Obtém configuração do webhook (nova implementação v2.2.1)
+   */
+  async getWebhookConfig(instanceId: string): Promise<any> {
+    return this.makeRequest(`/api/v2/webhook/find/${instanceId}`, {
+      method: 'GET'
+    }, true, instanceId);
+  }
+
+  /**
+   * Configura webhook automaticamente para instância
+   */
+  async configureInstanceWebhook(instanceId: string): Promise<boolean> {
+    try {
+      const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-unified-webhook';
+      
+      console.log(`🔗 [WEBHOOK-CONFIG] Configurando webhook para ${instanceId}...`);
+      
+      const result = await this.setInstanceWebhook(instanceId, webhookUrl);
+      
+      console.log(`✅ [WEBHOOK-CONFIG] Webhook configurado:`, result);
+      
+      return true;
+    } catch (error) {
+      console.error(`❌ [WEBHOOK-CONFIG] Erro ao configurar webhook:`, error);
+      return false;
+    }
   }
 }
 

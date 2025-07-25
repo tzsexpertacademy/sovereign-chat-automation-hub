@@ -123,7 +123,7 @@ export const YumerApiManager: React.FC = () => {
     // Testes de instância
     await runEndpointTest('Connection State', async () => ({ success: true, data: await yumerApiV2.getConnectionState(instanceName) }));
     await runEndpointTest('QR Code', async () => ({ success: true, data: await yumerApiV2.getQRCode(instanceName) }));
-    await runEndpointTest('Webhook Config', async () => ({ success: true, data: await yumerApiV2.getWebhook(instanceName) }));
+    await runEndpointTest('Webhook Config', async () => ({ success: true, data: await yumerApiV2.getWebhookConfig(instanceName) }));
 
     setLoading(false);
   };
