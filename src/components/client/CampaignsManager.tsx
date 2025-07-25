@@ -4,9 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Users, Send, Target, Calendar, BarChart3, FileText } from "lucide-react";
+import CampaignWizard from "./CampaignWizard";
 
-const CampaignsManager = () => {
+interface CampaignsManagerProps {
+  clientId: string;
+}
+
+const CampaignsManager: React.FC<CampaignsManagerProps> = ({ clientId }) => {
   const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [showWizard, setShowWizard] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -15,7 +21,10 @@ const CampaignsManager = () => {
           <h1 className="text-3xl font-bold text-gray-900">Gerenciar Campanhas</h1>
           <p className="text-gray-600">Crie e gerencie campanhas de mensagens em massa</p>
         </div>
-        <Button className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600">
+        <Button 
+          className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
+          onClick={() => setShowWizard(true)}
+        >
           <Plus className="w-4 h-4 mr-2" />
           Nova Campanha
         </Button>
@@ -211,6 +220,17 @@ const CampaignsManager = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Campaign Wizard */}
+      <CampaignWizard
+        clientId={clientId}
+        open={showWizard}
+        onClose={() => setShowWizard(false)}
+        onSuccess={() => {
+          // Recarregar campanhas
+          console.log('Campanha criada com sucesso');
+        }}
+      />
     </div>
   );
 };

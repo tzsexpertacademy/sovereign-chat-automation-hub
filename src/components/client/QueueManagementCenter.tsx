@@ -211,13 +211,14 @@ const QueueManagementCenter = () => {
         </p>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-          <TabsTrigger value="queues">Filas</TabsTrigger>
-          <TabsTrigger value="connections">Conexões</TabsTrigger>
-          <TabsTrigger value="metrics">Métricas</TabsTrigger>
-        </TabsList>
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+            <TabsTrigger value="kanban">Kanban</TabsTrigger>
+            <TabsTrigger value="queues">Filas</TabsTrigger>
+            <TabsTrigger value="campaigns">Campanhas</TabsTrigger>
+            <TabsTrigger value="metrics">Métricas</TabsTrigger>
+          </TabsList>
 
         {/* Visão Geral */}
         <TabsContent value="overview" className="space-y-6">
