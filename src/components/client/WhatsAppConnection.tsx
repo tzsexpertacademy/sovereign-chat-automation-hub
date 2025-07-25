@@ -23,7 +23,8 @@ import {
   Clock,
   Edit3,
   Save,
-  X
+  X,
+  Zap
 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +32,7 @@ import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 import { useNavigate } from "react-router-dom";
+import instanceStatusSyncService from "@/services/instanceStatusSyncService";
 
 const WhatsAppConnection = () => {
   const { clientId } = useParams();
@@ -43,6 +45,7 @@ const WhatsAppConnection = () => {
   const [creating, setCreating] = useState(false);
   const [editingName, setEditingName] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [syncingStatus, setSyncingStatus] = useState<Set<string>>(new Set());
 
   // Hook unificado corrigido com sincronização de dados reais
   const { 
@@ -53,6 +56,45 @@ const WhatsAppConnection = () => {
     serverOnline,
     refreshStatus
   } = useUnifiedInstanceManager(instances);
+
+  // Sincronizar status após escaneamento do QR
+  const handleStatusSync = async (instanceId: string) => {
+    setSyncingStatus(prev => new Set([...prev, instanceId]));
+    
+    try {
+      console.log(`🔄 [STATUS-SYNC] Iniciando sync manual para: ${instanceId}`);
+      
+      const statusInfo = await instanceStatusSyncService.performManualSync(instanceId, clientId);
+      
+      if (statusInfo) {
+        console.log(`📊 [STATUS-SYNC] Status atualizado:`, statusInfo);
+        
+        // Recarregar dados para refletir mudanças
+        await loadData();
+        
+        if (statusInfo.isConnected) {
+          toast({
+            title: "✅ WhatsApp Conectado!",
+            description: "Sua instância foi conectada com sucesso",
+          });
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ [STATUS-SYNC] Erro no sync:', error);
+      toast({
+        title: "⚠️ Erro na verificação",
+        description: "Não foi possível verificar o status da conexão",
+        variant: "destructive"
+      });
+    } finally {
+      setSyncingStatus(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(instanceId);
+        return newSet;
+      });
+    }
+  };
 
   useEffect(() => {
     if (clientId) {
@@ -556,6 +598,32 @@ const WhatsAppConnection = () => {
                     autoRefreshInterval={60000}
                     showInstructions={true}
                   />
+                  
+                  {/* Botão de Verificação de Status */}
+                  <div className="mt-3 pt-3 border-t border-blue-200">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleStatusSync(instance.instance_id)}
+                      disabled={syncingStatus.has(instance.instance_id)}
+                      className="w-full bg-white hover:bg-blue-50"
+                    >
+                      {syncingStatus.has(instance.instance_id) ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Verificando conexão...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-4 h-4 mr-2" />
+                          Escaniei o QR - Verificar Status
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-xs text-blue-600 mt-1 text-center">
+                      Clique após escanear o QR Code com seu WhatsApp
+                    </p>
+                  </div>
                 </div>
               )}
               
@@ -639,6 +707,21 @@ const WhatsAppConnection = () => {
                       )}
                     </Button>
                   )}
+                  
+                  {/* Botão de Sync Status para todas as instâncias */}
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => handleStatusSync(instance.instance_id)}
+                    disabled={syncingStatus.has(instance.instance_id)}
+                  >
+                    {syncingStatus.has(instance.instance_id) ? (
+                      <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <Zap className="w-4 h-4 mr-1" />
+                    )}
+                    Verificar Status
+                  </Button>
                   
                   <Button 
                     size="sm" 
