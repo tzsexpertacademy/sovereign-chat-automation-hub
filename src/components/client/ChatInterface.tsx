@@ -12,18 +12,8 @@ import TicketChatInterface from './TicketChatInterface';
 import TicketActionsMenu from './TicketActionsMenu';
 import { useTicketRealtime } from '@/hooks/useTicketRealtime';
 import TypingIndicator from './TypingIndicator';
-import ImportProgressModal from './ImportProgressModal';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import DiscreteImportPanel from './DiscreteImportPanel';
+import DiscreteProgressToast from './DiscreteProgressToast';
 
 interface ChatInterfaceProps {
   clientId: string;
@@ -84,15 +74,41 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
         description: `Importando conversas ${importType} ${importMessages ? 'incluindo mensagens' : 'apenas conversas'}...`
       });
 
-      const result = await ticketsService.importConversationsFromWhatsApp(clientId);
+      // Usar o novo serviço de importação real
+      const { conversationImportService } = await import('@/services/conversationImportService');
+      
+      // Configurar callback de progresso
+      conversationImportService.setProgressCallback(setImportProgress);
+      
+      // Buscar instância conectada
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instances } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, status')
+        .eq('client_id', clientId)
+        .eq('status', 'connected')
+        .limit(1);
+      
+      const connectedInstance = instances?.[0];
+      if (!connectedInstance) {
+        throw new Error('Nenhuma instância conectada encontrada');
+      }
+
+      const result = await conversationImportService.syncRealConversations(
+        clientId, 
+        connectedInstance.instance_id
+      );
       
       console.log('🎉 [UI] Importação concluída:', result);
       
-      setShowImportModal(false);
+      // Manter toast visível por mais tempo ao completar
+      setTimeout(() => {
+        setShowImportModal(false);
+      }, 3000);
       
       toast({
         title: "Importação concluída",
-        description: `${result.success} conversas importadas com sucesso. ${result.errors > 0 ? `${result.errors} erros encontrados.` : ''}`
+        description: `${result.imported} conversas importadas com sucesso!`
       });
 
       // Aguardar 2 segundos antes de recarregar para permitir sincronização
@@ -221,135 +237,19 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
               </div>
             </div>
             
-            {/* Opções de Importação Melhoradas */}
-            <div className="space-y-3 mb-3">
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="importMessages" 
-                    checked={importMessages}
-                    onCheckedChange={(checked) => setImportMessages(checked as boolean)}
-                    disabled={isImporting}
-                  />
-                  <label htmlFor="importMessages" className="text-sm text-gray-600 cursor-pointer">
-                    Importar mensagens (últimas 10 por chat)
-                  </label>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="clearOldData" 
-                    checked={clearOldData}
-                    onCheckedChange={(checked) => {
-                      setClearOldData(checked as boolean);
-                      if (checked) setResetAllData(false); // Não pode ter ambos
-                    }}
-                    disabled={isImporting || resetAllData}
-                  />
-                  <label htmlFor="clearOldData" className="text-sm text-gray-600 cursor-pointer">
-                    Limpar dados antigos (7+ dias)
-                  </label>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="resetAllData" 
-                    checked={resetAllData}
-                    onCheckedChange={(checked) => {
-                      setResetAllData(checked as boolean);
-                      if (checked) setClearOldData(false); // Não pode ter ambos
-                    }}
-                    disabled={isImporting || clearOldData}
-                  />
-                  <label htmlFor="resetAllData" className="text-sm text-red-600 cursor-pointer font-medium">
-                    🔥 Reset completo (APAGAR TUDO)
-                  </label>
-                </div>
-              </div>
-            </div>
-            
-            {/* Botão de Importação com Confirmação para Reset */}
-            {resetAllData ? (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={isImporting}
-                    className="w-full"
-                  >
-                    {isImporting ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                        Executando Reset...
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle className="w-4 h-4 mr-2" />
-                        Reset Completo + Importar
-                      </>
-                    )}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle className="flex items-center space-x-2 text-red-600">
-                      <AlertTriangle className="w-5 h-5" />
-                      <span>⚠️ Confirmar Reset Completo</span>
-                    </AlertDialogTitle>
-                    <AlertDialogDescription className="space-y-2">
-                      <p className="font-medium">Esta ação irá:</p>
-                      <ul className="list-disc list-inside space-y-1 text-sm">
-                        <li>🗑️ <strong>APAGAR TODOS</strong> os tickets existentes</li>
-                        <li>🗑️ <strong>APAGAR TODAS</strong> as mensagens salvas</li>
-                        <li>🔄 Importar conversas do zero</li>
-                        <li>📨 {importMessages ? 'Incluir mensagens do WhatsApp' : 'Apenas conversas (sem mensagens)'}</li>
-                      </ul>
-                      <p className="text-red-600 font-medium mt-3">
-                        ⚠️ Esta ação é IRREVERSÍVEL!
-                      </p>
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={handleImportConversations}
-                      className="bg-red-600 hover:bg-red-700"
-                    >
-                      Confirmar Reset Completo
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            ) : (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={handleImportConversations}
-                disabled={isImporting}
-                className="w-full"
-              >
-                {isImporting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Importando...
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4 mr-2" />
-                    Importar Conversas
-                  </>
-                )}
-              </Button>
-            )}
-            
-            {clearOldData && !resetAllData && (
-              <p className="text-xs text-orange-600 mt-2 flex items-center">
-                <Trash2 className="w-3 h-3 mr-1" />
-                Dados antigos (7+ dias) serão removidos
-              </p>
-            )}
           </div>
+
+          {/* Painel de Importação Discreto */}
+          <DiscreteImportPanel
+            isImporting={isImporting}
+            onImport={handleImportConversations}
+            clearOldData={clearOldData}
+            setClearOldData={setClearOldData}
+            importMessages={importMessages}
+            setImportMessages={setImportMessages}
+            resetAllData={resetAllData}
+            setResetAllData={setResetAllData}
+          />
 
           {/* Lista de conversas */}
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -507,11 +407,11 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
         </div>
       </div>
 
-      {/* Modal de Progresso de Importação */}
-      <ImportProgressModal 
-        isOpen={showImportModal}
+      {/* Toast de Progresso Discreto */}
+      <DiscreteProgressToast 
         progress={importProgress}
-        onClose={() => setShowImportModal(false)}
+        isVisible={showImportModal}
+        onDismiss={() => setShowImportModal(false)}
       />
     </>
   );

@@ -7,11 +7,14 @@ import { supabase } from '@/integrations/supabase/client';
 import yumerApiV2 from './yumerApiV2Service';
 
 export interface ImportProgress {
-  totalChats: number;
-  processedChats: number;
-  totalMessages: number;
-  processedMessages: number;
-  status: 'idle' | 'importing_chats' | 'importing_messages' | 'completed' | 'error';
+  current: number;
+  total: number;
+  message: string;
+  totalChats?: number;
+  processedChats?: number;
+  totalMessages?: number;
+  processedMessages?: number;
+  status?: 'idle' | 'importing_chats' | 'importing_messages' | 'completed' | 'error';
   currentChat?: string;
   error?: string;
 }
@@ -50,7 +53,8 @@ export class ConversationImportService {
         processedChats: 0, 
         totalMessages: 0, 
         processedMessages: 0, 
-        status: 'importing_chats' 
+        status: 'importing_chats',
+        message: 'Conectando ao WhatsApp...'
       });
 
       const chatsData = await yumerApiV2.findChats(instanceId);
@@ -65,7 +69,8 @@ export class ConversationImportService {
         processedChats: 0, 
         totalMessages: 0, 
         processedMessages: 0, 
-        status: 'importing_chats' 
+        status: 'importing_chats',
+        message: `Encontradas ${chats.length} conversas para importar`
       });
 
       // 3. Processar cada chat
@@ -78,7 +83,8 @@ export class ConversationImportService {
           totalMessages: totalMessages, 
           processedMessages: 0, 
           status: 'importing_messages',
-          currentChat: chat.name || chat.remoteJid
+          currentChat: chat.name || chat.remoteJid,
+          message: `Importando conversa ${i + 1}/${chats.length}: ${(chat.name || chat.remoteJid).substring(0, 25)}...`
         });
 
         try {
@@ -111,7 +117,8 @@ export class ConversationImportService {
         processedChats: chats.length, 
         totalMessages: totalMessages, 
         processedMessages: totalMessages, 
-        status: 'completed' 
+        status: 'completed',
+        message: `Importação concluída! ${importedConversations} conversas e ${totalMessages} mensagens`
       });
 
       console.log(`🎉 [IMPORT] Importação concluída: ${importedConversations} conversas, ${totalMessages} mensagens`);
@@ -130,7 +137,8 @@ export class ConversationImportService {
         totalMessages: 0, 
         processedMessages: 0, 
         status: 'error',
-        error: error instanceof Error ? error.message : 'Erro desconhecido'
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
+        message: `Erro na importação: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
       });
 
       return { 
@@ -235,7 +243,19 @@ export class ConversationImportService {
 
   private updateProgress(progress: Partial<ImportProgress>) {
     if (this.progressCallback) {
-      this.progressCallback(progress as ImportProgress);
+      // Calcular progresso geral para compatibilidade com o toast
+      const current = progress.processedChats || 0;
+      const total = progress.totalChats || 100;
+      const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+      
+      const fullProgress: ImportProgress = {
+        current: percentage,
+        total: 100,
+        message: progress.message || 'Processando...',
+        ...progress
+      };
+      
+      this.progressCallback(fullProgress);
     }
   }
 }
