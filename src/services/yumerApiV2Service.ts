@@ -886,6 +886,40 @@ class YumerApiV2Service {
   }
 
   /**
+   * Busca todos os contatos com paginação automática
+   */
+  async getAllContacts(instanceId: string): Promise<ContactRecord[]> {
+    try {
+      console.log(`📋 [YumerApiV2] Iniciando busca completa de contatos para: ${instanceId}`);
+      
+      const allContacts: ContactRecord[] = [];
+      let currentPage = 1;
+      let totalPages = 1;
+
+      do {
+        const result = await this.searchContacts(instanceId, currentPage);
+        allContacts.push(...result.contacts);
+        totalPages = result.totalPages;
+        
+        console.log(`📄 [YumerApiV2] Página ${currentPage}/${totalPages} - ${result.contacts.length} contatos`);
+        
+        currentPage++;
+        
+        // Pequena pausa entre requisições
+        if (currentPage <= totalPages) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } while (currentPage <= totalPages);
+
+      console.log(`✅ [YumerApiV2] Busca completa finalizada: ${allContacts.length} contatos total`);
+      return allContacts;
+    } catch (error) {
+      console.error('❌ [YumerApiV2] Erro ao buscar todos os contatos:', error);
+      return [];
+    }
+  }
+
+  /**
    * Busca todos os chats com paginação automática
    */
   async getAllChats(instanceId: string): Promise<ChatInfo[]> {
