@@ -147,18 +147,55 @@ export class ConversationImportService {
 
           console.log(`📊 [IMPORT-V2] ${messages.length} mensagens encontradas para ${contact.remoteJid}`);
 
-          // Validar que as mensagens pertencem ao contato correto
-          const validMessages = messages.filter(msg => {
-            const msgRemoteJid = msg.keyRemoteJid || msg.key?.remoteJid;
+          // DEBUG: Mostrar estrutura das primeiras mensagens
+          if (messages.length > 0) {
+            console.log(`🔍 [IMPORT-V2] DEBUG - Primeiras mensagens para ${contact.remoteJid}:`);
+            messages.slice(0, 3).forEach((msg, index) => {
+              const msgRemoteJid = msg.keyRemoteJid || msg.key?.remoteJid || msg.remoteJid;
+              const msgFromMe = msg.fromMe || msg.key?.fromMe;
+              console.log(`  ${index + 1}. keyRemoteJid: "${msgRemoteJid}" | fromMe: ${msgFromMe} | solicitado: "${contact.remoteJid}"`);
+            });
+          }
+
+          // Estratégia múltipla de filtragem
+          let validMessages = messages.filter(msg => {
+            const msgRemoteJid = msg.keyRemoteJid || msg.key?.remoteJid || msg.remoteJid;
             return msgRemoteJid === contact.remoteJid;
           });
 
-          if (validMessages.length !== messages.length) {
-            console.warn(`⚠️ [IMPORT-V2] ${messages.length - validMessages.length} mensagens filtradas para ${contact.remoteJid}`);
+          // Fallback 1: Se não encontrou com keyRemoteJid exato, tentar apenas o número
+          if (validMessages.length === 0) {
+            const contactNumber = contact.remoteJid.replace('@s.whatsapp.net', '');
+            validMessages = messages.filter(msg => {
+              const msgRemoteJid = msg.keyRemoteJid || msg.key?.remoteJid || msg.remoteJid;
+              const msgNumber = msgRemoteJid?.replace('@s.whatsapp.net', '');
+              return msgNumber === contactNumber;
+            });
+            console.log(`🔄 [IMPORT-V2] Fallback número: ${validMessages.length} mensagens encontradas`);
           }
+
+          // Fallback 2: Se ainda não encontrou, verificar conversa bilateral
+          if (validMessages.length === 0) {
+            const contactNumber = contact.remoteJid.replace('@s.whatsapp.net', '');
+            validMessages = messages.filter(msg => {
+              const msgRemoteJid = msg.keyRemoteJid || msg.key?.remoteJid || msg.remoteJid;
+              const msgFromMe = msg.fromMe || msg.key?.fromMe;
+              // Aceitar se é conversa bilateral (tem fromMe e remoteJid relacionados)
+              return msgRemoteJid?.includes(contactNumber) || 
+                     (msgFromMe !== undefined && msgRemoteJid);
+            });
+            console.log(`🔄 [IMPORT-V2] Fallback conversa: ${validMessages.length} mensagens encontradas`);
+          }
+
+          console.log(`✅ [IMPORT-V2] ${validMessages.length} mensagens válidas filtradas para ${contact.remoteJid}`);
 
           if (validMessages.length === 0) {
             console.log(`⚠️ [IMPORT-V2] Nenhuma mensagem válida para: ${contact.remoteJid}`);
+            // DEBUG: mostrar todos os remoteJids únicos encontrados
+            const uniqueRemoteJids = [...new Set(messages.map(msg => 
+              msg.keyRemoteJid || msg.key?.remoteJid || msg.remoteJid
+            ))];
+            console.log(`🔍 [IMPORT-V2] RemoteJids únicos encontrados:`, uniqueRemoteJids);
             continue;
           }
 
