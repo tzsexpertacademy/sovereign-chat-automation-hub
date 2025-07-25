@@ -12,6 +12,7 @@ import CampaignsManager from '@/components/client/CampaignsManager';
 import FunnelKanban from '@/components/client/FunnelKanban';
 import BookingManager from '@/components/booking/BookingManager';
 import MultipleInstancesManagerFixed from '@/components/client/MultipleInstancesManagerFixed';
+import { AutoWebhookConfigurator } from '@/components/client/AutoWebhookConfigurator';
 
 import AIConfigForm from '@/components/client/AIConfigForm';
 
@@ -89,6 +90,13 @@ const ClientDashboardImproved = () => {
   return (
     <div className="min-h-screen bg-gray-100">
       <ClientHeader />
+      
+      {/* Auto configurador de webhook - monitora e configura automaticamente */}
+      <AutoWebhookConfigurator 
+        instanceId="01K11NBE1QB0GVFMME8NA4YPCB" 
+        clientId={clientId}
+      />
+      
       <div className="flex">
         <ClientSidebar clientId={clientId} />
         <main className="flex-1">

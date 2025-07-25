@@ -81,12 +81,38 @@ export const WebhookStatusIndicator: React.FC<WebhookStatusIndicatorProps> = ({
     }
   };
 
+  // Auto-configurar webhook se instância está conectada mas webhook não está ativo
+  const autoConfigureWebhook = async () => {
+    if (!instanceId) return;
+
+    try {
+      // Verificar se instância está conectada
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('status, webhook_enabled')
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (instance?.status === 'connected' && !instance?.webhook_enabled) {
+        console.log(`🔧 [AUTO-WEBHOOK] Configurando automaticamente para instância conectada: ${instanceId}`);
+        await configureWebhook();
+      }
+    } catch (error) {
+      console.error(`❌ [AUTO-WEBHOOK] Erro na verificação automática:`, error);
+    }
+  };
+
   useEffect(() => {
     if (instanceId) {
       checkWebhookStatus();
+      autoConfigureWebhook(); // Configurar automaticamente se necessário
       
       // Verificar periodicamente
-      const interval = setInterval(checkWebhookStatus, 30000);
+      const interval = setInterval(() => {
+        checkWebhookStatus();
+        autoConfigureWebhook();
+      }, 30000);
       return () => clearInterval(interval);
     }
   }, [instanceId]);
