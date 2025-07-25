@@ -57,9 +57,17 @@ export class ConversationImportService {
         message: 'Conectando ao WhatsApp e buscando conversas...'
       });
 
-      const chatsData = await yumerApiV2.extractChatsFromMessages(instanceId);
-      const chats = Array.isArray(chatsData) ? chatsData : [chatsData];
+      const chats = await yumerApiV2.extractChatsFromMessages(instanceId);
       console.log(`📂 [IMPORT] Encontrados ${chats.length} chats extraídos das mensagens`);
+      
+      if (chats.length === 0) {
+        console.warn('⚠️ [IMPORT] Nenhum chat encontrado - verificando conectividade...');
+        this.updateProgress({ 
+          status: 'completed',
+          message: 'Nenhuma conversa encontrada. Verifique se a instância está conectada e possui conversas.'
+        });
+        return { success: true, imported: 0 };
+      }
 
       let importedConversations = 0;
       let totalMessages = 0;
@@ -89,8 +97,7 @@ export class ConversationImportService {
 
         try {
           // 4. Buscar mensagens reais do chat
-          const messagesData = await yumerApiV2.findMessages(instanceId, chat.remoteJid, 50);
-          const messages = Array.isArray(messagesData) ? messagesData : [messagesData];
+          const messages = await yumerApiV2.findMessages(instanceId, chat.remoteJid, 50);
           console.log(`💬 [IMPORT] Chat ${chat.remoteJid}: ${messages.length} mensagens`);
 
           // 5. Criar/atualizar ticket no Supabase

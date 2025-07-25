@@ -621,16 +621,47 @@ class YumerApiV2Service {
     fromMe?: boolean;
     sortOrder?: 'asc' | 'desc';
   } = {}): Promise<MessageInfo[]> {
-    const searchParams = {
-      limit: options.limit || 50,
-      offset: options.offset || 0,
-      ...options
-    };
+    try {
+      const searchParams = {
+        limit: options.limit || 50,
+        offset: options.offset || 0,
+        ...options
+      };
 
-    return this.makeRequest<MessageInfo[]>(`/api/v2/instance/${instanceId}/chat/search/messages`, {
-      method: 'POST',
-      body: JSON.stringify(searchParams)
-    }, true, instanceId);
+      const response = await this.makeRequest<any>(`/api/v2/instance/${instanceId}/chat/search/messages`, {
+        method: 'POST',
+        body: JSON.stringify(searchParams)
+      }, true, instanceId);
+
+      console.log('[YumerApiV2] API Response Structure:', {
+        type: typeof response,
+        keys: response ? Object.keys(response) : 'null',
+        isArray: Array.isArray(response),
+        responseData: response
+      });
+
+      // Extrair array de mensagens da resposta
+      let messages: MessageInfo[] = [];
+      
+      if (Array.isArray(response)) {
+        messages = response;
+      } else if (response && Array.isArray(response.messages)) {
+        messages = response.messages;
+      } else if (response && Array.isArray(response.data)) {
+        messages = response.data;
+      } else if (response && Array.isArray(response.results)) {
+        messages = response.results;
+      } else {
+        console.warn('[YumerApiV2] Resposta da API não contém array de mensagens:', response);
+        return [];
+      }
+
+      console.log(`[YumerApiV2] Extraídas ${messages.length} mensagens da resposta`);
+      return messages;
+    } catch (error) {
+      console.error('[YumerApiV2] Erro ao buscar mensagens:', error);
+      return [];
+    }
   }
 
   /**
