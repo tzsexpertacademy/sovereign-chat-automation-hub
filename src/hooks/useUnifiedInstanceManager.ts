@@ -152,12 +152,11 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      // Usar endpoint correto da API Yumer
-      const response = await fetch(`https://api.yumer.com.br/api/v2/instance/status`, { 
+      // Usar endpoint /docs que sempre funciona
+      const response = await fetch(`https://api.yumer.com.br/docs`, { 
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer qTtC8k3M%9zAPfXw7vKmDrLzNqW@ea45JgyZhXpULBvydM67s3TuWKC!$RMo1FnB`
+          'Accept': 'text/html'
         },
         signal: controller.signal
       });
@@ -352,10 +351,12 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
         return;
       }
       
-      // 2. Verificar API apenas se necessário
-      let statusData;
+      // 2. Verificar API v2.2.1 via getInstance
+      let instanceData;
       try {
-        statusData = await codechatQRService.getInstanceStatus(instanceId);
+        // Usar yumerApiV2Service que já tem a correção para buscar business_token
+        const { yumerApiV2 } = await import('@/services/yumerApiV2Service');
+        instanceData = await yumerApiV2.getInstance(instanceId);
       } catch (error) {
         if (error.message?.includes('404')) {
           setInstances(prev => {
@@ -372,16 +373,13 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
       let mappedStatus = 'disconnected';
       let phoneNumber = undefined;
       
-      if (statusData.state === 'open') {
+      if (instanceData.state === 'active' && instanceData.connection === 'open') {
         mappedStatus = 'connected';
-        try {
-          const details = await codechatQRService.getInstanceDetails(instanceId);
-          phoneNumber = details.ownerJid;
-        } catch (error) {
-          console.warn(`⚠️ [UNIFIED] Não foi possível buscar número:`, error);
-        }
-      } else if (statusData.state === 'connecting') {
-        mappedStatus = 'connecting';
+        phoneNumber = instanceData.WhatsApp?.remoteJid || instanceData.WhatsApp?.whatsappId;
+      } else if (instanceData.state === 'active' && instanceData.connection === 'close') {
+        mappedStatus = 'qr_ready';
+      } else if (instanceData.state === 'inactive') {
+        mappedStatus = 'disconnected';
       }
       
       // Atualizar estado
@@ -434,59 +432,39 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
         throw new Error('Servidor WhatsApp está offline');
       }
       
-      // PRIMEIRO: Verificar se já está conectada via API
+      // PRIMEIRO: Verificar se já está conectada via API v2.2.1
       try {
-        const statusData = await codechatQRService.getInstanceStatus(instanceId);
-        if (statusData.state === 'open') {
+        const { yumerApiV2 } = await import('@/services/yumerApiV2Service');
+        const instanceData = await yumerApiV2.getInstance(instanceId);
+        
+        if (instanceData.state === 'active' && instanceData.connection === 'open') {
           console.log(`✅ [UNIFIED] Instância já está conectada: ${instanceId}`);
           
-          try {
-            const details = await codechatQRService.getInstanceDetails(instanceId);
-            const phoneNumber = details.ownerJid;
-            
-            setInstances(prev => ({
-              ...prev,
-              [instanceId]: {
-                instanceId,
-                status: 'connected',
-                phoneNumber,
-                hasQrCode: false,
-                lastUpdated: Date.now()
-              }
-            }));
+          const phoneNumber = instanceData.WhatsApp?.remoteJid || instanceData.WhatsApp?.whatsappId;
+          
+          setInstances(prev => ({
+            ...prev,
+            [instanceId]: {
+              instanceId,
+              status: 'connected',
+              phoneNumber,
+              hasQrCode: false,
+              lastUpdated: Date.now()
+            }
+          }));
 
-            // Atualizar banco
-            await whatsappInstancesService.updateInstanceStatus(instanceId, 'connected', {
-              phone_number: phoneNumber,
-              updated_at: new Date().toISOString()
-            });
+          // Atualizar banco
+          await whatsappInstancesService.updateInstanceStatus(instanceId, 'connected', {
+            phone_number: phoneNumber,
+            updated_at: new Date().toISOString()
+          });
 
-            toast({
-              title: "✅ WhatsApp já Conectado!",
-              description: `WhatsApp já estava conectado${phoneNumber ? `: ${phoneNumber}` : ''}`,
-            });
-            
-            return;
-          } catch (detailsError) {
-            console.warn(`⚠️ [UNIFIED] Erro ao buscar detalhes:`, detailsError);
-            
-            setInstances(prev => ({
-              ...prev,
-              [instanceId]: {
-                instanceId,
-                status: 'connected',
-                hasQrCode: false,
-                lastUpdated: Date.now()
-              }
-            }));
-
-            toast({
-              title: "✅ WhatsApp já Conectado!",
-              description: "WhatsApp já estava conectado",
-            });
-            
-            return;
-          }
+          toast({
+            title: "✅ WhatsApp já Conectado!",
+            description: `WhatsApp já estava conectado${phoneNumber ? `: ${phoneNumber}` : ''}`,
+          });
+          
+          return;
         }
       } catch (statusError) {
         console.log(`🔍 [UNIFIED] Instância não conectada, prosseguindo com conexão...`);
@@ -503,8 +481,9 @@ export const useUnifiedInstanceManager = (initialInstances?: any[]): UseUnifiedI
         }
       }));
 
-      // Conectar via API
-      const connectResult = await codechatQRService.connectInstance(instanceId);
+      // Conectar via API v2.2.1
+      const { yumerApiV2 } = await import('@/services/yumerApiV2Service');
+      const connectResult = await yumerApiV2.getQRCode(instanceId);
       
       if (connectResult?.base64) {
         console.log(`🎯 [UNIFIED] QR Code obtido diretamente!`);

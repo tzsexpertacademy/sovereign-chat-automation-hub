@@ -313,10 +313,44 @@ class YumerApiV2Service {
   }
 
   /**
-   * Obtém uma instância específica
+   * Obtém uma instância específica com dados completos (v2.2.1)
+   * Retorna: instanceId, name, state, connection, WhatsApp, Auth, Webhook, Business
    */
-  async getInstance(instanceId: string): Promise<Instance> {
-    return this.makeRequest<Instance>(`/api/v2/instance/${instanceId}`, {}, true, instanceId);
+  async getInstance(instanceId: string, businessToken?: string): Promise<any> {
+    // Buscar business_token dinamicamente se não fornecido
+    if (!businessToken) {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        
+        // Buscar business_id da instância
+        const { data: instanceData } = await supabase
+          .from('whatsapp_instances')
+          .select('business_business_id')
+          .eq('instance_id', instanceId)
+          .single();
+
+        if (instanceData?.business_business_id) {
+          // Buscar token do cliente
+          const { data: clientData } = await supabase
+            .from('clients')
+            .select('business_token')
+            .eq('business_id', instanceData.business_business_id)
+            .single();
+
+          businessToken = clientData?.business_token;
+        }
+      } catch (error) {
+        console.warn('⚠️ [YUMER-API] Erro ao buscar business_token:', error);
+      }
+    }
+
+    // Fazer request com token dinâmico
+    return this.makeRequest<any>(`/api/v2/instance/${instanceId}`, {
+      headers: businessToken ? {
+        'Authorization': `Bearer ${businessToken}`,
+        'Content-Type': 'application/json'
+      } : {}
+    });
   }
 
   /**
@@ -358,12 +392,26 @@ class YumerApiV2Service {
   // ==================== CONNECTION STATUS (v2.2.1) ====================
 
   /**
-   * Obtém status da conexão de uma instância
+   * Obtém status da conexão via getInstance - API v2.2.1 não tem connection-state separado
    */
-  async getConnectionState(instanceId: string): Promise<ConnectionState> {
-    return this.makeRequest<ConnectionState>(`/api/v2/instance/${instanceId}/connection-state`, {
-      method: 'GET'
-    }, true, instanceId);
+  async getConnectionState(instanceId: string, businessToken?: string): Promise<ConnectionState> {
+    console.log('🔍 [YUMER-API] Verificando connection state para:', instanceId);
+    
+    try {
+      const instanceData = await this.getInstance(instanceId, businessToken);
+      
+      return {
+        instance: instanceId,
+        state: instanceData.connection === 'open' ? 'open' : 
+               instanceData.connection === 'close' ? 'close' : 'connecting'
+      };
+    } catch (error) {
+      console.error('❌ [YUMER-API] Erro ao verificar connection state:', error);
+      return {
+        instance: instanceId,
+        state: 'close'
+      };
+    }
   }
 
   /**

@@ -59,15 +59,18 @@ export const useRealTimeInstanceSync = (options: RealTimeInstanceSyncOptions = {
         let phoneNumber = null;
         let isConnected = false;
 
-        // Mapear status da API para nosso sistema
+        // Mapear status da API v2.2.1 para nosso sistema
         if (data.state === 'active' && data.connection === 'open') {
           newStatus = 'connected';
           isConnected = true;
-          phoneNumber = data.WhatsApp?.ownerJid || null;
+          phoneNumber = data.WhatsApp?.remoteJid || data.WhatsApp?.whatsappId || null;
           console.log(`✅ [REAL-TIME-SYNC] Instância conectada: ${instanceId}, phone: ${phoneNumber}`);
         } else if (data.state === 'active' && data.connection === 'close') {
           newStatus = 'qr_ready';
           console.log(`🔶 [REAL-TIME-SYNC] Instância aguardando QR: ${instanceId}`);
+        } else if (data.state === 'inactive') {
+          newStatus = 'disconnected';
+          console.log(`🔴 [REAL-TIME-SYNC] Instância inativa: ${instanceId}`);
         } else {
           console.log(`⚠️ [REAL-TIME-SYNC] Status não mapeado: state=${data.state}, connection=${data.connection}`);
         }
