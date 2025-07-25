@@ -21,7 +21,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { clientsService, ClientData } from "@/services/clientsService";
 import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { useToast } from "@/hooks/use-toast";
-import { useInstanceManager } from "@/hooks/useInstanceManager";
+import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 
 const EnhancedInstancesManager = () => {
   const { clientId } = useParams();
@@ -33,14 +33,14 @@ const EnhancedInstancesManager = () => {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
-  // Hook com a nova lógica que funcionou
+  // Hook unificado corrigido
   const { 
     connectInstance, 
     disconnectInstance,
-    refreshQRCode,
+    refreshStatus,
     getInstanceStatus,
     isLoading
-  } = useInstanceManager();
+  } = useUnifiedInstanceManager();
 
   useEffect(() => {
     if (clientId) {
@@ -354,7 +354,7 @@ const EnhancedInstancesManager = () => {
                       <QRCodeDisplay
                         qrCode={instanceStatus.qrCode}
                         instanceName={instance.custom_name || instance.instance_id}
-                        onRefresh={() => refreshQRCode(instance.instance_id)}
+                        onRefresh={() => refreshStatus(instance.instance_id)}
                         refreshing={isLoading(instance.instance_id)}
                         autoRefreshInterval={45000}
                       />
