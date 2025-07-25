@@ -279,6 +279,15 @@ class YumerApiV2Service {
     });
   }
 
+  /**
+   * Regenera o business_token de um business específico
+   */
+  async regenerateBusinessToken(businessId: string): Promise<{ business_token: string; message: string }> {
+    return this.makeRequest<{ business_token: string; message: string }>(`/api/v2/admin/business/${businessId}/token`, {
+      method: 'POST'
+    });
+  }
+
   // ==================== INSTANCE MANAGEMENT (v2.2.1) ====================
 
   /**
