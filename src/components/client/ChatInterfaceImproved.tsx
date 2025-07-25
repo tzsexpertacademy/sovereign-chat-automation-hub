@@ -12,6 +12,7 @@ import TicketChatInterface from './TicketChatInterface';
 import TicketActionsMenu from './TicketActionsMenu';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 import TypingIndicator from './TypingIndicator';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ChatInterfaceImprovedProps {
   clientId: string;
@@ -86,27 +87,46 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     navigate(`/client/${clientId}/chat/${ticketId}`);
   }, [onSelectChat, navigate, clientId]);
 
-  // Converter mensagens YUMER não processadas
+  // Importar conversas reais da API v2.2.1
   const handleConvertYumerMessages = async () => {
     try {
       setIsConverting(true);
-      
       toast({
-        title: "Convertendo mensagens YUMER",
-        description: "Aguarde enquanto convertemos suas mensagens não processadas..."
+        title: "Importação iniciada",
+        description: "Importando conversas reais da API v2.2.1...",
       });
 
-      const result = await yumerMessageSyncService.convertUnprocessedMessages(clientId);
-      
-      toast({
-        title: "Conversão concluída",
-        description: `${result.converted} mensagens convertidas com sucesso. ${result.errors > 0 ? `${result.errors} erros encontrados.` : ''}`
-      });
+      // Buscar instância conectada
+      const { data: connectedInstance } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id')
+        .eq('client_id', clientId)
+        .eq('status', 'connected')
+        .single();
 
-      setTimeout(reloadTickets, 2000);
+      if (!connectedInstance) {
+        throw new Error('Nenhuma instância conectada encontrada');
+      }
 
-    } catch (error: any) {
-      console.error('Erro na conversão YUMER:', error);
+      // Importar conversas reais usando o novo serviço
+      const { conversationImportService } = await import('@/services/conversationImportService');
+      const result = await conversationImportService.syncRealConversations(
+        clientId, 
+        connectedInstance.instance_id
+      );
+
+      if (result.success) {
+        reloadTickets();
+        toast({
+          title: "Importação concluída",
+          description: `${result.imported} conversas reais importadas com sucesso!`,
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Erro na importação');
+      }
+    } catch (error) {
+      console.error('Erro na importação:', error);
       toast({
         title: "Erro na conversão",
         description: error.message || "Falha ao converter mensagens YUMER",

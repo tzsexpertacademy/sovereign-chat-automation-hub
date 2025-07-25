@@ -153,7 +153,26 @@ export class WhatsAppMultiClient {
       if (!options.instanceId) {
         return { success: false, error: 'Instance ID is required' };
       }
-      const result = await yumerApiV2.sendText(options.instanceId, options.to, options.message);
+
+      // Buscar business_id da instância no Supabase
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instanceData } = await supabase
+        .from('whatsapp_instances')
+        .select('business_business_id, client_id')
+        .eq('instance_id', options.instanceId)
+        .single();
+
+      if (!instanceData?.business_business_id) {
+        return { success: false, error: 'Business ID not found for instance' };
+      }
+
+      // Usar novo endpoint v2.2.1 com business_id
+      const result = await yumerApiV2.sendText(
+        options.instanceId, 
+        options.to, 
+        options.message
+      );
+      
       return {
         success: true,
         messageId: result?.key?.id || `msg-${Date.now()}`,
