@@ -160,17 +160,33 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
     // Buscar instância pelo nome da instância YUMER
     let { data: instance, error: instanceError } = await supabase
       .from('whatsapp_instances')
-      .select('instance_id, client_id, id, auth_token')
+      .select('instance_id, client_id, id, auth_token, yumer_instance_name')
       .eq('yumer_instance_name', instanceName)
       .single();
 
+    // Se não encontrou, tentar buscar pelo custom_name
+    if (instanceError || !instance) {
+      console.log('🔍 [YUMER-PROCESS] Tentativa 2: Buscar por custom_name');
+      
+      const { data: instanceByCustomName, error: instanceByCustomNameError } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, client_id, id, auth_token, yumer_instance_name')
+        .eq('custom_name', instanceName)
+        .single();
+      
+      if (!instanceByCustomNameError && instanceByCustomName) {
+        instance = instanceByCustomName;
+        instanceError = null;
+      }
+    }
+
     // Se não encontrou, tentar buscar pelo instance_id que pode conter o nome
     if (instanceError || !instance) {
-      console.log('🔍 [YUMER-PROCESS] Tentativa 2: Buscar por instance_id que contém o nome');
+      console.log('🔍 [YUMER-PROCESS] Tentativa 3: Buscar por instance_id que contém o nome');
       
       const { data: instanceById, error: instanceByIdError } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id, client_id, id, auth_token')
+        .select('instance_id, client_id, id, auth_token, yumer_instance_name')
         .eq('instance_id', instanceName)
         .single();
       
@@ -182,11 +198,11 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
 
     // Se ainda não encontrou, tentar buscar por pattern no instance_id
     if (instanceError || !instance) {
-      console.log('🔍 [YUMER-PROCESS] Tentativa 3: Buscar por pattern no instance_id');
+      console.log('🔍 [YUMER-PROCESS] Tentativa 4: Buscar por pattern no instance_id');
       
       const { data: instanceByPattern, error: instanceByPatternError } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id, client_id, id, auth_token')
+        .select('instance_id, client_id, id, auth_token, yumer_instance_name')
         .ilike('instance_id', `%${instanceName}%`)
         .single();
       

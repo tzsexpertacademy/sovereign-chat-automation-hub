@@ -1,0 +1,1 @@
+UPDATE whatsapp_instances SET yumer_instance_name = 'Thalis_1753476347849' WHERE instance_id = '01K11NBE1QB0GVFMME8NA4YPCB';
