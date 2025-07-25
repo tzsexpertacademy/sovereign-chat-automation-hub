@@ -20,6 +20,8 @@ import { useNavigate } from "react-router-dom";
 import { WhatsAppInstanceData } from "@/services/whatsappInstancesService";
 import { ClientData } from "@/services/clientsService";
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
+import { useRealTimeInstanceSync } from "@/hooks/useRealTimeInstanceSync";
+import { useEffect } from "react";
 
 interface InstancesListProps {
   instances: WhatsAppInstanceData[];
@@ -33,6 +35,22 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  // Hook de sincronização em tempo real
+  const { startSync, stopSync, isActive } = useRealTimeInstanceSync({
+    onInstanceUpdate: (instanceId, data) => {
+      console.log(`📊 [INSTANCES-LIST] Status atualizado: ${instanceId} → ${data.status}`);
+      onInstanceUpdated(); // Recarregar dados
+    },
+    enableWebhookConfig: true,
+    intervalMs: 5000
+  });
+
+  // Ativar sync em tempo real quando componente monta
+  useEffect(() => {
+    startSync();
+    return () => stopSync();
+  }, [startSync, stopSync]);
+
   // Hook unificado para gerenciar instâncias
   const { 
     connectInstance, 
@@ -40,8 +58,9 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
     getInstanceStatus,
     isLoading,
     serverOnline,
-    cleanup
-  } = useUnifiedInstanceManager();
+    cleanup,
+    refreshStatus
+  } = useUnifiedInstanceManager(instances);
 
   const getClientName = (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
@@ -84,7 +103,11 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
   const handleConnectInstance = async (instanceId: string) => {
     setSelectedInstanceForQR(instanceId);
     await connectInstance(instanceId);
-    onInstanceUpdated();
+    // Atualizar dados e forçar refresh do status
+    setTimeout(() => {
+      refreshStatus(instanceId);
+      onInstanceUpdated();
+    }, 2000);
   };
 
   const handleDisconnectInstance = async (instanceId: string) => {
@@ -154,7 +177,7 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
                 </CardHeader>
                 <CardContent className="space-y-4">
                   
-                  {/* Status específico para instância selecionada */}
+                   {/* Status específico para instância selecionada com sync em tempo real */}
                   {selectedInstanceForQR === instance.instance_id && (
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded">
                       <div className="flex items-center justify-between mb-2">
@@ -170,9 +193,27 @@ const InstancesList = ({ instances, clients, onInstanceUpdated, systemHealth }: 
                           </span>
                         </div>
                       </div>
-                      <p className="text-sm text-blue-800">
-                        Status atual: {getInstanceStatus(instance.instance_id).status}
-                      </p>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Status Unificado:</span>
+                        <Badge variant={getInstanceStatus(instance.instance_id).status === 'connected' ? 'default' : 'secondary'}>
+                          {getInstanceStatus(instance.instance_id).status || instance.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Webhook:</span>
+                        <Badge variant={instance.webhook_enabled ? 'default' : 'destructive'}>
+                          {instance.webhook_enabled ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="w-full mt-2"
+                        onClick={() => refreshStatus(instance.instance_id)}
+                      >
+                        <RefreshCw className="w-4 h-4 mr-1" />
+                        Atualizar Status
+                      </Button>
                     </div>
                   )}
 

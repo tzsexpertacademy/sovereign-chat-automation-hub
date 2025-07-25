@@ -44,15 +44,30 @@ export const useAutoSync = (instanceIds: string[], options: UseAutoSyncOptions =
             connectionState: statusInfo.connectionState
           };
           
-          // NOVO: Configurar webhook automaticamente se conectado
-          if (newStatus.isConnected) {
+          // CORREÇÃO: Configurar webhook para instâncias conectadas E com status qr_ready
+          if (newStatus.isConnected || newStatus.status === 'qr_ready') {
             try {
-              console.log(`🔧 [AUTO-SYNC] Configurando webhook para instância conectada: ${id}`);
+              console.log(`🔧 [AUTO-SYNC] Configurando webhook para instância: ${id} (status: ${newStatus.status})`);
               const webhookResult = await unifiedYumerService.ensureWebhookConfigured(id);
               if (webhookResult.success) {
                 console.log(`✅ [AUTO-SYNC] Webhook configurado automaticamente: ${id}`);
+                // Notificar sucesso
+                if (enableNotifications) {
+                  toast({
+                    title: "🔗 Webhook Configurado",
+                    description: `Webhook configurado automaticamente para ${id}`,
+                  });
+                }
               } else {
                 console.warn(`⚠️ [AUTO-SYNC] Falha ao configurar webhook: ${id}`, webhookResult.error);
+                // Notificar falha
+                if (enableNotifications) {
+                  toast({
+                    title: "⚠️ Erro no Webhook",
+                    description: `Falha ao configurar webhook: ${webhookResult.error}`,
+                    variant: "destructive"
+                  });
+                }
               }
             } catch (webhookError) {
               console.error(`❌ [AUTO-SYNC] Erro ao configurar webhook: ${id}`, webhookError);
