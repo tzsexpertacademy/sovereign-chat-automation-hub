@@ -433,12 +433,32 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
 // Função para extrair dados da mensagem YUMER
 function extractYumerMessageData(messageData: any, instance: any) {
   console.log('🔧 [EXTRACT-YUMER] Extraindo dados da mensagem YUMER');
+  console.log('🔍 [EXTRACT-YUMER] MessageData recebido:', JSON.stringify(messageData, null, 2));
   
-  // Extrair informações básicas
-  const messageId = messageData.keyId || `yumer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // Extrair informações básicas - LOGGING DETALHADO
+  const rawMessageId = messageData.keyId;
+  const rawChatId = messageData.keyRemoteJid;
+  
+  console.log('🔍 [EXTRACT-YUMER] Campos de entrada:', {
+    keyId: rawMessageId,
+    keyRemoteJid: rawChatId,
+    keyFromMe: messageData.keyFromMe,
+    pushName: messageData.pushName,
+    content: messageData.content,
+    messageTimestamp: messageData.messageTimestamp
+  });
+  
+  const messageId = rawMessageId || `yumer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   // Normalizar chat_id
-  let chatId = messageData.keyRemoteJid || '';
+  let chatId = rawChatId || '';
+  
+  console.log('🔍 [EXTRACT-YUMER] Valores extraídos (antes de validação):', {
+    messageId: messageId,
+    chatId: chatId,
+    messageIdPresent: !!messageId,
+    chatIdPresent: !!chatId
+  });
   
   const fromMe = messageData.keyFromMe || false;
   const timestamp = messageData.messageTimestamp ? new Date(messageData.messageTimestamp * 1000).toISOString() : new Date().toISOString();
@@ -473,7 +493,14 @@ function extractYumerMessageData(messageData: any, instance: any) {
     sender: messageData.pushName || phoneNumber
   };
 
-  console.log('✅ [EXTRACT-YUMER] Dados extraídos:', processedMessage);
+  console.log('✅ [EXTRACT-YUMER] Dados extraídos (FINAL):', JSON.stringify(processedMessage, null, 2));
+  console.log('🔍 [EXTRACT-YUMER] Validação essencial:', {
+    messageIdPresent: !!processedMessage.messageId,
+    chatIdPresent: !!processedMessage.chatId,
+    messageIdValue: processedMessage.messageId,
+    chatIdValue: processedMessage.chatId
+  });
+  
   return processedMessage;
 }
 
