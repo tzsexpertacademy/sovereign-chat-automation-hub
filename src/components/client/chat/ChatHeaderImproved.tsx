@@ -64,7 +64,7 @@ const ChatHeaderImproved = ({ ticket, clientId, onTicketUpdate }: ChatHeaderImpr
   const renderConnectionInfo = () => {
     const infoParts = [];
 
-    // Informação da conexão
+    // Informação da conexão - nome da instância
     if (connectedInstance) {
       infoParts.push(
         <div key="connection" className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -74,8 +74,8 @@ const ChatHeaderImproved = ({ ticket, clientId, onTicketUpdate }: ChatHeaderImpr
       );
     }
 
-    // Informação da fila
-    if (queueInfo) {
+    // Informação da fila - apenas se ticket estiver atribuído à fila
+    if (queueInfo && ticket?.assigned_queue_id) {
       infoParts.push(
         <div key="queue" className="flex items-center gap-1 text-xs text-muted-foreground">
           <Users className="w-3 h-3" />
@@ -84,8 +84,8 @@ const ChatHeaderImproved = ({ ticket, clientId, onTicketUpdate }: ChatHeaderImpr
       );
     }
 
-    // Informação do assistente (se houver)
-    if (queueInfo?.assistants) {
+    // Informação do assistente - apenas se assistente estiver ativo na fila
+    if (queueInfo?.assistants && ticket?.assigned_assistant_id) {
       infoParts.push(
         <div key="assistant" className="flex items-center gap-1 text-xs text-muted-foreground">
           <Bot className="w-3 h-3" />

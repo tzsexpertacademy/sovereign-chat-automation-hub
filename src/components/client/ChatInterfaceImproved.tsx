@@ -177,34 +177,11 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
   const renderTicketBadges = (ticket: ConversationTicket) => {
     const badges = [];
 
-    // Status da conexão
-    if (ticket.instance_id) {
-      badges.push(
-        <Badge key="connection" variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-          <Wifi className="w-3 h-3 mr-1" />
-          Conectado
-        </Badge>
-      );
-    }
-
-    // Status do atendimento
-    const isHumanAssigned = ticket.status === 'pending' || 
-                           ticket.status === 'resolved' ||
-                           ticket.status === 'closed';
-
-    // Mostrar fila ativa
-    if (ticket.assigned_queue_id && !isHumanAssigned) {
-      const queueName = 'Fila Ativa';
-      badges.push(
-        <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-          <Bot className="w-3 h-3 mr-1" />
-          {queueName}
-        </Badge>
-      );
-    }
-
-    // Atendimento humano
-    if (isHumanAssigned) {
+    // Badge "Humano" - apenas se tiver atendimento humano assumido
+    // (quando status = 'pending' e tem assigned_assistant_id ou similar)
+    const isHumanTakeover = ticket.status === 'pending';
+    
+    if (isHumanTakeover) {
       badges.push(
         <Badge key="human" variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
           <User className="w-3 h-3 mr-1" />
@@ -213,8 +190,25 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
       );
     }
 
-    // Tags se houver (removido temporariamente - campo não existe na tabela)
-    // TODO: Implementar sistema de tags quando necessário
+    // Badge da fila - apenas se tiver fila atribuída E não estiver em atendimento humano
+    if (ticket.assigned_queue_id && !isHumanTakeover) {
+      badges.push(
+        <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+          <Bot className="w-3 h-3 mr-1" />
+          Fila
+        </Badge>
+      );
+    }
+
+    // Badge do assistente - apenas se tiver assistente ativo na fila E não estiver em atendimento humano
+    if (ticket.assigned_assistant_id && !isHumanTakeover) {
+      badges.push(
+        <Badge key="assistant" variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+          <Bot className="w-3 h-3 mr-1" />
+          Assistente
+        </Badge>
+      );
+    }
 
     return badges;
   };
