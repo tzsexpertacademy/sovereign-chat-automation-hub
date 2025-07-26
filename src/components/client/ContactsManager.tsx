@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, User, Edit, Trash2, Plus, Phone, Mail, Calendar, Save, X, MessageCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { customersService, type Customer } from "@/services/customersService";
 import { ticketsService } from "@/services/ticketsService";
 
@@ -23,6 +23,7 @@ interface ContactsManagerProps {
 const ContactsManager = ({ clientId }: ContactsManagerProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -102,8 +103,23 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
       
       if (existingTicket) {
         console.log('📋 Ticket existente encontrado:', existingTicket.id);
+        
+        // Verificar se já estamos na rota do ticket
+        const currentPath = location.pathname;
+        const targetPath = `/client/${clientId}/chat/${existingTicket.id}`;
+        
+        if (currentPath === targetPath) {
+          // Já estamos na conversa deste contato
+          toast({
+            title: "Atenção",
+            description: `Você já está na conversa com ${customer.name}`,
+            variant: "default"
+          });
+          return;
+        }
+        
         // Navegar para ticket existente
-        navigate(`/client/${clientId}/chat/${existingTicket.id}`);
+        navigate(targetPath);
       } else {
         console.log('📋 Criando novo ticket manual...');
         // Criar novo ticket manual e navegar
