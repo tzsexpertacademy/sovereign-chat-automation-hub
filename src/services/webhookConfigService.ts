@@ -31,7 +31,7 @@ export const webhookConfigService = {
     try {
       console.log(`🔧 [WEBHOOK-CONFIG] Configurando webhook para instância: ${instanceId}`);
       
-      const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/codechat-webhook';
+      const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook';
       
       const webhookConfig: WebhookConfig = {
         enabled: true,
@@ -92,7 +92,7 @@ export const webhookConfigService = {
       if (response.success && response.data) {
         const isCorrectlyConfigured = 
           response.data.enabled === true &&
-          response.data.url.includes('codechat-webhook') &&
+          response.data.url.includes('yumer-webhook') &&
           response.data.events?.messagesUpsert === true;
         
         console.log(`📊 [WEBHOOK-VERIFY] Status: ${isCorrectlyConfigured ? 'Configurado' : 'Incorreto'}`);
