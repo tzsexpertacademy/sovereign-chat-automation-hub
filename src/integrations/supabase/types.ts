@@ -814,6 +814,33 @@ export type Database = {
           },
         ]
       }
+      decrypted_audio_cache: {
+        Row: {
+          audio_format: string | null
+          created_at: string
+          decrypted_data: string
+          expires_at: string | null
+          id: string
+          message_id: string
+        }
+        Insert: {
+          audio_format?: string | null
+          created_at?: string
+          decrypted_data: string
+          expires_at?: string | null
+          id?: string
+          message_id: string
+        }
+        Update: {
+          audio_format?: string | null
+          created_at?: string
+          decrypted_data?: string
+          expires_at?: string | null
+          id?: string
+          message_id?: string
+        }
+        Relationships: []
+      }
       funnel_lead_history: {
         Row: {
           created_at: string
@@ -1824,11 +1851,15 @@ export type Database = {
           body: string | null
           chat_id: string
           created_at: string
+          direct_path: string | null
+          file_enc_sha256: string | null
+          file_sha256: string | null
           from_me: boolean | null
           id: string
           instance_id: string
           is_processed: boolean | null
           is_read: boolean | null
+          media_key: string | null
           message_id: string
           message_type: string | null
           processing_started_at: string | null
@@ -1840,11 +1871,15 @@ export type Database = {
           body?: string | null
           chat_id: string
           created_at?: string
+          direct_path?: string | null
+          file_enc_sha256?: string | null
+          file_sha256?: string | null
           from_me?: boolean | null
           id?: string
           instance_id: string
           is_processed?: boolean | null
           is_read?: boolean | null
+          media_key?: string | null
           message_id: string
           message_type?: string | null
           processing_started_at?: string | null
@@ -1856,11 +1891,15 @@ export type Database = {
           body?: string | null
           chat_id?: string
           created_at?: string
+          direct_path?: string | null
+          file_enc_sha256?: string | null
+          file_sha256?: string | null
           from_me?: boolean | null
           id?: string
           instance_id?: string
           is_processed?: boolean | null
           is_read?: boolean | null
+          media_key?: string | null
           message_id?: string
           message_type?: string | null
           processing_started_at?: string | null
@@ -1882,6 +1921,10 @@ export type Database = {
           p_message_content?: string
         }
         Returns: string
+      }
+      cleanup_expired_decrypted_audio: {
+        Args: Record<PropertyKey, never>
+        Returns: number
       }
       cleanup_expired_qr_codes: {
         Args: Record<PropertyKey, never>

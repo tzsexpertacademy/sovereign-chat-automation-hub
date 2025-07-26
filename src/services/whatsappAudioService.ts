@@ -98,12 +98,9 @@ class WhatsAppAudioService {
         return this.cache.get(messageId)!;
       }
 
-      // Buscar no banco de dados
+      // Buscar no banco de dados (usar SQL direto devido ao tipo não estar nas tipagens)
       const { data, error } = await supabase
-        .from('decrypted_audio_cache')
-        .select('decrypted_data, audio_format')
-        .eq('message_id', messageId)
-        .single();
+        .rpc('get_decrypted_audio', { p_message_id: messageId });
 
       if (error || !data) {
         console.log('ℹ️ [AUDIO-SERVICE] Áudio não encontrado no cache:', messageId);
