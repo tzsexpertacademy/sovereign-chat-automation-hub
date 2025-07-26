@@ -1012,7 +1012,7 @@ async function saveTicketMessage(
   
   try {
     // Usar a nova função do banco que suporta chaves de criptografia
-    const { data: messageId: savedMessageId, error: insertError } = await supabase
+    const { data: savedMessageId, error: insertError } = await supabase
       .rpc('save_ticket_message', {
         p_ticket_id: ticketId,
         p_message_id: messageId,
