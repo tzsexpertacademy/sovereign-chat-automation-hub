@@ -18,9 +18,10 @@ export const useTicketMessages = (ticketId: string) => {
       return;
     }
 
-    // Verificar se já temos mensagens carregadas para este ticket
-    const cacheKey = `ticket_messages_${ticketId}`;
-    const isReturningToTicket = sessionStorage.getItem(cacheKey) === 'loaded';
+    // Sempre limpar mensagens ao trocar de ticket
+    console.log('🔄 Carregando mensagens para ticket:', ticketId);
+    setMessages([]);
+    setIsLoading(true);
 
     const loadMessages = async (isPolling = false) => {
       try {
@@ -35,9 +36,6 @@ export const useTicketMessages = (ticketId: string) => {
         setMessages(messagesData);
         lastLoadRef.current = Date.now();
         
-        // Marcar que as mensagens foram carregadas
-        sessionStorage.setItem(cacheKey, 'loaded');
-        
         if (isPolling && messagesData.length > 0) {
           console.log('✅ Polling detectou mudanças, mensagens atualizadas');
         }
@@ -49,12 +47,8 @@ export const useTicketMessages = (ticketId: string) => {
       }
     };
 
-    // Se não está retornando para o ticket, fazer carregamento inicial
-    if (!isReturningToTicket) {
-      loadMessages();
-    } else {
-      console.log('📋 Retornando ao ticket, mantendo mensagens em cache');
-    }
+    // Sempre carregar mensagens ao trocar de ticket
+    loadMessages();
 
     // Polling otimizado (30 segundos ou quando necessário)
     const startPolling = () => {
@@ -95,7 +89,7 @@ export const useTicketMessages = (ticketId: string) => {
       console.log('🔔 Configurando listener para mensagens do ticket:', ticketId);
       
       const channel = supabase
-        .channel(`ticket-messages-${ticketId}-${Date.now()}`) // Canal único para evitar conflitos
+        .channel(`ticket-messages-${ticketId}`) // Canal único para este ticket
         .on(
           'postgres_changes',
           {

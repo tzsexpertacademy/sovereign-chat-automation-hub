@@ -37,6 +37,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
 
+  // Limpar estado quando mudar de ticket
+  useEffect(() => {
+    setNewMessage('');
+    setIsSending(false);
+    setIsClearing(false);
+  }, [ticketId]);
+
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
