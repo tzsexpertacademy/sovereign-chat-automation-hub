@@ -98,11 +98,6 @@ export const useTicketRealtimeImproved = (clientId: string) => {
         if (result.converted > 0) {
           console.log(`✅ [SYNC] ${result.converted} mensagens YUMER convertidas`);
           
-          toast({
-            title: "Mensagens YUMER sincronizadas",
-            description: `${result.converted} mensagens foram convertidas${result.errors > 0 ? ` (${result.errors} erros)` : ''}`
-          });
-          
           // Recarregar tickets após sincronização
           setTimeout(loadTickets, 1000);
         }
