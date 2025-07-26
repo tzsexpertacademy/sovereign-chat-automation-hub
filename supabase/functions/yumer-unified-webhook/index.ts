@@ -791,12 +791,7 @@ async function processMessageToTickets(messageData: any, clientId: string, insta
       messageData.timestamp,
       messageData.contactName,
       messageData.mediaUrl,
-      messageData.mediaDuration,
-      messageData.mediaMimeType,
-      messageData.mediaKey,
-      messageData.fileEncSha256,
-      messageData.fileSha256,
-      messageData.directPath
+      messageData.mediaDuration
     );
 
     console.log('✅ [TICKETS] Mensagem processada com sucesso no sistema de tickets');
@@ -960,12 +955,7 @@ async function saveTicketMessage(
   timestamp: string,
   senderName: string,
   mediaUrl?: string,
-  mediaDuration?: number,
-  mediaMimeType?: string,
-  mediaKey?: string,
-  fileEncSha256?: string,
-  fileSha256?: string,
-  directPath?: string
+  mediaDuration?: number
 ) {
   console.log('💬 [TICKET-MESSAGE] Salvando mensagem no ticket...');
   
@@ -979,10 +969,7 @@ async function saveTicketMessage(
       timestamp: timestamp,
       sender_name: senderName,
       media_url: mediaUrl || null,
-      media_duration: mediaDuration || null,
-      media_mime_type: mediaMimeType || null,
-      transcription: null,
-      transcription_status: null
+      media_duration: mediaDuration || null
     };
 
     const { error: insertError } = await supabase
@@ -996,16 +983,8 @@ async function saveTicketMessage(
 
     console.log('✅ [TICKET-MESSAGE] Mensagem salva no ticket');
 
-    // 🎵 TRANSCRIÇÃO AUTOMÁTICA DE ÁUDIO
-    if (messageType === 'audio' && mediaUrl && mediaKey && fileEncSha256) {
-      console.log('🎵 [AUDIO-TRANSCRIPTION] Iniciando transcrição de áudio em background...');
-      
-      // Executar transcrição em background (não bloquear resposta)
-      processAudioTranscription(ticketId, messageId, mediaUrl, mediaKey, fileEncSha256, fileSha256, directPath)
-        .catch(transcriptionError => {
-          console.error('❌ [AUDIO-TRANSCRIPTION] Erro na transcrição em background:', transcriptionError);
-        });
-    }
+    // 🎵 TRANSCRIÇÃO AUTOMÁTICA DE ÁUDIO - REMOVIDO por não ter campos necessários
+    // TODO: Implementar transcrição quando dados de mídia estiverem disponíveis
 
   } catch (error) {
     console.error('❌ [TICKET-MESSAGE] Erro crítico ao salvar mensagem:', error);
@@ -1013,114 +992,5 @@ async function saveTicketMessage(
   }
 }
 
-// 🎵 Função para processar transcrição de áudio
-async function processAudioTranscription(
-  ticketId: string,
-  messageId: string,
-  mediaUrl: string,
-  mediaKey: string,
-  fileEncSha256: string,
-  fileSha256?: string,
-  directPath?: string
-) {
-  console.log('🎵 [AUDIO-TRANSCRIPTION] Iniciando processamento de transcrição de áudio');
-  
-  try {
-    // Atualizar status para "processing"
-    await supabase
-      .from('ticket_messages')
-      .update({ transcription_status: 'processing' })
-      .eq('ticket_id', ticketId)
-      .eq('message_id', messageId);
-
-    console.log('🎵 [AUDIO-TRANSCRIPTION] Status atualizado para "processing"');
-
-    // 1. Descriptografar áudio usando edge function
-    console.log('🔐 [AUDIO-DECRYPT] Descriptografando áudio...');
-    
-    const { data: decryptResult, error: decryptError } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
-      body: {
-        mediaUrl: mediaUrl,
-        mediaKey: mediaKey,
-        fileEncSha256: fileEncSha256,
-        fileSha256: fileSha256,
-        directPath: directPath
-      }
-    });
-
-    if (decryptError || !decryptResult?.success) {
-      console.error('❌ [AUDIO-DECRYPT] Erro ao descriptografar áudio:', decryptError || decryptResult?.error);
-      
-      await supabase
-        .from('ticket_messages')
-        .update({ 
-          transcription_status: 'error',
-          transcription: 'Erro na descriptografia do áudio'
-        })
-        .eq('ticket_id', ticketId)
-        .eq('message_id', messageId);
-      
-      return;
-    }
-
-    const audioBuffer = decryptResult.audioBuffer;
-    console.log('✅ [AUDIO-DECRYPT] Áudio descriptografado com sucesso');
-
-    // 2. Transcrever áudio usando edge function
-    console.log('🎤 [SPEECH-TO-TEXT] Transcrevendo áudio...');
-    
-    const { data: transcriptResult, error: transcriptError } = await supabase.functions.invoke('speech-to-text', {
-      body: {
-        audioBuffer: audioBuffer,
-        audioFormat: 'ogg' // WhatsApp geralmente usa OGG/Opus
-      }
-    });
-
-    if (transcriptError || !transcriptResult?.success) {
-      console.error('❌ [SPEECH-TO-TEXT] Erro na transcrição:', transcriptError || transcriptResult?.error);
-      
-      await supabase
-        .from('ticket_messages')
-        .update({ 
-          transcription_status: 'error',
-          transcription: 'Erro na transcrição do áudio'
-        })
-        .eq('ticket_id', ticketId)
-        .eq('message_id', messageId);
-      
-      return;
-    }
-
-    const transcription = transcriptResult.transcript;
-    console.log('✅ [SPEECH-TO-TEXT] Transcrição concluída:', transcription?.substring(0, 100));
-
-    // 3. Salvar transcrição no banco
-    await supabase
-      .from('ticket_messages')
-      .update({ 
-        transcription_status: 'completed',
-        transcription: transcription
-      })
-      .eq('ticket_id', ticketId)
-      .eq('message_id', messageId);
-
-    console.log('✅ [AUDIO-TRANSCRIPTION] Transcrição salva com sucesso');
-
-  } catch (error) {
-    console.error('❌ [AUDIO-TRANSCRIPTION] Erro crítico na transcrição:', error);
-    
-    // Atualizar status para erro
-    try {
-      await supabase
-        .from('ticket_messages')
-        .update({ 
-          transcription_status: 'error',
-          transcription: 'Erro interno na transcrição'
-        })
-        .eq('ticket_id', ticketId)
-        .eq('message_id', messageId);
-    } catch (updateError) {
-      console.error('❌ [AUDIO-TRANSCRIPTION] Erro ao atualizar status de erro:', updateError);
-    }
-  }
-}
+// 🎵 FUNÇÃO DE TRANSCRIÇÃO REMOVIDA TEMPORARIAMENTE
+// Será reimplementada quando campos necessários estiverem disponíveis na tabela ticket_messages
