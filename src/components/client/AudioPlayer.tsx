@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Play, Pause, Volume2, Download, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { WhatsAppAudioDecryption } from '@/services/whatsappAudioDecryption';
 
 interface AudioPlayerProps {
   audioUrl?: string;
@@ -143,9 +144,9 @@ const AudioPlayer = ({
     return sources.filter(src => src.length > 50); // Filtrar sources muito pequenos
   };
 
-  // Função para descriptografar áudio do WhatsApp
+  // Função para descriptografar áudio do WhatsApp usando o serviço
   const decryptWhatsAppAudio = async (encryptedUrl: string): Promise<string | null> => {
-    if (!messageId || !mediaKey || !fileEncSha256) {
+    if (!messageId || !mediaKey) {
       console.log('⚠️ [DECRYPT] Metadados insuficientes para descriptografia:', {
         hasMessageId: !!messageId,
         hasMediaKey: !!mediaKey,
@@ -158,37 +159,21 @@ const AudioPlayer = ({
     console.log('🔐 [DECRYPT] Iniciando descriptografia do áudio WhatsApp...');
     
     try {
-      // Baixar áudio criptografado primeiro
-      console.log('📥 [DECRYPT] Baixando áudio criptografado:', encryptedUrl);
-      const response = await fetch(encryptedUrl);
-      if (!response.ok) {
-        throw new Error(`Erro no download: ${response.status}`);
-      }
-      
-      const audioBuffer = await response.arrayBuffer();
-      const encryptedBase64 = btoa(
-        new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      const result = await WhatsAppAudioDecryption.decryptAudio(
+        encryptedUrl,
+        mediaKey,
+        messageId,
+        fileEncSha256
       );
       
-      console.log('🔐 [DECRYPT] Chamando função de descriptografia...');
-      const { data: decryptionResult, error: decryptionError } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
-        body: {
-          encryptedData: encryptedBase64,
-          mediaKey: mediaKey,
-          messageId: messageId
-        }
-      });
-      
-      if (decryptionError) {
-        console.error('❌ [DECRYPT] Erro na descriptografia:', decryptionError);
-        throw new Error(`Descriptografia falhou: ${decryptionError.message}`);
-      }
-      
-      if (decryptionResult?.decryptedAudio) {
-        console.log('✅ [DECRYPT] Áudio descriptografado com sucesso!');
-        return decryptionResult.decryptedAudio;
+      if (result.success && result.decryptedAudio) {
+        console.log('✅ [DECRYPT] Áudio descriptografado com sucesso!', {
+          format: result.format,
+          cached: result.cached
+        });
+        return result.decryptedAudio;
       } else {
-        throw new Error('Resultado de descriptografia vazio');
+        throw new Error(result.error || 'Descriptografia falhou');
       }
       
     } catch (error) {
@@ -445,19 +430,56 @@ const AudioPlayer = ({
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const downloadAudio = () => {
+  const downloadAudio = async () => {
     if (!audioSrc) return;
     
     try {
+      console.log('📥 [DOWNLOAD] Iniciando download de áudio...');
+      
+      let downloadSrc = audioSrc;
+      let downloadFileName = fileName;
+      
+      // Se é um áudio WhatsApp criptografado, primeiro descriptografar
+      if (audioUrl && audioUrl.includes('.enc') && messageId && mediaKey && fileEncSha256) {
+        console.log('🔐 [DOWNLOAD] Áudio criptografado detectado - descriptografando...');
+        const decryptedAudio = await decryptWhatsAppAudio(audioUrl);
+        
+        if (decryptedAudio) {
+          // Criar data URL com áudio descriptografado
+          downloadSrc = `data:audio/ogg;base64,${decryptedAudio}`;
+          downloadFileName = fileName.replace('.enc', '.ogg');
+          console.log('✅ [DOWNLOAD] Áudio descriptografado para download');
+        } else {
+          console.warn('⚠️ [DOWNLOAD] Falha na descriptografia - usando áudio original');
+        }
+      }
+      
+      // Se é base64, determinar extensão correta
+      if (downloadSrc.startsWith('data:')) {
+        const format = detectAudioFormat(downloadSrc.split(',')[1] || downloadSrc);
+        const extensions = {
+          'ogg': '.ogg',
+          'wav': '.wav', 
+          'mp3': '.mp3',
+          'm4a': '.m4a',
+          'webm': '.webm'
+        };
+        downloadFileName = fileName.replace(/\.[^.]+$/, extensions[format] || '.ogg');
+        console.log(`📁 [DOWNLOAD] Extensão definida: ${downloadFileName} (formato: ${format})`);
+      }
+      
       const link = document.createElement('a');
-      link.href = audioSrc;
-      link.download = fileName;
+      link.href = downloadSrc;
+      link.download = downloadFileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      console.log('📥 Download iniciado');
+      
+      console.log('✅ [DOWNLOAD] Download concluído:', downloadFileName);
+      toast.success(`Áudio baixado: ${downloadFileName}`);
     } catch (error) {
-      console.error('❌ Erro no download:', error);
+      console.error('❌ [DOWNLOAD] Erro no download:', error);
+      toast.error('Erro ao baixar áudio');
     }
   };
 

@@ -938,7 +938,17 @@ async function saveTicketMessage(ticketId: string, messageData: any) {
 
 // 🎵 Função para processar transcrição de áudio em background
 async function processAudioTranscription(ticketId: string, messageId: string, audioUrl: string, mediaKey?: string, fileEncSha256?: string) {
-  // PROTEÇÃO CONTRA LOOP INFINITO
+  // PROTEÇÃO CONTRA LOOP INFINITO E RECURSÃO
+  const processingKey = `transcription_${messageId}`;
+  
+  // Check if already processing
+  if (globalThis[processingKey]) {
+    console.log('⚠️ [TRANSCRIPTION] Já está sendo processado:', messageId);
+    return;
+  }
+  
+  globalThis[processingKey] = true;
+  
   const maxRetries = 3;
   let retryCount = 0;
   
@@ -950,9 +960,9 @@ async function processAudioTranscription(ticketId: string, messageId: string, au
       retry: retryCount
     });
     
-    // Timeout protection
+    // Timeout protection - máximo 60 segundos
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Timeout na transcrição')), 60000); // 1 minuto
+      setTimeout(() => reject(new Error('Timeout na transcrição (60s)')), 60000);
     });
     
     let audioForTranscription: string | null = null;
@@ -1160,5 +1170,9 @@ async function processAudioTranscription(ticketId: string, messageId: string, au
     } catch (updateError) {
       console.error('❌ [TRANSCRIPTION] Erro ao atualizar status de erro:', updateError);
     }
+  } finally {
+    // Limpar flag de processamento
+    delete globalThis[processingKey];
+    console.log('🔄 [TRANSCRIPTION] Flag de processamento limpa para:', messageId);
   }
 }

@@ -181,7 +181,11 @@ async function decryptWhatsAppAudio(encryptedBase64: string, mediaKeyBase64: str
       ['decrypt']
     )
 
-    // Descriptografar
+    // Descriptografar usando AES-GCM - método correto para WhatsApp
+    const dataToDecrypt = new Uint8Array(ciphertext.length + tag.length);
+    dataToDecrypt.set(ciphertext);
+    dataToDecrypt.set(tag, ciphertext.length);
+    
     const decryptedBuffer = await crypto.subtle.decrypt(
       {
         name: 'AES-GCM',
@@ -189,7 +193,7 @@ async function decryptWhatsAppAudio(encryptedBase64: string, mediaKeyBase64: str
         tagLength: 128
       },
       cryptoKey,
-      new Uint8Array([...ciphertext, ...tag])
+      dataToDecrypt
     )
 
     // Converter para base64
