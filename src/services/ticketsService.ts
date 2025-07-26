@@ -421,6 +421,96 @@ class TicketsService {
     }
   }
 
+  // === CRIAÇÃO MANUAL DE TICKETS ===
+  async createManualTicket(clientId: string, customerId: string): Promise<ConversationTicket> {
+    console.log('🎫 [MANUAL-TICKET] Criando ticket manual para customer:', customerId);
+    
+    try {
+      // 1. Buscar dados do customer
+      const { data: customer, error: customerError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', customerId)
+        .single();
+
+      if (customerError) throw customerError;
+
+      // 2. Verificar se já existe ticket para este customer
+      const { data: existingTicket } = await supabase
+        .from('conversation_tickets')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('customer_id', customerId)
+        .single();
+
+      if (existingTicket) {
+        // Retornar ticket existente
+        const { data: ticket } = await supabase
+          .from('conversation_tickets')
+          .select(`
+            *,
+            customer:customer_id (
+              id,
+              name,
+              phone,
+              email
+            )
+          `)
+          .eq('id', existingTicket.id)
+          .single();
+        
+        return ticket;
+      }
+
+      // 3. Gerar chat_id único baseado no telefone
+      const phoneNumber = customer.phone.replace(/\D/g, '');
+      const chatId = `manual_${phoneNumber}@c.us`;
+      
+      // 4. Criar novo ticket manual
+      const title = `Conversa com ${customer.name}`;
+      
+      const { data: newTicket, error } = await supabase
+        .from('conversation_tickets')
+        .insert({
+          client_id: clientId,
+          customer_id: customerId,
+          chat_id: chatId,
+          instance_id: 'manual',
+          title: title,
+          status: 'open',
+          priority: 1,
+          last_message_preview: 'Conversa criada manualmente',
+          last_message_at: new Date().toISOString(),
+          tags: ['manual']
+        })
+        .select(`
+          *,
+          customer:customer_id (
+            id,
+            name,
+            phone,
+            email
+          )
+        `)
+        .single();
+
+      if (error) throw error;
+
+      // 5. Atualizar customer com chat_id
+      await supabase
+        .from('customers')
+        .update({ whatsapp_chat_id: chatId })
+        .eq('id', customerId);
+
+      console.log('✅ [MANUAL-TICKET] Ticket manual criado:', newTicket.id);
+      return newTicket;
+      
+    } catch (error) {
+      console.error('❌ [MANUAL-TICKET] Erro ao criar ticket manual:', error);
+      throw error;
+    }
+  }
+
   // === FUNÇÕES DE SUPORTE PARA WEBHOOK ===
   async createOrUpdateCustomer(clientId: string, messageData: any): Promise<string> {
     console.log('👤 [CUSTOMER] Criando/atualizando customer');

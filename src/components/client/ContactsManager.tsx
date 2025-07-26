@@ -10,9 +10,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, User, Edit, Trash2, Plus, Phone, Mail, Calendar, Save, X } from "lucide-react";
+import { Search, User, Edit, Trash2, Plus, Phone, Mail, Calendar, Save, X, MessageCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 import { customersService, type Customer } from "@/services/customersService";
+import { ticketsService } from "@/services/ticketsService";
 
 interface ContactsManagerProps {
   clientId: string;
@@ -20,6 +22,7 @@ interface ContactsManagerProps {
 
 const ContactsManager = ({ clientId }: ContactsManagerProps) => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -34,6 +37,7 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
     notes: "",
     birth_date: ""
   });
+  const [createAndOpenChat, setCreateAndOpenChat] = useState(false);
 
   useEffect(() => {
     loadCustomers();
@@ -85,7 +89,31 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
       notes: "",
       birth_date: ""
     });
+    setCreateAndOpenChat(false);
     setIsCreateDialogOpen(true);
+  };
+
+  const handleOpenChat = async (customer: Customer) => {
+    try {
+      // Verificar se já existe ticket para este customer
+      const existingTicket = await customersService.findCustomerTicket(clientId, customer.id);
+      
+      if (existingTicket) {
+        // Navegar para ticket existente
+        navigate(`/client/${clientId}/chat/${existingTicket.id}`);
+      } else {
+        // Criar novo ticket manual e navegar
+        const ticket = await ticketsService.createManualTicket(clientId, customer.id);
+        navigate(`/client/${clientId}/chat/${ticket.id}`);
+      }
+    } catch (error) {
+      console.error('Erro ao abrir conversa:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao abrir conversa",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -109,19 +137,37 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
         setIsEditDialogOpen(false);
       } else {
         // Criar novo contato
-        await customersService.createCustomer({
+        const newCustomer = await customersService.createCustomer({
           ...editForm,
           client_id: clientId
         });
+        
         toast({
           title: "Sucesso",
           description: "Contato criado com sucesso"
         });
         setIsCreateDialogOpen(false);
+        
+        // Se marcou para criar conversa, criar ticket e navegar
+        if (createAndOpenChat) {
+          try {
+            const ticket = await ticketsService.createManualTicket(clientId, newCustomer.id);
+            navigate(`/client/${clientId}/chat/${ticket.id}`);
+            return;
+          } catch (error) {
+            console.error('Erro ao criar conversa:', error);
+            toast({
+              title: "Erro",
+              description: "Contato criado, mas falha ao criar conversa",
+              variant: "destructive"
+            });
+          }
+        }
       }
       
       loadCustomers();
       setSelectedCustomer(null);
+      setCreateAndOpenChat(false);
     } catch (error) {
       console.error('Erro ao salvar contato:', error);
       toast({
@@ -229,6 +275,21 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
               rows={3}
             />
           </div>
+          
+          {!selectedCustomer && (
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="createAndOpenChat"
+                checked={createAndOpenChat}
+                onChange={(e) => setCreateAndOpenChat(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              <Label htmlFor="createAndOpenChat" className="text-sm">
+                Criar conversa automaticamente
+              </Label>
+            </div>
+          )}
         </div>
         
         <div className="flex justify-end space-x-2 pt-4">
@@ -238,7 +299,7 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
           </Button>
           <Button onClick={handleSave}>
             <Save className="w-4 h-4 mr-2" />
-            Salvar
+            {!selectedCustomer && createAndOpenChat ? 'Salvar e Abrir Chat' : 'Salvar'}
           </Button>
         </div>
       </DialogContent>
@@ -347,24 +408,32 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
                         </div>
                       </div>
                     </div>
-                    
-                    <div className="flex space-x-1 ml-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openEditDialog(customer)}
-                      >
-                        <Edit className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDelete(customer.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
+                     
+                     <div className="flex space-x-1 ml-2">
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         onClick={() => handleOpenChat(customer)}
+                         className="text-green-600 hover:text-green-700"
+                       >
+                         <MessageCircle className="w-3 h-3" />
+                       </Button>
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         onClick={() => openEditDialog(customer)}
+                       >
+                         <Edit className="w-3 h-3" />
+                       </Button>
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         onClick={() => handleDelete(customer.id)}
+                         className="text-red-600 hover:text-red-700"
+                       >
+                         <Trash2 className="w-3 h-3" />
+                       </Button>
+                     </div>
                   </div>
                 </div>
               ))}

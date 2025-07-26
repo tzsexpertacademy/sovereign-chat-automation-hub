@@ -91,5 +91,17 @@ export const customersService = {
 
     if (error && error.code !== 'PGRST116') throw error;
     return data;
+  },
+
+  async findCustomerTicket(clientId: string, customerId: string): Promise<{ id: string } | null> {
+    const { data, error } = await supabase
+      .from('conversation_tickets')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('customer_id', customerId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
   }
 };
