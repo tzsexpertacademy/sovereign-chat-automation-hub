@@ -309,7 +309,7 @@ class UnifiedYumerService {
     console.log(`🔧 [WEBHOOK] Configurando webhook para: ${instanceId}`);
     
     // URL do webhook correta
-    const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-unified-webhook';
+    const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook';
     
     try {
       // Primeiro, verificar se já existe um webhook

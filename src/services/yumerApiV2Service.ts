@@ -1235,7 +1235,7 @@ class YumerApiV2Service {
    */
   async configureInstanceWebhook(instanceId: string): Promise<boolean> {
     try {
-      const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-unified-webhook';
+      const webhookUrl = 'https://ymygyagbvbsdfkduxmgu.supabase.co/functions/v1/yumer-webhook';
       
       console.log(`🔗 [WEBHOOK-CONFIG] Configurando webhook para ${instanceId}...`);
       

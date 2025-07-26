@@ -156,7 +156,7 @@ const WhatsAppConnectionManager = () => {
       });
       
       // Configurar webhook
-      const webhookUrl = `${window.location.origin}/functions/v1/yumer-unified-webhook`;
+      const webhookUrl = `${window.location.origin}/functions/v1/yumer-webhook`;
       await clientYumerService.setWebhook(clientId, instanceName, webhookUrl);
       
       setInstances(prev => [...prev, newInstance]);
