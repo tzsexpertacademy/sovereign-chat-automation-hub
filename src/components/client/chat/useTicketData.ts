@@ -34,8 +34,25 @@ export const useTicketData = (ticketId: string, clientId: string) => {
             const queues = await queuesService.getClientQueues(clientId);
             const assignedQueue = queues.find(q => q.id === ticketData.assigned_queue_id);
             if (assignedQueue) {
-              setQueueInfo(assignedQueue);
-              console.log('📋 Fila encontrada:', assignedQueue.name);
+              // Buscar informações do assistente se houver
+              let assistantName = null;
+              if (assignedQueue.assistant_id) {
+                const { data: assistant } = await supabase
+                  .from('assistants')
+                  .select('name')
+                  .eq('id', assignedQueue.assistant_id)
+                  .single();
+                
+                if (assistant) {
+                  assistantName = assistant.name;
+                }
+              }
+              
+              setQueueInfo({
+                ...assignedQueue,
+                assistant_name: assistantName
+              });
+              console.log('📋 Fila encontrada:', assignedQueue.name, 'Assistente:', assistantName);
             }
           } catch (error) {
             console.error('❌ Erro ao carregar informações da fila:', error);

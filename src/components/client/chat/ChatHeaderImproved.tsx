@@ -85,11 +85,11 @@ const ChatHeaderImproved = ({ ticket, clientId, onTicketUpdate }: ChatHeaderImpr
     }
 
     // Informação do assistente - apenas se assistente estiver ativo na fila
-    if (queueInfo?.assistants && ticket?.assigned_assistant_id) {
+    if (queueInfo?.assistant_name && ticket?.assigned_assistant_id) {
       infoParts.push(
         <div key="assistant" className="flex items-center gap-1 text-xs text-muted-foreground">
           <Bot className="w-3 h-3" />
-          <span>{queueInfo.assistants.name}</span>
+          <span>{queueInfo.assistant_name}</span>
         </div>
       );
     }

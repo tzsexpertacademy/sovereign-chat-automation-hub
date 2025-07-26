@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { RefreshCw, MessageSquare, Download, Bot, User, Wifi, Tag, RotateCw, Clock, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ticketsService, type ConversationTicket } from "@/services/ticketsService";
+import { queuesService } from "@/services/queuesService";
 import { yumerMessageSyncService } from "@/services/yumerMessageSyncService";
 import TicketChatInterface from './TicketChatInterface';
 import TicketActionsMenu from './TicketActionsMenu';
@@ -47,6 +48,31 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     reloadTickets,
     forceSyncMessages
   } = useTicketRealtimeImproved(clientId);
+
+  // Estado para armazenar informações das filas
+  const [queuesMap, setQueuesMap] = useState<Map<string, any>>(new Map());
+
+  // Carregar informações das filas para os badges
+  useEffect(() => {
+    const loadQueuesInfo = async () => {
+      try {
+        const queues = await queuesService.getClientQueues(clientId);
+        const newQueuesMap = new Map();
+        
+        for (const queue of queues) {
+          newQueuesMap.set(queue.id, queue);
+        }
+        
+        setQueuesMap(newQueuesMap);
+      } catch (error) {
+        console.error('❌ Erro ao carregar filas:', error);
+      }
+    };
+
+    if (clientId) {
+      loadQueuesInfo();
+    }
+  }, [clientId]);
 
   // Debug de tickets carregados
   useEffect(() => {
@@ -192,10 +218,13 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
 
     // Badge da fila - apenas se tiver fila atribuída E não estiver em atendimento humano
     if (ticket.assigned_queue_id && !isHumanTakeover) {
+      const queueInfo = queuesMap.get(ticket.assigned_queue_id);
+      const queueName = queueInfo?.name || 'Fila';
+      
       badges.push(
         <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
           <Bot className="w-3 h-3 mr-1" />
-          Fila
+          {queueName}
         </Badge>
       );
     }
