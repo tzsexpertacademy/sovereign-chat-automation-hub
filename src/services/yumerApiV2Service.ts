@@ -535,17 +535,13 @@ class YumerApiV2Service {
   /**
    * Envia mensagem de texto (Evolution API v2.2.1)
    */
-  async sendText(instanceId: string, number: string, text: string, options?: {
-    delay?: number;
-    presence?: string;
-    externalAttributes?: any;
-  }): Promise<SendMessageResponse> {
+  async sendText(instanceId: string, number: string, text: string, options?: Partial<SendMessageOptions>): Promise<SendMessageResponse> {
     const body = {
       recipient: number,
       textMessage: {
         text: text
       },
-      options: options || {}
+      options: this.prepareMessageOptions(options)
     };
     
     return this.makeRequest<SendMessageResponse>(`/api/v2/instance/${instanceId}/send/text`, {
