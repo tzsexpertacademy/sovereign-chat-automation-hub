@@ -42,6 +42,7 @@ export class WhatsAppAudioDecryption {
       );
 
       // Chamar função Supabase para descriptografia
+      console.log('🔐 [DECRYPT-SERVICE] Chamando edge function whatsapp-decrypt-audio...');
       const { data, error } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
         body: {
           encryptedData: encryptedBase64,
@@ -49,6 +50,12 @@ export class WhatsAppAudioDecryption {
           messageId: messageId,
           fileEncSha256: fileEncSha256
         }
+      });
+      
+      console.log('📡 [DECRYPT-SERVICE] Resposta da edge function:', {
+        hasData: !!data,
+        hasError: !!error,
+        errorMessage: error?.message
       });
 
       if (error) {

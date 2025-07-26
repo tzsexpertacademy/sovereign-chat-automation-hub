@@ -37,6 +37,7 @@ const AudioPlayer = ({
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [decryptionAttempted, setDecryptionAttempted] = useState(false);
+  const [fallbackAttempted, setFallbackAttempted] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Detectar formato de áudio pelos headers corretos
@@ -202,6 +203,29 @@ const AudioPlayer = ({
       setError(null);
       setAudioSrc(null);
 
+      // ESTRATÉGIA PRIORITÁRIA: Dados descriptografados em base64
+      if (audioData && !fallbackAttempted) {
+        try {
+          console.log('🎵 BASE64 PRIORITÁRIO: Processando dados descriptografados...');
+          
+          let cleanData = audioData;
+          if (audioData.includes('data:') && audioData.includes(',')) {
+            cleanData = audioData.split(',')[1];
+          }
+
+          const sources = createAudioSources(cleanData);
+          console.log('🎵 Sources criados:', sources.length);
+          
+          if (sources.length > 0) {
+            setAudioSrc(sources[0]);
+            console.log('✅ BASE64: Configurado como fonte primária');
+            return;
+          }
+        } catch (error) {
+          console.error('❌ Erro processamento base64:', error);
+        }
+      }
+
       // ESTRATÉGIA PARA WHATSAPP .ENC (CRIPTOGRAFADO)
       if (audioUrl && audioUrl.includes('.enc') && !decryptionAttempted && messageId && mediaKey && fileEncSha256) {
         console.log('🔐 WHATSAPP CRIPTOGRAFADO: Tentando descriptografar...');
@@ -219,6 +243,7 @@ const AudioPlayer = ({
         
         // Se descriptografia falhou, tentar reproduzir URL direta como fallback
         console.log('🔄 FALLBACK: Tentando URL direta após falha na descriptografia');
+        setFallbackAttempted(true);
         setAudioSrc(audioUrl);
         return;
       }
@@ -232,33 +257,6 @@ const AudioPlayer = ({
         setAudioSrc(audioUrl);
       }
       
-      // BASE64 (POSSIVELMENTE JÁ DESCRIPTOGRAFADO)
-      else if (audioData) {
-        try {
-          console.log('🔄 BASE64: Processando dados de áudio...');
-          
-          let cleanData = audioData;
-          if (audioData.includes('data:') && audioData.includes(',')) {
-            cleanData = audioData.split(',')[1];
-          }
-
-          const sources = createAudioSources(cleanData);
-          console.log('🎵 Sources criados:', sources.length);
-          
-          if (sources.length > 0) {
-            setAudioSrc(sources[0]);
-            console.log('✅ BASE64: Primeira source configurada');
-          } else {
-            console.error('❌ Nenhuma source válida');
-            setError('Formato não suportado');
-          }
-          
-        } catch (error) {
-          console.error('❌ Erro processamento base64:', error);
-          setError('Erro ao processar áudio');
-        }
-      }
-      
       // SEM DADOS
       else {
         console.log('⚠️ Sem dados de áudio');
@@ -267,7 +265,7 @@ const AudioPlayer = ({
     };
 
     initializeAudio();
-  }, [audioData, audioUrl, messageId, mediaKey, fileEncSha256, decryptionAttempted]);
+  }, [audioData, audioUrl, messageId, mediaKey, fileEncSha256, decryptionAttempted, fallbackAttempted]);
 
   // Configurar listeners do áudio
   useEffect(() => {
@@ -483,92 +481,93 @@ const AudioPlayer = ({
     }
   };
 
-  if (!audioSrc) {
-    return (
-      <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border">
-        <AlertCircle className="w-4 h-4 text-gray-400" />
-        <span className="text-sm text-gray-500">Áudio não disponível</span>
-      </div>
-    );
-  }
+  // Sempre mostrar player, mesmo sem audioSrc
+  const showLimitedPlayer = !audioSrc || error;
 
   return (
-    <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-200 shadow-sm">
+    <div className="flex items-center gap-2 p-2 border rounded-lg bg-background">
+      {/* Audio element */}
       <audio 
         ref={audioRef} 
+        src={audioSrc || undefined} 
         preload="metadata"
-        src={audioSrc || undefined}
-        crossOrigin="anonymous"
-        style={{ display: 'none' }}
-      >
-        Seu navegador não suporta o elemento de áudio.
-      </audio>
+        className="hidden"
+      />
       
+      {/* Play/Pause Button */}
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={togglePlay}
-        disabled={isLoading || !!error || isDecrypting}
-        className="flex-shrink-0 hover:bg-gray-200 transition-colors"
+        disabled={isLoading || !!showLimitedPlayer}
+        className="p-2 h-8 w-8"
       >
-        {isDecrypting ? (
-          <Loader2 className="w-4 h-4 text-orange-500 animate-spin" />
-        ) : isLoading ? (
-          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        {isLoading || isDecrypting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : isPlaying ? (
-          <Pause className="w-4 h-4 text-blue-600" />
+          <Pause className="h-4 w-4" />
         ) : (
-          <Play className="w-4 h-4 text-green-600" />
+          <Play className="h-4 w-4" />
         )}
       </Button>
 
-      <Volume2 className="w-4 h-4 text-blue-500 flex-shrink-0" />
+      {/* Volume Icon */}
+      <Volume2 className="h-4 w-4 text-muted-foreground" />
 
-      <div className="flex-1 mx-2">
-        {isDecrypting ? (
-          <div className="text-xs text-orange-600 flex items-center gap-1">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            Descriptografando áudio...
-          </div>
-        ) : error ? (
-          <div className="text-xs text-red-500 flex items-center gap-1">
-            <AlertCircle className="w-3 h-3" />
-            {error}
-          </div>
-        ) : (
-          <>
-            <input
-              type="range"
-              min="0"
-              max={totalDuration || 0}
-              value={currentTime}
-              onChange={handleSeek}
-              disabled={!totalDuration || isLoading}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:cursor-not-allowed
-                         [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 
-                         [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 
-                         [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-md
-                         [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full 
-                         [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-none"
-            />
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(totalDuration)}</span>
-            </div>
-          </>
-        )}
+      {/* Progress Bar */}
+      <div className="flex-1 flex items-center gap-2">
+        <span className="text-xs text-muted-foreground min-w-[35px]">
+          {formatTime(currentTime)}
+        </span>
+        
+        <input
+          type="range"
+          min={0}
+          max={totalDuration || 100}
+          value={currentTime}
+          onChange={handleSeek}
+          disabled={!!showLimitedPlayer || totalDuration === 0}
+          className="flex-1 h-1 bg-muted rounded-lg appearance-none cursor-pointer 
+                   [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 
+                   [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full 
+                   [&::-webkit-slider-thumb]:bg-primary"
+        />
+        
+        <span className="text-xs text-muted-foreground min-w-[35px]">
+          {formatTime(totalDuration)}
+        </span>
       </div>
 
+      {/* Download Button */}
       <Button
         variant="ghost"
         size="sm"
         onClick={downloadAudio}
-        className="flex-shrink-0 hover:bg-gray-200 transition-colors"
-        disabled={!audioSrc}
+        disabled={!!showLimitedPlayer}
+        className="p-2 h-8 w-8"
         title="Baixar áudio"
       >
-        <Download className="w-4 h-4 text-gray-600" />
+        <Download className="h-4 w-4" />
       </Button>
+      
+      {/* Status Display */}
+      <div className="flex items-center gap-1 min-w-[80px]">
+        {isDecrypting ? (
+          <div className="flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+            <span className="text-xs text-blue-600">Decifrando...</span>
+          </div>
+        ) : error ? (
+          <div className="flex items-center gap-1">
+            <AlertCircle className="h-3 w-3 text-orange-500" />
+            <span className="text-xs text-orange-600 truncate">{error}</span>
+          </div>
+        ) : audioSrc ? (
+          <span className="text-xs text-green-600">✓ Pronto</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">Carregando...</span>
+        )}
+      </div>
     </div>
   );
 };
