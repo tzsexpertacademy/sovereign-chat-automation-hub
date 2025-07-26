@@ -826,7 +826,7 @@ async function processMessageToTickets(messageData: any, clientId: string, insta
       messageData.timestamp
     );
 
-    // 3. Salvar mensagem no ticket
+    // 3. Salvar mensagem no ticket com chaves de criptografia
     await saveTicketMessage(
       ticketId,
       messageData.messageId,
@@ -836,7 +836,10 @@ async function processMessageToTickets(messageData: any, clientId: string, insta
       messageData.timestamp,
       messageData.contactName,
       messageData.mediaUrl,
-      messageData.mediaDuration
+      messageData.mediaDuration,
+      messageData.mediaKey,
+      messageData.fileEncSha256,
+      messageData.fileSha256
     );
 
     console.log('✅ [TICKETS] Mensagem processada com sucesso no sistema de tickets');
@@ -1000,26 +1003,30 @@ async function saveTicketMessage(
   timestamp: string,
   senderName: string,
   mediaUrl?: string,
-  mediaDuration?: number
+  mediaDuration?: number,
+  mediaKey?: string,
+  fileEncSha256?: string,
+  fileSha256?: string
 ) {
   console.log('💬 [TICKET-MESSAGE] Salvando mensagem no ticket...');
   
   try {
-    const messageRecord = {
-      ticket_id: ticketId,
-      message_id: messageId,
-      content: content,
-      message_type: messageType,
-      from_me: fromMe,
-      timestamp: timestamp,
-      sender_name: senderName,
-      media_url: mediaUrl || null,
-      media_duration: mediaDuration || null
-    };
-
-    const { error: insertError } = await supabase
-      .from('ticket_messages')
-      .insert([messageRecord]);
+    // Usar a nova função do banco que suporta chaves de criptografia
+    const { data: messageId: savedMessageId, error: insertError } = await supabase
+      .rpc('save_ticket_message', {
+        p_ticket_id: ticketId,
+        p_message_id: messageId,
+        p_content: content,
+        p_message_type: messageType,
+        p_from_me: fromMe,
+        p_timestamp: timestamp,
+        p_sender_name: senderName,
+        p_media_url: mediaUrl,
+        p_media_duration: mediaDuration,
+        p_media_key: mediaKey,
+        p_file_enc_sha256: fileEncSha256,
+        p_file_sha256: fileSha256
+      });
 
     if (insertError) {
       console.error('❌ [TICKET-MESSAGE] Erro ao salvar mensagem:', insertError);

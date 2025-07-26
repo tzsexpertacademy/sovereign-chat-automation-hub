@@ -1643,11 +1643,14 @@ export type Database = {
           audio_base64: string | null
           content: string
           created_at: string
+          file_enc_sha256: string | null
+          file_sha256: string | null
           from_me: boolean | null
           id: string
           is_ai_response: boolean | null
           is_internal_note: boolean | null
           media_duration: number | null
+          media_key: string | null
           media_transcription: string | null
           media_url: string | null
           message_id: string
@@ -1662,11 +1665,14 @@ export type Database = {
           audio_base64?: string | null
           content: string
           created_at?: string
+          file_enc_sha256?: string | null
+          file_sha256?: string | null
           from_me?: boolean | null
           id?: string
           is_ai_response?: boolean | null
           is_internal_note?: boolean | null
           media_duration?: number | null
+          media_key?: string | null
           media_transcription?: string | null
           media_url?: string | null
           message_id: string
@@ -1681,11 +1687,14 @@ export type Database = {
           audio_base64?: string | null
           content?: string
           created_at?: string
+          file_enc_sha256?: string | null
+          file_sha256?: string | null
           from_me?: boolean | null
           id?: string
           is_ai_response?: boolean | null
           is_internal_note?: boolean | null
           media_duration?: number | null
+          media_key?: string | null
           media_transcription?: string | null
           media_url?: string | null
           message_id?: string
@@ -1966,6 +1975,24 @@ export type Database = {
           | { plan_name: Database["public"]["Enums"]["plan_type"] }
           | { plan_slug: string }
         Returns: number
+      }
+      save_ticket_message: {
+        Args: {
+          p_ticket_id: string
+          p_message_id: string
+          p_content: string
+          p_message_type: string
+          p_from_me: boolean
+          p_timestamp: string
+          p_sender_name?: string
+          p_media_url?: string
+          p_media_duration?: number
+          p_media_key?: string
+          p_file_enc_sha256?: string
+          p_file_sha256?: string
+          p_audio_base64?: string
+        }
+        Returns: string
       }
       upsert_conversation_ticket: {
         Args: {
