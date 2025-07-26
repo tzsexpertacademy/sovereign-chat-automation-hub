@@ -239,6 +239,73 @@ class TicketsService {
     }
   }
 
+  async deleteTicketCompletely(ticketId: string): Promise<void> {
+    try {
+      console.log('🗑️ [DELETE-TICKET] Iniciando exclusão completa do ticket:', ticketId);
+      
+      // Verificar se o ticket existe
+      const { data: ticket } = await supabase
+        .from('conversation_tickets')
+        .select('id, title')
+        .eq('id', ticketId)
+        .single();
+
+      if (!ticket) {
+        throw new Error('Ticket não encontrado');
+      }
+
+      // Executar exclusões em sequência para manter integridade
+      console.log('🗑️ [DELETE-TICKET] Executando exclusão completa');
+      
+      // 1. Excluir eventos do ticket
+      const { error: eventsError } = await supabase
+        .from('ticket_events')
+        .delete()
+        .eq('ticket_id', ticketId);
+      
+      if (eventsError && !eventsError.message.includes('0 rows')) {
+        console.warn('⚠️ [DELETE-TICKET] Erro ao excluir eventos:', eventsError);
+      }
+
+      // 2. Excluir transferências de fila
+      const { error: transfersError } = await supabase
+        .from('queue_transfers')
+        .delete()
+        .eq('ticket_id', ticketId);
+      
+      if (transfersError && !transfersError.message.includes('0 rows')) {
+        console.warn('⚠️ [DELETE-TICKET] Erro ao excluir transferências:', transfersError);
+      }
+
+      // 3. Excluir mensagens do ticket
+      const { error: messagesError } = await supabase
+        .from('ticket_messages')
+        .delete()
+        .eq('ticket_id', ticketId);
+      
+      if (messagesError) {
+        console.error('❌ [DELETE-TICKET] Erro ao excluir mensagens:', messagesError);
+        throw messagesError;
+      }
+
+      // 4. Excluir o ticket principal
+      const { error: ticketError } = await supabase
+        .from('conversation_tickets')
+        .delete()
+        .eq('id', ticketId);
+
+      if (ticketError) {
+        console.error('❌ [DELETE-TICKET] Erro ao excluir ticket:', ticketError);
+        throw ticketError;
+      }
+
+      console.log('✅ [DELETE-TICKET] Ticket excluído completamente:', ticketId);
+    } catch (error) {
+      console.error('❌ [DELETE-TICKET] Erro ao excluir ticket:', error);
+      throw error;
+    }
+  }
+
   async validateAndFixTimestamp(timestamp: any): Promise<string> {
     if (!timestamp) return new Date().toISOString();
     
