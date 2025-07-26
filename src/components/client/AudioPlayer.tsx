@@ -133,17 +133,24 @@ const AudioPlayer = ({
     return sources.filter(src => src.length > 50); // Filtrar sources muito pequenos
   };
 
-  // Processar dados de áudio
+  // Processar dados de áudio com priorização inteligente
   useEffect(() => {
-    if (audioData) {
-      try {
-        console.log('🎵 ===== CONFIGURANDO AUDIO PLAYER =====');
-        console.log('📊 Dados de entrada:', {
-          hasData: !!audioData,
-          length: audioData.length,
-          firstChars: audioData.substring(0, 50)
-        });
+    console.log('🎵 ===== CONFIGURANDO AUDIO PLAYER =====');
+    console.log('📊 Dados de entrada:', {
+      hasUrl: !!audioUrl,
+      hasData: !!audioData,
+      dataLength: audioData?.length || 0
+    });
 
+    // ESTRATÉGIA HÍBRIDA: URL primeiro, Base64 como fallback
+    if (audioUrl) {
+      console.log('✅ PRIMÁRIO: Usando URL direta do WhatsApp:', audioUrl);
+      setAudioSrc(audioUrl);
+      setError(null);
+    } else if (audioData) {
+      try {
+        console.log('🔄 FALLBACK: Processando base64...');
+        
         let cleanData = audioData;
         if (audioData.includes('data:') && audioData.includes(',')) {
           cleanData = audioData.split(',')[1];
@@ -152,20 +159,24 @@ const AudioPlayer = ({
         const sources = createAudioSources(cleanData);
         console.log('🎵 Sources criados:', sources.length);
         
-        // Usar primeira source como padrão
-        setAudioSrc(sources[0]);
+        if (sources.length > 0) {
+          setAudioSrc(sources[0]);
+          console.log('✅ FALLBACK: Usando primeira source base64');
+        } else {
+          console.error('❌ Nenhuma source válida criada');
+          setError('Formato de áudio não suportado');
+          setAudioSrc(null);
+        }
         
       } catch (error) {
         console.error('❌ Erro ao processar dados de áudio:', error);
         setError('Erro ao processar dados de áudio');
         setAudioSrc(null);
       }
-    } else if (audioUrl) {
-      setAudioSrc(audioUrl);
-      console.log('✅ Usando URL de áudio:', audioUrl);
     } else {
-      setAudioSrc(null);
       console.log('⚠️ Nenhum dado de áudio disponível');
+      setAudioSrc(null);
+      setError('Áudio não disponível');
     }
   }, [audioData, audioUrl]);
 
@@ -202,29 +213,43 @@ const AudioPlayer = ({
         error: e.type,
         src: audio.src?.substring(0, 100) + '...',
         networkState: audio.networkState,
-        readyState: audio.readyState
+        readyState: audio.readyState,
+        hasUrl: !!audioUrl,
+        hasData: !!audioData
       });
       
       setIsLoading(false);
       setIsPlaying(false);
       
-      // Tentar próximo formato se disponível
-      if (audioData) {
+      // ESTRATÉGIA DE FALLBACK INTELIGENTE
+      if (audioUrl && audioData) {
+        // Se estava usando URL e falhou, tentar base64
+        if (audioSrc === audioUrl) {
+          console.log('🔄 URL falhou, tentando fallback base64...');
+          const cleanData = audioData.includes(',') ? audioData.split(',')[1] : audioData;
+          const sources = createAudioSources(cleanData);
+          if (sources.length > 0) {
+            setAudioSrc(sources[0]);
+            setError(null);
+            return;
+          }
+        }
+        
+        // Se estava usando base64, tentar próximo formato
         const cleanData = audioData.includes(',') ? audioData.split(',')[1] : audioData;
         const sources = createAudioSources(cleanData);
         const currentIndex = sources.indexOf(audioSrc || '');
         
         if (currentIndex >= 0 && currentIndex < sources.length - 1) {
-          console.log(`🔄 Tentando formato ${currentIndex + 2}/${sources.length}...`);
+          console.log(`🔄 Tentando formato base64 ${currentIndex + 2}/${sources.length}...`);
           setAudioSrc(sources[currentIndex + 1]);
           setError(null);
-        } else {
-          console.error('❌ Todos os formatos de áudio falharam');
-          setError('Formato de áudio não suportado');
+          return;
         }
-      } else {
-        setError('Erro ao carregar áudio');
       }
+      
+      console.error('❌ Todos os formatos de áudio falharam');
+      setError('Áudio não pode ser reproduzido');
     };
     
     const handleEnded = () => {

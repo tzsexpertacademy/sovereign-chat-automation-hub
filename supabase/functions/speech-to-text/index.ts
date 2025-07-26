@@ -161,17 +161,20 @@ serve(async (req) => {
       primeiros10Bytes: Array.from(audioBytes.slice(0, 10)).map(b => b.toString(16)).join(' ')
     });
 
-    // Formatos otimizados para OpenAI Whisper (apenas formatos oficialmente suportados)
-    const formatsToTry = [
-      // OGG sempre primeiro para WhatsApp
-      { format: 'ogg', mimeType: 'audio/ogg' },
-      // Outros formatos oficiais da OpenAI
-      { format: 'mp3', mimeType: 'audio/mpeg' },
-      { format: 'wav', mimeType: 'audio/wav' },
-      { format: 'm4a', mimeType: 'audio/m4a' },
-      { format: 'webm', mimeType: 'audio/webm' },
-      { format: 'flac', mimeType: 'audio/flac' }
-    ];
+  // Formatos otimizados para OpenAI Whisper - ordem correta para WhatsApp OGG Opus
+  const formatsToTry = [
+    // OGG Opus (formato do WhatsApp) - sempre primeiro
+    { format: 'ogg', mimeType: 'audio/ogg; codecs=opus' },
+    { format: 'ogg', mimeType: 'audio/ogg' },
+    // Formato padrão WebM Opus (alternativa ao OGG)
+    { format: 'webm', mimeType: 'audio/webm; codecs=opus' },
+    { format: 'webm', mimeType: 'audio/webm' },
+    // Formatos de conversão universal
+    { format: 'mp3', mimeType: 'audio/mpeg' },
+    { format: 'wav', mimeType: 'audio/wav' },
+    { format: 'm4a', mimeType: 'audio/mp4' },
+    { format: 'flac', mimeType: 'audio/flac' }
+  ];
 
     for (let i = 0; i < formatsToTry.length; i++) {
       const { format, mimeType } = formatsToTry[i];

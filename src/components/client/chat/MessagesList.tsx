@@ -18,30 +18,24 @@ const renderMessageContent = (message: any) => {
     if (message.message_type === 'audio') {
       return (
         <div className="space-y-3 max-w-sm">
-          {/* Player de áudio - sempre mostrar se tiver dados */}
-          {(message.audio_base64 || message.media_url) && (
-            <AudioPlayer 
-              audioUrl={message.media_url}
-              audioData={message.audio_base64}
-              duration={message.media_duration}
-              fileName={`audio_${message.id}.ogg`}
-            />
-          )}
+          {/* Player de áudio híbrido - URL + Base64 */}
+          <AudioPlayer 
+            audioUrl={message.media_url}
+            audioData={message.audio_base64}
+            duration={message.media_duration}
+            fileName={`audio_${message.id}.ogg`}
+          />
           
-          {/* Fallback quando não há dados de áudio */}
-          {!message.audio_base64 && !message.media_url && (
-            <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-              <Mic className="w-4 h-4 text-blue-600" />
-              <div className="flex-1">
-                <span className="text-sm font-medium text-blue-800">Mensagem de áudio</span>
-                {message.media_duration && (
-                  <span className="text-xs text-blue-600 ml-2">({message.media_duration}s)</span>
-                )}
-              </div>
-            </div>
-          )}
+          {/* Informações do áudio */}
+          <div className="flex items-center gap-2 text-xs text-gray-600">
+            <Mic className="w-3 h-3" />
+            <span>Mensagem de áudio</span>
+            {message.media_duration && (
+              <span>• {message.media_duration}s</span>
+            )}
+          </div>
           
-          {/* Status de processamento */}
+          {/* Status de processamento da transcrição */}
           {message.processing_status && ['pending_transcription', 'processing_transcription'].includes(message.processing_status) && (
             <div className="flex items-center gap-2 text-xs">
               <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -66,12 +60,10 @@ const renderMessageContent = (message: any) => {
             </div>
           )}
           
-          {/* Erro na transcrição */}
-          {(message.transcription || message.media_transcription) && 
-           ((message.transcription || message.media_transcription).includes('Erro') || 
-            (message.transcription || message.media_transcription).includes('não disponível')) && (
-            <div className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
-              <span className="text-red-500">❌</span> {message.transcription || message.media_transcription}
+          {/* Status de erro na transcrição (não remove o player) */}
+          {message.processing_status === 'transcription_failed' && (
+            <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+              <span className="text-amber-500">⚠️</span> Transcrição não disponível - player funcionando
             </div>
           )}
         </div>
