@@ -320,21 +320,29 @@ async function decryptWhatsAppLegacy(encryptedBase64: string, mediaKeyBase64: st
 
 /**
  * HKDF específico do WhatsApp baseado no protocolo oficial
- * Implementação conforme open-wa/wa-decrypt-nodejs
+ * Implementação CORRETA conforme análise técnica e open-wa/wa-decrypt-nodejs
  */
 async function hkdfWhatsApp(key: Uint8Array, info: string, outputLength: number): Promise<Uint8Array> {
-  const salt = new TextEncoder().encode(info)
+  // CORREÇÃO: Salt deve ser VAZIO, não usar info como salt
+  const salt = new Uint8Array([])
+  const infoBytes = new TextEncoder().encode(info)
   
-  // HKDF-Extract: HMAC-SHA256(salt, key)
+  // HKDF-Extract: HMAC-SHA256(salt=[], key)
   const extractKey = await crypto.subtle.importKey(
     'raw',
-    salt,
+    salt.length > 0 ? salt : key, // Se salt vazio, usar key como chave HMAC
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   )
   
-  const prk = new Uint8Array(await crypto.subtle.sign('HMAC', extractKey, key))
+  let prk: Uint8Array
+  if (salt.length === 0) {
+    // Para salt vazio, PRK = key (conforme RFC 5869)
+    prk = key
+  } else {
+    prk = new Uint8Array(await crypto.subtle.sign('HMAC', extractKey, key))
+  }
   
   console.log('🔑 [HKDF] Extract realizado:', {
     saltLength: salt.length,
@@ -343,7 +351,7 @@ async function hkdfWhatsApp(key: Uint8Array, info: string, outputLength: number)
     outputLength
   })
   
-  // HKDF-Expand: gerar dados de saída
+  // HKDF-Expand: HMAC-SHA256(PRK, info | counter)
   const expandKey = await crypto.subtle.importKey(
     'raw',
     prk,
@@ -359,10 +367,11 @@ async function hkdfWhatsApp(key: Uint8Array, info: string, outputLength: number)
   let offset = 0
   
   for (let i = 1; i <= n; i++) {
-    // T(i) = HMAC-SHA256(PRK, "" | i)
-    // WhatsApp usa info vazio, apenas o contador
-    const input = new Uint8Array(1)
-    input[0] = i
+    // T(i) = HMAC-SHA256(PRK, info | counter)
+    // CORREÇÃO: Usar info + counter, não só counter
+    const input = new Uint8Array(infoBytes.length + 1)
+    input.set(infoBytes, 0)
+    input[infoBytes.length] = i
     
     const hash = new Uint8Array(await crypto.subtle.sign('HMAC', expandKey, input))
     const bytesToCopy = Math.min(hash.length, outputLength - offset)
@@ -373,7 +382,8 @@ async function hkdfWhatsApp(key: Uint8Array, info: string, outputLength: number)
   
   console.log('🔑 [HKDF] Expand concluído:', {
     rounds: n,
-    finalLength: output.length
+    finalLength: output.length,
+    infoUsed: info
   })
   
   return output
