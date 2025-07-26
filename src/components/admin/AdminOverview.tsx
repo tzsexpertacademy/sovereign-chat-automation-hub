@@ -20,6 +20,7 @@ import { useAdminStats } from "@/hooks/useAdminStats";
 import { MetricsCharts } from "./MetricsCharts";
 import { SystemHealthCard } from "./SystemHealthCard";
 import { RecentActivityCard } from "./RecentActivityCard";
+import { AudioTestButton } from "./AudioTestButton";
 
 const AdminOverview = () => {
   const { stats, recentActivity, loading, error, refreshStats } = useAdminStats();
@@ -229,6 +230,18 @@ const AdminOverview = () => {
           activities={recentActivity || []}
         />
       </div>
+
+      {/* Ferramentas de Debug */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Ferramentas de Debug</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4">
+            <AudioTestButton />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
