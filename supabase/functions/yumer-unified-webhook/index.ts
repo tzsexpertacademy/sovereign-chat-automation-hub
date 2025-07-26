@@ -569,32 +569,33 @@ async function processEncryptedAudioTranscription(
           openaiApiKey: Deno.env.get('OPENAI_API_KEY')
         }
       });
-    
-    if (transcriptionError) {
-      console.error('❌ [AUDIO-TRANSCRIPTION] Erro na transcrição:', transcriptionError);
+      
+      if (transcriptionError) {
+        console.error('❌ [AUDIO-TRANSCRIPTION] Erro na transcrição:', transcriptionError);
+        await supabase
+          .from('whatsapp_messages')
+          .update({ 
+            processing_status: 'transcription_failed',
+            transcription: 'Transcrição não disponível (erro no processamento)'
+          })
+          .eq('message_id', messageId);
+        return;
+      }
+      
+      const transcription = transcriptionResult?.text || 'Transcrição não disponível';
+      console.log('✅ [AUDIO-TRANSCRIPTION] Concluída:', transcription.substring(0, 100));
+      
+      // Atualizar com transcrição
       await supabase
         .from('whatsapp_messages')
         .update({ 
-          processing_status: 'transcription_failed',
-          transcription: 'Transcrição não disponível (erro no processamento)'
+          processing_status: 'processed',
+          transcription: transcription
         })
         .eq('message_id', messageId);
-      return;
+      
+      console.log('✅ [AUDIO-TRANSCRIPTION] Mensagem atualizada com sucesso');
     }
-    
-    const transcription = transcriptionResult?.text || 'Transcrição não disponível';
-    console.log('✅ [AUDIO-TRANSCRIPTION] Concluída:', transcription.substring(0, 100));
-    
-    // Atualizar com transcrição
-    await supabase
-      .from('whatsapp_messages')
-      .update({ 
-        processing_status: 'processed',
-        transcription: transcription
-      })
-      .eq('message_id', messageId);
-    
-    console.log('✅ [AUDIO-TRANSCRIPTION] Mensagem atualizada com sucesso');
     
   } catch (error) {
     console.error('❌ [AUDIO-TRANSCRIPTION] Erro crítico:', error);
