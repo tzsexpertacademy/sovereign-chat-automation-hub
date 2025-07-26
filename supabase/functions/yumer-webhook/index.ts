@@ -502,54 +502,110 @@ function extractYumerMessageData(messageData: any, instance: any) {
       mediaMimeType = messageData.content.mimetype;
     }
 
-    // 🔐 EXTRAIR METADADOS DE CRIPTOGRAFIA - CONVERSÃO CORRIGIDA
+    // 🔐 EXTRAIR METADADOS DE CRIPTOGRAFIA - CONVERSÃO ROBUSTA COM VALIDAÇÃO
+    console.log('🔍 [EXTRACT-YUMER] Iniciando extração de metadados de criptografia...');
+    
+    // VALIDAÇÃO E CONVERSÃO DO MEDIA KEY
     if (messageData.content?.mediaKey) {
+      console.log('🔑 [EXTRACT-YUMER] MediaKey detectado:', typeof messageData.content.mediaKey, Array.isArray(messageData.content.mediaKey));
       try {
         if (Array.isArray(messageData.content.mediaKey) || messageData.content.mediaKey instanceof Uint8Array) {
-          // Conversão segura para arrays grandes
           const bytes = new Uint8Array(messageData.content.mediaKey);
-          mediaKey = btoa(Array.from(bytes).map(byte => String.fromCharCode(byte)).join(''));
-          console.log('✅ [EXTRACT-YUMER] MediaKey convertido com sucesso, tamanho:', bytes.length);
+          console.log('🔧 [EXTRACT-YUMER] Convertendo MediaKey - bytes:', bytes.length, 'primeiros 8:', Array.from(bytes.slice(0, 8)));
+          
+          // Conversão chunk por chunk para arrays grandes
+          const chunks = [];
+          const chunkSize = 1024;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.slice(i, i + chunkSize);
+            chunks.push(String.fromCharCode(...chunk));
+          }
+          mediaKey = btoa(chunks.join(''));
+          
+          console.log('✅ [EXTRACT-YUMER] MediaKey convertido com sucesso - tamanho final:', mediaKey.length);
+          console.log('🔐 [EXTRACT-YUMER] MediaKey (primeiros 50 chars):', mediaKey.substring(0, 50));
         } else if (typeof messageData.content.mediaKey === 'string') {
           mediaKey = messageData.content.mediaKey;
-          console.log('✅ [EXTRACT-YUMER] MediaKey já era string');
+          console.log('✅ [EXTRACT-YUMER] MediaKey já era string - tamanho:', mediaKey.length);
+        } else {
+          console.warn('⚠️ [EXTRACT-YUMER] MediaKey em formato desconhecido:', typeof messageData.content.mediaKey);
+          mediaKey = '';
         }
       } catch (error) {
-        console.error('❌ [EXTRACT-YUMER] Erro ao converter mediaKey:', error);
+        console.error('❌ [EXTRACT-YUMER] ERRO CRÍTICO ao converter mediaKey:', error);
+        console.error('🔍 [EXTRACT-YUMER] Dados originais do mediaKey:', messageData.content.mediaKey);
         mediaKey = '';
       }
+    } else {
+      console.log('⚠️ [EXTRACT-YUMER] MediaKey não encontrado no content');
     }
     
+    // VALIDAÇÃO E CONVERSÃO DO FILE ENC SHA256
     if (messageData.content?.fileEncSha256) {
+      console.log('🔑 [EXTRACT-YUMER] FileEncSha256 detectado:', typeof messageData.content.fileEncSha256, Array.isArray(messageData.content.fileEncSha256));
       try {
         if (Array.isArray(messageData.content.fileEncSha256) || messageData.content.fileEncSha256 instanceof Uint8Array) {
           const bytes = new Uint8Array(messageData.content.fileEncSha256);
-          fileEncSha256 = btoa(Array.from(bytes).map(byte => String.fromCharCode(byte)).join(''));
-          console.log('✅ [EXTRACT-YUMER] FileEncSha256 convertido com sucesso, tamanho:', bytes.length);
+          console.log('🔧 [EXTRACT-YUMER] Convertendo FileEncSha256 - bytes:', bytes.length, 'primeiros 8:', Array.from(bytes.slice(0, 8)));
+          
+          const chunks = [];
+          const chunkSize = 1024;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.slice(i, i + chunkSize);
+            chunks.push(String.fromCharCode(...chunk));
+          }
+          fileEncSha256 = btoa(chunks.join(''));
+          
+          console.log('✅ [EXTRACT-YUMER] FileEncSha256 convertido com sucesso - tamanho final:', fileEncSha256.length);
+          console.log('🔐 [EXTRACT-YUMER] FileEncSha256 (primeiros 50 chars):', fileEncSha256.substring(0, 50));
         } else if (typeof messageData.content.fileEncSha256 === 'string') {
           fileEncSha256 = messageData.content.fileEncSha256;
-          console.log('✅ [EXTRACT-YUMER] FileEncSha256 já era string');
+          console.log('✅ [EXTRACT-YUMER] FileEncSha256 já era string - tamanho:', fileEncSha256.length);
+        } else {
+          console.warn('⚠️ [EXTRACT-YUMER] FileEncSha256 em formato desconhecido:', typeof messageData.content.fileEncSha256);
+          fileEncSha256 = '';
         }
       } catch (error) {
-        console.error('❌ [EXTRACT-YUMER] Erro ao converter fileEncSha256:', error);
+        console.error('❌ [EXTRACT-YUMER] ERRO CRÍTICO ao converter fileEncSha256:', error);
+        console.error('🔍 [EXTRACT-YUMER] Dados originais do fileEncSha256:', messageData.content.fileEncSha256);
         fileEncSha256 = '';
       }
+    } else {
+      console.log('⚠️ [EXTRACT-YUMER] FileEncSha256 não encontrado no content');
     }
     
+    // VALIDAÇÃO E CONVERSÃO DO FILE SHA256
     if (messageData.content?.fileSha256) {
+      console.log('🔑 [EXTRACT-YUMER] FileSha256 detectado:', typeof messageData.content.fileSha256, Array.isArray(messageData.content.fileSha256));
       try {
         if (Array.isArray(messageData.content.fileSha256) || messageData.content.fileSha256 instanceof Uint8Array) {
           const bytes = new Uint8Array(messageData.content.fileSha256);
-          fileSha256 = btoa(Array.from(bytes).map(byte => String.fromCharCode(byte)).join(''));
-          console.log('✅ [EXTRACT-YUMER] FileSha256 convertido com sucesso, tamanho:', bytes.length);
+          console.log('🔧 [EXTRACT-YUMER] Convertendo FileSha256 - bytes:', bytes.length, 'primeiros 8:', Array.from(bytes.slice(0, 8)));
+          
+          const chunks = [];
+          const chunkSize = 1024;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.slice(i, i + chunkSize);
+            chunks.push(String.fromCharCode(...chunk));
+          }
+          fileSha256 = btoa(chunks.join(''));
+          
+          console.log('✅ [EXTRACT-YUMER] FileSha256 convertido com sucesso - tamanho final:', fileSha256.length);
+          console.log('🔐 [EXTRACT-YUMER] FileSha256 (primeiros 50 chars):', fileSha256.substring(0, 50));
         } else if (typeof messageData.content.fileSha256 === 'string') {
           fileSha256 = messageData.content.fileSha256;
-          console.log('✅ [EXTRACT-YUMER] FileSha256 já era string');
+          console.log('✅ [EXTRACT-YUMER] FileSha256 já era string - tamanho:', fileSha256.length);
+        } else {
+          console.warn('⚠️ [EXTRACT-YUMER] FileSha256 em formato desconhecido:', typeof messageData.content.fileSha256);
+          fileSha256 = '';
         }
       } catch (error) {
-        console.error('❌ [EXTRACT-YUMER] Erro ao converter fileSha256:', error);
+        console.error('❌ [EXTRACT-YUMER] ERRO CRÍTICO ao converter fileSha256:', error);
+        console.error('🔍 [EXTRACT-YUMER] Dados originais do fileSha256:', messageData.content.fileSha256);
         fileSha256 = '';
       }
+    } else {
+      console.log('⚠️ [EXTRACT-YUMER] FileSha256 não encontrado no content');
     }
     
     if (messageData.content?.directPath) {
