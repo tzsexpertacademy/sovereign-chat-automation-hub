@@ -145,75 +145,71 @@ serve(async (req) => {
 
 /**
  * Descriptografa áudio do WhatsApp usando AES-GCM
- * Implementação corrigida para o formato específico do WhatsApp
+ * Implementação baseada no open-wa/wa-decrypt-nodejs e Baileys
  */
 async function decryptWhatsAppAudio(encryptedBase64: string, mediaKeyBase64: string): Promise<string | null> {
   try {
-    console.log('🔐 [AES-DECRYPT] Iniciando descriptografia AES-GCM...')
+    console.log('🔐 [WA-DECRYPT] Iniciando descriptografia WhatsApp...')
     
-    // Decodificar dados
-    const encryptedData = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0))
+    // Decodificar dados base64
+    const encryptedBuffer = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0))
     const mediaKey = Uint8Array.from(atob(mediaKeyBase64), c => c.charCodeAt(0))
     
-    console.log('📊 [AES-DECRYPT] Dados decodificados:', {
-      encryptedDataLength: encryptedData.length,
-      mediaKeyLength: mediaKey.length
+    console.log('📊 [WA-DECRYPT] Dados de entrada:', {
+      encryptedLength: encryptedBuffer.length,
+      mediaKeyLength: mediaKey.length,
+      mediaKeyHex: Array.from(mediaKey.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join('')
     })
 
-    // Verificar se a chave tem o tamanho correto (32 bytes)
+    // Validar tamanho da chave de mídia (deve ser 32 bytes)
     if (mediaKey.length !== 32) {
       throw new Error(`Chave de mídia inválida: ${mediaKey.length} bytes (esperado: 32)`)
     }
 
-    // Verificar se há dados suficientes (pelo menos IV + tag)
-    if (encryptedData.length < 28) { // 12 (IV) + 16 (tag mínimo) 
-      throw new Error(`Dados criptografados insuficientes: ${encryptedData.length} bytes`)
+    // Validar dados mínimos (16 bytes de tag no mínimo)
+    if (encryptedBuffer.length < 16) {
+      throw new Error(`Dados insuficientes: ${encryptedBuffer.length} bytes`)
     }
 
-    // WhatsApp usa derivação específica de chave
-    const audioKey = await deriveWhatsAppAudioKey(mediaKey)
-    const audioIV = await deriveWhatsAppAudioIV(mediaKey)
+    // Derivar chaves usando HKDF específico do WhatsApp
+    const mediaDecryptionKey = await hkdfWhatsApp(mediaKey, 'WhatsApp Media Keys', 32)
+    const mediaIV = await hkdfWhatsApp(mediaKey, 'WhatsApp Media IVs', 12)
     
-    console.log('🔑 [AES-DECRYPT] Chaves derivadas:', {
-      audioKeyLength: audioKey.length,
-      audioIVLength: audioIV.length
+    console.log('🔑 [WA-DECRYPT] Chaves derivadas:', {
+      keyLength: mediaDecryptionKey.length,
+      ivLength: mediaIV.length,
+      keyStart: Array.from(mediaDecryptionKey.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join(''),
+      ivStart: Array.from(mediaIV.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('')
     })
 
-    // Dados criptografados (sem IV e tag separados)
-    // WhatsApp coloca ciphertext + tag juntos
-    const ciphertext = encryptedData
-
-    console.log('🔑 [AES-DECRYPT] Componentes preparados:', {
-      audioKeyLength: audioKey.length,
-      audioIVLength: audioIV.length,
-      ciphertextLength: ciphertext.length
-    })
-
-    // Importar chave para WebCrypto
+    // Importar chave para Web Crypto API
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      audioKey,
+      mediaDecryptionKey,
       { name: 'AES-GCM' },
       false,
       ['decrypt']
     )
 
-    // Descriptografar usando AES-GCM - método correto para WhatsApp
+    // Descriptografar usando AES-256-GCM
+    // WhatsApp inclui o tag nos dados criptografados
+    console.log('🔓 [WA-DECRYPT] Executando AES-GCM decrypt...')
     const decryptedBuffer = await crypto.subtle.decrypt(
       {
         name: 'AES-GCM',
-        iv: audioIV,
-        tagLength: 128 // 16 bytes * 8 = 128 bits
+        iv: mediaIV,
+        tagLength: 128 // 16 bytes
       },
       cryptoKey,
-      ciphertext
+      encryptedBuffer
     )
 
     // Converter para base64
     const decryptedArray = new Uint8Array(decryptedBuffer)
     const decryptedBase64 = btoa(String.fromCharCode(...decryptedArray))
     
-    console.log('✅ [AES-DECRYPT] Descriptografia concluída:', {
+    console.log('✅ [WA-DECRYPT] Descriptografia bem-sucedida:', {
+      originalLength: encryptedBuffer.length,
       decryptedLength: decryptedArray.length,
       base64Length: decryptedBase64.length
     })
@@ -221,116 +217,134 @@ async function decryptWhatsAppAudio(encryptedBase64: string, mediaKeyBase64: str
     return decryptedBase64
 
   } catch (error) {
-    console.error('❌ [AES-DECRYPT] Erro na descriptografia:', error)
+    console.error('❌ [WA-DECRYPT] Erro principal:', error)
     
-    // Tentar método alternativo se o primeiro falhar
+    // Tentar método alternativo para diferentes versões do WhatsApp
     try {
-      console.log('🔄 [AES-DECRYPT] Tentando método alternativo...')
-      return await decryptWhatsAppAudioAlternative(encryptedBase64, mediaKeyBase64)
+      console.log('🔄 [WA-DECRYPT] Tentando método alternativo...')
+      return await decryptWhatsAppLegacy(encryptedBase64, mediaKeyBase64)
     } catch (altError) {
-      console.error('❌ [AES-DECRYPT] Método alternativo também falhou:', altError)
+      console.error('❌ [WA-DECRYPT] Método alternativo falhou:', altError)
       return null
     }
   }
 }
 
 /**
- * Método alternativo de descriptografia para diferentes formatos de dados WhatsApp
+ * Método legacy para descriptografia (para versões mais antigas do WhatsApp)
  */
-async function decryptWhatsAppAudioAlternative(encryptedBase64: string, mediaKeyBase64: string): Promise<string | null> {
+async function decryptWhatsAppLegacy(encryptedBase64: string, mediaKeyBase64: string): Promise<string | null> {
   try {
-    console.log('🔄 [ALT-DECRYPT] Iniciando método alternativo...')
+    console.log('🔄 [WA-LEGACY] Tentando método legacy...')
     
     const encryptedData = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0))
     const mediaKey = Uint8Array.from(atob(mediaKeyBase64), c => c.charCodeAt(0))
     
-    // Método tradicional: IV no início, tag no final
-    const iv = encryptedData.slice(0, 12) // Primeiros 12 bytes
-    const tag = encryptedData.slice(-16) // Últimos 16 bytes  
-    const ciphertext = encryptedData.slice(12, -16) // Meio
-    
-    console.log('🔑 [ALT-DECRYPT] Componentes extraídos:', {
-      ivLength: iv.length,
-      ciphertextLength: ciphertext.length,
-      tagLength: tag.length
-    })
+    // Método alternativo: extrair IV, ciphertext e tag manualmente
+    if (encryptedData.length < 28) {
+      throw new Error('Dados insuficientes para método legacy')
+    }
 
-    // Derivar chave simples
-    const derivedKey = await deriveKey(mediaKey, 'WhatsApp Audio Keys', 32)
-    
-    // Importar chave
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      derivedKey,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    )
-
-    // Combinar ciphertext + tag para descriptografia
-    const dataToDecrypt = new Uint8Array(ciphertext.length + tag.length)
-    dataToDecrypt.set(ciphertext)
-    dataToDecrypt.set(tag, ciphertext.length)
-    
-    const decryptedBuffer = await crypto.subtle.decrypt(
+    // Tentar diferentes estruturas de dados
+    const attempts = [
+      // Estrutura 1: IV (12) + ciphertext + tag (16)
       {
-        name: 'AES-GCM',
-        iv: iv,
-        tagLength: 128
+        iv: encryptedData.slice(0, 12),
+        ciphertext: encryptedData.slice(12, -16),
+        tag: encryptedData.slice(-16)
       },
-      cryptoKey,
-      dataToDecrypt
-    )
+      // Estrutura 2: Tag (16) + IV (12) + ciphertext  
+      {
+        tag: encryptedData.slice(0, 16),
+        iv: encryptedData.slice(16, 28),
+        ciphertext: encryptedData.slice(28)
+      }
+    ]
 
-    const decryptedArray = new Uint8Array(decryptedBuffer)
-    const decryptedBase64 = btoa(String.fromCharCode(...decryptedArray))
+    for (let i = 0; i < attempts.length; i++) {
+      try {
+        const { iv, ciphertext, tag } = attempts[i]
+        
+        console.log(`🔄 [WA-LEGACY] Tentativa ${i + 1}:`, {
+          ivLength: iv.length,
+          ciphertextLength: ciphertext.length,
+          tagLength: tag.length
+        })
+
+        // Derivar chave usando HKDF simples
+        const derivedKey = await simpleHKDF(mediaKey, 'Audio', 32)
+        
+        // Importar chave
+        const cryptoKey = await crypto.subtle.importKey(
+          'raw',
+          derivedKey,
+          { name: 'AES-GCM' },
+          false,
+          ['decrypt']
+        )
+
+        // Combinar ciphertext + tag
+        const dataToDecrypt = new Uint8Array(ciphertext.length + tag.length)
+        dataToDecrypt.set(ciphertext)
+        dataToDecrypt.set(tag, ciphertext.length)
+        
+        const decryptedBuffer = await crypto.subtle.decrypt(
+          {
+            name: 'AES-GCM',
+            iv: iv,
+            tagLength: 128
+          },
+          cryptoKey,
+          dataToDecrypt
+        )
+
+        const decryptedArray = new Uint8Array(decryptedBuffer)
+        const decryptedBase64 = btoa(String.fromCharCode(...decryptedArray))
+        
+        console.log(`✅ [WA-LEGACY] Sucesso na tentativa ${i + 1}`)
+        return decryptedBase64
+        
+      } catch (attemptError) {
+        console.log(`❌ [WA-LEGACY] Tentativa ${i + 1} falhou:`, attemptError.message)
+        continue
+      }
+    }
     
-    console.log('✅ [ALT-DECRYPT] Método alternativo bem-sucedido')
-    return decryptedBase64
+    throw new Error('Todas as tentativas legacy falharam')
     
   } catch (error) {
-    console.error('❌ [ALT-DECRYPT] Falha no método alternativo:', error)
+    console.error('❌ [WA-LEGACY] Método legacy falhou:', error)
     throw error
   }
 }
 
 /**
- * Deriva chave de áudio específica do WhatsApp
+ * HKDF específico do WhatsApp baseado no protocolo oficial
+ * Implementação conforme open-wa/wa-decrypt-nodejs
  */
-async function deriveWhatsAppAudioKey(mediaKey: Uint8Array): Promise<Uint8Array> {
-  const salt = new TextEncoder().encode('WhatsApp Audio Keys')
-  return await hkdfExpand(await hkdfExtract(salt, mediaKey), new TextEncoder().encode(''), 32)
-}
-
-/**
- * Deriva IV de áudio específico do WhatsApp
- */
-async function deriveWhatsAppAudioIV(mediaKey: Uint8Array): Promise<Uint8Array> {
-  const salt = new TextEncoder().encode('WhatsApp Audio IVs')
-  return await hkdfExpand(await hkdfExtract(salt, mediaKey), new TextEncoder().encode(''), 12)
-}
-
-/**
- * HKDF Extract
- */
-async function hkdfExtract(salt: Uint8Array, ikm: Uint8Array): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey(
+async function hkdfWhatsApp(key: Uint8Array, info: string, outputLength: number): Promise<Uint8Array> {
+  const salt = new TextEncoder().encode(info)
+  
+  // HKDF-Extract: HMAC-SHA256(salt, key)
+  const extractKey = await crypto.subtle.importKey(
     'raw',
-    salt.length > 0 ? salt : new Uint8Array(32), // Use zero salt if empty
+    salt,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   )
   
-  const signature = await crypto.subtle.sign('HMAC', key, ikm)
-  return new Uint8Array(signature)
-}
-
-/**
- * HKDF Expand
- */
-async function hkdfExpand(prk: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey(
+  const prk = new Uint8Array(await crypto.subtle.sign('HMAC', extractKey, key))
+  
+  console.log('🔑 [HKDF] Extract realizado:', {
+    saltLength: salt.length,
+    prkLength: prk.length,
+    info,
+    outputLength
+  })
+  
+  // HKDF-Expand: gerar dados de saída
+  const expandKey = await crypto.subtle.importKey(
     'raw',
     prk,
     { name: 'HMAC', hash: 'SHA-256' },
@@ -338,63 +352,55 @@ async function hkdfExpand(prk: Uint8Array, info: Uint8Array, length: number): Pr
     ['sign']
   )
   
-  const result = new Uint8Array(length)
-  let offset = 0
-  let counter = 1
+  const output = new Uint8Array(outputLength)
+  const hashLength = 32 // SHA-256 produz 32 bytes
+  const n = Math.ceil(outputLength / hashLength)
   
-  while (offset < length) {
-    const input = new Uint8Array(info.length + 1)
-    input.set(info)
-    input[info.length] = counter
+  let offset = 0
+  
+  for (let i = 1; i <= n; i++) {
+    // T(i) = HMAC-SHA256(PRK, "" | i)
+    // WhatsApp usa info vazio, apenas o contador
+    const input = new Uint8Array(1)
+    input[0] = i
     
-    const hash = await crypto.subtle.sign('HMAC', key, input)
-    const hashArray = new Uint8Array(hash)
+    const hash = new Uint8Array(await crypto.subtle.sign('HMAC', expandKey, input))
+    const bytesToCopy = Math.min(hash.length, outputLength - offset)
     
-    const bytesToCopy = Math.min(hashArray.length, length - offset)
-    result.set(hashArray.slice(0, bytesToCopy), offset)
-    
+    output.set(hash.slice(0, bytesToCopy), offset)
     offset += bytesToCopy
-    counter++
   }
   
-  return result
+  console.log('🔑 [HKDF] Expand concluído:', {
+    rounds: n,
+    finalLength: output.length
+  })
+  
+  return output
 }
 
 /**
- * Deriva chave usando HKDF (HMAC-based Key Derivation Function)
+ * HKDF simples para fallback
  */
-async function deriveKey(key: Uint8Array, info: string, length: number): Promise<Uint8Array> {
-  const encoder = new TextEncoder()
+async function simpleHKDF(key: Uint8Array, info: string, length: number): Promise<Uint8Array> {
+  const infoBytes = new TextEncoder().encode(info)
   
-  // Importar chave para HMAC
-  const hmacKey = await crypto.subtle.importKey(
+  // Usar a chave diretamente como PRK
+  const expandKey = await crypto.subtle.importKey(
     'raw',
     key,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   )
-
-  // Extract (HKDF-Extract)
-  const prk = await crypto.subtle.sign('HMAC', hmacKey, new Uint8Array(32))
-
-  // Expand (HKDF-Expand)
-  const prkArray = new Uint8Array(prk)
-  const infoBytes = encoder.encode(info)
-  const expandInput = new Uint8Array(infoBytes.length + 1)
-  expandInput.set(infoBytes)
-  expandInput[infoBytes.length] = 1
-
-  const expandKey = await crypto.subtle.importKey(
-    'raw',
-    prkArray,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  )
-
-  const expanded = await crypto.subtle.sign('HMAC', expandKey, expandInput)
-  return new Uint8Array(expanded).slice(0, length)
+  
+  // Expand com info + contador
+  const input = new Uint8Array(infoBytes.length + 1)
+  input.set(infoBytes)
+  input[infoBytes.length] = 1
+  
+  const hash = new Uint8Array(await crypto.subtle.sign('HMAC', expandKey, input))
+  return hash.slice(0, length)
 }
 
 /**
