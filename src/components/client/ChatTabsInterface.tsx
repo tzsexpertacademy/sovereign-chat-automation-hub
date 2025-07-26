@@ -5,6 +5,7 @@ import { MessageSquare, User, Bell, Settings, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useSearchParams } from "react-router-dom";
 import ChatInterface from './ChatInterface';
 import ContactsManager from './ContactsManager';
 import { realTimeNotificationService } from '@/services/realTimeNotificationService';
@@ -21,6 +22,19 @@ const ChatTabsInterface = ({ clientId, selectedChatId, onSelectChat }: ChatTabsI
   const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'connecting'>('connecting');
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Verificar se deve abrir aba de conversas automaticamente
+  useEffect(() => {
+    const openConversation = searchParams.get('openConversation');
+    if (openConversation === 'true') {
+      setActiveTab('conversations');
+      // Remover o parâmetro da URL após usar
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('openConversation');
+      setSearchParams(newSearchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Inicializar notificações quando componente monta
   useEffect(() => {

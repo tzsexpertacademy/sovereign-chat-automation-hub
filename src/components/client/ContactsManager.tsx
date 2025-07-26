@@ -104,28 +104,16 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
       if (existingTicket) {
         console.log('📋 Ticket existente encontrado:', existingTicket.id);
         
-        // Verificar se já estamos na rota do ticket
-        const currentPath = location.pathname;
-        const targetPath = `/client/${clientId}/chat/${existingTicket.id}`;
-        
-        if (currentPath === targetPath) {
-          // Já estamos na conversa deste contato
-          toast({
-            title: "Atenção",
-            description: `Você já está na conversa com ${customer.name}`,
-            variant: "default"
-          });
-          return;
-        }
-        
-        // Navegar para ticket existente
-        navigate(targetPath);
+        // Navegar para ticket existente com parâmetro para abrir aba de conversas
+        navigate(`/client/${clientId}/chat/${existingTicket.id}?openConversation=true`);
       } else {
         console.log('📋 Criando novo ticket manual...');
         // Criar novo ticket manual e navegar
         const ticket = await ticketsService.createManualTicket(clientId, customer.id);
         console.log('✅ Ticket criado:', ticket.id);
-        navigate(`/client/${clientId}/chat/${ticket.id}`);
+        
+        // Navegar para o novo ticket com parâmetro para abrir aba de conversas
+        navigate(`/client/${clientId}/chat/${ticket.id}?openConversation=true`);
       }
     } catch (error) {
       console.error('❌ Erro ao abrir conversa:', error);
@@ -173,7 +161,9 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
         if (createAndOpenChat) {
           try {
             const ticket = await ticketsService.createManualTicket(clientId, newCustomer.id);
-            navigate(`/client/${clientId}/chat/${ticket.id}`);
+            
+            // Navegar para o novo ticket com parâmetro para abrir aba de conversas
+            navigate(`/client/${clientId}/chat/${ticket.id}?openConversation=true`);
             return;
           } catch (error) {
             console.error('Erro ao criar conversa:', error);
