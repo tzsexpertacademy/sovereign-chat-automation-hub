@@ -14,59 +14,62 @@ interface MessagesListProps {
 }
 
 const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesListProps) => {
-  const renderMessageContent = (message: any) => {
-    if (message.message_type === 'audio' && message.audio_base64) {
-      return (
-        <div className="space-y-2 max-w-sm">
-          <AudioPlayer 
-            audioUrl=""
-            audioData={message.audio_base64}
-            duration={message.media_duration}
-            fileName={`audio_${message.id}.wav`}
-          />
-          {message.media_transcription && (
-            <div className="text-xs opacity-75 bg-white/10 rounded p-2 mt-2">
-              <strong>💬 Transcrição:</strong> {message.media_transcription}
-            </div>
-          )}
-        </div>
-      );
-    }
-
+const renderMessageContent = (message: any) => {
     if (message.message_type === 'audio') {
       return (
-        <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-          <Mic className="w-4 h-4 text-blue-600" />
-          <div className="flex-1">
-            <span className="text-sm font-medium text-blue-800">Mensagem de áudio</span>
-            {message.media_duration && (
-              <span className="text-xs text-blue-600 ml-2">({message.media_duration}s)</span>
-            )}
-            
-            {/* Status de processamento */}
-            {message.processing_status === 'pending_transcription' && (
-              <div className="text-xs text-amber-600 mt-1 animate-pulse">
-                🎵 Processando áudio...
-              </div>
-            )}
-            
-            {message.processing_status === 'processing_transcription' && (
-              <div className="text-xs text-blue-600 mt-1 animate-pulse">
-                📝 Transcrevendo áudio...
-              </div>
-            )}
-            
-            {/* Transcrição */}
-            {message.media_transcription && (
-              <div className="text-xs text-blue-700 mt-1 opacity-90">
-                {message.media_transcription.includes('Erro') ? (
-                  <span className="text-red-600">❌ {message.media_transcription}</span>
-                ) : (
-                  <span>💬 {message.media_transcription}</span>
+        <div className="space-y-3 max-w-sm">
+          {/* Player de áudio - sempre mostrar se tiver dados */}
+          {(message.audio_base64 || message.media_url) && (
+            <AudioPlayer 
+              audioUrl={message.media_url}
+              audioData={message.audio_base64}
+              duration={message.media_duration}
+              fileName={`audio_${message.id}.ogg`}
+            />
+          )}
+          
+          {/* Fallback quando não há dados de áudio */}
+          {!message.audio_base64 && !message.media_url && (
+            <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+              <Mic className="w-4 h-4 text-blue-600" />
+              <div className="flex-1">
+                <span className="text-sm font-medium text-blue-800">Mensagem de áudio</span>
+                {message.media_duration && (
+                  <span className="text-xs text-blue-600 ml-2">({message.media_duration}s)</span>
                 )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+          
+          {/* Status de processamento */}
+          {message.processing_status && ['pending_transcription', 'processing_transcription'].includes(message.processing_status) && (
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-blue-600">
+                {message.processing_status === 'pending_transcription' ? 'Preparando transcrição...' : 'Transcrevendo áudio...'}
+              </span>
+            </div>
+          )}
+          
+          {/* Transcrição bem-sucedida */}
+          {message.media_transcription && !message.media_transcription.includes('Erro') && (
+            <div className="text-xs bg-blue-50 p-3 rounded-lg border-l-4 border-blue-300">
+              <div className="flex items-start gap-2">
+                <span className="text-blue-600">💬</span>
+                <div>
+                  <strong className="text-blue-800">Transcrição:</strong>
+                  <p className="text-blue-700 mt-1">{message.media_transcription}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Erro na transcrição */}
+          {message.media_transcription && message.media_transcription.includes('Erro') && (
+            <div className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
+              <span className="text-red-500">❌</span> {message.media_transcription}
+            </div>
+          )}
         </div>
       );
     }

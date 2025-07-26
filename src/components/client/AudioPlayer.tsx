@@ -28,43 +28,71 @@ const AudioPlayer = ({
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Detectar formato de áudio pelos primeiros bytes
+  // Detectar formato de áudio pelos headers corretos
   const detectAudioFormat = (base64Data: string): string => {
     try {
-      // Decodificar primeiro pedaço para verificar header
-      const firstBytes = atob(base64Data.substring(0, 20));
+      const decoded = atob(base64Data.substring(0, 32));
+      const bytes = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
       
-      if (firstBytes.includes('OggS')) return 'ogg';
-      if (firstBytes.includes('RIFF')) return 'wav';
-      if (firstBytes.includes('ID3') || firstBytes.charCodeAt(0) === 0xFF) return 'mp3';
-      if (firstBytes.includes('ftyp')) return 'm4a';
+      // OGG: 4F 67 67 53 (OggS)
+      if (bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
+        console.log('🎵 Player detectou: OGG');
+        return 'ogg';
+      }
       
-      // Fallback: tentar todos os formatos
+      // WAV: 52 49 46 46 (RIFF)
+      if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+        console.log('🎵 Player detectou: WAV');
+        return 'wav';
+      }
+      
+      // MP3: ID3 ou frame sync
+      if ((bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) || 
+          (bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0)) {
+        console.log('🎵 Player detectou: MP3');
+        return 'mp3';
+      }
+      
+      // M4A: ftyp
+      if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+        console.log('🎵 Player detectou: M4A');
+        return 'm4a';
+      }
+      
+      console.log('🔄 Player: formato não detectado, usando auto');
       return 'auto';
     } catch (e) {
+      console.warn('⚠️ Erro na detecção:', e);
       return 'auto';
     }
   };
 
-  // Criar múltiplas URLs de áudio para compatibilidade
+  // Criar sources otimizados para reprodução no navegador
   const createAudioSources = (base64Data: string): string[] => {
     const format = detectAudioFormat(base64Data);
     const sources: string[] = [];
     
     if (format === 'auto') {
-      // Tentar múltiplos formatos
-      sources.push(`data:audio/ogg;base64,${base64Data}`);
-      sources.push(`data:audio/wav;base64,${base64Data}`);
-      sources.push(`data:audio/mpeg;base64,${base64Data}`);
-      sources.push(`data:audio/webm;base64,${base64Data}`);
+      // Ordem otimizada para compatibilidade com navegadores
+      sources.push(`data:audio/mpeg;base64,${base64Data}`);     // MP3 - melhor suporte
+      sources.push(`data:audio/wav;base64,${base64Data}`);      // WAV - universal
+      sources.push(`data:audio/ogg;base64,${base64Data}`);      // OGG - WhatsApp
+      sources.push(`data:audio/mp4;base64,${base64Data}`);      // M4A/AAC
+      sources.push(`data:audio/webm;base64,${base64Data}`);     // WebM
     } else {
       const mimeTypes = {
         ogg: 'audio/ogg',
-        wav: 'audio/wav',
+        wav: 'audio/wav', 
         mp3: 'audio/mpeg',
         m4a: 'audio/mp4'
       };
-      sources.push(`data:${mimeTypes[format] || 'audio/ogg'};base64,${base64Data}`);
+      
+      const primaryMime = mimeTypes[format] || 'audio/ogg';
+      sources.push(`data:${primaryMime};base64,${base64Data}`);
+      
+      // Adicionar fallbacks
+      if (format !== 'mp3') sources.push(`data:audio/mpeg;base64,${base64Data}`);
+      if (format !== 'wav') sources.push(`data:audio/wav;base64,${base64Data}`);
     }
     
     return sources;
