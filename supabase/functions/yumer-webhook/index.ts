@@ -539,9 +539,9 @@ function extractYumerMessageData(messageData: any, instance: any) {
     });
 
     console.log('🔐 [EXTRACT-YUMER] Metadados de criptografia extraídos:', {
-      mediaKey: mediaKey ? 'Presente (' + mediaKey.length + ' chars)' : 'AUSENTE',
-      fileEncSha256: fileEncSha256 ? 'Presente (' + fileEncSha256.length + ' chars)' : 'AUSENTE',
-      fileSha256: fileSha256 ? 'Presente (' + fileSha256.length + ' chars)' : 'AUSENTE',
+      mediaKey: mediaKey || 'AUSENTE',
+      fileEncSha256: fileEncSha256 || 'AUSENTE',
+      fileSha256: fileSha256 || 'AUSENTE',
       directPath: directPath || 'AUSENTE'
     });
   }

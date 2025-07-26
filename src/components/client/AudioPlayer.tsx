@@ -1,13 +1,18 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, Volume2, Download, AlertCircle } from 'lucide-react';
+import { Play, Pause, Volume2, Download, AlertCircle, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface AudioPlayerProps {
   audioUrl?: string;
   audioData?: string; // base64 audio data
   duration?: number;
   fileName?: string;
+  messageId?: string; // Para cache de descriptografia
+  mediaKey?: string; // Para descriptografia
+  fileEncSha256?: string; // Para descriptografia
   onPlay?: () => void;
   onPause?: () => void;
 }
@@ -17,6 +22,9 @@ const AudioPlayer = ({
   audioData, 
   duration, 
   fileName = 'audio.wav',
+  messageId,
+  mediaKey,
+  fileEncSha256,
   onPlay,
   onPause 
 }: AudioPlayerProps) => {
@@ -26,6 +34,8 @@ const AudioPlayer = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
+  const [isDecrypting, setIsDecrypting] = useState(false);
+  const [decryptionAttempted, setDecryptionAttempted] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Detectar formato de áudio pelos headers corretos
@@ -133,57 +143,146 @@ const AudioPlayer = ({
     return sources.filter(src => src.length > 50); // Filtrar sources muito pequenos
   };
 
-  // Processar dados de áudio com priorização para WhatsApp
+  // Função para descriptografar áudio do WhatsApp
+  const decryptWhatsAppAudio = async (encryptedUrl: string): Promise<string | null> => {
+    if (!messageId || !mediaKey || !fileEncSha256) {
+      console.log('⚠️ [DECRYPT] Metadados insuficientes para descriptografia:', {
+        hasMessageId: !!messageId,
+        hasMediaKey: !!mediaKey,
+        hasFileEncSha256: !!fileEncSha256
+      });
+      return null;
+    }
+
+    setIsDecrypting(true);
+    console.log('🔐 [DECRYPT] Iniciando descriptografia do áudio WhatsApp...');
+    
+    try {
+      // Baixar áudio criptografado primeiro
+      console.log('📥 [DECRYPT] Baixando áudio criptografado:', encryptedUrl);
+      const response = await fetch(encryptedUrl);
+      if (!response.ok) {
+        throw new Error(`Erro no download: ${response.status}`);
+      }
+      
+      const audioBuffer = await response.arrayBuffer();
+      const encryptedBase64 = btoa(
+        new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+      
+      console.log('🔐 [DECRYPT] Chamando função de descriptografia...');
+      const { data: decryptionResult, error: decryptionError } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
+        body: {
+          encryptedData: encryptedBase64,
+          mediaKey: mediaKey,
+          messageId: messageId
+        }
+      });
+      
+      if (decryptionError) {
+        console.error('❌ [DECRYPT] Erro na descriptografia:', decryptionError);
+        throw new Error(`Descriptografia falhou: ${decryptionError.message}`);
+      }
+      
+      if (decryptionResult?.decryptedAudio) {
+        console.log('✅ [DECRYPT] Áudio descriptografado com sucesso!');
+        return decryptionResult.decryptedAudio;
+      } else {
+        throw new Error('Resultado de descriptografia vazio');
+      }
+      
+    } catch (error) {
+      console.error('❌ [DECRYPT] Falha na descriptografia:', error);
+      toast.error('Erro ao descriptografar áudio do WhatsApp');
+      return null;
+    } finally {
+      setIsDecrypting(false);
+    }
+  };
+
+  // Processar dados de áudio com descriptografia automática
   useEffect(() => {
     console.log('🎵 ===== CONFIGURANDO AUDIO PLAYER WHATSAPP =====');
     console.log('📊 Entrada:', {
       hasUrl: !!audioUrl,
       urlDomain: audioUrl ? new URL(audioUrl).hostname : 'N/A',
       hasData: !!audioData,
-      dataLength: audioData?.length || 0
+      dataLength: audioData?.length || 0,
+      hasDecryptionMetadata: !!(messageId && mediaKey && fileEncSha256),
+      decryptionAttempted
     });
 
-    // ESTRATÉGIA OTIMIZADA PARA WHATSAPP
-    if (audioUrl && audioUrl.includes('mmg.whatsapp.net')) {
-      console.log('🎯 WHATSAPP: URL detectada, configurando headers especiais');
-      setAudioSrc(audioUrl);
+    const initializeAudio = async () => {
+      // Reset estado
       setError(null);
-    } else if (audioUrl) {
-      console.log('✅ URL EXTERNA: Usando diretamente');
-      setAudioSrc(audioUrl);
-      setError(null);
-    } else if (audioData) {
-      try {
-        console.log('🔄 BASE64: Processando dados de áudio...');
-        
-        let cleanData = audioData;
-        if (audioData.includes('data:') && audioData.includes(',')) {
-          cleanData = audioData.split(',')[1];
-        }
-
-        const sources = createAudioSources(cleanData);
-        console.log('🎵 Sources criados:', sources.length);
-        
-        if (sources.length > 0) {
-          setAudioSrc(sources[0]);
-          console.log('✅ BASE64: Primeira source configurada');
-        } else {
-          console.error('❌ Nenhuma source válida');
-          setError('Formato não suportado');
-          setAudioSrc(null);
-        }
-        
-      } catch (error) {
-        console.error('❌ Erro processamento base64:', error);
-        setError('Erro ao processar áudio');
-        setAudioSrc(null);
-      }
-    } else {
-      console.log('⚠️ Sem dados de áudio');
       setAudioSrc(null);
-      setError('Áudio não disponível');
-    }
-  }, [audioData, audioUrl]);
+
+      // ESTRATÉGIA PARA WHATSAPP .ENC (CRIPTOGRAFADO)
+      if (audioUrl && audioUrl.includes('.enc') && !decryptionAttempted && messageId && mediaKey && fileEncSha256) {
+        console.log('🔐 WHATSAPP CRIPTOGRAFADO: Tentando descriptografar...');
+        setDecryptionAttempted(true);
+        
+        const decryptedAudio = await decryptWhatsAppAudio(audioUrl);
+        if (decryptedAudio) {
+          const sources = createAudioSources(decryptedAudio);
+          if (sources.length > 0) {
+            setAudioSrc(sources[0]);
+            console.log('✅ ÁUDIO DESCRIPTOGRAFADO: Configurado para reprodução');
+            return;
+          }
+        }
+        
+        // Se descriptografia falhou, tentar reproduzir URL direta como fallback
+        console.log('🔄 FALLBACK: Tentando URL direta após falha na descriptografia');
+        setAudioSrc(audioUrl);
+        return;
+      }
+      
+      // WHATSAPP NÃO CRIPTOGRAFADO OU URL EXTERNA
+      if (audioUrl && audioUrl.includes('mmg.whatsapp.net')) {
+        console.log('🎯 WHATSAPP: URL detectada (não .enc), usando diretamente');
+        setAudioSrc(audioUrl);
+      } else if (audioUrl) {
+        console.log('✅ URL EXTERNA: Usando diretamente');
+        setAudioSrc(audioUrl);
+      }
+      
+      // BASE64 (POSSIVELMENTE JÁ DESCRIPTOGRAFADO)
+      else if (audioData) {
+        try {
+          console.log('🔄 BASE64: Processando dados de áudio...');
+          
+          let cleanData = audioData;
+          if (audioData.includes('data:') && audioData.includes(',')) {
+            cleanData = audioData.split(',')[1];
+          }
+
+          const sources = createAudioSources(cleanData);
+          console.log('🎵 Sources criados:', sources.length);
+          
+          if (sources.length > 0) {
+            setAudioSrc(sources[0]);
+            console.log('✅ BASE64: Primeira source configurada');
+          } else {
+            console.error('❌ Nenhuma source válida');
+            setError('Formato não suportado');
+          }
+          
+        } catch (error) {
+          console.error('❌ Erro processamento base64:', error);
+          setError('Erro ao processar áudio');
+        }
+      }
+      
+      // SEM DADOS
+      else {
+        console.log('⚠️ Sem dados de áudio');
+        setError('Áudio não disponível');
+      }
+    };
+
+    initializeAudio();
+  }, [audioData, audioUrl, messageId, mediaKey, fileEncSha256, decryptionAttempted]);
 
   // Configurar listeners do áudio
   useEffect(() => {
@@ -367,10 +466,12 @@ const AudioPlayer = ({
         variant="ghost"
         size="sm"
         onClick={togglePlay}
-        disabled={isLoading || !!error}
+        disabled={isLoading || !!error || isDecrypting}
         className="flex-shrink-0 hover:bg-gray-200 transition-colors"
       >
-        {isLoading ? (
+        {isDecrypting ? (
+          <Loader2 className="w-4 h-4 text-orange-500 animate-spin" />
+        ) : isLoading ? (
           <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         ) : isPlaying ? (
           <Pause className="w-4 h-4 text-blue-600" />
@@ -382,7 +483,12 @@ const AudioPlayer = ({
       <Volume2 className="w-4 h-4 text-blue-500 flex-shrink-0" />
 
       <div className="flex-1 mx-2">
-        {error ? (
+        {isDecrypting ? (
+          <div className="text-xs text-orange-600 flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Descriptografando áudio...
+          </div>
+        ) : error ? (
           <div className="text-xs text-red-500 flex items-center gap-1">
             <AlertCircle className="w-3 h-3" />
             {error}

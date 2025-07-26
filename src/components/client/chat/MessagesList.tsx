@@ -24,6 +24,9 @@ const renderMessageContent = (message: any) => {
             audioData={message.audio_base64}
             duration={message.media_duration}
             fileName={`audio_${message.id}.ogg`}
+            messageId={message.message_id}
+            mediaKey={message.media_key}
+            fileEncSha256={message.file_enc_sha256}
           />
           
           {/* Informações do áudio */}
