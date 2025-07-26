@@ -1850,6 +1850,7 @@ export type Database = {
         Row: {
           body: string | null
           chat_id: string
+          contact_name: string | null
           created_at: string
           direct_path: string | null
           file_enc_sha256: string | null
@@ -1859,17 +1860,25 @@ export type Database = {
           instance_id: string
           is_processed: boolean | null
           is_read: boolean | null
+          media_duration: number | null
           media_key: string | null
+          media_mime_type: string | null
+          media_url: string | null
           message_id: string
           message_type: string | null
+          phone_number: string | null
+          processed_at: string | null
           processing_started_at: string | null
+          raw_data: Json | null
           read_at: string | null
           sender: string | null
+          source: string | null
           timestamp: string | null
         }
         Insert: {
           body?: string | null
           chat_id: string
+          contact_name?: string | null
           created_at?: string
           direct_path?: string | null
           file_enc_sha256?: string | null
@@ -1879,17 +1888,25 @@ export type Database = {
           instance_id: string
           is_processed?: boolean | null
           is_read?: boolean | null
+          media_duration?: number | null
           media_key?: string | null
+          media_mime_type?: string | null
+          media_url?: string | null
           message_id: string
           message_type?: string | null
+          phone_number?: string | null
+          processed_at?: string | null
           processing_started_at?: string | null
+          raw_data?: Json | null
           read_at?: string | null
           sender?: string | null
+          source?: string | null
           timestamp?: string | null
         }
         Update: {
           body?: string | null
           chat_id?: string
+          contact_name?: string | null
           created_at?: string
           direct_path?: string | null
           file_enc_sha256?: string | null
@@ -1899,12 +1916,19 @@ export type Database = {
           instance_id?: string
           is_processed?: boolean | null
           is_read?: boolean | null
+          media_duration?: number | null
           media_key?: string | null
+          media_mime_type?: string | null
+          media_url?: string | null
           message_id?: string
           message_type?: string | null
+          phone_number?: string | null
+          processed_at?: string | null
           processing_started_at?: string | null
+          raw_data?: Json | null
           read_at?: string | null
           sender?: string | null
+          source?: string | null
           timestamp?: string | null
         }
         Relationships: []
