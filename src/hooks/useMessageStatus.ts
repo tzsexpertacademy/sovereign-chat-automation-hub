@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface MessageStatus {
@@ -15,6 +15,7 @@ interface UseMessageStatusProps {
 
 export const useMessageStatus = ({ ticketId, onStatusChange }: UseMessageStatusProps) => {
   const [messageStatuses, setMessageStatuses] = useState<Map<string, MessageStatus>>(new Map());
+  const channelRef = useRef<any>(null);
 
   // Atualizar status de uma mensagem específica
   const updateMessageStatus = useCallback((messageId: string, status: MessageStatus['status'], error?: string) => {
@@ -81,8 +82,14 @@ export const useMessageStatus = ({ ticketId, onStatusChange }: UseMessageStatusP
 
     console.log('🔔 [MESSAGE-STATUS] Configurando listener para status de mensagens');
 
+    // Limpar canal anterior se existir
+    if (channelRef.current) {
+      console.log('🔌 [MESSAGE-STATUS] Removendo canal anterior');
+      supabase.removeChannel(channelRef.current);
+    }
+
     const channel = supabase
-      .channel(`message-status-${ticketId}`)
+      .channel(`message-status-${ticketId}-${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -109,9 +116,14 @@ export const useMessageStatus = ({ ticketId, onStatusChange }: UseMessageStatusP
       )
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
       console.log('🔌 [MESSAGE-STATUS] Removendo listener');
-      supabase.removeChannel(channel);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
   }, [ticketId, updateMessageStatus]);
 
