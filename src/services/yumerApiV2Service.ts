@@ -180,11 +180,36 @@ class YumerApiV2Service {
       ...options.headers,
     };
 
-    // AUTENTICAÇÃO CORRIGIDA - API v2.2.1
-    if (this.globalApiKey) {
-      // Para API v2.2.1, usar apikey no header conforme documentação
+    // AUTENTICAÇÃO CORRIGIDA - API v2.2.1 COM BUSINESS TOKEN
+    if (useInstanceAuth && instanceName) {
+      // Buscar business_token específico do cliente para operações de instância
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        
+        // Buscar business_token do cliente baseado na instância
+        const { data: instanceData } = await supabase
+          .from('whatsapp_instances')
+          .select(`
+            business_business_id,
+            clients!inner(business_token)
+          `)
+          .eq('instance_id', instanceName)
+          .single();
+
+        if (instanceData?.clients?.business_token) {
+          console.log('[YumerApiV2.2.1] 🔑 Usando business_token específico do cliente para instância:', instanceName);
+          headers['authorization'] = `Bearer ${instanceData.clients.business_token}`;
+        } else {
+          console.warn('[YumerApiV2.2.1] ⚠️ Business token não encontrado para instância:', instanceName);
+          throw new Error('Business token não encontrado para a instância');
+        }
+      } catch (error) {
+        console.error('[YumerApiV2.2.1] Erro ao buscar business_token:', error);
+        throw new Error('Falha na autenticação: não foi possível obter token do cliente');
+      }
+    } else if (this.globalApiKey) {
+      // Para operações administrativas, usar apikey global
       headers['apikey'] = this.globalApiKey;
-      // Manter Authorization Bearer para compatibilidade
       headers['authorization'] = `Bearer ${this.globalApiKey}`;
     } else {
       console.warn('[YumerApiV2.2.1] ⚠️ API Key não configurada!');
