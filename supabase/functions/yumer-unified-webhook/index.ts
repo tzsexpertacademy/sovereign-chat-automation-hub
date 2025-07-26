@@ -552,23 +552,23 @@ async function processEncryptedAudioTranscription(
       });
 
       // Salvar áudio descriptografado na mensagem
-    await supabase
-      .from('whatsapp_messages')
-      .update({ 
-        audio_base64: audioBase64,
-        processing_status: 'processing_transcription'
-      })
-      .eq('message_id', messageId);
-    
-    console.log('💾 [AUDIO-TRANSCRIPTION] Base64 salvo, iniciando transcrição...');
-    
-    // Chamar função de transcrição
-    const { data: transcriptionResult, error: transcriptionError } = await supabase.functions.invoke('speech-to-text', {
-      body: {
-        audio: audioBase64,
-        openaiApiKey: Deno.env.get('OPENAI_API_KEY')
-      }
-    });
+      await supabase
+        .from('whatsapp_messages')
+        .update({ 
+          audio_base64: decryptedAudio,
+          processing_status: 'processing_transcription'
+        })
+        .eq('message_id', messageId);
+      
+      console.log('💾 [AUDIO-TRANSCRIPTION] Base64 salvo, iniciando transcrição...');
+      
+      // Chamar função de transcrição
+      const { data: transcriptionResult, error: transcriptionError } = await supabase.functions.invoke('speech-to-text', {
+        body: {
+          audio: decryptedAudio,
+          openaiApiKey: Deno.env.get('OPENAI_API_KEY')
+        }
+      });
     
     if (transcriptionError) {
       console.error('❌ [AUDIO-TRANSCRIPTION] Erro na transcrição:', transcriptionError);
