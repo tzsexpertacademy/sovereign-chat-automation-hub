@@ -470,6 +470,10 @@ function extractYumerMessageData(messageData: any, instance: any) {
   let mediaUrl = '';
   let mediaDuration = 0;
   let mediaMimeType = '';
+  let mediaKey = '';
+  let fileEncSha256 = '';
+  let fileSha256 = '';
+  let directPath = '';
 
   // 🎵 PROCESSAMENTO DE ÁUDIO - LOGS DETALHADOS
   if (messageData.contentType === 'audio') {
@@ -497,11 +501,48 @@ function extractYumerMessageData(messageData: any, instance: any) {
     if (messageData.content?.mimetype) {
       mediaMimeType = messageData.content.mimetype;
     }
+
+    // 🔐 EXTRAIR METADADOS DE CRIPTOGRAFIA
+    if (messageData.content?.mediaKey) {
+      // Converter array de bytes para base64
+      if (Array.isArray(messageData.content.mediaKey)) {
+        mediaKey = btoa(String.fromCharCode(...messageData.content.mediaKey));
+      } else if (typeof messageData.content.mediaKey === 'string') {
+        mediaKey = messageData.content.mediaKey;
+      }
+    }
+    
+    if (messageData.content?.fileEncSha256) {
+      if (Array.isArray(messageData.content.fileEncSha256)) {
+        fileEncSha256 = btoa(String.fromCharCode(...messageData.content.fileEncSha256));
+      } else if (typeof messageData.content.fileEncSha256 === 'string') {
+        fileEncSha256 = messageData.content.fileEncSha256;
+      }
+    }
+    
+    if (messageData.content?.fileSha256) {
+      if (Array.isArray(messageData.content.fileSha256)) {
+        fileSha256 = btoa(String.fromCharCode(...messageData.content.fileSha256));
+      } else if (typeof messageData.content.fileSha256 === 'string') {
+        fileSha256 = messageData.content.fileSha256;
+      }
+    }
+    
+    if (messageData.content?.directPath) {
+      directPath = messageData.content.directPath;
+    }
     
     console.log('🎵 [EXTRACT-YUMER] Dados de áudio extraídos:', {
       mediaUrl: mediaUrl || 'NÃO ENCONTRADA',
       mediaDuration,
       mediaMimeType: mediaMimeType || 'Não especificado'
+    });
+
+    console.log('🔐 [EXTRACT-YUMER] Metadados de criptografia extraídos:', {
+      mediaKey: mediaKey ? 'Presente (' + mediaKey.length + ' chars)' : 'AUSENTE',
+      fileEncSha256: fileEncSha256 ? 'Presente (' + fileEncSha256.length + ' chars)' : 'AUSENTE',
+      fileSha256: fileSha256 ? 'Presente (' + fileSha256.length + ' chars)' : 'AUSENTE',
+      directPath: directPath || 'AUSENTE'
     });
   }
   // 📝 PROCESSAMENTO DE TEXTO
@@ -534,7 +575,12 @@ function extractYumerMessageData(messageData: any, instance: any) {
     // Dados de mídia para áudio
     mediaUrl,
     mediaDuration,
-    mediaMimeType
+    mediaMimeType,
+    // Metadados de criptografia para áudio
+    mediaKey,
+    fileEncSha256,
+    fileSha256,
+    directPath
   };
 
   console.log('✅ [EXTRACT-YUMER] Dados extraídos (FINAL):', JSON.stringify(processedMessage, null, 2));
@@ -619,7 +665,12 @@ async function saveYumerMessage(messageData: any, instanceId: string) {
     message_type: messageData.messageType,
     from_me: messageData.fromMe,
     timestamp: messageData.timestamp,
-    is_processed: false // Será marcado como true após processamento completo
+    is_processed: false, // Será marcado como true após processamento completo
+    // Metadados de criptografia para áudio
+    media_key: messageData.mediaKey || null,
+    file_enc_sha256: messageData.fileEncSha256 || null,
+    file_sha256: messageData.fileSha256 || null,
+    direct_path: messageData.directPath || null
   };
 
   console.log('💾 [SAVE-YUMER] Dados a serem inseridos:', JSON.stringify(dataToInsert, null, 2));
