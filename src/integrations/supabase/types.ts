@@ -1930,6 +1930,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      get_decrypted_audio: {
+        Args: { p_message_id: string }
+        Returns: {
+          decrypted_data: string
+          audio_format: string
+        }[]
+      }
       get_max_instances_for_plan: {
         Args:
           | { plan_name: Database["public"]["Enums"]["plan_type"] }

@@ -89,7 +89,7 @@ class WhatsAppAudioService {
   }
 
   /**
-   * Obtém áudio descriptografado da mensagem
+   * Obtém áudio descriptografado da mensagem (cache local apenas por enquanto)
    */
   async getDecryptedAudio(messageId: string): Promise<DecryptedAudio | null> {
     try {
@@ -98,25 +98,10 @@ class WhatsAppAudioService {
         return this.cache.get(messageId)!;
       }
 
-      // Buscar no banco de dados (usar SQL direto devido ao tipo não estar nas tipagens)
-      const { data, error } = await supabase
-        .rpc('get_decrypted_audio', { p_message_id: messageId });
-
-      if (error || !data) {
-        console.log('ℹ️ [AUDIO-SERVICE] Áudio não encontrado no cache:', messageId);
-        return null;
-      }
-
-      const result: DecryptedAudio = {
-        decryptedData: data.decrypted_data,
-        format: data.audio_format,
-        cached: true
-      };
-
-      // Salvar no cache local
-      this.cache.set(messageId, result);
-
-      return result;
+      // Por enquanto, retornar null se não estiver no cache local
+      // TODO: Implementar busca no banco quando os tipos estiverem atualizados
+      console.log('ℹ️ [AUDIO-SERVICE] Áudio não encontrado no cache local:', messageId);
+      return null;
 
     } catch (error) {
       console.error('❌ [AUDIO-SERVICE] Erro ao buscar áudio:', error);
