@@ -109,46 +109,90 @@ serve(async (req) => {
 });
 
 /**
- * Descriptografia ultra-simplificada do WhatsApp
+ * Descriptografia WhatsApp com estrutura correta [ciphertext + tag] e IV derivado
  */
 async function decryptWhatsAppAudio(encryptedBuffer: Uint8Array, mediaKeyBase64: string): Promise<string | null> {
   try {
     const mediaKey = new Uint8Array(atob(mediaKeyBase64).split('').map(c => c.charCodeAt(0)));
     
-    console.log('🔐 Derivando chaves...');
+    console.log('🔐 Iniciando descriptografia...', {
+      mediaKeyLength: mediaKey.length,
+      encryptedDataLength: encryptedBuffer.length
+    });
     
-    // Derivar chave AES (32 bytes) via HMAC-SHA256
-    const aesKey = await deriveKey(mediaKey, 'WhatsApp Media Keys', 32);
+    // Testar diferentes variações das strings HMAC
+    const keyVariants = [
+      'WhatsApp Audio Keys',
+      'WhatsApp Media Keys', 
+      'WhatsApp Image Keys'
+    ];
     
-    // Derivar IV (12 bytes) via HMAC-SHA256  
-    const iv = await deriveKey(mediaKey, 'WhatsApp Media IVs', 12);
-    
-    console.log('🔑 Chaves derivadas:', { aesKeyLength: aesKey.length, ivLength: iv.length });
+    const ivVariants = [
+      'WhatsApp Audio IVs',
+      'WhatsApp Media IVs',
+      'WhatsApp Image IVs'
+    ];
 
-    // Importar chave AES
-    const importedKey = await crypto.subtle.importKey(
-      'raw',
-      aesKey,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    );
+    for (const keyStr of keyVariants) {
+      for (const ivStr of ivVariants) {
+        try {
+          console.log(`🔑 Testando: ${keyStr} / ${ivStr}`);
+          
+          // Derivar chave AES (32 bytes) e IV (12 bytes) via HMAC-SHA256
+          const aesKey = await deriveKey(mediaKey, keyStr, 32);
+          const iv = await deriveKey(mediaKey, ivStr, 12);
+          
+          console.log('📊 Chaves derivadas:', {
+            aesKeyHex: Array.from(aesKey.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(''),
+            ivHex: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
+            aesKeyLength: aesKey.length,
+            ivLength: iv.length
+          });
 
-    // Descriptografar com AES-GCM
-    const decryptedBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      importedKey,
-      encryptedBuffer
-    );
+          // Importar chave AES
+          const importedKey = await crypto.subtle.importKey(
+            'raw',
+            aesKey,
+            { name: 'AES-GCM' },
+            false,
+            ['decrypt']
+          );
 
-    const decryptedArray = new Uint8Array(decryptedBuffer);
-    const base64Audio = btoa(String.fromCharCode(...decryptedArray));
+          // Descriptografar com AES-GCM - estrutura [ciphertext + tag]
+          // Tag de 16 bytes está nos últimos 16 bytes dos dados
+          const decryptedBuffer = await crypto.subtle.decrypt(
+            { 
+              name: 'AES-GCM', 
+              iv,
+              tagLength: 128 // 16 bytes = 128 bits
+            },
+            importedKey,
+            encryptedBuffer
+          );
+
+          const decryptedArray = new Uint8Array(decryptedBuffer);
+          const base64Audio = btoa(String.fromCharCode(...decryptedArray));
+          
+          console.log('✅ Descriptografia bem-sucedida:', {
+            combination: `${keyStr} / ${ivStr}`,
+            decryptedLength: decryptedArray.length,
+            firstBytes: Array.from(decryptedArray.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ')
+          });
+          
+          return base64Audio;
+
+        } catch (innerError) {
+          console.log(`❌ Falha com ${keyStr} / ${ivStr}:`, innerError.message);
+          continue;
+        }
+      }
+    }
     
-    console.log('✅ Descriptografia bem-sucedida:', decryptedArray.length, 'bytes');
-    return base64Audio;
+    console.error('❌ Todas as combinações falharam');
+    return null;
 
   } catch (error) {
-    console.error('❌ Erro na descriptografia:', error);
+    console.error('❌ Erro geral na descriptografia:', error);
     return null;
   }
 }
