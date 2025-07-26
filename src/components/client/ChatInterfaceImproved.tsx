@@ -14,7 +14,9 @@ import TicketActionsMenu from './TicketActionsMenu';
 import ChatHeaderImproved from './chat/ChatHeaderImproved';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 import TypingIndicator from './TypingIndicator';
+import AdvancedToolsPanel from './AdvancedToolsPanel';
 import { supabase } from '@/integrations/supabase/client';
+import { databaseResetService } from '@/services/databaseResetService';
 
 interface ChatInterfaceImprovedProps {
   clientId: string;
@@ -195,6 +197,46 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     }
   };
 
+  // Reset completo - apagar tudo e importar do zero
+  const handleResetAndImport = async () => {
+    try {
+      setIsImporting(true);
+      
+      toast({
+        title: "Iniciando reset completo",
+        description: "Apagando todos os dados e importando do zero..."
+      });
+
+      // Reset completo usando o serviço existente
+      const resetResult = await databaseResetService.resetClientData(clientId);
+      
+      if (!resetResult.success) {
+        throw new Error(resetResult.error || 'Erro no reset dos dados');
+      }
+
+      // Importar conversas do zero após reset
+      const result = await ticketsService.importConversationsFromWhatsApp(clientId);
+      
+      toast({
+        title: "Reset completo concluído",
+        description: `Dados apagados e ${result.success} conversas importadas com sucesso!`,
+        variant: "default"
+      });
+
+      setTimeout(reloadTickets, 2000);
+
+    } catch (error: any) {
+      console.error('Erro no reset completo:', error);
+      toast({
+        title: "Erro no reset completo",
+        description: error.message || "Falha ao executar reset",
+        variant: "destructive"
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const getDisplayNameForTicket = useCallback((ticket: ConversationTicket) => {
     return getDisplayName(ticket.customer, ticket.customer?.phone);
   }, [getDisplayName]);
@@ -318,49 +360,6 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
           <div className="mb-3">
             {renderSyncStatus()}
           </div>
-          
-          {/* Botões de importação e conversão */}
-          <div className="space-y-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={handleConvertYumerMessages}
-              disabled={isConverting}
-              className="w-full"
-            >
-              {isConverting ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Convertendo YUMER...
-                </>
-              ) : (
-                <>
-                  <Zap className="w-4 h-4 mr-2" />
-                  Converter Mensagens YUMER
-                </>
-              )}
-            </Button>
-            
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleImportConversations}
-              disabled={isImporting}
-              className="w-full"
-            >
-              {isImporting ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Importando...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 mr-2" />
-                  Importar Conversas (Legado)
-                </>
-              )}
-            </Button>
-          </div>
         </div>
 
         {/* Lista de conversas */}
@@ -375,26 +374,8 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
               <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
               <p className="text-sm mb-2">Nenhuma conversa encontrada</p>
               <p className="text-xs text-gray-400 mb-3">
-                Converta mensagens YUMER ou aguarde novas mensagens
+                Aguarde novas mensagens ou use as ferramentas de importação
               </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleConvertYumerMessages}
-                disabled={isConverting}
-              >
-                {isConverting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Convertendo...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4 mr-2" />
-                    Converter YUMER
-                  </>
-                )}
-              </Button>
             </div>
           ) : (
             <ul className="divide-y divide-gray-100">
@@ -447,6 +428,16 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
             </ul>
           )}
         </div>
+
+        {/* Painel de Ferramentas Avançadas */}
+        <AdvancedToolsPanel
+          clientId={clientId}
+          isImporting={isImporting}
+          isConverting={isConverting}
+          onConvertYumerMessages={handleConvertYumerMessages}
+          onImportConversations={handleImportConversations}
+          onResetAndImport={handleResetAndImport}
+        />
       </div>
 
       {/* Área de Chat */}
@@ -478,25 +469,6 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
               </p>
               <div className="mt-4">
                 {renderSyncStatus()}
-              </div>
-              <div className="mt-4 space-y-2">
-                <Button
-                  variant="outline"
-                  onClick={handleConvertYumerMessages}
-                  disabled={isConverting}
-                >
-                  {isConverting ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                      Convertendo YUMER...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4 mr-2" />
-                      Converter Mensagens YUMER
-                    </>
-                  )}
-                </Button>
               </div>
             </div>
           </div>
