@@ -112,20 +112,23 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
     try {
       setIsSending(true);
+      const messageToSend = newMessage.trim();
       const messageId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const timestamp = new Date().toISOString();
+      
+      // Limpar input imediatamente para feedback visual
+      setNewMessage('');
       
       // Mostrar feedback de progresso
       toast({
         title: "📤 Enviando mensagem...",
         description: "Configurando webhook e verificando conexão"
       });
-
-      
       
       console.log('📤 [TICKET-SEND] Iniciando envio:', {
         instanceId: connectedInstance,
         chatId: ticket.chat_id,
-        messagePreview: newMessage.substring(0, 50) + '...',
+        messagePreview: messageToSend.substring(0, 50) + '...',
         customerPhone: ticket.customer?.phone,
         ticketId
       });
@@ -136,7 +139,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       const response = await whatsappService.sendTextMessage({
         instanceId: connectedInstance,
         to: ticket.chat_id,
-        message: newMessage
+        message: messageToSend
       });
       
       console.log('📡 [TICKET-SEND] Resposta completa:', {
@@ -150,18 +153,18 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       if (response.success) {
         console.log('✅ [TICKET-SEND] Mensagem enviada - salvando no ticket');
 
-        // Salvar no banco de dados
+        // Salvar no banco de dados com timestamp real da API
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: response.messageId || messageId,
           from_me: true,
           sender_name: 'Atendente',
-          content: newMessage,
+          content: messageToSend,
           message_type: 'text',
           is_internal_note: false,
           is_ai_response: false,
           processing_status: 'completed',
-          timestamp: new Date().toISOString()
+          timestamp: typeof response.timestamp === 'string' ? response.timestamp : timestamp
         });
 
         console.log('💾 [TICKET-SEND] Mensagem salva no ticket com sucesso');

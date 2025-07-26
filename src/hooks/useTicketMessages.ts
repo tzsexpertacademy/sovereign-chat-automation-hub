@@ -113,13 +113,39 @@ export const useTicketMessages = (ticketId: string) => {
               });
               
               setMessages(prev => {
-                // Evitar duplicatas
-                const exists = prev.some(msg => 
-                  msg.id === newMessage.id || 
-                  (msg.message_id && msg.message_id === newMessage.message_id)
-                );
+                // Verificação melhorada de duplicatas
+                const exists = prev.some(msg => {
+                  // Verificação por ID exato
+                  if (msg.id === newMessage.id || (msg.message_id && msg.message_id === newMessage.message_id)) {
+                    return true;
+                  }
+                  
+                  // Para mensagens próprias (from_me: true), verificar por conteúdo + timestamp próximo
+                  if (newMessage.from_me && msg.from_me) {
+                    const timeDiff = Math.abs(new Date(msg.timestamp).getTime() - new Date(newMessage.timestamp).getTime());
+                    const sameContent = msg.content?.trim() === newMessage.content?.trim();
+                    
+                    // Se mesmo conteúdo e timestamp próximo (até 30 segundos), é duplicata
+                    if (sameContent && timeDiff < 30000) {
+                      console.log('🔍 Duplicata detectada por conteúdo+tempo:', {
+                        existingId: msg.id,
+                        newId: newMessage.id,
+                        timeDiff: timeDiff + 'ms',
+                        content: msg.content?.substring(0, 30)
+                      });
+                      return true;
+                    }
+                  }
+                  
+                  return false;
+                });
+                
                 if (exists) {
-                  console.log('⚠️ Mensagem já existe, ignorando duplicata:', newMessage.message_id);
+                  console.log('⚠️ Mensagem já existe, ignorando duplicata:', {
+                    messageId: newMessage.message_id,
+                    fromMe: newMessage.from_me,
+                    content: newMessage.content?.substring(0, 30)
+                  });
                   return prev;
                 }
                 
