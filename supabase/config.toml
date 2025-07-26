@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.yumer-webhook]
 verify_jwt = false
+
+[functions.yumer-unified-webhook]
+verify_jwt = false
