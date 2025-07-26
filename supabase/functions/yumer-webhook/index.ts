@@ -989,7 +989,7 @@ async function processAudioTranscription(ticketId: string, messageId: string, au
     
     let audioForTranscription: string | null = null;
 
-    // 🔐 VERIFICAR SE É ÁUDIO CRIPTOGRAFADO (.enc) - USAR DESCRIPTOGRAFIA DIRETA
+// 🔐 VERIFICAR SE É ÁUDIO CRIPTOGRAFADO (.enc) - USAR DESCRIPTOGRAFIA DIRETA
     if (audioUrl.includes('.enc') && mediaKey && fileEncSha256) {
       console.log('🔐 [TRANSCRIPTION] Áudio criptografado detectado - usando descriptografia direta');
       console.log('🔑 [TRANSCRIPTION] Metadados disponíveis:', {
@@ -1011,26 +1011,41 @@ async function processAudioTranscription(ticketId: string, messageId: string, au
           console.log('✅ [TRANSCRIPTION] Áudio descriptografado encontrado no cache');
           audioForTranscription = cachedAudio.decrypted_data;
         } else {
-          console.log('🔓 [TRANSCRIPTION] Cache não encontrado, fazendo download e descriptografia...');
+          console.log('🔓 [TRANSCRIPTION] Buscando metadados de criptografia na tabela whatsapp_messages...');
           
-          // Fazer download da URL criptografada
-          const headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': '*/*',
-            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-            'Referer': 'https://web.whatsapp.com/',
-            'Connection': 'keep-alive'
-          };
+          // Buscar metadados salvos na tabela whatsapp_messages
+          const { data: messageWithMetadata } = await supabase
+            .from('whatsapp_messages')
+            .select('media_key, file_enc_sha256, file_sha256, direct_path')
+            .eq('message_id', messageId)
+            .single();
+
+          if (!messageWithMetadata || !messageWithMetadata.media_key) {
+            console.error('❌ [TRANSCRIPTION] Metadados de criptografia não encontrados na base de dados');
+            throw new Error('Metadados de criptografia não disponíveis');
+          }
+
+          console.log('📋 [TRANSCRIPTION] Metadados encontrados:', {
+            hasMediaKey: !!messageWithMetadata.media_key,
+            hasFileEncSha256: !!messageWithMetadata.file_enc_sha256,
+            hasDirectPath: !!messageWithMetadata.direct_path
+          });
+
+          // Baixar áudio criptografado usando URL da mensagem
+          const downloadUrl = audioUrl;
+          console.log('📥 [TRANSCRIPTION] Baixando áudio criptografado de:', downloadUrl);
           
-          const audioResponse = await fetch(audioUrl, { 
+          const audioResponse = await fetch(downloadUrl, { 
             method: 'GET',
-            headers: headers,
-            redirect: 'follow'
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; Lovable-WhatsApp/1.0)',
+              'Accept': '*/*'
+            }
           });
           
           if (!audioResponse.ok) {
             console.error('❌ [TRANSCRIPTION] Erro no download:', audioResponse.status, audioResponse.statusText);
-            throw new Error(`Erro ao baixar áudio: ${audioResponse.status} - ${audioResponse.statusText}`);
+            throw new Error(`Download falhou: ${audioResponse.status}`);
           }
           
           const audioBuffer = await audioResponse.arrayBuffer();
@@ -1041,19 +1056,19 @@ async function processAudioTranscription(ticketId: string, messageId: string, au
             base64Length: encryptedAudioBase64.length
           });
           
-          // Descriptografar usando função Supabase
+          // Descriptografar usando a função whatsapp-decrypt-audio
           const { data: decryptionResult, error: decryptionError } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
             body: {
               encryptedData: encryptedAudioBase64,
-              mediaKey: mediaKey,
-              fileEncSha256: fileEncSha256,
+              mediaKey: messageWithMetadata.media_key,
+              fileEncSha256: messageWithMetadata.file_enc_sha256,
               messageId: messageId
             }
           });
           
           if (decryptionError) {
             console.error('❌ [TRANSCRIPTION] Erro na descriptografia:', decryptionError);
-            throw new Error(`Falha na descriptografia: ${decryptionError.message}`);
+            throw new Error(`Descriptografia falhou: ${decryptionError.message}`);
           }
           
           if (decryptionResult?.success && decryptionResult?.decryptedAudio) {
@@ -1064,13 +1079,25 @@ async function processAudioTranscription(ticketId: string, messageId: string, au
               audioLength: audioForTranscription.length
             });
           } else {
-            throw new Error('Descriptografia retornou resultado vazio');
+            console.error('❌ [TRANSCRIPTION] Descriptografia retornou resultado vazio');
+            throw new Error('Descriptografia não retornou dados válidos');
           }
         }
         
       } catch (decryptError) {
-        console.error('❌ [TRANSCRIPTION] Falha crítica na descriptografia:', decryptError);
-        throw decryptError; // Re-throw para falhar o processo
+        console.error('❌ [TRANSCRIPTION] Falha na descriptografia:', decryptError);
+        
+        // FALLBACK: marcar como falha mas não crashar o webhook
+        await supabase
+          .from('ticket_messages')
+          .update({ 
+            processing_status: 'transcription_failed',
+            media_transcription: `Erro na descriptografia: ${decryptError.message}`
+          })
+          .eq('message_id', messageId);
+        
+        console.log('⚠️ [TRANSCRIPTION] Áudio criptografado falhou, mas webhook continua');
+        return; // Sair da função sem crashar
       }
       
     } else {

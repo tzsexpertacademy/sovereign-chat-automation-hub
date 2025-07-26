@@ -335,6 +335,26 @@ const AudioPlayer = ({
         }
       }
       
+      // FALLBACK WHATSAPP CRIPTOGRAFADO - tentar descriptografar se falhou
+      if (audioUrl && audioUrl.includes('.enc') && !decryptionAttempted && messageId && mediaKey && fileEncSha256) {
+        console.log('🔐 FALLBACK CRIPTOGRAFIA: URL falhou, tentando descriptografar...');
+        setDecryptionAttempted(true);
+        decryptWhatsAppAudio(audioUrl).then(decryptedAudio => {
+          if (decryptedAudio) {
+            const sources = createAudioSources(decryptedAudio);
+            if (sources.length > 0) {
+              setAudioSrc(sources[0]);
+              setError(null);
+              return;
+            }
+          }
+          console.log('❌ Fallback de descriptografia também falhou');
+        }).catch(err => {
+          console.error('❌ Erro no fallback de descriptografia:', err);
+        });
+        return;
+      }
+      
       // MÚLTIPLOS FALLBACKS BASE64
       if (audioData) {
         const cleanData = audioData.includes(',') ? audioData.split(',')[1] : audioData;
