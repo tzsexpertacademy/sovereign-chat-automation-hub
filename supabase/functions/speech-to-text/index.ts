@@ -77,24 +77,44 @@ function processBase64Audio(base64String: string) {
       console.log('✂️ Removido prefixo data URL');
     }
     
+    // Remover espaços e quebras de linha
+    cleanBase64 = cleanBase64.replace(/\s/g, '');
+    
     // Validar se é base64 válido
-    if (!/^[A-Za-z0-9+/=]+$/.test(cleanBase64)) {
+    if (!/^[A-Za-z0-9+/=]*$/.test(cleanBase64)) {
       throw new Error('Base64 inválido detectado');
+    }
+    
+    // Validar tamanho mínimo
+    if (cleanBase64.length < 10) {
+      throw new Error('Dados de áudio muito pequenos');
     }
     
     // Detectar formato do áudio
     const audioInfo = detectAudioFormat(cleanBase64);
     console.log('🎵 Formato de áudio detectado:', audioInfo);
     
-    // Converter para binary
-    const binaryString = atob(cleanBase64);
-    const bytes = new Uint8Array(binaryString.length);
+    // Converter para binary com tratamento de erro
+    let binaryString: string;
+    try {
+      binaryString = atob(cleanBase64);
+    } catch (e) {
+      console.error('❌ Erro na decodificação base64:', e);
+      throw new Error('Falha na decodificação base64');
+    }
     
+    if (binaryString.length === 0) {
+      throw new Error('Dados decodificados estão vazios');
+    }
+    
+    const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
     
     console.log('✅ Áudio convertido para bytes:', bytes.length, 'bytes');
+    console.log('🔍 Primeiros 16 bytes:', Array.from(bytes.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    
     return { bytes, audioInfo };
     
   } catch (error) {

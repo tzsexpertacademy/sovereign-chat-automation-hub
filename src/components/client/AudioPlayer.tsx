@@ -31,38 +31,56 @@ const AudioPlayer = ({
   // Detectar formato de áudio pelos headers corretos
   const detectAudioFormat = (base64Data: string): string => {
     try {
-      const decoded = atob(base64Data.substring(0, 32));
+      // Validar entrada
+      if (!base64Data || base64Data.length < 40) {
+        console.log('🔄 Player: dados insuficientes para detecção');
+        return 'auto';
+      }
+      
+      const sampleChunk = base64Data.substring(0, 64);
+      const decoded = atob(sampleChunk);
       const bytes = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
       
-      // OGG: 4F 67 67 53 (OggS)
-      if (bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
-        console.log('🎵 Player detectou: OGG');
+      console.log('🔍 Player analisando header:', Array.from(bytes.slice(0, 12)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      
+      // OGG: 4F 67 67 53 (OggS) - Formato do WhatsApp
+      if (bytes.length >= 4 && bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
+        console.log('🎵 Player detectou: OGG (WhatsApp)');
         return 'ogg';
       }
       
       // WAV: 52 49 46 46 (RIFF)
-      if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+      if (bytes.length >= 4 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
         console.log('🎵 Player detectou: WAV');
         return 'wav';
       }
       
-      // MP3: ID3 ou frame sync
-      if ((bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) || 
-          (bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0)) {
-        console.log('🎵 Player detectou: MP3');
+      // MP3: ID3 (49 44 33) ou frame sync (FF Fx)
+      if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+        console.log('🎵 Player detectou: MP3 (ID3)');
+        return 'mp3';
+      }
+      if (bytes.length >= 2 && bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0) {
+        console.log('🎵 Player detectou: MP3 (frame sync)');
         return 'mp3';
       }
       
-      // M4A: ftyp
-      if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+      // M4A: ftyp (posição 4-7: 66 74 79 70)
+      if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
         console.log('🎵 Player detectou: M4A');
         return 'm4a';
       }
       
-      console.log('🔄 Player: formato não detectado, usando auto');
+      // WebM: EBML (1A 45 DF A3)
+      if (bytes.length >= 4 && bytes[0] === 0x1A && bytes[1] === 0x45 && bytes[2] === 0xDF && bytes[3] === 0xA3) {
+        console.log('🎵 Player detectou: WebM');
+        return 'webm';
+      }
+      
+      console.log('🔄 Player: formato não detectado pelos headers, usando auto');
       return 'auto';
     } catch (e) {
-      console.warn('⚠️ Erro na detecção:', e);
+      console.warn('⚠️ Player: erro na detecção de formato:', e);
       return 'auto';
     }
   };
@@ -72,30 +90,47 @@ const AudioPlayer = ({
     const format = detectAudioFormat(base64Data);
     const sources: string[] = [];
     
-    if (format === 'auto') {
-      // Ordem otimizada para compatibilidade com navegadores
-      sources.push(`data:audio/mpeg;base64,${base64Data}`);     // MP3 - melhor suporte
-      sources.push(`data:audio/wav;base64,${base64Data}`);      // WAV - universal
-      sources.push(`data:audio/ogg;base64,${base64Data}`);      // OGG - WhatsApp
-      sources.push(`data:audio/mp4;base64,${base64Data}`);      // M4A/AAC
-      sources.push(`data:audio/webm;base64,${base64Data}`);     // WebM
-    } else {
-      const mimeTypes = {
-        ogg: 'audio/ogg',
-        wav: 'audio/wav', 
-        mp3: 'audio/mpeg',
-        m4a: 'audio/mp4'
-      };
-      
-      const primaryMime = mimeTypes[format] || 'audio/ogg';
-      sources.push(`data:${primaryMime};base64,${base64Data}`);
-      
-      // Adicionar fallbacks
-      if (format !== 'mp3') sources.push(`data:audio/mpeg;base64,${base64Data}`);
-      if (format !== 'wav') sources.push(`data:audio/wav;base64,${base64Data}`);
+    // Validar dados base64
+    const cleanData = base64Data.replace(/\s/g, '');
+    if (!/^[A-Za-z0-9+/=]*$/.test(cleanData)) {
+      console.error('❌ Base64 inválido para criação de sources');
+      return [];
     }
     
-    return sources;
+    if (format === 'ogg') {
+      // WhatsApp usa OGG Opus - tentar este primeiro
+      sources.push(`data:audio/ogg; codecs=opus;base64,${cleanData}`);
+      sources.push(`data:audio/ogg;base64,${cleanData}`);
+      sources.push(`data:audio/webm; codecs=opus;base64,${cleanData}`);
+      sources.push(`data:audio/mpeg;base64,${cleanData}`);     // Fallback MP3
+      sources.push(`data:audio/wav;base64,${cleanData}`);      // Fallback WAV
+    } else if (format === 'wav') {
+      sources.push(`data:audio/wav;base64,${cleanData}`);
+      sources.push(`data:audio/mpeg;base64,${cleanData}`);
+      sources.push(`data:audio/ogg;base64,${cleanData}`);
+    } else if (format === 'mp3') {
+      sources.push(`data:audio/mpeg;base64,${cleanData}`);
+      sources.push(`data:audio/wav;base64,${cleanData}`);
+      sources.push(`data:audio/ogg;base64,${cleanData}`);
+    } else if (format === 'm4a') {
+      sources.push(`data:audio/mp4;base64,${cleanData}`);
+      sources.push(`data:audio/mpeg;base64,${cleanData}`);
+      sources.push(`data:audio/wav;base64,${cleanData}`);
+    } else if (format === 'webm') {
+      sources.push(`data:audio/webm; codecs=opus;base64,${cleanData}`);
+      sources.push(`data:audio/ogg; codecs=opus;base64,${cleanData}`);
+      sources.push(`data:audio/mpeg;base64,${cleanData}`);
+    } else {
+      // Auto - ordem otimizada para WhatsApp
+      sources.push(`data:audio/ogg; codecs=opus;base64,${cleanData}`);  // WhatsApp preferido
+      sources.push(`data:audio/mpeg;base64,${cleanData}`);               // MP3 - melhor suporte
+      sources.push(`data:audio/wav;base64,${cleanData}`);                // WAV - universal
+      sources.push(`data:audio/mp4;base64,${cleanData}`);                // M4A/AAC
+      sources.push(`data:audio/webm; codecs=opus;base64,${cleanData}`);  // WebM
+    }
+    
+    console.log(`🎵 Sources gerados para formato ${format}:`, sources.length);
+    return sources.filter(src => src.length > 50); // Filtrar sources muito pequenos
   };
 
   // Processar dados de áudio
@@ -163,8 +198,14 @@ const AudioPlayer = ({
     
     const handleError = (e: any) => {
       console.error('❌ ERRO no player de áudio:', e);
+      console.error('📋 Detalhes do erro:', {
+        error: e.type,
+        src: audio.src?.substring(0, 100) + '...',
+        networkState: audio.networkState,
+        readyState: audio.readyState
+      });
+      
       setIsLoading(false);
-      setError('Formato de áudio não suportado');
       setIsPlaying(false);
       
       // Tentar próximo formato se disponível
@@ -173,11 +214,16 @@ const AudioPlayer = ({
         const sources = createAudioSources(cleanData);
         const currentIndex = sources.indexOf(audioSrc || '');
         
-        if (currentIndex < sources.length - 1) {
-          console.log('🔄 Tentando próximo formato...');
+        if (currentIndex >= 0 && currentIndex < sources.length - 1) {
+          console.log(`🔄 Tentando formato ${currentIndex + 2}/${sources.length}...`);
           setAudioSrc(sources[currentIndex + 1]);
           setError(null);
+        } else {
+          console.error('❌ Todos os formatos de áudio falharam');
+          setError('Formato de áudio não suportado');
         }
+      } else {
+        setError('Erro ao carregar áudio');
       }
     };
     

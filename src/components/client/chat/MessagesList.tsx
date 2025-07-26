@@ -52,22 +52,26 @@ const renderMessageContent = (message: any) => {
           )}
           
           {/* Transcrição bem-sucedida */}
-          {message.media_transcription && !message.media_transcription.includes('Erro') && (
+          {(message.transcription || message.media_transcription) && 
+           !(message.transcription || message.media_transcription).includes('Erro') && 
+           !(message.transcription || message.media_transcription).includes('não disponível') && (
             <div className="text-xs bg-blue-50 p-3 rounded-lg border-l-4 border-blue-300">
               <div className="flex items-start gap-2">
                 <span className="text-blue-600">💬</span>
                 <div>
                   <strong className="text-blue-800">Transcrição:</strong>
-                  <p className="text-blue-700 mt-1">{message.media_transcription}</p>
+                  <p className="text-blue-700 mt-1">{message.transcription || message.media_transcription}</p>
                 </div>
               </div>
             </div>
           )}
           
           {/* Erro na transcrição */}
-          {message.media_transcription && message.media_transcription.includes('Erro') && (
+          {(message.transcription || message.media_transcription) && 
+           ((message.transcription || message.media_transcription).includes('Erro') || 
+            (message.transcription || message.media_transcription).includes('não disponível')) && (
             <div className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
-              <span className="text-red-500">❌</span> {message.media_transcription}
+              <span className="text-red-500">❌</span> {message.transcription || message.media_transcription}
             </div>
           )}
         </div>

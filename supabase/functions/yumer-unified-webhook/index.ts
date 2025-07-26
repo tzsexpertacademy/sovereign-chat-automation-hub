@@ -262,26 +262,45 @@ async function handleMessagesUpsert(supabase: any, webhookData: WebhookEvent, in
       const messageContent = extractMessageContent(message.message)
       const messageType = extractMessageType(message.message)
       
+      // Extrair URL de mídia se for áudio
+      let mediaUrl = null;
+      if (messageType === 'audio' && message.message?.audioMessage?.url) {
+        mediaUrl = message.message.audioMessage.url;
+        console.log(`🎵 [AUDIO] URL detectada: ${mediaUrl}`);
+      }
+
       // Salvar mensagem no banco
+      const messageData = {
+        instance_id: instanceData.instance_id,
+        message_id: message.key.id,
+        chat_id: senderId,
+        sender: senderId,
+        body: messageContent,
+        message_type: messageType,
+        from_me: message.key.fromMe,
+        timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
+        is_processed: false,
+        media_url: mediaUrl
+      };
+
       await supabase
         .from('whatsapp_messages')
-        .upsert({
-          instance_id: instanceData.instance_id,
-          message_id: message.key.id,
-          chat_id: senderId,
-          sender: senderId,
-          body: messageContent,
-          message_type: messageType,
-          from_me: message.key.fromMe,
-          timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
-          is_processed: false
-        }, {
+        .upsert(messageData, {
           onConflict: 'instance_id,message_id'
         })
 
       // Se não é mensagem nossa, processar para CRM
       if (!message.key.fromMe && instanceData.client_id) {
         await processMessageForCRM(supabase, message, instanceData)
+      }
+
+      // Processar áudio em background se necessário
+      if (messageType === 'audio' && mediaUrl && !message.key.fromMe) {
+        console.log(`🎵 [AUDIO-PROCESSING] Iniciando processamento de áudio em background`);
+        processAudioTranscription(supabase, message.key.id, mediaUrl)
+          .catch(error => {
+            console.error('❌ [AUDIO-PROCESSING] Erro no processamento de áudio:', error);
+          });
       }
       
     } catch (error) {
@@ -425,6 +444,119 @@ function extractMessageType(message: any): string {
   if (message.contactMessage) return 'contact'
   
   return 'text'
+}
+
+/**
+ * Processa transcrição de áudio em background
+ */
+async function processAudioTranscription(supabase: any, messageId: string, audioUrl: string) {
+  try {
+    console.log('🎵 [AUDIO-TRANSCRIPTION] Iniciando processamento:', audioUrl);
+    
+    // Headers otimizados para WhatsApp
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      'Referer': 'https://web.whatsapp.com/',
+      'Connection': 'keep-alive',
+      'Cache-Control': 'no-cache'
+    };
+    
+    // Download do áudio
+    console.log('📥 [AUDIO-TRANSCRIPTION] Fazendo download...');
+    const audioResponse = await fetch(audioUrl, { 
+      method: 'GET',
+      headers: headers,
+      redirect: 'follow'
+    });
+    
+    if (!audioResponse.ok) {
+      console.error('❌ [AUDIO-TRANSCRIPTION] Erro no download:', audioResponse.status);
+      throw new Error(`Erro ao baixar áudio: ${audioResponse.status}`);
+    }
+    
+    const audioBuffer = await audioResponse.arrayBuffer();
+    console.log('📊 [AUDIO-TRANSCRIPTION] Áudio baixado:', audioBuffer.byteLength, 'bytes');
+    
+    if (audioBuffer.byteLength === 0) {
+      throw new Error('Arquivo de áudio vazio');
+    }
+    
+    // Converter para base64 de forma otimizada
+    const audioBytes = new Uint8Array(audioBuffer);
+    let audioBase64 = '';
+    
+    // Processar em chunks para evitar overflow
+    const chunkSize = 0x8000;
+    for (let i = 0; i < audioBytes.length; i += chunkSize) {
+      const chunk = audioBytes.subarray(i, i + chunkSize);
+      audioBase64 += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    
+    audioBase64 = btoa(audioBase64);
+    console.log('🎵 [AUDIO-TRANSCRIPTION] Convertido para base64:', audioBase64.length, 'chars');
+    
+    // Salvar áudio base64 primeiro
+    await supabase
+      .from('whatsapp_messages')
+      .update({ 
+        audio_base64: audioBase64,
+        processing_status: 'processing_transcription'
+      })
+      .eq('message_id', messageId);
+    
+    console.log('💾 [AUDIO-TRANSCRIPTION] Base64 salvo, iniciando transcrição...');
+    
+    // Chamar função de transcrição
+    const { data: transcriptionResult, error: transcriptionError } = await supabase.functions.invoke('speech-to-text', {
+      body: {
+        audio: audioBase64,
+        openaiApiKey: Deno.env.get('OPENAI_API_KEY')
+      }
+    });
+    
+    if (transcriptionError) {
+      console.error('❌ [AUDIO-TRANSCRIPTION] Erro na transcrição:', transcriptionError);
+      await supabase
+        .from('whatsapp_messages')
+        .update({ 
+          processing_status: 'transcription_failed',
+          transcription: 'Transcrição não disponível (erro no processamento)'
+        })
+        .eq('message_id', messageId);
+      return;
+    }
+    
+    const transcription = transcriptionResult?.text || 'Transcrição não disponível';
+    console.log('✅ [AUDIO-TRANSCRIPTION] Concluída:', transcription.substring(0, 100));
+    
+    // Atualizar com transcrição
+    await supabase
+      .from('whatsapp_messages')
+      .update({ 
+        processing_status: 'processed',
+        transcription: transcription
+      })
+      .eq('message_id', messageId);
+    
+    console.log('✅ [AUDIO-TRANSCRIPTION] Mensagem atualizada com sucesso');
+    
+  } catch (error) {
+    console.error('❌ [AUDIO-TRANSCRIPTION] Erro crítico:', error);
+    
+    try {
+      await supabase
+        .from('whatsapp_messages')
+        .update({ 
+          processing_status: 'transcription_failed',
+          transcription: `Erro: ${error.message}`
+        })
+        .eq('message_id', messageId);
+    } catch (updateError) {
+      console.error('❌ [AUDIO-TRANSCRIPTION] Erro ao atualizar status:', updateError);
+    }
+  }
 }
 
 /**
