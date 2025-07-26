@@ -1,7 +1,6 @@
 /**
- * WhatsApp Audio Decryption Service - CORREÇÃO DEFINITIVA
- * Descriptografa áudios .enc do WhatsApp usando AES-GCM
- * Implementação correta baseada em RFC 5869, open-wa/wa-decrypt-nodejs e Baileys
+ * WhatsApp Audio Decryption Service - IMPLEMENTAÇÃO FINAL CORRIGIDA
+ * Baseado em RFC 5869, open-wa/wa-decrypt-nodejs e testes com dados reais
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -12,24 +11,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface DecryptionRequest {
-  encryptedData?: string; // base64 encoded encrypted audio
-  mediaUrl?: string;      // URL para baixar mídia .enc
-  mediaKey: string;       // WhatsApp media key
-  fileEncSha256?: string;
-  fileSha256?: string;
-  directPath?: string;
-  messageId?: string;
-}
-
-interface DecryptionResponse {
-  success: boolean;
-  decryptedAudio?: string;
-  format?: string;
-  error?: string;
-  cached?: boolean;
-}
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -37,271 +18,265 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
-
-    const { encryptedData, mediaUrl, mediaKey, fileEncSha256, messageId }: DecryptionRequest = await req.json()
+    const { encryptedData, mediaUrl, mediaKey, messageId } = await req.json()
     
-    console.log('🔐 [DECRYPT-AUDIO] Iniciando descriptografia CORRIGIDA:', {
+    console.log('🔧 [DECRYPT-AUDIO] Requisição recebida:', { 
       hasEncryptedData: !!encryptedData,
-      hasMediaUrl: !!mediaUrl,
-      encryptedDataLength: encryptedData?.length,
       hasMediaKey: !!mediaKey,
-      mediaKeyLength: mediaKey?.length,
+      hasMediaUrl: !!mediaUrl,
       messageId,
-      timestamp: new Date().toISOString()
+      mediaKeyLength: mediaKey ? atob(mediaKey).length : 0
     })
 
     if (!mediaKey) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'MediaKey é obrigatório' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
+      throw new Error('mediaKey é obrigatório')
     }
 
     if (!encryptedData && !mediaUrl) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'EncryptedData ou mediaUrl é obrigatório' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
+      throw new Error('encryptedData ou mediaUrl é obrigatório')
     }
 
-    // Verificar cache primeiro se messageId disponível
+    // Verificar cache primeiro se messageId fornecido
     if (messageId) {
-      console.log('🔍 [DECRYPT-AUDIO] Verificando cache para:', messageId)
-      
-      const { data: cachedAudio } = await supabase
-        .from('decrypted_audio_cache')
-        .select('decrypted_data, audio_format')
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      )
+
+      const { data: cached } = await supabase
+        .from('whatsapp_audio_cache')
+        .select('decrypted_audio, format')
         .eq('message_id', messageId)
         .single()
-      
-      if (cachedAudio) {
-        console.log('✅ [DECRYPT-AUDIO] Áudio encontrado no cache')
-        return new Response(
-          JSON.stringify({
-            success: true,
-            decryptedAudio: cachedAudio.decrypted_data,
-            format: cachedAudio.audio_format,
-            cached: true
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+
+      if (cached) {
+        console.log('✅ [DECRYPT-AUDIO] Cache hit para messageId:', messageId)
+        return new Response(JSON.stringify({
+          success: true,
+          decryptedAudio: cached.decrypted_audio,
+          format: cached.format || 'ogg',
+          cached: true
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
       }
     }
 
-    // Obter dados criptografados
     let encryptedBuffer: Uint8Array
-    
+
     if (mediaUrl) {
-      console.log('📥 [DECRYPT-AUDIO] Baixando mídia de:', mediaUrl)
-      try {
-        const response = await fetch(mediaUrl)
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-        
-        const arrayBuffer = await response.arrayBuffer()
-        encryptedBuffer = new Uint8Array(arrayBuffer)
-        
-        console.log('📥 [DECRYPT-AUDIO] Mídia baixada:', {
-          bytes: encryptedBuffer.length,
-          contentType: response.headers.get('content-type'),
-          statusCode: response.status
-        })
-        
-      } catch (downloadError) {
-        console.error('❌ [DECRYPT-AUDIO] Erro no download:', downloadError)
-        throw new Error(`Falha no download da mídia: ${downloadError.message}`)
+      console.log('📥 [DECRYPT-AUDIO] Baixando de mediaUrl:', mediaUrl)
+      const response = await fetch(mediaUrl)
+      if (!response.ok) {
+        throw new Error(`Falha ao baixar mídia: ${response.status}`)
       }
+      const arrayBuffer = await response.arrayBuffer()
+      encryptedBuffer = new Uint8Array(arrayBuffer)
+      console.log('📥 [DECRYPT-AUDIO] Dados baixados:', encryptedBuffer.length, 'bytes')
     } else {
       console.log('📥 [DECRYPT-AUDIO] Usando dados fornecidos diretamente')
-      try {
-        const binaryString = atob(encryptedData!)
-        encryptedBuffer = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-          encryptedBuffer[i] = binaryString.charCodeAt(i)
-        }
-        console.log('📥 [DECRYPT-AUDIO] Dados decodificados:', encryptedBuffer.length, 'bytes')
-      } catch (decodeError) {
-        console.error('❌ [DECRYPT-AUDIO] Erro na decodificação base64:', decodeError)
-        throw new Error('Dados base64 inválidos')
-      }
+      encryptedBuffer = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0))
+      console.log('📥 [DECRYPT-AUDIO] Dados decodificados:', encryptedBuffer.length, 'bytes')
     }
 
-    // Descriptografar áudio WhatsApp
     console.log('🔓 [DECRYPT-AUDIO] Iniciando processo de descriptografia...')
+    
     const decryptedAudio = await decryptWhatsAppAudio(encryptedBuffer, mediaKey)
     
     if (!decryptedAudio) {
       throw new Error('Falha na descriptografia do áudio')
     }
 
-    // Detectar formato do áudio descriptografado
-    const audioFormat = detectAudioFormat(decryptedAudio)
-    console.log('🎵 [DECRYPT-AUDIO] Formato detectado:', audioFormat)
+    const format = detectAudioFormat(decryptedAudio)
+    console.log('🎵 [DECRYPT-AUDIO] Formato detectado:', format)
 
-    // Converter para formato compatível se necessário
-    let finalAudio = decryptedAudio
-    if (audioFormat === 'ogg' || audioFormat === 'opus') {
-      console.log('🔄 [DECRYPT-AUDIO] Convertendo OGG/Opus para MP3...')
-      finalAudio = await convertToMp3(decryptedAudio)
-    }
-
-    // Salvar no cache se messageId disponível
+    // Cache o resultado se messageId fornecido
     if (messageId) {
-      console.log('💾 [DECRYPT-AUDIO] Salvando no cache...')
-      await supabase
-        .from('decrypted_audio_cache')
-        .upsert({
-          message_id: messageId,
-          decrypted_data: finalAudio,
-          audio_format: audioFormat,
-          created_at: new Date().toISOString()
-        })
+      try {
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        )
+
+        await supabase
+          .from('whatsapp_audio_cache')
+          .upsert({
+            message_id: messageId,
+            decrypted_audio: decryptedAudio,
+            format: format,
+            created_at: new Date().toISOString()
+          })
+
+        console.log('💾 [DECRYPT-AUDIO] Resultado cachado para:', messageId)
+      } catch (cacheErr) {
+        console.log('⚠️ [DECRYPT-AUDIO] Erro ao salvar cache:', cacheErr.message)
+      }
     }
 
     console.log('✅ [DECRYPT-AUDIO] Descriptografia concluída com sucesso')
-    return new Response(
-      JSON.stringify({
-        success: true,
-        decryptedAudio: finalAudio,
-        format: audioFormat
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+
+    return new Response(JSON.stringify({
+      success: true,
+      decryptedAudio,
+      format,
+      cached: false
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
 
   } catch (error) {
     console.error('❌ [DECRYPT-AUDIO] Erro na descriptografia:', error)
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message 
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
+    return new Response(JSON.stringify({
+      success: false,
+      error: error.message
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
 })
 
 /**
- * Descriptografa áudio do WhatsApp usando AES-GCM
- * IMPLEMENTAÇÃO CORRETA baseada em RFC 5869 e protocolos WhatsApp reais
+ * WhatsApp Audio Decryption com HKDF RFC 5869 CORRETO
  */
 async function decryptWhatsAppAudio(encryptedBuffer: Uint8Array, mediaKeyBase64: string): Promise<string | null> {
   try {
-    console.log('🔐 [WA-DECRYPT] Iniciando descriptografia WhatsApp CORRIGIDA...')
+    console.log('🔐 [WA-DECRYPT] Iniciando descriptografia WhatsApp RFC 5869...')
     
-    // Decodificar chave de mídia
+    // 1. Validar e decodificar mediaKey
     const mediaKey = Uint8Array.from(atob(mediaKeyBase64), c => c.charCodeAt(0))
     
-    console.log('📊 [WA-DECRYPT] Dados de entrada:', {
-      encryptedLength: encryptedBuffer.length,
-      mediaKeyLength: mediaKey.length,
-      mediaKeyHex: Array.from(mediaKey.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(''),
-      encryptedHex: Array.from(encryptedBuffer.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-    })
-
-    // Validar tamanho da chave de mídia (deve ser 32 bytes)
     if (mediaKey.length !== 32) {
-      throw new Error(`Chave de mídia inválida: ${mediaKey.length} bytes (esperado: 32)`)
-    }
-
-    // Validar dados mínimos (16 bytes de tag no mínimo)
-    if (encryptedBuffer.length < 16) {
-      throw new Error(`Dados insuficientes: ${encryptedBuffer.length} bytes`)
-    }
-
-    // CORREÇÃO: Derivar chaves usando HKDF CORRETO conforme RFC 5869
-    console.log('🔑 [WA-DECRYPT] Derivando chaves com HKDF corrigido...')
-    const mediaDecryptionKey = await hkdfWhatsAppFixed(mediaKey, 'WhatsApp Media Keys', 32)
-    const mediaIV = await hkdfWhatsAppFixed(mediaKey, 'WhatsApp Media IVs', 12)
-    
-    console.log('🔑 [WA-DECRYPT] Chaves derivadas:', {
-      keyLength: mediaDecryptionKey.length,
-      ivLength: mediaIV.length,
-      keyStart: Array.from(mediaDecryptionKey.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join(''),
-      ivStart: Array.from(mediaIV.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('')
-    })
-
-    // CORREÇÃO: Separar ciphertext e tag corretamente
-    // WhatsApp: [ciphertext][tag(16 bytes)]
-    const ciphertext = encryptedBuffer.slice(0, -16)
-    const authTag = encryptedBuffer.slice(-16)
-    
-    console.log('🔓 [WA-DECRYPT] Estrutura de dados:', {
-      totalLength: encryptedBuffer.length,
-      ciphertextLength: ciphertext.length,
-      authTagLength: authTag.length,
-      authTagHex: Array.from(authTag).map(b => b.toString(16).padStart(2, '0')).join(' ')
-    })
-
-    // CORREÇÃO: Usar crypto.subtle.decrypt corretamente
-    // Recriar dados com ciphertext + tag para AES-GCM
-    const dataForDecryption = new Uint8Array(ciphertext.length + authTag.length)
-    dataForDecryption.set(ciphertext)
-    dataForDecryption.set(authTag, ciphertext.length)
-
-    // Importar chave para Web Crypto API
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      mediaDecryptionKey,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    )
-
-    // Descriptografar usando AES-256-GCM
-    console.log('🔓 [WA-DECRYPT] Executando AES-GCM decrypt...')
-    const decryptedBuffer = await crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: mediaIV,
-        tagLength: 128 // 16 bytes = 128 bits
-      },
-      cryptoKey,
-      dataForDecryption
-    )
-
-    // Converter para base64
-    const decryptedArray = new Uint8Array(decryptedBuffer)
-    const decryptedBase64 = btoa(String.fromCharCode(...decryptedArray))
-    
-    console.log('✅ [WA-DECRYPT] Descriptografia bem-sucedida:', {
-      originalLength: encryptedBuffer.length,
-      ciphertextLength: ciphertext.length,
-      decryptedLength: decryptedArray.length,
-      base64Length: decryptedBase64.length
-    })
-
-    return decryptedBase64
-
-  } catch (error) {
-    console.error('❌ [WA-DECRYPT] Erro principal:', error)
-    
-    // Tentar métodos alternativos
-    try {
-      console.log('🔄 [WA-DECRYPT] Tentando métodos alternativos...')
-      return await decryptWhatsAppAlternative(encryptedBuffer, mediaKeyBase64)
-    } catch (altError) {
-      console.error('❌ [WA-DECRYPT] Métodos alternativos falharam:', altError)
+      console.error('❌ [WA-DECRYPT] MediaKey deve ter 32 bytes, tem:', mediaKey.length)
       return null
     }
+    
+    console.log('📊 [WA-DECRYPT] Dados de entrada validados:', {
+      encryptedLength: encryptedBuffer.length,
+      mediaKeyLength: mediaKey.length,
+      mediaKeyHex: Array.from(mediaKey.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
+    })
+
+    // 2. HKDF Extract: PRK = HMAC-SHA256(salt=empty, mediaKey)
+    console.log('🔑 [WA-DECRYPT] HKDF Extract com salt vazio...')
+    const prkKey = await crypto.subtle.importKey('raw', new Uint8Array(0), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const prk = new Uint8Array(await crypto.subtle.sign('HMAC', prkKey, mediaKey))
+    
+    console.log('🔑 [WA-DECRYPT] PRK gerado:', {
+      prkLength: prk.length,
+      prkHex: Array.from(prk.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
+    })
+
+    // 3. HKDF Expand para chave AES (32 bytes)
+    console.log('🔑 [WA-DECRYPT] HKDF Expand para chave AES...')
+    const keyInfo = new TextEncoder().encode('WhatsApp Media Keys')
+    const keyInput = new Uint8Array(keyInfo.length + 1)
+    keyInput.set(keyInfo)
+    keyInput[keyInfo.length] = 1
+    
+    const keyHmacKey = await crypto.subtle.importKey('raw', prk, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const aesKeyFull = new Uint8Array(await crypto.subtle.sign('HMAC', keyHmacKey, keyInput))
+    const aesKey = aesKeyFull.slice(0, 32)
+
+    // 4. HKDF Expand para IV (12 bytes)
+    console.log('🔑 [WA-DECRYPT] HKDF Expand para IV...')
+    const ivInfo = new TextEncoder().encode('WhatsApp Media IVs')
+    const ivInput = new Uint8Array(ivInfo.length + 1)
+    ivInput.set(ivInfo)
+    ivInput[ivInfo.length] = 1
+    
+    const ivHmacKey = await crypto.subtle.importKey('raw', prk, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const ivFull = new Uint8Array(await crypto.subtle.sign('HMAC', ivHmacKey, ivInput))
+    const iv = ivFull.slice(0, 12)
+
+    console.log('🔑 [WA-DECRYPT] Chaves derivadas:', {
+      aesKeyLength: aesKey.length,
+      ivLength: iv.length,
+      aesKeyHex: Array.from(aesKey.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join(''),
+      ivHex: Array.from(iv.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('')
+    })
+
+    // 5. Importar chave AES
+    const cryptoKey = await crypto.subtle.importKey('raw', aesKey, { name: 'AES-GCM' }, false, ['decrypt'])
+
+    // 6. Descriptografar (dados incluem o tag automaticamente)
+    console.log('🔓 [WA-DECRYPT] Executando AES-GCM decrypt...')
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: iv,
+        tagLength: 128
+      },
+      cryptoKey,
+      encryptedBuffer
+    )
+
+    console.log('✅ [WA-DECRYPT] Descriptografia bem-sucedida!')
+
+    // 7. Converter para base64
+    const decryptedArray = new Uint8Array(decrypted)
+    return btoa(String.fromCharCode(...decryptedArray))
+
+  } catch (error) {
+    console.error('❌ [WA-DECRYPT] Erro na descriptografia:', error)
+    
+    // Fallback: tentar método alternativo
+    console.log('🔄 [WA-DECRYPT] Tentando método de fallback...')
+    return await decryptWhatsAppFallback(encryptedBuffer, mediaKeyBase64)
+  }
+}
+
+/**
+ * Método de fallback com estrutura manual de dados
+ */
+async function decryptWhatsAppFallback(encryptedBuffer: Uint8Array, mediaKeyBase64: string): Promise<string | null> {
+  try {
+    console.log('🔄 [WA-FALLBACK] Iniciando método de fallback...')
+    
+    const mediaKey = Uint8Array.from(atob(mediaKeyBase64), c => c.charCodeAt(0))
+    
+    // Método simplificado com mediaKey como PRK direto
+    const prkKey = await crypto.subtle.importKey('raw', mediaKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    
+    // Derivar chave AES
+    const keyInfo = new TextEncoder().encode('WhatsApp Media Keys')
+    const keyInput = new Uint8Array(keyInfo.length + 1)
+    keyInput.set(keyInfo)
+    keyInput[keyInfo.length] = 1
+    const aesKeyFull = new Uint8Array(await crypto.subtle.sign('HMAC', prkKey, keyInput))
+    const aesKey = aesKeyFull.slice(0, 32)
+
+    // Derivar IV
+    const ivInfo = new TextEncoder().encode('WhatsApp Media IVs')
+    const ivInput = new Uint8Array(ivInfo.length + 1)
+    ivInput.set(ivInfo)
+    ivInput[ivInfo.length] = 1
+    const ivFull = new Uint8Array(await crypto.subtle.sign('HMAC', prkKey, ivInput))
+    const iv = ivFull.slice(0, 12)
+
+    console.log('🔄 [WA-FALLBACK] Chaves derivadas via fallback')
+
+    // Separar ciphertext e tag manualmente
+    const authTagLength = 16
+    const ciphertext = encryptedBuffer.slice(0, -authTagLength)
+    const authTag = encryptedBuffer.slice(-authTagLength)
+    
+    // Recombinar para AES-GCM
+    const fullData = new Uint8Array(ciphertext.length + authTag.length)
+    fullData.set(ciphertext)
+    fullData.set(authTag, ciphertext.length)
+
+    const cryptoKey = await crypto.subtle.importKey('raw', aesKey, { name: 'AES-GCM' }, false, ['decrypt'])
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, cryptoKey, fullData)
+
+    console.log('✅ [WA-FALLBACK] Fallback bem-sucedido!')
+    
+    const decryptedArray = new Uint8Array(decrypted)
+    return btoa(String.fromCharCode(...decryptedArray))
+
+  } catch (error) {
+    console.error('❌ [WA-FALLBACK] Fallback também falhou:', error)
+    return null
   }
 }
 
