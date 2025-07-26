@@ -882,16 +882,21 @@ async function saveTicketMessage(ticketId: string, messageData: any) {
   if (messageData.messageType === 'audio' && messageData.mediaUrl) {
     console.log('🎵 [AUDIO-PROCESS] Iniciando processamento de áudio em background');
     
-    // Chamar função de transcrição de áudio sem aguardar resultado
-    processAudioTranscription(ticketId, messageData.messageId, messageData.mediaUrl)
-      .catch(error => {
-        console.error('❌ [AUDIO-PROCESS] Erro no processamento de áudio:', error);
-      });
+    // Chamar função de transcrição de áudio com metadados de criptografia
+    processAudioTranscription(
+      ticketId, 
+      messageData.messageId, 
+      messageData.mediaUrl,
+      messageData.mediaKey,
+      messageData.fileEncSha256
+    ).catch(error => {
+      console.error('❌ [AUDIO-PROCESS] Erro no processamento de áudio:', error);
+    });
   }
 }
 
 // 🎵 Função para processar transcrição de áudio em background
-async function processAudioTranscription(ticketId: string, messageId: string, audioUrl: string) {
+async function processAudioTranscription(ticketId: string, messageId: string, audioUrl: string, mediaKey?: string, fileEncSha256?: string) {
   try {
     console.log('🎵 [TRANSCRIPTION] Iniciando transcrição de áudio:', audioUrl);
     
@@ -924,27 +929,62 @@ async function processAudioTranscription(ticketId: string, messageId: string, au
     console.log('📊 [TRANSCRIPTION] Áudio baixado:', audioBuffer.byteLength, 'bytes');
     
     // Converter para base64 de forma otimizada
-    const audioBase64 = btoa(
+    const encryptedAudioBase64 = btoa(
       new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
     );
     
-    console.log('🎵 [TRANSCRIPTION] Áudio convertido para base64, tamanho:', audioBase64.length);
+    console.log('🎵 [TRANSCRIPTION] Áudio criptografado convertido para base64, tamanho:', encryptedAudioBase64.length);
+    
+    let audioForTranscription = encryptedAudioBase64;
+    
+    // 🔐 DESCRIPTOGRAFAR ÁUDIO SE NECESSÁRIO (.enc do WhatsApp)
+    if (audioUrl.includes('.enc') && mediaKey && fileEncSha256) {
+      console.log('🔐 [DECRYPTION] Áudio criptografado detectado, iniciando descriptografia...');
+      
+      try {
+        const { data: decryptionResult, error: decryptionError } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
+          body: {
+            encryptedData: encryptedAudioBase64,
+            mediaKey: mediaKey,
+            messageId: messageId
+          }
+        });
+        
+        if (decryptionError) {
+          console.error('❌ [DECRYPTION] Erro na descriptografia:', decryptionError);
+          throw new Error(`Erro na descriptografia: ${decryptionError.message}`);
+        }
+        
+        if (decryptionResult?.decryptedAudio) {
+          audioForTranscription = decryptionResult.decryptedAudio;
+          console.log('✅ [DECRYPTION] Áudio descriptografado com sucesso, formato:', decryptionResult.audioFormat);
+        } else {
+          console.log('⚠️ [DECRYPTION] Resultado vazio da descriptografia, usando áudio original');
+        }
+        
+      } catch (decryptError) {
+        console.error('❌ [DECRYPTION] Falha na descriptografia:', decryptError);
+        console.log('🔄 [DECRYPTION] Tentando transcrição com áudio original...');
+      }
+    } else {
+      console.log('📝 [DECRYPTION] Áudio não criptografado ou metadados ausentes, usando diretamente');
+    }
     
     // Sempre salvar o áudio_base64, independente da transcrição
     await supabase
       .from('ticket_messages')
       .update({ 
-        audio_base64: audioBase64,
+        audio_base64: audioForTranscription,
         processing_status: 'processing_transcription'
       })
       .eq('message_id', messageId);
     
     console.log('💾 [TRANSCRIPTION] Audio base64 salvo, iniciando transcrição...');
     
-    // Chamar edge function de speech-to-text
+    // Chamar edge function de speech-to-text com áudio processado
     const { data: transcriptionResult, error: transcriptionError } = await supabase.functions.invoke('speech-to-text', {
       body: {
-        audio: audioBase64,
+        audio: audioForTranscription,
         openaiApiKey: Deno.env.get('OPENAI_API_KEY')
       }
     });
