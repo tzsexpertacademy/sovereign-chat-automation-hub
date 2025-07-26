@@ -85,14 +85,14 @@ const MessageInput = ({
             onKeyPress={onKeyPress}
             placeholder={connectedInstance ? "Digite sua mensagem..." : "Conecte uma instância para enviar mensagens"}
             className="min-h-[60px] max-h-[120px] resize-none"
-            disabled={!connectedInstance || isSending || selectedFile !== null}
+            disabled={!connectedInstance || selectedFile !== null}
           />
         </div>
         
         <div className="flex items-center space-x-1">
           <MediaUploadButton
             onFileSelect={handleFileSelect}
-            disabled={!connectedInstance || isSending || selectedFile !== null}
+            disabled={!connectedInstance || selectedFile !== null}
           />
           
           <SimpleAudioRecorder
@@ -103,7 +103,7 @@ const MessageInput = ({
           
           <Button
             onClick={onSendMessage}
-            disabled={!newMessage.trim() || !connectedInstance || isSending || selectedFile !== null}
+            disabled={!newMessage.trim() || !connectedInstance || selectedFile !== null}
             size="icon"
             className="h-10 w-10"
           >

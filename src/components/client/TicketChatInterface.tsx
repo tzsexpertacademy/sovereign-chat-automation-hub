@@ -119,11 +119,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       // Limpar input imediatamente para feedback visual
       setNewMessage('');
       
-      // Mostrar feedback de progresso
-      toast({
-        title: "📤 Enviando mensagem...",
-        description: "Configurando webhook e verificando conexão"
-      });
       
       console.log('📤 [TICKET-SEND] Iniciando envio:', {
         instanceId: connectedInstance,
@@ -168,12 +163,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         });
 
         console.log('💾 [TICKET-SEND] Mensagem salva no ticket com sucesso');
-        setNewMessage('');
-        
-        toast({
-          title: "✅ Sucesso",
-          description: "Mensagem enviada e registrada com sucesso"
-        });
       } else {
         console.error('❌ [TICKET-SEND] Falha no envio:', {
           error: response.error,
