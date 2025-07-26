@@ -985,77 +985,116 @@ async function saveTicketMessage(ticketId: string, messageData: any) {
 // 🎵 Função para processar transcrição de áudio em background
 async function processAudioTranscription(ticketId: string, messageId: string, audioUrl: string, mediaKey?: string, fileEncSha256?: string) {
   try {
-    console.log('🎵 [TRANSCRIPTION] Iniciando transcrição de áudio:', audioUrl);
+    console.log('🎵 [TRANSCRIPTION] Iniciando transcrição de áudio:', { audioUrl, messageId, hasMediaKey: !!mediaKey });
     
-    // Headers específicos para WhatsApp
-    const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      'Accept': '*/*',
-      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-      'Referer': 'https://web.whatsapp.com/',
-      'Connection': 'keep-alive'
-    };
-    
-    // Fazer download do áudio com headers específicos
-    console.log('📥 [TRANSCRIPTION] Fazendo download do áudio...');
-    const audioResponse = await fetch(audioUrl, { 
-      method: 'GET',
-      headers: headers,
-      redirect: 'follow'
-    });
-    
-    if (!audioResponse.ok) {
-      console.error('❌ [TRANSCRIPTION] Erro no download:', audioResponse.status, audioResponse.statusText);
-      throw new Error(`Erro ao baixar áudio: ${audioResponse.status} - ${audioResponse.statusText}`);
-    }
-    
-    const contentType = audioResponse.headers.get('content-type') || 'audio/ogg';
-    console.log('📄 [TRANSCRIPTION] Content-Type do áudio:', contentType);
-    
-    const audioBuffer = await audioResponse.arrayBuffer();
-    console.log('📊 [TRANSCRIPTION] Áudio baixado:', audioBuffer.byteLength, 'bytes');
-    
-    // Converter para base64 de forma otimizada
-    const encryptedAudioBase64 = btoa(
-      new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
-    
-    console.log('🎵 [TRANSCRIPTION] Áudio criptografado convertido para base64, tamanho:', encryptedAudioBase64.length);
-    
-    let audioForTranscription = encryptedAudioBase64;
-    
-    // 🔐 DESCRIPTOGRAFAR ÁUDIO SE NECESSÁRIO (.enc do WhatsApp)
+    let audioForTranscription: string | null = null;
+
+    // 🔐 VERIFICAR SE É ÁUDIO CRIPTOGRAFADO (.enc) - USAR DESCRIPTOGRAFIA DIRETA
     if (audioUrl.includes('.enc') && mediaKey && fileEncSha256) {
-      console.log('🔐 [DECRYPTION] Áudio criptografado detectado, iniciando descriptografia...');
+      console.log('🔐 [TRANSCRIPTION] Áudio criptografado detectado - usando descriptografia direta');
+      console.log('🔑 [TRANSCRIPTION] Metadados disponíveis:', {
+        hasMediaKey: !!mediaKey,
+        hasFileEncSha256: !!fileEncSha256,
+        mediaKeyLength: mediaKey?.length,
+        audioUrlPattern: audioUrl.includes('.enc') ? 'encrypted' : 'plain'
+      });
       
       try {
-        const { data: decryptionResult, error: decryptionError } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
-          body: {
-            encryptedData: encryptedAudioBase64,
-            mediaKey: mediaKey,
-            messageId: messageId
-          }
-        });
-        
-        if (decryptionError) {
-          console.error('❌ [DECRYPTION] Erro na descriptografia:', decryptionError);
-          throw new Error(`Erro na descriptografia: ${decryptionError.message}`);
-        }
-        
-        if (decryptionResult?.decryptedAudio) {
-          audioForTranscription = decryptionResult.decryptedAudio;
-          console.log('✅ [DECRYPTION] Áudio descriptografado com sucesso, formato:', decryptionResult.audioFormat);
+        // Primeiro tentar buscar áudio já descriptografado no cache
+        const { data: cachedAudio } = await supabase
+          .from('decrypted_audio_cache')
+          .select('decrypted_data, audio_format')
+          .eq('message_id', messageId)
+          .single();
+
+        if (cachedAudio?.decrypted_data) {
+          console.log('✅ [TRANSCRIPTION] Áudio descriptografado encontrado no cache');
+          audioForTranscription = cachedAudio.decrypted_data;
         } else {
-          console.log('⚠️ [DECRYPTION] Resultado vazio da descriptografia, usando áudio original');
+          console.log('🔓 [TRANSCRIPTION] Cache não encontrado, fazendo download e descriptografia...');
+          
+          // Fazer download da URL criptografada
+          const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+            'Referer': 'https://web.whatsapp.com/',
+            'Connection': 'keep-alive'
+          };
+          
+          const audioResponse = await fetch(audioUrl, { 
+            method: 'GET',
+            headers: headers,
+            redirect: 'follow'
+          });
+          
+          if (!audioResponse.ok) {
+            console.error('❌ [TRANSCRIPTION] Erro no download:', audioResponse.status, audioResponse.statusText);
+            throw new Error(`Erro ao baixar áudio: ${audioResponse.status} - ${audioResponse.statusText}`);
+          }
+          
+          const audioBuffer = await audioResponse.arrayBuffer();
+          const encryptedAudioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+          
+          console.log('📊 [TRANSCRIPTION] Áudio criptografado baixado:', {
+            bufferSize: audioBuffer.byteLength,
+            base64Length: encryptedAudioBase64.length
+          });
+          
+          // Descriptografar usando função Supabase
+          const { data: decryptionResult, error: decryptionError } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
+            body: {
+              encryptedData: encryptedAudioBase64,
+              mediaKey: mediaKey,
+              fileEncSha256: fileEncSha256,
+              messageId: messageId
+            }
+          });
+          
+          if (decryptionError) {
+            console.error('❌ [TRANSCRIPTION] Erro na descriptografia:', decryptionError);
+            throw new Error(`Falha na descriptografia: ${decryptionError.message}`);
+          }
+          
+          if (decryptionResult?.success && decryptionResult?.decryptedAudio) {
+            audioForTranscription = decryptionResult.decryptedAudio;
+            console.log('✅ [TRANSCRIPTION] Áudio descriptografado com sucesso:', {
+              format: decryptionResult.format,
+              cached: decryptionResult.cached,
+              audioLength: audioForTranscription.length
+            });
+          } else {
+            throw new Error('Descriptografia retornou resultado vazio');
+          }
         }
         
       } catch (decryptError) {
-        console.error('❌ [DECRYPTION] Falha na descriptografia:', decryptError);
-        console.log('🔄 [DECRYPTION] Tentando transcrição com áudio original...');
+        console.error('❌ [TRANSCRIPTION] Falha crítica na descriptografia:', decryptError);
+        throw decryptError; // Re-throw para falhar o processo
       }
+      
     } else {
-      console.log('📝 [DECRYPTION] Áudio não criptografado ou metadados ausentes, usando diretamente');
+      console.log('📱 [TRANSCRIPTION] Áudio não criptografado ou metadados ausentes');
+      
+      // Para áudios não criptografados, fazer download normal
+      const audioResponse = await fetch(audioUrl);
+      if (!audioResponse.ok) {
+        throw new Error(`Erro ao baixar áudio: ${audioResponse.status}`);
+      }
+      
+      const audioBuffer = await audioResponse.arrayBuffer();
+      audioForTranscription = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
     }
+    
+    // Validar se temos áudio para transcrever
+    if (!audioForTranscription) {
+      throw new Error('Nenhum áudio válido disponível para transcrição');
+    }
+    
+    console.log('✅ [TRANSCRIPTION] Áudio pronto para transcrição:', {
+      audioLength: audioForTranscription.length,
+      isEncrypted: audioUrl.includes('.enc')
+    });
     
     // Sempre salvar o áudio_base64, independente da transcrição
     await supabase
