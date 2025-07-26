@@ -42,9 +42,28 @@ const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesLis
             {message.media_duration && (
               <span className="text-xs text-blue-600 ml-2">({message.media_duration}s)</span>
             )}
+            
+            {/* Status de processamento */}
+            {message.processing_status === 'pending_transcription' && (
+              <div className="text-xs text-amber-600 mt-1 animate-pulse">
+                🎵 Processando áudio...
+              </div>
+            )}
+            
+            {message.processing_status === 'processing_transcription' && (
+              <div className="text-xs text-blue-600 mt-1 animate-pulse">
+                📝 Transcrevendo áudio...
+              </div>
+            )}
+            
+            {/* Transcrição */}
             {message.media_transcription && (
               <div className="text-xs text-blue-700 mt-1 opacity-90">
-                💬 {message.media_transcription}
+                {message.media_transcription.includes('Erro') ? (
+                  <span className="text-red-600">❌ {message.media_transcription}</span>
+                ) : (
+                  <span>💬 {message.media_transcription}</span>
+                )}
               </div>
             )}
           </div>

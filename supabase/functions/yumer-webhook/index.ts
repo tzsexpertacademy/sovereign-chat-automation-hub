@@ -835,16 +835,51 @@ async function processAudioTranscription(ticketId: string, messageId: string, au
   try {
     console.log('🎵 [TRANSCRIPTION] Iniciando transcrição de áudio:', audioUrl);
     
-    // Fazer download do áudio e converter para base64
-    const audioResponse = await fetch(audioUrl);
+    // Headers específicos para WhatsApp
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      'Referer': 'https://web.whatsapp.com/',
+      'Connection': 'keep-alive'
+    };
+    
+    // Fazer download do áudio com headers específicos
+    console.log('📥 [TRANSCRIPTION] Fazendo download do áudio...');
+    const audioResponse = await fetch(audioUrl, { 
+      method: 'GET',
+      headers: headers,
+      redirect: 'follow'
+    });
+    
     if (!audioResponse.ok) {
-      throw new Error(`Erro ao baixar áudio: ${audioResponse.status}`);
+      console.error('❌ [TRANSCRIPTION] Erro no download:', audioResponse.status, audioResponse.statusText);
+      throw new Error(`Erro ao baixar áudio: ${audioResponse.status} - ${audioResponse.statusText}`);
     }
     
-    const audioBuffer = await audioResponse.arrayBuffer();
-    const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+    const contentType = audioResponse.headers.get('content-type') || 'audio/ogg';
+    console.log('📄 [TRANSCRIPTION] Content-Type do áudio:', contentType);
     
-    console.log('🎵 [TRANSCRIPTION] Áudio baixado, enviando para transcrição...');
+    const audioBuffer = await audioResponse.arrayBuffer();
+    console.log('📊 [TRANSCRIPTION] Áudio baixado:', audioBuffer.byteLength, 'bytes');
+    
+    // Converter para base64 de forma otimizada
+    const audioBase64 = btoa(
+      new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
+    
+    console.log('🎵 [TRANSCRIPTION] Áudio convertido para base64, tamanho:', audioBase64.length);
+    
+    // Sempre salvar o áudio_base64, independente da transcrição
+    await supabase
+      .from('ticket_messages')
+      .update({ 
+        audio_base64: audioBase64,
+        processing_status: 'processing_transcription'
+      })
+      .eq('message_id', messageId);
+    
+    console.log('💾 [TRANSCRIPTION] Audio base64 salvo, iniciando transcrição...');
     
     // Chamar edge function de speech-to-text
     const { data: transcriptionResult, error: transcriptionError } = await supabase.functions.invoke('speech-to-text', {
@@ -857,44 +892,52 @@ async function processAudioTranscription(ticketId: string, messageId: string, au
     if (transcriptionError) {
       console.error('❌ [TRANSCRIPTION] Erro na transcrição:', transcriptionError);
       
-      // Atualizar status para erro
+      // Manter o áudio, mas marcar erro na transcrição
       await supabase
         .from('ticket_messages')
         .update({ 
           processing_status: 'transcription_failed',
-          media_transcription: 'Erro na transcrição do áudio'
+          media_transcription: 'Transcrição não disponível (erro no processamento)'
         })
         .eq('message_id', messageId);
       
+      console.log('⚠️ [TRANSCRIPTION] Transcrição falhou, mas áudio foi salvo');
       return;
     }
     
     const transcription = transcriptionResult?.text || 'Transcrição não disponível';
     
-    console.log('✅ [TRANSCRIPTION] Transcrição concluída:', transcription.substring(0, 100) + '...');
+    console.log('✅ [TRANSCRIPTION] Transcrição concluída:', {
+      success: transcriptionResult?.success,
+      textLength: transcription.length,
+      preview: transcription.substring(0, 100)
+    });
     
     // Atualizar mensagem com transcrição
     await supabase
       .from('ticket_messages')
       .update({ 
         processing_status: 'processed',
-        media_transcription: transcription,
-        audio_base64: audioBase64
+        media_transcription: transcription
       })
       .eq('message_id', messageId);
     
-    console.log('✅ [TRANSCRIPTION] Mensagem atualizada com transcrição');
+    console.log('✅ [TRANSCRIPTION] Mensagem atualizada com transcrição completa');
     
   } catch (error) {
     console.error('❌ [TRANSCRIPTION] Erro crítico na transcrição:', error);
     
-    // Atualizar status para erro
-    await supabase
-      .from('ticket_messages')
-      .update({ 
-        processing_status: 'transcription_failed',
-        media_transcription: 'Erro no processamento do áudio'
-      })
-      .eq('message_id', messageId);
+    // Tentar salvar pelo menos um marcador de erro
+    try {
+      await supabase
+        .from('ticket_messages')
+        .update({ 
+          processing_status: 'transcription_failed',
+          media_transcription: `Erro no processamento: ${error.message}`
+        })
+        .eq('message_id', messageId);
+    } catch (updateError) {
+      console.error('❌ [TRANSCRIPTION] Erro ao atualizar status de erro:', updateError);
+    }
   }
 }

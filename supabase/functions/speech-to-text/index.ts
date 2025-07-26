@@ -9,27 +9,50 @@ const corsHeaders = {
 
 // Função para detectar e processar diferentes formatos de áudio
 function detectAudioFormat(base64Data: string): { format: string; mimeType: string } {
-  const firstBytes = base64Data.substring(0, 20);
+  const firstBytes = base64Data.substring(0, 32);
   
   // Decodificar primeira parte para verificar header
   try {
     const decoded = atob(firstBytes);
-    const header = decoded.substring(0, 4);
+    const bytes = new Uint8Array(decoded.split('').map(char => char.charCodeAt(0)));
     
-    if (header.includes('OggS')) {
+    // OGG (WhatsApp comum): bytes começam com "OggS"
+    if (bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
+      console.log('🎵 Detectado formato OGG Opus (WhatsApp)');
       return { format: 'ogg', mimeType: 'audio/ogg' };
-    } else if (header.includes('RIFF')) {
+    }
+    
+    // WAV: bytes começam com "RIFF"
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+      console.log('🎵 Detectado formato WAV');
       return { format: 'wav', mimeType: 'audio/wav' };
-    } else if (header.includes('ID3') || decoded.charCodeAt(0) === 0xFF) {
+    }
+    
+    // MP3: ID3 tag ou frame sync
+    if ((bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) || 
+        (bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0)) {
+      console.log('🎵 Detectado formato MP3');
       return { format: 'mp3', mimeType: 'audio/mpeg' };
-    } else if (header.includes('ftyp')) {
+    }
+    
+    // M4A/AAC: ftyp box
+    if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+      console.log('🎵 Detectado formato M4A');
       return { format: 'm4a', mimeType: 'audio/m4a' };
     }
+    
+    // WebM: EBML header
+    if (bytes[0] === 0x1A && bytes[1] === 0x45 && bytes[2] === 0xDF && bytes[3] === 0xA3) {
+      console.log('🎵 Detectado formato WebM');
+      return { format: 'webm', mimeType: 'audio/webm' };
+    }
+    
   } catch (error) {
-    console.log('🔍 Erro ao detectar formato, usando fallback para OGG');
+    console.log('🔍 Erro ao detectar formato, usando fallback para OGG:', error.message);
   }
   
   // Fallback para OGG (formato comum do WhatsApp)
+  console.log('🎵 Usando formato fallback: OGG');
   return { format: 'ogg', mimeType: 'audio/ogg' };
 }
 
@@ -108,13 +131,15 @@ serve(async (req) => {
       primeiros10Bytes: Array.from(audioBytes.slice(0, 10)).map(b => b.toString(16)).join(' ')
     });
 
-    // Tentar múltiplos formatos para compatibilidade máxima
+    // Tentar múltiplos formatos para compatibilidade máxima (ordem otimizada para WhatsApp)
     const formatsToTry = [
       { format: audioInfo.format, mimeType: audioInfo.mimeType },
       { format: 'ogg', mimeType: 'audio/ogg' },
+      { format: 'oga', mimeType: 'audio/oga' },
       { format: 'wav', mimeType: 'audio/wav' },
+      { format: 'webm', mimeType: 'audio/webm' },
       { format: 'mp3', mimeType: 'audio/mpeg' },
-      { format: 'webm', mimeType: 'audio/webm' }
+      { format: 'm4a', mimeType: 'audio/m4a' }
     ];
 
     for (let i = 0; i < formatsToTry.length; i++) {
