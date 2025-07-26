@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useSearchParams } from "react-router-dom";
-import ChatInterface from './ChatInterface';
+import ChatInterfaceImproved from './ChatInterfaceImproved';
 import ContactsManager from './ContactsManager';
 import { realTimeNotificationService } from '@/services/realTimeNotificationService';
 
@@ -182,11 +182,11 @@ const ChatTabsInterface = ({ clientId, selectedChatId, onSelectChat }: ChatTabsI
         <div className="flex-1 m-4 mt-2">
           <TabsContent value="conversations" className="h-full mt-0">
             <div className="bg-card rounded-lg border h-full overflow-hidden">
-              <ChatInterface 
-                clientId={clientId}
-                selectedChatId={selectedChatId}
-                onSelectChat={onSelectChat}
-              />
+            <ChatInterfaceImproved 
+              clientId={clientId}
+              selectedChatId={selectedChatId}
+              onSelectChat={onSelectChat}
+            />
             </div>
           </TabsContent>
           
