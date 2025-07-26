@@ -13,7 +13,7 @@ import ConnectionStatus from './chat/ConnectionStatus';
 import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
-import ConnectionDiagnostics from './ConnectionDiagnostics';
+
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
 
@@ -26,7 +26,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
   const { messages, isLoading } = useTicketMessages(ticketId);
@@ -34,7 +34,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { markActivity, isOnline } = useOnlineStatus(clientId, true);
   const { simulateHumanTyping, isTyping, isRecording } = useHumanizedTyping(clientId);
   const { getMessageStatus } = useMessageStatus({ ticketId });
-  const { ticket, queueInfo, connectedInstance } = useTicketData(ticketId, clientId);
+  const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
 
   useEffect(() => {
@@ -83,18 +83,18 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   };
 
   const handleAudioReady = async (audioBlob: Blob, duration: number) => {
-    await processAudioReady(
-      audioBlob, 
-      duration, 
-      ticket, 
-      connectedInstance, 
-      markActivity
-    );
+      await processAudioReady(
+        audioBlob, 
+        duration, 
+        ticket, 
+        actualInstanceId, 
+        markActivity
+      );
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !ticket || !connectedInstance || isSending) {
-      if (!connectedInstance) {
+    if (!newMessage.trim() || !ticket || !actualInstanceId || isSending) {
+      if (!actualInstanceId) {
         toast({
           title: "❌ Erro de Conexão",
           description: "Nenhuma instância WhatsApp conectada. Conecte uma instância primeiro.",
@@ -121,7 +121,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       
       
       console.log('📤 [TICKET-SEND] Iniciando envio:', {
-        instanceId: connectedInstance,
+        instanceId: actualInstanceId,
         chatId: ticket.chat_id,
         messagePreview: messageToSend.substring(0, 50) + '...',
         customerPhone: ticket.customer?.phone,
@@ -132,7 +132,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
       // Tentar envio com melhor logging
       const response = await whatsappService.sendTextMessage({
-        instanceId: connectedInstance,
+        instanceId: actualInstanceId,
         to: ticket.chat_id,
         message: messageToSend
       });
@@ -167,7 +167,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         console.error('❌ [TICKET-SEND] Falha no envio:', {
           error: response.error,
           details: response.details,
-          instanceId: connectedInstance
+          instanceId: actualInstanceId
         });
         
         toast({
@@ -221,12 +221,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       <ConnectionStatus
         connectedInstance={connectedInstance}
         isOnline={isOnline}
-        onShowDiagnostics={() => setShowDiagnostics(!showDiagnostics)}
-      />
-
-      <ConnectionDiagnostics
-        instanceId={connectedInstance}
-        isVisible={showDiagnostics}
       />
 
       <MessagesList
@@ -249,7 +243,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         setNewMessage={setNewMessage}
         onSendMessage={handleSendMessage}
         onAudioReady={handleAudioReady}
-        connectedInstance={connectedInstance}
+        connectedInstance={actualInstanceId}
         isSending={isSending}
         onKeyPress={handleKeyPress}
         chatId={ticket?.chat_id || ''}

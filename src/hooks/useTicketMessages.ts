@@ -18,6 +18,10 @@ export const useTicketMessages = (ticketId: string) => {
       return;
     }
 
+    // Verificar se já temos mensagens carregadas para este ticket
+    const cacheKey = `ticket_messages_${ticketId}`;
+    const isReturningToTicket = sessionStorage.getItem(cacheKey) === 'loaded';
+
     const loadMessages = async (isPolling = false) => {
       try {
         if (!isPolling) setIsLoading(true);
@@ -31,6 +35,9 @@ export const useTicketMessages = (ticketId: string) => {
         setMessages(messagesData);
         lastLoadRef.current = Date.now();
         
+        // Marcar que as mensagens foram carregadas
+        sessionStorage.setItem(cacheKey, 'loaded');
+        
         if (isPolling && messagesData.length > 0) {
           console.log('✅ Polling detectou mudanças, mensagens atualizadas');
         }
@@ -42,8 +49,12 @@ export const useTicketMessages = (ticketId: string) => {
       }
     };
 
-    // Carregamento inicial
-    loadMessages();
+    // Se não está retornando para o ticket, fazer carregamento inicial
+    if (!isReturningToTicket) {
+      loadMessages();
+    } else {
+      console.log('📋 Retornando ao ticket, mantendo mensagens em cache');
+    }
 
     // Polling otimizado (30 segundos ou quando necessário)
     const startPolling = () => {
