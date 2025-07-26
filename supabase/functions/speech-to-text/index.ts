@@ -161,20 +161,16 @@ serve(async (req) => {
       primeiros10Bytes: Array.from(audioBytes.slice(0, 10)).map(b => b.toString(16)).join(' ')
     });
 
-    // Formatos otimizados para OpenAI Whisper (ordem de preferência)
+    // Formatos otimizados para OpenAI Whisper (apenas formatos oficialmente suportados)
     const formatsToTry = [
-      // Formato detectado primeiro
-      { format: audioInfo.format, mimeType: audioInfo.mimeType },
-      // Formatos compatíveis com OpenAI (ordem de eficiência)
+      // OGG sempre primeiro para WhatsApp
+      { format: 'ogg', mimeType: 'audio/ogg' },
+      // Outros formatos oficiais da OpenAI
       { format: 'mp3', mimeType: 'audio/mpeg' },
       { format: 'wav', mimeType: 'audio/wav' },
-      { format: 'm4a', mimeType: 'audio/mp4' },
-      { format: 'ogg', mimeType: 'audio/ogg' },
+      { format: 'm4a', mimeType: 'audio/m4a' },
       { format: 'webm', mimeType: 'audio/webm' },
-      { format: 'flac', mimeType: 'audio/flac' },
-      // Fallbacks
-      { format: 'oga', mimeType: 'audio/oga' },
-      { format: 'mpga', mimeType: 'audio/mpga' }
+      { format: 'flac', mimeType: 'audio/flac' }
     ];
 
     for (let i = 0; i < formatsToTry.length; i++) {

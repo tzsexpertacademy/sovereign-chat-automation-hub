@@ -471,28 +471,37 @@ function extractYumerMessageData(messageData: any, instance: any) {
   let mediaDuration = 0;
   let mediaMimeType = '';
 
-  // 🎵 PROCESSAMENTO DE ÁUDIO
-  if (messageData.contentType === 'audio' && messageData.content) {
-    console.log('🎵 [EXTRACT-YUMER] Detectado áudio - processando dados');
+  // 🎵 PROCESSAMENTO DE ÁUDIO - LOGS DETALHADOS
+  if (messageData.contentType === 'audio') {
+    console.log('🎵 [EXTRACT-YUMER] ÁUDIO DETECTADO - dados completos:', {
+      contentType: messageData.contentType,
+      hasContent: !!messageData.content,
+      contentKeys: messageData.content ? Object.keys(messageData.content) : [],
+      content: messageData.content
+    });
     
     messageType = 'audio';
     content = '🎵 Mensagem de áudio';
     
-    // Extrair dados do áudio
-    if (messageData.content.url) {
+    // Extrair dados do áudio com validação detalhada
+    if (messageData.content?.url) {
       mediaUrl = messageData.content.url;
+      console.log('✅ [EXTRACT-YUMER] URL do áudio extraída:', mediaUrl);
+    } else {
+      console.log('❌ [EXTRACT-YUMER] URL do áudio não encontrada em content.url');
     }
-    if (messageData.content.seconds) {
+    
+    if (messageData.content?.seconds) {
       mediaDuration = messageData.content.seconds;
     }
-    if (messageData.content.mimetype) {
+    if (messageData.content?.mimetype) {
       mediaMimeType = messageData.content.mimetype;
     }
     
     console.log('🎵 [EXTRACT-YUMER] Dados de áudio extraídos:', {
-      mediaUrl,
+      mediaUrl: mediaUrl || 'NÃO ENCONTRADA',
       mediaDuration,
-      mediaMimeType
+      mediaMimeType: mediaMimeType || 'Não especificado'
     });
   }
   // 📝 PROCESSAMENTO DE TEXTO
