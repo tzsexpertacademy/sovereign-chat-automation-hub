@@ -95,22 +95,27 @@ const ContactsManager = ({ clientId }: ContactsManagerProps) => {
 
   const handleOpenChat = async (customer: Customer) => {
     try {
+      console.log('🚀 Abrindo chat para cliente:', customer.name, customer.id);
+      
       // Verificar se já existe ticket para este customer
       const existingTicket = await customersService.findCustomerTicket(clientId, customer.id);
       
       if (existingTicket) {
+        console.log('📋 Ticket existente encontrado:', existingTicket.id);
         // Navegar para ticket existente
         navigate(`/client/${clientId}/chat/${existingTicket.id}`);
       } else {
+        console.log('📋 Criando novo ticket manual...');
         // Criar novo ticket manual e navegar
         const ticket = await ticketsService.createManualTicket(clientId, customer.id);
+        console.log('✅ Ticket criado:', ticket.id);
         navigate(`/client/${clientId}/chat/${ticket.id}`);
       }
     } catch (error) {
-      console.error('Erro ao abrir conversa:', error);
+      console.error('❌ Erro ao abrir conversa:', error);
       toast({
         title: "Erro",
-        description: "Falha ao abrir conversa",
+        description: "Falha ao abrir conversa: " + (error as Error).message,
         variant: "destructive"
       });
     }

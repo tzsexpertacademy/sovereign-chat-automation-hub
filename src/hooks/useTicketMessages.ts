@@ -9,6 +9,7 @@ export const useTicketMessages = (ticketId: string) => {
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastLoadRef = useRef<number>(0);
   const channelRef = useRef<any>(null);
+  const currentTicketRef = useRef<string>('');
 
   useEffect(() => {
     if (!ticketId) {
@@ -16,10 +17,15 @@ export const useTicketMessages = (ticketId: string) => {
       return;
     }
 
-    // Sempre limpar mensagens ao trocar de ticket
+    // Se é o mesmo ticket, não recriar
+    if (currentTicketRef.current === ticketId && channelRef.current) {
+      return;
+    }
+
     console.log('🔄 Carregando mensagens para ticket:', ticketId);
     setMessages([]);
     setIsLoading(true);
+    currentTicketRef.current = ticketId;
 
     const loadMessages = async (isPolling = false) => {
       try {
@@ -27,7 +33,6 @@ export const useTicketMessages = (ticketId: string) => {
         
         console.log(`🔄 ${isPolling ? 'Polling' : 'Carregando'} mensagens para ticket:`, ticketId);
         
-        // Carregar TODAS as mensagens sem limite
         const messagesData = await ticketsService.getTicketMessages(ticketId, 1000);
         console.log(`📨 ${messagesData.length} mensagens carregadas para ticket ${ticketId}`);
         
@@ -45,33 +50,42 @@ export const useTicketMessages = (ticketId: string) => {
       }
     };
 
-    // Sempre carregar mensagens ao trocar de ticket
     loadMessages();
 
-    // Polling otimizado (30 segundos ou quando necessário)
-    const startPolling = () => {
+    // Cleanup função
+    const cleanup = () => {
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
       }
-      
+      if (channelRef.current) {
+        console.log('🔌 Removendo canal anterior');
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+
+    // Limpar recursos anteriores
+    cleanup();
+
+    // Polling simplificado
+    const startPolling = () => {
       pollTimeoutRef.current = setTimeout(() => {
         const timeSinceLastLoad = Date.now() - lastLoadRef.current;
-        
-        // Polling como backup
-        if (timeSinceLastLoad > 45000) {
+        if (timeSinceLastLoad > 30000) {
           console.log('🔄 Polling backup');
           loadMessages(true);
         }
         startPolling();
-      }, 30000); // Otimizado para 30 segundos
+      }, 30000);
     };
 
-    // Configurar listener realtime simplificado
+    // Configurar realtime simplificado
     const setupRealtimeListener = () => {
       console.log('🔔 Configurando listener para mensagens do ticket:', ticketId);
       
       const channel = supabase
-        .channel(`ticket-messages-${ticketId}-${Date.now()}`) // Canal único com timestamp
+        .channel(`ticket-${ticketId}`) // Nome simples e único por ticket
         .on(
           'postgres_changes',
           {
@@ -81,45 +95,23 @@ export const useTicketMessages = (ticketId: string) => {
             filter: `ticket_id=eq.${ticketId}`
           },
           (payload) => {
-            console.log('🔔 Mudança na tabela ticket_messages detectada:', {
-              event: payload.eventType,
-              messageId: (payload.new as any)?.id || (payload.old as any)?.id,
-              content: (payload.new as any)?.content?.substring(0, 50) || 'N/A'
-            });
-            
+            console.log('📨 Mudança via realtime:', payload.eventType);
             lastLoadRef.current = Date.now();
             
             if (payload.eventType === 'INSERT' && payload.new) {
               const newMessage = payload.new as TicketMessage;
-              console.log('📨 Nova mensagem recebida via realtime:', {
-                id: newMessage.id,
-                fromMe: newMessage.from_me,
-                content: newMessage.content.substring(0, 50),
-                messageId: newMessage.message_id
-              });
-              
               setMessages(prev => {
-                const exists = prev.some(msg => 
-                  msg.id === newMessage.id || 
-                  (msg.message_id && msg.message_id === newMessage.message_id)
-                );
+                const exists = prev.some(msg => msg.id === newMessage.id);
+                if (exists) return prev;
                 
-                if (exists) {
-                  console.log('⚠️ Mensagem já existe, ignorando duplicata');
-                  return prev;
-                }
-                
-                const newMessages = [...prev, newMessage];
-                return newMessages.sort((a, b) => 
+                return [...prev, newMessage].sort((a, b) => 
                   new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
                 );
               });
             } else if (payload.eventType === 'UPDATE' && payload.new) {
               const updatedMessage = payload.new as TicketMessage;
               setMessages(prev => 
-                prev.map(msg => 
-                  msg.id === updatedMessage.id ? updatedMessage : msg
-                )
+                prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
               );
             } else if (payload.eventType === 'DELETE' && payload.old) {
               setMessages(prev => 
@@ -129,7 +121,7 @@ export const useTicketMessages = (ticketId: string) => {
           }
         )
         .subscribe((status) => {
-          console.log('📡 Status da subscription para mensagens:', status);
+          console.log('📡 Status da subscription:', status);
           if (status === 'SUBSCRIBED') {
             console.log('✅ Realtime conectado');
           }
@@ -138,27 +130,16 @@ export const useTicketMessages = (ticketId: string) => {
       return channel;
     };
 
-    // Limpar canal anterior se existir
-    if (channelRef.current) {
-      console.log('🔌 Removendo canal anterior');
-      supabase.removeChannel(channelRef.current);
+    // Configurar recursos
+    try {
+      channelRef.current = setupRealtimeListener();
+      startPolling();
+    } catch (error) {
+      console.error('❌ Erro ao configurar realtime:', error);
+      startPolling(); // Fallback para polling apenas
     }
 
-    // Criar novo canal
-    channelRef.current = setupRealtimeListener();
-    startPolling();
-
-    return () => {
-      console.log('🔌 Removendo listener de mensagens para ticket:', ticketId);
-      if (pollTimeoutRef.current) {
-        clearTimeout(pollTimeoutRef.current);
-        pollTimeoutRef.current = null;
-      }
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
+    return cleanup;
   }, [ticketId]);
 
   return { messages, isLoading };
