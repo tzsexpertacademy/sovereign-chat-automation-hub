@@ -10,6 +10,7 @@ import { ticketsService, type ConversationTicket } from "@/services/ticketsServi
 import { yumerMessageSyncService } from "@/services/yumerMessageSyncService";
 import TicketChatInterface from './TicketChatInterface';
 import TicketActionsMenu from './TicketActionsMenu';
+import ChatHeaderImproved from './chat/ChatHeaderImproved';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 import TypingIndicator from './TypingIndicator';
 import { supabase } from '@/integrations/supabase/client';
@@ -430,43 +431,11 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
         {currentChatId ? (
           <>
             {/* Cabeçalho do Chat */}
-            <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3 min-w-0 flex-1">
-                  <Avatar className="w-10 h-10 flex-shrink-0">
-                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${selectedChat ? getDisplayNameForTicket(selectedChat) : ''}`} />
-                    <AvatarFallback>
-                      {selectedChat ? getDisplayNameForTicket(selectedChat).substring(0, 2).toUpperCase() : 'UN'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-medium text-gray-900 truncate">
-                      {selectedChat ? getDisplayNameForTicket(selectedChat) : 'Chat'}
-                    </h3>
-                    <div className="flex items-center space-x-2 text-sm text-gray-500">
-                      <span className="truncate">{selectedChat?.customer?.phone}</span>
-                      <span>•</span>
-                      {renderSyncStatus()}
-                    </div>
-                    
-                    {selectedChat && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {renderTicketBadges(selectedChat)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                {selectedChat && (
-                  <div className="flex-shrink-0 ml-4">
-                    <TicketActionsMenu 
-                      ticket={selectedChat} 
-                      onTicketUpdate={reloadTickets}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
+            <ChatHeaderImproved 
+              ticket={selectedChat}
+              clientId={clientId}
+              onTicketUpdate={reloadTickets}
+            />
 
             {/* Interface de Chat */}
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">

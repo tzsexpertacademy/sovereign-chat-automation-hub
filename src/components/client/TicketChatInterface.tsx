@@ -8,8 +8,6 @@ import { useTicketMessages } from '@/hooks/useTicketMessages';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
-import TicketHeader from './chat/TicketHeader';
-import ConnectionStatus from './chat/ConnectionStatus';
 import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
@@ -25,7 +23,6 @@ interface TicketChatInterfaceProps {
 const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) => {
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [isClearing, setIsClearing] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
@@ -41,7 +38,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   useEffect(() => {
     setNewMessage('');
     setIsSending(false);
-    setIsClearing(false);
   }, [ticketId]);
 
   useEffect(() => {
@@ -53,41 +49,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     }
   }, [messages]);
 
-  const handleClearHistory = async () => {
-    if (!ticketId || isClearing) return;
-
-    try {
-      setIsClearing(true);
-      console.log('🗑️ Limpando histórico do ticket:', ticketId);
-
-      const { error } = await supabase
-        .from('ticket_messages')
-        .delete()
-        .eq('ticket_id', ticketId);
-
-      if (error) {
-        console.error('❌ Erro ao limpar histórico:', error);
-        throw error;
-      }
-
-      console.log('✅ Histórico do ticket limpo com sucesso');
-      
-      toast({
-        title: "Histórico Limpo",
-        description: "Todas as mensagens do ticket foram removidas com sucesso"
-      });
-
-    } catch (error) {
-      console.error('❌ Erro ao limpar histórico:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao limpar histórico do ticket",
-        variant: "destructive"
-      });
-    } finally {
-      setIsClearing(false);
-    }
-  };
 
   const handleAudioReady = async (audioBlob: Blob, duration: number) => {
       await processAudioReady(
@@ -218,18 +179,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
   return (
     <div className="flex-1 flex flex-col h-full">
-      <TicketHeader
-        queueInfo={queueInfo}
-        onClearHistory={handleClearHistory}
-        isClearing={isClearing}
-        messagesCount={messages.length}
-      />
-
-      <ConnectionStatus
-        connectedInstance={connectedInstance}
-        isOnline={isOnline}
-      />
-
       <MessagesList
         messages={messages}
         scrollAreaRef={scrollAreaRef}
