@@ -129,26 +129,69 @@ serve(async (req) => {
   }
 
   try {
-    const { audio, openaiApiKey } = await req.json();
+    const { audio, audioUrl, openaiApiKey, messageId } = await req.json();
     
     console.log('🎵 ===== INICIANDO TRANSCRIÇÃO DE ÁUDIO =====');
     console.log('📊 Dados recebidos:', {
       hasAudio: !!audio,
+      hasAudioUrl: !!audioUrl,
       hasApiKey: !!openaiApiKey,
       audioLength: audio?.length || 0,
-      audioPrefixPreview: audio?.substring(0, 50) || 'N/A'
+      audioPrefixPreview: audio?.substring(0, 50) || 'N/A',
+      audioUrl: audioUrl?.substring(0, 100) || 'N/A',
+      messageId: messageId || 'N/A'
     });
     
-    if (!audio || !openaiApiKey) {
-      const errorMsg = 'Áudio e chave da API OpenAI são obrigatórios';
+    if ((!audio && !audioUrl) || !openaiApiKey) {
+      const errorMsg = 'Áudio (base64 ou URL) e chave da API OpenAI são obrigatórios';
       console.error('❌', errorMsg);
       throw new Error(errorMsg);
     }
 
-    // Processar áudio
-    console.log('🔄 Processando dados de áudio...');
-    const { bytes: audioBytes, audioInfo } = processBase64Audio(audio);
-    
+    let audioBytes: Uint8Array;
+    let audioInfo: any;
+
+    // Se não temos áudio base64, mas temos URL, baixar primeiro
+    if (!audio && audioUrl) {
+      console.log('🔄 Baixando áudio da URL:', audioUrl);
+      
+      try {
+        const response = await fetch(audioUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (WhatsApp-Client/2.0)'
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const downloadedBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        
+        console.log('✅ Áudio baixado:', {
+          originalUrl: audioUrl,
+          downloadedSize: arrayBuffer.byteLength,
+          base64Length: downloadedBase64.length
+        });
+        
+        // Processar áudio baixado
+        const processed = processBase64Audio(downloadedBase64);
+        audioBytes = processed.bytes;
+        audioInfo = processed.audioInfo;
+        
+      } catch (downloadError) {
+        console.error('❌ Erro ao baixar áudio da URL:', downloadError);
+        throw new Error(`Falha ao baixar áudio: ${downloadError.message}`);
+      }
+    } else {
+      // Processar áudio base64 diretamente
+      console.log('🔄 Processando dados de áudio base64...');
+      const processed = processBase64Audio(audio);
+      audioBytes = processed.bytes;
+      audioInfo = processed.audioInfo;
+    }
+
     if (audioBytes.length === 0) {
       console.error('❌ Dados de áudio vazios após processamento');
       throw new Error('Dados de áudio vazios após processamento');

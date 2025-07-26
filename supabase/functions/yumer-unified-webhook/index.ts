@@ -452,6 +452,51 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
   }
 }
 
+// Função utilitária para converter Uint8Array para base64
+function uint8ArrayToBase64(uint8Array: any): string {
+  if (!uint8Array || typeof uint8Array !== 'object') {
+    return '';
+  }
+  
+  try {
+    // Verificar se é um objeto com propriedades numéricas (Uint8Array serializado)
+    if (typeof uint8Array === 'object' && !Array.isArray(uint8Array)) {
+      const keys = Object.keys(uint8Array).filter(key => !isNaN(parseInt(key)));
+      if (keys.length > 0) {
+        const bytes = new Uint8Array(keys.length);
+        keys.forEach((key, index) => {
+          bytes[index] = uint8Array[key];
+        });
+        
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+      }
+    }
+    
+    // Se é um array ou Uint8Array real
+    if (Array.isArray(uint8Array) || uint8Array instanceof Uint8Array) {
+      let binary = '';
+      for (let i = 0; i < uint8Array.length; i++) {
+        binary += String.fromCharCode(uint8Array[i]);
+      }
+      return btoa(binary);
+    }
+    
+    // Se já é string, retornar
+    if (typeof uint8Array === 'string') {
+      return uint8Array;
+    }
+    
+    return '';
+  } catch (error) {
+    console.warn('⚠️ Erro ao converter Uint8Array para base64:', error);
+    return '';
+  }
+}
+
 // Função para extrair dados da mensagem YUMER
 function extractYumerMessageData(messageData: any, instance: any) {
   console.log('🔧 [EXTRACT-YUMER] Extraindo dados da mensagem YUMER');
@@ -527,18 +572,18 @@ function extractYumerMessageData(messageData: any, instance: any) {
     
     // Chaves de criptografia para áudio do WhatsApp
     if (messageData.content?.mediaKey) {
-      mediaKey = messageData.content.mediaKey;
-      console.log('🔐 [EXTRACT-YUMER] MediaKey do áudio extraída (primeiros 20 chars):', mediaKey.substring(0, 20));
+      mediaKey = uint8ArrayToBase64(messageData.content.mediaKey);
+      console.log('🔐 [EXTRACT-YUMER] MediaKey do áudio convertida para base64 (length):', mediaKey.length);
     }
     
     if (messageData.content?.fileEncSha256) {
-      fileEncSha256 = messageData.content.fileEncSha256;
-      console.log('🔐 [EXTRACT-YUMER] FileEncSha256 extraído');
+      fileEncSha256 = uint8ArrayToBase64(messageData.content.fileEncSha256);
+      console.log('🔐 [EXTRACT-YUMER] FileEncSha256 convertido para base64 (length):', fileEncSha256.length);
     }
     
     if (messageData.content?.fileSha256) {
-      fileSha256 = messageData.content.fileSha256;
-      console.log('🔐 [EXTRACT-YUMER] FileSha256 extraído');
+      fileSha256 = uint8ArrayToBase64(messageData.content.fileSha256);
+      console.log('🔐 [EXTRACT-YUMER] FileSha256 convertido para base64 (length):', fileSha256.length);
     }
     
     if (messageData.content?.directPath) {
@@ -560,15 +605,15 @@ function extractYumerMessageData(messageData: any, instance: any) {
     
     // Chaves de criptografia para imagem
     if (messageData.content?.mediaKey) {
-      mediaKey = messageData.content.mediaKey;
+      mediaKey = uint8ArrayToBase64(messageData.content.mediaKey);
     }
     
     if (messageData.content?.fileEncSha256) {
-      fileEncSha256 = messageData.content.fileEncSha256;
+      fileEncSha256 = uint8ArrayToBase64(messageData.content.fileEncSha256);
     }
     
     if (messageData.content?.fileSha256) {
-      fileSha256 = messageData.content.fileSha256;
+      fileSha256 = uint8ArrayToBase64(messageData.content.fileSha256);
     }
     
     if (messageData.content?.directPath) {
@@ -593,11 +638,11 @@ function extractYumerMessageData(messageData: any, instance: any) {
     
     // Chaves de criptografia para vídeo
     if (messageData.content?.mediaKey) {
-      mediaKey = messageData.content.mediaKey;
+      mediaKey = uint8ArrayToBase64(messageData.content.mediaKey);
     }
     
     if (messageData.content?.fileEncSha256) {
-      fileEncSha256 = messageData.content.fileEncSha256;
+      fileEncSha256 = uint8ArrayToBase64(messageData.content.fileEncSha256);
     }
     
     if (messageData.content?.fileSha256) {
@@ -983,8 +1028,70 @@ async function saveTicketMessage(
 
     console.log('✅ [TICKET-MESSAGE] Mensagem salva no ticket');
 
-    // 🎵 TRANSCRIÇÃO AUTOMÁTICA DE ÁUDIO - REMOVIDO por não ter campos necessários
-    // TODO: Implementar transcrição quando dados de mídia estiverem disponíveis
+    // 🎵 TRANSCRIÇÃO AUTOMÁTICA DE ÁUDIO
+    if (messageType === 'audio' && mediaUrl && !fromMe) {
+      console.log('🎵 [AUTO-TRANSCRIPTION] Iniciando transcrição automática de áudio...');
+      
+      try {
+        // Buscar cliente para pegar configuração de IA
+        const { data: ticket, error: ticketError } = await supabase
+          .from('conversation_tickets')
+          .select('client_id')
+          .eq('id', ticketId)
+          .single();
+
+        if (ticketError || !ticket) {
+          console.error('❌ [AUTO-TRANSCRIPTION] Erro ao buscar ticket:', ticketError);
+          return;
+        }
+
+        const { data: aiConfig, error: configError } = await supabase
+          .from('client_ai_configs')
+          .select('openai_api_key')
+          .eq('client_id', ticket.client_id)
+          .single();
+
+        if (configError || !aiConfig?.openai_api_key) {
+          console.log('⚠️ [AUTO-TRANSCRIPTION] Configuração de IA não encontrada - pulando transcrição');
+          return;
+        }
+
+        // Chamar função de transcrição
+        const { data: transcriptionResult, error: transcriptionError } = await supabase.functions.invoke('speech-to-text', {
+          body: {
+            audioUrl: mediaUrl,
+            openaiApiKey: aiConfig.openai_api_key,
+            messageId: messageId
+          }
+        });
+
+        if (transcriptionError) {
+          console.error('❌ [AUTO-TRANSCRIPTION] Erro na transcrição:', transcriptionError);
+          return;
+        }
+
+        if (transcriptionResult?.text) {
+          // Atualizar mensagem com transcrição
+          const { error: updateError } = await supabase
+            .from('ticket_messages')
+            .update({
+              media_transcription: transcriptionResult.text,
+              processing_status: 'transcribed'
+            })
+            .eq('ticket_id', ticketId)
+            .eq('message_id', messageId);
+
+          if (updateError) {
+            console.error('❌ [AUTO-TRANSCRIPTION] Erro ao salvar transcrição:', updateError);
+          } else {
+            console.log('✅ [AUTO-TRANSCRIPTION] Transcrição salva com sucesso:', transcriptionResult.text.substring(0, 100));
+          }
+        }
+
+      } catch (error) {
+        console.error('❌ [AUTO-TRANSCRIPTION] Erro crítico na transcrição:', error);
+      }
+    }
 
   } catch (error) {
     console.error('❌ [TICKET-MESSAGE] Erro crítico ao salvar mensagem:', error);
