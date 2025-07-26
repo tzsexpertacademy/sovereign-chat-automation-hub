@@ -445,6 +445,7 @@ function extractYumerMessageData(messageData: any, instance: any) {
     keyFromMe: messageData.keyFromMe,
     pushName: messageData.pushName,
     content: messageData.content,
+    contentType: messageData.contentType,
     messageTimestamp: messageData.messageTimestamp
   });
   
@@ -463,15 +464,45 @@ function extractYumerMessageData(messageData: any, instance: any) {
   const fromMe = messageData.keyFromMe || false;
   const timestamp = messageData.messageTimestamp ? new Date(messageData.messageTimestamp * 1000).toISOString() : new Date().toISOString();
   
-  // Extrair conteúdo da mensagem
+  // Detectar tipo de mensagem e extrair conteúdo
   let content = '';
-  if (messageData.content?.text) {
+  let messageType = 'text';
+  let mediaUrl = '';
+  let mediaDuration = 0;
+  let mediaMimeType = '';
+
+  // 🎵 PROCESSAMENTO DE ÁUDIO
+  if (messageData.contentType === 'audio' && messageData.content) {
+    console.log('🎵 [EXTRACT-YUMER] Detectado áudio - processando dados');
+    
+    messageType = 'audio';
+    content = '🎵 Mensagem de áudio';
+    
+    // Extrair dados do áudio
+    if (messageData.content.url) {
+      mediaUrl = messageData.content.url;
+    }
+    if (messageData.content.seconds) {
+      mediaDuration = messageData.content.seconds;
+    }
+    if (messageData.content.mimetype) {
+      mediaMimeType = messageData.content.mimetype;
+    }
+    
+    console.log('🎵 [EXTRACT-YUMER] Dados de áudio extraídos:', {
+      mediaUrl,
+      mediaDuration,
+      mediaMimeType
+    });
+  }
+  // 📝 PROCESSAMENTO DE TEXTO
+  else if (messageData.content?.text) {
     content = messageData.content.text;
+    messageType = 'text';
   } else if (typeof messageData.content === 'string') {
     content = messageData.content;
+    messageType = 'text';
   }
-  
-  let messageType = messageData.messageType || 'text';
   
   // Extrair nome do contato
   const contactName = extractContactName(messageData.pushName, chatId);
@@ -490,7 +521,11 @@ function extractYumerMessageData(messageData: any, instance: any) {
     phoneNumber,
     author: messageData.pushName || contactName,
     pushName: messageData.pushName || contactName,
-    sender: messageData.pushName || phoneNumber
+    sender: messageData.pushName || phoneNumber,
+    // Dados de mídia para áudio
+    mediaUrl,
+    mediaDuration,
+    mediaMimeType
   };
 
   console.log('✅ [EXTRACT-YUMER] Dados extraídos (FINAL):', JSON.stringify(processedMessage, null, 2));
@@ -742,20 +777,39 @@ async function createOrUpdateTicket(clientId: string, instanceId: string, messag
 async function saveTicketMessage(ticketId: string, messageData: any) {
   console.log('💾 [TICKET-MESSAGE] Salvando mensagem do ticket');
   
+  // Preparar dados base da mensagem
+  const ticketMessageData: any = {
+    ticket_id: ticketId,
+    message_id: messageData.messageId,
+    from_me: messageData.fromMe,
+    sender_name: messageData.fromMe ? 'Atendente' : messageData.contactName,
+    content: messageData.content,
+    message_type: messageData.messageType,
+    timestamp: messageData.timestamp,
+    is_internal_note: false,
+    is_ai_response: false,
+    processing_status: messageData.messageType === 'audio' ? 'pending_transcription' : 'received'
+  };
+
+  // ✨ Adicionar dados de mídia para áudio
+  if (messageData.messageType === 'audio') {
+    if (messageData.mediaUrl) {
+      ticketMessageData.media_url = messageData.mediaUrl;
+    }
+    if (messageData.mediaDuration) {
+      ticketMessageData.media_duration = messageData.mediaDuration;
+    }
+    
+    console.log('🎵 [TICKET-MESSAGE] Incluindo dados de áudio:', {
+      media_url: ticketMessageData.media_url,
+      media_duration: ticketMessageData.media_duration,
+      message_type: ticketMessageData.message_type
+    });
+  }
+
   const { error } = await supabase
     .from('ticket_messages')
-    .insert({
-      ticket_id: ticketId,
-      message_id: messageData.messageId,
-      from_me: messageData.fromMe,
-      sender_name: messageData.fromMe ? 'Atendente' : messageData.contactName,
-      content: messageData.content,
-      message_type: messageData.messageType,
-      timestamp: messageData.timestamp,
-      is_internal_note: false,
-      is_ai_response: false,
-      processing_status: 'received'
-    });
+    .insert(ticketMessageData);
 
   if (error) {
     console.error('❌ [TICKET-MESSAGE] Erro ao salvar:', error);
@@ -763,4 +817,84 @@ async function saveTicketMessage(ticketId: string, messageData: any) {
   }
 
   console.log('✅ [TICKET-MESSAGE] Mensagem do ticket salva');
+
+  // 🎵 PROCESSAR TRANSCRIÇÃO DE ÁUDIO EM BACKGROUND
+  if (messageData.messageType === 'audio' && messageData.mediaUrl) {
+    console.log('🎵 [AUDIO-PROCESS] Iniciando processamento de áudio em background');
+    
+    // Chamar função de transcrição de áudio sem aguardar resultado
+    processAudioTranscription(ticketId, messageData.messageId, messageData.mediaUrl)
+      .catch(error => {
+        console.error('❌ [AUDIO-PROCESS] Erro no processamento de áudio:', error);
+      });
+  }
+}
+
+// 🎵 Função para processar transcrição de áudio em background
+async function processAudioTranscription(ticketId: string, messageId: string, audioUrl: string) {
+  try {
+    console.log('🎵 [TRANSCRIPTION] Iniciando transcrição de áudio:', audioUrl);
+    
+    // Fazer download do áudio e converter para base64
+    const audioResponse = await fetch(audioUrl);
+    if (!audioResponse.ok) {
+      throw new Error(`Erro ao baixar áudio: ${audioResponse.status}`);
+    }
+    
+    const audioBuffer = await audioResponse.arrayBuffer();
+    const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+    
+    console.log('🎵 [TRANSCRIPTION] Áudio baixado, enviando para transcrição...');
+    
+    // Chamar edge function de speech-to-text
+    const { data: transcriptionResult, error: transcriptionError } = await supabase.functions.invoke('speech-to-text', {
+      body: {
+        audio: audioBase64,
+        openaiApiKey: Deno.env.get('OPENAI_API_KEY')
+      }
+    });
+    
+    if (transcriptionError) {
+      console.error('❌ [TRANSCRIPTION] Erro na transcrição:', transcriptionError);
+      
+      // Atualizar status para erro
+      await supabase
+        .from('ticket_messages')
+        .update({ 
+          processing_status: 'transcription_failed',
+          media_transcription: 'Erro na transcrição do áudio'
+        })
+        .eq('message_id', messageId);
+      
+      return;
+    }
+    
+    const transcription = transcriptionResult?.text || 'Transcrição não disponível';
+    
+    console.log('✅ [TRANSCRIPTION] Transcrição concluída:', transcription.substring(0, 100) + '...');
+    
+    // Atualizar mensagem com transcrição
+    await supabase
+      .from('ticket_messages')
+      .update({ 
+        processing_status: 'processed',
+        media_transcription: transcription,
+        audio_base64: audioBase64
+      })
+      .eq('message_id', messageId);
+    
+    console.log('✅ [TRANSCRIPTION] Mensagem atualizada com transcrição');
+    
+  } catch (error) {
+    console.error('❌ [TRANSCRIPTION] Erro crítico na transcrição:', error);
+    
+    // Atualizar status para erro
+    await supabase
+      .from('ticket_messages')
+      .update({ 
+        processing_status: 'transcription_failed',
+        media_transcription: 'Erro no processamento do áudio'
+      })
+      .eq('message_id', messageId);
+  }
 }
