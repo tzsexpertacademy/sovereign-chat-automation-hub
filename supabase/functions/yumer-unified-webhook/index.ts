@@ -712,7 +712,7 @@ async function saveYumerMessage(messageData: any, instanceId: string) {
       message_id: messageData.messageId,
       chat_id: messageData.chatId,
       instance_id: instanceId,
-      content: messageData.content,
+      body: messageData.content, // Mapear content → body
       message_type: messageData.messageType,
       from_me: messageData.fromMe,
       timestamp: messageData.timestamp,
