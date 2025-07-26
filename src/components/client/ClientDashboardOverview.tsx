@@ -28,42 +28,112 @@ const ClientDashboardOverview = ({ clientId }: ClientDashboardOverviewProps) => 
   const [hourlyActivity, setHourlyActivity] = useState<HourlyActivity[]>([]);
   const [queueMetrics, setQueueMetrics] = useState<QueueMetrics[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(true);
   const { toast } = useToast();
 
   const loadMetrics = async () => {
+    if (!isMounted || !clientId) return;
+    
     try {
       setLoading(true);
+      setError(null);
+      
       const [dashboardData, hourlyData, queueData] = await Promise.all([
         realTimeMetricsService.getDashboardMetrics(clientId),
         realTimeMetricsService.getHourlyActivity(clientId),
         realTimeMetricsService.getQueueMetrics(clientId)
       ]);
 
-      setMetrics(dashboardData);
-      setHourlyActivity(hourlyData);
-      setQueueMetrics(queueData);
+      if (isMounted) {
+        setMetrics(dashboardData);
+        setHourlyActivity(hourlyData);
+        setQueueMetrics(queueData);
+      }
     } catch (error) {
-      console.error('Erro ao carregar métricas:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar as métricas do dashboard",
-        variant: "destructive",
-      });
+      console.error('🚨 Erro ao carregar métricas do dashboard:', error);
+      if (isMounted) {
+        setError(error instanceof Error ? error.message : 'Erro desconhecido');
+        toast({
+          title: "Erro no Dashboard",
+          description: "Não foi possível carregar as métricas. Tentando novamente...",
+          variant: "destructive",
+        });
+      }
     } finally {
-      setLoading(false);
+      if (isMounted) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadMetrics();
+    setIsMounted(true);
+    let unsubscribe: (() => void) | undefined;
 
-    // Configurar atualização em tempo real
-    const unsubscribe = realTimeMetricsService.subscribeToMetrics(clientId, loadMetrics);
+    const setupDashboard = async () => {
+      try {
+        // Carregar métricas iniciais
+        await loadMetrics();
+
+        // Configurar subscrição realtime com debounce
+        let timeoutId: NodeJS.Timeout;
+        const debouncedCallback = () => {
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => {
+            if (isMounted) {
+              loadMetrics();
+            }
+          }, 1000); // Debounce de 1 segundo
+        };
+
+        unsubscribe = realTimeMetricsService.subscribeToMetrics(clientId, debouncedCallback);
+      } catch (error) {
+        console.error('🚨 Erro ao configurar dashboard:', error);
+        if (isMounted) {
+          setError('Erro ao configurar dashboard');
+        }
+      }
+    };
+
+    setupDashboard();
 
     return () => {
-      unsubscribe();
+      setIsMounted(false);
+      if (unsubscribe) {
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.warn('⚠️ Erro ao fazer cleanup do dashboard:', error);
+        }
+      }
     };
   }, [clientId]);
+
+  // Mostrar erro se houver
+  if (error && !loading) {
+    return (
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+            <span>Erro no Dashboard</span>
+          </CardTitle>
+          <CardDescription>
+            Ocorreu um erro ao carregar as métricas: {error}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <button 
+            onClick={loadMetrics}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+          >
+            Tentar Novamente
+          </button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (loading || !metrics) {
     return (

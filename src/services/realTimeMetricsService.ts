@@ -201,31 +201,52 @@ export const realTimeMetricsService = {
   },
 
   subscribeToMetrics(clientId: string, callback: () => void) {
+    const timestamp = Date.now();
     const channels = [
       supabase
-        .channel('metrics-instances')
+        .channel(`metrics-instances-${clientId}-${timestamp}`)
         .on('postgres_changes', 
           { event: '*', schema: 'public', table: 'whatsapp_instances', filter: `client_id=eq.${clientId}` },
           callback
         ),
       supabase
-        .channel('metrics-tickets')
+        .channel(`metrics-tickets-${clientId}-${timestamp}`)
         .on('postgres_changes',
           { event: '*', schema: 'public', table: 'conversation_tickets', filter: `client_id=eq.${clientId}` },
           callback
         ),
       supabase
-        .channel('metrics-queues')
+        .channel(`metrics-queues-${clientId}-${timestamp}`)
         .on('postgres_changes',
           { event: '*', schema: 'public', table: 'queues', filter: `client_id=eq.${clientId}` },
           callback
         )
     ];
 
-    channels.forEach(channel => channel.subscribe());
+    // Subscribe apenas se não houver erro
+    const subscriptionPromises = channels.map(channel => {
+      try {
+        return channel.subscribe((status) => {
+          if (status === 'CHANNEL_ERROR') {
+            console.warn('⚠️ Erro na subscription do canal:', channel.topic);
+          }
+        });
+      } catch (error) {
+        console.warn('⚠️ Erro ao fazer subscribe no canal:', error);
+        return null;
+      }
+    });
 
     return () => {
-      channels.forEach(channel => supabase.removeChannel(channel));
+      try {
+        channels.forEach(channel => {
+          if (channel) {
+            supabase.removeChannel(channel);
+          }
+        });
+      } catch (error) {
+        console.warn('⚠️ Erro ao remover canais:', error);
+      }
     };
   }
 };
