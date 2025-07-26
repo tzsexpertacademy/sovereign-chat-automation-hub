@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { WhatsAppAudioDecryption } from './whatsappAudioDecryption';
+import { whatsappAudioService } from './whatsappAudioService';
 
 interface AudioDebugResult {
   step: string;
@@ -62,27 +62,29 @@ export class AudioDebugService {
         try {
           console.log('🔐 [DEBUG] Testando descriptografia...');
           
-          const decryptResult = await WhatsAppAudioDecryption.decryptAudio(
-            message.media_url,
-            message.media_key,
-            messageId,
-            message.file_enc_sha256
-          );
+          const audioData = {
+            mediaUrl: message.media_url,
+            mediaKey: message.media_key,
+            messageId: messageId,
+            fileEncSha256: message.file_enc_sha256
+          };
+          
+          const decryptResult = await whatsappAudioService.decryptAudio(audioData);
 
           results.push({
             step: 'decrypt_audio',
-            success: decryptResult.success,
+            success: !!decryptResult?.decryptedData,
             data: {
-              format: decryptResult.format,
-              cached: decryptResult.cached,
-              audioLength: decryptResult.decryptedAudio?.length
+              format: decryptResult?.format,
+              cached: decryptResult?.cached,
+              audioLength: decryptResult?.decryptedData?.length
             },
-            error: decryptResult.error,
+            error: !decryptResult?.decryptedData ? 'Descriptografia falhou' : undefined,
             duration: Date.now() - step2Start
           });
 
           // ETAPA 3: Verificar transcrição
-          if (decryptResult.success) {
+          if (decryptResult?.decryptedData) {
             const step3Start = Date.now();
             
             try {
@@ -115,10 +117,7 @@ export class AudioDebugService {
             const step4Start = Date.now();
             
             try {
-              const dataUrl = WhatsAppAudioDecryption.createAudioDataUrl(
-                decryptResult.decryptedAudio!,
-                decryptResult.format
-              );
+              const dataUrl = `data:audio/${decryptResult.format || 'ogg'};base64,${decryptResult.decryptedData}`;
 
               results.push({
                 step: 'create_data_url',
@@ -204,23 +203,25 @@ export class AudioDebugService {
       }
 
       // Testar descriptografia
-      const result = await WhatsAppAudioDecryption.decryptAudio(
-        message.media_url,
-        message.media_key,
-        messageId,
-        message.file_enc_sha256
-      );
+      const audioData = {
+        mediaUrl: message.media_url,
+        mediaKey: message.media_key,
+        messageId: messageId,
+        fileEncSha256: message.file_enc_sha256
+      };
+      
+      const result = await whatsappAudioService.decryptAudio(audioData);
 
       return {
         step: 'decrypt_test',
-        success: result.success,
+        success: !!result?.decryptedData,
         data: {
-          format: result.format,
-          cached: result.cached,
-          audioLength: result.decryptedAudio?.length,
-          hasAudio: !!result.decryptedAudio
+          format: result?.format,
+          cached: result?.cached,
+          audioLength: result?.decryptedData?.length,
+          hasAudio: !!result?.decryptedData
         },
-        error: result.error,
+        error: !result?.decryptedData ? 'Descriptografia falhou' : undefined,
         duration: Date.now() - startTime
       };
 

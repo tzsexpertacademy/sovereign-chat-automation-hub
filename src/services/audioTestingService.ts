@@ -3,7 +3,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { WhatsAppAudioDecryption } from './whatsappAudioDecryption';
+import { whatsappAudioService } from './whatsappAudioService';
 
 export const audioTestingService = {
   /**
@@ -83,28 +83,30 @@ export const audioTestingService = {
         // ETAPA 3: Testar descriptografia
         const step3Start = Date.now();
         try {
-          const decryptResult = await WhatsAppAudioDecryption.decryptAudio(
-            message.media_url,
-            message.media_key,
-            message.message_id,
-            message.file_enc_sha256
-          );
+          const audioData = {
+            mediaUrl: message.media_url,
+            mediaKey: message.media_key,
+            messageId: message.message_id,
+            fileEncSha256: message.file_enc_sha256
+          };
+          
+          const decryptResult = await whatsappAudioService.decryptAudio(audioData);
           
           steps.push({
             step: '3. Descriptografar áudio',
-            success: decryptResult.success,
+            success: !!decryptResult?.decryptedData,
             duration: Date.now() - step3Start,
-            error: decryptResult.error,
+            error: !decryptResult?.decryptedData ? 'Descriptografia falhou' : undefined,
             data: {
-              format: decryptResult.format,
-              cached: decryptResult.cached,
-              hasDecryptedData: !!decryptResult.decryptedAudio,
-              dataLength: decryptResult.decryptedAudio?.length
+              format: decryptResult?.format,
+              cached: decryptResult?.cached,
+              hasDecryptedData: !!decryptResult?.decryptedData,
+              dataLength: decryptResult?.decryptedData?.length
             }
           });
           
-          if (!decryptResult.success) {
-            throw new Error(`Descriptografia falhou: ${decryptResult.error}`);
+          if (!decryptResult?.decryptedData) {
+            throw new Error('Descriptografia falhou');
           }
         } catch (decryptError) {
           steps.push({
@@ -144,18 +146,17 @@ export const audioTestingService = {
         let testDataUrl = '';
         
         if (isEncryptedAudio) {
-          const decryptResult = await WhatsAppAudioDecryption.decryptAudio(
-            message.media_url,
-            message.media_key,
-            message.message_id,
-            message.file_enc_sha256
-          );
+          const audioData = {
+            mediaUrl: message.media_url,
+            mediaKey: message.media_key,
+            messageId: message.message_id,
+            fileEncSha256: message.file_enc_sha256
+          };
           
-          if (decryptResult.success && decryptResult.decryptedAudio) {
-            testDataUrl = WhatsAppAudioDecryption.createAudioDataUrl(
-              decryptResult.decryptedAudio,
-              decryptResult.format
-            );
+          const decryptResult = await whatsappAudioService.decryptAudio(audioData);
+          
+          if (decryptResult?.decryptedData) {
+            testDataUrl = `data:audio/${decryptResult.format || 'ogg'};base64,${decryptResult.decryptedData}`;
           }
         } else if (message.media_url) {
           testDataUrl = message.media_url;
@@ -242,19 +243,21 @@ export const audioTestingService = {
       }
       
       // Testar descriptografia
-      const result = await WhatsAppAudioDecryption.decryptAudio(
-        message.media_url,
-        message.media_key,
-        message.message_id,
-        message.file_enc_sha256
-      );
+      const audioData = {
+        mediaUrl: message.media_url,
+        mediaKey: message.media_key,
+        messageId: message.message_id,
+        fileEncSha256: message.file_enc_sha256
+      };
+      
+      const result = await whatsappAudioService.decryptAudio(audioData);
       
       return {
-        success: result.success,
-        decryptedAudio: result.decryptedAudio,
-        format: result.format,
-        cached: result.cached,
-        error: result.error,
+        success: !!result?.decryptedData,
+        decryptedAudio: result?.decryptedData,
+        format: result?.format,
+        cached: result?.cached,
+        error: !result?.decryptedData ? 'Descriptografia falhou' : undefined,
         duration: Date.now() - startTime
       };
       

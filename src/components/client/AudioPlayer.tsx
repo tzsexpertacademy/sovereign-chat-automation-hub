@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, Volume2, Download, AlertCircle, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { whatsappAudioService } from '@/services/whatsappAudioService';
 
 interface AudioPlayerProps {
   audioUrl?: string;
@@ -104,61 +104,37 @@ const AudioPlayer = ({
     }
   };
 
-  // Descriptografar áudio WhatsApp usando edge function
+  // Descriptografar áudio WhatsApp usando serviço unificado
   const decryptWhatsAppAudio = async (encryptedUrl: string): Promise<string | null> => {
     try {
-      console.log('🔐 Player: Iniciando descriptografia via edge function');
-      console.log('🔗 Player: URL:', encryptedUrl);
+      console.log('🔐 Player: Iniciando descriptografia via serviço unificado');
       
-      // Baixar áudio criptografado
-      const audioResponse = await fetch(encryptedUrl);
-      if (!audioResponse.ok) {
-        throw new Error(`Erro ao baixar áudio: ${audioResponse.status}`);
-      }
-      
-      const audioBuffer = await audioResponse.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
-      
-      console.log('📥 Player: Áudio baixado:', {
-        size: audioBuffer.byteLength,
-        base64Length: base64Audio.length,
-        hasMediaKey: !!mediaKey,
-        messageId
-      });
-
-      // Chamar edge function de descriptografia
-      console.log('📡 Player: Chamando edge function whatsapp-decrypt-audio...');
-      const { data, error } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
-        body: {
-          encryptedData: base64Audio,
-          mediaKey: mediaKey,
-          fileEncSha256: fileEncSha256,
-          messageId: messageId
-        }
-      });
-
-      console.log('📡 Player: Resposta da edge function:', {
-        success: data?.success,
-        hasDecryptedAudio: !!data?.decryptedAudio,
-        format: data?.format,
-        cached: data?.cached,
-        error: error || data?.error
-      });
-
-      if (error) {
-        console.error('❌ Player: Erro da edge function:', error);
+      if (!messageId || !mediaKey) {
+        console.error('❌ Player: Chaves de descriptografia não disponíveis');
         return null;
       }
 
-      if (data?.success && data?.decryptedAudio) {
+      const audioData = {
+        mediaUrl: encryptedUrl,
+        mediaKey: mediaKey,
+        messageId: messageId,
+        fileEncSha256: fileEncSha256
+      };
+
+      const result = await whatsappAudioService.decryptAudio(audioData);
+
+      console.log('📡 Player: Resultado da descriptografia:', {
+        hasDecryptedData: !!result?.decryptedData,
+        format: result?.format,
+        cached: result?.cached
+      });
+
+      if (result?.decryptedData) {
         console.log('✅ Player: Áudio descriptografado com sucesso');
-        return data.decryptedAudio;
+        return result.decryptedData;
       }
 
-      if (data?.error) {
-        console.error('❌ Player: Erro retornado pela função:', data.error);
-      }
-
+      console.error('❌ Player: Falha na descriptografia');
       return null;
     } catch (error) {
       console.error('❌ Player: Erro na descriptografia:', error);
