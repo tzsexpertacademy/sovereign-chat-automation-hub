@@ -262,14 +262,30 @@ async function handleMessagesUpsert(supabase: any, webhookData: WebhookEvent, in
       const messageContent = extractMessageContent(message.message)
       const messageType = extractMessageType(message.message)
       
-      // Extrair URL de mídia se for áudio
+      // Extrair dados de mídia completos para áudio
       let mediaUrl = null;
-      if (messageType === 'audio' && message.message?.audioMessage?.url) {
-        mediaUrl = message.message.audioMessage.url;
-        console.log(`🎵 [AUDIO] URL detectada: ${mediaUrl}`);
+      let mediaKey = null;
+      let fileEncSha256 = null;
+      let fileSha256 = null;
+      let directPath = null;
+      
+      if (messageType === 'audio' && message.message?.audioMessage) {
+        const audioMsg = message.message.audioMessage;
+        mediaUrl = audioMsg.url;
+        mediaKey = audioMsg.mediaKey;
+        fileEncSha256 = audioMsg.fileEncSha256;
+        fileSha256 = audioMsg.fileSha256;
+        directPath = audioMsg.directPath;
+        
+        console.log(`🎵 [AUDIO-METADATA] Capturados:`, {
+          hasUrl: !!mediaUrl,
+          hasMediaKey: !!mediaKey,
+          hasFileEncSha256: !!fileEncSha256,
+          directPath: directPath?.substring(0, 50)
+        });
       }
 
-      // Salvar mensagem no banco
+      // Salvar mensagem no banco com metadados de criptografia
       const messageData = {
         instance_id: instanceData.instance_id,
         message_id: message.key.id,
@@ -280,7 +296,11 @@ async function handleMessagesUpsert(supabase: any, webhookData: WebhookEvent, in
         from_me: message.key.fromMe,
         timestamp: new Date(message.messageTimestamp * 1000).toISOString(),
         is_processed: false,
-        media_url: mediaUrl
+        media_url: mediaUrl,
+        media_key: mediaKey,
+        file_enc_sha256: fileEncSha256,
+        file_sha256: fileSha256,
+        direct_path: directPath
       };
 
       await supabase
@@ -294,12 +314,12 @@ async function handleMessagesUpsert(supabase: any, webhookData: WebhookEvent, in
         await processMessageForCRM(supabase, message, instanceData)
       }
 
-      // Processar áudio em background se necessário
-      if (messageType === 'audio' && mediaUrl && !message.key.fromMe) {
-        console.log(`🎵 [AUDIO-PROCESSING] Iniciando processamento de áudio em background`);
-        processAudioTranscription(supabase, message.key.id, mediaUrl)
+      // Processar áudio criptografado em background se necessário
+      if (messageType === 'audio' && (mediaUrl || mediaKey) && !message.key.fromMe) {
+        console.log(`🎵 [AUDIO-PROCESSING] Iniciando processamento de áudio criptografado em background`);
+        processEncryptedAudioTranscription(supabase, message.key.id, mediaUrl, mediaKey, fileEncSha256)
           .catch(error => {
-            console.error('❌ [AUDIO-PROCESSING] Erro no processamento de áudio:', error);
+            console.error('❌ [AUDIO-PROCESSING] Erro no processamento de áudio criptografado:', error);
           });
       }
       
@@ -447,57 +467,91 @@ function extractMessageType(message: any): string {
 }
 
 /**
- * Processa transcrição de áudio em background
+ * Processa transcrição de áudio criptografado em background
  */
-async function processAudioTranscription(supabase: any, messageId: string, audioUrl: string) {
+async function processEncryptedAudioTranscription(
+  supabase: any, 
+  messageId: string, 
+  audioUrl: string, 
+  mediaKey: string, 
+  fileEncSha256: string
+) {
   try {
-    console.log('🎵 [AUDIO-TRANSCRIPTION] Iniciando processamento:', audioUrl);
-    
-    // Headers otimizados para WhatsApp
-    const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-      'Referer': 'https://web.whatsapp.com/',
-      'Connection': 'keep-alive',
-      'Cache-Control': 'no-cache'
-    };
-    
-    // Download do áudio
-    console.log('📥 [AUDIO-TRANSCRIPTION] Fazendo download...');
-    const audioResponse = await fetch(audioUrl, { 
-      method: 'GET',
-      headers: headers,
-      redirect: 'follow'
+    console.log('🔐 [ENCRYPTED-AUDIO] Iniciando processamento de áudio criptografado:', {
+      messageId,
+      hasUrl: !!audioUrl,
+      hasMediaKey: !!mediaKey
     });
-    
-    if (!audioResponse.ok) {
-      console.error('❌ [AUDIO-TRANSCRIPTION] Erro no download:', audioResponse.status);
-      throw new Error(`Erro ao baixar áudio: ${audioResponse.status}`);
+
+    let encryptedAudioBase64 = '';
+
+    // Download do áudio criptografado se URL disponível
+    if (audioUrl) {
+      console.log('📥 [ENCRYPTED-AUDIO] Baixando áudio criptografado...');
+      
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+        'Referer': 'https://web.whatsapp.com/',
+        'Connection': 'keep-alive'
+      };
+      
+      const audioResponse = await fetch(audioUrl, { 
+        method: 'GET',
+        headers: headers,
+        redirect: 'follow'
+      });
+      
+      if (!audioResponse.ok) {
+        throw new Error(`Erro ao baixar áudio: ${audioResponse.status}`);
+      }
+      
+      const audioBuffer = await audioResponse.arrayBuffer();
+      console.log('📊 [ENCRYPTED-AUDIO] Áudio baixado:', audioBuffer.byteLength, 'bytes');
+      
+      if (audioBuffer.byteLength === 0) {
+        throw new Error('Arquivo de áudio vazio');
+      }
+      
+      // Converter para base64
+      const audioBytes = new Uint8Array(audioBuffer);
+      encryptedAudioBase64 = btoa(String.fromCharCode(...audioBytes));
+      console.log('🔄 [ENCRYPTED-AUDIO] Convertido para base64:', encryptedAudioBase64.length, 'chars');
     }
-    
-    const audioBuffer = await audioResponse.arrayBuffer();
-    console.log('📊 [AUDIO-TRANSCRIPTION] Áudio baixado:', audioBuffer.byteLength, 'bytes');
-    
-    if (audioBuffer.byteLength === 0) {
-      throw new Error('Arquivo de áudio vazio');
-    }
-    
-    // Converter para base64 de forma otimizada
-    const audioBytes = new Uint8Array(audioBuffer);
-    let audioBase64 = '';
-    
-    // Processar em chunks para evitar overflow
-    const chunkSize = 0x8000;
-    for (let i = 0; i < audioBytes.length; i += chunkSize) {
-      const chunk = audioBytes.subarray(i, i + chunkSize);
-      audioBase64 += String.fromCharCode.apply(null, Array.from(chunk));
-    }
-    
-    audioBase64 = btoa(audioBase64);
-    console.log('🎵 [AUDIO-TRANSCRIPTION] Convertido para base64:', audioBase64.length, 'chars');
-    
-    // Salvar áudio base64 primeiro
+
+    // Descriptografar áudio se temos dados e chave
+    if (encryptedAudioBase64 && mediaKey) {
+      console.log('🔓 [ENCRYPTED-AUDIO] Descriptografando áudio...');
+      
+      const decryptResult = await supabase.functions.invoke('whatsapp-decrypt-audio', {
+        body: {
+          encryptedData: encryptedAudioBase64,
+          mediaKey: mediaKey,
+          fileEncSha256: fileEncSha256,
+          messageId: messageId
+        }
+      });
+
+      if (decryptResult.error) {
+        console.error('❌ [ENCRYPTED-AUDIO] Erro na descriptografia:', decryptResult.error);
+        throw new Error(`Falha na descriptografia: ${decryptResult.error.message}`);
+      }
+
+      if (!decryptResult.data?.success) {
+        throw new Error(`Descriptografia falhou: ${decryptResult.data?.error}`);
+      }
+
+      const decryptedAudio = decryptResult.data.decryptedAudio;
+      const audioFormat = decryptResult.data.format;
+      
+      console.log('✅ [ENCRYPTED-AUDIO] Áudio descriptografado:', {
+        format: audioFormat,
+        decryptedLength: decryptedAudio.length,
+        cached: decryptResult.data.cached
+      });
+
+      // Salvar áudio descriptografado na mensagem
     await supabase
       .from('whatsapp_messages')
       .update({ 
