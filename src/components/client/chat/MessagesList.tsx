@@ -60,10 +60,26 @@ const renderMessageContent = (message: any) => {
             </div>
           )}
           
-          {/* Status de erro na transcrição (não remove o player) */}
+          {/* Status de erro na transcrição (player sempre funciona) */}
           {message.processing_status === 'transcription_failed' && (
-            <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
-              <span className="text-amber-500">⚠️</span> Transcrição não disponível - player funcionando
+            <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200 flex items-center gap-2">
+              <span className="text-amber-500">⚠️</span> 
+              <span>Transcrição indisponível</span>
+              <button 
+                className="text-amber-700 hover:text-amber-800 underline ml-auto"
+                onClick={() => {/* Implementar retry se necessário */}}
+              >
+                Tentar novamente
+              </button>
+            </div>
+          )}
+          
+          {/* Erro geral de transcrição */}
+          {(message.transcription || message.media_transcription) && 
+           ((message.transcription || message.media_transcription).includes('Erro') || 
+            (message.transcription || message.media_transcription).includes('não disponível')) && (
+            <div className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
+              <span className="text-red-500">❌</span> Problema na transcrição - áudio pode ser reproduzido
             </div>
           )}
         </div>
