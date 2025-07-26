@@ -502,29 +502,53 @@ function extractYumerMessageData(messageData: any, instance: any) {
       mediaMimeType = messageData.content.mimetype;
     }
 
-    // 🔐 EXTRAIR METADADOS DE CRIPTOGRAFIA
+    // 🔐 EXTRAIR METADADOS DE CRIPTOGRAFIA - CONVERSÃO CORRIGIDA
     if (messageData.content?.mediaKey) {
-      // Converter array de bytes para base64
-      if (Array.isArray(messageData.content.mediaKey)) {
-        mediaKey = btoa(String.fromCharCode(...messageData.content.mediaKey));
-      } else if (typeof messageData.content.mediaKey === 'string') {
-        mediaKey = messageData.content.mediaKey;
+      try {
+        if (Array.isArray(messageData.content.mediaKey) || messageData.content.mediaKey instanceof Uint8Array) {
+          // Conversão segura para arrays grandes
+          const bytes = new Uint8Array(messageData.content.mediaKey);
+          mediaKey = btoa(Array.from(bytes).map(byte => String.fromCharCode(byte)).join(''));
+          console.log('✅ [EXTRACT-YUMER] MediaKey convertido com sucesso, tamanho:', bytes.length);
+        } else if (typeof messageData.content.mediaKey === 'string') {
+          mediaKey = messageData.content.mediaKey;
+          console.log('✅ [EXTRACT-YUMER] MediaKey já era string');
+        }
+      } catch (error) {
+        console.error('❌ [EXTRACT-YUMER] Erro ao converter mediaKey:', error);
+        mediaKey = '';
       }
     }
     
     if (messageData.content?.fileEncSha256) {
-      if (Array.isArray(messageData.content.fileEncSha256)) {
-        fileEncSha256 = btoa(String.fromCharCode(...messageData.content.fileEncSha256));
-      } else if (typeof messageData.content.fileEncSha256 === 'string') {
-        fileEncSha256 = messageData.content.fileEncSha256;
+      try {
+        if (Array.isArray(messageData.content.fileEncSha256) || messageData.content.fileEncSha256 instanceof Uint8Array) {
+          const bytes = new Uint8Array(messageData.content.fileEncSha256);
+          fileEncSha256 = btoa(Array.from(bytes).map(byte => String.fromCharCode(byte)).join(''));
+          console.log('✅ [EXTRACT-YUMER] FileEncSha256 convertido com sucesso, tamanho:', bytes.length);
+        } else if (typeof messageData.content.fileEncSha256 === 'string') {
+          fileEncSha256 = messageData.content.fileEncSha256;
+          console.log('✅ [EXTRACT-YUMER] FileEncSha256 já era string');
+        }
+      } catch (error) {
+        console.error('❌ [EXTRACT-YUMER] Erro ao converter fileEncSha256:', error);
+        fileEncSha256 = '';
       }
     }
     
     if (messageData.content?.fileSha256) {
-      if (Array.isArray(messageData.content.fileSha256)) {
-        fileSha256 = btoa(String.fromCharCode(...messageData.content.fileSha256));
-      } else if (typeof messageData.content.fileSha256 === 'string') {
-        fileSha256 = messageData.content.fileSha256;
+      try {
+        if (Array.isArray(messageData.content.fileSha256) || messageData.content.fileSha256 instanceof Uint8Array) {
+          const bytes = new Uint8Array(messageData.content.fileSha256);
+          fileSha256 = btoa(Array.from(bytes).map(byte => String.fromCharCode(byte)).join(''));
+          console.log('✅ [EXTRACT-YUMER] FileSha256 convertido com sucesso, tamanho:', bytes.length);
+        } else if (typeof messageData.content.fileSha256 === 'string') {
+          fileSha256 = messageData.content.fileSha256;
+          console.log('✅ [EXTRACT-YUMER] FileSha256 já era string');
+        }
+      } catch (error) {
+        console.error('❌ [EXTRACT-YUMER] Erro ao converter fileSha256:', error);
+        fileSha256 = '';
       }
     }
     
@@ -674,6 +698,13 @@ async function saveYumerMessage(messageData: any, instanceId: string) {
   };
 
   console.log('💾 [SAVE-YUMER] Dados a serem inseridos:', JSON.stringify(dataToInsert, null, 2));
+  console.log('🔐 [SAVE-YUMER] VALIDAÇÃO METADADOS:', {
+    hasMediaKey: !!dataToInsert.media_key,
+    hasFileEncSha256: !!dataToInsert.file_enc_sha256,
+    hasFileSha256: !!dataToInsert.file_sha256,
+    mediaKeyLength: dataToInsert.media_key?.length || 0,
+    fileEncSha256Length: dataToInsert.file_enc_sha256?.length || 0
+  });
 
   const { data, error } = await supabase
     .from('whatsapp_messages')
