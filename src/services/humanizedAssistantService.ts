@@ -235,17 +235,20 @@ export class HumanizedAssistantService {
       
       this.addToContext(chatId, userMessage);
       
-      // 2. Marcar como lida com delay natural (FASE 2)
+      // 2. Processar comportamentos inteligentes (FASE 3)
+      await this.processIntelligentBehaviors(instanceId, chatId, messageText, messageId);
+      
+      // 3. Marcar como lida com delay natural (FASE 2)
       if (this.config.behavior.messageHandling.markAsRead && messageId) {
         this.scheduleMessageRead(instanceId, messageId, chatId, messageText);
       }
 
-      // 3. Definir como online usando hook real (FASE 2)
+      // 4. Definir como online usando hook real (FASE 2)
       if (this.config.behavior.presence.enabled && this.config.behavior.presence.showOnline) {
         await this.setRealPresence(instanceId, chatId, 'available');
       }
 
-      // 4. Processar com delay humanizado
+      // 5. Processar com delay humanizado
       const shouldRespond = await this.shouldGenerateResponse(chatId, messageText);
       
       if (shouldRespond) {
@@ -286,7 +289,7 @@ export class HumanizedAssistantService {
       if (this.config.behavior.aiIntegration.enabled && this.config.behavior.aiIntegration.openaiApiKey) {
         responseText = await this.generateAIResponse(chatId, userMessage);
       } else {
-        responseText = await this.generateFallbackResponse(userMessage);
+        responseText = await this.generateFallbackResponse(userMessage, chatId);
       }
 
       if (!responseText) {
@@ -442,6 +445,180 @@ export class HumanizedAssistantService {
     return Math.floor(baseDelay + (maxDelay - baseDelay) * randomFactor);
   }
 
+  // ===== MÉTODOS FASE 3: COMPORTAMENTOS INTELIGENTES =====
+
+  private analyzeMessageSentiment(text: string): 'positive' | 'negative' | 'neutral' | 'question' {
+    const lowerText = text.toLowerCase();
+    
+    // Detectar perguntas
+    if (lowerText.includes('?') || 
+        lowerText.startsWith('como') || 
+        lowerText.startsWith('quando') || 
+        lowerText.startsWith('onde') || 
+        lowerText.startsWith('por que') || 
+        lowerText.startsWith('qual')) {
+      return 'question';
+    }
+    
+    // Palavras positivas
+    const positiveWords = ['obrigado', 'ótimo', 'excelente', 'bom', 'legal', 'perfeito', 'maravilhoso', 'adorei', 'gostei'];
+    // Palavras negativas  
+    const negativeWords = ['problema', 'erro', 'ruim', 'péssimo', 'odeio', 'difícil', 'complicado', 'chato'];
+    
+    const hasPositive = positiveWords.some(word => lowerText.includes(word));
+    const hasNegative = negativeWords.some(word => lowerText.includes(word));
+    
+    if (hasPositive && !hasNegative) return 'positive';
+    if (hasNegative && !hasPositive) return 'negative';
+    
+    return 'neutral';
+  }
+
+  private async processIntelligentBehaviors(instanceId: string, chatId: string, messageText: string, messageId?: string): Promise<void> {
+    try {
+      // 1. Analisar sentimento da mensagem
+      const sentiment = this.analyzeMessageSentiment(messageText);
+      console.log(`🧠 [HUMANIZED-ASSISTANT] Sentimento detectado: ${sentiment} para "${messageText.substring(0, 30)}..."`);
+
+      // 2. Analisar contexto da conversa
+      const conversationAnalysis = this.analyzeConversationContext(chatId);
+      console.log(`📊 [HUMANIZED-ASSISTANT] Contexto: ${conversationAnalysis.conversationTone}, ${conversationAnalysis.messageCount} msgs`);
+
+      // 3. Ajustar comportamento baseado no contexto
+      if (conversationAnalysis.needsAttention) {
+        console.log(`⚠️ [HUMANIZED-ASSISTANT] Cliente precisa de atenção especial: ${chatId}`);
+        // Reduzir delay de resposta para casos que precisam de atenção
+        this.config.personality.responseDelay.min = Math.max(1000, this.config.personality.responseDelay.min * 0.7);
+        this.config.personality.responseDelay.max = Math.max(2000, this.config.personality.responseDelay.max * 0.7);
+      }
+
+      // 4. Salvar análise no contexto da mensagem
+      const context = this.getContext(chatId);
+      if (context.length > 0) {
+        const lastMessage = context[context.length - 1];
+        if (lastMessage && lastMessage.fromUser) {
+          lastMessage.processingMetadata = {
+            ...lastMessage.processingMetadata,
+            emotions: [sentiment],
+            delay: this.calculateMessageDelay(messageText),
+            typingDuration: this.calculateTypingDuration(messageText),
+            chunks: this.splitMessage(messageText).length
+          };
+        }
+      }
+
+    } catch (error) {
+      console.warn('⚠️ [HUMANIZED-ASSISTANT] Erro no processamento inteligente:', error);
+    }
+  }
+
+  private getContextualResponse(chatId: string, sentiment: string, userMessage: string): string {
+    const context = this.getContext(chatId);
+    const isFirstMessage = context.length <= 1;
+    
+    // Respostas baseadas no contexto e sentimento
+    const contextualResponses = {
+      first_positive: ['Que ótimo! 😊 Como posso ajudar?', 'Excelente! Estou aqui para te apoiar! 🚀'],
+      first_negative: ['Entendo sua preocupação. 😔 Me conta mais sobre isso?', 'Vamos resolver isso juntos! 💪'],
+      first_question: ['Ótima pergunta! 🤔 Deixe-me te ajudar com isso.', 'Interessante! Posso esclarecer isso para você.'],
+      first_neutral: ['Oi! 👋 Como posso te ajudar hoje?', 'E aí! Tudo bem? 😊'],
+      
+      continuing_positive: ['Que bom! 😄', 'Perfeito! Mais alguma coisa?', 'Fico feliz em saber! ✨'],
+      continuing_negative: ['Entendo... 😟', 'Vamos encontrar uma solução! 💡', 'Me conte mais detalhes.'],
+      continuing_question: ['Boa pergunta! 🤔', 'Deixe-me pensar... 💭', 'Posso explicar melhor!'],
+      continuing_neutral: ['Entendi! 👍', 'Certo! 😊', 'Me fala mais sobre isso.']
+    };
+
+    const contextKey = isFirstMessage ? `first_${sentiment}` : `continuing_${sentiment}`;
+    const responses = contextualResponses[contextKey] || contextualResponses.continuing_neutral;
+    
+    return responses[Math.floor(Math.random() * responses.length)];
+  }
+
+  private analyzeConversationContext(chatId: string): {
+    messageCount: number;
+    lastUserSentiment: string;
+    conversationTone: string;
+    hasBeenHelped: boolean;
+    needsAttention: boolean;
+  } {
+    const context = this.getContext(chatId);
+    const userMessages = context.filter(msg => msg.fromUser);
+    
+    // Analisar tom geral da conversa
+    let positiveCount = 0;
+    let negativeCount = 0;
+    
+    userMessages.slice(-5).forEach(msg => {
+      const sentiment = this.analyzeMessageSentiment(msg.text);
+      if (sentiment === 'positive') positiveCount++;
+      if (sentiment === 'negative') negativeCount++;
+    });
+    
+    const conversationTone = positiveCount > negativeCount ? 'positive' : 
+                           negativeCount > positiveCount ? 'negative' : 'neutral';
+    
+    const lastMessage = userMessages[userMessages.length - 1];
+    const lastUserSentiment = lastMessage ? this.analyzeMessageSentiment(lastMessage.text) : 'neutral';
+    
+    // Verificar se precisa de atenção (muitas mensagens negativas)
+    const needsAttention = negativeCount >= 2 && userMessages.length >= 3;
+    
+    // Verificar se foi ajudado (agradecimentos ou confirmações)
+    const hasBeenHelped = userMessages.some(msg => 
+      msg.text.toLowerCase().includes('obrigado') ||
+      msg.text.toLowerCase().includes('resolvido') ||
+      msg.text.toLowerCase().includes('funcionou')
+    );
+
+    return {
+      messageCount: context.length,
+      lastUserSentiment,
+      conversationTone,
+      hasBeenHelped,
+      needsAttention
+    };
+  }
+
+  private buildIntelligentPrompt(context: HumanizedMessage[], personality: HumanizedPersonality, conversationAnalysis: any): string {
+    const { conversationTone, needsAttention, hasBeenHelped, messageCount } = conversationAnalysis;
+    
+    const basePrompt = `Você é um assistente humanizado via WhatsApp com personalidade "${personality.name}".
+    
+Tom da personalidade: ${this.getToneDescription(personality.tone)}
+Nível emocional: ${personality.emotionalLevel * 100}%
+
+Contexto da conversa:
+- Total de mensagens: ${messageCount}
+- Tom geral: ${conversationTone}
+- Cliente precisa de atenção especial: ${needsAttention ? 'SIM' : 'NÃO'}
+- Cliente foi ajudado: ${hasBeenHelped ? 'SIM' : 'NÃO'}
+
+Instruções comportamentais:
+1. Seja natural e humanizado como um brasileiro
+2. Use emojis moderadamente (1-2 por mensagem)
+3. Mantenha respostas entre 50-200 caracteres
+4. ${needsAttention ? 'PRIORIZE demonstrar empatia e suporte' : 'Mantenha o tom positivo'}
+5. ${hasBeenHelped ? 'Pergunte se precisa de mais alguma coisa' : 'Foque em ajudar efetivamente'}
+6. Use linguagem coloquial brasileira
+7. ${conversationTone === 'negative' ? 'Seja mais empático e compreensivo' : 'Mantenha energia positiva'}
+
+Responda apenas com a mensagem, sem explicações adicionais.`;
+
+    return basePrompt;
+  }
+
+  private getToneDescription(tone: string): string {
+    const descriptions = {
+      formal: 'formal e respeitoso',
+      casual: 'casual e descontraído', 
+      friendly: 'amigável e caloroso',
+      professional: 'profissional e objetivo',
+      empathetic: 'empático e compreensivo'
+    };
+    return descriptions[tone] || 'neutro';
+  }
+
   // ===== MÉTODOS FASE 2: COMPORTAMENTOS FUNDAMENTAIS =====
 
   private async simulateRealTyping(instanceId: string, chatId: string, duration: number): Promise<void> {
@@ -513,7 +690,10 @@ export class HumanizedAssistantService {
   private async generateAIResponse(chatId: string, userMessage: string): Promise<string> {
     try {
       const context = this.getContext(chatId);
-      const prompt = this.buildAIPrompt(context, this.config.personality);
+      const conversationAnalysis = this.analyzeConversationContext(chatId);
+      
+      // Usar prompt inteligente com análise de contexto (FASE 3)
+      const prompt = this.buildIntelligentPrompt(context, this.config.personality, conversationAnalysis);
       
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -546,7 +726,14 @@ export class HumanizedAssistantService {
     return '';
   }
 
-  private async generateFallbackResponse(userMessage: string): Promise<string> {
+  private async generateFallbackResponse(userMessage: string, chatId?: string): Promise<string> {
+    // Usar resposta contextual inteligente se chatId fornecido (FASE 3)
+    if (chatId) {
+      const sentiment = this.analyzeMessageSentiment(userMessage);
+      return this.getContextualResponse(chatId, sentiment, userMessage);
+    }
+    
+    // Fallback tradicional
     const text = userMessage.toLowerCase();
     
     const responses = {
