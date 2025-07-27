@@ -12,21 +12,39 @@ serve(async (req) => {
   }
 
   try {
-    const { encryptedData, mediaUrl, mediaKey, messageId } = await req.json();
+    const requestBody = await req.json();
+    const { encryptedData, mediaUrl, mediaKey, messageId } = requestBody;
     
-    console.log('🔧 Requisição:', {
-      hasEncryptedData: !!encryptedData,
-      hasMediaKey: !!mediaKey,
-      hasMediaUrl: !!mediaUrl,
+    console.log('🎵 [DECRYPT-AUDIO] Dados recebidos:', {
       messageId,
-      mediaKeyLength: mediaKey ? atob(mediaKey).length : 0
+      hasEncryptedData: !!encryptedData,
+      hasMediaUrl: !!mediaUrl,
+      hasMediaKey: !!mediaKey,
+      mediaKeyLength: mediaKey ? mediaKey.length : 0,
+      mediaKeyPreview: mediaKey ? mediaKey.substring(0, 20) + '...' : 'null',
+      requestKeys: Object.keys(requestBody)
     });
 
-    if (!mediaKey || (!encryptedData && !mediaUrl)) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'mediaKey e (encryptedData ou mediaUrl) são obrigatórios' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Validação mais flexível
+    if (!mediaKey || typeof mediaKey !== 'string' || mediaKey.trim() === '') {
+      console.error('❌ [DECRYPT-AUDIO] mediaKey inválido:', { mediaKey: mediaKey?.substring(0, 20) });
+      return new Response(JSON.stringify({ 
+        error: 'mediaKey é obrigatório e deve ser uma string válida',
+        received: typeof mediaKey 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (!encryptedData && !mediaUrl) {
+      console.error('❌ [DECRYPT-AUDIO] Nem encryptedData nem mediaUrl fornecidos');
+      return new Response(JSON.stringify({ 
+        error: 'encryptedData ou mediaUrl é obrigatório' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     // Verificar cache
@@ -113,106 +131,127 @@ serve(async (req) => {
  */
 async function decryptWhatsAppAudio(encryptedBuffer: Uint8Array, mediaKeyBase64: string): Promise<string | null> {
   try {
-    const mediaKey = new Uint8Array(atob(mediaKeyBase64).split('').map(c => c.charCodeAt(0)));
+    console.log('🔓 [DECRYPT-AUDIO] Iniciando descriptografia:', {
+      encryptedSize: encryptedBuffer.length,
+      mediaKeyLength: mediaKeyBase64.length,
+      mediaKeyPrefix: mediaKeyBase64.substring(0, 20)
+    });
+
+    // Decodificar mediaKey de Base64
+    let mediaKey: Uint8Array;
+    try {
+      const decoded = atob(mediaKeyBase64.trim());
+      mediaKey = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
+      console.log('🔑 [DECRYPT-AUDIO] MediaKey decodificada:', { 
+        length: mediaKey.length,
+        firstBytes: Array.from(mediaKey.slice(0, 8))
+      });
+    } catch (error) {
+      console.error('❌ [DECRYPT-AUDIO] Erro decodificando mediaKey:', error);
+      throw new Error('Falha ao decodificar mediaKey');
+    }
+
+    // Derivar chaves usando HKDF-like com HMAC-SHA256
+    const aesKey = await deriveHKDFKey(mediaKey, "WhatsApp Audio Keys", 32);
+    const iv = await deriveHKDFKey(mediaKey, "WhatsApp Audio IV", 16);
     
-    console.log('🔐 Iniciando descriptografia...', {
-      mediaKeyLength: mediaKey.length,
-      encryptedDataLength: encryptedBuffer.length
+    console.log('🔑 [DECRYPT-AUDIO] Chaves derivadas:', {
+      aesKeyLength: aesKey.length,
+      ivLength: iv.length,
+      aesKeyPrefix: Array.from(aesKey.slice(0, 8)),
+      ivPrefix: Array.from(iv.slice(0, 8))
+    });
+
+    // Importar chave AES para descriptografia
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      aesKey,
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"]
+    );
+
+    // Verificar se há dados suficientes para AES-GCM (mínimo 16 bytes de tag)
+    if (encryptedBuffer.length < 16) {
+      throw new Error(`Buffer muito pequeno para AES-GCM: ${encryptedBuffer.length} bytes`);
+    }
+
+    // Descriptografar usando AES-GCM
+    console.log('🔓 [DECRYPT-AUDIO] Iniciando AES-GCM decrypt...');
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: iv,
+        tagLength: 128 // 16 bytes
+      },
+      cryptoKey,
+      encryptedBuffer
+    );
+
+    console.log('✅ [DECRYPT-AUDIO] Descriptografia bem-sucedida:', {
+      decryptedSize: decryptedBuffer.byteLength
+    });
+
+    // Converter para base64
+    const decryptedArray = new Uint8Array(decryptedBuffer);
+    const base64String = btoa(String.fromCharCode.apply(null, Array.from(decryptedArray)));
+    
+    console.log('📦 [DECRYPT-AUDIO] Conversão para base64 concluída:', {
+      base64Length: base64String.length,
+      base64Prefix: base64String.substring(0, 50)
     });
     
-    // Testar diferentes variações das strings HMAC
-    const keyVariants = [
-      'WhatsApp Audio Keys',
-      'WhatsApp Media Keys', 
-      'WhatsApp Image Keys'
-    ];
-    
-    const ivVariants = [
-      'WhatsApp Audio IVs',
-      'WhatsApp Media IVs',
-      'WhatsApp Image IVs'
-    ];
-
-    for (const keyStr of keyVariants) {
-      for (const ivStr of ivVariants) {
-        try {
-          console.log(`🔑 Testando: ${keyStr} / ${ivStr}`);
-          
-          // Derivar chave AES (32 bytes) e IV (12 bytes) via HMAC-SHA256
-          const aesKey = await deriveKey(mediaKey, keyStr, 32);
-          const iv = await deriveKey(mediaKey, ivStr, 12);
-          
-          console.log('📊 Chaves derivadas:', {
-            aesKeyHex: Array.from(aesKey.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(''),
-            ivHex: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
-            aesKeyLength: aesKey.length,
-            ivLength: iv.length
-          });
-
-          // Importar chave AES
-          const importedKey = await crypto.subtle.importKey(
-            'raw',
-            aesKey,
-            { name: 'AES-GCM' },
-            false,
-            ['decrypt']
-          );
-
-          // Descriptografar com AES-GCM - estrutura [ciphertext + tag]
-          // Tag de 16 bytes está nos últimos 16 bytes dos dados
-          const decryptedBuffer = await crypto.subtle.decrypt(
-            { 
-              name: 'AES-GCM', 
-              iv,
-              tagLength: 128 // 16 bytes = 128 bits
-            },
-            importedKey,
-            encryptedBuffer
-          );
-
-          const decryptedArray = new Uint8Array(decryptedBuffer);
-          const base64Audio = btoa(String.fromCharCode(...decryptedArray));
-          
-          console.log('✅ Descriptografia bem-sucedida:', {
-            combination: `${keyStr} / ${ivStr}`,
-            decryptedLength: decryptedArray.length,
-            firstBytes: Array.from(decryptedArray.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-          });
-          
-          return base64Audio;
-
-        } catch (innerError) {
-          console.log(`❌ Falha com ${keyStr} / ${ivStr}:`, innerError.message);
-          continue;
-        }
-      }
-    }
-    
-    console.error('❌ Todas as combinações falharam');
-    return null;
-
+    return base64String;
   } catch (error) {
-    console.error('❌ Erro geral na descriptografia:', error);
+    console.error('❌ [DECRYPT-AUDIO] Erro na descriptografia:', {
+      errorMessage: error.message,
+      errorStack: error.stack,
+      errorName: error.name
+    });
     return null;
   }
 }
 
 /**
- * Derivar chave usando HMAC-SHA256
+ * Função auxiliar para derivar chaves usando HKDF-like com HMAC-SHA256
+ * Implementação mais robusta para WhatsApp
  */
-async function deriveKey(mediaKey: Uint8Array, info: string, length: number): Promise<Uint8Array> {
-  const infoBytes = new TextEncoder().encode(info);
-  
-  const importedKey = await crypto.subtle.importKey(
-    'raw',
-    mediaKey,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  
-  const signature = await crypto.subtle.sign('HMAC', importedKey, infoBytes);
-  return new Uint8Array(signature).slice(0, length);
+async function deriveHKDFKey(mediaKey: Uint8Array, info: string, length: number): Promise<Uint8Array> {
+  try {
+    const encoder = new TextEncoder();
+    const infoBytes = encoder.encode(info);
+    
+    // HKDF Extract: HMAC-SHA256(salt=0, ikm=mediaKey)
+    const salt = new Uint8Array(32); // 32 zeros para SHA-256
+    const extractKey = await crypto.subtle.importKey(
+      "raw",
+      salt,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    const prk = await crypto.subtle.sign("HMAC", extractKey, mediaKey);
+    
+    // HKDF Expand: HMAC-SHA256(prk, info + 0x01)
+    const expandKey = await crypto.subtle.importKey(
+      "raw",
+      new Uint8Array(prk),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    const expandInput = new Uint8Array(infoBytes.length + 1);
+    expandInput.set(infoBytes);
+    expandInput[infoBytes.length] = 0x01;
+    
+    const okm = await crypto.subtle.sign("HMAC", expandKey, expandInput);
+    return new Uint8Array(okm.slice(0, length));
+  } catch (error) {
+    console.error('❌ [DECRYPT-AUDIO] Erro na derivação de chave:', error);
+    throw error;
+  }
 }
 
 /**

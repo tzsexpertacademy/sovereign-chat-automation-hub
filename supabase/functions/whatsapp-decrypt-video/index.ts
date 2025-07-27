@@ -14,17 +14,26 @@ serve(async (req) => {
   }
 
   try {
-    const { messageId, mediaUrl, mediaKey, fileEncSha256 } = await req.json();
+    const requestBody = await req.json();
+    const { messageId, mediaUrl, mediaKey, fileEncSha256 } = requestBody;
 
-    console.log('🎥 [DECRYPT-VIDEO] Iniciando descriptografia:', {
+    console.log('🎥 [DECRYPT-VIDEO] Dados recebidos:', {
       messageId,
       hasMediaUrl: !!mediaUrl,
       hasMediaKey: !!mediaKey,
-      mediaUrlPreview: mediaUrl ? mediaUrl.substring(0, 100) + '...' : null
+      mediaKeyLength: mediaKey ? mediaKey.length : 0,
+      mediaKeyPreview: mediaKey ? mediaKey.substring(0, 20) + '...' : 'null',
+      mediaUrlPreview: mediaUrl ? mediaUrl.substring(0, 100) + '...' : null,
+      requestKeys: Object.keys(requestBody)
     });
 
-    if (!mediaKey) {
-      return new Response(JSON.stringify({ error: 'mediaKey é obrigatório' }), {
+    // Validação mais flexível
+    if (!mediaKey || typeof mediaKey !== 'string' || mediaKey.trim() === '') {
+      console.error('❌ [DECRYPT-VIDEO] mediaKey inválido:', { mediaKey: mediaKey?.substring(0, 20) });
+      return new Response(JSON.stringify({ 
+        error: 'mediaKey é obrigatório e deve ser uma string válida',
+        received: typeof mediaKey 
+      }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -118,18 +127,38 @@ serve(async (req) => {
  */
 async function decryptWhatsAppVideo(encryptedBuffer: Uint8Array, mediaKeyBase64: string): Promise<string | null> {
   try {
-    const mediaKey = new Uint8Array(atob(mediaKeyBase64).split('').map(c => c.charCodeAt(0)));
-    
-    // Derivar chaves AES e IV usando HMAC-SHA256
-    const aesKey = await deriveKey(mediaKey, "WhatsApp Video Keys", 32);
-    const iv = await deriveKey(mediaKey, "WhatsApp Video IV", 16);
+    console.log('🔓 [DECRYPT-VIDEO] Iniciando descriptografia:', {
+      encryptedSize: encryptedBuffer.length,
+      mediaKeyLength: mediaKeyBase64.length,
+      mediaKeyPrefix: mediaKeyBase64.substring(0, 20)
+    });
+
+    // Decodificar mediaKey de Base64
+    let mediaKey: Uint8Array;
+    try {
+      const decoded = atob(mediaKeyBase64.trim());
+      mediaKey = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
+      console.log('🔑 [DECRYPT-VIDEO] MediaKey decodificada:', { 
+        length: mediaKey.length,
+        firstBytes: Array.from(mediaKey.slice(0, 8))
+      });
+    } catch (error) {
+      console.error('❌ [DECRYPT-VIDEO] Erro decodificando mediaKey:', error);
+      throw new Error('Falha ao decodificar mediaKey');
+    }
+
+    // Derivar chaves usando HKDF-like com HMAC-SHA256
+    const aesKey = await deriveHKDFKey(mediaKey, "WhatsApp Video Keys", 32);
+    const iv = await deriveHKDFKey(mediaKey, "WhatsApp Video IV", 16);
     
     console.log('🔑 [DECRYPT-VIDEO] Chaves derivadas:', {
       aesKeyLength: aesKey.length,
-      ivLength: iv.length
+      ivLength: iv.length,
+      aesKeyPrefix: Array.from(aesKey.slice(0, 8)),
+      ivPrefix: Array.from(iv.slice(0, 8))
     });
 
-    // Importar chave AES
+    // Importar chave AES para descriptografia
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
       aesKey,
@@ -138,44 +167,86 @@ async function decryptWhatsAppVideo(encryptedBuffer: Uint8Array, mediaKeyBase64:
       ["decrypt"]
     );
 
+    // Verificar se há dados suficientes para AES-GCM
+    if (encryptedBuffer.length < 16) {
+      throw new Error(`Buffer muito pequeno para AES-GCM: ${encryptedBuffer.length} bytes`);
+    }
+
     // Descriptografar usando AES-GCM
+    console.log('🔓 [DECRYPT-VIDEO] Iniciando AES-GCM decrypt...');
     const decryptedBuffer = await crypto.subtle.decrypt(
       {
         name: "AES-GCM",
-        iv: iv
+        iv: iv,
+        tagLength: 128
       },
       cryptoKey,
       encryptedBuffer
     );
 
+    console.log('✅ [DECRYPT-VIDEO] Descriptografia bem-sucedida:', {
+      decryptedSize: decryptedBuffer.byteLength
+    });
+
     // Converter para base64
     const decryptedArray = new Uint8Array(decryptedBuffer);
-    const base64String = btoa(String.fromCharCode(...decryptedArray));
+    const base64String = btoa(String.fromCharCode.apply(null, Array.from(decryptedArray)));
+    
+    console.log('📦 [DECRYPT-VIDEO] Conversão para base64 concluída:', {
+      base64Length: base64String.length,
+      base64Prefix: base64String.substring(0, 50)
+    });
     
     return base64String;
   } catch (error) {
-    console.error('❌ [DECRYPT-VIDEO] Erro na descriptografia:', error);
+    console.error('❌ [DECRYPT-VIDEO] Erro na descriptografia:', {
+      errorMessage: error.message,
+      errorStack: error.stack,
+      errorName: error.name
+    });
     return null;
   }
 }
 
 /**
- * Função auxiliar para derivar chaves usando HMAC-SHA256
+ * Função auxiliar para derivar chaves usando HKDF-like com HMAC-SHA256
  */
-async function deriveKey(mediaKey: Uint8Array, info: string, length: number): Promise<Uint8Array> {
-  const encoder = new TextEncoder();
-  const infoBytes = encoder.encode(info);
-  
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    mediaKey,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, infoBytes);
-  return new Uint8Array(signature.slice(0, length));
+async function deriveHKDFKey(mediaKey: Uint8Array, info: string, length: number): Promise<Uint8Array> {
+  try {
+    const encoder = new TextEncoder();
+    const infoBytes = encoder.encode(info);
+    
+    // HKDF Extract: HMAC-SHA256(salt=0, ikm=mediaKey)
+    const salt = new Uint8Array(32);
+    const extractKey = await crypto.subtle.importKey(
+      "raw",
+      salt,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    const prk = await crypto.subtle.sign("HMAC", extractKey, mediaKey);
+    
+    // HKDF Expand: HMAC-SHA256(prk, info + 0x01)
+    const expandKey = await crypto.subtle.importKey(
+      "raw",
+      new Uint8Array(prk),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    
+    const expandInput = new Uint8Array(infoBytes.length + 1);
+    expandInput.set(infoBytes);
+    expandInput[infoBytes.length] = 0x01;
+    
+    const okm = await crypto.subtle.sign("HMAC", expandKey, expandInput);
+    return new Uint8Array(okm.slice(0, length));
+  } catch (error) {
+    console.error('❌ [DECRYPT-VIDEO] Erro na derivação de chave:', error);
+    throw error;
+  }
 }
 
 /**
