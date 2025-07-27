@@ -2,10 +2,12 @@
 import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Bot, User, Mic } from 'lucide-react';
+import { Bot, User, Mic, Image as ImageIcon } from 'lucide-react';
 import MessageStatus from '../MessageStatus';
 import AudioPlayer from '../AudioPlayer';
+import ImageViewer from '../ImageViewer';
 import { whatsappAudioService } from '@/services/whatsappAudioService';
+import { whatsappImageService } from '@/services/whatsappImageService';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 
 interface MessagesListProps {
@@ -16,8 +18,8 @@ interface MessagesListProps {
 
 const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesListProps) => {
 const renderMessageContent = (message: any) => {
+    // Renderizar áudio
     if (message.message_type === 'audio') {
-      // Usar o novo sistema de dados de áudio
       const audioPlaybackData = whatsappAudioService.getAudioPlaybackData(message);
       
       console.log('🎵 MessagesList: Renderizando áudio:', {
@@ -29,7 +31,6 @@ const renderMessageContent = (message: any) => {
 
       return (
         <div className="space-y-3 max-w-sm">
-          {/* Player de áudio inteligente com fallbacks */}
           <AudioPlayer 
             audioUrl={audioPlaybackData.audioUrl}
             audioData={audioPlaybackData.audioData}
@@ -40,7 +41,6 @@ const renderMessageContent = (message: any) => {
             fileEncSha256={audioPlaybackData.fileEncSha256}
           />
           
-          {/* Informações do áudio */}
           <div className="flex items-center gap-2 text-xs text-gray-600">
             <Mic className="w-3 h-3" />
             <span>Mensagem de áudio</span>
@@ -49,7 +49,6 @@ const renderMessageContent = (message: any) => {
             )}
           </div>
           
-          {/* Status de processamento da transcrição */}
           {message.processing_status && ['pending_transcription', 'processing_transcription'].includes(message.processing_status) && (
             <div className="flex items-center gap-2 text-xs">
               <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -59,7 +58,6 @@ const renderMessageContent = (message: any) => {
             </div>
           )}
           
-          {/* Transcrição bem-sucedida */}
           {(message.transcription || message.media_transcription) && 
            !(message.transcription || message.media_transcription).includes('Erro') && 
            !(message.transcription || message.media_transcription).includes('não disponível') && (
@@ -74,21 +72,13 @@ const renderMessageContent = (message: any) => {
             </div>
           )}
           
-          {/* Status de erro na transcrição (player sempre funciona) */}
           {message.processing_status === 'transcription_failed' && (
             <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200 flex items-center gap-2">
               <span className="text-amber-500">⚠️</span> 
               <span>Transcrição indisponível</span>
-              <button 
-                className="text-amber-700 hover:text-amber-800 underline ml-auto"
-                onClick={() => {/* Implementar retry se necessário */}}
-              >
-                Tentar novamente
-              </button>
             </div>
           )}
           
-          {/* Erro geral de transcrição */}
           {(message.transcription || message.media_transcription) && 
            ((message.transcription || message.media_transcription).includes('Erro') || 
             (message.transcription || message.media_transcription).includes('não disponível')) && (
@@ -97,6 +87,30 @@ const renderMessageContent = (message: any) => {
             </div>
           )}
         </div>
+      );
+    }
+
+    // Renderizar imagem
+    if (message.message_type === 'image') {
+      const imageDisplayData = whatsappImageService.getImageDisplayData(message);
+      
+      console.log('🖼️ MessagesList: Renderizando imagem:', {
+        messageId: message.message_id,
+        hasImageUrl: !!imageDisplayData.imageUrl,
+        needsDecryption: imageDisplayData.needsDecryption,
+        error: imageDisplayData.error
+      });
+
+      return (
+        <ImageViewer
+          imageUrl={imageDisplayData.imageUrl}
+          messageId={message.message_id || message.id}
+          mediaKey={message.media_key}
+          fileEncSha256={message.file_enc_sha256}
+          needsDecryption={imageDisplayData.needsDecryption}
+          caption={message.content}
+          fileName={`image_${message.message_id || message.id}.jpg`}
+        />
       );
     }
 
