@@ -841,6 +841,36 @@ export type Database = {
         }
         Relationships: []
       }
+      decrypted_image_cache: {
+        Row: {
+          created_at: string
+          decrypted_data: string
+          expires_at: string
+          id: string
+          image_format: string
+          message_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          decrypted_data: string
+          expires_at: string
+          id?: string
+          image_format?: string
+          message_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          decrypted_data?: string
+          expires_at?: string
+          id?: string
+          image_format?: string
+          message_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       funnel_lead_history: {
         Row: {
           created_at: string
@@ -1959,6 +1989,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      cleanup_expired_decrypted_images: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       cleanup_expired_qr_codes: {
         Args: Record<PropertyKey, never>
         Returns: number
@@ -1968,6 +2002,13 @@ export type Database = {
         Returns: {
           decrypted_data: string
           audio_format: string
+        }[]
+      }
+      get_decrypted_image: {
+        Args: { p_message_id: string }
+        Returns: {
+          decrypted_data: string
+          image_format: string
         }[]
       }
       get_max_instances_for_plan: {
