@@ -261,8 +261,10 @@ export class WhatsAppMultiClient {
     try {
       let instanceId: string;
       let targetTo: string;
-      let media: string;
+      let file: File | undefined;
+      let media: string | undefined;
       let mediaCaption: string | undefined;
+      let detectedType: string;
 
       if (typeof instanceIdOrOptions === 'string' && to && fileOrMedia) {
         instanceId = instanceIdOrOptions;
@@ -270,30 +272,56 @@ export class WhatsAppMultiClient {
         mediaCaption = caption;
         
         if (fileOrMedia instanceof File) {
-          // Convert File to base64
-          media = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(fileOrMedia);
-          });
+          file = fileOrMedia;
+          detectedType = this.detectMediaType(fileOrMedia);
         } else {
           media = fileOrMedia;
+          detectedType = 'image'; // fallback para string/URL
         }
       } else if (typeof instanceIdOrOptions === 'object') {
         instanceId = instanceIdOrOptions.instanceId || '';
         targetTo = instanceIdOrOptions.to;
         media = instanceIdOrOptions.media;
         mediaCaption = instanceIdOrOptions.caption;
+        detectedType = 'image'; // fallback para options
       } else {
         return { success: false, error: 'Invalid parameters' };
+      }
+
+      // Para áudio, usar endpoint específico
+      if (detectedType === 'audio' && file) {
+        console.log(`📤 Enviando audio para ${targetTo}:`, {
+          name: file.name,
+          size: file.size,
+          type: file.type
+        });
+        
+        await yumerApiV2.sendAudioFile(instanceId, targetTo, file, {
+          delay: 1200,
+          messageId: `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        });
+        
+        return typeof instanceIdOrOptions === 'string' ? 
+          { success: true } : 
+          true;
+      }
+
+      // Para outros tipos, usar sendMedia
+      if (file && !media) {
+        // Convert File to base64 para outros tipos que não sejam áudio
+        media = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
       }
 
       await yumerApiV2.sendMedia(instanceId, {
         number: targetTo,
         media: {
-          mediatype: 'image',
-          media: media,
+          mediatype: detectedType as 'image' | 'video' | 'document',
+          media: media!,
           caption: mediaCaption
         }
       });
@@ -306,6 +334,23 @@ export class WhatsAppMultiClient {
       return typeof instanceIdOrOptions === 'string' ? 
         { success: false, error: error instanceof Error ? error.message : 'Unknown error' } : 
         false;
+    }
+  }
+
+  /**
+   * Detecta o tipo de mídia baseado no arquivo
+   */
+  private detectMediaType(file: File): string {
+    const mimeType = file.type.toLowerCase();
+    
+    if (mimeType.startsWith('image/')) {
+      return 'image';
+    } else if (mimeType.startsWith('video/')) {
+      return 'video';
+    } else if (mimeType.startsWith('audio/')) {
+      return 'audio';
+    } else {
+      return 'document';
     }
   }
 
