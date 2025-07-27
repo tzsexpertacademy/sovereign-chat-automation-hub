@@ -593,6 +593,36 @@ class YumerApiV2Service {
   }
 
   /**
+   * Envia arquivo de áudio via multipart/form-data
+   */
+  async sendAudioFile(instanceId: string, recipient: string, audioBlob: Blob, options?: Partial<SendMessageOptions>): Promise<MessageInfo> {
+    const formData = new FormData();
+    formData.append('recipient', recipient);
+    formData.append('attachment', audioBlob, `audio_${Date.now()}.ogg`);
+    
+    if (options?.delay !== undefined) {
+      formData.append('delay', options.delay.toString());
+    }
+    
+    if (options?.messageId) {
+      formData.append('messageId', options.messageId);
+    }
+    
+    if (options?.externalAttributes) {
+      const externalAttrs = typeof options.externalAttributes === 'object' 
+        ? JSON.stringify(options.externalAttributes) 
+        : options.externalAttributes;
+      formData.append('externalAttributes', externalAttrs);
+    }
+
+    console.log(`[YumerApiV2.2.1] Enviando arquivo de áudio para ${recipient} na instância ${instanceId}`);
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/audio-file`, {
+      method: 'POST',
+      body: formData
+    }, true, instanceId);
+  }
+
+  /**
    * Envia localização
    */
   async sendLocation(instanceId: string, number: string, latitude: number, longitude: number, name?: string, address?: string): Promise<MessageInfo> {

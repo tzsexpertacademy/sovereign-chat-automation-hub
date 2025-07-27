@@ -30,42 +30,30 @@ export class AudioSender {
     let attempts = 0;
     const maxAttempts = 3;
 
-    // Estratégia 1: Tentar com sendMedia usando base64
+    // Estratégia: Usar sendAudioFile com multipart/form-data
     while (attempts < maxAttempts) {
       attempts++;
-      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: sendMedia com base64`);
+      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: sendAudioFile com multipart/form-data`);
 
       try {
-        // Converter para base64
-        const base64Audio = await AudioConverter.blobToBase64(audioBlob);
-        
-        // Usar sendMedia para áudio com base64
-        const response = await yumerApiV2.sendMedia(instanceId, {
-          number: chatId,
-          media: {
-            mediatype: 'audio',
-            media: base64Audio, // Base64 diretamente
-            filename: `audio_${messageId}.ogg`,
-            caption: ''
-          },
-          options: {
-            presence: 'recording',
-            messageId: messageId
-          }
+        // Usar sendAudioFile para envio direto do blob
+        const response = await yumerApiV2.sendAudioFile(instanceId, chatId, audioBlob, {
+          delay: 1200,
+          messageId: messageId
         });
 
-        console.log('✅ Sucesso via sendMedia:', response);
+        console.log('✅ Sucesso via sendAudioFile:', response);
         
         return {
           success: true,
           format: 'ogg',
           attempts,
-          message: 'Áudio enviado via sendMedia',
+          message: 'Áudio enviado via sendAudioFile',
           isFallback: false
         };
 
       } catch (error: any) {
-        console.warn(`⚠️ Tentativa ${attempts} falhou (sendMedia):`, error.message);
+        console.warn(`⚠️ Tentativa ${attempts} falhou (sendAudioFile):`, error.message);
         
         if (attempts === maxAttempts) {
           console.error('❌ Todas as tentativas falharam');
