@@ -306,25 +306,58 @@ export class WhatsAppMultiClient {
           true;
       }
 
-      // Para outros tipos, usar sendMedia
+      // Para outros tipos (imagem, vídeo, documento), usar FormData primeiro com fallback para base64
       if (file && !media) {
-        // Convert File to base64 para outros tipos que não sejam áudio
-        media = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
+        console.log(`📤 Enviando ${detectedType} para ${targetTo}:`, {
+          name: file.name,
+          size: file.size,
+          type: file.type
         });
+
+        try {
+          // TENTATIVA 1: Usar FormData (mais eficiente)
+          console.log('🚀 Tentativa 1: Enviando via FormData (sendMediaFile)...');
+          
+          await yumerApiV2.sendMediaFile(instanceId, targetTo, file, {
+            caption: mediaCaption,
+            delay: 1200,
+            messageId: `media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            mediatype: detectedType as 'image' | 'video' | 'document' | 'sticker'
+          });
+
+          console.log('✅ Sucesso via FormData');
+          return typeof instanceIdOrOptions === 'string' ? 
+            { success: true } : 
+            true;
+
+        } catch (formDataError) {
+          console.warn('⚠️ FormData falhou, tentando fallback para base64:', formDataError);
+          
+          // FALLBACK: Converter para base64 e usar método tradicional
+          media = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          
+          console.log('🔄 Tentativa 2: Enviando via base64 (sendMedia)...');
+        }
       }
 
-      await yumerApiV2.sendMedia(instanceId, {
-        number: targetTo,
-        media: {
-          mediatype: detectedType as 'image' | 'video' | 'document',
-          media: media!,
-          caption: mediaCaption
-        }
-      });
+      // Se chegou aqui, usar o método tradicional com base64
+      if (media) {
+        await yumerApiV2.sendMedia(instanceId, {
+          number: targetTo,
+          media: {
+            mediatype: detectedType as 'image' | 'video' | 'document',
+            media: media,
+            caption: mediaCaption
+          }
+        });
+        
+        console.log('✅ Sucesso via base64');
+      }
 
       return typeof instanceIdOrOptions === 'string' ? 
         { success: true } : 

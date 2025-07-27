@@ -579,6 +579,60 @@ class YumerApiV2Service {
   }
 
   /**
+   * Envia mídia usando multipart/form-data (alternativa mais eficiente para arquivos grandes)
+   */
+  async sendMediaFile(instanceId: string, chatId: string, file: File, options?: { 
+    caption?: string; 
+    delay?: number; 
+    messageId?: string;
+    mediatype?: 'image' | 'video' | 'document' | 'sticker' | 'audio';
+  }): Promise<MessageInfo> {
+    const formData = new FormData();
+    formData.append('recipient', chatId);
+    formData.append('attachment', file);
+    
+    // Detectar tipo de mídia baseado no arquivo
+    const detectedType = options?.mediatype || this.detectMediaTypeFromFile(file);
+    formData.append('mediatype', detectedType);
+    
+    if (options?.caption) {
+      formData.append('caption', options.caption);
+    }
+    
+    if (options?.delay) {
+      formData.append('delay', options.delay.toString());
+    }
+    
+    if (options?.messageId) {
+      formData.append('externalAttributes', JSON.stringify({ messageId: options.messageId }));
+    }
+
+    return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/media-file`, {
+      method: 'POST',
+      body: formData
+    }, true, instanceId);
+  }
+
+  /**
+   * Detecta tipo de mídia baseado no arquivo
+   */
+  private detectMediaTypeFromFile(file: File): 'image' | 'video' | 'document' | 'sticker' | 'audio' {
+    const mimeType = file.type.toLowerCase();
+    
+    if (mimeType.startsWith('image/')) {
+      return mimeType === 'image/webp' ? 'sticker' : 'image';
+    }
+    if (mimeType.startsWith('video/')) {
+      return 'video';
+    }
+    if (mimeType.startsWith('audio/')) {
+      return 'audio';
+    }
+    
+    return 'document';
+  }
+
+  /**
    * Envia áudio WhatsApp (formato .ogg ou .oga) com suporte completo a opções
    */
   async sendWhatsAppAudio(instanceId: string, number: string, audioUrl: string, options?: Partial<SendMessageOptions>): Promise<MessageInfo> {
