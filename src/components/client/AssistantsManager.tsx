@@ -17,6 +17,7 @@ import QueuesList from "./QueuesList";
 import AssistantChat from "./AssistantChat";
 import AssistantAdvancedSettings from "./AssistantAdvancedSettings";
 import EvolutionApiStatus from "./EvolutionApiStatus";
+import HumanizedAssistantManager from "./HumanizedAssistantManager";
 
 const AssistantsManager = () => {
   const { clientId } = useParams();
@@ -214,7 +215,7 @@ const AssistantsManager = () => {
 
       {/* Tabs principais */}
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">
             <Bot className="h-4 w-4 mr-2" />
             Visão Geral
@@ -227,9 +228,13 @@ const AssistantsManager = () => {
             <Settings className="h-4 w-4 mr-2" />
             Filas
           </TabsTrigger>
+          <TabsTrigger value="humanized">
+            <Bot className="h-4 w-4 mr-2" />
+            Humanização
+          </TabsTrigger>
           <TabsTrigger value="chat">
             <MessageSquare className="h-4 w-4 mr-2" />
-            Chat com Assistente
+            Chat
           </TabsTrigger>
         </TabsList>
 
@@ -346,6 +351,10 @@ const AssistantsManager = () => {
               });
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="humanized" className="space-y-6">
+          <HumanizedAssistantManager clientId={clientId!} />
         </TabsContent>
 
         <TabsContent value="chat" className="space-y-6">
