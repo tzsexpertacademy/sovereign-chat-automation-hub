@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { QRCodeDisplay } from "@/components/ui/QRCodeDisplay";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Plus, 
   Smartphone, 
@@ -24,7 +25,10 @@ import {
   Edit3,
   Save,
   X,
-  Zap
+  Zap,
+  Bot,
+  Link,
+  Unlink
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -35,6 +39,8 @@ import { useRealTimeInstanceSync } from "@/hooks/useRealTimeInstanceSync";
 import clientYumerService from "@/services/clientYumerService";
 import { useAutoQueueConnection } from "@/hooks/useAutoQueueConnection";
 import { humanizedMessageProcessor } from "@/services/humanizedMessageProcessor";
+import { queuesService, QueueWithAssistant } from "@/services/queuesService";
+import { supabase } from "@/integrations/supabase/client";
 
 const WhatsAppConnectionManagerV2 = () => {
   const { clientId } = useParams();
@@ -47,6 +53,9 @@ const WhatsAppConnectionManagerV2 = () => {
   const [creating, setCreating] = useState(false);
   const [editingName, setEditingName] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [availableQueues, setAvailableQueues] = useState<QueueWithAssistant[]>([]);
+  const [instanceConnections, setInstanceConnections] = useState<Record<string, any>>({});
+  const [connectingQueue, setConnectingQueue] = useState<string | null>(null);
 
   // Hook unificado para gerenciamento de instâncias
   const { 
@@ -149,6 +158,9 @@ const WhatsAppConnectionManagerV2 = () => {
       );
       
       setInstances(updatedInstances);
+      
+      // Carregar filas disponíveis
+      await loadQueuesAndConnections();
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       toast({
@@ -158,6 +170,44 @@ const WhatsAppConnectionManagerV2 = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadQueuesAndConnections = async () => {
+    if (!clientId) return;
+    
+    try {
+      // Carregar filas ativas com assistentes
+      const queues = await queuesService.getClientQueues(clientId);
+      const activeQueuesWithAssistants = queues.filter(q => 
+        q.is_active && q.assistant_id && q.assistants?.is_active
+      );
+      setAvailableQueues(activeQueuesWithAssistants);
+
+      // Carregar conexões existentes
+      const { data: connections } = await supabase
+        .from('instance_queue_connections')
+        .select(`
+          *,
+          queues:queue_id(id, name, assistant_id),
+          whatsapp_instances:instance_id(id, instance_id)
+        `)
+        .eq('is_active', true);
+
+      const connectionsMap: Record<string, any> = {};
+      connections?.forEach(conn => {
+        if (conn.whatsapp_instances?.instance_id) {
+          connectionsMap[conn.whatsapp_instances.instance_id] = {
+            queueId: conn.queue_id,
+            queueName: conn.queues?.name,
+            connectionId: conn.id
+          };
+        }
+      });
+      setInstanceConnections(connectionsMap);
+      
+    } catch (error) {
+      console.error('Erro ao carregar filas:', error);
     }
   };
 
@@ -291,6 +341,86 @@ const WhatsAppConnectionManagerV2 = () => {
           color: 'text-red-600',
           description: 'Clique para conectar'
         };
+    }
+  };
+
+  const handleConnectQueue = async (instanceId: string, queueId: string) => {
+    if (!clientId) return;
+    
+    setConnectingQueue(instanceId);
+    try {
+      // Buscar o UUID da instância
+      const instance = instances.find(i => i.instance_id === instanceId);
+      if (!instance) throw new Error('Instância não encontrada');
+
+      // Desconectar fila anterior se existir
+      const currentConnection = instanceConnections[instanceId];
+      if (currentConnection?.connectionId) {
+        await supabase
+          .from('instance_queue_connections')
+          .update({ is_active: false })
+          .eq('id', currentConnection.connectionId);
+      }
+
+      // Conectar nova fila
+      const { error } = await supabase
+        .from('instance_queue_connections')
+        .insert({
+          instance_id: instance.id,
+          queue_id: queueId,
+          is_active: true
+        });
+
+      if (error) throw error;
+
+      // Recarregar conexões
+      await loadQueuesAndConnections();
+      
+      const selectedQueue = availableQueues.find(q => q.id === queueId);
+      toast({
+        title: "Fila conectada com sucesso!",
+        description: `Instância conectada à fila "${selectedQueue?.name}"`,
+      });
+
+    } catch (error: any) {
+      console.error('Erro ao conectar fila:', error);
+      toast({
+        title: "Erro ao conectar fila",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setConnectingQueue(null);
+    }
+  };
+
+  const handleDisconnectQueue = async (instanceId: string) => {
+    setConnectingQueue(instanceId);
+    try {
+      const currentConnection = instanceConnections[instanceId];
+      if (!currentConnection?.connectionId) return;
+
+      await supabase
+        .from('instance_queue_connections')
+        .update({ is_active: false })
+        .eq('id', currentConnection.connectionId);
+
+      await loadQueuesAndConnections();
+      
+      toast({
+        title: "Fila desconectada",
+        description: "Instância desconectada da fila com sucesso",
+      });
+
+    } catch (error: any) {
+      console.error('Erro ao desconectar fila:', error);
+      toast({
+        title: "Erro ao desconectar fila",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setConnectingQueue(null);
     }
   };
 
@@ -498,6 +628,68 @@ const WhatsAppConnectionManagerV2 = () => {
                         </p>
                       )}
                     </div>
+
+                    {/* Seção de Configuração de Fila */}
+                    {instanceStatus.status === 'connected' && (
+                      <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Bot className="h-4 w-4 text-blue-600" />
+                          <span className="text-sm font-medium">Configuração de Fila</span>
+                        </div>
+                        
+                        {instanceConnections[instance.instance_id] ? (
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="default" className="bg-green-100 text-green-800">
+                                <Link className="h-3 w-3 mr-1" />
+                                {instanceConnections[instance.instance_id].queueName}
+                              </Badge>
+                              <span className="text-xs text-gray-500">Auto-resposta ativa</span>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDisconnectQueue(instance.instance_id)}
+                              disabled={connectingQueue === instance.instance_id}
+                            >
+                              <Unlink className="h-3 w-3 mr-1" />
+                              Desconectar
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Select onValueChange={(queueId) => handleConnectQueue(instance.instance_id, queueId)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Selecionar fila para auto-resposta" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableQueues.map((queue) => (
+                                  <SelectItem key={queue.id} value={queue.id}>
+                                    <div className="flex items-center gap-2">
+                                      <Bot className="h-3 w-3" />
+                                      <span>{queue.name}</span>
+                                      {queue.assistants && (
+                                        <span className="text-xs text-gray-500">
+                                          ({queue.assistants.name})
+                                        </span>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {availableQueues.length === 0 && (
+                              <p className="text-xs text-gray-500">
+                                Nenhuma fila ativa com assistente disponível
+                              </p>
+                            )}
+                            {connectingQueue === instance.instance_id && (
+                              <p className="text-xs text-blue-600">Conectando fila...</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* QR Code Display */}
