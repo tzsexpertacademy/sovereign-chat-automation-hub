@@ -356,7 +356,7 @@ export class HumanizedAssistantService {
           return { success: false, chunks: i, error: 'Cancelado durante typing' };
         }
 
-        // Enviar via Evolution API v2.2.1
+        // Enviar via CodeChat v2.2.1
         const result = await unifiedYumerService.sendTextMessage(instanceId, chatId, chunk);
 
         if (!result.success) {
@@ -459,14 +459,8 @@ export class HumanizedAssistantService {
 
   private async setPresence(instanceId: string, chatId: string, presence: 'available' | 'composing' | 'unavailable'): Promise<void> {
     try {
-      // Mapear para Evolution API v2.2.1
-      const presenceMap = {
-        'available': 'available' as const,
-        'composing': 'composing' as const,
-        'unavailable': 'unavailable' as const
-      };
-      
-      await unifiedYumerService.setPresence(instanceId, chatId, presenceMap[presence]);
+      // CodeChat v2.2.1: /api/v2/instance/:instanceId/presence
+      await unifiedYumerService.setPresence(instanceId, chatId, presence);
     } catch (error) {
       console.warn('⚠️ [HUMANIZED-ASSISTANT] Erro ao definir presença:', error);
     }
