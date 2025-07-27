@@ -528,39 +528,68 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
 
 // 🤖 Função separada para o processamento real da IA
 async function processAIRequest(ticketId: string, messageData: any, clientId: string, instanceId: string, assistant: any): Promise<boolean> {
-  // Chamar edge function de processamento de IA com timeout e retry
-  const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
-      body: {
-        ticketId: ticketId,
-        message: messageData.content,
-        clientId: clientId,
-        instanceId: instanceId,
-        assistant: {
-          id: assistant.id,
-          name: assistant.name,
-          prompt: assistant.prompt,
-          model: assistant.model || 'gpt-4o-mini',
-          settings: assistant.advanced_settings
-        },
-        context: {
-          customerName: messageData.contactName,
-          phoneNumber: messageData.phoneNumber,
-          chatId: messageData.chatId
-        }
-      }
+  try {
+    console.log('🤖 [AI-TRIGGER] Iniciando processamento de IA:', {
+      ticketId,
+      messageContent: messageData.content.slice(0, 50),
+      assistantName: assistant.name,
+      instanceId
     });
 
-    if (aiError) {
-      console.error('❌ [AI-TRIGGER] Erro ao processar com IA:', aiError);
+    // 🔒 VERIFICAÇÃO ADICIONAL DE DUPLICAÇÃO
+    const { data: recentAIResponses } = await supabase
+      .from('ticket_messages')
+      .select('id, created_at')
+      .eq('ticket_id', ticketId)
+      .eq('is_ai_response', true)
+      .gte('created_at', new Date(Date.now() - 15000).toISOString()) // Últimos 15 segundos
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (recentAIResponses && recentAIResponses.length > 0) {
+      console.log('⏸️ [AI-TRIGGER] IA respondeu recentemente, ignorando para evitar spam');
       return false;
     }
 
-    console.log('✅ [AI-TRIGGER] IA processou mensagem com sucesso:', {
-      hasResponse: !!aiResult?.response,
-      sentViaCodeChat: aiResult?.sentViaCodeChat
-    });
+    // Chamar edge function de processamento de IA com timeout e retry
+    const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
+        body: {
+          ticketId: ticketId,
+          message: messageData.content,
+          clientId: clientId,
+          instanceId: instanceId,
+          assistant: {
+            id: assistant.id,
+            name: assistant.name,
+            prompt: assistant.prompt,
+            model: assistant.model || 'gpt-4o-mini',
+            settings: assistant.advanced_settings
+          },
+          context: {
+            customerName: messageData.contactName,
+            phoneNumber: messageData.phoneNumber,
+            chatId: messageData.chatId
+          }
+        }
+      });
 
-    return true;
+      if (aiError) {
+        console.error('❌ [AI-TRIGGER] Erro ao processar com IA:', aiError);
+        return false;
+      }
+
+      console.log('✅ [AI-TRIGGER] IA processou mensagem com sucesso:', {
+        hasResponse: !!aiResult?.response,
+        sentViaCodeChat: aiResult?.sentViaCodeChat,
+        duplicate: aiResult?.duplicate,
+        alreadyProcessed: aiResult?.alreadyProcessed
+      });
+
+      return true;
+  } catch (error) {
+    console.error('❌ [AI-TRIGGER] Erro crítico no processamento de IA:', error);
+    return false;
+  }
 }
 
 // Função utilitária para converter Uint8Array para base64

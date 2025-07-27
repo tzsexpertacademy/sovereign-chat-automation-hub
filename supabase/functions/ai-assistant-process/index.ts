@@ -41,16 +41,42 @@ serve(async (req) => {
     if (existingLock) {
       const elapsed = Date.now() - existingLock.timestamp;
       if (elapsed < LOCK_TIMEOUT) {
-        console.log('⏳ [AI-ASSISTANT] Requisição já sendo processada, aguardando...');
-        try {
-          return await existingLock.promise;
-        } catch {
-          console.log('🔄 [AI-ASSISTANT] Processamento anterior falhou, continuando...');
-        }
+        console.log('⏳ [AI-ASSISTANT] Requisição já sendo processada, ignorando duplicata');
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            message: 'Mensagem já sendo processada',
+            duplicate: true 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       } else {
         console.log('🧹 [AI-ASSISTANT] Lock expirado, removendo...');
         processingLocks.delete(lockKey);
       }
+    }
+
+    // 🔍 VERIFICAR SE MENSAGEM JÁ FOI PROCESSADA
+    const { data: existingMessage } = await supabase
+      .from('ticket_messages')
+      .select('id')
+      .eq('ticket_id', ticketId)
+      .eq('content', message)
+      .eq('is_ai_response', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (existingMessage) {
+      console.log('🔄 [AI-ASSISTANT] Mensagem já processada anteriormente');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: 'Mensagem já foi processada',
+          alreadyProcessed: true 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
@@ -268,7 +294,10 @@ async function sendResponseViaCodeChat(instanceId: string, chatId: string, messa
     const businessToken = instanceData.clients.business_token;
     console.log('🔧 [CODECHAT-SEND] Usando CodeChat v2.2.1 para instância:', instanceId);
 
-    // Preparar dados para CodeChat v2.2.1
+    // ENDPOINT CORRETO: v2.2.1 usa /api/v2/instance/:instanceId/send/text
+    const endpoint = `https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`;
+    
+    // Preparar dados para CodeChat v2.2.1 - ESTRUTURA CORRETA
     const codeChatData = {
       number: chatId,
       text: message,
@@ -278,26 +307,30 @@ async function sendResponseViaCodeChat(instanceId: string, chatId: string, messa
       }
     };
 
-    console.log('📋 [CODECHAT-SEND] Dados para CodeChat API:', codeChatData);
+    console.log('📋 [CODECHAT-SEND] Dados para CodeChat API v2.2.1:', {
+      endpoint,
+      data: codeChatData
+    });
 
-    // Chamar CodeChat v2.2.1 para enviar mensagem
-    const codeChatResponse = await fetch(`https://api.yumer.com.br/message/sendText/${instanceId}`, {
+    // Chamar CodeChat v2.2.1 com endpoint e headers corretos
+    const codeChatResponse = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'apikey': businessToken,
-        'Content-Type': 'application/json'
+        'Authorization': `Bearer ${businessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify(codeChatData)
     });
 
     if (!codeChatResponse.ok) {
       const errorText = await codeChatResponse.text();
-      console.error('❌ [CODECHAT-SEND] Erro ao enviar via CodeChat API:', {
+      console.error('❌ [CODECHAT-SEND] Erro ao enviar via CodeChat API v2.2.1:', {
         status: codeChatResponse.status,
         statusText: codeChatResponse.statusText,
         error: errorText,
         instanceId,
-        url: `https://api.yumer.com.br/message/sendText/${instanceId}`
+        endpoint
       });
       return { success: false, error: `HTTP ${codeChatResponse.status}: ${errorText}` };
     }
@@ -312,7 +345,7 @@ async function sendResponseViaCodeChat(instanceId: string, chatId: string, messa
     return { success: true };
 
   } catch (error) {
-    console.error('❌ [CODECHAT-SEND] Erro ao enviar via CodeChat:', error);
+    console.error('❌ [CODECHAT-SEND] Erro ao enviar via CodeChat v2.2.1:', error);
     return { success: false, error: error.message };
   }
 }
@@ -375,7 +408,7 @@ async function processAIResponseWithHumanization(instanceId: string, chatId: str
   }
 }
 
-// 🎭 Função para definir presence via CodeChat
+// 🎭 Função para definir presence via CodeChat v2.2.1
 async function setPresence(instanceId: string, chatId: string, presence: 'available' | 'composing' | 'unavailable'): Promise<void> {
   try {
     // Buscar business_token
@@ -396,23 +429,33 @@ async function setPresence(instanceId: string, chatId: string, presence: 'availa
 
     const businessToken = instanceData.clients.business_token;
     
+    // ENDPOINT CORRETO: v2.2.1 usa /api/v2/instance/:instanceId/send/presence
+    const endpoint = `https://api.yumer.com.br/api/v2/instance/${instanceId}/send/presence`;
+    
     const presenceData = {
       number: chatId,
       presence: presence
     };
 
-    await fetch(`https://api.yumer.com.br/chat/sendPresence/${instanceId}`, {
+    console.log('🎭 [PRESENCE] Enviando presence via CodeChat v2.2.1:', {
+      endpoint,
+      presence,
+      chatId
+    });
+
+    await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'apikey': businessToken,
-        'Content-Type': 'application/json'
+        'Authorization': `Bearer ${businessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify(presenceData)
     });
 
     console.log(`🎭 [PRESENCE] Status definido para: ${presence}`);
   } catch (error) {
-    console.warn('⚠️ [PRESENCE] Erro ao definir presence:', error.message);
+    console.warn('⚠️ [PRESENCE] Erro ao definir presence via CodeChat v2.2.1:', error.message);
   }
 }
 

@@ -205,7 +205,8 @@ class YumerApiV2Service {
 
         if (instanceData?.clients?.business_token) {
           console.log('[YumerApiV2.2.1] 🔑 Usando business_token específico do cliente para instância:', instanceName);
-          headers['authorization'] = `Bearer ${instanceData.clients.business_token}`;
+          // CORREÇÃO: v2.2.1 usa Authorization Bearer, não apikey
+          headers['Authorization'] = `Bearer ${instanceData.clients.business_token}`;
         } else {
           console.warn('[YumerApiV2.2.1] ⚠️ Business token não encontrado para instância:', instanceName);
           throw new Error('Business token não encontrado para a instância');
@@ -217,7 +218,7 @@ class YumerApiV2Service {
     } else if (this.globalApiKey) {
       // Para operações administrativas, usar apikey global
       headers['apikey'] = this.globalApiKey;
-      headers['authorization'] = `Bearer ${this.globalApiKey}`;
+      headers['Authorization'] = `Bearer ${this.globalApiKey}`;
     } else {
       console.warn('[YumerApiV2.2.1] ⚠️ API Key não configurada!');
     }
@@ -540,20 +541,26 @@ class YumerApiV2Service {
   }
 
   /**
-   * Envia mensagem de texto (Evolution API v2.2.1)
+   * Envia mensagem de texto usando API v2.2.1 - CORRIGIDO
    */
   async sendText(instanceId: string, number: string, text: string, options?: Partial<SendMessageOptions>): Promise<SendMessageResponse> {
-    const body = {
-      recipient: number,
-      textMessage: {
-        text: text
-      },
+    console.log('📤 [YUMER-API] Enviando mensagem de texto via v2.2.1:', {
+      instanceId,
+      number,
+      textLength: text.length,
+      options
+    });
+
+    // ESTRUTURA CORRETA para CodeChat v2.2.1
+    const data: SendMessageData = {
+      number,
+      text,
       options: this.prepareMessageOptions(options)
     };
-    
+
     return this.makeRequest<SendMessageResponse>(`/api/v2/instance/${instanceId}/send/text`, {
       method: 'POST',
-      body: JSON.stringify(body)
+      body: JSON.stringify(data)
     }, true, instanceId);
   }
 
