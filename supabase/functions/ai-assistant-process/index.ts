@@ -8,6 +8,10 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const globalOpenAIApiKey = Deno.env.get('OPENAI_API_KEY');
 
+// Sistema de controle de duplicação
+const processingLocks = new Map<string, { timestamp: number; promise: Promise<any> }>();
+const LOCK_TIMEOUT = 30000; // 30 segundos
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -29,6 +33,25 @@ serve(async (req) => {
       assistant,
       context 
     } = await req.json();
+
+    // 🔒 CONTROLE DE DUPLICAÇÃO: Verificar se já está sendo processado
+    const lockKey = `${ticketId}_${message?.slice(0, 50)}`;
+    const existingLock = processingLocks.get(lockKey);
+    
+    if (existingLock) {
+      const elapsed = Date.now() - existingLock.timestamp;
+      if (elapsed < LOCK_TIMEOUT) {
+        console.log('⏳ [AI-ASSISTANT] Requisição já sendo processada, aguardando...');
+        try {
+          return await existingLock.promise;
+        } catch {
+          console.log('🔄 [AI-ASSISTANT] Processamento anterior falhou, continuando...');
+        }
+      } else {
+        console.log('🧹 [AI-ASSISTANT] Lock expirado, removendo...');
+        processingLocks.delete(lockKey);
+      }
+    }
 
     // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
     let openAIApiKey = globalOpenAIApiKey;
@@ -169,28 +192,35 @@ Instruções importantes:
 
     console.log('💾 [AI-ASSISTANT] Resposta salva no ticket');
 
-    // 📤 ENVIAR RESPOSTA VIA YUMER API
-    const sendResult = await sendResponseViaYumer(instanceId, context?.chatId, aiResponse);
-    if (sendResult.success) {
-      console.log('✅ [AI-ASSISTANT] Resposta enviada via YUMER com sucesso');
-    } else {
-      console.error('❌ [AI-ASSISTANT] Erro ao enviar via YUMER:', sendResult.error);
+    // 🔒 CRIAR LOCK para este processamento
+    const processingPromise = processAIResponseWithHumanization(instanceId, context?.chatId, aiResponse, assistant);
+    processingLocks.set(lockKey, { timestamp: Date.now(), promise: processingPromise });
+
+    try {
+      const sendResult = await processingPromise;
+      
+      // Limpar lock após processamento
+      processingLocks.delete(lockKey);
+      
+      console.log('✅ [AI-ASSISTANT] Processamento completo');
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          response: aiResponse,
+          messageId: messageId,
+          timestamp: new Date().toISOString(),
+          sentViaCodeChat: sendResult.success
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    } catch (error) {
+      // Limpar lock em caso de erro
+      processingLocks.delete(lockKey);
+      throw error;
     }
-
-    console.log('✅ [AI-ASSISTANT] Processamento completo');
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        response: aiResponse,
-        messageId: messageId,
-        timestamp: new Date().toISOString(),
-        sentViaYumer: sendResult.success
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    );
 
   } catch (error) {
     console.error('❌ [AI-ASSISTANT] Erro crítico:', error);
@@ -208,10 +238,10 @@ Instruções importantes:
   }
 });
 
-// 📤 Função para enviar resposta via EVOLUTION API v2.2.1
-async function sendResponseViaYumer(instanceId: string, chatId: string, message: string): Promise<{ success: boolean; error?: string }> {
+// 📤 Função para enviar resposta via CodeChat v2.2.1
+async function sendResponseViaCodeChat(instanceId: string, chatId: string, message: string): Promise<{ success: boolean; error?: string }> {
   try {
-    console.log('📤 [EVOLUTION-SEND] Enviando resposta via Evolution API v2.2.1:', {
+    console.log('📤 [CODECHAT-SEND] Enviando resposta via CodeChat v2.2.1:', {
       instanceId,
       chatId,
       messageLength: message.length
@@ -231,51 +261,49 @@ async function sendResponseViaYumer(instanceId: string, chatId: string, message:
       .single();
 
     if (!instanceData?.clients?.business_token) {
-      console.error('❌ [EVOLUTION-SEND] Business token não encontrado para instância:', instanceId);
+      console.error('❌ [CODECHAT-SEND] Business token não encontrado para instância:', instanceId);
       return { success: false, error: 'Business token not found' };
     }
 
     const businessToken = instanceData.clients.business_token;
-    console.log('🔧 [EVOLUTION-SEND] Usando Evolution API v2.2.1 para instância:', instanceId);
+    console.log('🔧 [CODECHAT-SEND] Usando CodeChat v2.2.1 para instância:', instanceId);
 
-    // Preparar dados para Evolution API v2.2.1
-    const evolutionData = {
-      recipient: chatId,
-      textMessage: {
-        text: message
-      },
+    // Preparar dados para CodeChat v2.2.1
+    const codeChatData = {
+      number: chatId,
+      text: message,
       options: {
         delay: 1200,
         presence: 'composing'
       }
     };
 
-    console.log('📋 [EVOLUTION-SEND] Dados para Evolution API:', evolutionData);
+    console.log('📋 [CODECHAT-SEND] Dados para CodeChat API:', codeChatData);
 
-    // Chamar Evolution API v2.2.1 para enviar mensagem
-    const evolutionResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`, {
+    // Chamar CodeChat v2.2.1 para enviar mensagem
+    const codeChatResponse = await fetch(`https://api.yumer.com.br/message/sendText/${instanceId}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${businessToken}`,
+        'apikey': businessToken,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(evolutionData)
+      body: JSON.stringify(codeChatData)
     });
 
-    if (!evolutionResponse.ok) {
-      const errorText = await evolutionResponse.text();
-      console.error('❌ [EVOLUTION-SEND] Erro ao enviar via Evolution API:', {
-        status: evolutionResponse.status,
-        statusText: evolutionResponse.statusText,
+    if (!codeChatResponse.ok) {
+      const errorText = await codeChatResponse.text();
+      console.error('❌ [CODECHAT-SEND] Erro ao enviar via CodeChat API:', {
+        status: codeChatResponse.status,
+        statusText: codeChatResponse.statusText,
         error: errorText,
         instanceId,
-        url: `https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`
+        url: `https://api.yumer.com.br/message/sendText/${instanceId}`
       });
-      return { success: false, error: `HTTP ${evolutionResponse.status}: ${errorText}` };
+      return { success: false, error: `HTTP ${codeChatResponse.status}: ${errorText}` };
     }
 
-    const result = await evolutionResponse.json();
-    console.log('✅ [EVOLUTION-SEND] Mensagem enviada com sucesso via Evolution API v2.2.1:', {
+    const result = await codeChatResponse.json();
+    console.log('✅ [CODECHAT-SEND] Mensagem enviada com sucesso via CodeChat v2.2.1:', {
       messageId: result.key?.id,
       chatId: chatId,
       response: result
@@ -284,7 +312,170 @@ async function sendResponseViaYumer(instanceId: string, chatId: string, message:
     return { success: true };
 
   } catch (error) {
-    console.error('❌ [EVOLUTION-SEND] Erro ao enviar via Evolution API:', error);
+    console.error('❌ [CODECHAT-SEND] Erro ao enviar via CodeChat:', error);
     return { success: false, error: error.message };
   }
+}
+
+// 🤖 Função para processar resposta da IA com humanização
+async function processAIResponseWithHumanization(instanceId: string, chatId: string, message: string, assistant: any): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log('🎭 [HUMANIZATION] Iniciando processamento humanizado...');
+    
+    // Implementar presence 'composing' antes de enviar
+    await setPresence(instanceId, chatId, 'composing');
+    
+    // Calcular delay baseado no tamanho da mensagem (simular tempo de digitação)
+    const typingDelay = calculateTypingDelay(message);
+    console.log(`⏱️ [HUMANIZATION] Simulando digitação por ${typingDelay}ms`);
+    
+    // Aguardar delay de digitação
+    await new Promise(resolve => setTimeout(resolve, typingDelay));
+    
+    // Dividir mensagem em chunks se necessário
+    const messageChunks = splitMessageIntelligently(message);
+    
+    if (messageChunks.length > 1) {
+      console.log(`📝 [HUMANIZATION] Enviando mensagem em ${messageChunks.length} partes`);
+      
+      for (let i = 0; i < messageChunks.length; i++) {
+        const chunk = messageChunks[i];
+        const isLast = i === messageChunks.length - 1;
+        
+        // Enviar chunk
+        const result = await sendResponseViaCodeChat(instanceId, chatId, chunk);
+        if (!result.success) {
+          return result;
+        }
+        
+        // Delay entre chunks (exceto no último)
+        if (!isLast) {
+          const interChunkDelay = Math.random() * 1000 + 500; // 500-1500ms
+          console.log(`⏱️ [HUMANIZATION] Aguardando ${interChunkDelay}ms entre chunks`);
+          await new Promise(resolve => setTimeout(resolve, interChunkDelay));
+        }
+      }
+    } else {
+      // Enviar mensagem única
+      const result = await sendResponseViaCodeChat(instanceId, chatId, message);
+      if (!result.success) {
+        return result;
+      }
+    }
+    
+    // Definir presence como 'available' após envio
+    await setPresence(instanceId, chatId, 'available');
+    
+    console.log('✅ [HUMANIZATION] Processamento humanizado concluído');
+    return { success: true };
+    
+  } catch (error) {
+    console.error('❌ [HUMANIZATION] Erro no processamento humanizado:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// 🎭 Função para definir presence via CodeChat
+async function setPresence(instanceId: string, chatId: string, presence: 'available' | 'composing' | 'unavailable'): Promise<void> {
+  try {
+    // Buscar business_token
+    const { data: instanceData } = await supabase
+      .from('whatsapp_instances')
+      .select(`
+        clients:client_id (
+          business_token
+        )
+      `)
+      .eq('instance_id', instanceId)
+      .single();
+
+    if (!instanceData?.clients?.business_token) {
+      console.warn('⚠️ [PRESENCE] Business token não encontrado para presence');
+      return;
+    }
+
+    const businessToken = instanceData.clients.business_token;
+    
+    const presenceData = {
+      number: chatId,
+      presence: presence
+    };
+
+    await fetch(`https://api.yumer.com.br/chat/sendPresence/${instanceId}`, {
+      method: 'POST',
+      headers: {
+        'apikey': businessToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(presenceData)
+    });
+
+    console.log(`🎭 [PRESENCE] Status definido para: ${presence}`);
+  } catch (error) {
+    console.warn('⚠️ [PRESENCE] Erro ao definir presence:', error.message);
+  }
+}
+
+// ⏱️ Função para calcular delay de digitação realista
+function calculateTypingDelay(message: string): number {
+  // Simular velocidade de digitação humana (40-60 palavras por minuto)
+  const words = message.split(' ').length;
+  const baseDelay = words * 200; // ~50 WPM
+  const variation = baseDelay * 0.3; // 30% de variação
+  const randomVariation = (Math.random() - 0.5) * variation;
+  
+  // Limites mínimo e máximo
+  const delay = Math.max(1000, Math.min(8000, baseDelay + randomVariation));
+  
+  return Math.round(delay);
+}
+
+// 📝 Função para dividir mensagem inteligentemente
+function splitMessageIntelligently(message: string): string[] {
+  const maxLength = 160; // Limite típico do WhatsApp
+  
+  if (message.length <= maxLength) {
+    return [message];
+  }
+  
+  // Dividir por frases primeiro
+  const sentences = message.split(/(?<=[.!?])\s+/);
+  const chunks: string[] = [];
+  let currentChunk = '';
+  
+  for (const sentence of sentences) {
+    if ((currentChunk + ' ' + sentence).length > maxLength) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = sentence;
+      } else {
+        // Frase muito longa, dividir por palavras
+        const words = sentence.split(' ');
+        let wordChunk = '';
+        for (const word of words) {
+          if ((wordChunk + ' ' + word).length > maxLength) {
+            if (wordChunk) {
+              chunks.push(wordChunk.trim());
+              wordChunk = word;
+            } else {
+              chunks.push(word); // Palavra muito longa
+            }
+          } else {
+            wordChunk = wordChunk ? wordChunk + ' ' + word : word;
+          }
+        }
+        if (wordChunk) {
+          currentChunk = wordChunk;
+        }
+      }
+    } else {
+      currentChunk = currentChunk ? currentChunk + ' ' + sentence : sentence;
+    }
+  }
+  
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks.filter(chunk => chunk.length > 0);
 }

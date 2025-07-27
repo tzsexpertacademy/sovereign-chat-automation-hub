@@ -6,6 +6,10 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Sistema de controle de duplicação para IA
+const aiProcessingLocks = new Map<string, { timestamp: number; promise: Promise<any> }>();
+const AI_LOCK_TIMEOUT = 30000; // 30 segundos
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-businessId, x-instanceId',
@@ -478,10 +482,54 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
       return false;
     }
 
+    // 🔒 CONTROLE DE DUPLICAÇÃO: Verificar se já está sendo processado
+    const lockKey = `${ticketId}_${messageData.content?.slice(0, 50) || 'no_content'}`;
+    const existingLock = aiProcessingLocks.get(lockKey);
+    
+    if (existingLock) {
+      const elapsed = Date.now() - existingLock.timestamp;
+      if (elapsed < AI_LOCK_TIMEOUT) {
+        console.log('⏳ [AI-TRIGGER] Mensagem já sendo processada pela IA, aguardando...');
+        try {
+          return await existingLock.promise;
+        } catch {
+          console.log('🔄 [AI-TRIGGER] Processamento anterior falhou, continuando...');
+          aiProcessingLocks.delete(lockKey);
+        }
+      } else {
+        console.log('🧹 [AI-TRIGGER] Lock da IA expirado, removendo...');
+        aiProcessingLocks.delete(lockKey);
+      }
+    }
+
     console.log(`🤖 [AI-TRIGGER] Processando com IA - Fila: ${queue.name}, Assistente: ${assistant.name}`);
 
-    // Chamar edge function de processamento de IA com timeout e retry
-    const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
+    // 🔒 CRIAR LOCK para este processamento de IA
+    const aiProcessingPromise = processAIRequest(ticketId, messageData, clientId, instanceId, assistant);
+    aiProcessingLocks.set(lockKey, { timestamp: Date.now(), promise: aiProcessingPromise });
+
+    try {
+      const aiResult = await aiProcessingPromise;
+      
+      // Limpar lock após processamento
+      aiProcessingLocks.delete(lockKey);
+      
+      return aiResult;
+    } catch (error) {
+      // Limpar lock em caso de erro
+      aiProcessingLocks.delete(lockKey);
+      throw error;
+    }
+  } catch (error) {
+    console.error('❌ [AI-TRIGGER] Erro crítico no processamento de IA:', error);
+    return false;
+  }
+}
+
+// 🤖 Função separada para o processamento real da IA
+async function processAIRequest(ticketId: string, messageData: any, clientId: string, instanceId: string, assistant: any): Promise<boolean> {
+  // Chamar edge function de processamento de IA com timeout e retry
+  const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
       body: {
         ticketId: ticketId,
         message: messageData.content,
@@ -509,15 +557,10 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
 
     console.log('✅ [AI-TRIGGER] IA processou mensagem com sucesso:', {
       hasResponse: !!aiResult?.response,
-      sentViaYumer: aiResult?.sentViaYumer
+      sentViaCodeChat: aiResult?.sentViaCodeChat
     });
 
     return true;
-
-  } catch (error) {
-    console.error('❌ [AI-TRIGGER] Erro crítico no processamento de IA:', error);
-    return false;
-  }
 }
 
 // Função utilitária para converter Uint8Array para base64
