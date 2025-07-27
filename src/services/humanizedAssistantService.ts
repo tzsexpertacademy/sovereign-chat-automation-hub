@@ -1,7 +1,7 @@
 /**
  * Serviço Unificado de Assistente Humanizado - YUMER.AI
- * Integra todos os comportamentos humanizados com Evolution API v2.2.1
- * Fase 1: Consolidação e Limpeza
+ * Integra todos os comportamentos humanizados com CodeChat v2.2.1
+ * Fase 2: Comportamentos Fundamentais - ATUALIZADO
  */
 
 import unifiedYumerService from './unifiedYumerService';
@@ -235,16 +235,14 @@ export class HumanizedAssistantService {
       
       this.addToContext(chatId, userMessage);
       
-      // 2. Marcar como lida (se habilitado)
+      // 2. Marcar como lida com delay natural (FASE 2)
       if (this.config.behavior.messageHandling.markAsRead && messageId) {
-        setTimeout(async () => {
-          await this.markAsReadWithDelay(instanceId, messageId, chatId);
-        }, this.config.behavior.messageHandling.readDelay);
+        this.scheduleMessageRead(instanceId, messageId, chatId, messageText);
       }
 
-      // 3. Definir como online
+      // 3. Definir como online usando hook real (FASE 2)
       if (this.config.behavior.presence.enabled && this.config.behavior.presence.showOnline) {
-        await this.setPresence(instanceId, chatId, 'available');
+        await this.setRealPresence(instanceId, chatId, 'available');
       }
 
       // 4. Processar com delay humanizado
@@ -345,10 +343,10 @@ export class HumanizedAssistantService {
           return { success: false, chunks: i, error: 'Cancelado pelo usuário' };
         }
 
-        // Simular typing se habilitado
+        // Simular typing real se habilitado (FASE 2)
         if (this.config.behavior.typing.enabled && this.config.behavior.presence.showTyping) {
           const typingDuration = this.calculateTypingDuration(chunk);
-          await this.simulateTyping(instanceId, chatId, typingDuration);
+          await this.simulateRealTyping(instanceId, chatId, typingDuration);
         }
 
         // Verificar cancelamento novamente
@@ -444,26 +442,42 @@ export class HumanizedAssistantService {
     return Math.floor(baseDelay + (maxDelay - baseDelay) * randomFactor);
   }
 
-  private async simulateTyping(instanceId: string, chatId: string, duration: number): Promise<void> {
+  // ===== MÉTODOS FASE 2: COMPORTAMENTOS FUNDAMENTAIS =====
+
+  private async simulateRealTyping(instanceId: string, chatId: string, duration: number): Promise<void> {
     try {
-      await this.setPresence(instanceId, chatId, 'composing');
-      console.log(`⌨️ [HUMANIZED-ASSISTANT] Simulando typing por ${duration}ms: ${chatId}`);
+      console.log(`⌨️ [HUMANIZED-ASSISTANT] Typing real por ${duration}ms: ${chatId}`);
       
+      // Usar presença real do CodeChat
+      await this.setRealPresence(instanceId, chatId, 'composing');
       await new Promise(resolve => setTimeout(resolve, duration));
+      await this.setRealPresence(instanceId, chatId, 'available');
       
-      await this.setPresence(instanceId, chatId, 'available');
     } catch (error) {
-      console.warn('⚠️ [HUMANIZED-ASSISTANT] Erro ao simular typing:', error);
+      console.warn('⚠️ [HUMANIZED-ASSISTANT] Erro no typing real:', error);
     }
   }
 
-  private async setPresence(instanceId: string, chatId: string, presence: 'available' | 'composing' | 'unavailable'): Promise<void> {
+  private async setRealPresence(instanceId: string, chatId: string, presence: 'available' | 'composing' | 'unavailable'): Promise<void> {
     try {
-      // CodeChat v2.2.1: /api/v2/instance/:instanceId/presence
       await unifiedYumerService.setPresence(instanceId, chatId, presence);
     } catch (error) {
-      console.warn('⚠️ [HUMANIZED-ASSISTANT] Erro ao definir presença:', error);
+      console.warn('⚠️ [HUMANIZED-ASSISTANT] Erro na presença real:', error);
     }
+  }
+
+  private scheduleMessageRead(instanceId: string, messageId: string, chatId: string, messageText: string): void {
+    const delay = this.config.behavior.messageHandling.readDelay + Math.random() * 1000;
+    console.log(`📖 [HUMANIZED-ASSISTANT] Agendando leitura em ${delay}ms: ${messageId}`);
+    
+    setTimeout(async () => {
+      try {
+        await unifiedYumerService.markAsRead(instanceId, messageId, chatId);
+        console.log(`✅ [HUMANIZED-ASSISTANT] Mensagem lida: ${messageId}`);
+      } catch (error) {
+        console.warn('⚠️ [HUMANIZED-ASSISTANT] Erro ao marcar como lida:', error);
+      }
+    }, delay);
   }
 
   private async markAsReadWithDelay(instanceId: string, messageId: string, chatId: string): Promise<void> {
