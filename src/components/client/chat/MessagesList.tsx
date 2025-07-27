@@ -2,12 +2,16 @@
 import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Bot, User, Mic, Image as ImageIcon } from 'lucide-react';
+import { Bot, User, Mic, Image as ImageIcon, Video, FileText } from 'lucide-react';
 import MessageStatus from '../MessageStatus';
 import AudioPlayer from '../AudioPlayer';
 import ImageViewer from '../ImageViewer';
+import VideoViewer from '../VideoViewer';
+import DocumentViewer from '../DocumentViewer';
 import { whatsappAudioService } from '@/services/whatsappAudioService';
 import { whatsappImageService } from '@/services/whatsappImageService';
+import { whatsappVideoService } from '@/services/whatsappVideoService';
+import { whatsappDocumentService } from '@/services/whatsappDocumentService';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 
 interface MessagesListProps {
@@ -111,6 +115,73 @@ const renderMessageContent = (message: any) => {
           caption={message.content}
           fileName={`image_${message.message_id || message.id}.jpg`}
         />
+      );
+    }
+
+    // Renderizar vídeo
+    if (message.message_type === 'video') {
+      const videoDisplayData = whatsappVideoService.getVideoDisplayData(message);
+      
+      console.log('🎥 MessagesList: Renderizando vídeo:', {
+        messageId: message.message_id,
+        hasVideoUrl: !!videoDisplayData.videoUrl,
+        needsDecryption: videoDisplayData.needsDecryption,
+        error: videoDisplayData.error
+      });
+
+      return (
+        <div className="space-y-2 max-w-md">
+          <VideoViewer
+            videoUrl={videoDisplayData.videoUrl}
+            messageId={message.message_id || message.id}
+            mediaKey={message.media_key}
+            fileEncSha256={message.file_enc_sha256}
+            needsDecryption={videoDisplayData.needsDecryption}
+            caption={message.content}
+            fileName={`video_${message.message_id || message.id}.mp4`}
+          />
+          
+          <div className="flex items-center gap-2 text-xs text-gray-600">
+            <Video className="w-3 h-3" />
+            <span>Vídeo</span>
+            {message.media_duration && (
+              <span>• {message.media_duration}s</span>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Renderizar documento
+    if (message.message_type === 'document') {
+      const documentDisplayData = whatsappDocumentService.getDocumentDisplayData(message);
+      
+      console.log('📄 MessagesList: Renderizando documento:', {
+        messageId: message.message_id,
+        hasDocumentUrl: !!documentDisplayData.documentUrl,
+        needsDecryption: documentDisplayData.needsDecryption,
+        fileName: documentDisplayData.fileName,
+        error: documentDisplayData.error
+      });
+
+      return (
+        <div className="space-y-2 max-w-sm">
+          <DocumentViewer
+            documentUrl={documentDisplayData.documentUrl}
+            messageId={message.message_id || message.id}
+            mediaKey={message.media_key}
+            fileEncSha256={message.file_enc_sha256}
+            needsDecryption={documentDisplayData.needsDecryption}
+            caption={message.content}
+            fileName={documentDisplayData.fileName || `document_${message.message_id || message.id}`}
+            fileType={documentDisplayData.fileType}
+          />
+          
+          <div className="flex items-center gap-2 text-xs text-gray-600">
+            <FileText className="w-3 h-3" />
+            <span>Documento</span>
+          </div>
+        </div>
       );
     }
 
