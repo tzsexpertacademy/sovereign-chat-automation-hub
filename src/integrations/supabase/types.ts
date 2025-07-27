@@ -841,6 +841,33 @@ export type Database = {
         }
         Relationships: []
       }
+      decrypted_document_cache: {
+        Row: {
+          created_at: string
+          decrypted_data: string
+          document_format: string
+          expires_at: string
+          id: string
+          message_id: string
+        }
+        Insert: {
+          created_at?: string
+          decrypted_data: string
+          document_format?: string
+          expires_at: string
+          id?: string
+          message_id: string
+        }
+        Update: {
+          created_at?: string
+          decrypted_data?: string
+          document_format?: string
+          expires_at?: string
+          id?: string
+          message_id?: string
+        }
+        Relationships: []
+      }
       decrypted_image_cache: {
         Row: {
           created_at: string
@@ -868,6 +895,33 @@ export type Database = {
           image_format?: string
           message_id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      decrypted_video_cache: {
+        Row: {
+          created_at: string
+          decrypted_data: string
+          expires_at: string
+          id: string
+          message_id: string
+          video_format: string
+        }
+        Insert: {
+          created_at?: string
+          decrypted_data: string
+          expires_at: string
+          id?: string
+          message_id: string
+          video_format?: string
+        }
+        Update: {
+          created_at?: string
+          decrypted_data?: string
+          expires_at?: string
+          id?: string
+          message_id?: string
+          video_format?: string
         }
         Relationships: []
       }
@@ -1989,7 +2043,15 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      cleanup_expired_decrypted_documents: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       cleanup_expired_decrypted_images: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      cleanup_expired_decrypted_videos: {
         Args: Record<PropertyKey, never>
         Returns: number
       }
@@ -2004,11 +2066,25 @@ export type Database = {
           audio_format: string
         }[]
       }
+      get_decrypted_document: {
+        Args: { p_message_id: string }
+        Returns: {
+          decrypted_data: string
+          document_format: string
+        }[]
+      }
       get_decrypted_image: {
         Args: { p_message_id: string }
         Returns: {
           decrypted_data: string
           image_format: string
+        }[]
+      }
+      get_decrypted_video: {
+        Args: { p_message_id: string }
+        Returns: {
+          decrypted_data: string
+          video_format: string
         }[]
       }
       get_max_instances_for_plan: {
