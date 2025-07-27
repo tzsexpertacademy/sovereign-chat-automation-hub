@@ -33,6 +33,8 @@ import { whatsappInstancesService, WhatsAppInstanceData } from "@/services/whats
 import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 import { useRealTimeInstanceSync } from "@/hooks/useRealTimeInstanceSync";
 import clientYumerService from "@/services/clientYumerService";
+import { useAutoQueueConnection } from "@/hooks/useAutoQueueConnection";
+import { humanizedMessageProcessor } from "@/services/humanizedMessageProcessor";
 
 const WhatsAppConnectionManagerV2 = () => {
   const { clientId } = useParams();
@@ -56,6 +58,13 @@ const WhatsAppConnectionManagerV2 = () => {
     refreshStatus,
     serverOnline
   } = useUnifiedInstanceManager(instances);
+
+  // Hook para conexão automática de filas
+  const { 
+    connectInstanceToAvailableQueue, 
+    checkAndCreateAutoConnections,
+    isConnecting: isAutoConnecting 
+  } = useAutoQueueConnection();
 
   // Sincronização em tempo real
   const { startSync, stopSync, manualSync } = useRealTimeInstanceSync({
@@ -89,6 +98,22 @@ const WhatsAppConnectionManagerV2 = () => {
     startSync();
     return () => stopSync();
   }, [startSync, stopSync]);
+
+  useEffect(() => {
+    // Verificar e criar conexões automáticas quando carregar dados
+    if (clientId && instances.length > 0) {
+      const delay = setTimeout(() => {
+        checkAndCreateAutoConnections(clientId);
+        
+        // Inicializar processador humanizado automaticamente
+        if (!humanizedMessageProcessor.getStatus().isInitialized) {
+          humanizedMessageProcessor.initialize(clientId);
+        }
+      }, 2000); // Aguardar 2s para dar tempo das instâncias serem carregadas
+      
+      return () => clearTimeout(delay);
+    }
+  }, [clientId, instances.length, checkAndCreateAutoConnections]);
 
   const loadData = async () => {
     if (!clientId) return;

@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import RealTimeMetricsCard from "./RealTimeMetricsCard";
+import AIAutoProcessorStatus from "./AIAutoProcessorStatus";
 import { 
   Users, 
   MessageSquare, 
@@ -248,6 +249,9 @@ const ClientDashboardOverview = ({ clientId }: ClientDashboardOverviewProps) => 
           icon={Send}
         />
       </div>
+
+      {/* Status do Processador de IA Automático */}
+      <AIAutoProcessorStatus clientId={clientId} />
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

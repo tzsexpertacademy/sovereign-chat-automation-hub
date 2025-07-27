@@ -311,6 +311,9 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
       console.log('🤖 [AI-TRIGGER] Mensagem recebida (não enviada) - verificando se deve processar com IA');
       
       try {
+        // Primeiro garantir que a instância está conectada a uma fila
+        await ensureInstanceQueueConnection(instance.id, instance.client_id);
+        
         const aiResult = await processWithAIIfEnabled(ticketId, processedMessage, instance.client_id, instance.instance_id);
         console.log('🤖 [AI-TRIGGER] Resultado do processamento de IA:', aiResult ? 'sucesso' : 'não processado');
       } catch (aiError) {
@@ -349,6 +352,71 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
+  }
+}
+
+// 🔧 FUNÇÃO NOVA: Garantir conexão instância-fila 
+async function ensureInstanceQueueConnection(instanceUuid: string, clientId: string): Promise<void> {
+  try {
+    console.log('🔧 [AUTO-CONNECT] Verificando conexão instância-fila para:', instanceUuid);
+    
+    // Verificar se já existe conexão ativa
+    const { data: existingConnection } = await supabase
+      .from('instance_queue_connections')
+      .select('id')
+      .eq('instance_id', instanceUuid)
+      .eq('is_active', true)
+      .single();
+    
+    if (existingConnection) {
+      console.log('✅ [AUTO-CONNECT] Instância já conectada a uma fila');
+      return;
+    }
+    
+    // Buscar fila ativa do cliente com assistente ativo
+    const { data: availableQueue } = await supabase
+      .from('queues')
+      .select(`
+        id,
+        name,
+        assistants:assistant_id (
+          id,
+          is_active
+        )
+      `)
+      .eq('client_id', clientId)
+      .eq('is_active', true)
+      .not('assistant_id', 'is', null)
+      .single();
+    
+    if (!availableQueue) {
+      console.log('⚠️ [AUTO-CONNECT] Nenhuma fila ativa com assistente encontrada para o cliente');
+      return;
+    }
+    
+    if (!availableQueue.assistants?.is_active) {
+      console.log('⚠️ [AUTO-CONNECT] Assistente da fila não está ativo');
+      return;
+    }
+    
+    // Criar conexão automática
+    const { error: connectionError } = await supabase
+      .from('instance_queue_connections')
+      .insert({
+        instance_id: instanceUuid,
+        queue_id: availableQueue.id,
+        is_active: true
+      });
+    
+    if (connectionError) {
+      console.error('❌ [AUTO-CONNECT] Erro ao criar conexão:', connectionError);
+      return;
+    }
+    
+    console.log(`✅ [AUTO-CONNECT] Instância conectada automaticamente à fila: ${availableQueue.name}`);
+    
+  } catch (error) {
+    console.error('❌ [AUTO-CONNECT] Erro na conexão automática:', error);
   }
 }
 
