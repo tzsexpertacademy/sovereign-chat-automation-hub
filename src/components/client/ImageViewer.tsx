@@ -72,8 +72,9 @@ const ImageViewer = ({
             console.log('✅ ImageViewer: Descriptografia bem-sucedida');
             setDisplayImageUrl(decryptedUrl);
           } else {
-            console.log('❌ ImageViewer: Falha na descriptografia');
-            setError('Não foi possível descriptografar a imagem');
+            console.log('❌ ImageViewer: Falha na descriptografia, tentando URL direta');
+            // Fallback: tentar URL original
+            setDisplayImageUrl(imageUrl);
           }
           setIsDecrypting(false);
           return;

@@ -36,29 +36,28 @@ class WhatsAppImageService {
       return { needsDecryption: false, isLoading: false };
     }
 
-    const hasDirectUrl = message.media_url && !message.media_url.includes('.enc');
-    const hasEncryptedUrl = message.media_url?.includes('.enc');
+    const hasMediaUrl = !!message.media_url;
     const hasDecryptionKeys = !!(message.media_key && message.file_enc_sha256);
     
     console.log('🖼️ [IMAGE-SERVICE] Analisando imagem:', {
       messageId: message.message_id,
-      hasDirectUrl,
-      hasEncryptedUrl,
+      hasMediaUrl,
       hasDecryptionKeys,
+      mediaKey: message.media_key ? 'presente' : 'ausente',
+      fileEncSha256: message.file_enc_sha256 ? 'presente' : 'ausente',
       url: message.media_url?.substring(0, 100) + '...'
     });
 
-    // 1. Imagem com URL direta (não criptografada)
-    if (hasDirectUrl) {
+    if (!hasMediaUrl) {
       return {
-        imageUrl: message.media_url,
         needsDecryption: false,
-        isLoading: false
+        isLoading: false,
+        error: 'URL da imagem não encontrada'
       };
     }
 
-    // 2. Imagem criptografada com chaves
-    if (hasEncryptedUrl && hasDecryptionKeys) {
+    // 1. Imagem criptografada (tem chaves de descriptografia)
+    if (hasDecryptionKeys) {
       return {
         imageUrl: message.media_url,
         messageId: message.message_id || message.id,
@@ -69,20 +68,11 @@ class WhatsAppImageService {
       };
     }
 
-    // 3. Erro: imagem criptografada sem chaves
-    if (hasEncryptedUrl && !hasDecryptionKeys) {
-      return {
-        needsDecryption: false,
-        isLoading: false,
-        error: 'Imagem criptografada sem chaves de descriptografia'
-      };
-    }
-
-    // 4. Erro: sem dados de imagem
+    // 2. Imagem com URL direta (sem chaves = não criptografada)
     return {
+      imageUrl: message.media_url,
       needsDecryption: false,
-      isLoading: false,
-      error: 'Nenhum dado de imagem disponível'
+      isLoading: false
     };
   }
 
@@ -160,7 +150,6 @@ class WhatsAppImageService {
   needsDecryption(message: any): boolean {
     return !!(
       message.message_type === 'image' && 
-      message.media_url?.includes('.enc') &&
       message.media_key &&
       message.file_enc_sha256
     );
