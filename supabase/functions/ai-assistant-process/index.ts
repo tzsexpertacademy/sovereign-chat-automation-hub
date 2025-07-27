@@ -208,65 +208,83 @@ Instruções importantes:
   }
 });
 
-// 📤 Função para enviar resposta via YUMER API
+// 📤 Função para enviar resposta via EVOLUTION API v2.2.1
 async function sendResponseViaYumer(instanceId: string, chatId: string, message: string): Promise<{ success: boolean; error?: string }> {
   try {
-    console.log('📤 [YUMER-SEND] Enviando resposta via YUMER API:', {
+    console.log('📤 [EVOLUTION-SEND] Enviando resposta via Evolution API v2.2.1:', {
       instanceId,
       chatId,
       messageLength: message.length
     });
 
-    // Buscar token de autenticação da instância
+    // Buscar business_token da instância via cliente
     const { data: instanceData } = await supabase
       .from('whatsapp_instances')
-      .select('auth_token, yumer_instance_name')
+      .select(`
+        instance_id,
+        client_id,
+        clients:client_id (
+          business_token
+        )
+      `)
       .eq('instance_id', instanceId)
       .single();
 
-    if (!instanceData?.auth_token) {
-      console.error('❌ [YUMER-SEND] Token de autenticação não encontrado para instância:', instanceId);
-      return { success: false, error: 'Auth token not found' };
+    if (!instanceData?.clients?.business_token) {
+      console.error('❌ [EVOLUTION-SEND] Business token não encontrado para instância:', instanceId);
+      return { success: false, error: 'Business token not found' };
     }
 
-    const yumerInstanceName = instanceData.yumer_instance_name || instanceId;
-    console.log('🔧 [YUMER-SEND] Usando instância YUMER:', yumerInstanceName);
+    const businessToken = instanceData.clients.business_token;
+    console.log('🔧 [EVOLUTION-SEND] Usando Evolution API v2.2.1 para instância:', instanceId);
 
-    // Chamar API YUMER para enviar mensagem
-    const yumerResponse = await fetch(`https://yumer.yumerflow.app:8083/message/sendText/${yumerInstanceName}`, {
+    // Preparar dados para Evolution API v2.2.1
+    const evolutionData = {
+      recipient: chatId,
+      textMessage: {
+        text: message
+      },
+      options: {
+        delay: 1200,
+        presence: 'composing'
+      }
+    };
+
+    console.log('📋 [EVOLUTION-SEND] Dados para Evolution API:', evolutionData);
+
+    // Chamar Evolution API v2.2.1 para enviar mensagem
+    const evolutionResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${instanceData.auth_token}`,
+        'Authorization': `Bearer ${businessToken}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        number: chatId,
-        options: {
-          delay: 1200,
-          presence: 'composing'
-        },
-        textMessage: {
-          text: message
-        }
-      })
+      body: JSON.stringify(evolutionData)
     });
 
-    if (!yumerResponse.ok) {
-      const errorText = await yumerResponse.text();
-      console.error('❌ [YUMER-SEND] Erro ao enviar via YUMER:', yumerResponse.status, yumerResponse.statusText, errorText);
-      return { success: false, error: `HTTP ${yumerResponse.status}: ${errorText}` };
+    if (!evolutionResponse.ok) {
+      const errorText = await evolutionResponse.text();
+      console.error('❌ [EVOLUTION-SEND] Erro ao enviar via Evolution API:', {
+        status: evolutionResponse.status,
+        statusText: evolutionResponse.statusText,
+        error: errorText,
+        instanceId,
+        url: `https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`
+      });
+      return { success: false, error: `HTTP ${evolutionResponse.status}: ${errorText}` };
     }
 
-    const result = await yumerResponse.json();
-    console.log('✅ [YUMER-SEND] Mensagem enviada com sucesso via YUMER:', {
-      messageId: result.keyId,
-      chatId: chatId
+    const result = await evolutionResponse.json();
+    console.log('✅ [EVOLUTION-SEND] Mensagem enviada com sucesso via Evolution API v2.2.1:', {
+      messageId: result.key?.id,
+      chatId: chatId,
+      response: result
     });
 
     return { success: true };
 
   } catch (error) {
-    console.error('❌ [YUMER-SEND] Erro ao enviar via YUMER:', error);
+    console.error('❌ [EVOLUTION-SEND] Erro ao enviar via Evolution API:', error);
     return { success: false, error: error.message };
   }
 }
