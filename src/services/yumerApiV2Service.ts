@@ -174,11 +174,18 @@ class YumerApiV2Service {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     
+    // Detectar se o body é FormData para não definir Content-Type
+    const isFormData = options.body instanceof FormData;
+    
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
       ...options.headers,
     };
+
+    // Só definir Content-Type e Accept para requisições que não são FormData
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+      headers['Accept'] = 'application/json';
+    }
 
     // AUTENTICAÇÃO CORRIGIDA - API v2.2.1 COM BUSINESS TOKEN
     if (useInstanceAuth && instanceName) {
