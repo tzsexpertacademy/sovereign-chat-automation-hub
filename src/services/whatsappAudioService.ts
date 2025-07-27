@@ -50,6 +50,7 @@ class WhatsAppAudioService {
       const { data, error } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
         body: {
           encryptedData: audioData.encryptedData,
+          mediaUrl: audioData.audioUrl, // Incluir URL para casos onde não há encryptedData
           mediaKey: audioData.mediaKey,
           fileEncSha256: audioData.fileEncSha256,
           messageId: audioData.messageId
@@ -237,7 +238,19 @@ class WhatsAppAudioService {
   hasEncryptedAudio(message: any): boolean {
     return !!(
       message.message_type === 'audio' && 
-      (message.media_key || message.audio_base64)
+      (message.media_key || message.audio_base64 || message.media_url)
+    );
+  }
+
+  /**
+   * Detecta se mensagem de áudio precisa de descriptografia
+   */
+  needsDecryption(message: any): boolean {
+    return !!(
+      message.message_type === 'audio' && 
+      message.media_url?.includes('.enc') &&
+      message.media_key &&
+      message.file_enc_sha256
     );
   }
 
@@ -256,6 +269,31 @@ class WhatsAppAudioService {
       fileEncSha256: message.file_enc_sha256,
       directPath: message.direct_path,
       audioUrl: message.media_url
+    };
+  }
+
+  /**
+   * Obtém dados de áudio seguros para reprodução
+   */
+  getAudioPlaybackData(message: any): {
+    audioData?: string;
+    audioUrl?: string;
+    messageId?: string;
+    mediaKey?: string;
+    fileEncSha256?: string;
+    needsDecryption: boolean;
+  } {
+    if (message.message_type !== 'audio') {
+      return { needsDecryption: false };
+    }
+
+    return {
+      audioData: message.audio_base64,
+      audioUrl: message.media_url,
+      messageId: message.message_id || message.id,
+      mediaKey: message.media_key,
+      fileEncSha256: message.file_enc_sha256,
+      needsDecryption: this.needsDecryption(message)
     };
   }
 }

@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot, User, Mic } from 'lucide-react';
 import MessageStatus from '../MessageStatus';
 import AudioPlayer from '../AudioPlayer';
+import { whatsappAudioService } from '@/services/whatsappAudioService';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 
 interface MessagesListProps {
@@ -16,17 +17,27 @@ interface MessagesListProps {
 const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesListProps) => {
 const renderMessageContent = (message: any) => {
     if (message.message_type === 'audio') {
+      // Usar o novo sistema de dados de áudio
+      const audioPlaybackData = whatsappAudioService.getAudioPlaybackData(message);
+      
+      console.log('🎵 MessagesList: Renderizando áudio:', {
+        messageId: message.message_id,
+        hasAudioData: !!audioPlaybackData.audioData,
+        hasAudioUrl: !!audioPlaybackData.audioUrl,
+        needsDecryption: audioPlaybackData.needsDecryption
+      });
+
       return (
         <div className="space-y-3 max-w-sm">
-          {/* Player de áudio híbrido - URL + Base64 */}
+          {/* Player de áudio inteligente com fallbacks */}
           <AudioPlayer 
-            audioUrl={message.media_url}
-            audioData={message.audio_base64}
+            audioUrl={audioPlaybackData.audioUrl}
+            audioData={audioPlaybackData.audioData}
             duration={message.media_duration}
             fileName={`audio_${message.message_id || message.id}.ogg`}
-            messageId={message.message_id}
-            mediaKey={message.media_key}
-            fileEncSha256={message.file_enc_sha256}
+            messageId={audioPlaybackData.messageId}
+            mediaKey={audioPlaybackData.mediaKey}
+            fileEncSha256={audioPlaybackData.fileEncSha256}
           />
           
           {/* Informações do áudio */}

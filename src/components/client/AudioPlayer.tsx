@@ -162,7 +162,7 @@ const AudioPlayer = ({
       });
 
       try {
-        // Prioritar dados base64 descriptografados
+        // 1. PRIORIDADE: Dados base64 já descriptografados
         if (audioData && !audioUrl?.includes('.enc')) {
           console.log('✅ Player: Usando dados base64 descriptografados');
           const sources = createAudioSources(audioData);
@@ -170,7 +170,7 @@ const AudioPlayer = ({
           return;
         }
 
-        // Se é áudio criptografado (.enc), tentar descriptografar
+        // 2. Áudio criptografado (.enc) com chaves de descriptografia
         if (audioUrl?.includes('.enc') && messageId && mediaKey) {
           console.log('🔐 Player: Detectado áudio criptografado, iniciando descriptografia');
           setIsDecrypting(true);
@@ -192,26 +192,33 @@ const AudioPlayer = ({
           setIsDecrypting(false);
         }
 
-        // Se não há dados válidos
+        // 3. FALLBACK INTELIGENTE: URLs diretas (áudios enviados do frontend)
+        if (audioUrl && !audioUrl.includes('.enc')) {
+          console.log('🔄 Player: Usando URL direta (áudio do frontend)');
+          setAudioSrc(audioUrl);
+          return;
+        }
+
+        // 4. Áudio base64 sem descriptografia (raro mas possível)
+        if (audioData) {
+          console.log('🔄 Player: Usando dados base64 diretos');
+          const sources = createAudioSources(audioData);
+          setAudioSrc(sources[0]);
+          return;
+        }
+
+        // 5. Erros específicos para diagnóstico
         if (!audioData && !audioUrl) {
           setError('Nenhum dado de áudio disponível');
           return;
         }
 
-        // Fallback para URL direta (casos raros onde pode funcionar)
-        if (audioUrl && !audioUrl.includes('.enc')) {
-          console.log('🔄 Player: Usando URL direta');
-          setAudioSrc(audioUrl);
-          return;
-        }
-
-        // Se chegou aqui e há URL enc sem chaves de descriptografia
         if (audioUrl?.includes('.enc') && (!messageId || !mediaKey)) {
           setError('Áudio criptografado sem chaves de descriptografia');
           return;
         }
 
-        setError('Não foi possível processar o áudio');
+        setError('Formato de áudio não suportado');
         
       } catch (error) {
         console.error('❌ Player: Erro na inicialização:', error);

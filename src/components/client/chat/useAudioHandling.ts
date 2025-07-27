@@ -70,7 +70,7 @@ export const useAudioHandling = (ticketId: string) => {
       );
 
       if (result.success) {
-        // Salvar base64 para histórico
+        // Salvar dados do áudio para reprodução
         try {
           const base64Audio = await AudioConverter.blobToBase64(audioBlob);
           await supabase
@@ -78,7 +78,12 @@ export const useAudioHandling = (ticketId: string) => {
             .update({ 
               processing_status: 'completed',
               content: `🎵 ${result.message} (${duration}s)`,
-              audio_base64: base64Audio
+              audio_base64: base64Audio,
+              // Para áudios enviados do frontend, salvamos apenas o base64
+              // pois não precisam de descriptografia
+              media_url: null, // URLs diretas serão tratadas como fallback
+              media_key: null, // Não há criptografia para áudios do frontend
+              file_enc_sha256: null
             })
             .eq('message_id', messageId);
         } catch (dbError) {
