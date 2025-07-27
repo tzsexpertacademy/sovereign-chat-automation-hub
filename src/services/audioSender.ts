@@ -1,5 +1,5 @@
 
-import { SERVER_URL } from '@/config/environment';
+import { yumerApiV2 } from '@/services/yumerApiV2Service';
 import { AudioConverter } from '@/utils/audioConverter';
 
 export interface AudioSendResult {
@@ -12,158 +12,119 @@ export interface AudioSendResult {
 }
 
 export class AudioSender {
-  private static readonly RETRY_FORMATS = [
-    { mimeType: 'audio/ogg', extension: 'ogg', description: 'OGG (Formato primário)' },
-    { mimeType: 'audio/wav', extension: 'wav', description: 'WAV (Fallback 1)' },
-    { mimeType: 'audio/mpeg', extension: 'mp3', description: 'MP3 (Fallback 2)' }
-  ];
-
   static async sendWithIntelligentRetry(
     audioBlob: Blob,
     chatId: string,
-    connectedInstance: string,
+    instanceId: string,
     messageId: string
   ): Promise<AudioSendResult> {
-    console.log('🎵 ===== INICIANDO ENVIO COM RETRY INTELIGENTE =====');
-    console.log('🔧 Sistema corrigido: whatsapp-web.js v1.21.0');
-    console.log('🎯 Correção: Erro "Evaluation failed" eliminado');
-    
-    // Converter para formato otimizado (OGG por padrão)
-    let processedBlob: Blob;
-    try {
-      processedBlob = await AudioConverter.convertToOGG(audioBlob);
-    } catch (error) {
-      console.warn('⚠️ Falha na conversão, usando áudio original:', error);
-      processedBlob = audioBlob;
-    }
+    console.log('🎵 ===== INICIANDO ENVIO VIA YUMER API V2 =====');
+    console.log('🔧 Sistema corrigido: usando API oficial Yumer v2.2.1');
+    console.log('📊 Dados do áudio:', {
+      size: audioBlob.size,
+      type: audioBlob.type,
+      chatId,
+      instanceId
+    });
 
-    try {
-      console.log('📤 Enviando para servidor com sistema de retry...');
-      
-      const result = await this.sendToServerWithRetry(
-        processedBlob,
-        chatId,
-        connectedInstance,
-        messageId
-      );
-      
-      if (result.success) {
-        console.log(`✅ Sucesso no envio de áudio:`, result);
-        return result;
-      } else {
-        console.error('❌ Falha no envio após todas as tentativas:', result);
-        return result;
-      }
-      
-    } catch (error: any) {
-      console.error('💥 Erro crítico no envio:', error);
-      return { 
-        success: false, 
-        error: `Erro crítico: ${error.message}`,
-        attempts: 0
-      };
-    }
-  }
+    let attempts = 0;
+    const maxAttempts = 3;
 
-  private static async sendToServerWithRetry(
-    audioBlob: Blob,
-    chatId: string,
-    connectedInstance: string,
-    messageId: string
-  ): Promise<AudioSendResult> {
-    try {
-      // Converter para base64
-      const base64Audio = await AudioConverter.blobToBase64(audioBlob);
-      
-      // Preparar dados para o servidor
-      const requestData = {
-        to: chatId,
-        audioData: base64Audio,
-        fileName: `audio_${messageId}.ogg`,
-        mimeType: 'audio/ogg'
-      };
+    // Estratégia 1: Tentar com sendMedia usando base64
+    while (attempts < maxAttempts) {
+      attempts++;
+      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: sendMedia com base64`);
 
-      console.log('📊 Dados preparados para envio:', {
-        to: chatId,
-        audioSize: audioBlob.size,
-        base64Length: base64Audio.length,
-        fileName: requestData.fileName
-      });
+      try {
+        // Converter para base64
+        const base64Audio = await AudioConverter.blobToBase64(audioBlob);
+        
+        // Usar sendMedia para áudio com base64
+        const response = await yumerApiV2.sendMedia(instanceId, {
+          number: chatId,
+          media: {
+            mediatype: 'audio',
+            media: base64Audio, // Base64 diretamente
+            filename: `audio_${messageId}.ogg`,
+            caption: ''
+          },
+          options: {
+            presence: 'recording',
+            messageId: messageId
+          }
+        });
 
-      // Enviar com timeout otimizado
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout (servidor faz 3 tentativas)
-
-      const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/send-audio`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestData),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Resposta HTTP não OK:', response.status, errorText);
-        return { 
-          success: false, 
-          error: `HTTP ${response.status}: ${errorText}` 
-        };
-      }
-
-      const result = await response.json();
-      
-      console.log('📥 Resposta do servidor:', result);
-      
-      if (result.success) {
+        console.log('✅ Sucesso via sendMedia:', response);
+        
         return {
           success: true,
-          format: result.details?.format || 'ogg',
-          attempts: result.details?.attempts || 1,
-          isFallback: result.details?.isFallback || false,
-          message: result.message || 'Áudio enviado com sucesso'
+          format: 'ogg',
+          attempts,
+          message: 'Áudio enviado via sendMedia',
+          isFallback: false
         };
-      } else {
-        return {
-          success: false,
-          error: result.error || 'Erro desconhecido do servidor',
-          attempts: result.details?.attempts || 0
-        };
+
+      } catch (error: any) {
+        console.warn(`⚠️ Tentativa ${attempts} falhou (sendMedia):`, error.message);
+        
+        if (attempts === maxAttempts) {
+          console.error('❌ Todas as tentativas falharam');
+          return {
+            success: false,
+            error: `Falha após ${attempts} tentativas: ${error.message}`,
+            attempts
+          };
+        }
+        
+        // Aguardar antes da próxima tentativa
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
       }
+    }
+
+    return {
+      success: false,
+      error: 'Máximo de tentativas excedido',
+      attempts
+    };
+  }
+
+  // Método alternativo usando sendWhatsAppAudio (requer URL)
+  static async sendViaWhatsAppAudio(
+    audioUrl: string,
+    chatId: string,
+    instanceId: string,
+    messageId: string
+  ): Promise<AudioSendResult> {
+    try {
+      console.log('🎵 Enviando via sendWhatsAppAudio:', { audioUrl, chatId, instanceId });
+      
+      const response = await yumerApiV2.sendWhatsAppAudio(instanceId, chatId, audioUrl, {
+        messageId: messageId
+      });
+
+      console.log('✅ Sucesso via sendWhatsAppAudio:', response);
+      
+      return {
+        success: true,
+        format: 'ogg',
+        attempts: 1,
+        message: 'Áudio enviado via sendWhatsAppAudio',
+        isFallback: false
+      };
 
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        return { 
-          success: false, 
-          error: 'Timeout no envio (servidor fazendo múltiplas tentativas)',
-          attempts: 3
-        };
-      }
-      
-      console.error('💥 Erro na requisição:', error);
-      return { 
-        success: false, 
-        error: `Erro de rede: ${error.message}`,
-        attempts: 0
+      console.error('❌ Erro via sendWhatsAppAudio:', error);
+      return {
+        success: false,
+        error: error.message || 'Erro desconhecido',
+        attempts: 1
       };
     }
   }
 
-  // Método para obter estatísticas do servidor
-  static async getAudioStats(connectedInstance: string): Promise<any> {
-    try {
-      const response = await fetch(`${SERVER_URL}/api/clients/${connectedInstance}/audio-stats`);
-      
-      if (response.ok) {
-        return await response.json();
-      } else {
-        console.warn('⚠️ Não foi possível obter estatísticas de áudio');
-        return null;
-      }
-    } catch (error) {
-      console.error('❌ Erro ao obter estatísticas:', error);
-      return null;
-    }
+  // Método mantido por compatibilidade (agora sem funcionalidade)
+  static async getAudioStats(instanceId: string): Promise<any> {
+    console.warn('⚠️ getAudioStats: Método descontinuado com Yumer API v2');
+    return null;
   }
 }

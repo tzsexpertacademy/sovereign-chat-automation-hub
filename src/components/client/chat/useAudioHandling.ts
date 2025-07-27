@@ -27,13 +27,15 @@ export const useAudioHandling = (ticketId: string) => {
     const messageId = `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
-      console.log('🎵 ===== PROCESSANDO ÁUDIO (SISTEMA CORRIGIDO) =====');
-      console.log('🔧 Correção: whatsapp-web.js v1.21.0 - Erro "Evaluation failed" eliminado');
+      console.log('🎵 ===== PROCESSANDO ÁUDIO (YUMER API V2) =====');
+      console.log('🔧 Sistema corrigido: usando API oficial Yumer v2.2.1');
       console.log('📊 Dados do áudio:', {
         size: audioBlob.size,
         type: audioBlob.type,
         duration,
-        sizeInKB: Math.round(audioBlob.size / 1024)
+        sizeInKB: Math.round(audioBlob.size / 1024),
+        chatId: ticket.chat_id,
+        instanceId: connectedInstance
       });
 
       // Iniciar indicadores visuais
@@ -56,10 +58,10 @@ export const useAudioHandling = (ticketId: string) => {
       // Toast de início
       toast({
         title: "Enviando áudio 🎵",
-        description: `Sistema corrigido com retry inteligente (${duration}s)`,
+        description: `Via Yumer API v2.2.1 (${duration}s)`,
       });
 
-      // Usar novo sistema de envio com retry inteligente
+      // Usar sistema corrigido com Yumer API v2
       const result = await AudioSender.sendWithIntelligentRetry(
         audioBlob,
         ticket.chat_id,
@@ -93,15 +95,13 @@ export const useAudioHandling = (ticketId: string) => {
           description: successMessage,
         });
 
-        // Obter estatísticas se disponível
-        try {
-          const stats = await AudioSender.getAudioStats(connectedInstance);
-          if (stats && stats.success) {
-            console.log('📊 Estatísticas de áudio:', stats);
-          }
-        } catch (statsError) {
-          console.warn('⚠️ Não foi possível obter estatísticas:', statsError);
-        }
+        // Log de sucesso detalhado
+        console.log('📊 Áudio enviado com sucesso via Yumer API v2:', {
+          format: result.format,
+          attempts: result.attempts,
+          messageId,
+          duration
+        });
 
       } else {
         // Marcar como falha
