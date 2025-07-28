@@ -13,6 +13,7 @@ import { whatsappImageService } from '@/services/whatsappImageService';
 import { whatsappVideoService } from '@/services/whatsappVideoService';
 import { whatsappDocumentService } from '@/services/whatsappDocumentService';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
+import { useRealTimePresence } from '@/hooks/useRealTimePresence';
 
 interface MessagesListProps {
   messages: any[];

@@ -37,7 +37,7 @@ interface MessageBatch {
 
 // Sistema de batching global para múltiplas mensagens
 const messageBatches = new Map<string, MessageBatch>();
-const BATCH_TIMEOUT = 4000; // 4 segundos para agrupar mensagens
+const BATCH_TIMEOUT = 2000; // 2 segundos para agrupar mensagens
 
 serve(async (req) => {
   console.log('🌐 [YUMER-UNIFIED-WEBHOOK] Recebendo requisição:', req.method, req.url);
@@ -280,38 +280,42 @@ async function processBatch(batchKey: string) {
 
   try {
     // Processar mensagens individualmente para salvar no banco
-    const processedMessages = [];
     let lastTicketId = null;
+    let instanceDetails = null;
 
     for (const yumerData of batch.messages) {
       try {
-        const result = await processYumerMessage(yumerData, false); // false = não processar IA ainda
-        if (result.ticketId) {
+        const result = await processYumerMessage(yumerData);
+        if (result?.ticketId) {
           lastTicketId = result.ticketId;
         }
-        processedMessages.push(result.processedMessage);
+        if (!instanceDetails && yumerData.instance) {
+          instanceDetails = yumerData.instance;
+        }
       } catch (error) {
         console.error('❌ [BATCH] Erro ao processar mensagem individual:', error);
       }
     }
 
-    // Processar com IA apenas uma vez para todas as mensagens do batch
-    if (lastTicketId && processedMessages.length > 0) {
-      console.log(`🤖 [BATCH] Processando batch com IA. Ticket: ${lastTicketId}`);
+    // Processar com IA apenas uma vez para todo o batch
+    if (lastTicketId && instanceDetails) {
+      console.log(`🤖 [BATCH] Processando ${batch.messages.length} mensagens como contexto único com IA`);
       
-      // Combinar todas as mensagens do usuário em um contexto
-      const combinedMessage = processedMessages
-        .filter(msg => !msg.fromMe)
-        .map(msg => msg.content)
-        .join('\n\n');
-
-      if (combinedMessage.trim()) {
-        await processWithAIIfEnabled(lastTicketId, {
-          content: combinedMessage,
-          chatId: batch.chatId,
-          contactName: processedMessages[0]?.contactName || 'Usuário',
-          phoneNumber: processedMessages[0]?.phoneNumber || ''
-        }, batch.clientId, batch.instanceId);
+      // Extrair dados da última mensagem para contexto
+      const lastMessage = batch.messages[batch.messages.length - 1];
+      const messageData = extractYumerMessageData(lastMessage.data, {
+        instance_id: batch.instanceId,
+        client_id: batch.clientId
+      });
+      
+      if (messageData) {
+        await processWithAIIfEnabled(
+          messageData, 
+          instanceDetails,
+          true, // isBatch
+          batch.messages.length, // batchSize
+          lastTicketId
+        );
       }
     }
 
@@ -605,21 +609,29 @@ async function ensureInstanceQueueConnection(instanceUuid: string, clientId: str
 }
 
 // 🤖 FUNÇÃO MELHORADA: Processar com IA se habilitado
-async function processWithAIIfEnabled(ticketId: string, messageData: any, clientId: string, instanceId: string): Promise<boolean> {
+async function processWithAIIfEnabled(
+  messageData: any, 
+  instanceDetails: any,
+  isBatch: boolean = false,
+  batchSize: number = 1,
+  ticketId?: string
+): Promise<boolean> {
   try {
-    console.log('🤖 [AI-CHECK] Verificando se instância tem fila com assistente ativo');
+    console.log('🤖 [AI-CHECK] Verificando se deve processar com IA');
     
-    // Buscar instância pelo instance_id para pegar o UUID
+    // Buscar instância pelo instanceId do YUMER
     const { data: instanceData, error: instanceError } = await supabase
       .from('whatsapp_instances')
-      .select('id')
-      .eq('instance_id', instanceId)
+      .select('id, client_id')
+      .eq('yumer_instance_name', instanceDetails.name)
       .single();
 
     if (instanceError || !instanceData) {
       console.log('⚠️ [AI-CHECK] Instância não encontrada para verificação de IA');
       return false;
     }
+
+    const clientId = instanceData.client_id;
 
     // Verificar se instância está conectada a uma fila com assistente ATIVO
     const { data: connection, error: connectionError } = await supabase
@@ -668,21 +680,13 @@ async function processWithAIIfEnabled(ticketId: string, messageData: any, client
     const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
       body: {
         ticketId: ticketId,
-        message: messageData.content,
-        clientId: clientId,
-        instanceId: instanceId,
-        assistant: {
-          id: assistant.id,
-          name: assistant.name,
-          prompt: assistant.prompt,
-          model: assistant.model || 'gpt-4o-mini',
-          settings: assistant.advanced_settings
-        },
-        context: {
-          customerName: messageData.contactName,
-          phoneNumber: messageData.phoneNumber,
-          chatId: messageData.chatId
-        }
+        instanceId: messageData.instanceId,
+        assistantId: assistant.id,
+        assistantName: assistant.name,
+        lastMessage: messageData.content,
+        customerName: messageData.contactName || messageData.pushName || 'Cliente',
+        isBatch,
+        batchSize
       }
     });
 
