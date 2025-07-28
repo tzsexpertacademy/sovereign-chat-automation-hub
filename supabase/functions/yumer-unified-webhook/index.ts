@@ -35,17 +35,14 @@ interface MessageBatch {
   firstMessageTime: number;
 }
 
-// Sistema de batching global para múltiplas mensagens
+// ✅ SISTEMA DE BATCH CORRIGIDO - BASEADO EM CHAT + TIMEOUT FIXO
 const messageBatches = new Map<string, MessageBatch>();
-const BATCH_TIMEOUT = 4000; // 4 segundos para agrupar mensagens (timeout inteligente)
+const chatProcessingLocks = new Set<string>();
+const chatTimeoutHandles = new Map<string, number>();
 
-// Sistema de debounce para evitar processamento duplo
-const messageDebounce = new Map<string, number>();
-const DEBOUNCE_TIMEOUT = 2000; // 2 segundos para ignorar duplicatas
-
-// Sistema de locks ativos para controle de processamento
-const activeProcessingLocks = new Map<string, number>();
-const LOCK_TIMEOUT = 10000; // 10 segundos de timeout para locks
+// ⚡ CONFIGURAÇÕES OTIMIZADAS
+const BATCH_TIMEOUT = 3000; // 3 segundos fixos (não resetados)
+const PROCESSING_COOLDOWN = 5000; // 5 segundos entre processamentos do mesmo chat
 
 serve(async (req) => {
   console.log('🌐 [YUMER-UNIFIED-WEBHOOK] Recebendo requisição:', req.method, req.url);
@@ -191,29 +188,10 @@ async function addToBatch(yumerData: YumerWebhookData) {
       );
     }
 
-    // 🚀 DEBOUNCE: Verificar se esta mensagem já foi processada recentemente
+    // 🎯 EXTRAIR DADOS DA MENSAGEM PRIMEIRO
+    const messageData = yumerData.data;
     const messageId = messageData?.keyId || messageData?.messageId;
     const currentTime = Date.now();
-    
-    if (messageId) {
-      const lastProcessTime = messageDebounce.get(messageId);
-      if (lastProcessTime && (currentTime - lastProcessTime) < DEBOUNCE_TIMEOUT) {
-        console.log(`🔄 [DEBOUNCE] Mensagem ${messageId} ignorada - processada há ${currentTime - lastProcessTime}ms`);
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: 'Message ignored - debounce',
-            messageId,
-            timeSinceLastProcess: currentTime - lastProcessTime
-          }), 
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      // Marcar mensagem como processada agora
-      messageDebounce.set(messageId, currentTime);
-      console.log(`✅ [DEBOUNCE] Mensagem ${messageId} marcada para processamento`);
-    }
 
     // Buscar instância para obter client_id
     const { data: instance, error: instanceError } = await supabase
@@ -242,21 +220,23 @@ async function addToBatch(yumerData: YumerWebhookData) {
 
     const batchKey = `${instance.client_id}-${processedMessage.chatId}`;
 
-    // 🔒 LOCK: Verificar se já há processamento ativo para este chat
-    const activeLockTime = activeProcessingLocks.get(batchKey);
-    if (activeLockTime && (currentTime - activeLockTime) < LOCK_TIMEOUT) {
-      console.log(`🔒 [LOCK] Chat ${batchKey} já está sendo processado - ignorando mensagem`);
+    // 🔒 VERIFICAÇÃO DE LOCK PREVENTIVO (baseado no chat, não na mensagem)
+    if (chatProcessingLocks.has(batchKey)) {
+      console.log(`🔒 [LOCK-PREVENTIVO] Chat ${batchKey} já está sendo processado - ignorando mensagem`);
       return new Response(
         JSON.stringify({ 
           success: true, 
           message: 'Chat already being processed',
           batchKey,
-          lockActive: true,
-          timeSinceLock: currentTime - activeLockTime
+          lockActive: true
         }), 
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // 🔒 APLICAR LOCK PREVENTIVO ANTES DE ADICIONAR AO BATCH
+    chatProcessingLocks.add(batchKey);
+    console.log(`🔒 [LOCK] Lock preventivo aplicado ao chat: ${batchKey}`);
 
     console.log(`📦 [BATCH] Adicionando mensagem ao batch: ${batchKey}`);
 
@@ -274,23 +254,20 @@ async function addToBatch(yumerData: YumerWebhookData) {
       };
       messageBatches.set(batchKey, batch);
       console.log(`🆕 [BATCH] Novo batch criado: ${batchKey}`);
+      
+      // ⏰ CONFIGURAR TIMEOUT FIXO (SÓ UMA VEZ, SEM RESET)
+      const timeoutId = setTimeout(async () => {
+        console.log(`⏰ [TIMEOUT-FIXO] Processando batch ${batchKey} após ${BATCH_TIMEOUT}ms`);
+        await processBatch(batchKey);
+      }, BATCH_TIMEOUT);
+      
+      chatTimeoutHandles.set(batchKey, timeoutId);
+      console.log(`⏰ [TIMEOUT-FIXO] Timeout configurado para ${batchKey} - ${BATCH_TIMEOUT}ms`);
     }
 
     // Adicionar mensagem ao batch
     batch.messages.push(yumerData);
     console.log(`📥 [BATCH] Mensagem adicionada. Total no batch: ${batch.messages.length}`);
-
-    // 🔄 TIMEOUT INTELIGENTE COM RESET: Limpar timeout anterior se existir
-    if (batch.timeoutId) {
-      clearTimeout(batch.timeoutId);
-      console.log(`🔄 [BATCH] Timeout resetado para batch: ${batchKey} (nova mensagem recebida)`);
-    }
-
-    // Configurar novo timeout para processar o batch (sempre reseta quando novas mensagens chegam)
-    batch.timeoutId = setTimeout(async () => {
-      console.log(`⏰ [BATCH] Timeout de ${BATCH_TIMEOUT}ms atingido para batch: ${batchKey}. Processando ${batch.messages.length} mensagens...`);
-      await processBatch(batchKey);
-    }, BATCH_TIMEOUT);
 
     // Resposta de sucesso para o webhook
     return new Response(
@@ -326,11 +303,6 @@ async function processBatch(batchKey: string) {
 
   console.log(`🚀 [BATCH] Processando batch ${batchKey} com ${batch.messages.length} mensagens`);
   console.log(`🕐 [BATCH] Tempo desde primeira mensagem: ${Date.now() - batch.firstMessageTime}ms`);
-
-  // 🔒 APLICAR LOCK SIMPLIFICADO
-  const currentTime = Date.now();
-  activeProcessingLocks.set(batchKey, currentTime);
-  console.log(`🔒 [LOCK] Lock aplicado para batch: ${batchKey}`);
 
   try {
     // 🚫 MARCAR MENSAGENS COMO PROCESSADAS IMEDIATAMENTE
@@ -475,10 +447,18 @@ async function processBatch(batchKey: string) {
       console.error('❌ [FALLBACK-CRÍTICO] Falha ao marcar mensagens:', fallbackError);
     }
   } finally {
-    // 🔓 LIBERAR LOCK e limpar batch da memória
-    activeProcessingLocks.delete(batchKey);
+    // 🔓 LIBERAR LOCK E LIMPAR RECURSOS
+    chatProcessingLocks.delete(batchKey);
     messageBatches.delete(batchKey);
-    console.log(`🔓 [LOCK] Lock liberado e batch removido da memória: ${batchKey}`);
+    
+    // Limpar timeout se ainda existir
+    const timeoutId = chatTimeoutHandles.get(batchKey);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      chatTimeoutHandles.delete(batchKey);
+    }
+    
+    console.log(`🔓 [LOCK] Lock liberado e recursos limpos: ${batchKey}`);
     
     // Limpar debounce antigo (manter apenas últimas 100 mensagens)
     if (messageDebounce.size > 100) {
