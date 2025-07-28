@@ -18,6 +18,7 @@ import AssistantChat from "./AssistantChat";
 import AssistantAdvancedSettings from "./AssistantAdvancedSettings";
 import EvolutionApiStatus from "./EvolutionApiStatus";
 import HumanizedAssistantManager from "./HumanizedAssistantManager";
+import OnlineStatusConfig from "./OnlineStatusConfig";
 
 const AssistantsManager = () => {
   const { clientId } = useParams();
@@ -354,7 +355,10 @@ const AssistantsManager = () => {
         </TabsContent>
 
         <TabsContent value="humanized" className="space-y-6">
-          <HumanizedAssistantManager clientId={clientId!} />
+          <div className="space-y-6">
+            <HumanizedAssistantManager clientId={clientId!} />
+            <OnlineStatusConfig clientId={clientId!} />
+          </div>
         </TabsContent>
 
         <TabsContent value="chat" className="space-y-6">
