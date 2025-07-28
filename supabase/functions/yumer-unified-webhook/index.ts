@@ -408,7 +408,17 @@ async function processBatch(batchKey: string) {
             ticketId: lastTicketId,
             message: fullContext,
             messageData: lastMessageData,
-            context: `Batch de ${batch.messages.length} mensagens`
+            messages: allMessageContents.map((content, index) => ({
+              content: content,
+              timestamp: new Date().toISOString(),
+              from_me: false
+            })),
+            context: {
+              chatId: lastMessageData.chatId,
+              customerName: lastMessageData.contactName || 'Cliente',
+              phoneNumber: lastMessageData.phoneNumber || 'N/A',
+              batchInfo: `Batch de ${batch.messages.length} mensagens`
+            }
           }
         });
         

@@ -127,13 +127,22 @@ serve(async (req) => {
     let resolvedClientId = clientId;
     let resolvedInstanceId = instanceId;
     let resolvedContext = context;
+    let resolvedAssistant = assistant;
     
-    if (!clientId || !instanceId || !context?.chatId) {
+    if (!clientId || !instanceId || !context?.chatId || !assistant) {
       console.log('🔍 [AI-ASSISTANT] Buscando dados faltantes no banco...');
       
       const { data: ticketData, error: ticketError } = await supabase
         .from('conversation_tickets')
-        .select('client_id, instance_id, chat_id, customer_id, customers(name, phone)')
+        .select(`
+          client_id, 
+          instance_id, 
+          chat_id, 
+          customer_id, 
+          assigned_assistant_id,
+          customers(name, phone),
+          assistants(id, name, model, prompt, triggers, advanced_settings, is_active)
+        `)
         .eq('id', ticketId)
         .single();
       
@@ -151,11 +160,36 @@ serve(async (req) => {
         phoneNumber: ticketData.customers?.phone || 'N/A'
       };
       
+      // 🎯 BUSCAR ASSISTENTE CORRETO: Primeiro do ticket, depois da fila padrão do cliente
+      if (!assistant && ticketData.assistants) {
+        resolvedAssistant = ticketData.assistants;
+        console.log('✅ [AI-ASSISTANT] Assistente encontrado no ticket:', resolvedAssistant.name);
+      } else if (!assistant) {
+        console.log('🔍 [AI-ASSISTANT] Buscando assistente ativo padrão do cliente...');
+        
+        const { data: clientAssistant, error: assistantError } = await supabase
+          .from('assistants')
+          .select('id, name, model, prompt, triggers, advanced_settings, is_active')
+          .eq('client_id', resolvedClientId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (!assistantError && clientAssistant) {
+          resolvedAssistant = clientAssistant;
+          console.log('✅ [AI-ASSISTANT] Assistente ativo encontrado:', resolvedAssistant.name);
+        } else {
+          console.log('⚠️ [AI-ASSISTANT] Nenhum assistente ativo encontrado, usando padrão');
+        }
+      }
+      
       console.log('✅ [AI-ASSISTANT] Dados resolvidos do banco:', {
         clientId: resolvedClientId,
         instanceId: resolvedInstanceId,
         chatId: resolvedContext.chatId,
-        customerName: resolvedContext.customerName
+        customerName: resolvedContext.customerName,
+        assistantName: resolvedAssistant?.name || 'Assistente Padrão'
       });
     }
 
@@ -241,7 +275,7 @@ serve(async (req) => {
     }
 
     // ✅ VALIDAÇÃO DO ASSISTENTE: Garantir que existe e tem configurações mínimas
-    const safeAssistant = assistant || {
+    const safeAssistant = resolvedAssistant || {
       id: 'default',
       name: 'Assistente IA',
       model: 'gpt-4o-mini',
