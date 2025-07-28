@@ -15,3 +15,6 @@ verify_jwt = false
 
 [functions.speech-to-text]
 verify_jwt = false
+
+[functions.fix-tickets-assignment]
+verify_jwt = false

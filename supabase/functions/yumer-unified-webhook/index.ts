@@ -1199,7 +1199,7 @@ async function createOrUpdateCustomer(clientId: string, customerName: string, ph
   }
 }
 
-// Função para criar ou atualizar ticket
+// 🔧 Função CORRIGIDA para criar ou atualizar ticket COM AUTO-ASSIGNMENT
 async function createOrUpdateTicket(
   clientId: string, 
   customerId: string, 
@@ -1217,7 +1217,7 @@ async function createOrUpdateTicket(
     // Buscar ticket existente
     let { data: ticket, error: selectError } = await supabase
       .from('conversation_tickets')
-      .select('id')
+      .select('id, assigned_queue_id, assigned_assistant_id')
       .eq('client_id', clientId)
       .eq('chat_id', chatId)
       .eq('instance_id', instanceId)
@@ -1228,8 +1228,12 @@ async function createOrUpdateTicket(
       throw selectError;
     }
 
+    let ticketId: string;
+
     if (!ticket) {
-      // Criar novo ticket
+      // 🆕 CRIAR NOVO TICKET
+      console.log('🆕 [TICKET] Criando novo ticket...');
+      
       const { data: newTicket, error: insertError } = await supabase
         .from('conversation_tickets')
         .insert([{
@@ -1249,10 +1253,12 @@ async function createOrUpdateTicket(
         throw insertError;
       }
 
-      console.log('✅ [TICKET] Ticket criado:', newTicket.id);
-      return newTicket.id;
+      ticketId = newTicket.id;
+      console.log('✅ [TICKET] Ticket criado:', ticketId);
     } else {
-      // Atualizar ticket existente
+      // ♻️ ATUALIZAR TICKET EXISTENTE
+      ticketId = ticket.id;
+      
       const { error: updateError } = await supabase
         .from('conversation_tickets')
         .update({
@@ -1267,9 +1273,104 @@ async function createOrUpdateTicket(
         throw updateError;
       }
 
-      console.log('✅ [TICKET] Ticket atualizado:', ticket.id);
-      return ticket.id;
+      console.log('✅ [TICKET] Ticket atualizado:', ticketId);
+
+      // Se já tem fila e assistente atribuídos, retornar
+      if (ticket.assigned_queue_id && ticket.assigned_assistant_id) {
+        console.log('✅ [TICKET] Ticket já tem fila e assistente atribuídos');
+        return ticketId;
+      }
     }
+
+    // 🤖 AUTO-ASSIGNMENT: Atribuir fila e assistente automaticamente
+    console.log('🤖 [AUTO-ASSIGNMENT] Iniciando auto-assignment para ticket:', ticketId);
+    
+    try {
+      // Buscar instância UUID pelo instance_id (string)
+      const { data: instanceData, error: instanceError } = await supabase
+        .from('whatsapp_instances')
+        .select('id')
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (instanceError || !instanceData) {
+        console.error('❌ [AUTO-ASSIGNMENT] Instância não encontrada:', instanceError);
+        return ticketId;
+      }
+
+      // Chamar função de auto-assignment
+      const { data: assignedQueueId, error: assignmentError } = await supabase
+        .rpc('auto_assign_queue', {
+          p_client_id: clientId,
+          p_instance_id: instanceId,
+          p_message_content: lastMessage
+        });
+
+      if (assignmentError) {
+        console.error('❌ [AUTO-ASSIGNMENT] Erro na função auto_assign_queue:', assignmentError);
+        return ticketId;
+      }
+
+      if (!assignedQueueId) {
+        console.log('⚠️ [AUTO-ASSIGNMENT] Nenhuma fila disponível para assignment');
+        return ticketId;
+      }
+
+      console.log('🎯 [AUTO-ASSIGNMENT] Fila atribuída:', assignedQueueId);
+
+      // Buscar assistente da fila
+      const { data: queueData, error: queueError } = await supabase
+        .from('queues')
+        .select('assistant_id, name')
+        .eq('id', assignedQueueId)
+        .single();
+
+      if (queueError || !queueData?.assistant_id) {
+        console.error('❌ [AUTO-ASSIGNMENT] Erro ao buscar assistente da fila:', queueError);
+        
+        // Mesmo assim atualizar com a fila
+        const { error: updateQueueError } = await supabase
+          .from('conversation_tickets')
+          .update({
+            assigned_queue_id: assignedQueueId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', ticketId);
+
+        if (updateQueueError) {
+          console.error('❌ [AUTO-ASSIGNMENT] Erro ao atualizar ticket com fila:', updateQueueError);
+        }
+
+        return ticketId;
+      }
+
+      // Atualizar ticket com fila e assistente
+      const { error: updateTicketError } = await supabase
+        .from('conversation_tickets')
+        .update({
+          assigned_queue_id: assignedQueueId,
+          assigned_assistant_id: queueData.assistant_id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (updateTicketError) {
+        console.error('❌ [AUTO-ASSIGNMENT] Erro ao atualizar ticket com assignment:', updateTicketError);
+        return ticketId;
+      }
+
+      console.log(`✅ [AUTO-ASSIGNMENT] Ticket atualizado com sucesso:`, {
+        ticketId,
+        queueId: assignedQueueId,
+        queueName: queueData.name,
+        assistantId: queueData.assistant_id
+      });
+
+    } catch (assignmentError) {
+      console.error('❌ [AUTO-ASSIGNMENT] Erro crítico no auto-assignment:', assignmentError);
+    }
+
+    return ticketId;
 
   } catch (error) {
     console.error('❌ [TICKET] Erro crítico:', error);
