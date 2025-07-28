@@ -425,15 +425,13 @@ async function sendHumanizedResponse(
         const typingDuration = calculateTypingDuration(chunk, config.personality.typingSpeed, config);
         console.log(`⌨️ [HUMANIZED-SEND] Simulando ${presenceType} por ${typingDuration}ms`);
         
-        // Enviar mensagem com presença de typing/recording durante o delay
-        await sendCodeChatMessage(instanceId, chatId, '', businessToken, presenceType);
-        
-        // Aguardar tempo de typing/recording
+        // Aguardar tempo de typing/recording ANTES de enviar
         await new Promise(resolve => setTimeout(resolve, typingDuration));
       }
 
-      // 3c. Enviar mensagem real via CodeChat v2.2.1 
-      const chunkResult = await sendCodeChatMessage(instanceId, chatId, chunk, businessToken, 'available');
+      // 3c. Enviar mensagem real via CodeChat v2.2.1 com presença aplicada
+      const presenceToUse = (config.behavior.typing.enabled && config.behavior.presence.showTyping) ? presenceType : 'available';
+      const chunkResult = await sendCodeChatMessage(instanceId, chatId, chunk, businessToken, presenceToUse);
       
       if (!chunkResult.success) {
         console.error(`❌ [HUMANIZED-SEND] Erro no chunk ${i + 1}:`, chunkResult.error);
@@ -473,6 +471,12 @@ async function sendCodeChatMessage(
   presence: 'available' | 'composing' | 'recording' = 'available'
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Se a mensagem estiver vazia, não enviar nada (CodeChat v2.2.1 não aceita mensagens vazias)
+    if (!message || message.trim() === '') {
+      console.log(`⚠️ [CODECHAT-SEND] Pulando envio de mensagem vazia com presença: ${presence}`);
+      return { success: true };
+    }
+
     const codeChatData = {
       recipient: chatId,
       textMessage: {
@@ -484,7 +488,11 @@ async function sendCodeChatMessage(
       }
     };
 
-    console.log('📋 [CODECHAT-SEND] Dados para CodeChat v2.2.1:', codeChatData);
+    console.log('📋 [CODECHAT-SEND] Dados para CodeChat v2.2.1:', {
+      recipient: chatId,
+      textLength: message.length,
+      presence: presence
+    });
 
     const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`, {
       method: 'POST',
