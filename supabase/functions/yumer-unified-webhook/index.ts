@@ -482,8 +482,12 @@ async function processYumerMessage(yumerData: YumerWebhookData, processAI: boole
 
     // 3. Salvar mensagem bruta no whatsapp_messages
     console.log('💾 [YUMER-PROCESS] Iniciando salvamento da mensagem...');
+    
+    // 🔥 CORREÇÃO: Verificar se vai processar com IA antes de salvar
+    const willProcessWithAI = !processedMessage.fromMe && processAI;
+    
     try {
-      await saveYumerMessage(processedMessage, instance.instance_id);
+      await saveYumerMessage(processedMessage, instance.instance_id, willProcessWithAI);
       console.log('✅ [YUMER-PROCESS] Mensagem salva no whatsapp_messages com sucesso');
     } catch (saveError) {
       console.error('❌ [YUMER-PROCESS] Erro ao salvar mensagem:', saveError);
@@ -1033,7 +1037,7 @@ function extractYumerMessageData(messageData: any, instance: any) {
 }
 
 // Função para salvar mensagem YUMER no banco
-async function saveYumerMessage(messageData: any, instanceId: string) {
+async function saveYumerMessage(messageData: any, instanceId: string, willProcessWithAI: boolean = false) {
   console.log('💾 [SAVE-YUMER] Salvando mensagem YUMER no banco...');
   
   try {
@@ -1056,7 +1060,9 @@ async function saveYumerMessage(messageData: any, instanceId: string) {
       direct_path: messageData.directPath || null,
       raw_data: messageData,
       processed_at: new Date().toISOString(),
-      source: 'yumer'
+      source: 'yumer',
+      // 🔥 CORREÇÃO: Marcar como não processada apenas se for para IA, caso contrário processada
+      is_processed: messageData.fromMe ? true : !willProcessWithAI
     };
 
     console.log('💾 [SAVE-YUMER] Dados preparados para inserção:', {

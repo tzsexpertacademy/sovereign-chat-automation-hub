@@ -267,6 +267,9 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       console.error('❌ [AI-ASSISTANT] Erro ao enviar resposta humanizada:', sendResult.error);
     }
 
+    // 🔥 CORREÇÃO: Marcar mensagens do usuário como processadas após resposta da IA
+    await markUserMessagesAsProcessed(ticketId, context?.chatId);
+
     console.log('✅ [AI-ASSISTANT] Processamento completo');
 
     return new Response(
@@ -297,6 +300,48 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     );
   }
 });
+
+// ===== FUNÇÃO PARA MARCAR MENSAGENS COMO PROCESSADAS =====
+
+// 🔥 Marcar mensagens do usuário como processadas após IA responder
+async function markUserMessagesAsProcessed(ticketId: string, chatId?: string) {
+  try {
+    console.log('🔄 [MARK-PROCESSED] Marcando mensagens como processadas para ticket:', ticketId);
+    
+    if (chatId) {
+      // Buscar mensagens não processadas do usuário no chat específico
+      const { data: messages } = await supabase
+        .from('whatsapp_messages')
+        .select('id, message_id')
+        .eq('chat_id', chatId)
+        .eq('from_me', false)
+        .eq('is_processed', false);
+      
+      if (messages && messages.length > 0) {
+        console.log(`🔄 [MARK-PROCESSED] Encontradas ${messages.length} mensagens para marcar como processadas`);
+        
+        // Marcar como processadas
+        const { error } = await supabase
+          .from('whatsapp_messages')
+          .update({ 
+            is_processed: true,
+            processed_at: new Date().toISOString()
+          })
+          .eq('chat_id', chatId)
+          .eq('from_me', false)
+          .eq('is_processed', false);
+        
+        if (error) {
+          console.error('❌ [MARK-PROCESSED] Erro ao marcar mensagens:', error);
+        } else {
+          console.log(`✅ [MARK-PROCESSED] ${messages.length} mensagens marcadas como processadas`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('❌ [MARK-PROCESSED] Erro crítico:', error);
+  }
+}
 
 // ===== FUNÇÕES DE HUMANIZAÇÃO =====
 

@@ -158,7 +158,10 @@ class UnprocessedMessageProcessor {
       // 4. Marcar como processada
       await supabase
         .from('whatsapp_messages')
-        .update({ is_processed: true })
+        .update({ 
+          is_processed: true,
+          processed_at: new Date().toISOString()
+        })
         .eq('id', message.id);
 
       this.processingStatus.processed++;
