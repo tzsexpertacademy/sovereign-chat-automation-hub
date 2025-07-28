@@ -252,6 +252,7 @@ class TicketsService {
       conversation_queue_states: 0,
       whatsapp_messages: 0,
       whatsapp_chats: 0,
+      customers: 0,
       conversation_tickets: 0
     };
 
@@ -261,7 +262,7 @@ class TicketsService {
       // Buscar informações do ticket para exclusão total
       const { data: ticket } = await supabase
         .from('conversation_tickets')
-        .select('id, title, chat_id, instance_id, client_id')
+        .select('id, title, chat_id, instance_id, client_id, customer_id')
         .eq('id', ticketId)
         .single();
 
@@ -351,16 +352,29 @@ class TicketsService {
       deletionCounts.message_batches = batchesCount || 0;
       if (batchesError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir batches:', batchesError);
 
-      // 6. Excluir contexto da conversa
-      const { error: contextError, count: contextCount } = await supabase
-        .from('conversation_context')
-        .delete({ count: 'exact' })
-        .eq('client_id', client_id)
-        .eq('chat_id', chat_id)
-        .eq('instance_id', instance_id);
+      // 6. Excluir contexto da conversa (ambos formatos de chat_id)
+      const chatIdBase = chat_id.replace('@s.whatsapp.net', '').replace('@s.whats', '').replace('@c.us', '');
+      const chatIdPatterns = [
+        chat_id,
+        `${chatIdBase}@s.whatsapp.net`,
+        `${chatIdBase}@s.whats`,
+        `${chatIdBase}@c.us`
+      ];
+
+      let contextCount = 0;
+      for (const pattern of chatIdPatterns) {
+        const { error: contextError, count: contextCountPattern } = await supabase
+          .from('conversation_context')
+          .delete({ count: 'exact' })
+          .eq('client_id', client_id)
+          .eq('chat_id', pattern)
+          .eq('instance_id', instance_id);
+        
+        contextCount += (contextCountPattern || 0);
+        if (contextError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir contexto:', contextError);
+      }
       
-      deletionCounts.conversation_context = contextCount || 0;
-      if (contextError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir contexto:', contextError);
+      deletionCounts.conversation_context = contextCount;
 
       // 7. Excluir estados da fila de conversa
       const { error: statesError, count: statesCount } = await supabase
@@ -391,7 +405,26 @@ class TicketsService {
       deletionCounts.whatsapp_chats = chatCount || 0;
       if (chatError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir chat WhatsApp:', chatError);
 
-      // 10. Excluir o ticket principal (por último)
+      // 10. Excluir customer se não está sendo usado por outros tickets
+      const { data: otherTickets } = await supabase
+        .from('conversation_tickets')
+        .select('id')
+        .eq('customer_id', ticket.customer_id || '')
+        .neq('id', ticketId);
+
+      if (!otherTickets || otherTickets.length === 0) {
+        const { error: customerError, count: customerCount } = await supabase
+          .from('customers')
+          .delete({ count: 'exact' })
+          .eq('id', ticket.customer_id || '');
+        
+        deletionCounts.customers = customerCount || 0;
+        if (customerError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir customer:', customerError);
+      } else {
+        console.log('ℹ️ [DELETE-TICKET] Customer mantido (usado por outros tickets)');
+      }
+
+      // 11. Excluir o ticket principal (por último)
       const { error: ticketError, count: ticketCount } = await supabase
         .from('conversation_tickets')
         .delete({ count: 'exact' })
