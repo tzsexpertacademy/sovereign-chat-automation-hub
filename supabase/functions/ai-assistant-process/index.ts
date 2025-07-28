@@ -642,6 +642,46 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', resolvedClientId);
     }
 
+    // 📱 CONFIGURAR PROFILE ONLINE SE HABILITADO
+    try {
+      const { data: aiConfig } = await supabase
+        .from('client_ai_configs')
+        .select('online_status_config')
+        .eq('client_id', resolvedClientId)
+        .single();
+
+      if (aiConfig?.online_status_config?.enabled) {
+        const config = aiConfig.online_status_config;
+        console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
+        
+        // Configurar privacidade online para "todos" verem
+        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/profile/online-privacy`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${client.business_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ privacy: config.onlinePrivacy || 'all' })
+        });
+        
+        // Configurar status do perfil
+        if (config.profileStatus) {
+          await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/profile/status`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${client.business_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: config.profileStatus })
+          });
+        }
+        
+        console.log('✅ [PROFILE] Configurações de perfil aplicadas com sucesso');
+      }
+    } catch (profileError) {
+      console.warn('⚠️ [PROFILE] Erro ao aplicar configurações de perfil:', profileError);
+    }
+
     // 📱 DEFINIR PRESENÇA COMO "DIGITANDO" ANTES DE RESPONDER
     try {
       console.log('📱 [PRESENCE] Definindo presença como "digitando" para IA');

@@ -27,9 +27,9 @@ interface OnlineStatusConfigProps {
 interface StatusConfig {
   enabled: boolean;
   autoOnline: boolean;
-  detectionInterval: number; // em segundos
-  offlineTimeout: number; // em minutos
-  enablePresenceDetection: boolean;
+  onlinePrivacy: 'all' | 'contacts' | 'none';
+  seenPrivacy: 'all' | 'contacts' | 'none';
+  profileStatus: string;
   showActivityIndicator: boolean;
 }
 
@@ -40,9 +40,9 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
   const [config, setConfig] = useState<StatusConfig>({
     enabled: false,
     autoOnline: true,
-    detectionInterval: 30,
-    offlineTimeout: 5,
-    enablePresenceDetection: true,
+    onlinePrivacy: 'all',
+    seenPrivacy: 'all',
+    profileStatus: 'Assistente virtual ativo 24h',
     showActivityIndicator: true
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -86,13 +86,11 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
     try {
       const { error } = await supabase
         .from('client_ai_configs')
-        .upsert({
-          client_id: clientId,
-          online_status_config: config,
+        .update({
+          online_status_config: config as any,
           updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'client_id'
-        });
+        })
+        .eq('client_id', clientId);
 
       if (error) throw error;
 
@@ -126,15 +124,22 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
 
     setTestingStatus('testing');
     try {
-      console.log('🧪 [STATUS-TEST] Iniciando teste de detecção...');
+      console.log('🧪 [STATUS-TEST] Iniciando teste de configuração de perfil...');
       
-      // Simular teste de detecção (aqui você integraria com o unifiedYumerService)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const { default: unifiedYumerService } = await import('@/services/unifiedYumerService');
+      
+      // Testar configuração de privacidade online
+      const onlineResult = await unifiedYumerService.updateOnlinePrivacy(instanceId, config.onlinePrivacy);
+      if (!onlineResult.success) throw new Error(onlineResult.error);
+      
+      // Testar configuração de status do perfil
+      const statusResult = await unifiedYumerService.updateProfileStatus(instanceId, config.profileStatus);
+      if (!statusResult.success) throw new Error(statusResult.error);
       
       setTestingStatus('success');
       toast({
         title: "✅ Teste Bem-sucedido",
-        description: "Sistema de detecção de presença está funcionando corretamente"
+        description: "Configurações de perfil aplicadas com sucesso no WhatsApp"
       });
 
       setTimeout(() => setTestingStatus('idle'), 3000);
@@ -143,7 +148,7 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
       setTestingStatus('error');
       toast({
         title: "❌ Teste Falhou",
-        description: "Erro ao testar sistema de detecção de presença",
+        description: `Erro ao aplicar configurações: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
         variant: "destructive"
       });
       setTimeout(() => setTestingStatus('idle'), 3000);
@@ -217,49 +222,70 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
           <>
             <Separator />
 
-            {/* Configurações Básicas */}
+            {/* Configurações de Privacidade */}
             <div className="space-y-4">
               <h3 className="font-medium flex items-center gap-2">
                 <Wifi className="w-4 h-4" />
-                Configurações de Presença
+                Configurações de Privacidade
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="detectionInterval">Intervalo de Detecção (segundos)</Label>
-                  <Input
-                    id="detectionInterval"
-                    type="number"
-                    min="15"
-                    max="300"
-                    value={config.detectionInterval}
+                  <Label htmlFor="onlinePrivacy">Quem vê quando está online</Label>
+                  <select 
+                    id="onlinePrivacy"
+                    className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm"
+                    value={config.onlinePrivacy}
                     onChange={(e) => setConfig(prev => ({ 
                       ...prev, 
-                      detectionInterval: parseInt(e.target.value) || 30 
+                      onlinePrivacy: e.target.value as 'all' | 'contacts' | 'none'
                     }))}
-                  />
+                  >
+                    <option value="all">Todos</option>
+                    <option value="contacts">Apenas contatos</option>
+                    <option value="none">Ninguém</option>
+                  </select>
                   <p className="text-xs text-muted-foreground">
-                    Frequência para verificar atividade (15-300 segundos)
+                    Configure quem pode ver quando você está online
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="offlineTimeout">Timeout Offline (minutos)</Label>
-                  <Input
-                    id="offlineTimeout"
-                    type="number"
-                    min="1"
-                    max="60"
-                    value={config.offlineTimeout}
+                  <Label htmlFor="seenPrivacy">Visto por último</Label>
+                  <select 
+                    id="seenPrivacy"
+                    className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm"
+                    value={config.seenPrivacy}
                     onChange={(e) => setConfig(prev => ({ 
                       ...prev, 
-                      offlineTimeout: parseInt(e.target.value) || 5 
+                      seenPrivacy: e.target.value as 'all' | 'contacts' | 'none'
                     }))}
-                  />
+                  >
+                    <option value="all">Todos</option>
+                    <option value="contacts">Apenas contatos</option>
+                    <option value="none">Ninguém</option>
+                  </select>
                   <p className="text-xs text-muted-foreground">
-                    Tempo até ficar offline sem atividade (1-60 minutos)
+                    Configure quem pode ver seu visto por último
                   </p>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profileStatus">Status do Perfil (Recado)</Label>
+                <Input
+                  id="profileStatus"
+                  type="text"
+                  placeholder="Digite seu status personalizado..."
+                  value={config.profileStatus}
+                  onChange={(e) => setConfig(prev => ({ 
+                    ...prev, 
+                    profileStatus: e.target.value 
+                  }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Mensagem que aparece no seu perfil do WhatsApp
+                </p>
               </div>
             </div>
 
@@ -283,18 +309,6 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
                   />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <Label>Detecção por Status de Mensagens</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Usar status "entregue/lida" para detectar atividade
-                    </p>
-                  </div>
-                  <Switch
-                    checked={config.enablePresenceDetection}
-                    onCheckedChange={(checked) => setConfig(prev => ({ ...prev, enablePresenceDetection: checked }))}
-                  />
-                </div>
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
@@ -322,8 +336,8 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
                     Como Funciona
                   </p>
                   <p className="text-sm text-blue-700 dark:text-blue-400">
-                    O sistema monitora mensagens entregues/lidas para detectar quando o cliente está ativo. 
-                    Quando detecta atividade, define o assistente como "online" no WhatsApp.
+                    Configure as configurações de privacidade do seu perfil no WhatsApp. 
+                    O assistente aparecerá online automaticamente quando processar mensagens.
                   </p>
                 </div>
               </div>
@@ -336,7 +350,7 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
                   className="flex items-center gap-2"
                 >
                   {getTestStatusIcon()}
-                  {testingStatus === 'testing' ? 'Testando...' : 'Testar Detecção'}
+                  {testingStatus === 'testing' ? 'Aplicando...' : 'Aplicar Configurações'}
                 </Button>
               </div>
             </div>

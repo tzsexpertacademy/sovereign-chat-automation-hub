@@ -233,9 +233,144 @@ class UnifiedYumerService {
     return executeRequest();
   }
 
-  // ==================== COMPORTAMENTO HUMANIZADO - CODECHAT V2.2.1 ====================
+  // ==================== PROFILE MANAGEMENT - CODECHAT V2.2.1 ====================
   
-  // Presença: Online/Offline
+  // Online Privacy: Configurar quando o bot aparece online
+  async updateOnlinePrivacy(instanceId: string, privacy: 'all' | 'contacts' | 'none'): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`🔒 [PROFILE] Configurando privacidade online: ${privacy}`);
+    
+    try {
+      // Buscar business_token da instância
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instanceData } = await supabase
+        .from('whatsapp_instances')
+        .select(`
+          instance_id,
+          clients:client_id (
+            business_token
+          )
+        `)
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (!instanceData?.clients?.business_token) {
+        return { success: false, error: 'Business token não encontrado' };
+      }
+
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/online-privacy`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${instanceData.clients.business_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ privacy })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+      }
+
+      const result = await response.json();
+      console.log('✅ [PROFILE] Privacidade online atualizada:', result);
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('❌ [PROFILE] Erro ao atualizar privacidade online:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+    }
+  }
+
+  // Seen Privacy: Configurar visto por último
+  async updateSeenPrivacy(instanceId: string, privacy: 'all' | 'contacts' | 'none'): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`👁️ [PROFILE] Configurando privacidade visto por último: ${privacy}`);
+    
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instanceData } = await supabase
+        .from('whatsapp_instances')
+        .select(`
+          instance_id,
+          clients:client_id (
+            business_token
+          )
+        `)
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (!instanceData?.clients?.business_token) {
+        return { success: false, error: 'Business token não encontrado' };
+      }
+
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/seen-privacy`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${instanceData.clients.business_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ privacy })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+      }
+
+      const result = await response.json();
+      console.log('✅ [PROFILE] Privacidade visto atualizada:', result);
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('❌ [PROFILE] Erro ao atualizar privacidade visto:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+    }
+  }
+
+  // Profile Status: Configurar status do perfil (recado)
+  async updateProfileStatus(instanceId: string, status: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`📝 [PROFILE] Atualizando status do perfil: ${status}`);
+    
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instanceData } = await supabase
+        .from('whatsapp_instances')
+        .select(`
+          instance_id,
+          clients:client_id (
+            business_token
+          )
+        `)
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (!instanceData?.clients?.business_token) {
+        return { success: false, error: 'Business token não encontrado' };
+      }
+
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/status`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${instanceData.clients.business_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+      }
+
+      const result = await response.json();
+      console.log('✅ [PROFILE] Status do perfil atualizado:', result);
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('❌ [PROFILE] Erro ao atualizar status do perfil:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+    }
+  }
+
+  // ==================== PRESENÇA EM CHATS - CODECHAT V2.2.1 ====================
+  
+  // Presença: Online/Offline em chat específico
   async setPresence(instanceId: string, chatId: string, status: 'composing' | 'available' | 'unavailable' = 'available'): Promise<{ success: boolean; error?: string }> {
     console.log(`🟢 [PRESENCE] Definindo presença ${status} para ${chatId}`);
     
