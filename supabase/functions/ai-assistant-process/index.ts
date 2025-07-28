@@ -94,6 +94,9 @@ serve(async (req) => {
   try {
     console.log('🤖 [AI-ASSISTANT] Processando requisição');
     
+    const requestBody = await req.json();
+    console.log('📋 [AI-ASSISTANT] Body completo recebido:', JSON.stringify(requestBody, null, 2));
+    
     const { 
       ticketId, 
       message, 
@@ -102,7 +105,7 @@ serve(async (req) => {
       instanceId,
       assistant,
       context 
-    } = await req.json();
+    } = requestBody;
 
     // 📝 SUPORTAR BATCHES: Combinar múltiplas mensagens como contexto único
     const messageContent = messages && Array.isArray(messages) && messages.length > 0

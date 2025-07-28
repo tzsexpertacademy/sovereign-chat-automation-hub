@@ -508,7 +508,15 @@ async function processYumerMessage(yumerData: YumerWebhookData, processAI: boole
         // Primeiro garantir que a instância está conectada a uma fila
         await ensureInstanceQueueConnection(instance.id, instance.client_id);
         
-        const aiResult = await processWithAIIfEnabled(ticketId, processedMessage, instance.client_id, instance.instance_id);
+        // 🎯 CORREÇÃO CRÍTICA: Parâmetros corretos para processWithAIIfEnabled
+        const aiResult = await processWithAIIfEnabled(
+          processedMessage, // messageData correto
+          instance, // instanceDetails correto
+          false, // isBatch = false para mensagem individual
+          1, // batchSize = 1
+          ticketId, // ticketId correto
+          undefined // allMessages = undefined para mensagem individual
+        );
         console.log('🤖 [AI-TRIGGER] Resultado do processamento de IA:', aiResult ? 'sucesso' : 'não processado');
       } catch (aiError) {
         console.error('❌ [AI-TRIGGER] Erro ao processar com IA:', aiError);
@@ -700,12 +708,12 @@ async function processWithAIIfEnabled(
       ? allMessages.join('\n\n') // Combinar todas as mensagens do batch
       : messageData.content;
 
-    // Chamar edge function de processamento de IA com timeout e retry
+    // 🎯 CORREÇÃO CRÍTICA: Chamar edge function com parâmetros corretos
     const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
       body: {
         ticketId: ticketId,
-        instanceId: messageData.instanceId,
-        clientId: messageData.clientId,
+        instanceId: instanceData.id, // UUID da instância correto
+        clientId: instanceData.client_id, // clientId correto
         assistant: {
           id: assistant.id,
           name: assistant.name,
