@@ -17,7 +17,26 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('🤖 [PROCESS-BATCHES] Verificando batches pendentes...');
+  // Extrair informações do trigger
+  let triggerInfo = { type: 'unknown', chatId: null };
+  try {
+    const body = await req.text();
+    if (body) {
+      const data = JSON.parse(body);
+      triggerInfo = {
+        type: data.trigger || 'unknown',
+        chatId: data.chatId || null
+      };
+    }
+  } catch (e) {
+    // Ignore parsing errors for trigger info
+  }
+
+  console.log('🤖 [PROCESS-BATCHES] Verificando batches pendentes...', {
+    trigger: triggerInfo.type,
+    chatId: triggerInfo.chatId?.substring(0, 20),
+    timestamp: new Date().toISOString()
+  });
 
   try {
     // BUSCAR BATCHES ANTIGOS (últimos 3+ segundos sem atualização)

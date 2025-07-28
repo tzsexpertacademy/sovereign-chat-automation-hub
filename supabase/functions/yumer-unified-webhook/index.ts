@@ -175,6 +175,8 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
       .eq('client_id', clientId)
       .single();
 
+    let isNewBatch = false;
+
     if (existingBatch) {
       // ATUALIZAR BATCH EXISTENTE
       const updatedMessages = [...existingBatch.messages, message];
@@ -204,6 +206,36 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
       if (error) throw error;
       
       console.log('🔥 [BATCH-PERSISTENT] ✨ Novo batch criado');
+      isNewBatch = true;
+    }
+
+    // 🚀 PROCESSAMENTO HÍBRIDO: Agendar processamento direto após 3 segundos
+    if (isNewBatch) {
+      console.log('🔥 [HYBRID-PROCESSING] ⏰ Agendando processamento direto em 3 segundos...');
+      
+      // Usar setTimeout para agendar processamento
+      setTimeout(async () => {
+        try {
+          console.log('🔥 [HYBRID-PROCESSING] 🚀 Executando processamento direto...');
+          
+          const response = await supabase.functions.invoke('process-message-batches', {
+            body: { 
+              trigger: 'hybrid_direct', 
+              timestamp: new Date().toISOString(),
+              chatId: chatId
+            }
+          });
+          
+          console.log('🔥 [HYBRID-PROCESSING] ✅ Resultado do processamento direto:', {
+            success: !response.error,
+            data: response.data,
+            error: response.error?.message
+          });
+          
+        } catch (error) {
+          console.error('🔥 [HYBRID-PROCESSING] ❌ Erro no processamento direto:', error);
+        }
+      }, 3000);
     }
 
     return { success: true };
