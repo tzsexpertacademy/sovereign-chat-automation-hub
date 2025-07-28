@@ -240,13 +240,28 @@ class TicketsService {
   }
 
   async deleteTicketCompletely(ticketId: string): Promise<void> {
+    let deletionCounts = {
+      ticket_events: 0,
+      queue_transfers: 0,
+      ticket_messages: 0,
+      funnel_lead_tags: 0,
+      funnel_lead_history: 0,
+      funnel_leads: 0,
+      message_batches: 0,
+      conversation_context: 0,
+      conversation_queue_states: 0,
+      whatsapp_messages: 0,
+      whatsapp_chats: 0,
+      conversation_tickets: 0
+    };
+
     try {
-      console.log('🗑️ [DELETE-TICKET] Iniciando exclusão completa do ticket:', ticketId);
+      console.log('🗑️ [DELETE-TICKET] Iniciando exclusão TOTAL do ticket:', ticketId);
       
-      // Verificar se o ticket existe
+      // Buscar informações do ticket para exclusão total
       const { data: ticket } = await supabase
         .from('conversation_tickets')
-        .select('id, title')
+        .select('id, title, chat_id, instance_id, client_id')
         .eq('id', ticketId)
         .single();
 
@@ -254,54 +269,148 @@ class TicketsService {
         throw new Error('Ticket não encontrado');
       }
 
-      // Executar exclusões em sequência para manter integridade
-      console.log('🗑️ [DELETE-TICKET] Executando exclusão completa');
+      const { chat_id, instance_id, client_id } = ticket;
+      console.log(`🗑️ [DELETE-TICKET] Preparando exclusão total para chat: ${chat_id}`);
+
+      // ====== SEQUÊNCIA DE EXCLUSÃO TOTAL ======
       
       // 1. Excluir eventos do ticket
-      const { error: eventsError } = await supabase
+      const { error: eventsError, count: eventsCount } = await supabase
         .from('ticket_events')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('ticket_id', ticketId);
       
-      if (eventsError && !eventsError.message.includes('0 rows')) {
-        console.warn('⚠️ [DELETE-TICKET] Erro ao excluir eventos:', eventsError);
-      }
+      deletionCounts.ticket_events = eventsCount || 0;
+      if (eventsError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir eventos:', eventsError);
 
       // 2. Excluir transferências de fila
-      const { error: transfersError } = await supabase
+      const { error: transfersError, count: transfersCount } = await supabase
         .from('queue_transfers')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('ticket_id', ticketId);
       
-      if (transfersError && !transfersError.message.includes('0 rows')) {
-        console.warn('⚠️ [DELETE-TICKET] Erro ao excluir transferências:', transfersError);
-      }
+      deletionCounts.queue_transfers = transfersCount || 0;
+      if (transfersError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir transferências:', transfersError);
 
       // 3. Excluir mensagens do ticket
-      const { error: messagesError } = await supabase
+      const { error: messagesError, count: messagesCount } = await supabase
         .from('ticket_messages')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('ticket_id', ticketId);
       
-      if (messagesError) {
-        console.error('❌ [DELETE-TICKET] Erro ao excluir mensagens:', messagesError);
-        throw messagesError;
+      deletionCounts.ticket_messages = messagesCount || 0;
+      if (messagesError) throw messagesError;
+
+      // 4. Excluir dados do funil (se existirem)
+      // Primeiro buscar lead relacionado ao chat
+      const { data: funnelLead } = await supabase
+        .from('funnel_leads')
+        .select('id')
+        .eq('client_id', client_id)
+        .eq('chat_id', chat_id)
+        .eq('instance_id', instance_id)
+        .single();
+
+      if (funnelLead) {
+        // 4a. Excluir tags do lead
+        const { error: tagsError, count: tagsCount } = await supabase
+          .from('funnel_lead_tags')
+          .delete({ count: 'exact' })
+          .eq('lead_id', funnelLead.id);
+        
+        deletionCounts.funnel_lead_tags = tagsCount || 0;
+        if (tagsError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir tags do funil:', tagsError);
+
+        // 4b. Excluir histórico do lead
+        const { error: historyError, count: historyCount } = await supabase
+          .from('funnel_lead_history')
+          .delete({ count: 'exact' })
+          .eq('lead_id', funnelLead.id);
+        
+        deletionCounts.funnel_lead_history = historyCount || 0;
+        if (historyError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir histórico do funil:', historyError);
+
+        // 4c. Excluir o lead
+        const { error: leadError, count: leadCount } = await supabase
+          .from('funnel_leads')
+          .delete({ count: 'exact' })
+          .eq('id', funnelLead.id);
+        
+        deletionCounts.funnel_leads = leadCount || 0;
+        if (leadError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir lead do funil:', leadError);
       }
 
-      // 4. Excluir o ticket principal
-      const { error: ticketError } = await supabase
+      // 5. Excluir batches de mensagens
+      const { error: batchesError, count: batchesCount } = await supabase
+        .from('message_batches')
+        .delete({ count: 'exact' })
+        .eq('client_id', client_id)
+        .eq('chat_id', chat_id)
+        .eq('instance_id', instance_id);
+      
+      deletionCounts.message_batches = batchesCount || 0;
+      if (batchesError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir batches:', batchesError);
+
+      // 6. Excluir contexto da conversa
+      const { error: contextError, count: contextCount } = await supabase
+        .from('conversation_context')
+        .delete({ count: 'exact' })
+        .eq('client_id', client_id)
+        .eq('chat_id', chat_id)
+        .eq('instance_id', instance_id);
+      
+      deletionCounts.conversation_context = contextCount || 0;
+      if (contextError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir contexto:', contextError);
+
+      // 7. Excluir estados da fila de conversa
+      const { error: statesError, count: statesCount } = await supabase
+        .from('conversation_queue_states')
+        .delete({ count: 'exact' })
+        .eq('chat_id', chat_id);
+      
+      deletionCounts.conversation_queue_states = statesCount || 0;
+      if (statesError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir estados:', statesError);
+
+      // 8. Excluir TODAS as mensagens do WhatsApp (HISTÓRICO COMPLETO)
+      const { error: whatsappMsgError, count: whatsappMsgCount } = await supabase
+        .from('whatsapp_messages')
+        .delete({ count: 'exact' })
+        .eq('chat_id', chat_id)
+        .eq('instance_id', instance_id);
+      
+      deletionCounts.whatsapp_messages = whatsappMsgCount || 0;
+      if (whatsappMsgError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir mensagens WhatsApp:', whatsappMsgError);
+
+      // 9. Excluir registro do chat do WhatsApp
+      const { error: chatError, count: chatCount } = await supabase
+        .from('whatsapp_chats')
+        .delete({ count: 'exact' })
+        .eq('chat_id', chat_id)
+        .eq('instance_id', instance_id);
+      
+      deletionCounts.whatsapp_chats = chatCount || 0;
+      if (chatError) console.warn('⚠️ [DELETE-TICKET] Erro ao excluir chat WhatsApp:', chatError);
+
+      // 10. Excluir o ticket principal (por último)
+      const { error: ticketError, count: ticketCount } = await supabase
         .from('conversation_tickets')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('id', ticketId);
 
-      if (ticketError) {
-        console.error('❌ [DELETE-TICKET] Erro ao excluir ticket:', ticketError);
-        throw ticketError;
-      }
+      deletionCounts.conversation_tickets = ticketCount || 0;
+      if (ticketError) throw ticketError;
 
-      console.log('✅ [DELETE-TICKET] Ticket excluído completamente:', ticketId);
+      // Log final com estatísticas completas
+      console.log('✅ [DELETE-TICKET] EXCLUSÃO TOTAL CONCLUÍDA:', {
+        ticketId,
+        chat_id,
+        deletedCounts: deletionCounts,
+        totalRecordsDeleted: Object.values(deletionCounts).reduce((sum, count) => sum + count, 0)
+      });
+
     } catch (error) {
-      console.error('❌ [DELETE-TICKET] Erro ao excluir ticket:', error);
+      console.error('❌ [DELETE-TICKET] Erro na exclusão total:', error);
+      console.log('📊 [DELETE-TICKET] Registros excluídos antes do erro:', deletionCounts);
       throw error;
     }
   }
