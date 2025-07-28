@@ -2,6 +2,79 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
+// ===== INTERFACES PARA HUMANIZAÇÃO =====
+interface HumanizedPersonality {
+  id: string;
+  name: string;
+  tone: 'formal' | 'casual' | 'friendly' | 'professional' | 'empathetic';
+  responseDelay: { min: number; max: number };
+  typingSpeed: number; // WPM
+  reactionProbability: number; // 0-1
+}
+
+interface HumanizedConfig {
+  enabled: boolean;
+  personality: HumanizedPersonality;
+  behavior: {
+    typing: {
+      enabled: boolean;
+      minDuration: number;
+      maxDuration: number;
+    };
+    presence: {
+      enabled: boolean;
+      showTyping: boolean;
+    };
+    messageHandling: {
+      splitLongMessages: boolean;
+      maxCharsPerChunk: number;
+      delayBetweenChunks: number;
+    };
+  };
+}
+
+// ===== PERSONALIDADES PADRÃO =====
+const defaultPersonalities: HumanizedPersonality[] = [
+  {
+    id: 'friendly-assistant',
+    name: 'Assistente Amigável',
+    tone: 'friendly',
+    responseDelay: { min: 2000, max: 4000 },
+    typingSpeed: 45,
+    reactionProbability: 0.7
+  },
+  {
+    id: 'professional-support',
+    name: 'Suporte Profissional',
+    tone: 'professional',
+    responseDelay: { min: 1500, max: 3000 },
+    typingSpeed: 60,
+    reactionProbability: 0.3
+  }
+];
+
+// ===== CONFIGURAÇÃO HUMANIZADA PADRÃO =====
+const defaultHumanizedConfig: HumanizedConfig = {
+  enabled: true,
+  personality: defaultPersonalities[0],
+  behavior: {
+    typing: {
+      enabled: true,
+      minDuration: 1000,
+      maxDuration: 5000
+    },
+    presence: {
+      enabled: true,
+      showTyping: true
+    },
+    messageHandling: {
+      splitLongMessages: true,
+      maxCharsPerChunk: 350,
+      delayBetweenChunks: 2500
+    }
+  }
+};
+
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -169,12 +242,15 @@ Instruções importantes:
 
     console.log('💾 [AI-ASSISTANT] Resposta salva no ticket');
 
-    // 📤 ENVIAR RESPOSTA VIA YUMER API
-    const sendResult = await sendResponseViaYumer(instanceId, context?.chatId, aiResponse);
+    // 🤖 BUSCAR CONFIGURAÇÃO HUMANIZADA DO ASSISTENTE
+    const humanizedConfig = await getHumanizedConfig(assistant.id);
+    
+    // 📤 ENVIAR RESPOSTA HUMANIZADA VIA CODECHAT V2.2.1
+    const sendResult = await sendHumanizedResponse(instanceId, context?.chatId, aiResponse, humanizedConfig);
     if (sendResult.success) {
-      console.log('✅ [AI-ASSISTANT] Resposta enviada via YUMER com sucesso');
+      console.log('✅ [AI-ASSISTANT] Resposta humanizada enviada com sucesso');
     } else {
-      console.error('❌ [AI-ASSISTANT] Erro ao enviar via YUMER:', sendResult.error);
+      console.error('❌ [AI-ASSISTANT] Erro ao enviar resposta humanizada:', sendResult.error);
     }
 
     console.log('✅ [AI-ASSISTANT] Processamento completo');
@@ -208,10 +284,281 @@ Instruções importantes:
   }
 });
 
-// 📤 Função para enviar resposta via EVOLUTION API v2.2.1
-async function sendResponseViaYumer(instanceId: string, chatId: string, message: string): Promise<{ success: boolean; error?: string }> {
+// ===== FUNÇÕES DE HUMANIZAÇÃO =====
+
+// 🎭 Buscar configuração humanizada do assistente
+async function getHumanizedConfig(assistantId: string): Promise<HumanizedConfig> {
   try {
-    console.log('📤 [EVOLUTION-SEND] Enviando resposta via Evolution API v2.2.1:', {
+    const { data: assistant } = await supabase
+      .from('assistants')
+      .select('advanced_settings')
+      .eq('id', assistantId)
+      .single();
+
+    if (assistant?.advanced_settings) {
+      const advancedSettings = typeof assistant.advanced_settings === 'string' 
+        ? JSON.parse(assistant.advanced_settings) 
+        : assistant.advanced_settings;
+      
+      if (advancedSettings.humanization) {
+        console.log('🎭 [HUMANIZED-CONFIG] Configuração customizada encontrada:', advancedSettings.humanization);
+        return { ...defaultHumanizedConfig, ...advancedSettings.humanization };
+      }
+    }
+
+    console.log('🎭 [HUMANIZED-CONFIG] Usando configuração padrão');
+    return defaultHumanizedConfig;
+  } catch (error) {
+    console.error('❌ [HUMANIZED-CONFIG] Erro ao buscar configuração:', error);
+    return defaultHumanizedConfig;
+  }
+}
+
+// 📝 Dividir mensagem em chunks inteligentes
+function splitMessage(text: string, maxChars: number): string[] {
+  if (text.length <= maxChars) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > maxChars) {
+    let splitIndex = maxChars;
+    
+    // Procurar quebra natural
+    const naturalBreaks = ['. ', ', ', '\n', '; ', '! ', '? '];
+    for (const breakChar of naturalBreaks) {
+      const lastBreak = remaining.lastIndexOf(breakChar, maxChars);
+      if (lastBreak > maxChars * 0.5) {
+        splitIndex = lastBreak + breakChar.length;
+        break;
+      }
+    }
+
+    chunks.push(remaining.substring(0, splitIndex).trim());
+    remaining = remaining.substring(splitIndex).trim();
+  }
+
+  if (remaining.length > 0) {
+    chunks.push(remaining);
+  }
+
+  return chunks;
+}
+
+// ⏱️ Calcular duração de typing baseada no texto
+function calculateTypingDuration(text: string, typingSpeed: number, config: HumanizedConfig): number {
+  const words = text.split(' ').length;
+  const baseTypingTime = (words / typingSpeed) * 60 * 1000;
+  
+  // Aplicar variação natural (80% a 120% do tempo base)
+  const duration = baseTypingTime * (0.8 + Math.random() * 0.4);
+  
+  return Math.max(
+    config.behavior.typing.minDuration,
+    Math.min(config.behavior.typing.maxDuration, duration)
+  );
+}
+
+// 📤 Enviar resposta humanizada via CodeChat v2.2.1
+async function sendHumanizedResponse(
+  instanceId: string, 
+  chatId: string, 
+  message: string, 
+  config: HumanizedConfig
+): Promise<{ success: boolean; chunks: number; error?: string }> {
+  try {
+    if (!config.enabled) {
+      // Fallback para envio simples se humanização desabilitada
+      const result = await sendSimpleMessage(instanceId, chatId, message);
+      return { success: result.success, chunks: 1, error: result.error };
+    }
+
+    console.log('🤖 [HUMANIZED-SEND] Iniciando envio humanizado:', {
+      instanceId,
+      chatId,
+      messageLength: message.length,
+      personality: config.personality.name,
+      splitEnabled: config.behavior.messageHandling.splitLongMessages
+    });
+
+    // 1. Dividir mensagem em chunks se necessário
+    const chunks = config.behavior.messageHandling.splitLongMessages 
+      ? splitMessage(message, config.behavior.messageHandling.maxCharsPerChunk)
+      : [message];
+
+    console.log(`📝 [HUMANIZED-SEND] Dividido em ${chunks.length} chunks`);
+
+    // 2. Buscar token de autenticação
+    const { data: instanceData } = await supabase
+      .from('whatsapp_instances')
+      .select(`
+        instance_id,
+        client_id,
+        clients:client_id (
+          business_token
+        )
+      `)
+      .eq('instance_id', instanceId)
+      .single();
+
+    if (!instanceData?.clients?.business_token) {
+      console.error('❌ [HUMANIZED-SEND] Business token não encontrado para instância:', instanceId);
+      return { success: false, chunks: 0, error: 'Business token not found' };
+    }
+
+    const businessToken = instanceData.clients.business_token;
+
+    // 3. Enviar cada chunk com comportamento humanizado
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      
+      console.log(`📤 [HUMANIZED-SEND] Enviando chunk ${i + 1}/${chunks.length}: "${chunk.substring(0, 50)}..."`);
+
+      // 3a. Simular typing se habilitado
+      if (config.behavior.typing.enabled && config.behavior.presence.showTyping) {
+        const typingDuration = calculateTypingDuration(chunk, config.personality.typingSpeed, config);
+        console.log(`⌨️ [HUMANIZED-SEND] Simulando typing por ${typingDuration}ms`);
+        
+        // Definir presença como "composing"
+        await setPresence(instanceId, chatId, 'composing', businessToken);
+        
+        // Aguardar tempo de typing
+        await new Promise(resolve => setTimeout(resolve, typingDuration));
+      }
+
+      // 3b. Enviar mensagem via CodeChat v2.2.1
+      const chunkResult = await sendCodeChatMessage(instanceId, chatId, chunk, businessToken);
+      
+      if (!chunkResult.success) {
+        console.error(`❌ [HUMANIZED-SEND] Erro no chunk ${i + 1}:`, chunkResult.error);
+        return { success: false, chunks: i, error: chunkResult.error };
+      }
+
+      // 3c. Delay entre chunks (exceto no último)
+      if (i < chunks.length - 1) {
+        const chunkDelay = config.behavior.messageHandling.delayBetweenChunks + 
+          (Math.random() - 0.5) * 1000; // ±500ms de variação
+        console.log(`⏱️ [HUMANIZED-SEND] Aguardando ${chunkDelay}ms antes do próximo chunk`);
+        await new Promise(resolve => setTimeout(resolve, chunkDelay));
+      }
+    }
+
+    // 4. Definir presença como "available" após envio
+    if (config.behavior.presence.enabled) {
+      await setPresence(instanceId, chatId, 'available', businessToken);
+    }
+
+    console.log(`✅ [HUMANIZED-SEND] Todos os ${chunks.length} chunks enviados com sucesso`);
+    return { success: true, chunks: chunks.length };
+
+  } catch (error) {
+    console.error('❌ [HUMANIZED-SEND] Erro no envio humanizado:', error);
+    return { 
+      success: false, 
+      chunks: 0, 
+      error: error instanceof Error ? error.message : 'Erro desconhecido' 
+    };
+  }
+}
+
+// 📤 Enviar mensagem via CodeChat v2.2.1
+async function sendCodeChatMessage(
+  instanceId: string, 
+  chatId: string, 
+  message: string, 
+  businessToken: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const codeChatData = {
+      recipient: chatId,
+      textMessage: {
+        text: message
+      },
+      options: {
+        delay: 0, // Controlamos o delay manualmente
+        presence: 'available'
+      }
+    };
+
+    console.log('📋 [CODECHAT-SEND] Dados para CodeChat v2.2.1:', codeChatData);
+
+    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${businessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(codeChatData)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [CODECHAT-SEND] Erro ao enviar via CodeChat v2.2.1:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+        instanceId,
+        url: `https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`
+      });
+      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+    }
+
+    const result = await response.json();
+    console.log('✅ [CODECHAT-SEND] Mensagem enviada com sucesso via CodeChat v2.2.1:', {
+      messageId: result.messageId,
+      chatId: chatId
+    });
+
+    return { success: true };
+
+  } catch (error) {
+    console.error('❌ [CODECHAT-SEND] Erro ao enviar via CodeChat v2.2.1:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// 👤 Definir presença via CodeChat v2.2.1
+async function setPresence(
+  instanceId: string, 
+  chatId: string, 
+  presence: 'available' | 'composing' | 'recording', 
+  businessToken: string
+): Promise<void> {
+  try {
+    console.log(`👤 [PRESENCE] Definindo presença como "${presence}" para ${chatId}`);
+
+    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/presence`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${businessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        recipient: chatId,
+        presence: presence
+      })
+    });
+
+    if (!response.ok) {
+      console.error('❌ [PRESENCE] Erro ao definir presença:', {
+        status: response.status,
+        chatId,
+        presence
+      });
+    } else {
+      console.log(`✅ [PRESENCE] Presença "${presence}" definida com sucesso`);
+    }
+  } catch (error) {
+    console.error('❌ [PRESENCE] Erro ao definir presença:', error);
+  }
+}
+
+// 📤 Envio simples (fallback)
+async function sendSimpleMessage(instanceId: string, chatId: string, message: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log('📤 [SIMPLE-SEND] Enviando mensagem simples:', {
       instanceId,
       chatId,
       messageLength: message.length
@@ -231,60 +578,16 @@ async function sendResponseViaYumer(instanceId: string, chatId: string, message:
       .single();
 
     if (!instanceData?.clients?.business_token) {
-      console.error('❌ [EVOLUTION-SEND] Business token não encontrado para instância:', instanceId);
+      console.error('❌ [SIMPLE-SEND] Business token não encontrado para instância:', instanceId);
       return { success: false, error: 'Business token not found' };
     }
 
     const businessToken = instanceData.clients.business_token;
-    console.log('🔧 [EVOLUTION-SEND] Usando Evolution API v2.2.1 para instância:', instanceId);
 
-    // Preparar dados para Evolution API v2.2.1
-    const evolutionData = {
-      recipient: chatId,
-      textMessage: {
-        text: message
-      },
-      options: {
-        delay: 1200,
-        presence: 'composing'
-      }
-    };
-
-    console.log('📋 [EVOLUTION-SEND] Dados para Evolution API:', evolutionData);
-
-    // Chamar Evolution API v2.2.1 para enviar mensagem
-    const evolutionResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${businessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(evolutionData)
-    });
-
-    if (!evolutionResponse.ok) {
-      const errorText = await evolutionResponse.text();
-      console.error('❌ [EVOLUTION-SEND] Erro ao enviar via Evolution API:', {
-        status: evolutionResponse.status,
-        statusText: evolutionResponse.statusText,
-        error: errorText,
-        instanceId,
-        url: `https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`
-      });
-      return { success: false, error: `HTTP ${evolutionResponse.status}: ${errorText}` };
-    }
-
-    const result = await evolutionResponse.json();
-    console.log('✅ [EVOLUTION-SEND] Mensagem enviada com sucesso via Evolution API v2.2.1:', {
-      messageId: result.key?.id,
-      chatId: chatId,
-      response: result
-    });
-
-    return { success: true };
+    return await sendCodeChatMessage(instanceId, chatId, message, businessToken);
 
   } catch (error) {
-    console.error('❌ [EVOLUTION-SEND] Erro ao enviar via Evolution API:', error);
+    console.error('❌ [SIMPLE-SEND] Erro no envio simples:', error);
     return { success: false, error: error.message };
   }
 }

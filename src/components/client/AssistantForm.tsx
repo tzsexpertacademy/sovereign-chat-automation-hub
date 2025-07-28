@@ -8,10 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { X, Plus, Settings, Zap, Brain, Volume2, Key, CheckCircle, XCircle } from "lucide-react";
+import { X, Plus, Settings, Zap, Brain, Volume2, Key, CheckCircle, XCircle, Bot } from "lucide-react";
 import { assistantsService, type Assistant } from "@/services/assistantsService";
 import { aiConfigService } from "@/services/aiConfigService";
 import { useToast } from "@/hooks/use-toast";
+import { AssistantHumanizationSettings } from "./AssistantHumanizationSettings";
 
 interface AssistantFormProps {
   clientId: string;
@@ -674,10 +675,40 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
             </TabsContent>
 
             <TabsContent value="advanced" className="space-y-6">
-              <SimpleAdvancedSettings
-                settings={advancedSettings}
-                onChange={setAdvancedSettings}
-              />
+              {assistant?.id ? (
+                <AssistantHumanizationSettings
+                  assistantId={assistant.id}
+                  assistantName={name || assistant.name}
+                  onConfigUpdate={(config) => {
+                    console.log('🎭 Configuração de humanização atualizada:', config);
+                    toast({
+                      title: "Humanização Atualizada",
+                      description: "Configurações de humanização salvas com sucesso!"
+                    });
+                  }}
+                />
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Bot className="h-5 w-5" />
+                      Configurações de Humanização
+                    </CardTitle>
+                    <CardDescription>
+                      Salve o assistente primeiro para configurar a humanização
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-sm text-amber-800">
+                        ⚠️ Para configurar comportamentos humanizados (typing, delays, divisão de mensagens), 
+                        é necessário salvar o assistente primeiro. Clique em "Criar Assistente" e depois 
+                        edite-o para acessar essas configurações.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="audio" className="space-y-6">
