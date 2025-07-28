@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { useMessageBatch } from '@/hooks/useMessageBatch';
 
 export interface QueueProcessingConfig {
   queueId: string;
@@ -32,6 +33,7 @@ export interface MessageProcessingResult {
 
 class AIQueueIntegrationService {
   private processingQueue: Map<string, boolean> = new Map();
+  private messageBatcher: any = null;
   private processingLogs: Array<{
     ticketId: string;
     timestamp: Date;
@@ -40,8 +42,249 @@ class AIQueueIntegrationService {
     details: string;
   }> = [];
 
+  constructor() {
+    this.initializeBatcher();
+  }
+
+  private initializeBatcher() {
+    // Criar uma instância manual do message batcher para usar fora do React
+    this.messageBatcher = {
+      config: { timeout: 4000, maxBatchSize: 5, enabled: true },
+      batches: new Map(),
+      processedMessages: new Set(),
+      
+      addMessage: (message: any) => this.handleBatchMessage(message),
+      processBatch: (chatId: string) => this.processBatchedMessages(chatId)
+    };
+  }
+
   /**
-   * Processar mensagem recebida automaticamente
+   * NOVO: Adicionar mensagem ao batch em vez de processar imediatamente
+   */
+  addMessageToBatch(
+    ticketId: string,
+    messageContent: string,
+    clientId: string,
+    instanceId: string,
+    messageId: string,
+    timestamp: number
+  ) {
+    const message = {
+      id: messageId,
+      ticketId,
+      content: messageContent,
+      clientId,
+      instanceId,
+      timestamp,
+      chatId: ticketId // usar ticketId como chatId para agrupamento
+    };
+
+    console.log('📦 [AI-QUEUE] Adicionando mensagem ao batch:', {
+      ticketId,
+      messageId,
+      contentLength: messageContent.length
+    });
+
+    this.messageBatcher.addMessage(message);
+  }
+
+  /**
+   * NOVO: Manipular mensagem no batch
+   */
+  private handleBatchMessage(message: any) {
+    const chatId = message.chatId;
+    const messageId = message.id;
+    const now = Date.now();
+    
+    // Anti-duplicação
+    if (this.messageBatcher.processedMessages.has(messageId)) {
+      console.log(`🚫 [AI-QUEUE] Mensagem duplicada ignorada: ${messageId}`);
+      return;
+    }
+    
+    this.messageBatcher.processedMessages.add(messageId);
+    
+    const existingBatch = this.messageBatcher.batches.get(chatId);
+    
+    if (existingBatch) {
+      // Cancelar timeout anterior
+      if (existingBatch.timeoutId) {
+        clearTimeout(existingBatch.timeoutId);
+      }
+      
+      const updatedMessages = [...existingBatch.messages, message];
+      
+      // Verificar tamanho máximo
+      if (updatedMessages.length >= this.messageBatcher.config.maxBatchSize) {
+        console.log(`📊 [AI-QUEUE] Tamanho máximo atingido, processando batch imediatamente`);
+        this.messageBatcher.batches.delete(chatId);
+        setTimeout(() => this.processBatchedMessages(chatId, updatedMessages), 0);
+        return;
+      }
+      
+      // Criar novo timeout
+      const timeoutId = setTimeout(() => {
+        console.log(`⏰ [AI-QUEUE] Timeout atingido, processando batch`);
+        this.processBatchedMessages(chatId, updatedMessages);
+      }, this.messageBatcher.config.timeout);
+      
+      this.messageBatcher.batches.set(chatId, {
+        ...existingBatch,
+        messages: updatedMessages,
+        timeoutId,
+        lastMessageTime: now
+      });
+      
+      console.log(`📦 [AI-QUEUE] Batch atualizado: ${updatedMessages.length} mensagens`);
+    } else {
+      // Criar novo batch
+      const timeoutId = setTimeout(() => {
+        console.log(`⏰ [AI-QUEUE] Timeout inicial atingido, processando batch`);
+        const batch = this.messageBatcher.batches.get(chatId);
+        if (batch) {
+          this.processBatchedMessages(chatId, batch.messages);
+        }
+      }, this.messageBatcher.config.timeout);
+      
+      this.messageBatcher.batches.set(chatId, {
+        chatId,
+        messages: [message],
+        timeoutId,
+        lastMessageTime: now,
+        isProcessing: false
+      });
+      
+      console.log(`📦 [AI-QUEUE] Novo batch criado com 1 mensagem`);
+    }
+  }
+
+  /**
+   * NOVO: Processar batch de mensagens agrupadas
+   */
+  private async processBatchedMessages(chatId: string, messages?: any[]) {
+    try {
+      const batch = this.messageBatcher.batches.get(chatId);
+      const messagesToProcess = messages || batch?.messages || [];
+      
+      if (messagesToProcess.length === 0) {
+        console.log('⚠️ [AI-QUEUE] Nenhuma mensagem para processar no batch');
+        return;
+      }
+      
+      console.log(`🚀 [AI-QUEUE] Processando batch de ${messagesToProcess.length} mensagens`);
+      
+      // Limpar batch e timeout
+      if (batch?.timeoutId) {
+        clearTimeout(batch.timeoutId);
+      }
+      this.messageBatcher.batches.delete(chatId);
+      
+      // Marcar como processando
+      const ticketId = messagesToProcess[0].ticketId;
+      if (this.processingQueue.get(ticketId)) {
+        console.log('⚠️ [AI-QUEUE] Batch já sendo processado');
+        return;
+      }
+      
+      this.processingQueue.set(ticketId, true);
+      
+      try {
+        // Processar todas as mensagens como contexto único
+        await this.processMessageBatch(messagesToProcess);
+      } finally {
+        this.processingQueue.delete(ticketId);
+      }
+      
+    } catch (error) {
+      console.error('❌ [AI-QUEUE] Erro ao processar batch:', error);
+    }
+  }
+
+  /**
+   * NOVO: Processar batch completo de mensagens
+   */
+  private async processMessageBatch(messages: any[]): Promise<MessageProcessingResult> {
+    const startTime = Date.now();
+    const firstMessage = messages[0];
+    const { ticketId, clientId, instanceId } = firstMessage;
+    
+    try {
+      console.log('🤖 [AI-QUEUE] Processando batch automático:', {
+        ticketId,
+        clientId,
+        messageCount: messages.length,
+        totalContentLength: messages.reduce((sum, msg) => sum + msg.content.length, 0)
+      });
+
+      // 1. Buscar configuração da fila ativa para esta instância
+      const queueConfig = await this.getActiveQueueConfig(instanceId);
+      
+      if (!queueConfig) {
+        console.log('⚠️ [AI-QUEUE] Nenhuma fila ativa encontrada para a instância');
+        return {
+          success: false,
+          error: 'Nenhuma fila ativa configurada',
+          processingTime: Date.now() - startTime
+        };
+      }
+
+      // 2. Se não tem assistente IA, passar para humano
+      if (!queueConfig.assistantId) {
+        console.log('👤 [AI-QUEUE] Sem assistente IA - direcionando para humano');
+        await this.handoffToHuman(ticketId, 'Sem assistente IA configurado');
+        return {
+          success: true,
+          shouldHandoffToHuman: true,
+          processingTime: Date.now() - startTime
+        };
+      }
+
+      // 3. Processar batch com IA
+      const aiResponse = await this.processWithAI(
+        messages, // Passar array completo de mensagens
+        queueConfig,
+        ticketId,
+        clientId
+      );
+
+      // 4. Verificar se deve transferir para humano
+      if (aiResponse.shouldHandoffToHuman) {
+        await this.handoffToHuman(ticketId, 'IA solicitou transferência para humano');
+        return aiResponse;
+      }
+
+      // 5. Enviar resposta automática se sucesso
+      if (aiResponse.success && aiResponse.response) {
+        await this.sendAutomaticResponse(
+          ticketId,
+          aiResponse.response,
+          instanceId,
+          queueConfig
+        );
+      }
+
+      // 6. Registrar log
+      this.addProcessingLog(ticketId, 'ai_batch_processing', 'success', 
+        `Batch de ${messages.length} mensagens processado em ${Date.now() - startTime}ms`);
+
+      return aiResponse;
+
+    } catch (error) {
+      console.error('❌ [AI-QUEUE] Erro no processamento do batch:', error);
+      
+      this.addProcessingLog(ticketId, 'ai_batch_processing', 'error', 
+        error instanceof Error ? error.message : 'Erro desconhecido');
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro no processamento',
+        processingTime: Date.now() - startTime
+      };
+    }
+  }
+
+  /**
+   * MANTIDO: Processar mensagem individual (fallback)
    */
   async processIncomingMessage(
     ticketId: string,
@@ -196,10 +439,10 @@ class AIQueueIntegrationService {
   }
 
   /**
-   * Processar mensagem com IA
+   * ATUALIZADO: Processar com IA (suporta mensagem única ou batch)
    */
   private async processWithAI(
-    messageContent: string,
+    messageData: string | any[],
     queueConfig: QueueProcessingConfig,
     ticketId: string,
     clientId: string
@@ -244,19 +487,47 @@ class AIQueueIntegrationService {
         await new Promise(resolve => setTimeout(resolve, queueConfig.processingDelay * 1000));
       }
 
+      // Preparar dados para a edge function
+      const isBatch = Array.isArray(messageData);
+      const payload = isBatch ? {
+        // Enviar batch de mensagens
+        messages: messageData.map(msg => ({
+          content: msg.content,
+          timestamp: msg.timestamp,
+          id: msg.id
+        })),
+        ticketId,
+        instanceId: messageData[0].instanceId,
+        clientId,
+        assistant: {
+          id: assistant.id,
+          name: assistant.name,
+          prompt: assistant.prompt,
+          model: assistant.model || aiConfig.default_model,
+          settings: assistant.advanced_settings
+        }
+      } : {
+        // Enviar mensagem única
+        message: messageData,
+        ticketId,
+        clientId,
+        assistant: {
+          prompt: assistant.prompt,
+          model: assistant.model || aiConfig.default_model,
+          settings: assistant.advanced_settings
+        },
+        apiKey: aiConfig.openai_api_key
+      };
+
+      console.log(`🤖 [AI-QUEUE] Chamando IA com ${isBatch ? 'batch' : 'mensagem única'}:`, {
+        isBatch,
+        messageCount: isBatch ? messageData.length : 1,
+        assistantId: assistant.id
+      });
+
       // Chamar edge function de processamento de IA
       const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
-        body: {
-          message: messageContent,
-          assistant: {
-            prompt: assistant.prompt,
-            model: assistant.model || aiConfig.default_model,
-            settings: assistant.advanced_settings
-          },
-          apiKey: aiConfig.openai_api_key,
-          ticketId,
-          clientId
-        }
+        body: payload
       });
 
       if (aiError) {

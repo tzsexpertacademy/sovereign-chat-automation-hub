@@ -26,9 +26,14 @@ class RealTimeWhatsAppService {
   private processingQueue: Map<string, RealTimeMessage[]> = new Map();
   private processingTimeouts: Map<string, NodeJS.Timeout> = new Map();
   
-  // Processar mensagem em tempo real
+  // NOVO: Processar mensagem em tempo real com batching
   async processIncomingMessage(message: RealTimeMessage): Promise<ProcessingResult> {
-    console.log('🔄 Processando mensagem em tempo real:', message);
+    console.log('🔄 [REALTIME] Processando mensagem em tempo real:', {
+      messageId: message.id,
+      chatId: message.chatId,
+      content: message.content.substring(0, 50) + '...',
+      fromMe: message.fromMe
+    });
     
     try {
       // 1. Criar/atualizar ticket
@@ -38,22 +43,25 @@ class RealTimeWhatsAppService {
       const shouldProcess = await this.shouldProcessMessage(ticketResult.ticketId);
       
       if (!shouldProcess) {
-        console.log('⏸️ Mensagem não será processada automaticamente (atendimento humano)');
+        console.log('⏸️ [REALTIME] Mensagem não será processada automaticamente (atendimento humano)');
         return { ...ticketResult, shouldProcess: false };
       }
       
       // 3. Detectar gatilhos de transferência
       const transferQueue = this.detectTransferTriggers(message.content);
       if (transferQueue) {
-        console.log('🔄 Gatilho de transferência detectado:', transferQueue);
+        console.log('🔄 [REALTIME] Gatilho de transferência detectado:', transferQueue);
         await this.transferTicketToQueue(ticketResult.ticketId, transferQueue);
         return { ...ticketResult, shouldProcess: false, transferQueue };
       }
+
+      // 4. NOVO: Adicionar mensagem ao agrupamento em vez de processar imediatamente
+      if (!message.fromMe) { // Só agrupar mensagens do usuário, não nossas respostas
+        this.addToProcessingQueue(message);
+        return { ...ticketResult, shouldProcess: true };
+      }
       
-      // 4. Adicionar à fila de processamento com delay
-      this.addToProcessingQueue(message);
-      
-      return { ...ticketResult, shouldProcess: true };
+      return { ...ticketResult, shouldProcess: false };
     } catch (error) {
       console.error('❌ Erro ao processar mensagem:', error);
       throw error;

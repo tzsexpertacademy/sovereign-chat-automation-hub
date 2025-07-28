@@ -124,8 +124,9 @@ serve(async (req) => {
     });
 
     // 📝 SUPORTAR BATCHES: Combinar múltiplas mensagens como contexto único
-    const messageContent = messages && Array.isArray(messages) && messages.length > 0
-      ? messages.join('\n\n') // Combinar todas as mensagens do batch
+    const isBatch = messages && Array.isArray(messages) && messages.length > 0;
+    const messageContent = isBatch
+      ? messages.map(msg => `[${new Date(msg.timestamp).toLocaleTimeString()}] ${msg.content}`).join('\n')
       : message;
 
     // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global

@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { realTimeWhatsAppService, type RealTimeMessage } from './realTimeWhatsAppService';
+import { aiQueueIntegrationService } from './aiQueueIntegrationService';
 
 export class HumanizedMessageProcessor {
   private static instance: HumanizedMessageProcessor;
@@ -91,15 +92,21 @@ export class HumanizedMessageProcessor {
         mimeType: messageData.mime_type
       };
 
-      // Processar mensagem com comportamento humanizado
-      const result = await realTimeWhatsAppService.processIncomingMessage(message);
-      
-      console.log('✅ Mensagem processada com humanização:', {
-        ticketId: result.ticketId,
-        shouldProcess: result.shouldProcess,
-        transferQueue: result.transferQueue,
-        humanizedBehavior: true
-      });
+      // NOVO: Usar AI Queue Integration Service com batching
+      if (!messageData.from_me) {
+        aiQueueIntegrationService.addMessageToBatch(
+          messageData.chat_id, // usar chat_id como ticketId temporariamente
+          messageData.content || '',
+          clientId,
+          messageData.instance_id,
+          messageData.message_id,
+          new Date(messageData.timestamp).getTime()
+        );
+        
+        console.log('📦 [HUMANIZED] Mensagem adicionada ao batch para processamento com IA');
+      } else {
+        console.log('📤 [HUMANIZED] Mensagem nossa ignorada (from_me=true)');
+      }
 
     } catch (error) {
       console.error('❌ Erro ao processar mensagem:', error);
