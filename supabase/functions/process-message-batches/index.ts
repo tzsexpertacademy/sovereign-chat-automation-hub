@@ -20,8 +20,8 @@ Deno.serve(async (req) => {
   console.log('🤖 [PROCESS-BATCHES] Verificando batches pendentes...');
 
   try {
-    // BUSCAR BATCHES ANTIGOS (últimos 4+ segundos sem atualização)
-    const cutoffTime = new Date(Date.now() - 4000).toISOString(); // 4 segundos atrás
+    // BUSCAR BATCHES ANTIGOS (últimos 3+ segundos sem atualização)
+    const cutoffTime = new Date(Date.now() - 3000).toISOString(); // 3 segundos atrás
     
     const { data: pendingBatches, error } = await supabase
       .from('message_batches')
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     
     // PROCESSAR CADA BATCH
     for (const batch of pendingBatches) {
-      console.log('🤖 [PROCESS-BATCHES] 🚀 Processando batch:', batch.id, 'com', batch.messages.length, 'mensagens');
+      console.log('🤖 [PROCESS-BATCHES] 🚀 Processando batch:', batch.id, 'com', batch.messages?.length || 0, 'mensagens');
       
       try {
         await processBatch(batch);
@@ -112,7 +112,8 @@ async function processBatch(batch: any) {
     }
 
     // CHAMAR IA COM BATCH
-    console.log('🤖 [PROCESS-BATCH] 🧠 Chamando IA para ticket:', ticket.id);
+    console.log('🤖 [PROCESS-BATCH] 🧠 Chamando IA para ticket:', ticket.id, 'com', batch.messages?.length || 0, 'mensagens');
+    console.log('🤖 [PROCESS-BATCH] 📄 Mensagens do batch:', JSON.stringify(batch.messages, null, 2));
     
     const aiResponse = await supabase.functions.invoke('ai-assistant-process', {
       body: {

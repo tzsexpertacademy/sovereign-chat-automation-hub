@@ -28,7 +28,8 @@ Deno.serve(async (req) => {
     console.log('⏰ [SCHEDULER-TRIGGER] Resultado:', {
       success: !response.error,
       data: response.data,
-      error: response.error?.message
+      error: response.error?.message,
+      timestamp: new Date().toISOString()
     });
 
     return new Response(JSON.stringify({
