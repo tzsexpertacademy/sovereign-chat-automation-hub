@@ -136,27 +136,34 @@ async function processMessageBatch(yumerData: any) {
     // SALVAR MENSAGEM NO BANCO PRIMEIRO
     await saveMessageToDatabase(messageData, instance, chatId, pushName, phoneNumber);
 
-    // ✅ SISTEMA DE BATCH SUPER SIMPLES
-    const batchKey = chatId;
+    // ✅ SISTEMA DE BATCH COM DEBOUNCE MELHORADO
+    const batchKey = `${chatId}_${instance.client_id}`;
+    console.log('🔥 [BATCH-DEBUG] 🔑 Chave do batch:', batchKey);
+    console.log('🔥 [BATCH-DEBUG] 📊 Batches ativos na memória:', messageBatches.size);
+    
     let batch = messageBatches.get(batchKey);
+    const now = Date.now();
     
     if (!batch) {
       // CRIAR NOVO BATCH
+      console.log('🔥 [BATCH-DEBUG] ✨ Criando NOVO batch para:', batchKey);
       batch = {
         chatId,
         instanceId: instance.instance_id,
         clientId: instance.client_id,
         messages: [],
-        firstMessageTime: Date.now()
+        firstMessageTime: now,
+        timeoutId: null
       };
       messageBatches.set(batchKey, batch);
-      console.log('🔥 [BATCH-SIMPLES] NOVO BATCH CRIADO:', batchKey);
+    } else {
+      console.log('🔥 [BATCH-DEBUG] ♻️ Adicionando ao batch EXISTENTE:', batchKey, '- Mensagens atuais:', batch.messages.length);
       
-      // ⏰ TIMER DE 4 SEGUNDOS
-      setTimeout(async () => {
-        console.log('🔥 [BATCH-SIMPLES] ⏰ TIMER DISPARADO - PROCESSANDO BATCH:', batchKey);
-        await executeBatch(batchKey);
-      }, BATCH_TIMEOUT);
+      // ✅ DEBOUNCE: CANCELAR TIMER ANTERIOR
+      if (batch.timeoutId) {
+        console.log('🔥 [BATCH-DEBUG] ⏰ Cancelando timer anterior (debounce)');
+        clearTimeout(batch.timeoutId);
+      }
     }
 
     // ADICIONAR MENSAGEM AO BATCH
@@ -168,7 +175,17 @@ async function processMessageBatch(yumerData: any) {
       phoneNumber
     });
 
-    console.log('🔥 [BATCH-SIMPLES] Mensagem adicionada ao batch. Total:', batch.messages.length);
+    console.log('🔥 [BATCH-DEBUG] ✅ Mensagem adicionada ao batch:', batchKey);
+    console.log('🔥 [BATCH-DEBUG] 📊 Total de mensagens no batch:', batch.messages.length);
+    console.log('🔥 [BATCH-DEBUG] 🕐 Idade do batch:', (now - batch.firstMessageTime) / 1000, 'segundos');
+
+    // ✅ CONFIGURAR NOVO TIMER (DEBOUNCE)
+    batch.timeoutId = setTimeout(async () => {
+      console.log('🔥 [BATCH-DEBUG] ⚡ EXECUTANDO BATCH após timeout de 4s:', batchKey);
+      await executeBatch(batchKey);
+    }, BATCH_TIMEOUT);
+    
+    console.log('🔥 [BATCH-DEBUG] ⏲️ Timer configurado para', BATCH_TIMEOUT / 1000, 'segundos');
 
     return new Response(JSON.stringify({ 
       success: true, 
