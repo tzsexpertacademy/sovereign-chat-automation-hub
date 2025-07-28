@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { whatsappService } from '@/services/whatsappMultiClient';
+import { unifiedMessageService } from '@/services/unifiedMessageService';
 import { ticketsService } from '@/services/ticketsService';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -98,12 +98,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
       markActivity();
 
-      // Tentar envio com melhor logging
-      const response = await whatsappService.sendTextMessage({
-        instanceId: actualInstanceId,
-        to: ticket.chat_id,
-        message: messageToSend
-      });
+      // Enviar mensagem manual via serviço unificado
+      const response = await unifiedMessageService.sendManualMessage(
+        actualInstanceId,
+        ticket.chat_id,
+        messageToSend,
+        clientId
+      );
       
       console.log('📡 [TICKET-SEND] Resposta completa:', {
         success: response.success,
