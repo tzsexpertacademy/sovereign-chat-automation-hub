@@ -385,6 +385,7 @@ export type Database = {
           created_at: string
           default_model: string
           id: string
+          online_status_config: Json | null
           openai_api_key: string
           updated_at: string
         }
@@ -393,6 +394,7 @@ export type Database = {
           created_at?: string
           default_model?: string
           id?: string
+          online_status_config?: Json | null
           openai_api_key: string
           updated_at?: string
         }
@@ -401,6 +403,7 @@ export type Database = {
           created_at?: string
           default_model?: string
           id?: string
+          online_status_config?: Json | null
           openai_api_key?: string
           updated_at?: string
         }
