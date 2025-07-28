@@ -425,11 +425,14 @@ async function sendHumanizedResponse(
         const typingDuration = calculateTypingDuration(chunk, config.personality.typingSpeed, config);
         console.log(`⌨️ [HUMANIZED-SEND] Simulando ${presenceType} por ${typingDuration}ms`);
         
+        // Enviar mensagem com presença de typing/recording durante o delay
+        await sendCodeChatMessage(instanceId, chatId, '', businessToken, presenceType);
+        
         // Aguardar tempo de typing/recording
         await new Promise(resolve => setTimeout(resolve, typingDuration));
       }
 
-      // 3c. Enviar mensagem via CodeChat v2.2.1 com presença integrada
+      // 3c. Enviar mensagem real via CodeChat v2.2.1 
       const chunkResult = await sendCodeChatMessage(instanceId, chatId, chunk, businessToken, 'available');
       
       if (!chunkResult.success) {
