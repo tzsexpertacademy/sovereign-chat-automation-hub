@@ -69,17 +69,28 @@ Deno.serve(async (req) => {
 
     let processedCount = 0;
     
-    // PROCESSAR CADA BATCH
-    for (const batch of pendingBatches) {
+    // PROCESSAR BATCHES EM PARALELO (máximo 3 simultâneos para não sobrecarregar)
+    const batchLimit = Math.min(pendingBatches.length, 3);
+    const batches = pendingBatches.slice(0, batchLimit);
+    
+    console.log('🤖 [PROCESS-BATCHES] 🚀 Processando', batches.length, 'batches em paralelo');
+    
+    const batchPromises = batches.map(async (batch) => {
       console.log('🤖 [PROCESS-BATCHES] 🚀 Processando batch:', batch.id, 'com', batch.messages?.length || 0, 'mensagens');
       
       try {
         await processBatch(batch);
-        processedCount++;
+        return { success: true, batchId: batch.id };
       } catch (error) {
         console.error('🤖 [PROCESS-BATCHES] ❌ Erro ao processar batch:', batch.id, error);
+        return { success: false, batchId: batch.id, error: error.message };
       }
-    }
+    });
+    
+    const results = await Promise.allSettled(batchPromises);
+    processedCount = results.filter(result => 
+      result.status === 'fulfilled' && result.value.success
+    ).length;
 
     return new Response(JSON.stringify({ 
       success: true,

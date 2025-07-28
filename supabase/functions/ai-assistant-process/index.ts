@@ -226,23 +226,40 @@ serve(async (req) => {
     let openAIApiKey = globalOpenAIApiKey;
     let keySource = 'global';
 
-    try {
-      // Tentar buscar API Key específica do cliente
-      const { data: clientConfig } = await supabase
+    // Buscar em paralelo: config do cliente, memória conversacional e histórico
+    const [clientConfigResult, memoryResult, messagesResult] = await Promise.allSettled([
+      // Buscar API Key específica do cliente
+      supabase
         .from('client_ai_configs')
         .select('openai_api_key, default_model')
-        .eq('client_id', clientId)
-        .single();
+        .eq('client_id', resolvedClientId)
+        .single(),
+      
+      // Buscar memória conversacional
+      supabase
+        .from('conversation_context')
+        .select('*')
+        .eq('client_id', resolvedClientId)
+        .eq('chat_id', resolvedContext.chatId)
+        .eq('instance_id', resolvedInstanceId)
+        .single(),
+      
+      // Buscar histórico de mensagens
+      supabase
+        .from('ticket_messages')
+        .select('content, from_me, sender_name, timestamp, message_id')
+        .eq('ticket_id', ticketId)
+        .order('timestamp', { ascending: false })
+        .limit(50)
+    ]);
 
-      if (clientConfig?.openai_api_key) {
-        openAIApiKey = clientConfig.openai_api_key;
-        keySource = 'client';
-        console.log('🔑 [AI-ASSISTANT] Usando API Key específica do cliente');
-      } else {
-        console.log('🔑 [AI-ASSISTANT] Cliente não tem API Key própria, usando global');
-      }
-    } catch (error) {
-      console.log('🔑 [AI-ASSISTANT] Erro ao buscar config do cliente, usando global:', error.message);
+    // Processar API Key do cliente
+    if (clientConfigResult.status === 'fulfilled' && clientConfigResult.value.data?.openai_api_key) {
+      openAIApiKey = clientConfigResult.value.data.openai_api_key;
+      keySource = 'client';
+      console.log('🔑 [AI-ASSISTANT] Usando API Key específica do cliente');
+    } else {
+      console.log('🔑 [AI-ASSISTANT] Cliente não tem API Key própria, usando global');
     }
 
     console.log('🤖 [AI-ASSISTANT] Dados recebidos:', {
@@ -280,35 +297,24 @@ serve(async (req) => {
       );
     }
 
-    // 🧠 BUSCAR CONTEXTO CONVERSACIONAL PERSISTENTE
+    // Processar memória conversacional
     let conversationMemory = null;
-    try {
-      const { data: memory } = await supabase
-        .from('conversation_context')
-        .select('*')
-        .eq('client_id', resolvedClientId)
-        .eq('chat_id', resolvedContext.chatId)
-        .eq('instance_id', resolvedInstanceId)
-        .single();
-      
-      conversationMemory = memory;
+    if (memoryResult.status === 'fulfilled' && memoryResult.value.data) {
+      conversationMemory = memoryResult.value.data;
       console.log('🧠 [CONTEXT] Memória conversacional carregada:', {
-        hasMemory: !!memory,
-        customerName: memory?.customer_name,
-        keyInfoKeys: memory?.key_information ? Object.keys(memory.key_information) : [],
-        topicsCount: memory?.last_topics?.length || 0
+        hasMemory: !!conversationMemory,
+        customerName: conversationMemory?.customer_name,
+        keyInfoKeys: conversationMemory?.key_information ? Object.keys(conversationMemory.key_information) : [],
+        topicsCount: conversationMemory?.last_topics?.length || 0
       });
-    } catch (error) {
+    } else {
       console.log('🧠 [CONTEXT] Nenhuma memória conversacional encontrada (primeira conversa)');
     }
 
-    // 📚 BUSCAR HISTÓRICO AMPLIADO DE MENSAGENS (50 últimas, removendo duplicatas)
-    const { data: allRecentMessages } = await supabase
-      .from('ticket_messages')
-      .select('content, from_me, sender_name, timestamp, message_id')
-      .eq('ticket_id', ticketId)
-      .order('timestamp', { ascending: false })
-      .limit(50);
+    // Processar histórico de mensagens
+    const allRecentMessages = messagesResult.status === 'fulfilled' && messagesResult.value.data 
+      ? messagesResult.value.data 
+      : [];
 
     // 🧹 REMOVER MENSAGENS DUPLICADAS por message_id e conteúdo
     const uniqueMessages = [];
