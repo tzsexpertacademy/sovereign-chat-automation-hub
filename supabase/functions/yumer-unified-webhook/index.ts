@@ -271,7 +271,7 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
       chat_id: chatId,
       instance_id: instance.instance_id,
       message_type: 'text',
-      content: messageData.content?.text || '',
+      body: messageData.content?.text || '',
       from_me: messageData.keyFromMe || false,
       timestamp: new Date(messageData.messageTimestamp * 1000),
       contact_name: pushName,
