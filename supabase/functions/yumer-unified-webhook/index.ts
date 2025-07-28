@@ -37,7 +37,7 @@ interface MessageBatch {
 
 // Sistema de batching global para múltiplas mensagens
 const messageBatches = new Map<string, MessageBatch>();
-const BATCH_TIMEOUT = 2000; // 2 segundos para agrupar mensagens
+const BATCH_TIMEOUT = 4000; // 4 segundos para agrupar mensagens (timeout inteligente)
 
 serve(async (req) => {
   console.log('🌐 [YUMER-UNIFIED-WEBHOOK] Recebendo requisição:', req.method, req.url);
@@ -233,14 +233,15 @@ async function addToBatch(yumerData: YumerWebhookData) {
     batch.messages.push(yumerData);
     console.log(`📥 [BATCH] Mensagem adicionada. Total no batch: ${batch.messages.length}`);
 
-    // Limpar timeout anterior se existir
+    // 🔄 TIMEOUT INTELIGENTE COM RESET: Limpar timeout anterior se existir
     if (batch.timeoutId) {
       clearTimeout(batch.timeoutId);
+      console.log(`🔄 [BATCH] Timeout resetado para batch: ${batchKey} (nova mensagem recebida)`);
     }
 
-    // Configurar novo timeout para processar o batch
+    // Configurar novo timeout para processar o batch (sempre reseta quando novas mensagens chegam)
     batch.timeoutId = setTimeout(async () => {
-      console.log(`⏰ [BATCH] Timeout atingido para batch: ${batchKey}. Processando ${batch.messages.length} mensagens...`);
+      console.log(`⏰ [BATCH] Timeout de ${BATCH_TIMEOUT}ms atingido para batch: ${batchKey}. Processando ${batch.messages.length} mensagens...`);
       await processBatch(batchKey);
     }, BATCH_TIMEOUT);
 
@@ -297,24 +298,37 @@ async function processBatch(batchKey: string) {
       }
     }
 
-    // Processar com IA apenas uma vez para todo o batch
-    if (lastTicketId && instanceDetails) {
+    // 🤖 PROCESSAR COM IA APENAS UMA VEZ PARA TODO O BATCH
+    if (lastTicketId && instanceDetails && batch.messages.length > 0) {
       console.log(`🤖 [BATCH] Processando ${batch.messages.length} mensagens como contexto único com IA`);
       
-      // Extrair dados da última mensagem para contexto
+      // 📝 COMBINAR TODAS AS MENSAGENS DO BATCH COMO CONTEXTO ÚNICO
+      const allMessages = batch.messages
+        .map(msg => {
+          const msgData = extractYumerMessageData(msg.data, {
+            instance_id: batch.instanceId,
+            client_id: batch.clientId
+          });
+          return msgData?.content || '';
+        })
+        .filter(content => content.trim() !== '');
+      
+      // Buscar dados da última mensagem para outros contextos
       const lastMessage = batch.messages[batch.messages.length - 1];
-      const messageData = extractYumerMessageData(lastMessage.data, {
+      const lastMessageData = extractYumerMessageData(lastMessage.data, {
         instance_id: batch.instanceId,
         client_id: batch.clientId
       });
       
-      if (messageData) {
+      if (lastMessageData && allMessages.length > 0) {
+        // 🎯 CORRIGIR INVOCAÇÃO DA IA: Passar parâmetros corretos
         await processWithAIIfEnabled(
-          messageData, 
+          lastMessageData, 
           instanceDetails,
-          true, // isBatch
+          true, // isBatch = true
           batch.messages.length, // batchSize
-          lastTicketId
+          lastTicketId, // ticketId correto
+          allMessages // todas as mensagens combinadas
         );
       }
     }
@@ -614,7 +628,8 @@ async function processWithAIIfEnabled(
   instanceDetails: any,
   isBatch: boolean = false,
   batchSize: number = 1,
-  ticketId?: string
+  ticketId?: string,
+  allMessages?: string[]
 ): Promise<boolean> {
   try {
     console.log('🤖 [AI-CHECK] Verificando se deve processar com IA');
@@ -676,17 +691,30 @@ async function processWithAIIfEnabled(
 
     console.log(`🤖 [AI-TRIGGER] Processando com IA - Fila: ${queue.name}, Assistente: ${assistant.name}`);
 
+    // 🎯 CORRIGIR INVOCAÇÃO DA IA: Passar parâmetros corretos para batches
+    const messageContent = isBatch && allMessages && allMessages.length > 0 
+      ? allMessages.join('\n\n') // Combinar todas as mensagens do batch
+      : messageData.content;
+
     // Chamar edge function de processamento de IA com timeout e retry
     const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
       body: {
         ticketId: ticketId,
         instanceId: messageData.instanceId,
-        assistantId: assistant.id,
-        assistantName: assistant.name,
-        lastMessage: messageData.content,
-        customerName: messageData.contactName || messageData.pushName || 'Cliente',
-        isBatch,
-        batchSize
+        clientId: messageData.clientId,
+        assistant: {
+          id: assistant.id,
+          name: assistant.name,
+          prompt: assistant.prompt,
+          model: assistant.model
+        },
+        message: isBatch ? undefined : messageData.content,
+        messages: isBatch ? allMessages : undefined, // Enviar array de mensagens para batch
+        context: {
+          customerName: messageData.contactName || messageData.pushName || 'Cliente',
+          phoneNumber: messageData.phoneNumber,
+          chatId: messageData.chatId
+        }
       }
     });
 

@@ -14,14 +14,31 @@ import { whatsappVideoService } from '@/services/whatsappVideoService';
 import { whatsappDocumentService } from '@/services/whatsappDocumentService';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 import { useRealTimePresence } from '@/hooks/useRealTimePresence';
+import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 
 interface MessagesListProps {
   messages: any[];
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   getMessageStatus: (messageId: string) => 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  ticketId?: string;
+  instanceId?: string;
 }
 
-const MessagesList = ({ messages, scrollAreaRef, getMessageStatus }: MessagesListProps) => {
+const MessagesList = ({ messages, scrollAreaRef, getMessageStatus, ticketId, instanceId }: MessagesListProps) => {
+  // 👀 INDICADORES DE PRESENÇA IMEDIATOS: Hook para presença em tempo real
+  const { isTyping } = useTicketRealtimeImproved(ticketId || '');
+  const presence = useRealTimePresence(instanceId || '');
+
+  // Simular isRecording baseado no status de presença
+  const isRecording = presence.status === 'composing' && presence.chatId && presence.chatId.includes('recording');
+
+  console.log('🎭 [MESSAGES-LIST] Indicadores de presença:', {
+    isTyping,
+    isRecording,
+    presenceStatus: presence.status,
+    ticketId,
+    instanceId
+  });
 const renderMessageContent = (message: any) => {
     // Renderizar áudio
     if (message.message_type === 'audio') {
@@ -223,6 +240,30 @@ const renderMessageContent = (message: any) => {
   return (
     <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
       <div className="space-y-4">
+        {/* 🎭 INDICADORES DE PRESENÇA IMEDIATOS */}
+        {(isTyping || isRecording || presence.status === 'composing') && (
+          <div className="flex gap-3 justify-start">
+            <Avatar className="w-8 h-8 flex-shrink-0">
+              <AvatarFallback>
+                <Bot className="w-4 h-4" />
+              </AvatarFallback>
+            </Avatar>
+            
+            <div className="bg-gray-100 rounded-lg px-3 py-2 max-w-[70%]">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+                </div>
+                <span>
+                  {isRecording ? 'Gravando áudio...' : 'Digitando...'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {messages.map((message) => (
           <div
             key={`${message.id}-${message.timestamp}`}

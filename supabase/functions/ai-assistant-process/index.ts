@@ -104,8 +104,10 @@ serve(async (req) => {
       context 
     } = await req.json();
 
-    // Suportar tanto mensagem única quanto múltiplas mensagens (batch)
-    const messageContent = messages ? messages.join('\n\n') : message;
+    // 📝 SUPORTAR BATCHES: Combinar múltiplas mensagens como contexto único
+    const messageContent = messages && Array.isArray(messages) && messages.length > 0
+      ? messages.join('\n\n') // Combinar todas as mensagens do batch
+      : message;
 
     // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
     let openAIApiKey = globalOpenAIApiKey;
@@ -173,10 +175,10 @@ serve(async (req) => {
         .join('\n');
     }
 
-    // Construir prompt do assistente com suporte a batch
-    const isBatchProcessing = !!messages;
+    // 🎯 CONSTRUIR PROMPT PARA BATCH: Considerar todas as mensagens como contexto único
+    const isBatchProcessing = messages && Array.isArray(messages) && messages.length > 1;
     const contextMessage = isBatchProcessing 
-      ? `\n\nNOTA IMPORTANTE: O usuário enviou ${messages.length} mensagens em sequência. Responda de forma unificada considerando todas as mensagens como uma única conversa contínua. Não responda cada mensagem separadamente.`
+      ? `\n\nNOTA IMPORTANTE: O usuário enviou ${messages.length} mensagens em sequência rápida. Estas mensagens devem ser consideradas como uma única conversa contínua. Analise todo o contexto e responda de forma unificada, não responda cada mensagem separadamente.`
       : '';
     
     const systemPrompt = `${assistant.prompt || 'Você é um assistente útil e prestativo.'}
@@ -194,7 +196,8 @@ Instruções importantes:
 - Mantenha o contexto da conversa
 - Se não souber algo, seja honesto
 - Responda em português brasileiro
-- Seja conciso mas completo`;
+- Seja conciso mas completo
+${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitação do usuário' : ''}`;
 
     console.log('🤖 [AI-ASSISTANT] Chamando OpenAI API com modelo:', assistant.model || 'gpt-4o-mini');
 

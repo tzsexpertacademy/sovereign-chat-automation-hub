@@ -183,6 +183,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         messages={messages}
         scrollAreaRef={scrollAreaRef}
         getMessageStatus={(messageId: string) => getMessageStatus(messageId)}
+        ticketId={ticketId}
+        instanceId={ticket?.instance_id}
       />
 
       {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (
