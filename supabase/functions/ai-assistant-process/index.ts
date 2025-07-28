@@ -97,7 +97,7 @@ serve(async (req) => {
     const requestBody = await req.json();
     console.log('📋 [AI-ASSISTANT] Body completo recebido:', JSON.stringify(requestBody, null, 2));
     
-    const { 
+    let { 
       ticketId, 
       message, 
       messages,
@@ -106,6 +106,12 @@ serve(async (req) => {
       assistant,
       context 
     } = requestBody;
+    
+    // 🔍 CORREÇÃO: Se ticketId é um objeto, extrair o ID real
+    if (ticketId && typeof ticketId === 'object' && ticketId.id) {
+      console.log('🔧 [AI-ASSISTANT] ticketId é objeto, extraindo ID:', ticketId.id);
+      ticketId = ticketId.id;
+    }
     
     // 🔍 LOGS DETALHADOS DOS PARÂMETROS
     console.log('🔍 [AI-ASSISTANT] Parâmetros extraídos:', {
