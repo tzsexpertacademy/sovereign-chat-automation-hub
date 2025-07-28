@@ -129,6 +129,15 @@ serve(async (req) => {
       ? messages.map(msg => `[${new Date(msg.timestamp).toLocaleTimeString()}] ${msg.content}`).join('\n')
       : message;
 
+    // ✅ VALIDAÇÃO CRÍTICA: Verificar se os dados essenciais estão presentes
+    if (!ticketId) {
+      throw new Error('ticketId é obrigatório');
+    }
+    
+    if (!messageContent && !message && (!messages || messages.length === 0)) {
+      throw new Error('Nenhum conteúdo de mensagem fornecido');
+    }
+
     // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
     let openAIApiKey = globalOpenAIApiKey;
     let keySource = 'global';
@@ -195,13 +204,28 @@ serve(async (req) => {
         .join('\n');
     }
 
+    // ✅ VALIDAÇÃO DO ASSISTENTE: Garantir que existe e tem configurações mínimas
+    const safeAssistant = assistant || {
+      id: 'default',
+      name: 'Assistente IA',
+      model: 'gpt-4o-mini',
+      prompt: 'Você é um assistente útil e prestativo.'
+    };
+
+    console.log('🤖 [AI-ASSISTANT] Usando assistente:', {
+      id: safeAssistant.id,
+      name: safeAssistant.name,
+      model: safeAssistant.model,
+      hasPrompt: !!safeAssistant.prompt
+    });
+
     // 🎯 CONSTRUIR PROMPT PARA BATCH: Considerar todas as mensagens como contexto único
     const isBatchProcessing = messages && Array.isArray(messages) && messages.length > 1;
     const contextMessage = isBatchProcessing 
       ? `\n\nNOTA IMPORTANTE: O usuário enviou ${messages.length} mensagens em sequência rápida. Estas mensagens devem ser consideradas como uma única conversa contínua. Analise todo o contexto e responda de forma unificada, não responda cada mensagem separadamente.`
       : '';
     
-    const systemPrompt = `${assistant.prompt || 'Você é um assistente útil e prestativo.'}
+    const systemPrompt = `${safeAssistant.prompt || 'Você é um assistente útil e prestativo.'}
 
 Contexto da conversa:
 Cliente: ${context?.customerName || 'Cliente'}
@@ -219,7 +243,7 @@ Instruções importantes:
 - Seja conciso mas completo
 ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitação do usuário' : ''}`;
 
-    console.log('🤖 [AI-ASSISTANT] Chamando OpenAI API com modelo:', assistant.model || 'gpt-4o-mini');
+    console.log('🤖 [AI-ASSISTANT] Chamando OpenAI API com modelo:', safeAssistant.model || 'gpt-4o-mini');
 
     // Chamar OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -229,7 +253,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: assistant.model || 'gpt-4o-mini',
+        model: safeAssistant.model || 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: messageContent }
@@ -250,7 +274,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
 
     console.log('✅ [AI-ASSISTANT] Resposta da IA gerada:', {
       responseLength: aiResponse?.length || 0,
-      model: assistant.model || 'gpt-4o-mini'
+      model: safeAssistant.model || 'gpt-4o-mini'
     });
 
     // Salvar resposta da IA no ticket
@@ -264,7 +288,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         content: aiResponse,
         from_me: true,
         is_ai_response: true,
-        sender_name: assistant.name || 'Assistente IA',
+        sender_name: safeAssistant.name || 'Assistente IA',
         timestamp: new Date().toISOString(),
         processing_status: 'processed'
       });
@@ -277,7 +301,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     console.log('💾 [AI-ASSISTANT] Resposta salva no ticket');
 
     // 🤖 BUSCAR CONFIGURAÇÃO HUMANIZADA DO ASSISTENTE
-    const humanizedConfig = await getHumanizedConfig(assistant.id);
+    const humanizedConfig = await getHumanizedConfig(safeAssistant.id);
     
     // 📤 ENVIAR RESPOSTA VIA SERVIÇO UNIFICADO SIMPLIFICADO
     console.log('📤 [AI-ASSISTANT] Enviando resposta via serviço unificado...');
@@ -324,7 +348,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     const sendOptions = {
       delay: 1200,
       presence: 'composing',
-      externalAttributes: `source=ai-assistant;ticketId=${ticketId};assistantId=${assistant.id};timestamp=${Date.now()}`
+      externalAttributes: `source=ai-assistant;ticketId=${ticketId};assistantId=${safeAssistant.id};timestamp=${Date.now()}`
     };
 
     let sendResult;
@@ -383,7 +407,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
 
     console.log('🎉 [AI-ASSISTANT] SUCESSO TOTAL! Assistente processou e enviou resposta:', {
       ticketId: ticketId,
-      assistantName: assistant?.name,
+      assistantName: safeAssistant?.name,
       responseLength: aiResponse?.length || 0,
       sendSuccess: sendResult?.success,
       messageId: messageId,
