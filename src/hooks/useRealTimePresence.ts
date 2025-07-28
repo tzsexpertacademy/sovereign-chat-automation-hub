@@ -39,10 +39,17 @@ export const useRealTimePresence = (instanceId: string) => {
     lastUpdate: null,
     isOnline: false
   });
+  const [presenceDetection, setPresenceDetection] = useState({
+    isAnalyzing: false,
+    lastDetection: null as Date | null,
+    activityScore: 0,
+    messageStatus: null as 'delivered' | 'read' | 'sent' | null
+  });
 
   const presenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const offlineTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
+  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Atualizar presença via CodeChat API
   const updatePresence = useCallback(async (
@@ -155,6 +162,70 @@ export const useRealTimePresence = (instanceId: string) => {
     }
   }, [setTyping, setOnline]);
 
+  // Detectar presença baseada em status das mensagens
+  const detectPresenceFromMessages = useCallback(async (chatId: string) => {
+    if (!config.enabled || !instanceId) return;
+
+    setPresenceDetection(prev => ({ ...prev, isAnalyzing: true }));
+    
+    try {
+      console.log(`🔍 [PRESENCE-DETECTION] Analisando atividade para: ${chatId}`);
+      
+      const detection = await unifiedYumerService.detectPresenceFromMessages(
+        instanceId, 
+        chatId,
+        config.offlineAfterInactivity
+      );
+
+      setPresenceDetection({
+        isAnalyzing: false,
+        lastDetection: new Date(),
+        activityScore: detection.activityScore,
+        messageStatus: detection.messageStatus
+      });
+
+      // Se detectou atividade, definir como online automaticamente
+      if (detection.isOnline && config.autoOnline) {
+        console.log(`📱 [PRESENCE-DETECTION] Atividade detectada (score: ${detection.activityScore}), definindo como online`);
+        await setOnline(chatId);
+      } else if (!detection.isOnline && presenceState.isOnline) {
+        console.log(`😴 [PRESENCE-DETECTION] Sem atividade detectada, mantendo status atual`);
+      }
+
+      return detection;
+    } catch (error) {
+      console.error('❌ [PRESENCE-DETECTION] Erro na detecção:', error);
+      setPresenceDetection(prev => ({ ...prev, isAnalyzing: false }));
+      return null;
+    }
+  }, [config, instanceId, setOnline, presenceState.isOnline]);
+
+  // Iniciar detecção automática
+  const startPresenceDetection = useCallback((chatId: string, interval: number = 60000) => {
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+    }
+
+    console.log(`🔄 [PRESENCE-DETECTION] Iniciando detecção automática para: ${chatId} (${interval}ms)`);
+    
+    // Primeira detecção imediata
+    detectPresenceFromMessages(chatId);
+    
+    // Detecção periódica
+    detectionIntervalRef.current = setInterval(() => {
+      detectPresenceFromMessages(chatId);
+    }, interval);
+  }, [detectPresenceFromMessages]);
+
+  // Parar detecção automática
+  const stopPresenceDetection = useCallback(() => {
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+      console.log(`⏹️ [PRESENCE-DETECTION] Detecção automática parada`);
+    }
+  }, []);
+
   // Limpar todos os timers
   const cleanup = useCallback(() => {
     if (presenceTimeoutRef.current) {
@@ -165,6 +236,11 @@ export const useRealTimePresence = (instanceId: string) => {
     if (offlineTimeoutRef.current) {
       clearTimeout(offlineTimeoutRef.current);
       offlineTimeoutRef.current = null;
+    }
+
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
     }
   }, []);
 
@@ -219,6 +295,7 @@ export const useRealTimePresence = (instanceId: string) => {
     // Estado
     ...presenceState,
     config,
+    presenceDetection,
     
     // Controles principais
     setOnline,
@@ -230,6 +307,11 @@ export const useRealTimePresence = (instanceId: string) => {
     forceStatus,
     handleTypingSession,
     markActivity,
+    
+    // Detecção de presença baseada em mensagens
+    detectPresenceFromMessages,
+    startPresenceDetection,
+    stopPresenceDetection,
     
     // Configuração
     updateConfig,

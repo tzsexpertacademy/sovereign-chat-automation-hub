@@ -362,6 +362,109 @@ class UnifiedYumerService {
     }
   }
 
+  // ==================== FILTRO MESSAGES STATUS ====================
+  
+  // Buscar mensagens com filtro de status para detectar presença
+  async getChatMessages(
+    instanceId: string, 
+    chatId: string, 
+    options: {
+      messagesStatus?: 'delivered' | 'read' | 'sent';
+      limit?: number;
+      page?: number;
+    } = {}
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`📨 [MESSAGES-STATUS] Buscando mensagens com filtro: ${options.messagesStatus || 'all'}`);
+    
+    const params = new URLSearchParams();
+    params.append('remoteJid', chatId);
+    
+    if (options.messagesStatus) {
+      params.append('messagesStatus', options.messagesStatus);
+    }
+    if (options.limit) {
+      params.append('limit', options.limit.toString());
+    }
+    if (options.page) {
+      params.append('page', options.page.toString());
+    }
+
+    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/messages?${params.toString()}`, {
+      method: 'GET'
+    }, true, true, undefined);
+  }
+
+  // Detectar presença baseada em status das mensagens
+  async detectPresenceFromMessages(
+    instanceId: string, 
+    chatId: string,
+    timeWindow: number = 300000 // 5 minutos
+  ): Promise<{ 
+    isOnline: boolean; 
+    lastActivity: Date | null; 
+    messageStatus: 'delivered' | 'read' | 'sent' | null;
+    activityScore: number;
+  }> {
+    console.log(`👁️ [PRESENCE-DETECTION] Analisando presença para: ${chatId}`);
+    
+    try {
+      // Buscar mensagens recentes com status 'delivered' e 'read'
+      const [deliveredResult, readResult] = await Promise.all([
+        this.getChatMessages(instanceId, chatId, { messagesStatus: 'delivered', limit: 10 }),
+        this.getChatMessages(instanceId, chatId, { messagesStatus: 'read', limit: 10 })
+      ]);
+
+      const now = Date.now();
+      let lastActivity: Date | null = null;
+      let messageStatus: 'delivered' | 'read' | 'sent' | null = null;
+      let activityScore = 0;
+
+      // Analisar mensagens lidas (atividade mais recente)
+      if (readResult.success && readResult.data?.messages) {
+        const readMessages = readResult.data.messages.filter((msg: any) => {
+          const msgTime = new Date(msg.messageTimestamp * 1000).getTime();
+          return (now - msgTime) <= timeWindow;
+        });
+
+        if (readMessages.length > 0) {
+          const latestRead = readMessages[0];
+          lastActivity = new Date(latestRead.messageTimestamp * 1000);
+          messageStatus = 'read';
+          activityScore = 100; // Muito ativo - lendo mensagens
+          
+          console.log(`✅ [PRESENCE] Usuario ATIVO - leu mensagens recentemente: ${lastActivity}`);
+          return { isOnline: true, lastActivity, messageStatus, activityScore };
+        }
+      }
+
+      // Analisar mensagens entregues (atividade moderada)
+      if (deliveredResult.success && deliveredResult.data?.messages) {
+        const deliveredMessages = deliveredResult.data.messages.filter((msg: any) => {
+          const msgTime = new Date(msg.messageTimestamp * 1000).getTime();
+          return (now - msgTime) <= timeWindow;
+        });
+
+        if (deliveredMessages.length > 0) {
+          const latestDelivered = deliveredMessages[0];
+          lastActivity = new Date(latestDelivered.messageTimestamp * 1000);
+          messageStatus = 'delivered';
+          activityScore = 60; // Moderadamente ativo - recebeu mensagens
+          
+          console.log(`📱 [PRESENCE] Usuario MODERADO - recebeu mensagens: ${lastActivity}`);
+          return { isOnline: true, lastActivity, messageStatus, activityScore };
+        }
+      }
+
+      // Sem atividade recente
+      console.log(`😴 [PRESENCE] Usuario INATIVO - sem atividade recente`);
+      return { isOnline: false, lastActivity: null, messageStatus: null, activityScore: 0 };
+
+    } catch (error) {
+      console.error('❌ [PRESENCE-DETECTION] Erro ao detectar presença:', error);
+      return { isOnline: false, lastActivity: null, messageStatus: null, activityScore: 0 };
+    }
+  }
+
   // ==================== WEBHOOK CONFIGURATION ====================
   
   // Configurar webhook para instância
@@ -956,24 +1059,6 @@ class UnifiedYumerService {
     });
   }
 
-  async getChatMessages(instanceId: string, chatId: string, options?: any): Promise<{ success: boolean; data?: YumerMessage[]; error?: string }> {
-    const requestBody = {
-      remoteJid: chatId,
-      limit: options?.limit || 50,
-      ...(options?.fromDate && {
-        where: {
-          messageTimestamp: {
-            gte: Math.floor(new Date(options.fromDate).getTime() / 1000)
-          }
-        }
-      })
-    };
-
-    return this.makeRequest<YumerMessage[]>(`/api/v2/instance/${instanceId}/chat/findMessages`, {
-      method: 'POST',
-      body: JSON.stringify(requestBody)
-    });
-  }
 
   // ==================== UTILITIES ====================
 

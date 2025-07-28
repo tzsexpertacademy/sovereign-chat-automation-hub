@@ -642,6 +642,27 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', resolvedClientId);
     }
 
+    // 📱 DEFINIR PRESENÇA COMO "DIGITANDO" ANTES DE RESPONDER
+    try {
+      console.log('📱 [PRESENCE] Definindo presença como "digitando" para IA');
+      
+      await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/chat/presence`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${client.business_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          remoteJid: resolvedContext.chatId,
+          status: 'composing'
+        })
+      });
+      
+      console.log('✅ [PRESENCE] Presença "digitando" definida com sucesso');
+    } catch (presenceError) {
+      console.warn('⚠️ [PRESENCE] Erro ao definir presença como digitando:', presenceError);
+    }
+
     // Enviar usando yumerApiV2 com o ID correto
     const sendOptions = {
       delay: 1200,
@@ -689,6 +710,27 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         chatId: resolvedContext.chatId,
         messageId: sendResult.messageId
       });
+
+      // 📱 VOLTAR PRESENÇA PARA "DISPONÍVEL" APÓS ENVIO
+      try {
+        console.log('📱 [PRESENCE] Definindo presença como "disponível" após envio');
+        
+        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/chat/presence`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${client.business_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            remoteJid: resolvedContext.chatId,
+            status: 'available'
+          })
+        });
+        
+        console.log('✅ [PRESENCE] Presença "disponível" definida com sucesso');
+      } catch (presenceError) {
+        console.warn('⚠️ [PRESENCE] Erro ao definir presença como disponível:', presenceError);
+      }
       
     } catch (sendError: any) {
       console.error('❌ [AI-ASSISTANT] Erro ao enviar via API direta:', sendError);
