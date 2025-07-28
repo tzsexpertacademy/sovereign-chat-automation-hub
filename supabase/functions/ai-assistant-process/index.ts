@@ -481,6 +481,7 @@ async function sendHumanizedResponse(
       .select(`
         instance_id,
         client_id,
+        yumer_instance_name,
         clients:client_id (
           business_token
         )
@@ -493,7 +494,57 @@ async function sendHumanizedResponse(
       return { success: false, chunks: 0, error: 'Business token not found' };
     }
 
-    const businessToken = instanceData.clients.business_token;
+    let businessToken = instanceData.clients.business_token;
+
+    // 🔑 VERIFICAR SE O TOKEN ESTÁ VÁLIDO (NÃO EXPIRADO)
+    try {
+      const tokenParts = businessToken.split('.');
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(atob(tokenParts[1]));
+        const expirationTime = payload.exp * 1000;
+        const currentTime = Date.now();
+
+        if (currentTime >= expirationTime) {
+          console.warn('⚠️ [HUMANIZED-SEND] Token expirado, regenerando...');
+          
+          // Regenerar token
+          if (instanceData.yumer_instance_name) {
+            const jose = await import('jose');
+            const jwtSecret = Deno.env.get('AUTHENTICATION_JWT_SECRET') || 'your-secret-key';
+            
+            const now = Math.floor(Date.now() / 1000);
+            const exp = now + (4 * 60 * 60); // 4 horas
+            
+            const newPayload = {
+              instanceName: instanceData.yumer_instance_name,
+              apiName: "whatsapp-api",
+              tokenId: crypto.randomUUID(),
+              iat: now,
+              exp: exp,
+              sub: "g-t"
+            };
+            
+            const secret = new TextEncoder().encode(jwtSecret);
+            businessToken = await new jose.SignJWT(newPayload)
+              .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+              .setIssuedAt(now)
+              .setExpirationTime(exp)
+              .setSubject('g-t')
+              .sign(secret);
+
+            // Salvar o novo token no banco
+            await supabase
+              .from('clients')
+              .update({ business_token: businessToken })
+              .eq('id', instanceData.client_id);
+
+            console.log('✅ [HUMANIZED-SEND] Token regenerado com sucesso');
+          }
+        }
+      }
+    } catch (tokenError) {
+      console.warn('⚠️ [HUMANIZED-SEND] Erro ao verificar token:', tokenError);
+    }
 
     // 3. Enviar cada chunk com comportamento humanizado
     for (let i = 0; i < chunks.length; i++) {
@@ -633,6 +684,7 @@ async function sendSimpleMessage(instanceId: string, chatId: string, message: st
       .select(`
         instance_id,
         client_id,
+        yumer_instance_name,
         clients:client_id (
           business_token
         )
@@ -645,7 +697,57 @@ async function sendSimpleMessage(instanceId: string, chatId: string, message: st
       return { success: false, error: 'Business token not found' };
     }
 
-    const businessToken = instanceData.clients.business_token;
+    let businessToken = instanceData.clients.business_token;
+
+    // 🔑 VERIFICAR SE O TOKEN ESTÁ VÁLIDO (NÃO EXPIRADO)
+    try {
+      const tokenParts = businessToken.split('.');
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(atob(tokenParts[1]));
+        const expirationTime = payload.exp * 1000;
+        const currentTime = Date.now();
+
+        if (currentTime >= expirationTime) {
+          console.warn('⚠️ [SIMPLE-SEND] Token expirado, regenerando...');
+          
+          // Regenerar token se expirado
+          if (instanceData.yumer_instance_name) {
+            const jose = await import('jose');
+            const jwtSecret = Deno.env.get('AUTHENTICATION_JWT_SECRET') || 'your-secret-key';
+            
+            const now = Math.floor(Date.now() / 1000);
+            const exp = now + (4 * 60 * 60); // 4 horas
+            
+            const newPayload = {
+              instanceName: instanceData.yumer_instance_name,
+              apiName: "whatsapp-api",
+              tokenId: crypto.randomUUID(),
+              iat: now,
+              exp: exp,
+              sub: "g-t"
+            };
+            
+            const secret = new TextEncoder().encode(jwtSecret);
+            businessToken = await new jose.SignJWT(newPayload)
+              .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+              .setIssuedAt(now)
+              .setExpirationTime(exp)
+              .setSubject('g-t')
+              .sign(secret);
+
+            // Salvar o novo token no banco
+            await supabase
+              .from('clients')
+              .update({ business_token: businessToken })
+              .eq('id', instanceData.client_id);
+
+            console.log('✅ [SIMPLE-SEND] Token regenerado com sucesso');
+          }
+        }
+      }
+    } catch (tokenError) {
+      console.warn('⚠️ [SIMPLE-SEND] Erro ao verificar token:', tokenError);
+    }
 
     return await sendCodeChatMessage(instanceId, chatId, message, businessToken);
 
