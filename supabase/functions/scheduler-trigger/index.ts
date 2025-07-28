@@ -18,6 +18,8 @@ Deno.serve(async (req) => {
   console.log('⏰ [SCHEDULER-TRIGGER] Executando trigger do scheduler');
 
   try {
+    console.log('⏰ [SCHEDULER-TRIGGER] Iniciando processamento de batches...');
+    
     // Chamar a função de processamento de batches
     const response = await supabase.functions.invoke('process-message-batches', {
       body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
