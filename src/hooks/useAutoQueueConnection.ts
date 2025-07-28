@@ -122,8 +122,8 @@ export const useAutoQueueConnection = () => {
     try {
       console.log('🔍 [AUTO-QUEUE] Verificando instâncias desconectadas para cliente:', clientId);
       
-      // Buscar instâncias sem conexão ativa (corrigindo query)
-      const { data: disconnectedInstances, error } = await supabase
+      // Buscar todas as instâncias conectadas
+      const { data: allInstances, error: instancesError } = await supabase
         .from('whatsapp_instances')
         .select(`
           id,
@@ -132,17 +132,29 @@ export const useAutoQueueConnection = () => {
           status
         `)
         .eq('client_id', clientId)
-        .eq('status', 'connected')
-        .filter('id', 'not.in', `(
-          SELECT instance_id 
-          FROM instance_queue_connections 
-          WHERE is_active = true
-        )`);
+        .eq('status', 'connected');
 
-      if (error) {
-        console.error('Erro ao buscar instâncias desconectadas:', error);
-        return { success: false, error: error.message };
+      if (instancesError) {
+        console.error('Erro ao buscar instâncias:', instancesError);
+        return { success: false, error: instancesError.message };
       }
+
+      // Buscar conexões ativas para filtrar
+      const { data: activeConnections, error: connectionsError } = await supabase
+        .from('instance_queue_connections')
+        .select('instance_id')
+        .eq('is_active', true);
+
+      if (connectionsError) {
+        console.error('Erro ao buscar conexões ativas:', connectionsError);
+        return { success: false, error: connectionsError.message };
+      }
+
+      // Filtrar instâncias que não têm conexão ativa
+      const activeInstanceIds = new Set(activeConnections?.map(conn => conn.instance_id) || []);
+      const disconnectedInstances = allInstances?.filter(instance => 
+        !activeInstanceIds.has(instance.id)
+      ) || [];
 
       if (!disconnectedInstances || disconnectedInstances.length === 0) {
         console.log('ℹ️ [AUTO-QUEUE] Todas as instâncias já estão conectadas a filas');

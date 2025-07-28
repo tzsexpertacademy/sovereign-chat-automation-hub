@@ -353,25 +353,43 @@ const WhatsAppConnectionManagerV2 = () => {
       const instance = instances.find(i => i.instance_id === instanceId);
       if (!instance) throw new Error('Instância não encontrada');
 
-      // Desconectar fila anterior se existir
-      const currentConnection = instanceConnections[instanceId];
-      if (currentConnection?.connectionId) {
-        await supabase
-          .from('instance_queue_connections')
-          .update({ is_active: false })
-          .eq('id', currentConnection.connectionId);
-      }
-
-      // Conectar nova fila
-      const { error } = await supabase
+      // Verificar se já existe conexão para esta instância e fila
+      const { data: existingConnection } = await supabase
         .from('instance_queue_connections')
-        .insert({
-          instance_id: instance.id,
-          queue_id: queueId,
-          is_active: true
-        });
+        .select('id, is_active')
+        .eq('instance_id', instance.id)
+        .eq('queue_id', queueId)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (existingConnection) {
+        // Se existe mas está inativa, reativar
+        if (!existingConnection.is_active) {
+          await supabase
+            .from('instance_queue_connections')
+            .update({ is_active: true })
+            .eq('id', existingConnection.id);
+        }
+      } else {
+        // Desconectar fila anterior se existir
+        const currentConnection = instanceConnections[instanceId];
+        if (currentConnection?.connectionId) {
+          await supabase
+            .from('instance_queue_connections')
+            .update({ is_active: false })
+            .eq('id', currentConnection.connectionId);
+        }
+
+        // Criar nova conexão
+        const { error } = await supabase
+          .from('instance_queue_connections')
+          .insert({
+            instance_id: instance.id,
+            queue_id: queueId,
+            is_active: true
+          });
+
+        if (error) throw error;
+      }
 
       // Recarregar conexões
       await loadQueuesAndConnections();
