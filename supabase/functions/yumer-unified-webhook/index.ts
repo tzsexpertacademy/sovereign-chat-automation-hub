@@ -294,117 +294,117 @@ async function processBatch(batchKey: string) {
     let instanceDetails = null;
     let allMessageContents = [];
     
-    // ⚡ PROCESSAR APENAS A ÚLTIMA MENSAGEM PARA CRIAR O TICKET
-    const lastMessage = batch.messages[batch.messages.length - 1];
-    instanceDetails = lastMessage.instance;
+    // 🔍 DEBUG: Log detalhado do batch
+    console.log(`🔍 [BATCH-DEBUG] Batch contém ${batch.messages.length} mensagens`);
+    console.log(`🔍 [BATCH-DEBUG] Instance: ${batch.instanceId}, Client: ${batch.clientId}`);
     
-    console.log(`📝 [BATCH-UNIFIED] Processando APENAS a última mensagem para criar ticket e contexto`);
+    // ⚡ PROCESSAR APENAS A PRIMEIRA MENSAGEM PARA CRIAR O TICKET
+    const firstMessage = batch.messages[0];
+    instanceDetails = firstMessage.instance;
+    
+    console.log(`📝 [BATCH-DEBUG] Processando primeira mensagem para criar ticket...`);
     
     try {
-      // Processar apenas a última mensagem para criar/atualizar o ticket
-      const result = await processYumerMessage(lastMessage, false); // false = não processar com IA ainda
-      if (result?.ticketId) {
-        lastTicketId = result.ticketId;
-        console.log(`✅ [BATCH-UNIFIED] Ticket ID obtido: ${lastTicketId}`);
-      }
+      // Processar primeira mensagem para criar/atualizar o ticket
+      lastTicketId = await processYumerMessage(firstMessage, false); // false = não processar com IA ainda
+      console.log(`✅ [BATCH-DEBUG] Ticket ID obtido: ${lastTicketId}`);
       
       // 📝 EXTRAIR CONTEXTO DE TODAS AS MENSAGENS DO BATCH
-      for (const yumerData of batch.messages) {
+      console.log(`📝 [BATCH-DEBUG] Extraindo contexto de ${batch.messages.length} mensagens...`);
+      
+      for (let i = 0; i < batch.messages.length; i++) {
+        const yumerData = batch.messages[i];
+        console.log(`🔍 [BATCH-DEBUG] Processando mensagem ${i + 1}/${batch.messages.length}`);
+        
         try {
           const messageData = extractYumerMessageData(yumerData.data, {
-            instance_id: batch.instanceId,
+            instance_id: batch.instanceId || yumerData.data.instanceInstanceId,
             client_id: batch.clientId
           });
-          if (messageData && messageData.content) {
+          
+          console.log(`📊 [BATCH-DEBUG] Mensagem ${i + 1} extraída:`, {
+            hasContent: !!messageData?.content,
+            content: messageData?.content?.substring(0, 50) + '...',
+            fromMe: messageData?.fromMe
+          });
+          
+          if (messageData && messageData.content && !messageData.fromMe) {
             allMessageContents.push(messageData.content);
           }
         } catch (extractError) {
-          console.error('⚠️ [BATCH-UNIFIED] Erro ao extrair mensagem:', extractError);
+          console.error(`⚠️ [BATCH-DEBUG] Erro ao extrair mensagem ${i + 1}:`, extractError);
         }
       }
       
-      console.log(`📊 [BATCH-UNIFIED] Contexto extraído de ${allMessageContents.length} mensagens`);
+      console.log(`📊 [BATCH-DEBUG] Contexto final: ${allMessageContents.length} mensagens válidas`);
       
     } catch (error) {
       console.error('❌ [BATCH-UNIFIED] Erro ao processar última mensagem:', error);
       return;
     }
 
-    // 🤖 PROCESSAR COM IA - VERSÃO SIMPLIFICADA
+    // 🤖 PROCESSAR COM IA - VERSÃO CORRIGIDA
+    console.log(`🔍 [BATCH-DEBUG] Verificando condições para IA: ticketId=${!!lastTicketId}, mensagens=${allMessageContents.length}`);
+    
     if (lastTicketId && allMessageContents.length > 0) {
-      console.log(`🤖 [BATCH-SIMPLE] Iniciando processamento para ticket: ${lastTicketId}`);
-      
-      // Buscar dados da última mensagem
-      const lastMessageData = extractYumerMessageData(lastMessage.data, {
-        instance_id: batch.instanceId,
-        client_id: batch.clientId
-      });
-      
-      if (!lastMessageData) {
-        console.error('❌ [BATCH-SIMPLE] Falha ao extrair dados da última mensagem');
-        return;
-      }
-      
-      // Verificação SUPER SIMPLES - apenas não processar se for mensagem própria
-      if (lastMessageData.fromMe) {
-        console.log('⚠️ [BATCH-SIMPLE] Mensagem é própria, não processando');
-        return;
-      }
+      console.log(`🤖 [BATCH-IA] ✅ Condições atendidas! Processando ticket: ${lastTicketId}`);
       
       const fullContext = allMessageContents.join(' ');
-      console.log(`📋 [BATCH-SIMPLE] Contexto completo do batch: "${fullContext}"`);
-      console.log(`🚀 [BATCH-SIMPLE] Enviando ${allMessageContents.length} mensagens para IA em lote`);
+      console.log(`📋 [BATCH-IA] Contexto completo: "${fullContext}"`);
+      console.log(`🚀 [BATCH-IA] Enviando ${allMessageContents.length} mensagens para processamento IA`);
       
       try {
+        // Obter dados da primeira mensagem para contexto
+        const firstMessageData = extractYumerMessageData(firstMessage.data, {
+          instance_id: batch.instanceId || firstMessage.data.instanceInstanceId,
+          client_id: batch.clientId
+        });
+        
+        console.log(`🚀 [BATCH-IA] Chamando função ai-assistant-process...`);
+        
         const aiResult = await supabase.functions.invoke('ai-assistant-process', {
           body: {
             ticketId: lastTicketId,
-            message: fullContext,
-            messageData: lastMessageData,
             messages: allMessageContents.map((content, index) => ({
               content: content,
-              timestamp: new Date().toISOString(),
-              from_me: false
+              timestamp: new Date(batch.messages[index]?.data?.messageTimestamp * 1000 || Date.now()).toISOString(),
+              messageId: batch.messages[index]?.data?.keyId || `batch-${index}`
             })),
             context: {
-              chatId: lastMessageData.chatId,
-              customerName: lastMessageData.contactName || 'Cliente',
-              phoneNumber: lastMessageData.phoneNumber || 'N/A',
-              batchInfo: `Batch de ${batch.messages.length} mensagens`
+              chatId: firstMessageData?.chatId || 'unknown',
+              customerName: firstMessageData?.contactName || 'Cliente',
+              phoneNumber: firstMessageData?.phoneNumber || 'N/A',
+              batchInfo: `Batch de ${batch.messages.length} mensagens processadas`
             }
           }
         });
         
-        console.log('🎯 [BATCH-SIMPLE] Resultado IA:', {
+        console.log('✅ [BATCH-IA] Resposta da IA processada:', {
           success: !!aiResult.data,
-          error: !!aiResult.error,
-          errorDetails: aiResult.error
+          hasError: !!aiResult.error,
+          errorMsg: aiResult.error?.message || 'N/A'
         });
         
         if (aiResult.error) {
-          console.error('❌ [BATCH-SIMPLE] Erro na IA - tentando fallback:', aiResult.error);
+          console.error('❌ [BATCH-IA] Erro detalhado:', aiResult.error);
           
-          // Fallback SUPER simples
-          const fallbackResult = await supabase.functions.invoke('ai-assistant-process', {
-            body: {
-              ticketId: lastTicketId,
-              message: lastMessageData.content || 'Mensagem sem conteúdo',
-              messageData: lastMessageData
-            }
-          });
-          
-          console.log('🔄 [BATCH-SIMPLE] Resultado fallback:', {
-            success: !!fallbackResult.data,
-            error: !!fallbackResult.error
-          });
         } else {
-          console.log('✅ [BATCH-SIMPLE] IA respondeu com sucesso');
+          console.log('✅ [BATCH-IA] IA processou o batch com sucesso!');
         }
+        
       } catch (error) {
-        console.error('❌ [BATCH-SIMPLE] Erro crítico ao chamar IA:', error);
+        console.error('❌ [BATCH-IA] Erro crítico ao chamar função IA:', error);
       }
+      
     } else {
-      console.log(`⚠️ [BATCH-SIMPLE] Condições não atendidas: ticketId=${!!lastTicketId}, messages=${allMessageContents.length}`);
+      console.log(`❌ [BATCH-DEBUG] NÃO enviando para IA - condições não atendidas:`);
+      console.log(`  - Ticket ID: ${lastTicketId || 'NULO/UNDEFINED'}`);
+      console.log(`  - Qtd mensagens: ${allMessageContents.length}`);
+      console.log(`  - Conteúdo das mensagens:`, allMessageContents);
+      
+      if (!lastTicketId) {
+        console.log(`🔍 [BATCH-DEBUG] Investigando por que ticket ID é nulo...`);
+      }
     }
 
     console.log(`✅ [BATCH] Batch processado com sucesso: ${batchKey}`);
