@@ -33,77 +33,49 @@ export interface UnifiedWhatsAppResult {
 class UnifiedWhatsAppService {
   
   /**
-   * Envia mensagem de texto usando o ID CORRETO da instância Evolution
+   * USAR SERVIÇO UNIFICADO - ELIMINAR DUPLICAÇÕES
    */
   async sendTextMessage(message: UnifiedWhatsAppMessage): Promise<UnifiedWhatsAppResult> {
     try {
-      console.log('📤 [UNIFIED-AI] Enviando mensagem da IA:', {
-        receivedInstanceId: message.instanceId,
-        chatId: message.chatId,
-        textLength: message.text.length,
-        humanized: message.options?.humanized
-      });
-
-      // CORRIGIR MAPEAMENTO: Converter ID interno do Supabase para ID real da instância Evolution
-      let realInstanceId = message.instanceId;
+      console.log('📤 [UNIFIED-WHATSAPP] REDIRECIONANDO para unifiedMessageService');
       
-      // Verificar se é um UUID (ID interno do Supabase) e buscar o instance_id real
-      if (message.instanceId.includes('-')) {
-        console.log('🔍 [UNIFIED-AI] ID parece ser interno do Supabase, buscando instance_id real...');
-        
-        const { data: instanceData, error } = await supabase
+      // BUSCAR CLIENT_ID para garantir business token válido
+      let clientId: string | undefined;
+      
+      try {
+        const { data: instanceData } = await supabase
           .from('whatsapp_instances')
-          .select('instance_id')
+          .select('client_id')
           .eq('id', message.instanceId)
           .single();
         
-        if (error || !instanceData) {
-          console.error('❌ [UNIFIED-AI] Erro ao buscar instance_id real:', error);
-          throw new Error(`Instância não encontrada: ${message.instanceId}`);
-        }
-        
-        realInstanceId = instanceData.instance_id;
-        console.log('✅ [UNIFIED-AI] ID real da instância encontrado:', {
-          internalId: message.instanceId,
-          realInstanceId: realInstanceId
-        });
+        clientId = instanceData?.client_id;
+      } catch (error) {
+        console.warn('⚠️ [UNIFIED-WHATSAPP] Não foi possível buscar client_id:', error);
       }
 
-      // Configurar opções humanizadas
-      const sendOptions = {
-        delay: message.options?.delay || 1200,
-        presence: message.options?.presence || 'composing',
-        externalAttributes: {
-          source: 'unified-whatsapp-service-ai',
-          humanized: message.options?.humanized || false,
-          personality: message.options?.personality || 'default',
-          timestamp: Date.now(),
-          ...message.options?.externalAttributes
-        }
-      };
-
-      // USAR YUMER API V2 COM O ID CORRETO DA INSTÂNCIA
-      const result = await yumerApiV2.sendText(
-        realInstanceId, // ID CORRETO da instância Evolution (01K11NBE1QB0GVFMME8NA4YPCB)
+      // USAR O SERVIÇO UNIFICADO (ÚNICO PONTO DE ENVIO)
+      const { unifiedMessageService } = await import('./unifiedMessageService');
+      
+      const result = await unifiedMessageService.sendAIMessage(
+        message.instanceId,
         message.chatId,
         message.text,
-        sendOptions
+        clientId
       );
 
-      console.log('✅ [UNIFIED-AI] Mensagem enviada com sucesso via yumerApiV2 com ID correto:', {
-        realInstanceId,
-        result
-      });
+      console.log('✅ [UNIFIED-WHATSAPP] Redirecionamento concluído:', result);
 
       return {
-        success: true,
-        messageId: result.key?.id || `ai_msg_${Date.now()}`,
-        timestamp: Date.now(),
-        details: result
+        success: result.success,
+        messageId: result.messageId,
+        timestamp: result.timestamp,
+        error: result.error,
+        details: result.details
       };
 
     } catch (error: any) {
-      console.error('❌ [UNIFIED-AI] Erro ao enviar mensagem:', error);
+      console.error('❌ [UNIFIED-WHATSAPP] Erro no redirecionamento:', error);
       
       return {
         success: false,

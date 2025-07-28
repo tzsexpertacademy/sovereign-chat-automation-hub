@@ -278,12 +278,108 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     // 🤖 BUSCAR CONFIGURAÇÃO HUMANIZADA DO ASSISTENTE
     const humanizedConfig = await getHumanizedConfig(assistant.id);
     
-    // 📤 ENVIAR RESPOSTA HUMANIZADA VIA CODECHAT V2.2.1
-    const sendResult = await sendHumanizedResponse(instanceId, context?.chatId, aiResponse, humanizedConfig);
-    if (sendResult.success) {
-      console.log('✅ [AI-ASSISTANT] Resposta humanizada enviada com sucesso');
-    } else {
-      console.error('❌ [AI-ASSISTANT] Erro ao enviar resposta humanizada:', sendResult.error);
+    // 📤 ENVIAR RESPOSTA VIA SERVIÇO UNIFICADO SIMPLIFICADO
+    console.log('📤 [AI-ASSISTANT] Enviando resposta via serviço unificado...');
+    
+    // Usar yumerApiV2 diretamente com ID correto
+    let realInstanceId = instanceId;
+    
+    // Verificar se é UUID interno e buscar o instance_id real
+    if (instanceId.includes('-')) {
+      console.log('🔍 [AI-ASSISTANT] Resolvendo ID interno para real:', instanceId);
+      
+      const { data: instanceData, error: instanceError } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id')
+        .eq('id', instanceId)
+        .single();
+      
+      if (instanceError || !instanceData) {
+        console.error('❌ [AI-ASSISTANT] Erro ao buscar instance_id real:', instanceError);
+        throw new Error(`Instância não encontrada: ${instanceId}`);
+      }
+      
+      realInstanceId = instanceData.instance_id;
+      console.log('✅ [AI-ASSISTANT] ID real da instância:', {
+        internal: instanceId,
+        real: realInstanceId
+      });
+    }
+
+    // Garantir business token válido
+    console.log('🔐 [AI-ASSISTANT] Verificando business token para cliente:', clientId);
+    
+    const { data: client, error: clientError } = await supabase
+      .from('clients')
+      .select('business_token')
+      .eq('id', clientId)
+      .single();
+    
+    if (clientError || !client?.business_token) {
+      console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', clientId);
+    }
+
+    // Enviar usando yumerApiV2 com o ID correto
+    const sendOptions = {
+      delay: 1200,
+      presence: 'composing',
+      externalAttributes: {
+        source: 'ai-assistant',
+        ticketId: ticketId,
+        assistantId: assistant.id,
+        timestamp: Date.now()
+      }
+    };
+
+    let sendResult;
+    try {
+      // USAR IMPLEMENTAÇÃO DIRETA PARA EVITAR PROBLEMAS DE IMPORTAÇÃO
+      console.log('📤 [AI-ASSISTANT] Enviando via API Yumer v2 diretamente...');
+      
+      const sendData = {
+        recipient: context.chatId,
+        textMessage: {
+          text: aiResponse
+        },
+        options: sendOptions
+      };
+
+      const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/send/text`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${client.business_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(sendData)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      sendResult = {
+        success: true,
+        messageId: result.key?.id || `ai_msg_${Date.now()}`,
+        details: result
+      };
+      
+      console.log('✅ [AI-ASSISTANT] Mensagem enviada com sucesso via API direta:', {
+        realInstanceId,
+        chatId: context.chatId,
+        messageId: sendResult.messageId
+      });
+      
+    } catch (sendError: any) {
+      console.error('❌ [AI-ASSISTANT] Erro ao enviar via API direta:', sendError);
+      
+      sendResult = {
+        success: false,
+        error: sendError.message || 'Erro no envio',
+        details: sendError
+      };
     }
 
     // 🔥 CORREÇÃO: Marcar mensagens do usuário como processadas após resposta da IA

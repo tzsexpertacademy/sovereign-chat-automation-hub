@@ -5,6 +5,8 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminRouter from "@/components/admin/AdminRouter";
 import SafeComponent from "@/components/SafeComponent";
 import { QuickApiTest } from "@/components/admin/QuickApiTest";
+import { QuickBusinessTokenRegenerator } from "@/components/admin/QuickBusinessTokenRegenerator";
+import { ManualMessageTester } from "@/components/admin/ManualMessageTester";
 
 const AdminDashboard = () => {
   return (
@@ -26,6 +28,26 @@ const AdminDashboard = () => {
             {/* Teste Rápido da API */}
             <div className="mb-6">
               <QuickApiTest />
+            </div>
+
+            {/* Regenerador de Business Token */}
+            <div className="mb-6">
+              <SafeComponent 
+                fallbackTitle="Erro no Regenerador"
+                fallbackMessage="Problema ao carregar o regenerador de tokens."
+              >
+                <QuickBusinessTokenRegenerator />
+              </SafeComponent>
+            </div>
+
+            {/* Testador Manual de Mensagens */}
+            <div className="mb-6">
+              <SafeComponent 
+                fallbackTitle="Erro no Testador"
+                fallbackMessage="Problema ao carregar o testador de mensagens."
+              >
+                <ManualMessageTester />
+              </SafeComponent>
             </div>
 
             <SafeComponent 
