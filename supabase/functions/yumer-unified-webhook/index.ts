@@ -373,6 +373,13 @@ async function processBatch(batchKey: string) {
       });
       
       if (lastMessageData && allMessages.length > 0) {
+        // 🔍 VERIFICAR SE TICKET DEVE SER PROCESSADO PELA IA
+        const shouldProcess = await shouldTicketBeProcessedByAI(lastTicketId);
+        if (!shouldProcess.shouldProcess) {
+          console.log('🚫 [BATCH] Ticket não deve ser processado pela IA:', shouldProcess.reason);
+          return;
+        }
+
         // 🎯 CORRIGIR INVOCAÇÃO DA IA: Passar parâmetros corretos
         await processWithAIIfEnabled(
           lastMessageData, 
@@ -718,6 +725,15 @@ async function processWithAIIfEnabled(
     if (messageData.fromMe) {
       console.log('⚠️ [AI-CHECK] Mensagem enviada pelo próprio sistema - não processando com IA');
       return false;
+    }
+
+    // 🔍 VERIFICAÇÃO CRÍTICA: Verificar se ticket deve ser processado pela IA
+    if (ticketId) {
+      const shouldProcess = await shouldTicketBeProcessedByAI(ticketId);
+      if (!shouldProcess.shouldProcess) {
+        console.log('🚫 [AI-CHECK] Ticket não deve ser processado pela IA:', shouldProcess.reason);
+        return false;
+      }
     }
     
     // 🔍 BUSCAR INSTÂNCIA - CORREÇÃO CRÍTICA: usar instanceDetails correto
@@ -1488,6 +1504,83 @@ async function createOrUpdateTicket(
   } catch (error) {
     console.error('❌ [TICKET] Erro crítico:', error);
     throw error;
+  }
+}
+
+// Função para verificar se ticket deve ser processado pela IA
+async function shouldTicketBeProcessedByAI(ticketId: string): Promise<{ shouldProcess: boolean; reason?: string }> {
+  try {
+    console.log('🔍 [WEBHOOK] Verificando se ticket deve ser processado pela IA:', ticketId);
+    
+    // Buscar ticket com informações da fila
+    const { data: ticket, error } = await supabase
+      .from('conversation_tickets')
+      .select(`
+        id,
+        status,
+        assigned_queue_id,
+        human_takeover_reason,
+        queues:assigned_queue_id (
+          id,
+          is_active,
+          assistant_id,
+          name
+        )
+      `)
+      .eq('id', ticketId)
+      .single();
+
+    if (error || !ticket) {
+      console.log('❌ [WEBHOOK] Ticket não encontrado:', error?.message);
+      return { shouldProcess: false, reason: 'Ticket não encontrado' };
+    }
+
+    // Verificar se ticket tem fila atribuída
+    if (!ticket.assigned_queue_id) {
+      console.log('⚠️ [WEBHOOK] Ticket sem fila atribuída - não processando IA');
+      return { shouldProcess: false, reason: 'Ticket não está em nenhuma fila' };
+    }
+
+    // Verificar se está em modo de takeover humano
+    if (ticket.human_takeover_reason) {
+      console.log('👤 [WEBHOOK] Ticket em modo humano - não processando IA:', ticket.human_takeover_reason);
+      return { shouldProcess: false, reason: 'Ticket assumido humanamente' };
+    }
+
+    // Verificar status do ticket
+    if (['pending', 'closed', 'resolved'].includes(ticket.status)) {
+      console.log('🚫 [WEBHOOK] Status do ticket não permite IA:', ticket.status);
+      return { shouldProcess: false, reason: `Status não permite IA: ${ticket.status}` };
+    }
+
+    // Verificar se a fila existe e está ativa
+    const queue = ticket.queues;
+    if (!queue) {
+      console.log('❌ [WEBHOOK] Fila não encontrada para o ticket');
+      return { shouldProcess: false, reason: 'Fila não encontrada' };
+    }
+
+    if (!queue.is_active) {
+      console.log('⚠️ [WEBHOOK] Fila não está ativa:', queue.name);
+      return { shouldProcess: false, reason: 'Fila não está ativa' };
+    }
+
+    if (!queue.assistant_id) {
+      console.log('🤖 [WEBHOOK] Fila sem assistente configurado:', queue.name);
+      return { shouldProcess: false, reason: 'Fila sem assistente IA configurado' };
+    }
+
+    console.log('✅ [WEBHOOK] Ticket aprovado para processamento IA:', {
+      ticketId,
+      queueName: queue.name,
+      status: ticket.status
+    });
+
+    return { shouldProcess: true };
+
+  } catch (error) {
+    console.error('❌ [WEBHOOK] Erro ao verificar processamento IA:', error);
+    return { shouldProcess: false, reason: 'Erro interno na verificação' };
   }
 }
 

@@ -256,6 +256,85 @@ class AIQueueIntegrationService {
   }
 
   /**
+   * NOVO: Verificar se o ticket deve ser processado pela IA
+   */
+  private async shouldProcessWithAI(ticketId: string): Promise<{ shouldProcess: boolean; reason?: string }> {
+    try {
+      console.log('🔍 [AI-QUEUE] Verificando se ticket deve ser processado pela IA:', ticketId);
+      
+      // Buscar ticket com informações da fila
+      const { data: ticket, error } = await supabase
+        .from('conversation_tickets')
+        .select(`
+          id,
+          status,
+          assigned_queue_id,
+          human_takeover_reason,
+          queues:assigned_queue_id (
+            id,
+            is_active,
+            assistant_id,
+            name
+          )
+        `)
+        .eq('id', ticketId)
+        .single();
+
+      if (error || !ticket) {
+        console.log('❌ [AI-QUEUE] Ticket não encontrado:', error?.message);
+        return { shouldProcess: false, reason: 'Ticket não encontrado' };
+      }
+
+      // Verificar se ticket tem fila atribuída
+      if (!ticket.assigned_queue_id) {
+        console.log('⚠️ [AI-QUEUE] Ticket sem fila atribuída - não processando IA');
+        return { shouldProcess: false, reason: 'Ticket não está em nenhuma fila' };
+      }
+
+      // Verificar se está em modo de takeover humano
+      if (ticket.human_takeover_reason) {
+        console.log('👤 [AI-QUEUE] Ticket em modo humano - não processando IA:', ticket.human_takeover_reason);
+        return { shouldProcess: false, reason: 'Ticket assumido humanamente' };
+      }
+
+      // Verificar status do ticket
+      if (['pending', 'closed', 'resolved'].includes(ticket.status)) {
+        console.log('🚫 [AI-QUEUE] Status do ticket não permite IA:', ticket.status);
+        return { shouldProcess: false, reason: `Status não permite IA: ${ticket.status}` };
+      }
+
+      // Verificar se a fila existe e está ativa
+      const queue = ticket.queues;
+      if (!queue) {
+        console.log('❌ [AI-QUEUE] Fila não encontrada para o ticket');
+        return { shouldProcess: false, reason: 'Fila não encontrada' };
+      }
+
+      if (!queue.is_active) {
+        console.log('⚠️ [AI-QUEUE] Fila não está ativa:', queue.name);
+        return { shouldProcess: false, reason: 'Fila não está ativa' };
+      }
+
+      if (!queue.assistant_id) {
+        console.log('🤖 [AI-QUEUE] Fila sem assistente configurado:', queue.name);
+        return { shouldProcess: false, reason: 'Fila sem assistente IA configurado' };
+      }
+
+      console.log('✅ [AI-QUEUE] Ticket aprovado para processamento IA:', {
+        ticketId,
+        queueName: queue.name,
+        status: ticket.status
+      });
+
+      return { shouldProcess: true };
+
+    } catch (error) {
+      console.error('❌ [AI-QUEUE] Erro ao verificar processamento IA:', error);
+      return { shouldProcess: false, reason: 'Erro interno na verificação' };
+    }
+  }
+
+  /**
    * NOVO: Processar batch completo de mensagens
    */
   private async processMessageBatch(messages: any[]): Promise<MessageProcessingResult> {
@@ -270,6 +349,17 @@ class AIQueueIntegrationService {
         messageCount: messages.length,
         totalContentLength: messages.reduce((sum, msg) => sum + msg.content.length, 0)
       });
+
+      // 🔍 NOVA VERIFICAÇÃO: Verificar se o ticket deve ser processado pela IA
+      const shouldProcessCheck = await this.shouldProcessWithAI(ticketId);
+      if (!shouldProcessCheck.shouldProcess) {
+        console.log('🚫 [AI-QUEUE] Ticket não deve ser processado pela IA:', shouldProcessCheck.reason);
+        return {
+          success: true,
+          error: shouldProcessCheck.reason,
+          processingTime: Date.now() - startTime
+        };
+      }
 
       // 1. Buscar configuração da fila ativa para esta instância
       const queueConfig = await this.getActiveQueueConfig(instanceId);
