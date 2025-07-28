@@ -323,12 +323,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     const sendOptions = {
       delay: 1200,
       presence: 'composing',
-      externalAttributes: {
-        source: 'ai-assistant',
-        ticketId: ticketId,
-        assistantId: assistant.id,
-        timestamp: Date.now()
-      }
+      externalAttributes: `source=ai-assistant;ticketId=${ticketId};assistantId=${assistant.id};timestamp=${Date.now()}`
     };
 
     let sendResult;

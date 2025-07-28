@@ -58,11 +58,7 @@ class UnifiedMessageService {
       const sendOptions = {
         delay: options.delay || 1200,
         presence: options.presence || 'composing',
-        externalAttributes: {
-          source: options.source || 'manual',
-          humanized: options.humanized || false,
-          timestamp: Date.now()
-        }
+        externalAttributes: `source=${options.source || 'manual'};humanized=${options.humanized || false};timestamp=${Date.now()}`
       };
 
       // 4. ENVIAR VIA YUMER API V2 (ÚNICO MÉTODO)
