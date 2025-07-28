@@ -56,7 +56,7 @@ class UnifiedWhatsAppService {
         }
       };
 
-      // Enviar via API real CodeChat v2.2.1
+      // Enviar via API real
       const result = await yumerApiV2.sendText(
         message.instanceId,
         message.chatId,
@@ -206,7 +206,7 @@ class UnifiedWhatsAppService {
         .eq('instance_id', instanceId)
         .single();
 
-      // Verificar status real na API v2.2.1
+      // Verificar status real na API
       const connectionState = await yumerApiV2.getConnectionState(instanceId);
       const instanceInfo = await yumerApiV2.getInstance(instanceId);
 
