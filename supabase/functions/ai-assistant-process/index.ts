@@ -416,20 +416,21 @@ async function sendHumanizedResponse(
       
       console.log(`📤 [HUMANIZED-SEND] Enviando chunk ${i + 1}/${chunks.length}: "${chunk.substring(0, 50)}..."`);
 
-      // 3a. Simular typing se habilitado
+      // 3a. Detectar se é mensagem de áudio
+      const isAudioMessage = chunk.toLowerCase().includes('audio:') || chunk.toLowerCase().includes('.ogg') || chunk.toLowerCase().includes('.oga');
+      const presenceType: 'composing' | 'recording' = isAudioMessage ? 'recording' : 'composing';
+
+      // 3b. Simular typing/recording se habilitado
       if (config.behavior.typing.enabled && config.behavior.presence.showTyping) {
         const typingDuration = calculateTypingDuration(chunk, config.personality.typingSpeed, config);
-        console.log(`⌨️ [HUMANIZED-SEND] Simulando typing por ${typingDuration}ms`);
+        console.log(`⌨️ [HUMANIZED-SEND] Simulando ${presenceType} por ${typingDuration}ms`);
         
-        // Definir presença como "composing"
-        await setPresence(instanceId, chatId, 'composing', businessToken);
-        
-        // Aguardar tempo de typing
+        // Aguardar tempo de typing/recording
         await new Promise(resolve => setTimeout(resolve, typingDuration));
       }
 
-      // 3b. Enviar mensagem via CodeChat v2.2.1
-      const chunkResult = await sendCodeChatMessage(instanceId, chatId, chunk, businessToken);
+      // 3c. Enviar mensagem via CodeChat v2.2.1 com presença integrada
+      const chunkResult = await sendCodeChatMessage(instanceId, chatId, chunk, businessToken, 'available');
       
       if (!chunkResult.success) {
         console.error(`❌ [HUMANIZED-SEND] Erro no chunk ${i + 1}:`, chunkResult.error);
@@ -445,10 +446,7 @@ async function sendHumanizedResponse(
       }
     }
 
-    // 4. Definir presença como "available" após envio
-    if (config.behavior.presence.enabled) {
-      await setPresence(instanceId, chatId, 'available', businessToken);
-    }
+    // 4. Não precisamos mais definir presença separadamente - integrada na mensagem
 
     console.log(`✅ [HUMANIZED-SEND] Todos os ${chunks.length} chunks enviados com sucesso`);
     return { success: true, chunks: chunks.length };
@@ -463,12 +461,13 @@ async function sendHumanizedResponse(
   }
 }
 
-// 📤 Enviar mensagem via CodeChat v2.2.1
+// 📤 Enviar mensagem via CodeChat v2.2.1 com presença integrada
 async function sendCodeChatMessage(
   instanceId: string, 
   chatId: string, 
   message: string, 
-  businessToken: string
+  businessToken: string,
+  presence: 'available' | 'composing' | 'recording' = 'available'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const codeChatData = {
@@ -478,7 +477,7 @@ async function sendCodeChatMessage(
       },
       options: {
         delay: 0, // Controlamos o delay manualmente
-        presence: 'available'
+        presence: presence // Integrar presença diretamente na mensagem
       }
     };
 
@@ -508,7 +507,8 @@ async function sendCodeChatMessage(
     const result = await response.json();
     console.log('✅ [CODECHAT-SEND] Mensagem enviada com sucesso via CodeChat v2.2.1:', {
       messageId: result.messageId,
-      chatId: chatId
+      chatId: chatId,
+      presence: presence
     });
 
     return { success: true };
@@ -519,41 +519,8 @@ async function sendCodeChatMessage(
   }
 }
 
-// 👤 Definir presença via CodeChat v2.2.1
-async function setPresence(
-  instanceId: string, 
-  chatId: string, 
-  presence: 'available' | 'composing' | 'recording', 
-  businessToken: string
-): Promise<void> {
-  try {
-    console.log(`👤 [PRESENCE] Definindo presença como "${presence}" para ${chatId}`);
-
-    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/presence`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${businessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        recipient: chatId,
-        presence: presence
-      })
-    });
-
-    if (!response.ok) {
-      console.error('❌ [PRESENCE] Erro ao definir presença:', {
-        status: response.status,
-        chatId,
-        presence
-      });
-    } else {
-      console.log(`✅ [PRESENCE] Presença "${presence}" definida com sucesso`);
-    }
-  } catch (error) {
-    console.error('❌ [PRESENCE] Erro ao definir presença:', error);
-  }
-}
+// 👤 Função de presença removida - agora integrada nas options da mensagem
+// A presença agora é controlada via options.presence em cada mensagem enviada
 
 // 📤 Envio simples (fallback)
 async function sendSimpleMessage(instanceId: string, chatId: string, message: string): Promise<{ success: boolean; error?: string }> {
