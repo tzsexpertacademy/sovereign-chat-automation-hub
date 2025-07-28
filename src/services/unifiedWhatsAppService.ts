@@ -7,7 +7,7 @@
 import yumerApiV2 from './yumerApiV2Service';
 import { supabase } from '@/integrations/supabase/client';
 import instanceStatusSyncService from './instanceStatusSyncService';
-import unifiedYumerService from './unifiedYumerService';
+import { whatsappService } from './whatsappMultiClient';
 
 export interface UnifiedWhatsAppMessage {
   instanceId: string;
@@ -33,49 +33,36 @@ export interface UnifiedWhatsAppResult {
 class UnifiedWhatsAppService {
   
   /**
-   * Envia mensagem de texto usando API real v2.2.1
+   * Envia mensagem de texto usando EXATAMENTE O MESMO MÉTODO DO ENVIO MANUAL
    */
   async sendTextMessage(message: UnifiedWhatsAppMessage): Promise<UnifiedWhatsAppResult> {
     try {
-      console.log('📤 [UNIFIED] Enviando mensagem real:', {
+      console.log('📤 [UNIFIED-AI] Enviando mensagem da IA usando método manual:', {
         instanceId: message.instanceId,
         chatId: message.chatId,
         textLength: message.text.length,
         humanized: message.options?.humanized
       });
 
-      // Configurar opções humanizadas
-      const sendOptions = {
-        delay: message.options?.delay || 1200,
-        presence: message.options?.presence || 'composing',
-        externalAttributes: {
-          source: 'unified-whatsapp-service',
-          humanized: message.options?.humanized || false,
-          personality: message.options?.personality || 'default',
-          timestamp: Date.now(),
-          ...message.options?.externalAttributes
-        }
-      };
+      // USAR EXATAMENTE O MESMO MÉTODO DO ENVIO MANUAL (whatsappService.sendTextMessage)
+      const result = await whatsappService.sendTextMessage({
+        instanceId: message.instanceId,
+        to: message.chatId,
+        message: message.text
+      });
 
-      // USAR YUMER API V2 DIRETAMENTE (MESMO MÉTODO DO ENVIO MANUAL QUE FUNCIONA)
-      const result = await yumerApiV2.sendText(
-        message.instanceId,
-        message.chatId,
-        message.text,
-        sendOptions
-      );
-
-      console.log('✅ [UNIFIED] Mensagem enviada com sucesso via yumerApiV2:', result);
+      console.log('✅ [UNIFIED-AI] Mensagem enviada com sucesso via whatsappService (mesmo método do manual):', result);
 
       return {
-        success: true,
-        messageId: result.key?.id || `msg_${Date.now()}`,
-        timestamp: Date.now(),
-        details: result
+        success: result.success,
+        messageId: result.messageId || `ai_msg_${Date.now()}`,
+        timestamp: result.timestamp || Date.now(),
+        error: result.error,
+        details: result.details
       };
 
     } catch (error: any) {
-      console.error('❌ [UNIFIED] Erro ao enviar mensagem:', error);
+      console.error('❌ [UNIFIED-AI] Erro ao enviar mensagem via whatsappService:', error);
       
       return {
         success: false,
