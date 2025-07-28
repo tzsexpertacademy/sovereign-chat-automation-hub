@@ -5,7 +5,7 @@
 
 export class MessageProcessingController {
   private static instance: MessageProcessingController;
-  private globalLocks: Map<string, boolean> = new Map();
+  private globalLocks: Map<string, number | boolean> = new Map();
   private processedMessages: Set<string> = new Set();
 
   private constructor() {}
@@ -40,12 +40,50 @@ export class MessageProcessingController {
   }
 
   /**
+   * Verificar se uma mensagem pode ser processada com timestamp
+   */
+  canProcessMessageWithTimestamp(messageId: string, chatId: string, timestamp?: number): boolean {
+    const chatLockKey = `chat_${chatId}`;
+    const messageLockKey = `msg_${messageId}`;
+    const currentTime = Date.now();
+
+    // Verificar se chat está com lock baseado em timestamp
+    const lockTime = this.globalLocks.get(chatLockKey);
+    if (lockTime) {
+      if (typeof lockTime === 'number' && (currentTime - lockTime) < 10000) { // 10s timeout
+        console.log('🔒 [CONTROLLER] Chat com lock ativo (timestamp):', chatId, `há ${currentTime - lockTime}ms`);
+        return false;
+      } else if (typeof lockTime === 'boolean' && lockTime) {
+        console.log('🔒 [CONTROLLER] Chat com lock ativo (boolean):', chatId);
+        return false;
+      }
+    }
+
+    // Verificar se mensagem já foi processada
+    if (this.processedMessages.has(messageLockKey)) {
+      console.log('✅ [CONTROLLER] Mensagem já processada:', messageId);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Aplicar lock em um chat
    */
   lockChat(chatId: string): void {
     const chatLockKey = `chat_${chatId}`;
-    this.globalLocks.set(chatLockKey, true);
+    this.globalLocks.set(chatLockKey, Date.now());
     console.log('🔒 [CONTROLLER] Lock aplicado no chat:', chatId);
+  }
+
+  /**
+   * Aplicar lock com timestamp customizado
+   */
+  lockChatWithTimestamp(chatId: string, timestamp?: number): void {
+    const chatLockKey = `chat_${chatId}`;
+    this.globalLocks.set(chatLockKey, timestamp || Date.now());
+    console.log('🔒 [CONTROLLER] Lock aplicado no chat com timestamp:', chatId);
   }
 
   /**
@@ -80,7 +118,22 @@ export class MessageProcessingController {
    */
   isChatLocked(chatId: string): boolean {
     const chatLockKey = `chat_${chatId}`;
-    return this.globalLocks.get(chatLockKey) || false;
+    const lockTime = this.globalLocks.get(chatLockKey);
+    
+    if (!lockTime) return false;
+    
+    // Se é timestamp, verificar se ainda é válido (10s timeout)
+    if (typeof lockTime === 'number') {
+      const currentTime = Date.now();
+      if ((currentTime - lockTime) > 10000) {
+        // Lock expirado, remover
+        this.globalLocks.delete(chatLockKey);
+        console.log('⏰ [CONTROLLER] Lock expirado removido:', chatId);
+        return false;
+      }
+    }
+    
+    return true;
   }
 
   /**

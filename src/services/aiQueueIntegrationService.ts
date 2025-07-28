@@ -182,8 +182,8 @@ class AIQueueIntegrationService {
       
       console.log(`🚀 [AI-QUEUE] Aplicando lock centralizado e processando batch de ${messagesToProcess.length} mensagens`);
       
-      // NOVO: Aplicar lock centralizado
-      messageProcessingController.lockChat(ticketId);
+      // NOVO: Aplicar lock centralizado com timestamp
+      messageProcessingController.lockChatWithTimestamp(ticketId, Date.now());
       this.processingQueue.set(ticketId, true);
       
       // Limpar batch e timeout

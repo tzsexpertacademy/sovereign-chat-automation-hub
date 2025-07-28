@@ -39,6 +39,14 @@ interface MessageBatch {
 const messageBatches = new Map<string, MessageBatch>();
 const BATCH_TIMEOUT = 4000; // 4 segundos para agrupar mensagens (timeout inteligente)
 
+// Sistema de debounce para evitar processamento duplo
+const messageDebounce = new Map<string, number>();
+const DEBOUNCE_TIMEOUT = 2000; // 2 segundos para ignorar duplicatas
+
+// Sistema de locks ativos para controle de processamento
+const activeProcessingLocks = new Map<string, number>();
+const LOCK_TIMEOUT = 10000; // 10 segundos de timeout para locks
+
 serve(async (req) => {
   console.log('🌐 [YUMER-UNIFIED-WEBHOOK] Recebendo requisição:', req.method, req.url);
   
@@ -183,6 +191,30 @@ async function addToBatch(yumerData: YumerWebhookData) {
       );
     }
 
+    // 🚀 DEBOUNCE: Verificar se esta mensagem já foi processada recentemente
+    const messageId = messageData?.keyId || messageData?.messageId;
+    const currentTime = Date.now();
+    
+    if (messageId) {
+      const lastProcessTime = messageDebounce.get(messageId);
+      if (lastProcessTime && (currentTime - lastProcessTime) < DEBOUNCE_TIMEOUT) {
+        console.log(`🔄 [DEBOUNCE] Mensagem ${messageId} ignorada - processada há ${currentTime - lastProcessTime}ms`);
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Message ignored - debounce',
+            messageId,
+            timeSinceLastProcess: currentTime - lastProcessTime
+          }), 
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Marcar mensagem como processada agora
+      messageDebounce.set(messageId, currentTime);
+      console.log(`✅ [DEBOUNCE] Mensagem ${messageId} marcada para processamento`);
+    }
+
     // Buscar instância para obter client_id
     const { data: instance, error: instanceError } = await supabase
       .from('whatsapp_instances')
@@ -209,7 +241,22 @@ async function addToBatch(yumerData: YumerWebhookData) {
     }
 
     const batchKey = `${instance.client_id}-${processedMessage.chatId}`;
-    const currentTime = Date.now();
+
+    // 🔒 LOCK: Verificar se já há processamento ativo para este chat
+    const activeLockTime = activeProcessingLocks.get(batchKey);
+    if (activeLockTime && (currentTime - activeLockTime) < LOCK_TIMEOUT) {
+      console.log(`🔒 [LOCK] Chat ${batchKey} já está sendo processado - ignorando mensagem`);
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Chat already being processed',
+          batchKey,
+          lockActive: true,
+          timeSinceLock: currentTime - activeLockTime
+        }), 
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log(`📦 [BATCH] Adicionando mensagem ao batch: ${batchKey}`);
 
@@ -279,6 +326,11 @@ async function processBatch(batchKey: string) {
 
   console.log(`🚀 [BATCH] Processando batch ${batchKey} com ${batch.messages.length} mensagens`);
 
+  // 🔒 APLICAR LOCK para evitar processamento simultâneo
+  const currentTime = Date.now();
+  activeProcessingLocks.set(batchKey, currentTime);
+  console.log(`🔒 [LOCK] Lock aplicado para batch: ${batchKey}`);
+
   try {
     // Processar mensagens individualmente para salvar no banco
     let lastTicketId = null;
@@ -338,9 +390,20 @@ async function processBatch(batchKey: string) {
   } catch (error) {
     console.error(`❌ [BATCH] Erro ao processar batch ${batchKey}:`, error);
   } finally {
-    // Limpar batch da memória
+    // 🔓 LIBERAR LOCK e limpar batch da memória
+    activeProcessingLocks.delete(batchKey);
     messageBatches.delete(batchKey);
-    console.log(`🗑️ [BATCH] Batch removido da memória: ${batchKey}`);
+    console.log(`🔓 [LOCK] Lock liberado e batch removido da memória: ${batchKey}`);
+    
+    // Limpar debounce antigo (manter apenas últimas 100 mensagens)
+    if (messageDebounce.size > 100) {
+      const entries = Array.from(messageDebounce.entries())
+        .sort(([,timeA], [,timeB]) => timeB - timeA)
+        .slice(0, 50);
+      messageDebounce.clear();
+      entries.forEach(([key, time]) => messageDebounce.set(key, time));
+      console.log('🧹 [CLEANUP] Debounce cache limpo');
+    }
   }
 }
 
