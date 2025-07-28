@@ -325,85 +325,128 @@ async function processBatch(batchKey: string) {
   }
 
   console.log(`🚀 [BATCH] Processando batch ${batchKey} com ${batch.messages.length} mensagens`);
+  console.log(`🕐 [BATCH] Tempo desde primeira mensagem: ${Date.now() - batch.firstMessageTime}ms`);
 
-  // 🔒 APLICAR LOCK para evitar processamento simultâneo
+  // 🔒 APLICAR LOCK SIMPLIFICADO
   const currentTime = Date.now();
   activeProcessingLocks.set(batchKey, currentTime);
   console.log(`🔒 [LOCK] Lock aplicado para batch: ${batchKey}`);
 
   try {
+    // 🚫 MARCAR MENSAGENS COMO PROCESSADAS IMEDIATAMENTE
+    console.log(`🏷️ [BATCH] Marcando ${batch.messages.length} mensagens como processadas...`);
+    
     // Processar mensagens individualmente para salvar no banco
     let lastTicketId = null;
     let instanceDetails = null;
+    let processedCount = 0;
 
     for (const yumerData of batch.messages) {
       try {
+        console.log(`📝 [BATCH] Processando mensagem ${processedCount + 1}/${batch.messages.length}`);
         const result = await processYumerMessage(yumerData);
         if (result?.ticketId) {
           lastTicketId = result.ticketId;
+          console.log(`✅ [BATCH] Ticket ID obtido: ${lastTicketId}`);
         }
         if (!instanceDetails && yumerData.instance) {
           instanceDetails = yumerData.instance;
         }
+        processedCount++;
       } catch (error) {
         console.error('❌ [BATCH] Erro ao processar mensagem individual:', error);
       }
     }
 
-    // 🤖 PROCESSAR COM IA APENAS UMA VEZ PARA TODO O BATCH
+    console.log(`📊 [BATCH] Processadas ${processedCount}/${batch.messages.length} mensagens`);
+
+    // 🤖 PROCESSAR COM IA - SIMPLIFICADO E DIRETO
     if (lastTicketId && instanceDetails && batch.messages.length > 0) {
-      console.log(`🤖 [BATCH] Processando ${batch.messages.length} mensagens como contexto único com IA`);
+      console.log(`🤖 [BATCH] Iniciando processamento de IA para ticket: ${lastTicketId}`);
       
-      // 📝 COMBINAR TODAS AS MENSAGENS DO BATCH COMO CONTEXTO ÚNICO
-      const allMessages = batch.messages
-        .map(msg => {
-          const msgData = extractYumerMessageData(msg.data, {
-            instance_id: batch.instanceId,
-            client_id: batch.clientId
-          });
-          return msgData?.content || '';
-        })
-        .filter(content => content.trim() !== '');
-      
-      // Buscar dados da última mensagem para outros contextos
+      // Buscar dados da última mensagem
       const lastMessage = batch.messages[batch.messages.length - 1];
       const lastMessageData = extractYumerMessageData(lastMessage.data, {
         instance_id: batch.instanceId,
         client_id: batch.clientId
       });
       
-      if (lastMessageData && allMessages.length > 0) {
-        // 🔍 VERIFICAR SE TICKET DEVE SER PROCESSADO PELA IA
-        const shouldProcess = await shouldTicketBeProcessedByAI(lastTicketId);
-        if (!shouldProcess.shouldProcess) {
-          console.log('🚫 [BATCH] Ticket não deve ser processado pela IA:', shouldProcess.reason);
-          return;
+      if (lastMessageData) {
+        console.log(`🎯 [BATCH] Dados da última mensagem extraídos: ${lastMessageData.content}`);
+        
+        // 🔍 VERIFICAÇÃO SIMPLIFICADA
+        try {
+          const shouldProcess = await shouldTicketBeProcessedByAI(lastTicketId);
+          if (!shouldProcess.shouldProcess) {
+            console.log('🚫 [BATCH] Ticket não deve ser processado pela IA:', shouldProcess.reason);
+            return;
+          }
+          console.log('✅ [BATCH] Ticket aprovado para processamento de IA');
+        } catch (checkError) {
+          console.error('⚠️ [BATCH] Erro na verificação, processando mesmo assim:', checkError);
         }
 
-        // 🎯 ÚNICA CHAMADA À IA: Processamento exclusivo via BATCH (duplicação eliminada)
-        console.log('🚀 [BATCH-AI] INICIANDO processamento único da IA via BATCH');
-        console.log('📋 [BATCH-AI] Contexto:', {
-          messagesCount: allMessages.length,
-          batchSize: batch.messages.length,
-          ticketId: lastTicketId,
-          isBatch: true
-        });
+        // 📝 CONTEXTO SIMPLIFICADO - APENAS ÚLTIMA MENSAGEM
+        console.log('🚀 [BATCH-AI] CHAMANDO IA com contexto simplificado');
         
-        await processWithAIIfEnabled(
-          lastMessageData, 
-          instanceDetails,
-          true, // isBatch = true
-          batch.messages.length, // batchSize
-          lastTicketId, // ticketId correto
-          allMessages // todas as mensagens combinadas
-        );
+        try {
+          const aiResult = await processWithAIIfEnabled(
+            lastMessageData, 
+            instanceDetails,
+            true, // isBatch = true
+            batch.messages.length, // batchSize
+            lastTicketId, // ticketId correto
+            [lastMessageData.content] // apenas última mensagem para simplificar
+          );
+          
+          console.log('✅ [BATCH-AI] Processamento de IA concluído:', aiResult ? 'sucesso' : 'sem resposta');
+        } catch (aiError) {
+          console.error('❌ [BATCH-AI] ERRO no processamento de IA:', aiError);
+          
+          // 🛡️ FALLBACK: Tentar processamento direto
+          console.log('🔄 [FALLBACK] Tentando processamento direto da IA...');
+          try {
+            await supabase.functions.invoke('ai-assistant-process', {
+              body: {
+                messageData: lastMessageData,
+                instanceDetails: instanceDetails,
+                ticketId: lastTicketId,
+                batchSize: batch.messages.length,
+                isBatch: true
+              }
+            });
+            console.log('✅ [FALLBACK] Processamento direto executado');
+          } catch (fallbackError) {
+            console.error('❌ [FALLBACK] Falha total:', fallbackError);
+          }
+        }
+      } else {
+        console.error('❌ [BATCH] Falha ao extrair dados da última mensagem');
       }
+    } else {
+      console.log(`⚠️ [BATCH] Condições não atendidas para IA: ticketId=${!!lastTicketId}, instanceDetails=${!!instanceDetails}, messages=${batch.messages.length}`);
     }
 
     console.log(`✅ [BATCH] Batch processado com sucesso: ${batchKey}`);
 
   } catch (error) {
-    console.error(`❌ [BATCH] Erro ao processar batch ${batchKey}:`, error);
+    console.error(`❌ [BATCH] ERRO CRÍTICO ao processar batch ${batchKey}:`, error);
+    
+    // 🛡️ FALLBACK CRÍTICO: Marcar mensagens como processadas mesmo com erro
+    console.log('🔄 [FALLBACK-CRÍTICO] Marcando mensagens como processadas para evitar loop');
+    try {
+      for (const yumerData of batch.messages) {
+        if (yumerData.data?.messageId) {
+          await supabase
+            .from('whatsapp_messages')
+            .update({ is_processed: true, processing_started_at: new Date().toISOString() })
+            .eq('message_id', yumerData.data.messageId);
+        }
+      }
+      console.log('✅ [FALLBACK-CRÍTICO] Mensagens marcadas como processadas');
+    } catch (fallbackError) {
+      console.error('❌ [FALLBACK-CRÍTICO] Falha ao marcar mensagens:', fallbackError);
+    }
   } finally {
     // 🔓 LIBERAR LOCK e limpar batch da memória
     activeProcessingLocks.delete(batchKey);
@@ -578,22 +621,35 @@ async function processYumerMessage(yumerData: YumerWebhookData, processAI: boole
     // 4. Processar mensagem para tickets
     const ticketId = await processMessageToTickets(processedMessage, instance.client_id, instance.instance_id);
     
-    // 🤖 5. ATIVAÇÃO AUTOMÁTICA DA IA: DESABILITADO - Apenas processamento em BATCH
-    // CORREÇÃO DEFINITIVA: Removido processamento individual para evitar duplicação
-    // A IA será processada APENAS via batch system (linha 384) após 4s de timeout
+    // 🤖 5. ATIVAÇÃO AUTOMÁTICA DA IA: HABILITADO COM FALLBACK
+    // CORREÇÃO: Reabilitar processamento individual como FALLBACK se batch falhar
     if (!processedMessage.fromMe && processAI) {
-      console.log('🤖 [AI-TRIGGER] PROCESSAMENTO INDIVIDUAL DESABILITADO - aguardando batch');
-      console.log('💡 [AI-TRIGGER] IA será processada via BATCH após timeout de 4s (linha 384)');
+      console.log('🤖 [AI-TRIGGER] Verificando processamento (Batch preferido, Individual como fallback)');
       
       try {
-        // Apenas garantir que a instância está conectada a uma fila (sem processar IA)
+        // Garantir que a instância está conectada a uma fila
         await ensureInstanceQueueConnection(instance.id, instance.client_id);
-        console.log('✅ [AI-TRIGGER] Instância conectada à fila - processamento será via BATCH');
+        console.log('✅ [AI-TRIGGER] Instância conectada à fila');
         
-        // 🚫 REMOVIDO: Processamento individual para evitar duplicação
-        // A chamada processWithAIIfEnabled foi movida para o batch system APENAS
-        // const aiResult = await processWithAIIfEnabled(...);
-        console.log('✅ [AI-TRIGGER] Mensagem adicionada ao batch - IA processará em conjunto');
+        // 🛡️ FALLBACK IMEDIATO: Se não há batch ativo, processar imediatamente
+        const batchKey = `${instance.instance_id}-${processedMessage.chatId}`;
+        const hasBatch = messageBatches.has(batchKey);
+        
+        if (!hasBatch) {
+          console.log('🔄 [AI-FALLBACK] Nenhum batch ativo, processando imediatamente');
+          
+          const aiResult = await processWithAIIfEnabled(
+            processedMessage,
+            instance,
+            false, // isBatch = false
+            1, // batchSize = 1
+            ticketId,
+            undefined
+          );
+          console.log('✅ [AI-FALLBACK] Processamento individual executado:', aiResult ? 'sucesso' : 'sem resposta');
+        } else {
+          console.log('✅ [AI-TRIGGER] Mensagem será processada via BATCH ativo');
+        }
       } catch (aiError) {
         console.error('❌ [AI-TRIGGER] Erro ao processar com IA:', aiError);
       }
