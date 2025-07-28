@@ -43,9 +43,92 @@ class AIQueueIntegrationService {
     result: 'success' | 'error' | 'handoff';
     details: string;
   }> = [];
+  // NOVO: Cache de respostas por contexto para evitar duplicação
+  private responseCache: Map<string, {
+    response: string;
+    timestamp: number;
+    expiry: number;
+  }> = new Map();
+  private readonly CACHE_TTL = 30000; // 30 segundos
 
   constructor() {
     this.initializeBatcher();
+    // Limpeza automática do cache a cada 5 minutos
+    setInterval(() => this.cleanExpiredCache(), 5 * 60 * 1000);
+  }
+
+  /**
+   * NOVO: Gerar hash do contexto de mensagens para cache
+   */
+  private generateContextHash(messages: any[]): string {
+    const contextString = messages
+      .map(msg => `${msg.content}:${msg.timestamp}`)
+      .join('|');
+    return btoa(contextString).replace(/[+/=]/g, '');
+  }
+
+  /**
+   * NOVO: Verificar se contexto já foi processado recentemente
+   */
+  private isContextCached(contextHash: string): boolean {
+    const cached = this.responseCache.get(contextHash);
+    if (!cached) return false;
+    
+    const now = Date.now();
+    if (now > cached.expiry) {
+      this.responseCache.delete(contextHash);
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * NOVO: Armazenar resposta no cache
+   */
+  private cacheResponse(contextHash: string, response: string): void {
+    const now = Date.now();
+    this.responseCache.set(contextHash, {
+      response,
+      timestamp: now,
+      expiry: now + this.CACHE_TTL
+    });
+    
+    console.log('💾 [AI-QUEUE] Resposta armazenada no cache:', {
+      contextHash: contextHash.substring(0, 10) + '...',
+      responseLength: response.length,
+      expiresIn: this.CACHE_TTL / 1000 + 's'
+    });
+  }
+
+  /**
+   * NOVO: Obter resposta do cache
+   */
+  private getCachedResponse(contextHash: string): string | null {
+    const cached = this.responseCache.get(contextHash);
+    return cached?.response || null;
+  }
+
+  /**
+   * NOVO: Limpar cache expirado
+   */
+  private cleanExpiredCache(): void {
+    const now = Date.now();
+    let cleaned = 0;
+    
+    for (const [hash, cached] of this.responseCache.entries()) {
+      if (now > cached.expiry) {
+        this.responseCache.delete(hash);
+        cleaned++;
+      }
+    }
+    
+    if (cleaned > 0) {
+      console.log('🧹 [AI-QUEUE] Cache limpo:', {
+        entriesRemoved: cleaned,
+        remainingEntries: this.responseCache.size
+      });
+    }
   }
 
   private initializeBatcher() {
@@ -384,7 +467,36 @@ class AIQueueIntegrationService {
         };
       }
 
-      // 3. Processar batch com IA
+      // 3. NOVO: Verificar cache de contexto antes de processar IA
+      const contextHash = this.generateContextHash(messages);
+      console.log('🔍 [AI-QUEUE] Hash do contexto gerado:', {
+        contextHash: contextHash.substring(0, 10) + '...',
+        messageCount: messages.length
+      });
+
+      if (this.isContextCached(contextHash)) {
+        const cachedResponse = this.getCachedResponse(contextHash);
+        console.log('💾 [AI-QUEUE] USANDO resposta do cache - evitando duplicação IA');
+        
+        if (cachedResponse) {
+          // Enviar resposta do cache
+          await this.sendAutomaticResponse(
+            ticketId,
+            cachedResponse,
+            instanceId,
+            queueConfig
+          );
+          
+          return {
+            success: true,
+            response: cachedResponse,
+            processingTime: Date.now() - startTime,
+            metadata: { source: 'cache', contextHash }
+          };
+        }
+      }
+
+      // 4. Processar batch com IA (se não estiver no cache)
       const aiResponse = await this.processWithAI(
         messages, // Passar array completo de mensagens
         queueConfig,
@@ -392,13 +504,18 @@ class AIQueueIntegrationService {
         clientId
       );
 
-      // 4. Verificar se deve transferir para humano
+      // 5. NOVO: Armazenar resposta no cache se foi bem-sucedida
+      if (aiResponse.success && aiResponse.response) {
+        this.cacheResponse(contextHash, aiResponse.response);
+      }
+
+      // 6. Verificar se deve transferir para humano
       if (aiResponse.shouldHandoffToHuman) {
         await this.handoffToHuman(ticketId, 'IA solicitou transferência para humano');
         return aiResponse;
       }
 
-      // 5. Enviar resposta automática se sucesso
+      // 7. Enviar resposta automática se sucesso
       if (aiResponse.success && aiResponse.response) {
         await this.sendAutomaticResponse(
           ticketId,
