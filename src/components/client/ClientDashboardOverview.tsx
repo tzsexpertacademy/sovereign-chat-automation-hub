@@ -4,6 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import RealTimeMetricsCard from "./RealTimeMetricsCard";
 import AIAutoProcessorStatus from "./AIAutoProcessorStatus";
+import { UnprocessedMessagesPanel } from "./UnprocessedMessagesPanel";
+import { MessageProcessingTestPanel } from "./MessageProcessingTestPanel";
+import { useMessageProcessingBackup } from "@/hooks/useMessageProcessingBackup";
 import { 
   Users, 
   MessageSquare, 
@@ -32,6 +35,9 @@ const ClientDashboardOverview = ({ clientId }: ClientDashboardOverviewProps) => 
   const [error, setError] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(true);
   const { toast } = useToast();
+
+  // Sistema de backup para mensagens perdidas
+  const { isEnabled: backupEnabled, isRunning: backupRunning } = useMessageProcessingBackup(clientId);
 
   const loadMetrics = async () => {
     if (!isMounted || !clientId) return;
@@ -252,6 +258,12 @@ const ClientDashboardOverview = ({ clientId }: ClientDashboardOverviewProps) => 
 
       {/* Status do Processador de IA Automático */}
       <AIAutoProcessorStatus clientId={clientId} />
+
+      {/* Painéis de Monitoramento e Teste */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <UnprocessedMessagesPanel clientId={clientId} />
+        <MessageProcessingTestPanel clientId={clientId} />
+      </div>
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
