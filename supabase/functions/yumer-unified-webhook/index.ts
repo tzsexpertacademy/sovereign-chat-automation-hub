@@ -12,9 +12,8 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
 };
 
-// ✅ SISTEMA DE BATCH ULTRA SIMPLES - APENAS 4 SEGUNDOS
-const messageBatches = new Map<string, any>();
-const BATCH_TIMEOUT = 4000; // 4 segundos fixos
+// ✅ BATCH PERSISTENTE - USANDO SUPABASE
+const BATCH_TIMEOUT = 4000; // 4 segundos
 
 serve(async (req) => {
   console.log('🔥 [WEBHOOK-SIMPLES] Requisição recebida:', req.method);
@@ -136,61 +135,18 @@ async function processMessageBatch(yumerData: any) {
     // SALVAR MENSAGEM NO BANCO PRIMEIRO
     await saveMessageToDatabase(messageData, instance, chatId, pushName, phoneNumber);
 
-    // ✅ SISTEMA DE BATCH COM DEBOUNCE MELHORADO
-    const batchKey = `${chatId}_${instance.client_id}`;
-    console.log('🔥 [BATCH-DEBUG] 🔑 Chave do batch:', batchKey);
-    console.log('🔥 [BATCH-DEBUG] 📊 Batches ativos na memória:', messageBatches.size);
-    
-    let batch = messageBatches.get(batchKey);
-    const now = Date.now();
-    
-    if (!batch) {
-      // CRIAR NOVO BATCH
-      console.log('🔥 [BATCH-DEBUG] ✨ Criando NOVO batch para:', batchKey);
-      batch = {
-        chatId,
-        instanceId: instance.instance_id,
-        clientId: instance.client_id,
-        messages: [],
-        firstMessageTime: now,
-        timeoutId: null
-      };
-      messageBatches.set(batchKey, batch);
-    } else {
-      console.log('🔥 [BATCH-DEBUG] ♻️ Adicionando ao batch EXISTENTE:', batchKey, '- Mensagens atuais:', batch.messages.length);
-      
-      // ✅ DEBOUNCE: CANCELAR TIMER ANTERIOR
-      if (batch.timeoutId) {
-        console.log('🔥 [BATCH-DEBUG] ⏰ Cancelando timer anterior (debounce)');
-        clearTimeout(batch.timeoutId);
-      }
-    }
-
-    // ADICIONAR MENSAGEM AO BATCH
-    batch.messages.push({
+    // ✅ SISTEMA DE BATCH PERSISTENTE NO SUPABASE
+    await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
       content,
       messageId,
       timestamp: new Date().toISOString(),
-      pushName,
+      customerName: pushName,
       phoneNumber
     });
 
-    console.log('🔥 [BATCH-DEBUG] ✅ Mensagem adicionada ao batch:', batchKey);
-    console.log('🔥 [BATCH-DEBUG] 📊 Total de mensagens no batch:', batch.messages.length);
-    console.log('🔥 [BATCH-DEBUG] 🕐 Idade do batch:', (now - batch.firstMessageTime) / 1000, 'segundos');
-
-    // ✅ CONFIGURAR NOVO TIMER (DEBOUNCE)
-    batch.timeoutId = setTimeout(async () => {
-      console.log('🔥 [BATCH-DEBUG] ⚡ EXECUTANDO BATCH após timeout de 4s:', batchKey);
-      await executeBatch(batchKey);
-    }, BATCH_TIMEOUT);
-    
-    console.log('🔥 [BATCH-DEBUG] ⏲️ Timer configurado para', BATCH_TIMEOUT / 1000, 'segundos');
-
     return new Response(JSON.stringify({ 
       success: true, 
-      message: 'Added to batch',
-      batchSize: batch.messages.length 
+      message: 'Added to batch persistente'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
@@ -204,126 +160,56 @@ async function processMessageBatch(yumerData: any) {
   }
 }
 
-// ✅ EXECUTAR BATCH SUPER SIMPLES
-async function executeBatch(batchKey: string) {
-  console.log('🔥 [EXECUTE-BATCH] Executando batch:', batchKey);
-  
-  const batch = messageBatches.get(batchKey);
-  if (!batch) {
-    console.log('🔥 [EXECUTE-BATCH] Batch não encontrado na memória');
-    return;
-  }
-
-  console.log('🔥 [EXECUTE-BATCH] Batch contém', batch.messages.length, 'mensagens');
-  console.log('🔥 [EXECUTE-BATCH] Dados do batch:', JSON.stringify(batch, null, 2));
-
-  // ✅ VALIDAR CAMPOS OBRIGATÓRIOS
-  if (!batch.chatId || !batch.clientId) {
-    console.error('🔥 [EXECUTE-BATCH] Batch inválido - faltam dados obrigatórios:', {
-      chatId: batch.chatId,
-      clientId: batch.clientId
-    });
-    messageBatches.delete(batchKey);
-    return;
-  }
-
-  // ✅ VALIDAR MENSAGENS COM CONTEÚDO
-  const validMessages = batch.messages.filter(msg => msg.content && msg.content.trim() !== '');
-  if (validMessages.length === 0) {
-    console.warn('🔥 [EXECUTE-BATCH] Nenhuma mensagem válida com conteúdo');
-    messageBatches.delete(batchKey);
-    return;
-  }
+/**
+ * ✅ UPSERT MESSAGE BATCH - ADICIONA MENSAGEM AO BATCH PERSISTENTE
+ */
+async function upsertMessageBatch(chatId: string, clientId: string, instanceId: string, message: any) {
+  console.log('🔥 [BATCH-PERSISTENT] Adicionando mensagem ao batch:', { chatId, clientId });
 
   try {
-    // ✅ CORRIGIDO: BUSCAR TICKET NA TABELA CORRETA
-    console.log('🔥 [EXECUTE-BATCH] Buscando ticket para chat:', batch.chatId, 'cliente:', batch.clientId);
-    
-    const { data: ticket, error: ticketError } = await supabase
-      .from('conversation_tickets')
-      .select('id, status, title')
-      .eq('chat_id', batch.chatId)
-      .eq('client_id', batch.clientId)
-      .order('created_at', { ascending: false })
-      .limit(1)
+    // VERIFICAR SE JÁ EXISTE BATCH
+    const { data: existingBatch } = await supabase
+      .from('message_batches')
+      .select('*')
+      .eq('chat_id', chatId)
+      .eq('client_id', clientId)
       .single();
 
-    if (ticketError) {
-      console.error('🔥 [EXECUTE-BATCH] Erro ao buscar ticket:', ticketError);
+    if (existingBatch) {
+      // ATUALIZAR BATCH EXISTENTE
+      const updatedMessages = [...existingBatch.messages, message];
       
-      // ✅ FALLBACK: PROCESSAR INDIVIDUAL SE TICKET FALHOU
-      console.warn('🔁 [FALLBACK] Ticket não encontrado, processando mensagens individuais');
-      for (const message of validMessages) {
-        await processSingleMessage({ 
-          data: { 
-            content: { text: message.content },
-            keyId: message.messageId 
-          } 
-        }, true);
-      }
-      messageBatches.delete(batchKey);
-      return;
-    }
+      const { error } = await supabase
+        .from('message_batches')
+        .update({
+          messages: updatedMessages,
+          last_updated: new Date().toISOString()
+        })
+        .eq('id', existingBatch.id);
 
-    if (!ticket) {
-      console.warn('🔥 [EXECUTE-BATCH] Ticket não existe para este chat');
+      if (error) throw error;
       
-      // ✅ FALLBACK: PROCESSAR INDIVIDUAL
-      console.warn('🔁 [FALLBACK] Criando processamento individual');
-      for (const message of validMessages) {
-        await processSingleMessage({ 
-          data: { 
-            content: { text: message.content },
-            keyId: message.messageId 
-          } 
-        }, true);
-      }
-      messageBatches.delete(batchKey);
-      return;
-    }
-
-    console.log('🔥 [EXECUTE-BATCH] ✅ Ticket encontrado:', ticket.id, 'Status:', ticket.status);
-
-    // CHAMAR IA COM TODAS AS MENSAGENS
-    const aiPayload = {
-      ticketId: ticket.id,
-      messages: batch.messages.map(msg => ({
-        content: msg.content,
-        timestamp: msg.timestamp,
-        messageId: msg.messageId
-      })),
-      context: {
-        chatId: batch.chatId,
-        customerName: batch.messages[0]?.pushName || 'Cliente',
-        phoneNumber: batch.messages[0]?.phoneNumber || 'N/A',
-        batchInfo: `Batch de ${batch.messages.length} mensagens`
-      }
-    };
-
-    console.log('🔥 [EXECUTE-BATCH] Chamando IA com payload:', JSON.stringify(aiPayload, null, 2));
-
-    const aiResult = await supabase.functions.invoke('ai-assistant-process', {
-      body: aiPayload
-    });
-
-    console.log('🔥 [EXECUTE-BATCH] Resultado da IA:', {
-      success: !!aiResult.data,
-      hasError: !!aiResult.error,
-      errorMsg: aiResult.error?.message
-    });
-
-    if (aiResult.error) {
-      console.error('🔥 [EXECUTE-BATCH] Erro da IA:', aiResult.error);
+      console.log('🔥 [BATCH-PERSISTENT] ♻️ Batch atualizado com', updatedMessages.length, 'mensagens');
     } else {
-      console.log('🔥 [EXECUTE-BATCH] ✅ IA PROCESSOU COM SUCESSO!');
+      // CRIAR NOVO BATCH
+      const { error } = await supabase
+        .from('message_batches')
+        .insert({
+          chat_id: chatId,
+          client_id: clientId,
+          instance_id: instanceId,
+          messages: [message]
+        });
+
+      if (error) throw error;
+      
+      console.log('🔥 [BATCH-PERSISTENT] ✨ Novo batch criado');
     }
 
+    return { success: true };
   } catch (error) {
-    console.error('🔥 [EXECUTE-BATCH] ERRO CRÍTICO:', error);
-  } finally {
-    // LIMPAR BATCH DA MEMÓRIA
-    messageBatches.delete(batchKey);
-    console.log('🔥 [EXECUTE-BATCH] Batch removido da memória');
+    console.error('🔥 [BATCH-PERSISTENT] ❌ Erro ao gerenciar batch:', error);
+    return { success: false, error: error.message };
   }
 }
 

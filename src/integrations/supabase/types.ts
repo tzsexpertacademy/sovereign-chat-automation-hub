@@ -1237,6 +1237,36 @@ export type Database = {
           },
         ]
       }
+      message_batches: {
+        Row: {
+          chat_id: string
+          client_id: string
+          created_at: string
+          id: string
+          instance_id: string
+          last_updated: string
+          messages: Json
+        }
+        Insert: {
+          chat_id: string
+          client_id: string
+          created_at?: string
+          id?: string
+          instance_id: string
+          last_updated?: string
+          messages?: Json
+        }
+        Update: {
+          chat_id?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          instance_id?: string
+          last_updated?: string
+          messages?: Json
+        }
+        Relationships: []
+      }
       professional_schedules: {
         Row: {
           break_end_time: string | null
