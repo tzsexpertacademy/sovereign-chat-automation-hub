@@ -153,7 +153,7 @@ async function processBatch(batch: any) {
 
   try {
     // BUSCAR TICKET
-    const { data: ticket } = await supabase
+    const { data: ticketData } = await supabase
       .from('conversation_tickets')
       .select('*')
       .eq('chat_id', batch.chat_id)
@@ -161,6 +161,8 @@ async function processBatch(batch: any) {
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
+
+    let ticket = ticketData;
 
     if (!ticket) {
       console.log('🤖 [PROCESS-BATCH] ❌ Ticket não encontrado - CRIANDO NOVO TICKET');
