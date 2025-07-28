@@ -645,18 +645,33 @@ async function processWithAIIfEnabled(
 ): Promise<boolean> {
   try {
     console.log('🤖 [AI-CHECK] Verificando se deve processar com IA');
+    console.log('📋 [AI-CHECK] MessageData:', { 
+      fromMe: messageData.fromMe, 
+      content: messageData.content?.substring(0, 50) + '...',
+      messageType: messageData.messageType 
+    });
+    console.log('📋 [AI-CHECK] InstanceDetails recebidos:', instanceDetails);
     
-    // Buscar instância pelo instanceId do YUMER
-    const { data: instanceData, error: instanceError } = await supabase
-      .from('whatsapp_instances')
-      .select('id, client_id')
-      .eq('yumer_instance_name', instanceDetails.name)
-      .single();
-
-    if (instanceError || !instanceData) {
-      console.log('⚠️ [AI-CHECK] Instância não encontrada para verificação de IA');
+    if (messageData.fromMe) {
+      console.log('⚠️ [AI-CHECK] Mensagem enviada pelo próprio sistema - não processando com IA');
       return false;
     }
+    
+    // 🔍 BUSCAR INSTÂNCIA - CORREÇÃO CRÍTICA: usar instanceDetails correto
+    console.log('🔍 [AI-CHECK] Usando instanceDetails direto - ID:', instanceDetails.id);
+    
+    const instanceData = instanceDetails; // Usar os dados da instância já carregados
+    
+    if (!instanceData || !instanceData.id || !instanceData.client_id) {
+      console.log('⚠️ [AI-CHECK] Dados da instância insuficientes para verificação de IA');
+      return false;
+    }
+
+    console.log('✅ [AI-CHECK] Dados da instância validados:', {
+      id: instanceData.id,
+      client_id: instanceData.client_id,
+      instance_id: instanceData.instance_id
+    });
 
     const clientId = instanceData.client_id;
 
@@ -708,7 +723,21 @@ async function processWithAIIfEnabled(
       ? allMessages.join('\n\n') // Combinar todas as mensagens do batch
       : messageData.content;
 
+    console.log('📋 [AI-TRIGGER] Preparando chamada para edge function com dados:', {
+      ticketId: ticketId,
+      instanceId: instanceData.id,
+      clientId: instanceData.client_id,
+      assistantId: assistant.id,
+      assistantName: assistant.name,
+      isBatch: isBatch,
+      messageContent: messageContent?.substring(0, 100) + '...',
+      contextCustomerName: messageData.contactName || messageData.pushName || 'Cliente',
+      contextPhoneNumber: messageData.phoneNumber,
+      contextChatId: messageData.chatId
+    });
+
     // 🎯 CORREÇÃO CRÍTICA: Chamar edge function com parâmetros corretos
+    console.log('🚀 [AI-TRIGGER] Invocando edge function ai-assistant-process...');
     const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
       body: {
         ticketId: ticketId,
@@ -728,6 +757,13 @@ async function processWithAIIfEnabled(
           chatId: messageData.chatId
         }
       }
+    });
+    
+    console.log('📨 [AI-TRIGGER] Resultado da edge function:', {
+      hasData: !!aiResult,
+      hasError: !!aiError,
+      aiResultKeys: aiResult ? Object.keys(aiResult) : null,
+      errorMessage: aiError?.message
     });
 
     if (aiError) {

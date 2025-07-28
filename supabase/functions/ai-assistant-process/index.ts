@@ -101,11 +101,27 @@ serve(async (req) => {
       ticketId, 
       message, 
       messages,
-      clientId, 
+      clientId,
       instanceId,
       assistant,
       context 
     } = requestBody;
+    
+    // 🔍 LOGS DETALHADOS DOS PARÂMETROS
+    console.log('🔍 [AI-ASSISTANT] Parâmetros extraídos:', {
+      ticketId: ticketId,
+      hasMessage: !!message,
+      hasMessages: !!messages,
+      messagesLength: messages ? messages.length : 0,
+      clientId: clientId,
+      instanceId: instanceId,
+      assistantId: assistant?.id,
+      assistantName: assistant?.name,
+      assistantModel: assistant?.model,
+      contextCustomerName: context?.customerName,
+      contextPhoneNumber: context?.phoneNumber,
+      contextChatId: context?.chatId
+    });
 
     // 📝 SUPORTAR BATCHES: Combinar múltiplas mensagens como contexto único
     const messageContent = messages && Array.isArray(messages) && messages.length > 0
@@ -273,7 +289,14 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     // 🔥 CORREÇÃO: Marcar mensagens do usuário como processadas após resposta da IA
     await markUserMessagesAsProcessed(ticketId, context?.chatId);
 
-    console.log('✅ [AI-ASSISTANT] Processamento completo');
+    console.log('🎉 [AI-ASSISTANT] SUCESSO TOTAL! Assistente processou e enviou resposta:', {
+      ticketId: ticketId,
+      assistantName: assistant?.name,
+      responseLength: aiResponse?.length || 0,
+      sendSuccess: sendResult?.success,
+      messageId: messageId,
+      timestamp: new Date().toISOString()
+    });
 
     return new Response(
       JSON.stringify({
