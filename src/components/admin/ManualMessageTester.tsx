@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Send, MessageSquare, AlertTriangle, CheckCircle } from 'lucide-react';
 
 export function ManualMessageTester() {
-  const [instanceId, setInstanceId] = useState('35f36a03-39b2-412c-bba6-01fdd45c2dd3'); // Client ID padrão
+  const [instanceId, setInstanceId] = useState('01K11NBE1QB0GVFMME8NA4YPCB'); // Instance ID real correto
   const [chatId, setChatId] = useState('556199999999@s.whatsapp.net');
   const [message, setMessage] = useState('🧪 Teste do serviço unificado de mensagens - funcionando!');
   const [isSending, setIsSending] = useState(false);
@@ -35,7 +35,7 @@ export function ManualMessageTester() {
         instanceId,
         chatId,
         message,
-        instanceId // Usando o mesmo ID como clientId para teste
+        '35f36a03-39b2-412c-bba6-01fdd45c2dd3' // Client ID fixo para teste
       );
       
       setLastResult(result);
@@ -83,7 +83,7 @@ export function ManualMessageTester() {
         instanceId,
         chatId,
         message,
-        instanceId // Usando o mesmo ID como clientId para teste
+        '35f36a03-39b2-412c-bba6-01fdd45c2dd3' // Client ID fixo para teste
       );
       
       setLastResult(result);
@@ -128,13 +128,16 @@ export function ManualMessageTester() {
         {/* Campos de Input */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="text-sm font-medium">Instance ID (Client ID):</label>
+            <label className="text-sm font-medium">Instance ID Real:</label>
             <Input
               value={instanceId}
               onChange={(e) => setInstanceId(e.target.value)}
-              placeholder="35f36a03-39b2-412c-bba6-01fdd45c2dd3"
+              placeholder="01K11NBE1QB0GVFMME8NA4YPCB"
               className="font-mono text-sm"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              ⚠️ Use o Instance ID real da Evolution API, não o Client ID do Supabase
+            </p>
           </div>
           
           <div>
