@@ -7,6 +7,7 @@
 import yumerApiV2 from './yumerApiV2Service';
 import { supabase } from '@/integrations/supabase/client';
 import instanceStatusSyncService from './instanceStatusSyncService';
+import unifiedYumerService from './unifiedYumerService';
 
 export interface UnifiedWhatsAppMessage {
   instanceId: string;
@@ -56,19 +57,18 @@ class UnifiedWhatsAppService {
         }
       };
 
-      // Enviar via API real
-      const result = await yumerApiV2.sendText(
+      // USAR UNIFIED YUMER SERVICE QUE AGORA TEM A MESMA AUTENTICAÇÃO DO WHATSAPP-MULTI-CLIENT
+      const result = await unifiedYumerService.sendTextMessage(
         message.instanceId,
         message.chatId,
-        message.text,
-        sendOptions
+        message.text
       );
 
-      console.log('✅ [UNIFIED] Mensagem enviada com sucesso:', result);
+      console.log('✅ [UNIFIED] Mensagem enviada com sucesso via unifiedYumerService:', result);
 
       return {
         success: true,
-        messageId: result.key?.id || `msg_${Date.now()}`,
+        messageId: result.data?.key?.id || `msg_${Date.now()}`,
         timestamp: Date.now(),
         details: result
       };

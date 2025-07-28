@@ -287,19 +287,79 @@ class UnifiedYumerService {
     });
   }
 
-  // Send Text: Enviar mensagem de texto
+  // Send Text: Enviar mensagem de texto - USANDO MESMA AUTENTICAÇÃO DO WHATSAPP-MULTI-CLIENT
   async sendTextMessage(instanceId: string, chatId: string, text: string): Promise<{ success: boolean; data?: any; error?: string }> {
-    console.log(`📤 [SEND] Enviando texto para ${chatId}: "${text.substring(0, 50)}..."`);
-    
-    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/sendText`, {
-      method: 'POST',
-      body: JSON.stringify({
-        remoteJid: chatId,
-        message: {
-          text
+    try {
+      console.log(`📤 [UNIFIED-YUMER] Enviando texto para ${chatId}: "${text.substring(0, 50)}..."`);
+      
+      // BUSCAR BUSINESS_TOKEN DA INSTÂNCIA (MESMA LÓGICA DO WHATSAPP-MULTI-CLIENT)
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instanceData } = await supabase
+        .from('whatsapp_instances')
+        .select(`
+          instance_id,
+          client_id,
+          business_business_id,
+          clients:client_id (
+            business_token
+          )
+        `)
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (!instanceData?.clients?.business_token) {
+        console.error('❌ [UNIFIED-YUMER] Business token não encontrado para instância:', instanceId);
+        return { success: false, error: 'Business token não encontrado para instância' };
+      }
+
+      const businessToken = instanceData.clients.business_token;
+      console.log('🔑 [UNIFIED-YUMER] Usando business_token específico do cliente');
+
+      // USAR ENDPOINT CORRETO DA API YUMER V2.2.1 (MESMO DO WHATSAPP-MULTI-CLIENT)
+      const payload = {
+        recipient: chatId,
+        textMessage: {
+          text: text
+        },
+        options: {
+          delay: Math.floor(Math.random() * 1000 + 800), // Delay humanizado
+          presence: 'composing'
         }
-      })
-    });
+      };
+
+      // USAR BUSINESS_TOKEN DIRETAMENTE NA REQUISIÇÃO
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/send/text`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${businessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [UNIFIED-YUMER] Erro HTTP:', response.status, errorText);
+        return {
+          success: false,
+          error: `HTTP ${response.status}: ${errorText}`
+        };
+      }
+
+      const result = await response.json();
+      console.log('✅ [UNIFIED-YUMER] Mensagem enviada com sucesso via business_token:', result);
+
+      return {
+        success: true,
+        data: result
+      };
+    } catch (error) {
+      console.error('❌ [UNIFIED-YUMER] Erro ao enviar mensagem:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro desconhecido'
+      };
+    }
   }
 
   // ==================== WEBHOOK CONFIGURATION ====================
