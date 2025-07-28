@@ -122,6 +122,42 @@ serve(async (req) => {
       contextPhoneNumber: context?.phoneNumber,
       contextChatId: context?.chatId
     });
+    
+    // 🔍 BUSCAR DADOS FALTANTES DO TICKET NO BANCO (fallback crítico)
+    let resolvedClientId = clientId;
+    let resolvedInstanceId = instanceId;
+    let resolvedContext = context;
+    
+    if (!clientId || !instanceId || !context?.chatId) {
+      console.log('🔍 [AI-ASSISTANT] Buscando dados faltantes no banco...');
+      
+      const { data: ticketData, error: ticketError } = await supabase
+        .from('conversation_tickets')
+        .select('client_id, instance_id, chat_id, customer_id, customers(name, phone)')
+        .eq('id', ticketId)
+        .single();
+      
+      if (ticketError) {
+        console.error('❌ [AI-ASSISTANT] Erro ao buscar dados do ticket:', ticketError);
+        throw new Error(`Ticket não encontrado: ${ticketId}`);
+      }
+      
+      // Resolver dados faltantes
+      resolvedClientId = clientId || ticketData.client_id;
+      resolvedInstanceId = instanceId || ticketData.instance_id;
+      resolvedContext = context || {
+        chatId: ticketData.chat_id,
+        customerName: ticketData.customers?.name || 'Cliente',
+        phoneNumber: ticketData.customers?.phone || 'N/A'
+      };
+      
+      console.log('✅ [AI-ASSISTANT] Dados resolvidos do banco:', {
+        clientId: resolvedClientId,
+        instanceId: resolvedInstanceId,
+        chatId: resolvedContext.chatId,
+        customerName: resolvedContext.customerName
+      });
+    }
 
     // 📝 SUPORTAR BATCHES: Combinar múltiplas mensagens como contexto único
     const isBatch = messages && Array.isArray(messages) && messages.length > 0;
@@ -306,42 +342,60 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     // 📤 ENVIAR RESPOSTA VIA SERVIÇO UNIFICADO SIMPLIFICADO
     console.log('📤 [AI-ASSISTANT] Enviando resposta via serviço unificado...');
     
-    // Usar yumerApiV2 diretamente com ID correto
-    let realInstanceId = instanceId;
+    // ✅ VALIDAÇÃO CRÍTICA: instanceId é obrigatório
+    if (!resolvedInstanceId || typeof resolvedInstanceId !== 'string') {
+      console.error('❌ [AI-ASSISTANT] instanceId inválido ou ausente:', resolvedInstanceId);
+      throw new Error('instanceId é obrigatório para enviar a mensagem');
+    }
     
-    // Verificar se é UUID interno e buscar o instance_id real
-    if (instanceId.includes('-')) {
-      console.log('🔍 [AI-ASSISTANT] Resolvendo ID interno para real:', instanceId);
+    // ✅ VALIDAÇÃO CRÍTICA: Contexto e chatId são obrigatórios
+    if (!resolvedContext || !resolvedContext.chatId) {
+      console.error('❌ [AI-ASSISTANT] Contexto ou chatId ausente:', resolvedContext);
+      throw new Error('context.chatId é obrigatório para enviar a mensagem');
+    }
+    
+    // ✅ VALIDAÇÃO CRÍTICA: clientId é obrigatório  
+    if (!resolvedClientId) {
+      console.error('❌ [AI-ASSISTANT] clientId ausente');
+      throw new Error('clientId é obrigatório para buscar business token');
+    }
+    
+    // Usar yumerApiV2 diretamente com ID correto
+    let realInstanceId = resolvedInstanceId;
+    
+    // Verificar se é UUID interno e buscar o instance_id real (se contém hífen)
+    if (resolvedInstanceId.includes('-')) {
+      console.log('🔍 [AI-ASSISTANT] Resolvendo ID interno para real:', resolvedInstanceId);
       
       const { data: instanceData, error: instanceError } = await supabase
         .from('whatsapp_instances')
         .select('instance_id')
-        .eq('id', instanceId)
+        .eq('id', resolvedInstanceId)
         .single();
       
       if (instanceError || !instanceData) {
         console.error('❌ [AI-ASSISTANT] Erro ao buscar instance_id real:', instanceError);
-        throw new Error(`Instância não encontrada: ${instanceId}`);
+        throw new Error(`Instância não encontrada: ${resolvedInstanceId}`);
       }
       
       realInstanceId = instanceData.instance_id;
       console.log('✅ [AI-ASSISTANT] ID real da instância:', {
-        internal: instanceId,
+        internal: resolvedInstanceId,
         real: realInstanceId
       });
     }
 
     // Garantir business token válido
-    console.log('🔐 [AI-ASSISTANT] Verificando business token para cliente:', clientId);
+    console.log('🔐 [AI-ASSISTANT] Verificando business token para cliente:', resolvedClientId);
     
     const { data: client, error: clientError } = await supabase
       .from('clients')
       .select('business_token')
-      .eq('id', clientId)
+      .eq('id', resolvedClientId)
       .single();
     
     if (clientError || !client?.business_token) {
-      console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', clientId);
+      console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', resolvedClientId);
     }
 
     // Enviar usando yumerApiV2 com o ID correto
@@ -357,7 +411,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       console.log('📤 [AI-ASSISTANT] Enviando via API Yumer v2 diretamente...');
       
       const sendData = {
-        recipient: context.chatId,
+        recipient: resolvedContext.chatId,
         textMessage: {
           text: aiResponse
         },
@@ -388,7 +442,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       
       console.log('✅ [AI-ASSISTANT] Mensagem enviada com sucesso via API direta:', {
         realInstanceId,
-        chatId: context.chatId,
+        chatId: resolvedContext.chatId,
         messageId: sendResult.messageId
       });
       
@@ -403,7 +457,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     }
 
     // 🔥 CORREÇÃO: Marcar mensagens do usuário como processadas após resposta da IA
-    await markUserMessagesAsProcessed(ticketId, context?.chatId);
+    await markUserMessagesAsProcessed(ticketId, resolvedContext?.chatId);
 
     console.log('🎉 [AI-ASSISTANT] SUCESSO TOTAL! Assistente processou e enviou resposta:', {
       ticketId: ticketId,
