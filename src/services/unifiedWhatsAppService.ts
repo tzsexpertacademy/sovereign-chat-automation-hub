@@ -57,18 +57,19 @@ class UnifiedWhatsAppService {
         }
       };
 
-      // USAR UNIFIED YUMER SERVICE QUE AGORA TEM A MESMA AUTENTICAÇÃO DO WHATSAPP-MULTI-CLIENT
-      const result = await unifiedYumerService.sendTextMessage(
+      // USAR YUMER API V2 DIRETAMENTE (MESMO MÉTODO DO ENVIO MANUAL QUE FUNCIONA)
+      const result = await yumerApiV2.sendText(
         message.instanceId,
         message.chatId,
-        message.text
+        message.text,
+        sendOptions
       );
 
-      console.log('✅ [UNIFIED] Mensagem enviada com sucesso via unifiedYumerService:', result);
+      console.log('✅ [UNIFIED] Mensagem enviada com sucesso via yumerApiV2:', result);
 
       return {
         success: true,
-        messageId: result.data?.key?.id || `msg_${Date.now()}`,
+        messageId: result.key?.id || `msg_${Date.now()}`,
         timestamp: Date.now(),
         details: result
       };
