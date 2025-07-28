@@ -152,22 +152,22 @@ class UnprocessedMessageProcessor {
       // 2. Salvar mensagem no ticket
       await this.saveMessageToTicket(ticketId, message);
 
-      // 3. Processar com IA se configurado
-      await this.processWithAI(ticketId, message, clientId);
+      // 3. REMOVIDO: Não processar diretamente com IA - deixar para o batch system
+      // await this.processWithAI(ticketId, message, clientId);
 
-      // 4. Marcar como processada
-      await supabase
-        .from('whatsapp_messages')
-        .update({ 
-          is_processed: true,
-          processed_at: new Date().toISOString()
-        })
-        .eq('id', message.id);
+      // 4. REMOVIDO: Não marcar como processada aqui - deixar para o batch system
+      // await supabase
+      //   .from('whatsapp_messages')
+      //   .update({ 
+      //     is_processed: true,
+      //     processed_at: new Date().toISOString()
+      //   })
+      //   .eq('id', message.id);
 
       this.processingStatus.processed++;
       this.processingStatus.lastProcessed = new Date().toISOString();
       
-      console.log(`✅ [UNPROCESSED] Mensagem processada: ${message.message_id}`);
+      console.log(`✅ [UNPROCESSED] Mensagem sincronizada (SEM processar IA nem marcar como processada): ${message.message_id}`);
 
     } catch (error) {
       console.error(`❌ [UNPROCESSED] Erro ao processar mensagem ${message.message_id}:`, error);

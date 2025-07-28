@@ -67,14 +67,14 @@ export const messageSyncService = {
         try {
           await this.processMessage(message as WhatsAppMessage, clientId);
           
-          // Marcar como processada
-          await supabase
-            .from('whatsapp_messages')
-            .update({ is_processed: true })
-            .eq('id', message.id);
+          // REMOVIDO: Não marcar como processada aqui - deixar para o batch system
+          // await supabase
+          //   .from('whatsapp_messages')
+          //   .update({ is_processed: true })
+          //   .eq('id', message.id);
           
           processedCount++;
-          console.log(`✅ [SYNC] Mensagem processada: ${message.message_id}`);
+          console.log(`✅ [SYNC] Mensagem sincronizada (SEM marcar como processada): ${message.message_id}`);
         } catch (error) {
           console.error(`❌ [SYNC] Erro ao processar mensagem ${message.message_id}:`, error);
           errorCount++;
@@ -313,17 +313,17 @@ export const messageSyncService = {
             try {
               await this.processMessage(message, clientId);
               
-              // Marcar como processada
-              await supabase
-                .from('whatsapp_messages')
-                .update({ is_processed: true })
-                .eq('id', message.id);
+              // REMOVIDO: Não marcar como processada aqui - deixar para o batch system
+              // await supabase
+              //   .from('whatsapp_messages')
+              //   .update({ is_processed: true })
+              //   .eq('id', message.id);
               
               if (onNewMessage) {
                 onNewMessage(message);
               }
               
-              console.log('✅ [REALTIME] Mensagem processada em tempo real');
+              console.log('✅ [REALTIME] Mensagem sincronizada (SEM marcar como processada)');
             } catch (error) {
               console.error('❌ [REALTIME] Erro ao processar mensagem:', error);
             }

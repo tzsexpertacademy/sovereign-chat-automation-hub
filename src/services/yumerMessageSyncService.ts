@@ -62,14 +62,14 @@ export const yumerMessageSyncService = {
         try {
           await this.convertSingleMessage(message as YumerUnprocessedMessage, clientId);
           
-          // Marcar como processada
-          await supabase
-            .from('whatsapp_messages')
-            .update({ is_processed: true })
-            .eq('id', message.id);
+          // REMOVIDO: Não marcar como processada aqui - deixar para o batch system
+          // await supabase
+          //   .from('whatsapp_messages')
+          //   .update({ is_processed: true })
+          //   .eq('id', message.id);
           
           convertedCount++;
-          console.log(`✅ [YUMER-SYNC] Mensagem convertida: ${message.message_id}`);
+          console.log(`✅ [YUMER-SYNC] Mensagem convertida (SEM marcar como processada): ${message.message_id}`);
         } catch (error) {
           console.error(`❌ [YUMER-SYNC] Erro ao converter mensagem ${message.message_id}:`, error);
           errorCount++;

@@ -92,8 +92,14 @@ export class HumanizedMessageProcessor {
         mimeType: messageData.mime_type
       };
 
-      // NOVO: Usar APENAS AI Queue Integration Service com batching - SEM processamento duplo
-      if (!messageData.from_me) {
+      // NOVO: Verificar se mensagem já foi processada ANTES de adicionar ao batch
+      if (!messageData.from_me && !messageData.is_processed) {
+        console.log('📋 [HUMANIZED] Verificando se mensagem precisa ser processada:', {
+          messageId: messageData.message_id,
+          isProcessed: messageData.is_processed,
+          fromMe: messageData.from_me
+        });
+        
         // Buscar o ticket real para usar o ID correto
         const { data: ticket } = await supabase
           .from('conversation_tickets')
@@ -112,10 +118,12 @@ export class HumanizedMessageProcessor {
             new Date(messageData.timestamp).getTime()
           );
           
-          console.log('📦 [HUMANIZED] Mensagem adicionada ao batch para processamento com IA');
+          console.log('📦 [HUMANIZED] Mensagem NÃO processada adicionada ao batch');
         }
-      } else {
+      } else if (messageData.from_me) {
         console.log('📤 [HUMANIZED] Mensagem nossa ignorada (from_me=true)');
+      } else if (messageData.is_processed) {
+        console.log('✅ [HUMANIZED] Mensagem já processada ignorada (is_processed=true)');
       }
 
     } catch (error) {

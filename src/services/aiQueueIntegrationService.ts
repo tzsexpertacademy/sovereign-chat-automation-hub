@@ -5,6 +5,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { useMessageBatch } from '@/hooks/useMessageBatch';
+import { messageProcessingController } from './messageProcessingController';
 
 export interface QueueProcessingConfig {
   queueId: string;
@@ -33,6 +34,7 @@ export interface MessageProcessingResult {
 
 class AIQueueIntegrationService {
   private processingQueue: Map<string, boolean> = new Map();
+  private chatLocks: Map<string, boolean> = new Map(); // NOVO: Lock global por chat_id
   private messageBatcher: any = null;
   private processingLogs: Array<{
     ticketId: string;
@@ -59,7 +61,7 @@ class AIQueueIntegrationService {
   }
 
   /**
-   * NOVO: Adicionar mensagem ao batch em vez de processar imediatamente
+   * NOVO: Adicionar mensagem ao batch com controle centralizado
    */
   addMessageToBatch(
     ticketId: string,
@@ -69,6 +71,12 @@ class AIQueueIntegrationService {
     messageId: string,
     timestamp: number
   ) {
+    // NOVO: Usar controlador centralizado para verificar se pode processar
+    if (!messageProcessingController.canProcessMessage(messageId, ticketId)) {
+      console.log('🚫 [AI-QUEUE] Mensagem não pode ser processada (lock ou já processada):', messageId);
+      return;
+    }
+
     const message = {
       id: messageId,
       ticketId,
@@ -82,7 +90,8 @@ class AIQueueIntegrationService {
     console.log('📦 [AI-QUEUE] Adicionando mensagem ao batch:', {
       ticketId,
       messageId,
-      contentLength: messageContent.length
+      contentLength: messageContent.length,
+      controllerStatus: messageProcessingController.getStatus()
     });
 
     this.messageBatcher.addMessage(message);
@@ -151,7 +160,7 @@ class AIQueueIntegrationService {
   }
 
   /**
-   * NOVO: Processar batch de mensagens agrupadas
+   * NOVO: Processar batch de mensagens agrupadas com controle centralizado
    */
   private async processBatchedMessages(chatId: string, messages?: any[]) {
     try {
@@ -165,13 +174,17 @@ class AIQueueIntegrationService {
       
       const ticketId = messagesToProcess[0].ticketId;
       
-      // NOVO: Verificar se já está processando ANTES de limpar o batch
-      if (this.processingQueue.get(ticketId)) {
-        console.log('⚠️ [AI-QUEUE] Batch já sendo processado, ignorando');
+      // NOVO: Usar controlador centralizado para verificar e aplicar lock
+      if (messageProcessingController.isChatLocked(ticketId) || this.processingQueue.get(ticketId)) {
+        console.log('🔒 [AI-QUEUE] Chat já tem lock ativo ou está processando, ignorando batch');
         return;
       }
       
-      console.log(`🚀 [AI-QUEUE] Processando batch de ${messagesToProcess.length} mensagens`);
+      console.log(`🚀 [AI-QUEUE] Aplicando lock centralizado e processando batch de ${messagesToProcess.length} mensagens`);
+      
+      // NOVO: Aplicar lock centralizado
+      messageProcessingController.lockChat(ticketId);
+      this.processingQueue.set(ticketId, true);
       
       // Limpar batch e timeout
       if (batch?.timeoutId) {
@@ -179,19 +192,51 @@ class AIQueueIntegrationService {
       }
       this.messageBatcher.batches.delete(chatId);
       
-      // Marcar como processando
-      this.processingQueue.set(ticketId, true);
-      
       try {
-        // Processar todas as mensagens como contexto único
-        await this.processMessageBatch(messagesToProcess);
+        // NOVO: Verificar se as mensagens ainda NÃO foram processadas no DB e no controlador
+        const messageIds = messagesToProcess.map(m => m.id);
+        const { data: existingMessages } = await supabase
+          .from('whatsapp_messages')
+          .select('message_id, is_processed')
+          .in('message_id', messageIds);
+        
+        const unprocessedMessages = messagesToProcess.filter(msg => {
+          const dbMessage = existingMessages?.find(em => em.message_id === msg.id);
+          const isProcessedInDB = dbMessage?.is_processed;
+          const isProcessedInController = messageProcessingController.isMessageProcessed(msg.id);
+          
+          return !isProcessedInDB && !isProcessedInController;
+        });
+        
+        if (unprocessedMessages.length === 0) {
+          console.log('⚠️ [AI-QUEUE] Todas as mensagens já foram processadas, cancelando batch');
+          return;
+        }
+        
+        console.log(`📋 [AI-QUEUE] ${unprocessedMessages.length}/${messagesToProcess.length} mensagens ainda não processadas`);
+        
+        // Processar apenas mensagens não processadas
+        await this.processMessageBatch(unprocessedMessages);
+        
+        // NOVO: Marcar mensagens como processadas no DB e no controlador
+        await this.markMessagesAsProcessed(unprocessedMessages);
+        messageProcessingController.markMessagesProcessed(unprocessedMessages.map(m => m.id));
+        
       } finally {
+        // NOVO: Liberar lock centralizado sempre
+        messageProcessingController.unlockChat(ticketId);
         this.processingQueue.delete(ticketId);
-        console.log('✅ [AI-QUEUE] Processamento concluído para:', ticketId);
+        console.log('🔓 [AI-QUEUE] Lock centralizado liberado para:', ticketId);
       }
       
     } catch (error) {
       console.error('❌ [AI-QUEUE] Erro ao processar batch:', error);
+      // Em caso de erro, também liberar lock
+      const firstMessage = messages?.[0] || this.messageBatcher.batches.get(chatId)?.messages?.[0];
+      if (firstMessage) {
+        messageProcessingController.unlockChat(firstMessage.ticketId);
+        this.processingQueue.delete(firstMessage.ticketId);
+      }
     }
   }
 
@@ -275,6 +320,33 @@ class AIQueueIntegrationService {
         error: error instanceof Error ? error.message : 'Erro no processamento',
         processingTime: Date.now() - startTime
       };
+    }
+  }
+
+  /**
+   * NOVO: Marcar mensagens como processadas APENAS após sucesso
+   */
+  private async markMessagesAsProcessed(messages: any[]): Promise<void> {
+    try {
+      const messageIds = messages.map(m => m.id);
+      
+      console.log('🏷️ [AI-QUEUE] Marcando mensagens como processadas:', messageIds);
+      
+      const { error } = await supabase
+        .from('whatsapp_messages')
+        .update({ 
+          is_processed: true,
+          processed_at: new Date().toISOString()
+        })
+        .in('message_id', messageIds);
+      
+      if (error) {
+        console.error('❌ [AI-QUEUE] Erro ao marcar mensagens como processadas:', error);
+      } else {
+        console.log('✅ [AI-QUEUE] Mensagens marcadas como processadas com sucesso');
+      }
+    } catch (error) {
+      console.error('❌ [AI-QUEUE] Erro ao marcar mensagens como processadas:', error);
     }
   }
 
