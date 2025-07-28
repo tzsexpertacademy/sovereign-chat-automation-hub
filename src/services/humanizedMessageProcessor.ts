@@ -109,6 +109,13 @@ export class HumanizedMessageProcessor {
           .single();
         
         if (ticket) {
+          // Verificar se chat já está sendo processado antes de adicionar ao batch
+          const { messageProcessingController } = await import('./messageProcessingController');
+          if (messageProcessingController.isChatLocked(messageData.chat_id)) {
+            console.log('🔒 [HUMANIZED] Chat já está sendo processado - IGNORANDO mensagem:', messageData.chat_id);
+            return;
+          }
+
           aiQueueIntegrationService.addMessageToBatch(
             ticket.id, // usar ID real do ticket
             messageData.content || '',
@@ -118,7 +125,7 @@ export class HumanizedMessageProcessor {
             new Date(messageData.timestamp).getTime()
           );
           
-          console.log('📦 [HUMANIZED] Mensagem NÃO processada adicionada ao batch');
+          console.log('📦 [HUMANIZED] Mensagem NÃO processada adicionada ao batch (SEM PROCESSAMENTO INDIVIDUAL)');
         }
       } else if (messageData.from_me) {
         console.log('📤 [HUMANIZED] Mensagem nossa ignorada (from_me=true)');

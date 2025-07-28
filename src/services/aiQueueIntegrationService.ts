@@ -160,9 +160,11 @@ class AIQueueIntegrationService {
   }
 
   /**
-   * NOVO: Processar batch de mensagens agrupadas com controle centralizado
+   * RIGOROSO: Processar batch de mensagens com controle ÚNICO
    */
   private async processBatchedMessages(chatId: string, messages?: any[]) {
+    const lockKey = `batch_${chatId}`;
+    
     try {
       const batch = this.messageBatcher.batches.get(chatId);
       const messagesToProcess = messages || batch?.messages || [];
@@ -174,17 +176,30 @@ class AIQueueIntegrationService {
       
       const ticketId = messagesToProcess[0].ticketId;
       
-      // NOVO: Usar controlador centralizado para verificar e aplicar lock
-      if (messageProcessingController.isChatLocked(ticketId) || this.processingQueue.get(ticketId)) {
-        console.log('🔒 [AI-QUEUE] Chat já tem lock ativo ou está processando, ignorando batch');
+      // CONTROLE RIGOROSO: Múltiplas verificações de lock
+      if (messageProcessingController.isChatLocked(chatId) || 
+          this.processingQueue.get(ticketId) ||
+          this.processingQueue.get(chatId)) {
+        console.log('🔒 [AI-QUEUE] BLOQUEADO - Chat/Ticket já sendo processado:', {
+          chatId,
+          ticketId,
+          chatLocked: messageProcessingController.isChatLocked(chatId),
+          ticketProcessing: this.processingQueue.get(ticketId),
+          chatProcessing: this.processingQueue.get(chatId)
+        });
         return;
       }
       
-      console.log(`🚀 [AI-QUEUE] Aplicando lock centralizado e processando batch de ${messagesToProcess.length} mensagens`);
+      console.log(`🚀 [AI-QUEUE] INICIANDO processamento ÚNICO de ${messagesToProcess.length} mensagens:`, {
+        chatId,
+        ticketId,
+        messageIds: messagesToProcess.map(m => m.id)
+      });
       
-      // NOVO: Aplicar lock centralizado com timestamp
-      messageProcessingController.lockChatWithTimestamp(ticketId, Date.now());
+      // APLICAR TODOS OS LOCKS
+      messageProcessingController.lockChatWithTimestamp(chatId, Date.now());
       this.processingQueue.set(ticketId, true);
+      this.processingQueue.set(chatId, true);
       
       // Limpar batch e timeout
       if (batch?.timeoutId) {
@@ -351,7 +366,8 @@ class AIQueueIntegrationService {
   }
 
   /**
-   * MANTIDO: Processar mensagem individual (fallback)
+   * DESABILITADO: Processamento individual de mensagens
+   * Agora apenas processamento em BATCH é permitido
    */
   async processIncomingMessage(
     ticketId: string,
@@ -361,93 +377,16 @@ class AIQueueIntegrationService {
   ): Promise<MessageProcessingResult> {
     const startTime = Date.now();
     
-    try {
-      console.log('🤖 [AI-QUEUE] Iniciando processamento automático:', {
-        ticketId,
-        clientId,
-        messageLength: messageContent.length
-      });
-
-      // Verificar se já está processando
-      if (this.processingQueue.get(ticketId)) {
-        return {
-          success: false,
-          error: 'Mensagem já está sendo processada',
-          processingTime: Date.now() - startTime
-        };
-      }
-
-      this.processingQueue.set(ticketId, true);
-
-      // 1. Buscar configuração da fila ativa para esta instância
-      const queueConfig = await this.getActiveQueueConfig(instanceId);
-      
-      if (!queueConfig) {
-        console.log('⚠️ [AI-QUEUE] Nenhuma fila ativa encontrada para a instância');
-        return {
-          success: false,
-          error: 'Nenhuma fila ativa configurada',
-          processingTime: Date.now() - startTime
-        };
-      }
-
-      console.log('⚙️ [AI-QUEUE] Configuração da fila:', queueConfig);
-
-      // 2. Se não tem assistente IA, passar para humano
-      if (!queueConfig.assistantId) {
-        console.log('👤 [AI-QUEUE] Sem assistente IA - direcionando para humano');
-        await this.handoffToHuman(ticketId, 'Sem assistente IA configurado');
-        return {
-          success: true,
-          shouldHandoffToHuman: true,
-          processingTime: Date.now() - startTime
-        };
-      }
-
-      // 3. Processar com IA
-      const aiResponse = await this.processWithAI(
-        messageContent,
-        queueConfig,
-        ticketId,
-        clientId
-      );
-
-      // 4. Verificar se deve transferir para humano
-      if (aiResponse.shouldHandoffToHuman) {
-        await this.handoffToHuman(ticketId, 'IA solicitou transferência para humano');
-        return aiResponse;
-      }
-
-      // 5. Enviar resposta automática se sucesso
-      if (aiResponse.success && aiResponse.response) {
-        await this.sendAutomaticResponse(
-          ticketId,
-          aiResponse.response,
-          instanceId,
-          queueConfig
-        );
-      }
-
-      // 6. Registrar log
-      this.addProcessingLog(ticketId, 'ai_processing', 'success', 
-        `Processado com sucesso em ${Date.now() - startTime}ms`);
-
-      return aiResponse;
-
-    } catch (error) {
-      console.error('❌ [AI-QUEUE] Erro no processamento:', error);
-      
-      this.addProcessingLog(ticketId, 'ai_processing', 'error', 
-        error instanceof Error ? error.message : 'Erro desconhecido');
-
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Erro no processamento',
-        processingTime: Date.now() - startTime
-      };
-    } finally {
-      this.processingQueue.delete(ticketId);
-    }
+    console.log('🚫 [AI-QUEUE] Processamento individual DESABILITADO - use apenas batch:', {
+      ticketId,
+      messageLength: messageContent.length
+    });
+    
+    return {
+      success: false,
+      error: 'Processamento individual desabilitado - use batch apenas',
+      processingTime: Date.now() - startTime
+    };
   }
 
   /**
