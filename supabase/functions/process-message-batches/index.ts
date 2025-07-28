@@ -39,13 +39,18 @@ Deno.serve(async (req) => {
   });
 
   try {
-    // BUSCAR BATCHES ANTIGOS (últimos 3+ segundos sem atualização)
+    const processingId = `${triggerInfo.type}_${Date.now()}`;
     const cutoffTime = new Date(Date.now() - 3000).toISOString(); // 3 segundos atrás
+    const lockTimeout = new Date(Date.now() - 30000).toISOString(); // 30 segundos para timeout
     
+    // BUSCAR BATCHES DISPONÍVEIS (não processados E não em processamento)
     const { data: pendingBatches, error } = await supabase
       .from('message_batches')
       .select('*')
-      .lt('last_updated', cutoffTime);
+      .lt('last_updated', cutoffTime)
+      .or(`processing_started_at.is.null,processing_started_at.lt.${lockTimeout}`)
+      .order('created_at', { ascending: true })
+      .limit(3);
 
     if (error) {
       console.error('🤖 [PROCESS-BATCHES] ❌ Erro ao buscar batches:', error);
@@ -67,15 +72,46 @@ Deno.serve(async (req) => {
       });
     }
 
+    // BLOQUEAR BATCHES PARA PROCESSAMENTO (evitar duplicação)
+    const batchIds = pendingBatches.map(b => b.id);
+    const { data: lockedBatches, error: lockError } = await supabase
+      .from('message_batches')
+      .update({
+        processing_started_at: new Date().toISOString(),
+        processing_by: processingId
+      })
+      .in('id', batchIds)
+      .is('processing_started_at', null)
+      .select('id');
+
+    if (lockError) {
+      console.error('🤖 [PROCESS-BATCHES] ❌ Erro ao bloquear batches:', lockError);
+      return new Response(JSON.stringify({ error: lockError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const lockedBatchIds = lockedBatches?.map(b => b.id) || [];
+    const batchesToProcess = pendingBatches.filter(b => lockedBatchIds.includes(b.id));
+    
+    console.log('🤖 [PROCESS-BATCHES] 🔒 Bloqueados', lockedBatchIds.length, 'de', batchIds.length, 'batches para processamento');
+
+    if (batchesToProcess.length === 0) {
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: 'Nenhum batch disponível para processamento (já sendo processados)',
+        processed: 0 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     let processedCount = 0;
     
-    // PROCESSAR BATCHES EM PARALELO (máximo 3 simultâneos para não sobrecarregar)
-    const batchLimit = Math.min(pendingBatches.length, 3);
-    const batches = pendingBatches.slice(0, batchLimit);
+    console.log('🤖 [PROCESS-BATCHES] 🚀 Processando', batchesToProcess.length, 'batches em paralelo');
     
-    console.log('🤖 [PROCESS-BATCHES] 🚀 Processando', batches.length, 'batches em paralelo');
-    
-    const batchPromises = batches.map(async (batch) => {
+    const batchPromises = batchesToProcess.map(async (batch) => {
       console.log('🤖 [PROCESS-BATCHES] 🚀 Processando batch:', batch.id, 'com', batch.messages?.length || 0, 'mensagens');
       
       try {

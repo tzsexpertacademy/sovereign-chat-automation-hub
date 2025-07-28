@@ -1291,6 +1291,8 @@ export type Database = {
           instance_id: string
           last_updated: string
           messages: Json
+          processing_by: string | null
+          processing_started_at: string | null
         }
         Insert: {
           chat_id: string
@@ -1300,6 +1302,8 @@ export type Database = {
           instance_id: string
           last_updated?: string
           messages?: Json
+          processing_by?: string | null
+          processing_started_at?: string | null
         }
         Update: {
           chat_id?: string
@@ -1309,6 +1313,8 @@ export type Database = {
           instance_id?: string
           last_updated?: string
           messages?: Json
+          processing_by?: string | null
+          processing_started_at?: string | null
         }
         Relationships: []
       }

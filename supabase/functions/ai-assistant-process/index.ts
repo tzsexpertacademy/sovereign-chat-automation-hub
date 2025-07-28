@@ -129,6 +129,41 @@ serve(async (req) => {
       contextChatId: context?.chatId
     });
     
+    // ===== VERIFICAR DUPLICAÇÃO DE MENSAGENS =====
+    if (messages && messages.length > 0) {
+      console.log('🔍 [AI-ASSISTANT] Verificando duplicação de mensagens...');
+      
+      const messageIds = messages.map(msg => msg.messageId).filter(Boolean);
+      if (messageIds.length > 0) {
+        const { data: existingMessages } = await supabase
+          .from('ticket_messages')
+          .select('message_id')
+          .in('message_id', messageIds)
+          .eq('is_ai_response', true);
+        
+        if (existingMessages && existingMessages.length > 0) {
+          console.log('⚠️ [AI-ASSISTANT] Mensagens já processadas detectadas:', existingMessages.map(m => m.message_id));
+          
+          // Se todas as mensagens já foram processadas, retornar sucesso sem processar
+          if (existingMessages.length === messageIds.length) {
+            console.log('🔄 [AI-ASSISTANT] Todas as mensagens já foram processadas - evitando duplicação');
+            return new Response(JSON.stringify({
+              success: true,
+              message: 'Mensagens já processadas - duplicação evitada',
+              duplicateCount: existingMessages.length
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          }
+          
+          // Filtrar mensagens já processadas
+          const processedIds = existingMessages.map(m => m.message_id);
+          messages = messages.filter(msg => !processedIds.includes(msg.messageId));
+          console.log('🔄 [AI-ASSISTANT] Filtradas mensagens duplicadas, restantes:', messages.length);
+        }
+      }
+    }
+
     // 🔍 BUSCAR DADOS FALTANTES DO TICKET NO BANCO (fallback crítico)
     let resolvedClientId = clientId;
     let resolvedInstanceId = instanceId;
