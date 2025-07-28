@@ -92,18 +92,28 @@ export class HumanizedMessageProcessor {
         mimeType: messageData.mime_type
       };
 
-      // NOVO: Usar AI Queue Integration Service com batching
+      // NOVO: Usar APENAS AI Queue Integration Service com batching - SEM processamento duplo
       if (!messageData.from_me) {
-        aiQueueIntegrationService.addMessageToBatch(
-          messageData.chat_id, // usar chat_id como ticketId temporariamente
-          messageData.content || '',
-          clientId,
-          messageData.instance_id,
-          messageData.message_id,
-          new Date(messageData.timestamp).getTime()
-        );
+        // Buscar o ticket real para usar o ID correto
+        const { data: ticket } = await supabase
+          .from('conversation_tickets')
+          .select('id')
+          .eq('chat_id', messageData.chat_id)
+          .eq('instance_id', messageData.instance_id)
+          .single();
         
-        console.log('📦 [HUMANIZED] Mensagem adicionada ao batch para processamento com IA');
+        if (ticket) {
+          aiQueueIntegrationService.addMessageToBatch(
+            ticket.id, // usar ID real do ticket
+            messageData.content || '',
+            clientId,
+            messageData.instance_id,
+            messageData.message_id,
+            new Date(messageData.timestamp).getTime()
+          );
+          
+          console.log('📦 [HUMANIZED] Mensagem adicionada ao batch para processamento com IA');
+        }
       } else {
         console.log('📤 [HUMANIZED] Mensagem nossa ignorada (from_me=true)');
       }

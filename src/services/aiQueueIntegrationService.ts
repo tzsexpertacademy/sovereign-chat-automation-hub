@@ -49,7 +49,7 @@ class AIQueueIntegrationService {
   private initializeBatcher() {
     // Criar uma instância manual do message batcher para usar fora do React
     this.messageBatcher = {
-      config: { timeout: 4000, maxBatchSize: 5, enabled: true },
+      config: { timeout: 4000, enabled: true }, // REMOVER maxBatchSize - sem limite
       batches: new Map(),
       processedMessages: new Set(),
       
@@ -107,24 +107,16 @@ class AIQueueIntegrationService {
     const existingBatch = this.messageBatcher.batches.get(chatId);
     
     if (existingBatch) {
-      // Cancelar timeout anterior
+      // NOVA LÓGICA: Sempre cancelar timeout anterior e resetar
       if (existingBatch.timeoutId) {
         clearTimeout(existingBatch.timeoutId);
       }
       
       const updatedMessages = [...existingBatch.messages, message];
       
-      // Verificar tamanho máximo
-      if (updatedMessages.length >= this.messageBatcher.config.maxBatchSize) {
-        console.log(`📊 [AI-QUEUE] Tamanho máximo atingido, processando batch imediatamente`);
-        this.messageBatcher.batches.delete(chatId);
-        setTimeout(() => this.processBatchedMessages(chatId, updatedMessages), 0);
-        return;
-      }
-      
-      // Criar novo timeout
+      // NOVO: Criar timeout de 4 segundos a partir da última mensagem
       const timeoutId = setTimeout(() => {
-        console.log(`⏰ [AI-QUEUE] Timeout atingido, processando batch`);
+        console.log(`⏰ [AI-QUEUE] 4 segundos de inatividade - processando batch`);
         this.processBatchedMessages(chatId, updatedMessages);
       }, this.messageBatcher.config.timeout);
       
@@ -135,7 +127,7 @@ class AIQueueIntegrationService {
         lastMessageTime: now
       });
       
-      console.log(`📦 [AI-QUEUE] Batch atualizado: ${updatedMessages.length} mensagens`);
+      console.log(`📦 [AI-QUEUE] Batch atualizado: ${updatedMessages.length} mensagens (timeout resetado)`);
     } else {
       // Criar novo batch
       const timeoutId = setTimeout(() => {
@@ -171,6 +163,14 @@ class AIQueueIntegrationService {
         return;
       }
       
+      const ticketId = messagesToProcess[0].ticketId;
+      
+      // NOVO: Verificar se já está processando ANTES de limpar o batch
+      if (this.processingQueue.get(ticketId)) {
+        console.log('⚠️ [AI-QUEUE] Batch já sendo processado, ignorando');
+        return;
+      }
+      
       console.log(`🚀 [AI-QUEUE] Processando batch de ${messagesToProcess.length} mensagens`);
       
       // Limpar batch e timeout
@@ -180,12 +180,6 @@ class AIQueueIntegrationService {
       this.messageBatcher.batches.delete(chatId);
       
       // Marcar como processando
-      const ticketId = messagesToProcess[0].ticketId;
-      if (this.processingQueue.get(ticketId)) {
-        console.log('⚠️ [AI-QUEUE] Batch já sendo processado');
-        return;
-      }
-      
       this.processingQueue.set(ticketId, true);
       
       try {
@@ -193,6 +187,7 @@ class AIQueueIntegrationService {
         await this.processMessageBatch(messagesToProcess);
       } finally {
         this.processingQueue.delete(ticketId);
+        console.log('✅ [AI-QUEUE] Processamento concluído para:', ticketId);
       }
       
     } catch (error) {

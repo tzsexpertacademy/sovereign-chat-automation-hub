@@ -55,11 +55,10 @@ class RealTimeWhatsAppService {
         return { ...ticketResult, shouldProcess: false, transferQueue };
       }
 
-      // 4. NOVO: Adicionar mensagem ao agrupamento em vez de processar imediatamente
-      if (!message.fromMe) { // Só agrupar mensagens do usuário, não nossas respostas
-        this.addToProcessingQueue(message);
-        return { ...ticketResult, shouldProcess: true };
-      }
+      // 4. DESABILITADO: Não usar mais o processamento individual aqui
+      // O processamento agora é feito APENAS via humanizedMessageProcessor + aiQueueIntegrationService
+      console.log('📋 [REALTIME] Processamento delegado para sistema de batch centralizado');
+      return { ...ticketResult, shouldProcess: false };
       
       return { ...ticketResult, shouldProcess: false };
     } catch (error) {
