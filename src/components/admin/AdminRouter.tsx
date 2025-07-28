@@ -8,6 +8,7 @@ import ServerManagement from "./ServerManagement";
 import ApiCodechat from "./ApiCodechat";
 import SystemLogsModern from "./SystemLogsModern";
 import DevelopmentPlan from "./DevelopmentPlan";
+import { FixTicketsAssignment } from "./FixTicketsAssignment";
 
 const AdminRouter = () => {
   return (
@@ -23,6 +24,7 @@ const AdminRouter = () => {
       <Route path="/diagnostics" element={<ApiCodechat />} />
       <Route path="/logs" element={<SystemLogsModern />} />
       <Route path="/advanced" element={<DevelopmentPlan />} />
+      <Route path="/fix-tickets" element={<FixTicketsAssignment />} />
     </Routes>
   );
 };
