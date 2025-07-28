@@ -35,14 +35,11 @@ interface MessageBatch {
   firstMessageTime: number;
 }
 
-// ✅ SISTEMA DE BATCH CORRIGIDO - BASEADO EM CHAT + TIMEOUT FIXO
+// ✅ SISTEMA DE BATCH SIMPLES - JANELA DE 4 SEGUNDOS
 const messageBatches = new Map<string, MessageBatch>();
-const chatProcessingLocks = new Set<string>();
-const chatTimeoutHandles = new Map<string, number>();
 
-// ⚡ CONFIGURAÇÕES OTIMIZADAS
-const BATCH_TIMEOUT = 3000; // 3 segundos fixos (não resetados)
-const PROCESSING_COOLDOWN = 5000; // 5 segundos entre processamentos do mesmo chat
+// ⚡ CONFIGURAÇÃO SIMPLES
+const BATCH_TIMEOUT = 4000; // 4 segundos fixos
 
 serve(async (req) => {
   console.log('🌐 [YUMER-UNIFIED-WEBHOOK] Recebendo requisição:', req.method, req.url);
@@ -189,7 +186,6 @@ async function addToBatch(yumerData: YumerWebhookData) {
     }
 
     // 🎯 EXTRAIR DADOS DA MENSAGEM PRIMEIRO
-    const messageData = yumerData.data;
     const messageId = messageData?.keyId || messageData?.messageId;
     const currentTime = Date.now();
 
@@ -218,25 +214,7 @@ async function addToBatch(yumerData: YumerWebhookData) {
       return await processYumerMessage(yumerData);
     }
 
-    const batchKey = `${instance.client_id}-${processedMessage.chatId}`;
-
-    // 🔒 VERIFICAÇÃO DE LOCK PREVENTIVO (baseado no chat, não na mensagem)
-    if (chatProcessingLocks.has(batchKey)) {
-      console.log(`🔒 [LOCK-PREVENTIVO] Chat ${batchKey} já está sendo processado - ignorando mensagem`);
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Chat already being processed',
-          batchKey,
-          lockActive: true
-        }), 
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // 🔒 APLICAR LOCK PREVENTIVO ANTES DE ADICIONAR AO BATCH
-    chatProcessingLocks.add(batchKey);
-    console.log(`🔒 [LOCK] Lock preventivo aplicado ao chat: ${batchKey}`);
+    const batchKey = processedMessage.chatId; // Usar apenas chatId como chave
 
     console.log(`📦 [BATCH] Adicionando mensagem ao batch: ${batchKey}`);
 
@@ -255,14 +233,13 @@ async function addToBatch(yumerData: YumerWebhookData) {
       messageBatches.set(batchKey, batch);
       console.log(`🆕 [BATCH] Novo batch criado: ${batchKey}`);
       
-      // ⏰ CONFIGURAR TIMEOUT FIXO (SÓ UMA VEZ, SEM RESET)
-      const timeoutId = setTimeout(async () => {
-        console.log(`⏰ [TIMEOUT-FIXO] Processando batch ${batchKey} após ${BATCH_TIMEOUT}ms`);
+      // ⏰ JANELA DE 4 SEGUNDOS - TIMEOUT FIXO
+      setTimeout(async () => {
+        console.log(`⏰ [JANELA-4S] Processando batch ${batchKey} após ${BATCH_TIMEOUT}ms`);
         await processBatch(batchKey);
       }, BATCH_TIMEOUT);
       
-      chatTimeoutHandles.set(batchKey, timeoutId);
-      console.log(`⏰ [TIMEOUT-FIXO] Timeout configurado para ${batchKey} - ${BATCH_TIMEOUT}ms`);
+      console.log(`⏰ [JANELA-4S] Timer de 4 segundos iniciado para ${batchKey}`);
     }
 
     // Adicionar mensagem ao batch
@@ -447,28 +424,9 @@ async function processBatch(batchKey: string) {
       console.error('❌ [FALLBACK-CRÍTICO] Falha ao marcar mensagens:', fallbackError);
     }
   } finally {
-    // 🔓 LIBERAR LOCK E LIMPAR RECURSOS
-    chatProcessingLocks.delete(batchKey);
+    // 🧹 LIMPAR MEMÓRIA
     messageBatches.delete(batchKey);
-    
-    // Limpar timeout se ainda existir
-    const timeoutId = chatTimeoutHandles.get(batchKey);
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      chatTimeoutHandles.delete(batchKey);
-    }
-    
-    console.log(`🔓 [LOCK] Lock liberado e recursos limpos: ${batchKey}`);
-    
-    // Limpar debounce antigo (manter apenas últimas 100 mensagens)
-    if (messageDebounce.size > 100) {
-      const entries = Array.from(messageDebounce.entries())
-        .sort(([,timeA], [,timeB]) => timeB - timeA)
-        .slice(0, 50);
-      messageDebounce.clear();
-      entries.forEach(([key, time]) => messageDebounce.set(key, time));
-      console.log('🧹 [CLEANUP] Debounce cache limpo');
-    }
+    console.log(`🧹 [CLEANUP] Batch removido da memória: ${batchKey}`);
   }
 }
 
