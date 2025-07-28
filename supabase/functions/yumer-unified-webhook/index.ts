@@ -211,7 +211,7 @@ async function addToBatch(yumerData: YumerWebhookData) {
     // Verificar se é mensagem do próprio sistema (fromMe = true)
     if (processedMessage.fromMe) {
       console.log('📤 [BATCH] Mensagem enviada pelo sistema - processando imediatamente');
-      return await processYumerMessage(yumerData);
+      return await processYumerMessage(yumerData, false); // FALSE = não processar IA
     }
 
     const batchKey = processedMessage.chatId; // Usar apenas chatId como chave
@@ -245,6 +245,10 @@ async function addToBatch(yumerData: YumerWebhookData) {
     // Adicionar mensagem ao batch
     batch.messages.push(yumerData);
     console.log(`📥 [BATCH] Mensagem adicionada. Total no batch: ${batch.messages.length}`);
+
+    // 🚀 PROCESSAR MENSAGEM YUMER IMEDIATAMENTE (SEM IA) - SALVAR NO BANCO
+    await processYumerMessage(yumerData, false); // FALSE = não processar IA
+    console.log(`💾 [BATCH] Mensagem salva no banco sem IA: ${messageId}`);
 
     // Resposta de sucesso para o webhook
     return new Response(
@@ -348,8 +352,8 @@ async function processBatch(batchKey: string) {
       }
       
       const fullContext = allMessageContents.join(' ');
-      console.log(`📋 [BATCH-SIMPLE] Contexto: "${fullContext}"`);
-      console.log(`🚀 [BATCH-SIMPLE] Chamando IA DIRETAMENTE (sem verificações complexas)`);
+      console.log(`📋 [BATCH-SIMPLE] Contexto completo do batch: "${fullContext}"`);
+      console.log(`🚀 [BATCH-SIMPLE] Enviando ${allMessageContents.length} mensagens para IA em lote`);
       
       try {
         const aiResult = await supabase.functions.invoke('ai-assistant-process', {

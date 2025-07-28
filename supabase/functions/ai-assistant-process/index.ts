@@ -195,9 +195,17 @@ serve(async (req) => {
 
     // 📝 SUPORTAR BATCHES: Combinar múltiplas mensagens como contexto único
     const isBatch = messages && Array.isArray(messages) && messages.length > 0;
-    const messageContent = isBatch
-      ? messages.map(msg => `[${new Date(msg.timestamp).toLocaleTimeString()}] ${msg.content}`).join('\n')
-      : message;
+    
+    let messageContent: string;
+    if (isBatch) {
+      // Processar batch de mensagens
+      const messageTexts = messages.map(msg => msg.content).filter(Boolean);
+      messageContent = messageTexts.join(' ');
+      console.log(`📦 [BATCH-IA] Processando batch de ${messages.length} mensagens: "${messageContent}"`);
+    } else {
+      messageContent = message;
+      console.log(`📝 [SINGLE-IA] Processando mensagem única: "${messageContent}"`);
+    }
 
     // ✅ VALIDAÇÃO CRÍTICA: Verificar se os dados essenciais estão presentes
     if (!ticketId) {
@@ -242,6 +250,15 @@ serve(async (req) => {
       keySource,
       hasOpenAIKey: !!openAIApiKey
     });
+    
+    // 📦 LOG ESPECÍFICO PARA BATCHES
+    if (isBatch) {
+      console.log('📦 [BATCH-IA] Processando batch com as seguintes mensagens:');
+      messages.forEach((msg, index) => {
+        console.log(`  ${index + 1}. "${msg.content}" (${new Date(msg.timestamp).toLocaleTimeString()})`);
+      });
+      console.log(`📦 [BATCH-IA] Contexto combinado: "${messageContent}"`);
+    }
 
     // Verificar se OpenAI API key está configurada
     if (!openAIApiKey) {
