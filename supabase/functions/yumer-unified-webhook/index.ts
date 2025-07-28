@@ -377,10 +377,9 @@ async function processBatch(batchKey: string) {
       return;
     }
 
-    // 🤖 PROCESSAR COM IA - UMA ÚNICA VEZ COM TODO O CONTEXTO
-    if (lastTicketId && instanceDetails && allMessageContents.length > 0) {
-      console.log(`🤖 [BATCH-UNIFIED] Iniciando processamento ÚNICO de IA para ticket: ${lastTicketId}`);
-      console.log(`📋 [BATCH-UNIFIED] Contexto completo: ${allMessageContents.join(' | ')}`);
+    // 🤖 PROCESSAR COM IA - VERSÃO SIMPLIFICADA
+    if (lastTicketId && allMessageContents.length > 0) {
+      console.log(`🤖 [BATCH-SIMPLE] Iniciando processamento para ticket: ${lastTicketId}`);
       
       // Buscar dados da última mensagem
       const lastMessageData = extractYumerMessageData(lastMessage.data, {
@@ -388,66 +387,61 @@ async function processBatch(batchKey: string) {
         client_id: batch.clientId
       });
       
-      if (lastMessageData) {
-        console.log(`🎯 [BATCH-UNIFIED] Dados da última mensagem extraídos para contexto`);
-        
-        // 🔍 VERIFICAÇÃO DE IA
-        try {
-          const shouldProcess = await shouldTicketBeProcessedByAI(lastTicketId);
-          if (!shouldProcess.shouldProcess) {
-            console.log('🚫 [BATCH-UNIFIED] Ticket não deve ser processado pela IA:', shouldProcess.reason);
-            return;
+      if (!lastMessageData) {
+        console.error('❌ [BATCH-SIMPLE] Falha ao extrair dados da última mensagem');
+        return;
+      }
+      
+      // Verificação SUPER SIMPLES - apenas não processar se for mensagem própria
+      if (lastMessageData.fromMe) {
+        console.log('⚠️ [BATCH-SIMPLE] Mensagem é própria, não processando');
+        return;
+      }
+      
+      const fullContext = allMessageContents.join(' ');
+      console.log(`📋 [BATCH-SIMPLE] Contexto: "${fullContext}"`);
+      console.log(`🚀 [BATCH-SIMPLE] Chamando IA DIRETAMENTE (sem verificações complexas)`);
+      
+      try {
+        const aiResult = await supabase.functions.invoke('ai-assistant-process', {
+          body: {
+            ticketId: lastTicketId,
+            message: fullContext,
+            messageData: lastMessageData,
+            context: `Batch de ${batch.messages.length} mensagens`
           }
-          console.log('✅ [BATCH-UNIFIED] Ticket aprovado para processamento de IA');
-        } catch (checkError) {
-          console.error('⚠️ [BATCH-UNIFIED] Erro na verificação, processando mesmo assim:', checkError);
-        }
-
-        // 🚀 CHAMAR IA UMA ÚNICA VEZ COM TODO O CONTEXTO
-        console.log('🚀 [BATCH-UNIFIED] CHAMANDO IA com contexto completo do batch');
+        });
         
-        try {
-          const aiResult = await processWithAIIfEnabled(
-            lastMessageData, 
-            instanceDetails,
-            true, // isBatch = true
-            batch.messages.length, // batchSize
-            lastTicketId, // ticketId correto
-            allMessageContents // TODAS as mensagens como contexto
-          );
+        console.log('🎯 [BATCH-SIMPLE] Resultado IA:', {
+          success: !!aiResult.data,
+          error: !!aiResult.error,
+          errorDetails: aiResult.error
+        });
+        
+        if (aiResult.error) {
+          console.error('❌ [BATCH-SIMPLE] Erro na IA - tentando fallback:', aiResult.error);
           
-          console.log('✅ [BATCH-UNIFIED] Processamento de IA concluído:', aiResult ? 'sucesso' : 'sem resposta');
-        } catch (aiError) {
-          console.error('❌ [BATCH-UNIFIED] ERRO no processamento de IA:', aiError);
+          // Fallback SUPER simples
+          const fallbackResult = await supabase.functions.invoke('ai-assistant-process', {
+            body: {
+              ticketId: lastTicketId,
+              message: lastMessageData.content || 'Mensagem sem conteúdo',
+              messageData: lastMessageData
+            }
+          });
           
-          // 🛡️ FALLBACK: Tentar processamento direto
-          console.log('🔄 [FALLBACK] Tentando processamento direto da IA...');
-          try {
-            await supabase.functions.invoke('ai-assistant-process', {
-              body: {
-                ticketId: lastTicketId,
-                instanceId: batch.instanceId,
-                clientId: batch.clientId,
-                messages: allMessageContents, // Todo o contexto
-                context: {
-                  customerName: lastMessageData.contactName || lastMessageData.pushName || 'Cliente',
-                  phoneNumber: lastMessageData.phoneNumber,
-                  chatId: lastMessageData.chatId
-                },
-                isBatch: true,
-                batchSize: batch.messages.length
-              }
-            });
-            console.log('✅ [FALLBACK] Processamento direto executado');
-          } catch (fallbackError) {
-            console.error('❌ [FALLBACK] Falha total:', fallbackError);
-          }
+          console.log('🔄 [BATCH-SIMPLE] Resultado fallback:', {
+            success: !!fallbackResult.data,
+            error: !!fallbackResult.error
+          });
+        } else {
+          console.log('✅ [BATCH-SIMPLE] IA respondeu com sucesso');
         }
-      } else {
-        console.error('❌ [BATCH-UNIFIED] Falha ao extrair dados da última mensagem');
+      } catch (error) {
+        console.error('❌ [BATCH-SIMPLE] Erro crítico ao chamar IA:', error);
       }
     } else {
-      console.log(`⚠️ [BATCH-UNIFIED] Condições não atendidas para IA: ticketId=${!!lastTicketId}, instanceDetails=${!!instanceDetails}, messages=${allMessageContents.length}`);
+      console.log(`⚠️ [BATCH-SIMPLE] Condições não atendidas: ticketId=${!!lastTicketId}, messages=${allMessageContents.length}`);
     }
 
     console.log(`✅ [BATCH] Batch processado com sucesso: ${batchKey}`);
