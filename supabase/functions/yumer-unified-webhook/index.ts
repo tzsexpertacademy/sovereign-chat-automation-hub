@@ -193,30 +193,79 @@ async function executeBatch(batchKey: string) {
   
   const batch = messageBatches.get(batchKey);
   if (!batch) {
-    console.log('🔥 [EXECUTE-BATCH] Batch não encontrado');
+    console.log('🔥 [EXECUTE-BATCH] Batch não encontrado na memória');
     return;
   }
 
   console.log('🔥 [EXECUTE-BATCH] Batch contém', batch.messages.length, 'mensagens');
+  console.log('🔥 [EXECUTE-BATCH] Dados do batch:', JSON.stringify(batch, null, 2));
+
+  // ✅ VALIDAR CAMPOS OBRIGATÓRIOS
+  if (!batch.chatId || !batch.clientId) {
+    console.error('🔥 [EXECUTE-BATCH] Batch inválido - faltam dados obrigatórios:', {
+      chatId: batch.chatId,
+      clientId: batch.clientId
+    });
+    messageBatches.delete(batchKey);
+    return;
+  }
+
+  // ✅ VALIDAR MENSAGENS COM CONTEÚDO
+  const validMessages = batch.messages.filter(msg => msg.content && msg.content.trim() !== '');
+  if (validMessages.length === 0) {
+    console.warn('🔥 [EXECUTE-BATCH] Nenhuma mensagem válida com conteúdo');
+    messageBatches.delete(batchKey);
+    return;
+  }
 
   try {
-    // BUSCAR TICKET PELO CHAT_ID
+    // ✅ CORRIGIDO: BUSCAR TICKET NA TABELA CORRETA
+    console.log('🔥 [EXECUTE-BATCH] Buscando ticket para chat:', batch.chatId, 'cliente:', batch.clientId);
+    
     const { data: ticket, error: ticketError } = await supabase
-      .from('tickets')
-      .select('id')
+      .from('conversation_tickets')
+      .select('id, status, title')
       .eq('chat_id', batch.chatId)
       .eq('client_id', batch.clientId)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
-    if (ticketError || !ticket) {
-      console.log('🔥 [EXECUTE-BATCH] Ticket não encontrado');
+    if (ticketError) {
+      console.error('🔥 [EXECUTE-BATCH] Erro ao buscar ticket:', ticketError);
+      
+      // ✅ FALLBACK: PROCESSAR INDIVIDUAL SE TICKET FALHOU
+      console.warn('🔁 [FALLBACK] Ticket não encontrado, processando mensagens individuais');
+      for (const message of validMessages) {
+        await processSingleMessage({ 
+          data: { 
+            content: { text: message.content },
+            keyId: message.messageId 
+          } 
+        }, true);
+      }
       messageBatches.delete(batchKey);
       return;
     }
 
-    console.log('🔥 [EXECUTE-BATCH] Ticket encontrado:', ticket.id);
+    if (!ticket) {
+      console.warn('🔥 [EXECUTE-BATCH] Ticket não existe para este chat');
+      
+      // ✅ FALLBACK: PROCESSAR INDIVIDUAL
+      console.warn('🔁 [FALLBACK] Criando processamento individual');
+      for (const message of validMessages) {
+        await processSingleMessage({ 
+          data: { 
+            content: { text: message.content },
+            keyId: message.messageId 
+          } 
+        }, true);
+      }
+      messageBatches.delete(batchKey);
+      return;
+    }
+
+    console.log('🔥 [EXECUTE-BATCH] ✅ Ticket encontrado:', ticket.id, 'Status:', ticket.status);
 
     // CHAMAR IA COM TODAS AS MENSAGENS
     const aiPayload = {
