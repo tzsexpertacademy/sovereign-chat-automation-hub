@@ -23,15 +23,14 @@ export const useAutoQueueConnection = () => {
         throw new Error('Instância não encontrada');
       }
 
-      // 2. Verificar se já existe conexão ativa
+      // 2. Verificar se já existe conexão (ativa ou inativa)
       const { data: existingConnection } = await supabase
         .from('instance_queue_connections')
-        .select('id, queue_id')
+        .select('id, queue_id, is_active')
         .eq('instance_id', instance.id)
-        .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
-      if (existingConnection) {
+      if (existingConnection?.is_active) {
         console.log('✅ [AUTO-QUEUE] Instância já conectada a uma fila');
         return { success: true, message: 'Instância já conectada' };
       }
@@ -61,17 +60,33 @@ export const useAutoQueueConnection = () => {
         throw new Error('Assistente da fila não está ativo');
       }
 
-      // 4. Criar conexão
-      const { error: connectionError } = await supabase
-        .from('instance_queue_connections')
-        .insert({
-          instance_id: instance.id,
-          queue_id: availableQueue.id,
-          is_active: true
-        });
+      // 4. Reativar conexão existente ou criar nova
+      if (existingConnection && !existingConnection.is_active) {
+        console.log('🔄 [AUTO-QUEUE] Reativando conexão existente');
+        const { error: updateError } = await supabase
+          .from('instance_queue_connections')
+          .update({
+            queue_id: availableQueue.id,
+            is_active: true
+          })
+          .eq('id', existingConnection.id);
 
-      if (connectionError) {
-        throw new Error('Erro ao criar conexão: ' + connectionError.message);
+        if (updateError) {
+          throw new Error('Erro ao reativar conexão: ' + updateError.message);
+        }
+      } else {
+        console.log('➕ [AUTO-QUEUE] Criando nova conexão');
+        const { error: connectionError } = await supabase
+          .from('instance_queue_connections')
+          .insert({
+            instance_id: instance.id,
+            queue_id: availableQueue.id,
+            is_active: true
+          });
+
+        if (connectionError) {
+          throw new Error('Erro ao criar conexão: ' + connectionError.message);
+        }
       }
 
       console.log(`✅ [AUTO-QUEUE] Instância ${instance.custom_name || instance.instance_id} conectada à fila ${availableQueue.name}`);
@@ -107,7 +122,7 @@ export const useAutoQueueConnection = () => {
     try {
       console.log('🔍 [AUTO-QUEUE] Verificando instâncias desconectadas para cliente:', clientId);
       
-      // Buscar instâncias sem conexão ativa
+      // Buscar instâncias sem conexão ativa (corrigindo query)
       const { data: disconnectedInstances, error } = await supabase
         .from('whatsapp_instances')
         .select(`
@@ -118,7 +133,7 @@ export const useAutoQueueConnection = () => {
         `)
         .eq('client_id', clientId)
         .eq('status', 'connected')
-        .not('id', 'in', `(
+        .filter('id', 'not.in', `(
           SELECT instance_id 
           FROM instance_queue_connections 
           WHERE is_active = true

@@ -174,20 +174,45 @@ export class QueuesServiceFixed {
         return;
       }
 
-      // Conectar à nova fila
-      const { error } = await supabase
+      // Verificar se já existe conexão
+      const { data: existingConnection } = await supabase
         .from("instance_queue_connections")
-        .upsert({ 
-          instance_id: instanceUuid, 
-          queue_id: queueId,
-          is_active: true 
-        }, { 
-          onConflict: "instance_id,queue_id" 
-        });
+        .select("id, is_active")
+        .eq("instance_id", instanceUuid)
+        .eq("queue_id", queueId)
+        .maybeSingle();
 
-      if (error) {
-        this.logError('Erro ao conectar à fila:', error);
-        throw error;
+      if (existingConnection) {
+        if (!existingConnection.is_active) {
+          // Reativar conexão existente
+          const { error: updateError } = await supabase
+            .from("instance_queue_connections")
+            .update({ is_active: true })
+            .eq("id", existingConnection.id);
+
+          if (updateError) {
+            this.logError('Erro ao reativar conexão:', updateError);
+            throw updateError;
+          }
+          this.logDebug('Conexão reativada com sucesso');
+        } else {
+          this.logDebug('Conexão já ativa');
+        }
+      } else {
+        // Criar nova conexão
+        const { error: insertError } = await supabase
+          .from("instance_queue_connections")
+          .insert({ 
+            instance_id: instanceUuid, 
+            queue_id: queueId,
+            is_active: true 
+          });
+
+        if (insertError) {
+          this.logError('Erro ao criar conexão:', insertError);
+          throw insertError;
+        }
+        this.logDebug('Nova conexão criada com sucesso');
       }
 
       this.logDebug('Instância conectada à fila com sucesso');
