@@ -25,6 +25,20 @@ interface YumerWebhookData {
   data?: any;
 }
 
+// Interface para o sistema de batching
+interface MessageBatch {
+  chatId: string;
+  instanceId: string;
+  clientId: string;
+  messages: any[];
+  timeoutId?: number;
+  firstMessageTime: number;
+}
+
+// Sistema de batching global para múltiplas mensagens
+const messageBatches = new Map<string, MessageBatch>();
+const BATCH_TIMEOUT = 4000; // 4 segundos para agrupar mensagens
+
 serve(async (req) => {
   console.log('🌐 [YUMER-UNIFIED-WEBHOOK] Recebendo requisição:', req.method, req.url);
   
@@ -105,8 +119,8 @@ serve(async (req) => {
 
       // DETECTAR MENSAGENS YUMER pelo evento e estrutura
       if (webhookData.event === 'messages.upsert' && webhookData.data && webhookData.instance?.instanceId) {
-        console.log('🎯 [YUMER-UNIFIED-WEBHOOK] Detectada mensagem YUMER - processando...');
-        return await processYumerMessage(webhookData);
+        console.log('🎯 [YUMER-UNIFIED-WEBHOOK] Detectada mensagem YUMER - adicionando ao batch...');
+        return await addToBatch(webhookData);
       }
 
       // Log outros eventos para debug
@@ -154,8 +168,166 @@ serve(async (req) => {
   );
 });
 
+// Função para adicionar mensagem ao batch
+async function addToBatch(yumerData: YumerWebhookData) {
+  try {
+    const instanceId = yumerData.instance?.instanceId;
+    const instanceName = yumerData.instance?.name;
+    const messageData = yumerData.data;
+
+    if (!instanceId || !messageData) {
+      console.error('❌ [BATCH] Dados insuficientes para batching');
+      return new Response(
+        JSON.stringify({ error: 'Insufficient data for batching' }), 
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Buscar instância para obter client_id
+    const { data: instance, error: instanceError } = await supabase
+      .from('whatsapp_instances')
+      .select('instance_id, client_id, id, auth_token, yumer_instance_name')
+      .eq('yumer_instance_name', instanceName)
+      .single();
+
+    if (instanceError || !instance) {
+      console.log('🔍 [BATCH] Instância não encontrada, processando imediatamente');
+      return await processYumerMessage(yumerData);
+    }
+
+    // Extrair dados da mensagem para determinar chatId
+    const processedMessage = extractYumerMessageData(messageData, instance);
+    if (!processedMessage || !processedMessage.chatId) {
+      console.log('⚠️ [BATCH] Não foi possível extrair chatId, processando imediatamente');
+      return await processYumerMessage(yumerData);
+    }
+
+    // Verificar se é mensagem do próprio sistema (fromMe = true)
+    if (processedMessage.fromMe) {
+      console.log('📤 [BATCH] Mensagem enviada pelo sistema - processando imediatamente');
+      return await processYumerMessage(yumerData);
+    }
+
+    const batchKey = `${instance.client_id}-${processedMessage.chatId}`;
+    const currentTime = Date.now();
+
+    console.log(`📦 [BATCH] Adicionando mensagem ao batch: ${batchKey}`);
+
+    // Verificar se já existe um batch para este chat
+    let batch = messageBatches.get(batchKey);
+    
+    if (!batch) {
+      // Criar novo batch
+      batch = {
+        chatId: processedMessage.chatId,
+        instanceId: instance.instance_id,
+        clientId: instance.client_id,
+        messages: [],
+        firstMessageTime: currentTime
+      };
+      messageBatches.set(batchKey, batch);
+      console.log(`🆕 [BATCH] Novo batch criado: ${batchKey}`);
+    }
+
+    // Adicionar mensagem ao batch
+    batch.messages.push(yumerData);
+    console.log(`📥 [BATCH] Mensagem adicionada. Total no batch: ${batch.messages.length}`);
+
+    // Limpar timeout anterior se existir
+    if (batch.timeoutId) {
+      clearTimeout(batch.timeoutId);
+    }
+
+    // Configurar novo timeout para processar o batch
+    batch.timeoutId = setTimeout(async () => {
+      console.log(`⏰ [BATCH] Timeout atingido para batch: ${batchKey}. Processando ${batch.messages.length} mensagens...`);
+      await processBatch(batchKey);
+    }, BATCH_TIMEOUT);
+
+    // Resposta de sucesso para o webhook
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Message added to batch',
+        batchKey: batchKey,
+        batchSize: batch.messages.length,
+        timeoutRemaining: BATCH_TIMEOUT
+      }), 
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+
+  } catch (error) {
+    console.error('❌ [BATCH] Erro ao adicionar ao batch:', error);
+    return new Response(
+      JSON.stringify({ error: 'Batch processing error', details: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+// Função para processar batch de mensagens
+async function processBatch(batchKey: string) {
+  const batch = messageBatches.get(batchKey);
+  if (!batch) {
+    console.log(`⚠️ [BATCH] Batch não encontrado: ${batchKey}`);
+    return;
+  }
+
+  console.log(`🚀 [BATCH] Processando batch ${batchKey} com ${batch.messages.length} mensagens`);
+
+  try {
+    // Processar mensagens individualmente para salvar no banco
+    const processedMessages = [];
+    let lastTicketId = null;
+
+    for (const yumerData of batch.messages) {
+      try {
+        const result = await processYumerMessage(yumerData, false); // false = não processar IA ainda
+        if (result.ticketId) {
+          lastTicketId = result.ticketId;
+        }
+        processedMessages.push(result.processedMessage);
+      } catch (error) {
+        console.error('❌ [BATCH] Erro ao processar mensagem individual:', error);
+      }
+    }
+
+    // Processar com IA apenas uma vez para todas as mensagens do batch
+    if (lastTicketId && processedMessages.length > 0) {
+      console.log(`🤖 [BATCH] Processando batch com IA. Ticket: ${lastTicketId}`);
+      
+      // Combinar todas as mensagens do usuário em um contexto
+      const combinedMessage = processedMessages
+        .filter(msg => !msg.fromMe)
+        .map(msg => msg.content)
+        .join('\n\n');
+
+      if (combinedMessage.trim()) {
+        await processWithAIIfEnabled(lastTicketId, {
+          content: combinedMessage,
+          chatId: batch.chatId,
+          contactName: processedMessages[0]?.contactName || 'Usuário',
+          phoneNumber: processedMessages[0]?.phoneNumber || ''
+        }, batch.clientId, batch.instanceId);
+      }
+    }
+
+    console.log(`✅ [BATCH] Batch processado com sucesso: ${batchKey}`);
+
+  } catch (error) {
+    console.error(`❌ [BATCH] Erro ao processar batch ${batchKey}:`, error);
+  } finally {
+    // Limpar batch da memória
+    messageBatches.delete(batchKey);
+    console.log(`🗑️ [BATCH] Batch removido da memória: ${batchKey}`);
+  }
+}
+
 // Função para processar mensagens YUMER
-async function processYumerMessage(yumerData: YumerWebhookData) {
+async function processYumerMessage(yumerData: YumerWebhookData, processAI: boolean = true) {
   console.log('🔧 [YUMER-PROCESS] Iniciando processamento de mensagem YUMER');
   
   try {
@@ -306,8 +478,8 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
     // 4. Processar mensagem para tickets
     const ticketId = await processMessageToTickets(processedMessage, instance.client_id, instance.instance_id);
     
-    // 🤖 5. ATIVAÇÃO AUTOMÁTICA DA IA: Verificar se deve processar com IA
-    if (!processedMessage.fromMe) {
+    // 🤖 5. ATIVAÇÃO AUTOMÁTICA DA IA: Verificar se deve processar com IA (apenas se processAI = true)
+    if (!processedMessage.fromMe && processAI) {
       console.log('🤖 [AI-TRIGGER] Mensagem recebida (não enviada) - verificando se deve processar com IA');
       
       try {
@@ -323,6 +495,18 @@ async function processYumerMessage(yumerData: YumerWebhookData) {
     
     console.log('✅ [YUMER-PROCESS] Mensagem YUMER processada com sucesso');
     
+    // Retornar dados para processamento em batch se necessário
+    if (!processAI) {
+      return {
+        success: true,
+        ticketId: ticketId,
+        processedMessage: processedMessage,
+        instanceName: instance.instance_id,
+        messageId: processedMessage.messageId,
+        clientId: instance.client_id
+      };
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 

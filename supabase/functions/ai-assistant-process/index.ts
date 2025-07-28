@@ -97,11 +97,15 @@ serve(async (req) => {
     const { 
       ticketId, 
       message, 
+      messages,
       clientId, 
       instanceId,
       assistant,
       context 
     } = await req.json();
+
+    // Suportar tanto mensagem única quanto múltiplas mensagens (batch)
+    const messageContent = messages ? messages.join('\n\n') : message;
 
     // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
     let openAIApiKey = globalOpenAIApiKey;
@@ -130,7 +134,9 @@ serve(async (req) => {
       ticketId,
       instanceId,
       assistantName: assistant?.name,
-      messageLength: message?.length || 0,
+      messageLength: messageContent?.length || 0,
+      isBatch: !!messages,
+      batchSize: messages?.length || 1,
       customerName: context?.customerName,
       keySource,
       hasOpenAIKey: !!openAIApiKey
@@ -167,12 +173,17 @@ serve(async (req) => {
         .join('\n');
     }
 
-    // Construir prompt do assistente
+    // Construir prompt do assistente com suporte a batch
+    const isBatchProcessing = !!messages;
+    const contextMessage = isBatchProcessing 
+      ? `\n\nNOTA IMPORTANTE: O usuário enviou ${messages.length} mensagens em sequência. Responda de forma unificada considerando todas as mensagens como uma única conversa contínua. Não responda cada mensagem separadamente.`
+      : '';
+    
     const systemPrompt = `${assistant.prompt || 'Você é um assistente útil e prestativo.'}
 
 Contexto da conversa:
 Cliente: ${context?.customerName || 'Cliente'}
-Telefone: ${context?.phoneNumber || 'N/A'}
+Telefone: ${context?.phoneNumber || 'N/A'}${contextMessage}
 
 Histórico recente da conversa:
 ${conversationContext}
@@ -198,7 +209,7 @@ Instruções importantes:
         model: assistant.model || 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: message }
+          { role: 'user', content: messageContent }
         ],
         temperature: 0.7,
         max_tokens: 500
