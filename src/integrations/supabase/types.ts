@@ -604,6 +604,51 @@ export type Database = {
           },
         ]
       }
+      conversation_context: {
+        Row: {
+          chat_id: string
+          client_id: string
+          conversation_summary: string | null
+          created_at: string
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          instance_id: string
+          key_information: Json | null
+          last_topics: Json | null
+          personality_notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          chat_id: string
+          client_id: string
+          conversation_summary?: string | null
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          instance_id: string
+          key_information?: Json | null
+          last_topics?: Json | null
+          personality_notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          chat_id?: string
+          client_id?: string
+          conversation_summary?: string | null
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          instance_id?: string
+          key_information?: Json | null
+          last_topics?: Json | null
+          personality_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       conversation_queue_states: {
         Row: {
           chat_id: string

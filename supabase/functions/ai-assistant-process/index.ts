@@ -280,21 +280,101 @@ serve(async (req) => {
       );
     }
 
-    // Buscar histórico recente de mensagens do ticket para contexto
-    const { data: recentMessages } = await supabase
+    // 🧠 BUSCAR CONTEXTO CONVERSACIONAL PERSISTENTE
+    let conversationMemory = null;
+    try {
+      const { data: memory } = await supabase
+        .from('conversation_context')
+        .select('*')
+        .eq('client_id', resolvedClientId)
+        .eq('chat_id', resolvedContext.chatId)
+        .eq('instance_id', resolvedInstanceId)
+        .single();
+      
+      conversationMemory = memory;
+      console.log('🧠 [CONTEXT] Memória conversacional carregada:', {
+        hasMemory: !!memory,
+        customerName: memory?.customer_name,
+        keyInfoKeys: memory?.key_information ? Object.keys(memory.key_information) : [],
+        topicsCount: memory?.last_topics?.length || 0
+      });
+    } catch (error) {
+      console.log('🧠 [CONTEXT] Nenhuma memória conversacional encontrada (primeira conversa)');
+    }
+
+    // 📚 BUSCAR HISTÓRICO AMPLIADO DE MENSAGENS (50 últimas, removendo duplicatas)
+    const { data: allRecentMessages } = await supabase
       .from('ticket_messages')
-      .select('content, from_me, sender_name, timestamp')
+      .select('content, from_me, sender_name, timestamp, message_id')
       .eq('ticket_id', ticketId)
       .order('timestamp', { ascending: false })
-      .limit(10);
+      .limit(50);
 
-    // Construir contexto da conversa
+    // 🧹 REMOVER MENSAGENS DUPLICADAS por message_id e conteúdo
+    const uniqueMessages = [];
+    const seenMessageIds = new Set();
+    const seenContentKey = new Set();
+    
+    if (allRecentMessages && allRecentMessages.length > 0) {
+      for (const msg of allRecentMessages) {
+        const contentKey = `${msg.from_me}-${msg.content}-${msg.sender_name}`;
+        
+        if (!seenMessageIds.has(msg.message_id) && !seenContentKey.has(contentKey)) {
+          seenMessageIds.add(msg.message_id);
+          seenContentKey.add(contentKey);
+          uniqueMessages.push(msg);
+        }
+      }
+    }
+
+    console.log('🧹 [CONTEXT] Limpeza de duplicatas:', {
+      totalMessages: allRecentMessages?.length || 0,
+      uniqueMessages: uniqueMessages.length,
+      duplicatesRemoved: (allRecentMessages?.length || 0) - uniqueMessages.length
+    });
+
+    // 🔄 CONSTRUIR CONTEXTO CONVERSACIONAL ENRIQUECIDO
     let conversationContext = '';
-    if (recentMessages && recentMessages.length > 0) {
-      conversationContext = recentMessages
-        .reverse() // Ordenar cronologicamente
-        .map(msg => `${msg.from_me ? 'Assistente' : msg.sender_name}: ${msg.content}`)
+    if (uniqueMessages.length > 0) {
+      // Pegar apenas os últimos 25 para não sobrecarregar o contexto
+      const contextMessages = uniqueMessages.slice(0, 25).reverse(); // Ordenar cronologicamente
+      
+      conversationContext = contextMessages
+        .map(msg => {
+          const sender = msg.from_me ? 'Assistente' : (msg.sender_name || 'Cliente');
+          return `${sender}: ${msg.content}`;
+        })
         .join('\n');
+    }
+
+    // 🧠 ADICIONAR INFORMAÇÕES DA MEMÓRIA CONVERSACIONAL
+    let memoryContext = '';
+    if (conversationMemory) {
+      const memoryParts = [];
+      
+      if (conversationMemory.customer_name) {
+        memoryParts.push(`Nome do cliente: ${conversationMemory.customer_name}`);
+      }
+      
+      if (conversationMemory.conversation_summary) {
+        memoryParts.push(`Resumo da conversa: ${conversationMemory.conversation_summary}`);
+      }
+      
+      if (conversationMemory.key_information && Object.keys(conversationMemory.key_information).length > 0) {
+        memoryParts.push(`Informações importantes: ${JSON.stringify(conversationMemory.key_information)}`);
+      }
+      
+      if (conversationMemory.last_topics && conversationMemory.last_topics.length > 0) {
+        memoryParts.push(`Tópicos recentes: ${conversationMemory.last_topics.join(', ')}`);
+      }
+      
+      if (conversationMemory.personality_notes) {
+        memoryParts.push(`Notas de personalidade: ${conversationMemory.personality_notes}`);
+      }
+      
+      if (memoryParts.length > 0) {
+        memoryContext = '\n\n--- CONTEXTO DA CONVERSA ---\n' + memoryParts.join('\n') + '\n--- FIM DO CONTEXTO ---\n';
+      }
     }
 
     // ✅ VALIDAÇÃO DO ASSISTENTE: Garantir que existe e tem configurações mínimas
@@ -318,23 +398,28 @@ serve(async (req) => {
       ? `\n\nNOTA IMPORTANTE: O usuário enviou ${messages.length} mensagens em sequência rápida. Estas mensagens devem ser consideradas como uma única conversa contínua. Analise todo o contexto e responda de forma unificada, não responda cada mensagem separadamente.`
       : '';
     
-    const systemPrompt = `${safeAssistant.prompt || 'Você é um assistente útil e prestativo.'}
+    const systemPrompt = `${safeAssistant.prompt || 'Você é um assistente útil e prestativo.'}${memoryContext}
 
-Contexto da conversa:
-Cliente: ${context?.customerName || 'Cliente'}
-Telefone: ${context?.phoneNumber || 'N/A'}${contextMessage}
+CONTEXTO DA CONVERSA:
+Cliente: ${resolvedContext?.customerName || 'Cliente'}
+Telefone: ${resolvedContext?.phoneNumber || 'N/A'}${contextMessage}
 
-Histórico recente da conversa:
+HISTÓRICO RECENTE DA CONVERSA:
 ${conversationContext}
 
-Instruções importantes:
-- Responda de forma natural e humana
-- Seja útil e prestativo
-- Mantenha o contexto da conversa
+INSTRUÇÕES IMPORTANTES PARA CONTINUIDADE:
+- Você está em uma conversa contínua com ${resolvedContext?.customerName || 'este cliente'}
+- NÃO se reapresente se já conversaram antes - mantenha a naturalidade da conversa
+- Use o contexto da conversa anterior para responder de forma coerente
+- Se o cliente mencionar algo que foi discutido antes, reconheça e continue a partir dali
+- Seja natural e conversacional, como se fosse uma pessoa real
+- Mantenha a personalidade e tom estabelecidos na conversa
+- Responda de forma útil e prestativa
 - Se não souber algo, seja honesto
 - Responda em português brasileiro
 - Seja conciso mas completo
-${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitação do usuário' : ''}`;
+${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitação do usuário' : ''}
+- IMPORTANTE: Esta é uma conversa em andamento - não comece do zero!`;
 
     console.log('🤖 [AI-ASSISTANT] Chamando OpenAI API com modelo:', safeAssistant.model || 'gpt-4o-mini');
 
@@ -515,6 +600,18 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
 
     // 🔥 CORREÇÃO: Marcar mensagens do usuário como processadas após resposta da IA
     await markUserMessagesAsProcessed(ticketId, resolvedContext?.chatId);
+
+    // 🧠 ATUALIZAR MEMÓRIA CONVERSACIONAL
+    await updateConversationMemory(
+      resolvedClientId,
+      resolvedContext.chatId,
+      resolvedInstanceId,
+      resolvedContext.customerName || 'Cliente',
+      resolvedContext.phoneNumber,
+      messageContent,
+      aiResponse,
+      conversationMemory
+    );
 
     console.log('🎉 [AI-ASSISTANT] SUCESSO TOTAL! Assistente processou e enviou resposta:', {
       ticketId: ticketId,
@@ -982,4 +1079,183 @@ async function sendSimpleMessage(instanceId: string, chatId: string, message: st
     console.error('❌ [SIMPLE-SEND] Erro no envio simples:', error);
     return { success: false, error: error.message };
   }
+}
+
+// 🧠 ATUALIZAR MEMÓRIA CONVERSACIONAL
+async function updateConversationMemory(
+  clientId: string,
+  chatId: string,
+  instanceId: string,
+  customerName: string,
+  customerPhone: string,
+  userMessage: string,
+  aiResponse: string,
+  existingMemory: any = null
+): Promise<void> {
+  try {
+    console.log('🧠 [MEMORY] Atualizando memória conversacional:', {
+      clientId,
+      chatId: chatId.substring(0, 20) + '...',
+      customerName,
+      hasExisting: !!existingMemory
+    });
+
+    // Extrair tópicos da mensagem atual
+    const currentTopics = extractTopicsFromMessage(userMessage, aiResponse);
+    
+    // Extrair informações-chave da conversa
+    const keyInfo = extractKeyInformation(userMessage, aiResponse, existingMemory?.key_information || {});
+    
+    // Criar resumo da conversa atual (combinar com existente)
+    const conversationSummary = generateConversationSummary(
+      userMessage, 
+      aiResponse, 
+      existingMemory?.conversation_summary,
+      customerName
+    );
+    
+    // Gerar notas de personalidade
+    const personalityNotes = generatePersonalityNotes(
+      userMessage, 
+      aiResponse, 
+      existingMemory?.personality_notes
+    );
+
+    // Manter apenas os últimos 10 tópicos
+    const lastTopics = existingMemory?.last_topics || [];
+    const updatedTopics = [...currentTopics, ...lastTopics].slice(0, 10);
+
+    const memoryData = {
+      client_id: clientId,
+      chat_id: chatId,
+      instance_id: instanceId,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      conversation_summary: conversationSummary,
+      key_information: keyInfo,
+      last_topics: updatedTopics,
+      personality_notes: personalityNotes,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('conversation_context')
+      .upsert(memoryData, {
+        onConflict: 'client_id,chat_id,instance_id'
+      });
+
+    if (error) {
+      console.error('❌ [MEMORY] Erro ao salvar memória:', error);
+    } else {
+      console.log('✅ [MEMORY] Memória conversacional atualizada:', {
+        topicsCount: updatedTopics.length,
+        keyInfoKeys: Object.keys(keyInfo).length,
+        summaryLength: conversationSummary?.length || 0
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ [MEMORY] Erro ao atualizar memória conversacional:', error);
+  }
+}
+
+// 🎯 Extrair tópicos de uma mensagem
+function extractTopicsFromMessage(userMessage: string, aiResponse: string): string[] {
+  const topics: string[] = [];
+  const text = `${userMessage} ${aiResponse}`.toLowerCase();
+  
+  // Palavras-chave que indicam tópicos importantes
+  const topicKeywords = [
+    'problema', 'ajuda', 'dúvida', 'serviço', 'produto', 'pedido', 'compra',
+    'pagamento', 'entrega', 'suporte', 'atendimento', 'informação', 'preço',
+    'horário', 'agendamento', 'consulta', 'reserva', 'cancelamento', 'troca',
+    'devolução', 'garantia', 'instalação', 'configuração', 'bug', 'erro'
+  ];
+  
+  for (const keyword of topicKeywords) {
+    if (text.includes(keyword) && !topics.includes(keyword)) {
+      topics.push(keyword);
+    }
+  }
+  
+  return topics.slice(0, 5); // Máximo 5 tópicos por conversa
+}
+
+// 💎 Extrair informações-chave da conversa
+function extractKeyInformation(userMessage: string, aiResponse: string, existingInfo: any = {}): any {
+  const keyInfo = { ...existingInfo };
+  const fullText = `${userMessage} ${aiResponse}`;
+  
+  // Detectar nome se mencionado
+  const nameMatch = fullText.match(/meu nome é (\w+)|me chamo (\w+)|sou (\w+)/i);
+  if (nameMatch) {
+    keyInfo.userName = nameMatch[1] || nameMatch[2] || nameMatch[3];
+  }
+  
+  // Detectar preferências
+  if (fullText.includes('gosto de') || fullText.includes('prefiro')) {
+    if (!keyInfo.preferences) keyInfo.preferences = [];
+    keyInfo.preferences.push(fullText.match(/(?:gosto de|prefiro) ([^.!?]+)/i)?.[1]);
+  }
+  
+  // Detectar problemas recorrentes
+  if (fullText.includes('problema') || fullText.includes('erro')) {
+    if (!keyInfo.commonIssues) keyInfo.commonIssues = [];
+    const issueMatch = fullText.match(/problema (?:com|em|no) ([^.!?]+)/i);
+    if (issueMatch) keyInfo.commonIssues.push(issueMatch[1]);
+  }
+  
+  return keyInfo;
+}
+
+// 📝 Gerar resumo da conversa
+function generateConversationSummary(
+  userMessage: string, 
+  aiResponse: string, 
+  existingSummary?: string,
+  customerName?: string
+): string {
+  const newExchange = `${customerName || 'Cliente'}: ${userMessage} | Assistente: ${aiResponse}`;
+  
+  if (!existingSummary) {
+    return newExchange.substring(0, 500);
+  }
+  
+  // Combinar com resumo existente, mantendo no máximo 500 caracteres
+  const combined = `${existingSummary} | ${newExchange}`;
+  if (combined.length <= 500) {
+    return combined;
+  }
+  
+  // Se muito longo, manter apenas as últimas trocas
+  const exchanges = combined.split(' | ');
+  const recentExchanges = exchanges.slice(-3); // Últimas 3 trocas
+  return recentExchanges.join(' | ').substring(0, 500);
+}
+
+// 🎭 Gerar notas de personalidade
+function generatePersonalityNotes(
+  userMessage: string, 
+  aiResponse: string, 
+  existingNotes?: string
+): string {
+  const notes: string[] = existingNotes ? [existingNotes] : [];
+  const fullText = `${userMessage} ${aiResponse}`.toLowerCase();
+  
+  // Detectar tom da conversa
+  if (fullText.includes('obrigado') || fullText.includes('valeu')) {
+    notes.push('Cliente educado e agradecido');
+  }
+  
+  if (fullText.includes('urgente') || fullText.includes('rápido')) {
+    notes.push('Cliente valoriza rapidez');
+  }
+  
+  if (fullText.includes('detalhes') || fullText.includes('explicar')) {
+    notes.push('Cliente gosta de explicações detalhadas');
+  }
+  
+  // Manter apenas as últimas 3 notas
+  const uniqueNotes = [...new Set(notes)].slice(-3);
+  return uniqueNotes.join('; ');
 }
