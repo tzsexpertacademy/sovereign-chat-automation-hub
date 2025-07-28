@@ -380,7 +380,15 @@ async function processBatch(batchKey: string) {
           return;
         }
 
-        // 🎯 CORRIGIR INVOCAÇÃO DA IA: Passar parâmetros corretos
+        // 🎯 ÚNICA CHAMADA À IA: Processamento exclusivo via BATCH (duplicação eliminada)
+        console.log('🚀 [BATCH-AI] INICIANDO processamento único da IA via BATCH');
+        console.log('📋 [BATCH-AI] Contexto:', {
+          messagesCount: allMessages.length,
+          batchSize: batch.messages.length,
+          ticketId: lastTicketId,
+          isBatch: true
+        });
+        
         await processWithAIIfEnabled(
           lastMessageData, 
           instanceDetails,
@@ -570,24 +578,22 @@ async function processYumerMessage(yumerData: YumerWebhookData, processAI: boole
     // 4. Processar mensagem para tickets
     const ticketId = await processMessageToTickets(processedMessage, instance.client_id, instance.instance_id);
     
-    // 🤖 5. ATIVAÇÃO AUTOMÁTICA DA IA: Verificar se deve processar com IA (apenas se processAI = true)
+    // 🤖 5. ATIVAÇÃO AUTOMÁTICA DA IA: DESABILITADO - Apenas processamento em BATCH
+    // CORREÇÃO DEFINITIVA: Removido processamento individual para evitar duplicação
+    // A IA será processada APENAS via batch system (linha 384) após 4s de timeout
     if (!processedMessage.fromMe && processAI) {
-      console.log('🤖 [AI-TRIGGER] Mensagem recebida (não enviada) - verificando se deve processar com IA');
+      console.log('🤖 [AI-TRIGGER] PROCESSAMENTO INDIVIDUAL DESABILITADO - aguardando batch');
+      console.log('💡 [AI-TRIGGER] IA será processada via BATCH após timeout de 4s (linha 384)');
       
       try {
-        // Primeiro garantir que a instância está conectada a uma fila
+        // Apenas garantir que a instância está conectada a uma fila (sem processar IA)
         await ensureInstanceQueueConnection(instance.id, instance.client_id);
+        console.log('✅ [AI-TRIGGER] Instância conectada à fila - processamento será via BATCH');
         
-        // 🎯 CORREÇÃO CRÍTICA: Parâmetros corretos para processWithAIIfEnabled
-        const aiResult = await processWithAIIfEnabled(
-          processedMessage, // messageData correto
-          instance, // instanceDetails correto
-          false, // isBatch = false para mensagem individual
-          1, // batchSize = 1
-          ticketId, // ticketId correto
-          undefined // allMessages = undefined para mensagem individual
-        );
-        console.log('🤖 [AI-TRIGGER] Resultado do processamento de IA:', aiResult ? 'sucesso' : 'não processado');
+        // 🚫 REMOVIDO: Processamento individual para evitar duplicação
+        // A chamada processWithAIIfEnabled foi movida para o batch system APENAS
+        // const aiResult = await processWithAIIfEnabled(...);
+        console.log('✅ [AI-TRIGGER] Mensagem adicionada ao batch - IA processará em conjunto');
       } catch (aiError) {
         console.error('❌ [AI-TRIGGER] Erro ao processar com IA:', aiError);
       }
