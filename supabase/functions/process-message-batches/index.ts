@@ -97,11 +97,18 @@ async function processBatch(batch: any) {
       .single();
 
     if (!ticket) {
-      console.log('🤖 [PROCESS-BATCH] ❌ Ticket não encontrado para:', batch.chat_id);
-      // PROCESSAR MENSAGEM INDIVIDUAL COMO FALLBACK
-      await processSingleMessage(batch.messages[0]);
-      await deleteBatch(batch.id);
-      return;
+      console.log('🤖 [PROCESS-BATCH] ❌ Ticket não encontrado - CRIANDO NOVO TICKET');
+      
+      // CRIAR TICKET ANTES DE PROCESSAR
+      const newTicket = await createTicketFromBatch(batch);
+      if (!newTicket) {
+        console.error('🤖 [PROCESS-BATCH] ❌ Falha ao criar ticket');
+        await deleteBatch(batch.id);
+        return;
+      }
+      
+      // Usar o ticket recém-criado
+      ticket = newTicket;
     }
 
     // CHAMAR IA COM BATCH
@@ -176,6 +183,57 @@ async function deleteBatch(batchId: string) {
     console.error('🤖 [DELETE-BATCH] ❌ Erro ao deletar batch:', error);
   } else {
     console.log('🤖 [DELETE-BATCH] ✅ Batch deletado:', batchId);
+  }
+}
+
+/**
+ * CRIAR TICKET A PARTIR DO BATCH
+ */
+async function createTicketFromBatch(batch: any) {
+  console.log('🤖 [CREATE-TICKET] Criando ticket para batch:', batch.id);
+  
+  try {
+    const firstMessage = batch.messages[0];
+    const customerName = firstMessage?.customerName || 'Cliente';
+    const phoneNumber = firstMessage?.phoneNumber || '';
+    const chatId = batch.chat_id;
+    const instanceId = batch.instance_id;
+    const clientId = batch.client_id;
+    
+    // Usar a função RPC do Supabase para criar/buscar ticket
+    const { data: ticketId, error: rpcError } = await supabase.rpc('upsert_conversation_ticket', {
+      p_client_id: clientId,
+      p_chat_id: chatId,
+      p_instance_id: instanceId,
+      p_customer_name: customerName,
+      p_customer_phone: phoneNumber,
+      p_last_message: firstMessage?.content || '',
+      p_last_message_at: new Date().toISOString()
+    });
+
+    if (rpcError) {
+      console.error('🤖 [CREATE-TICKET] ❌ Erro RPC:', rpcError);
+      return null;
+    }
+
+    // Buscar o ticket criado
+    const { data: ticket, error: fetchError } = await supabase
+      .from('conversation_tickets')
+      .select('*')
+      .eq('id', ticketId)
+      .single();
+
+    if (fetchError) {
+      console.error('🤖 [CREATE-TICKET] ❌ Erro ao buscar ticket:', fetchError);
+      return null;
+    }
+
+    console.log('🤖 [CREATE-TICKET] ✅ Ticket criado/encontrado:', ticket.id);
+    return ticket;
+    
+  } catch (error) {
+    console.error('🤖 [CREATE-TICKET] ❌ Erro geral:', error);
+    return null;
   }
 }
 

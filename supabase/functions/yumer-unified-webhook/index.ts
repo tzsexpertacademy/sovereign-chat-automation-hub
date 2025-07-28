@@ -228,10 +228,9 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
       timestamp: new Date(messageData.messageTimestamp * 1000),
       contact_name: pushName,
       phone_number: phoneNumber,
-      has_media: false,
-      media_url: '',
-      media_type: '',
-      is_processed: false
+      media_url: null,
+      media_mime_type: null,
+      is_processed: false // ✅ NÃO MARCAR COMO PROCESSADO AINDA
     };
 
     const { error: saveError } = await supabase

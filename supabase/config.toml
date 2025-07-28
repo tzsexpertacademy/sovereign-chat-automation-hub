@@ -16,6 +16,9 @@ verify_jwt = false
 [functions.process-message-batches]
 verify_jwt = false
 
+[functions.scheduler-trigger]
+verify_jwt = false
+
 [functions.whatsapp-decrypt-audio]
 verify_jwt = false
 
