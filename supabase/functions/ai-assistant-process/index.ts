@@ -181,6 +181,7 @@ serve(async (req) => {
           chat_id, 
           customer_id, 
           assigned_assistant_id,
+          assigned_queue_id,
           customers(name, phone),
           assistants(id, name, model, prompt, triggers, advanced_settings, is_active)
         `)
@@ -192,7 +193,83 @@ serve(async (req) => {
         throw new Error(`Ticket não encontrado: ${ticketId}`);
       }
       
-      // Resolver dados faltantes
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se o ticket tem fila associada
+      if (!ticketData.assigned_queue_id) {
+        console.log('🚫 [AI-ASSISTANT] Ticket sem fila associada - IA não deve responder');
+        console.log('📊 [AI-ASSISTANT] Detalhes do ticket sem fila:', {
+          ticketId,
+          clientId: ticketData.client_id,
+          chatId: ticketData.chat_id,
+          customerName: ticketData.customers?.name,
+          assignedQueueId: ticketData.assigned_queue_id
+        });
+        
+        return new Response(JSON.stringify({
+          success: false,
+          message: 'Ticket sem fila associada - IA não processará mensagens',
+          reason: 'NO_QUEUE_ASSIGNED',
+          ticketId,
+          timestamp: new Date().toISOString()
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // 🔍 BUSCAR ASSISTENTE DA FILA (não do ticket)
+      console.log('🔍 [AI-ASSISTANT] Buscando assistente da fila:', ticketData.assigned_queue_id);
+      
+      const { data: queueData, error: queueError } = await supabase
+        .from('queues')
+        .select(`
+          id,
+          name,
+          assistant_id,
+          is_active,
+          assistants(id, name, model, prompt, triggers, advanced_settings, is_active)
+        `)
+        .eq('id', ticketData.assigned_queue_id)
+        .eq('is_active', true)
+        .single();
+      
+      if (queueError || !queueData) {
+        console.log('🚫 [AI-ASSISTANT] Fila não encontrada ou inativa:', {
+          queueId: ticketData.assigned_queue_id,
+          error: queueError?.message
+        });
+        
+        return new Response(JSON.stringify({
+          success: false,
+          message: 'Fila não encontrada ou inativa - IA não processará mensagens',
+          reason: 'QUEUE_NOT_FOUND_OR_INACTIVE',
+          queueId: ticketData.assigned_queue_id,
+          timestamp: new Date().toISOString()
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
+      if (!queueData.assistants || !queueData.assistants.is_active) {
+        console.log('🚫 [AI-ASSISTANT] Fila sem assistente ou assistente inativo:', {
+          queueId: queueData.id,
+          queueName: queueData.name,
+          assistantId: queueData.assistant_id,
+          hasAssistant: !!queueData.assistants,
+          assistantActive: queueData.assistants?.is_active
+        });
+        
+        return new Response(JSON.stringify({
+          success: false,
+          message: 'Fila sem assistente ativo - IA não processará mensagens',
+          reason: 'NO_ACTIVE_ASSISTANT',
+          queueId: queueData.id,
+          queueName: queueData.name,
+          timestamp: new Date().toISOString()
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // ✅ TUDO VÁLIDO: Resolver dados
       resolvedClientId = clientId || ticketData.client_id;
       resolvedInstanceId = instanceId || ticketData.instance_id;
       resolvedContext = context || {
@@ -201,29 +278,13 @@ serve(async (req) => {
         phoneNumber: ticketData.customers?.phone || 'N/A'
       };
       
-      // 🎯 BUSCAR ASSISTENTE CORRETO: Primeiro do ticket, depois da fila padrão do cliente
-      if (!assistant && ticketData.assistants) {
-        resolvedAssistant = ticketData.assistants;
-        console.log('✅ [AI-ASSISTANT] Assistente encontrado no ticket:', resolvedAssistant.name);
-      } else if (!assistant) {
-        console.log('🔍 [AI-ASSISTANT] Buscando assistente ativo padrão do cliente...');
-        
-        const { data: clientAssistant, error: assistantError } = await supabase
-          .from('assistants')
-          .select('id, name, model, prompt, triggers, advanced_settings, is_active')
-          .eq('client_id', resolvedClientId)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-        
-        if (!assistantError && clientAssistant) {
-          resolvedAssistant = clientAssistant;
-          console.log('✅ [AI-ASSISTANT] Assistente ativo encontrado:', resolvedAssistant.name);
-        } else {
-          console.log('⚠️ [AI-ASSISTANT] Nenhum assistente ativo encontrado, usando padrão');
-        }
-      }
+      // Usar assistente da fila
+      resolvedAssistant = queueData.assistants;
+      console.log('✅ [AI-ASSISTANT] Assistente da fila encontrado:', {
+        assistantName: resolvedAssistant.name,
+        queueName: queueData.name,
+        queueId: queueData.id
+      });
       
       console.log('✅ [AI-ASSISTANT] Dados resolvidos do banco:', {
         clientId: resolvedClientId,
