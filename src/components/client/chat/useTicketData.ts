@@ -4,6 +4,7 @@ import { ticketsService } from '@/services/ticketsService';
 import { queuesService } from '@/services/queuesService';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { onlineStatusManager } from '@/services/onlineStatusManager';
 
 export const useTicketData = (ticketId: string, clientId: string) => {
   const [ticket, setTicket] = useState<any>(null);
@@ -93,6 +94,18 @@ export const useTicketData = (ticketId: string, clientId: string) => {
             status: preferredInstance.status,
             isPreferred: preferredInstance.instance_id === ticketData.instance_id
           });
+
+          // Configurar presença online para instância conectada
+          if (preferredInstance.status === 'connected' && preferredInstance.instance_id) {
+            console.log('🔵 [TICKET-DATA] Configurando presença online para instância conectada');
+            onlineStatusManager.configureOnlinePresence(
+              preferredInstance.instance_id, 
+              clientId, 
+              'auto-trigger'
+            ).catch(error => {
+              console.error('❌ Erro ao configurar presença:', error);
+            });
+          }
         } else {
           console.log('⚠️ Nenhuma instância WhatsApp encontrada');
           // Fallback: usar instance_id diretamente do ticket se não encontrou instância

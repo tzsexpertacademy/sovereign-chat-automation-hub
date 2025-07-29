@@ -1,13 +1,14 @@
 /**
  * Gerenciador Centralizado de Status Online
- * Evita conflitos entre múltiplos sistemas de presença
- * 🚫 TEMPORARIAMENTE DESABILITADO: CodeChat v2.2.1 não possui endpoint /chat/presence
+ * Sistema unificado para configurações de perfil e presença via CodeChat v2.2.1
  */
+
+import unifiedYumerService from './unifiedYumerService';
 
 interface OnlineStatusLock {
   chatId: string;
   instanceId: string;
-  lockedBy: 'ai' | 'user' | 'system' | 'presence-keep-alive';
+  lockedBy: 'ai' | 'user' | 'system' | 'auto-trigger';
   timestamp: number;
   expiresAt: number;
   reason?: string;
@@ -17,10 +18,10 @@ class OnlineStatusManager {
   private static instance: OnlineStatusManager;
   private locks = new Map<string, OnlineStatusLock>();
   private readonly LOCK_DURATION = 30000; // 30 segundos
-  private isGloballyDisabled = true; // 🚫 DESABILITADO por enquanto
+  private isGloballyDisabled = false; // ✅ HABILITADO para usar configurações de perfil
 
   private constructor() {
-    console.log('🏗️ [STATUS-MANAGER] Inicializando gerenciador (DESABILITADO - endpoint não existe)');
+    console.log('🏗️ [STATUS-MANAGER] Inicializando gerenciador com configurações de perfil');
   }
 
   static getInstance(): OnlineStatusManager {
@@ -30,7 +31,7 @@ class OnlineStatusManager {
     return OnlineStatusManager.instance;
   }
 
-  // 🚫 Status global do sistema
+  // Sistema de habilitação/desabilitação global
   isSystemDisabled(): boolean {
     return this.isGloballyDisabled;
   }
@@ -44,6 +45,46 @@ class OnlineStatusManager {
     this.isGloballyDisabled = true;
     this.clearAllLocks();
     console.log('🚫 [STATUS-MANAGER] Sistema desabilitado:', reason || 'sem motivo especificado');
+  }
+
+  // Função principal para configurar presença online
+  async configureOnlinePresence(instanceId: string, clientId: string, source: 'ai' | 'user' | 'system' | 'auto-trigger' = 'system'): Promise<boolean> {
+    if (this.isGloballyDisabled) {
+      console.log('🚫 [STATUS-MANAGER] Sistema desabilitado - configuração cancelada');
+      return false;
+    }
+
+    // Verificar se já está sendo processado
+    if (this.isLocked('presence', instanceId)) {
+      console.log(`🔒 [STATUS-MANAGER] Configuração de presença já em andamento para: ${instanceId}`);
+      return false;
+    }
+
+    // Adquirir lock
+    if (!this.acquireLock('presence', instanceId, source)) {
+      console.log(`❌ [STATUS-MANAGER] Falha ao adquirir lock para: ${instanceId}`);
+      return false;
+    }
+
+    try {
+      console.log(`🔵 [STATUS-MANAGER] Iniciando configuração de presença: ${instanceId} (por ${source})`);
+      
+      const result = await unifiedYumerService.setOnlinePresence(instanceId, clientId);
+      
+      if (result.success) {
+        console.log(`✅ [STATUS-MANAGER] Presença configurada com sucesso para: ${instanceId}`);
+        return true;
+      } else {
+        console.log(`❌ [STATUS-MANAGER] Falha na configuração: ${result.error}`);
+        return false;
+      }
+      
+    } catch (error) {
+      console.error(`❌ [STATUS-MANAGER] Erro ao configurar presença:`, error);
+      return false;
+    } finally {
+      this.releaseLock('presence', instanceId, source);
+    }
   }
 
   // Verificar se chat está bloqueado
@@ -69,7 +110,7 @@ class OnlineStatusManager {
   }
 
   // Tentar obter lock
-  acquireLock(chatId: string, instanceId: string, source: 'ai' | 'user' | 'system' | 'presence-keep-alive'): boolean {
+  acquireLock(chatId: string, instanceId: string, source: 'ai' | 'user' | 'system' | 'auto-trigger'): boolean {
     if (this.isGloballyDisabled) {
       console.log('🚫 [STATUS-MANAGER] Sistema desabilitado - lock negado para:', source);
       return false;
@@ -98,7 +139,7 @@ class OnlineStatusManager {
   }
 
   // Liberar lock
-  releaseLock(chatId: string, instanceId: string, source: 'ai' | 'user' | 'system' | 'presence-keep-alive'): void {
+  releaseLock(chatId: string, instanceId: string, source: 'ai' | 'user' | 'system' | 'auto-trigger'): void {
     const key = `${instanceId}:${chatId}`;
     const lock = this.locks.get(key);
     
@@ -143,5 +184,5 @@ class OnlineStatusManager {
 
 export const onlineStatusManager = OnlineStatusManager.getInstance();
 
-// Inicializar como desabilitado
-onlineStatusManager.disableSystem('CodeChat v2.2.1 não possui endpoint /chat/presence');
+// Sistema habilitado para usar configurações de perfil
+onlineStatusManager.enableSystem();

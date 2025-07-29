@@ -6,6 +6,7 @@ import { useMessageBatch } from './useMessageBatch';
 import { useAutoReactions } from './useAutoReactions';
 import { useOnlineStatus } from './useOnlineStatus';
 import { useSmartMessageSplit } from './useSmartMessageSplit';
+import { onlineStatusManager } from '@/services/onlineStatusManager';
 
 export interface HumanizedPersonality {
   name: string;

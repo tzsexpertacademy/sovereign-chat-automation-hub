@@ -112,6 +112,9 @@ class UnifiedYumerService {
     };
   }
 
+  // Sistema de locks para evitar chamadas duplicadas
+  private activeLocks = new Set<string>();
+
   // Request com retry e timeout - CORRIGIDO para suportar business_token
   public async makeRequest<T>(
     endpoint: string, 
@@ -235,6 +238,78 @@ class UnifiedYumerService {
 
   // ==================== PROFILE MANAGEMENT - CODECHAT V2.2.1 ====================
   
+  // Função centralizada para configurar presença online completa
+  async setOnlinePresence(instanceId: string, clientId?: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    // Verificar se já está sendo processado (lock)
+    const lockKey = `presence_${instanceId}`;
+    if (this.activeLocks.has(lockKey)) {
+      console.log('🔒 [PRESENCE] Já está sendo processado, pulando...');
+      return { success: false, error: 'Já em processamento' };
+    }
+
+    this.activeLocks.add(lockKey);
+    
+    try {
+      console.log(`🔵 [PRESENCE] Configurando presença online para: ${instanceId}`);
+      
+      // Buscar configurações salvas do cliente se fornecido
+      let config = null;
+      if (clientId) {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: configData } = await supabase
+          .from('client_ai_configs')
+          .select('online_status_config')
+          .eq('client_id', clientId)
+          .single();
+          
+        if (configData?.online_status_config) {
+          config = configData.online_status_config;
+          console.log('⚙️ [PRESENCE] Configurações encontradas:', config);
+        }
+      }
+
+      // Se sistema desabilitado nas configurações, não fazer nada
+      if (config && !config.enabled) {
+        console.log('🚫 [PRESENCE] Sistema desabilitado nas configurações do cliente');
+        return { success: false, error: 'Sistema desabilitado' };
+      }
+
+      // Aplicar configurações padrão ou customizadas
+      const profileStatus = config?.profileStatus || "Estou online e disponível!";
+      const onlinePrivacy = config?.onlinePrivacy || "all";
+      const seenPrivacy = config?.seenPrivacy || "all";
+
+      // Executar todas as configurações em paralelo
+      const results = await Promise.allSettled([
+        this.updateProfileStatus(instanceId, profileStatus),
+        this.updateOnlinePrivacy(instanceId, onlinePrivacy),
+        this.updateSeenPrivacy(instanceId, seenPrivacy)
+      ]);
+
+      // Verificar resultados
+      const successes = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+      const total = results.length;
+
+      console.log(`✅ [PRESENCE] Configuração concluída: ${successes}/${total} sucessos`);
+
+      if (successes === total) {
+        return { success: true, data: { applied: { profileStatus, onlinePrivacy, seenPrivacy } } };
+      } else {
+        const errors = results
+          .filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success))
+          .map(r => r.status === 'rejected' ? r.reason : (r.value as any).error);
+        
+        return { success: false, error: `Falhas parciais: ${errors.join(', ')}` };
+      }
+
+    } catch (error) {
+      console.error('❌ [PRESENCE] Erro geral:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+    } finally {
+      this.activeLocks.delete(lockKey);
+    }
+  }
+
   // Online Privacy: Configurar quando o bot aparece online
   async updateOnlinePrivacy(instanceId: string, privacy: 'all' | 'contacts' | 'none' | 'contact_blacklist'): Promise<{ success: boolean; data?: any; error?: string }> {
     console.log(`🔒 [PROFILE] Configurando privacidade online: ${privacy}`);
@@ -326,9 +401,9 @@ class UnifiedYumerService {
     }
   }
 
-  // Profile Status: Configurar status do perfil (recado)
+  // Status do perfil: Texto que aparece no status do WhatsApp
   async updateProfileStatus(instanceId: string, status: string): Promise<{ success: boolean; data?: any; error?: string }> {
-    console.log(`📝 [PROFILE] Atualizando status do perfil: ${status}`);
+    console.log(`📝 [PROFILE] Configurando status do perfil: ${status}`);
     
     try {
       const { supabase } = await import('@/integrations/supabase/client');
