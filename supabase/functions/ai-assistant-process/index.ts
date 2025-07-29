@@ -654,8 +654,8 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         const config = aiConfig.online_status_config;
         console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
         
-        // Configurar presença global - CodeChat v2.2.1
-        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/set-presence-status`, {
+        // 1. Configurar presença global - CodeChat v2.2.1
+        const presenceResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/set-presence-status`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${client.business_token}`,
@@ -663,37 +663,64 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
           },
           body: JSON.stringify({ presence: 'available' })
         });
+        
+        const presenceData = await presenceResponse.text();
+        console.log('🟢 [GLOBAL-PRESENCE] Response:', presenceData);
 
-        // Configurar privacidade online - CodeChat v2.2.1
-        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-status`, {
+        // 2. Configurar privacidade online - CodeChat v2.2.1
+        const onlinePrivacyResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-privacy`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${client.business_token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ privacy: config.onlinePrivacy || 'all' })
-        });
-
-        // Configurar privacidade de visualização - CodeChat v2.2.1
-        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-seen-status`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${client.business_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ privacy: config.seenPrivacy || 'all' })
+          body: JSON.stringify({ action: config.onlinePrivacy || 'all' })
         });
         
-        // Configurar status do perfil - CodeChat v2.2.1
+        const onlinePrivacyData = await onlinePrivacyResponse.text();
+        console.log('🔒 [ONLINE-PRIVACY] Response:', onlinePrivacyData);
+        
+        // 3. Configurar privacidade de visualização - CodeChat v2.2.1
+        const seenPrivacyResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-seen-privacy`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${client.business_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ action: config.seenPrivacy || 'all' })
+        });
+        
+        const seenPrivacyData = await seenPrivacyResponse.text();
+        console.log('👁️ [SEEN-PRIVACY] Response:', seenPrivacyData);
+        
+        // 4. Configurar status do perfil - CodeChat v2.2.1
         if (config.profileStatus) {
-          await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-status`, {
+          const profileStatusResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-status`, {
             method: 'PATCH',
             headers: {
               'Authorization': `Bearer ${client.business_token}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ status: config.profileStatus })
+            body: JSON.stringify({ profileStatus: config.profileStatus })
           });
+          
+          const profileStatusData = await profileStatusResponse.text();
+          console.log('📝 [PROFILE-STATUS] Response:', profileStatusData);
+        }
+        
+        // 5. Configurar nome do perfil (opcional) - CodeChat v2.2.1
+        if (config.profileName) {
+          const profileNameResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-name`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${client.business_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ profileName: config.profileName })
+          });
+          
+          const profileNameData = await profileNameResponse.text();
+          console.log('👤 [PROFILE-NAME] Response:', profileNameData);
         }
         
         console.log('✅ [PROFILE] Configurações de perfil aplicadas com sucesso');

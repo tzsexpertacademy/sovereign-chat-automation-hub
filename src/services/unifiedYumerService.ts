@@ -258,7 +258,7 @@ class UnifiedYumerService {
       }
 
       // Primeiro definir presença global como disponível
-      await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/set-presence-status`, {
+      const presenceResponse = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/set-presence-status`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
@@ -266,14 +266,17 @@ class UnifiedYumerService {
         },
         body: JSON.stringify({ presence: 'available' })
       });
+      
+      console.log('🟢 [PRESENCE] Response:', await presenceResponse.text());
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-online-status`, {
+      // Configurar privacidade online - CodeChat v2.2.1
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-online-privacy`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ privacy })
+        body: JSON.stringify({ action: privacy === 'all' ? 'all' : privacy })
       });
 
       if (!response.ok) {
@@ -311,13 +314,13 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-seen-status`, {
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-seen-privacy`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ privacy })
+        body: JSON.stringify({ action: privacy === 'all' ? 'all' : privacy })
       });
 
       if (!response.ok) {
@@ -361,7 +364,7 @@ class UnifiedYumerService {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ profileStatus: status })
       });
 
       if (!response.ok) {
@@ -374,6 +377,50 @@ class UnifiedYumerService {
       return { success: true, data: result };
     } catch (error) {
       console.error('❌ [PROFILE] Erro ao atualizar status do perfil:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+    }
+  }
+
+  // Profile Name: Configurar nome do perfil
+  async updateProfileName(instanceId: string, profileName: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`👤 [PROFILE] Atualizando nome do perfil: ${profileName}`);
+    
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: instanceData } = await supabase
+        .from('whatsapp_instances')
+        .select(`
+          instance_id,
+          clients:client_id (
+            business_token
+          )
+        `)
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (!instanceData?.clients?.business_token) {
+        return { success: false, error: 'Business token não encontrado' };
+      }
+
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-name`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${instanceData.clients.business_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ profileName })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+      }
+
+      const result = await response.json();
+      console.log('✅ [PROFILE] Nome do perfil atualizado:', result);
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('❌ [PROFILE] Erro ao atualizar nome do perfil:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
     }
   }
