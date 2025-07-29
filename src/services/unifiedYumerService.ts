@@ -236,7 +236,7 @@ class UnifiedYumerService {
   // ==================== PROFILE MANAGEMENT - CODECHAT V2.2.1 ====================
   
   // Online Privacy: Configurar quando o bot aparece online
-  async updateOnlinePrivacy(instanceId: string, privacy: 'all' | 'contacts' | 'none'): Promise<{ success: boolean; data?: any; error?: string }> {
+  async updateOnlinePrivacy(instanceId: string, privacy: 'all' | 'contacts' | 'none' | 'contact_blacklist'): Promise<{ success: boolean; data?: any; error?: string }> {
     console.log(`🔒 [PROFILE] Configurando privacidade online: ${privacy}`);
     
     try {
@@ -257,17 +257,18 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/online-privacy`, {
-        method: 'PUT',
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-online-privacy`, {
+        method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ privacy })
+        body: JSON.stringify({ action: privacy })
       });
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.log(`🔒 [ONLINE-PRIVACY] Response: ${errorText}`);
         return { success: false, error: `HTTP ${response.status}: ${errorText}` };
       }
 
@@ -281,7 +282,7 @@ class UnifiedYumerService {
   }
 
   // Seen Privacy: Configurar visto por último
-  async updateSeenPrivacy(instanceId: string, privacy: 'all' | 'contacts' | 'none'): Promise<{ success: boolean; data?: any; error?: string }> {
+  async updateSeenPrivacy(instanceId: string, privacy: 'all' | 'contacts' | 'none' | 'contact_blacklist'): Promise<{ success: boolean; data?: any; error?: string }> {
     console.log(`👁️ [PROFILE] Configurando privacidade visto por último: ${privacy}`);
     
     try {
@@ -301,17 +302,18 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/seen-privacy`, {
-        method: 'PUT',
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-seen-privacy`, {
+        method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ privacy })
+        body: JSON.stringify({ action: privacy })
       });
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.log(`👁️ [SEEN-PRIVACY] Response: ${errorText}`);
         return { success: false, error: `HTTP ${response.status}: ${errorText}` };
       }
 
@@ -345,17 +347,18 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/status`, {
-        method: 'PUT',
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-status`, {
+        method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ profileStatus: status })
       });
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.log(`📝 [PROFILE-STATUS] Response: ${errorText}`);
         return { success: false, error: `HTTP ${response.status}: ${errorText}` };
       }
 

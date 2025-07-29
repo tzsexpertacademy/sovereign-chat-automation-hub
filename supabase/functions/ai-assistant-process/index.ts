@@ -655,25 +655,38 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
         
         // Configurar privacidade online para "todos" verem
-        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/profile/online-privacy`, {
-          method: 'PUT',
+        const onlineResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-privacy`, {
+          method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${client.business_token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ privacy: config.onlinePrivacy || 'all' })
+          body: JSON.stringify({ action: config.onlinePrivacy || 'all' })
         });
+        console.log(`🔒 [ONLINE-PRIVACY] Response: ${await onlineResponse.text()}`);
+        
+        // Configurar privacidade visto por último
+        const seenResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-seen-privacy`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${client.business_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ action: config.seenPrivacy || 'all' })
+        });
+        console.log(`👁️ [SEEN-PRIVACY] Response: ${await seenResponse.text()}`);
         
         // Configurar status do perfil
         if (config.profileStatus) {
-          await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/profile/status`, {
-            method: 'PUT',
+          const statusResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-status`, {
+            method: 'PATCH',
             headers: {
               'Authorization': `Bearer ${client.business_token}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ status: config.profileStatus })
+            body: JSON.stringify({ profileStatus: config.profileStatus })
           });
+          console.log(`📝 [PROFILE-STATUS] Response: ${await statusResponse.text()}`);
         }
         
         console.log('✅ [PROFILE] Configurações de perfil aplicadas com sucesso');

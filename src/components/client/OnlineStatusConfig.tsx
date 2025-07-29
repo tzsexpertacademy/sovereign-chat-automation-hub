@@ -27,8 +27,8 @@ interface OnlineStatusConfigProps {
 interface StatusConfig {
   enabled: boolean;
   autoOnline: boolean;
-  onlinePrivacy: 'all' | 'contacts' | 'none';
-  seenPrivacy: 'all' | 'contacts' | 'none';
+  onlinePrivacy: 'all' | 'contacts' | 'none' | 'contact_blacklist';
+  seenPrivacy: 'all' | 'contacts' | 'none' | 'contact_blacklist';
   profileStatus: string;
   showActivityIndicator: boolean;
 }
@@ -238,11 +238,12 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
                     value={config.onlinePrivacy}
                     onChange={(e) => setConfig(prev => ({ 
                       ...prev, 
-                      onlinePrivacy: e.target.value as 'all' | 'contacts' | 'none'
+                      onlinePrivacy: e.target.value as 'all' | 'contacts' | 'none' | 'contact_blacklist'
                     }))}
                   >
                     <option value="all">Todos</option>
                     <option value="contacts">Apenas contatos</option>
+                    <option value="contact_blacklist">Bloqueados</option>
                     <option value="none">Ninguém</option>
                   </select>
                   <p className="text-xs text-muted-foreground">
@@ -258,11 +259,12 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
                     value={config.seenPrivacy}
                     onChange={(e) => setConfig(prev => ({ 
                       ...prev, 
-                      seenPrivacy: e.target.value as 'all' | 'contacts' | 'none'
+                      seenPrivacy: e.target.value as 'all' | 'contacts' | 'none' | 'contact_blacklist'
                     }))}
                   >
                     <option value="all">Todos</option>
                     <option value="contacts">Apenas contatos</option>
+                    <option value="contact_blacklist">Bloqueados</option>
                     <option value="none">Ninguém</option>
                   </select>
                   <p className="text-xs text-muted-foreground">
