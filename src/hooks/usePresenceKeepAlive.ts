@@ -28,10 +28,24 @@ export const usePresenceKeepAlive = (
   const lastActivityRef = useRef<number>(Date.now());
   const isActiveRef = useRef(enabled);
   const hasTokenFailureRef = useRef(false);
+  const retryCountRef = useRef(0);
+  const lastFailureTimeRef = useRef<number>(0);
 
   // Atualizar ref quando enabled mudar
   useEffect(() => {
     isActiveRef.current = enabled;
+    
+    // Reset da flag de failure quando habilitado novamente
+    if (enabled && hasTokenFailureRef.current) {
+      const timeSinceFailure = Date.now() - lastFailureTimeRef.current;
+      const resetAfter = 3 * 60 * 1000; // 3 minutos
+      
+      if (timeSinceFailure > resetAfter) {
+        console.log('🔄 [PRESENCE-KEEP-ALIVE] Resetando flag de failure após timeout');
+        hasTokenFailureRef.current = false;
+        retryCountRef.current = 0;
+      }
+    }
   }, [enabled]);
 
   // Enviar presença usando business_token fixo (CodeChat v2.2.1)
@@ -60,7 +74,9 @@ export const usePresenceKeepAlive = (
 
         if (error || !client?.business_token) {
           console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Business token não encontrado para cliente: ${clientId}`, error);
+          console.log(`❌ [PRESENCE-KEEP-ALIVE] Marcando failure permanente - token não encontrado`);
           hasTokenFailureRef.current = true;
+          lastFailureTimeRef.current = Date.now();
           return false;
         }
 
@@ -89,10 +105,19 @@ export const usePresenceKeepAlive = (
         const errorText = await response.text();
         console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Falha ao enviar presença (${response.status}):`, errorText);
         
-        // Para 401/404, parar tentativas e deixar backend assumir
-        if (response.status === 401 || response.status === 404) {
+        // Incrementar tentativas para erros temporários
+        retryCountRef.current++;
+        
+        // Para 401/403/404, marcar failure permanente
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
+          console.log(`❌ [PRESENCE-KEEP-ALIVE] Erro ${response.status} - marcando failure permanente`);
           hasTokenFailureRef.current = true;
-          console.log('🛑 [PRESENCE-KEEP-ALIVE] Pausando tentativas - backend deve assumir presença');
+          lastFailureTimeRef.current = Date.now();
+        } else if (retryCountRef.current >= 3) {
+          // Após 3 tentativas de erros temporários, pausar temporariamente
+          console.log(`❌ [PRESENCE-KEEP-ALIVE] Muitas tentativas (${retryCountRef.current}) - pausando temporariamente`);
+          hasTokenFailureRef.current = true;
+          lastFailureTimeRef.current = Date.now();
         }
         
         return false;
@@ -174,6 +199,16 @@ export const usePresenceKeepAlive = (
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         markActivity();
+        
+        // Reset da flag de failure quando página volta ao foco
+        if (hasTokenFailureRef.current) {
+          const timeSinceFailure = Date.now() - lastFailureTimeRef.current;
+          if (timeSinceFailure > 60000) { // 1 minuto
+            console.log('🔄 [PRESENCE-KEEP-ALIVE] Resetando flag de failure - página voltou ao foco');
+            hasTokenFailureRef.current = false;
+            retryCountRef.current = 0;
+          }
+        }
       } else {
         // Página ficou inativa - parar keep-alive após delay
         setTimeout(() => {
