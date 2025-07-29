@@ -324,10 +324,10 @@ serve(async (req) => {
 
     // Buscar em paralelo: config do cliente, memória conversacional e histórico
     const [clientConfigResult, memoryResult, messagesResult] = await Promise.allSettled([
-      // Buscar API Key específica do cliente
+      // Buscar API Key específica do cliente E configuração de status online
       supabase
         .from('client_ai_configs')
-        .select('openai_api_key, default_model')
+        .select('openai_api_key, default_model, enabled, online_status_config')
         .eq('client_id', resolvedClientId)
         .single(),
       
@@ -643,50 +643,105 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     }
 
     // 📱 CONFIGURAR PROFILE ONLINE SE HABILITADO
-    try {
-      const { data: aiConfig } = await supabase
-        .from('client_ai_configs')
-        .select('online_status_config')
-        .eq('client_id', resolvedClientId)
-        .single();
+    let onlineStatusConfig = null;
+    
+    // Primeiro buscar do clientConfigResult já carregado
+    if (clientConfigResult.status === 'fulfilled' && clientConfigResult.value.data?.online_status_config) {
+      onlineStatusConfig = clientConfigResult.value.data.online_status_config;
+      console.log('⚙️ [CONFIG] Config status online encontrada (cache):', onlineStatusConfig);
+    } else {
+      // Fallback: buscar diretamente se não veio no cache
+      try {
+        const { data: aiConfig } = await supabase
+          .from('client_ai_configs')
+          .select('online_status_config')
+          .eq('client_id', resolvedClientId)
+          .single();
+        
+        onlineStatusConfig = aiConfig?.online_status_config;
+        console.log('⚙️ [CONFIG] Config status online encontrada (fallback):', onlineStatusConfig);
+      } catch (error) {
+        console.log('⚙️ [CONFIG] Erro ao buscar config status online:', error);
+      }
+    }
 
-      if (aiConfig?.online_status_config?.enabled) {
-        const config = aiConfig.online_status_config;
+    console.log('⚙️ [CONFIG] Executando configuração de status online:', {
+      hasConfig: !!onlineStatusConfig,
+      enabled: onlineStatusConfig?.enabled,
+      onlinePrivacy: onlineStatusConfig?.onlinePrivacy,
+      seenPrivacy: onlineStatusConfig?.seenPrivacy,
+      profileStatus: onlineStatusConfig?.profileStatus,
+      businessToken: !!client?.business_token,
+      realInstanceId
+    });
+
+    if (onlineStatusConfig?.enabled) {
         console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
         
-        // Configurar privacidade online para "todos" verem
-        const onlineResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-privacy`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${client.business_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ action: config.onlinePrivacy || 'all' })
-        });
-        console.log(`🔒 [ONLINE-PRIVACY] Response: ${await onlineResponse.text()}`);
-        
-        // Configurar privacidade visto por último
-        const seenResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-seen-privacy`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${client.business_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ action: config.seenPrivacy || 'all' })
-        });
-        console.log(`👁️ [SEEN-PRIVACY] Response: ${await seenResponse.text()}`);
-        
-        // Configurar status do perfil
-        if (config.profileStatus) {
-          const statusResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-status`, {
+        try {
+          // 1. Configurar privacidade online para "todos" verem
+          console.log('🔒 [ONLINE-PRIVACY] Configurando privacidade online...');
+          const onlineResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-privacy`, {
             method: 'PATCH',
             headers: {
               'Authorization': `Bearer ${client.business_token}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ profileStatus: config.profileStatus })
+            body: JSON.stringify({ action: onlineStatusConfig.onlinePrivacy || 'all' })
           });
-          console.log(`📝 [PROFILE-STATUS] Response: ${await statusResponse.text()}`);
+          
+          if (onlineResponse.ok) {
+            const onlineResult = await onlineResponse.text();
+            console.log(`🔒 [ONLINE-PRIVACY] Response: ${onlineResult}`);
+          } else {
+            console.error(`🔒 [ONLINE-PRIVACY] Erro HTTP ${onlineResponse.status}:`, await onlineResponse.text());
+          }
+          
+          // Aguardar 500ms entre chamadas
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // 2. Configurar privacidade visto por último
+          console.log('👁️ [SEEN-PRIVACY] Configurando privacidade visto por último...');
+          const seenResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-seen-privacy`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${client.business_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ action: onlineStatusConfig.seenPrivacy || 'all' })
+          });
+          
+          if (seenResponse.ok) {
+            const seenResult = await seenResponse.text();
+            console.log(`👁️ [SEEN-PRIVACY] Response: ${seenResult}`);
+          } else {
+            console.error(`👁️ [SEEN-PRIVACY] Erro HTTP ${seenResponse.status}:`, await seenResponse.text());
+          }
+          
+          // Aguardar 500ms entre chamadas
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // 3. Configurar status do perfil
+          if (onlineStatusConfig.profileStatus) {
+            console.log('📝 [PROFILE-STATUS] Configurando status do perfil...');
+            const statusResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-status`, {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${client.business_token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ profileStatus: onlineStatusConfig.profileStatus })
+            });
+            
+            if (statusResponse.ok) {
+              const statusResult = await statusResponse.text();
+              console.log(`📝 [PROFILE-STATUS] Response: ${statusResult}`);
+            } else {
+              console.error(`📝 [PROFILE-STATUS] Erro HTTP ${statusResponse.status}:`, await statusResponse.text());
+            }
+          }
+        } catch (configError) {
+          console.error('❌ [PROFILE-CONFIG] Erro nas configurações de perfil:', configError);
         }
         
         console.log('✅ [PROFILE] Configurações de perfil aplicadas com sucesso');
