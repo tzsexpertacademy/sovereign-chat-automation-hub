@@ -824,53 +824,13 @@ class UnifiedYumerService {
     return { success: false, error: result.error || 'Falha ao fazer refresh do token' };
    }
 
-  // Configurações de status online e privacidade - CodeChat v2.2.1
-  async updateOnlinePrivacy(instanceId: string, privacy: 'all' | 'contacts' | 'none' = 'all'): Promise<boolean> {
-    try {
-      console.log('🌐 Atualizando privacidade online:', { instanceId, privacy });
-      const response = await this.makeRequest(`/api/v2/instance/${instanceId}/whatsapp/update/profile-online-status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ privacy })
-      });
-      
-      console.log('✅ Privacidade online atualizada:', response);
-      return response?.success || true;
-    } catch (error) {
-      console.error('❌ Erro ao atualizar privacidade online:', error);
-      return false;
-    }
-  }
-
-  async updateSeenPrivacy(instanceId: string, privacy: 'all' | 'contacts' | 'none' = 'all'): Promise<boolean> {
-    try {
-      console.log('👁️ Atualizando privacidade de visualização:', { instanceId, privacy });
-      const response = await this.makeRequest(`/api/v2/instance/${instanceId}/whatsapp/update/profile-seen-status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ privacy })
-      });
-      
-      console.log('✅ Privacidade de visualização atualizada:', response);
-      return response?.success || true;
-    } catch (error) {
-      console.error('❌ Erro ao atualizar privacidade de visualização:', error);
-      return false;
-    }
-  }
-
-  async updateProfileStatus(instanceId: string, status: string): Promise<boolean> {
-    try {
-      console.log('📝 Atualizando status do perfil:', { instanceId, status });
-      const response = await this.makeRequest(`/api/v2/instance/${instanceId}/whatsapp/update/profile-name`, {
-        method: 'PATCH',
-        body: JSON.stringify({ name: status })
-      });
-      
-      console.log('✅ Status do perfil atualizado:', response);
-      return response?.success || true;
-    } catch (error) {
-      console.error('❌ Erro ao atualizar status do perfil:', error);
-      return false;
-    }
+  // Função para ativar/desativar instância
+  async toggleActivate(instanceId: string, action: 'activate' | 'deactivate'): Promise<{ success: boolean; error?: string }> {
+    console.log(`🔄 [UNIFIED-YUMER] ${action === 'activate' ? 'Ativando' : 'Desativando'} instância ${instanceId}`);
+    
+    return this.makeRequest(`/api/v2/instance/${instanceId}/${action}`, {
+      method: 'PATCH'
+    });
   }
 
   // Sincronizar instância Supabase ↔ YUMER
@@ -932,7 +892,7 @@ class UnifiedYumerService {
       // 3. Ativar se necessário
       if (instanceResult.data?.state !== 'active') {
         console.log('🔄 [FLOW] Ativando instância...');
-        const activateResult = await this.toggleActivate(businessId, String(instanceId), 'activate');
+        const activateResult = await this.toggleActivate(String(instanceId), 'activate');
         if (!activateResult.success) {
           console.warn('⚠️ [FLOW] Erro ao ativar instância:', activateResult.error);
         }
@@ -1244,15 +1204,6 @@ class UnifiedYumerService {
     };
   }
 
-  // Ativar/desativar instância
-  async toggleActivate(businessId: string, instanceId: string, action: 'activate' | 'deactivate' = 'activate'): Promise<{ success: boolean; data?: any; error?: string }> {
-    console.log(`🔄 [UNIFIED-YUMER] ${action === 'activate' ? 'Ativando' : 'Desativando'} instância:`, instanceId);
-    
-    return this.makeRequest(`/api/v2/business/${businessId}/instance/${instanceId}/toggle-activate`, {
-      method: 'PATCH',
-      body: JSON.stringify({ action })
-    }, true, true, businessId);
-  }
 
   // ==================== CONFIGURAÇÃO ====================
   setRequestConfig(config: Partial<RequestConfig>): void {
@@ -1299,6 +1250,6 @@ export const yumerApiV2 = {
   getQRCode: (instanceId: string) => unifiedYumerService.getQRCode(instanceId),
   // Novos métodos
   refreshInstanceToken: (businessId: string, instanceId: string, oldToken: string) => unifiedYumerService.refreshInstanceToken(businessId, instanceId, oldToken),
-  toggleActivate: (businessId: string, instanceId: string, action: 'activate' | 'deactivate') => unifiedYumerService.toggleActivate(businessId, instanceId, action),
+  toggleActivate: (instanceId: string, action: 'activate' | 'deactivate') => unifiedYumerService.toggleActivate(instanceId, action),
   createInstanceCompleteFlow: (businessId: string, clientId: string, instanceName?: string) => unifiedYumerService.createInstanceCompleteFlow(businessId, clientId, instanceName)
 };
