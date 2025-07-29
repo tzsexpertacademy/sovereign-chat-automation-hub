@@ -13,7 +13,6 @@ import { whatsappImageService } from '@/services/whatsappImageService';
 import { whatsappVideoService } from '@/services/whatsappVideoService';
 import { whatsappDocumentService } from '@/services/whatsappDocumentService';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
-import { useRealTimePresence } from '@/hooks/useRealTimePresence';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 
 interface MessagesListProps {
@@ -27,15 +26,13 @@ interface MessagesListProps {
 const MessagesList = ({ messages, scrollAreaRef, getMessageStatus, ticketId, instanceId }: MessagesListProps) => {
   // 👀 INDICADORES DE PRESENÇA IMEDIATOS: Hook para presença em tempo real
   const { isTyping } = useTicketRealtimeImproved(ticketId || '');
-  const presence = useRealTimePresence(instanceId || '');
-
-  // Simular isRecording baseado no status de presença
-  const isRecording = presence.status === 'composing' && presence.chatId && presence.chatId.includes('recording');
+  
+  // 🚫 REMOVIDO: useRealTimePresence - IA controla status online
+  const isRecording = false; // Simplificado
 
   console.log('🎭 [MESSAGES-LIST] Indicadores de presença:', {
     isTyping,
     isRecording,
-    presenceStatus: presence.status,
     ticketId,
     instanceId
   });
@@ -241,7 +238,7 @@ const renderMessageContent = (message: any) => {
     <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
       <div className="space-y-4">
         {/* 🎭 INDICADORES DE PRESENÇA IMEDIATOS */}
-        {(isTyping || isRecording || presence.status === 'composing') && (
+        {(isTyping || isRecording) && (
           <div className="flex gap-3 justify-start">
             <Avatar className="w-8 h-8 flex-shrink-0">
               <AvatarFallback>

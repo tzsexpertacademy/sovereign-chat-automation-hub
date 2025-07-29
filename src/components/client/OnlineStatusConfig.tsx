@@ -113,46 +113,17 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
   };
 
   const testStatusDetection = async () => {
-    if (!instanceId) {
-      toast({
-        title: "⚠️ Teste Indisponível",
-        description: "Nenhuma instância WhatsApp conectada para testar",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setTestingStatus('testing');
-    try {
-      console.log('🧪 [STATUS-TEST] Iniciando teste de configuração de perfil...');
-      
-      const { default: unifiedYumerService } = await import('@/services/unifiedYumerService');
-      
-      // Testar configuração de privacidade online
-      const onlineResult = await unifiedYumerService.updateOnlinePrivacy(instanceId, config.onlinePrivacy);
-      if (!onlineResult.success) throw new Error(onlineResult.error);
-      
-      // Testar configuração de status do perfil
-      const statusResult = await unifiedYumerService.updateProfileStatus(instanceId, config.profileStatus);
-      if (!statusResult.success) throw new Error(statusResult.error);
-      
-      setTestingStatus('success');
-      toast({
-        title: "✅ Teste Bem-sucedido",
-        description: "Configurações de perfil aplicadas com sucesso no WhatsApp"
-      });
-
-      setTimeout(() => setTestingStatus('idle'), 3000);
-    } catch (error) {
-      console.error('❌ [STATUS-TEST] Erro no teste:', error);
-      setTestingStatus('error');
-      toast({
-        title: "❌ Teste Falhou",
-        description: `Erro ao aplicar configurações: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
-        variant: "destructive"
-      });
-      setTimeout(() => setTestingStatus('idle'), 3000);
-    }
+    toast({
+      title: "ℹ️ Configuração Salva",
+      description: "As configurações serão aplicadas automaticamente pela IA quando processar mensagens",
+      variant: "default"
+    });
+    
+    console.log('🔧 [CONFIG] Configurações salvas - IA aplicará automaticamente:', {
+      clientId,
+      instanceId,
+      config
+    });
   };
 
   const getStatusBadge = () => {

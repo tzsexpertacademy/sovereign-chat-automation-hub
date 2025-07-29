@@ -1456,3 +1456,76 @@ function generatePersonalityNotes(
   const uniqueNotes = [...new Set(notes)].slice(-3);
   return uniqueNotes.join('; ');
 }
+
+// Aplicar configurações de perfil em sequência ordenada
+async function applyProfileConfigSequence(instanceId: string, businessToken: string, chatId: string) {
+  const YUMER_BASE_URL = 'https://api.yumer.com.br';
+  
+  try {
+    // 1. Configurar privacidade online (quem pode ver quando estou online)
+    console.log('🔒 [PROFILE-1] Aplicando privacidade online...');
+    const onlinePrivacyResponse = await fetch(`${YUMER_BASE_URL}/api/v2/instance/${instanceId}/whatsapp/update/profile-online-privacy`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${businessToken}`
+      },
+      body: JSON.stringify({ action: 'all' })
+    });
+
+    if (!onlinePrivacyResponse.ok) {
+      throw new Error(`Online privacy failed: ${onlinePrivacyResponse.status}`);
+    }
+
+    const onlinePrivacyResult = await onlinePrivacyResponse.json();
+    console.log('🔒 [ONLINE-PRIVACY] Response:', JSON.stringify(onlinePrivacyResult));
+
+    // Aguardar antes da próxima configuração
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // 2. Configurar privacidade do visto por último
+    console.log('👁️ [PROFILE-2] Aplicando privacidade do visto por último...');
+    const seenPrivacyResponse = await fetch(`${YUMER_BASE_URL}/api/v2/instance/${instanceId}/whatsapp/update/profile-seen-privacy`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${businessToken}`
+      },
+      body: JSON.stringify({ action: 'all' })
+    });
+
+    if (!seenPrivacyResponse.ok) {
+      throw new Error(`Seen privacy failed: ${seenPrivacyResponse.status}`);
+    }
+
+    const seenPrivacyResult = await seenPrivacyResponse.json();
+    console.log('👁️ [SEEN-PRIVACY] Response:', JSON.stringify(seenPrivacyResult));
+
+    // Aguardar antes da próxima configuração
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // 3. Definir status do perfil
+    console.log('📝 [PROFILE-3] Aplicando status do perfil...');
+    const profileStatusResponse = await fetch(`${YUMER_BASE_URL}/api/v2/instance/${instanceId}/whatsapp/update/profile-status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${businessToken}`
+      },
+      body: JSON.stringify({ profileStatus: 'Atendimento automatizado ativo' })
+    });
+
+    if (!profileStatusResponse.ok) {
+      throw new Error(`Profile status failed: ${profileStatusResponse.status}`);
+    }
+
+    const profileStatusResult = await profileStatusResponse.json();
+    console.log('📝 [PROFILE-STATUS] Response:', JSON.stringify(profileStatusResult));
+
+    console.log('✅ [PROFILE-SEQUENCE] Todas as configurações aplicadas com sucesso');
+    
+  } catch (error) {
+    console.error('❌ [PROFILE-SEQUENCE] Erro na aplicação sequencial:', error);
+    throw error;
+  }
+}

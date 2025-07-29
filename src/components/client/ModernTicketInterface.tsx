@@ -25,7 +25,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useTicketMessages } from '@/hooks/useTicketMessages';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useRealTimePresence } from '@/hooks/useRealTimePresence';
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
 import { whatsappService } from '@/services/whatsappMultiClient';
@@ -75,16 +74,8 @@ const ModernTicketInterface: React.FC<ModernTicketInterfaceProps> = ({
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
   
-  // Status online com detecção baseada em mensagens
-  const {
-    setOnline,
-    setTyping,
-    setOffline,
-    startPresenceDetection,
-    stopPresenceDetection,
-    presenceDetection,
-    detectPresenceFromMessages
-  } = useRealTimePresence(actualInstanceId || connectedInstance || '');
+  // 🚫 REMOVIDO: useRealTimePresence - IA agora controla status online
+  // Status online será controlado apenas pela IA durante processamento
 
   // Auto scroll para mensagens mais recentes
   useEffect(() => {
@@ -98,33 +89,16 @@ const ModernTicketInterface: React.FC<ModernTicketInterfaceProps> = ({
     }
   }, [ticketId, clientId]);
 
-  // Ativar status online automaticamente quando chat for aberto
-  useEffect(() => {
-    if (ticket?.chat_id && connectedInstance) {
-      console.log('📱 [MODERN-TICKET] Ativando status online para chat:', ticket.chat_id);
-      
-      // Definir como online imediatamente
-      setOnline(ticket.chat_id);
-      
-      // Iniciar detecção automática baseada em mensagens
-      startPresenceDetection(ticket.chat_id, 30000); // A cada 30 segundos
-      
-      // Cleanup quando sair do chat
-      return () => {
-        console.log('📱 [MODERN-TICKET] Desativando status online para chat:', ticket.chat_id);
-        stopPresenceDetection();
-      };
-    }
-  }, [ticket?.chat_id, connectedInstance, setOnline, startPresenceDetection, stopPresenceDetection]);
+  // 🚫 REMOVIDO: Ativação automática de status online
+  // Status online agora é controlado apenas pela IA
 
-  // Detectar atividade do usuário na interface
+  // Detectar atividade do usuário na interface (simplificado)
   useEffect(() => {
     if (!ticket?.chat_id) return;
 
     const handleActivity = () => {
       if (connectedInstance) {
-        console.log('👤 [ACTIVITY] Atividade detectada - atualizando presença');
-        setOnline(ticket.chat_id);
+        console.log('👤 [ACTIVITY] Atividade detectada - IA controlará presença');
         markActivity();
       }
     };
@@ -140,7 +114,7 @@ const ModernTicketInterface: React.FC<ModernTicketInterfaceProps> = ({
         document.removeEventListener(event, handleActivity);
       });
     };
-  }, [ticket?.chat_id, connectedInstance, setOnline, markActivity]);
+  }, [ticket?.chat_id, connectedInstance, markActivity]);
 
   const getDisplayName = (ticket: any) => {
     if (ticket?.customer?.name && 
@@ -177,8 +151,7 @@ const ModernTicketInterface: React.FC<ModernTicketInterfaceProps> = ({
         content: newMessage.substring(0, 50) + '...'
       });
 
-      // Definir presença como "digitando" antes de enviar
-      await setTyping(ticket.chat_id);
+      // 🚫 REMOVIDO: setTyping - IA controlará presença
 
       // Simular comportamento humanizado antes do envio
       setHumanizedState({
@@ -239,8 +212,7 @@ const ModernTicketInterface: React.FC<ModernTicketInterfaceProps> = ({
           message_id: response.messageId || messageId
         });
 
-        // Voltar presença para "disponível" após envio
-        await setOnline(ticket.chat_id);
+        // 🚫 REMOVIDO: setOnline - IA controlará presença
 
         setNewMessage('');
         
