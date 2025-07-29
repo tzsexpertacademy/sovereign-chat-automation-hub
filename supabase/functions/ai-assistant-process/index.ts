@@ -654,25 +654,35 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         const config = aiConfig.online_status_config;
         console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
         
-        // Configurar privacidade online para "todos" verem
-        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/profile/online-privacy`, {
-          method: 'PUT',
+        // Configurar privacidade online - CodeChat v2.2.1
+        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-status`, {
+          method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${client.business_token}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ privacy: config.onlinePrivacy || 'all' })
         });
+
+        // Configurar privacidade de visualização - CodeChat v2.2.1
+        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-seen-status`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${client.business_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ privacy: config.seenPrivacy || 'all' })
+        });
         
-        // Configurar status do perfil
+        // Configurar status do perfil - CodeChat v2.2.1
         if (config.profileStatus) {
-          await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/profile/status`, {
-            method: 'PUT',
+          await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-name`, {
+            method: 'PATCH',
             headers: {
               'Authorization': `Bearer ${client.business_token}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ status: config.profileStatus })
+            body: JSON.stringify({ name: config.profileStatus })
           });
         }
         
