@@ -257,8 +257,18 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/online-privacy`, {
-        method: 'PUT',
+      // Primeiro definir presença global como disponível
+      await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/set-presence-status`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${instanceData.clients.business_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ presence: 'available' })
+      });
+
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-online-status`, {
+        method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
@@ -301,8 +311,8 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/seen-privacy`, {
-        method: 'PUT',
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-seen-status`, {
+        method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
@@ -345,8 +355,8 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/status`, {
-        method: 'PUT',
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-status`, {
+        method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'

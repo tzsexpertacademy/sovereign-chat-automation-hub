@@ -654,6 +654,16 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         const config = aiConfig.online_status_config;
         console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
         
+        // Configurar presença global - CodeChat v2.2.1
+        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/set-presence-status`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${client.business_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ presence: 'available' })
+        });
+
         // Configurar privacidade online - CodeChat v2.2.1
         await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-status`, {
           method: 'PATCH',
@@ -676,13 +686,13 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         
         // Configurar status do perfil - CodeChat v2.2.1
         if (config.profileStatus) {
-          await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-name`, {
+          await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-status`, {
             method: 'PATCH',
             headers: {
               'Authorization': `Bearer ${client.business_token}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ name: config.profileStatus })
+            body: JSON.stringify({ status: config.profileStatus })
           });
         }
         
