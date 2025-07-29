@@ -103,47 +103,13 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Aplicar presença para cada conversa ativa
-        for (const ticket of activeTickets) {
-          try {
-            // Normalizar chatId
-            const cleanNumber = ticket.chat_id.replace(/@(s\.whatsapp\.net|s\.whats|c\.us)$/, '');
-            const numbersOnly = cleanNumber.replace(/\+/, '').replace(/\D/g, '');
-            const normalizedChatId = `${numbersOnly}@s.whatsapp.net`;
-
-            console.log(`💬 [SCHEDULED-CHAT] Aplicando presença para: ${normalizedChatId}`);
-
-            const success = await httpCallWithRetry(
-              `https://api.yumer.com.br/api/v2/instance/${ticket.instance_id}/chat/presence`,
-              {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${client.business_token}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  remoteJid: normalizedChatId,
-                  status: 'available'
-                })
-              }
-            );
-
-            if (success) {
-              console.log(`✅ [SCHEDULED-CHAT] Presença aplicada: ${normalizedChatId}`);
-              successCount++;
-            } else {
-              console.log(`❌ [SCHEDULED-CHAT] Falha na presença: ${normalizedChatId}`);
-              errorCount++;
-            }
-
-            // Delay entre chamadas para evitar rate limiting
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-          } catch (chatError) {
-            console.error(`❌ [SCHEDULED-CHAT] Erro no chat ${ticket.chat_id}:`, chatError);
-            errorCount++;
-          }
-        }
+        // 🚫 PRESENÇA DESABILITADA: CodeChat v2.2.1 não possui endpoint /chat/presence
+        console.log(`🚫 [SCHEDULED-CLIENT] Sistema de presença desabilitado para cliente: ${client.id}`);
+        console.log(`📋 [SCHEDULED-CLIENT] Tickets ativos encontrados: ${activeTickets.length} (presença não será aplicada)`);
+        console.log(`⚠️ [SCHEDULED-HEARTBEAT] NOTA: Endpoint /api/v2/instance/{id}/chat/presence não existe no CodeChat v2.2.1`);
+        
+        // Contar tickets encontrados mas não processar presença
+        successCount += activeTickets.length;
 
       } catch (clientError) {
         console.error(`❌ [SCHEDULED-CLIENT] Erro no cliente ${client.id}:`, clientError);

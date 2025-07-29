@@ -78,94 +78,17 @@ export const usePresenceKeepAlive = (
   }, [enabled]);
 
   // Enviar presença usando business_token fixo (CodeChat v2.2.1)
-  const sendPresence = useCallback(async (status: 'available' | 'unavailable' | 'composing') => {
-    if (!instanceId || !chatId || !isActiveRef.current || hasTokenFailureRef.current) {
-      console.log(`⏭️ [PRESENCE-KEEP-ALIVE] Ignorando envio:`, {
-        instanceId: instanceId || 'VAZIO',
-        chatId: chatId || 'VAZIO',
-        isActive: isActiveRef.current,
-        hasFailure: hasTokenFailureRef.current,
-        lastFailure: lastFailureTimeRef.current ? new Date(lastFailureTimeRef.current).toLocaleTimeString() : 'nunca',
-        retryCount: retryCountRef.current
-      });
-      return false;
-    }
-
-    // 🔍 Log de debug para detectar conflitos com sistemas concorrentes
-    console.log(`🚀 [PRESENCE-KEEP-ALIVE] Enviando presença "${status}": {
+  const sendPresence = useCallback(async (status: 'available' | 'unavailable' | 'composing'): Promise<boolean> => {
+    // 🚫 DESABILITADO: CodeChat v2.2.1 não possui endpoint /chat/presence
+    console.log(`🚫 [PRESENCE-KEEP-ALIVE] Sistema temporariamente desabilitado: {
+      motivo: "CodeChat v2.2.1 não possui endpoint /chat/presence",
+      status: "${status}",
       instanceId: "${instanceId}",
-      chatId: "${chatId}",  
-      clientId: "${clientId}",
-      timestamp: "${new Date().toLocaleTimeString()}",
-      note: "⚠️ Se você ver logs similares de outras fontes (scheduled-heartbeat, maintain-online-status), há CONFLITO!"
+      chatId: "${chatId}",
+      nota: "Endpoint /api/v2/instance/{id}/chat/presence não existe na API"
     }`);
-
-    try {
-      // Buscar business_token diretamente da tabela clients (CodeChat v2.2.1)
-      let businessToken = '';
-      if (clientId) {
-        console.log(`🔍 [PRESENCE-KEEP-ALIVE] Buscando business_token para cliente: ${clientId}`);
-        
-        const { data: client, error } = await supabase
-          .from('clients')
-          .select('business_token')
-          .eq('id', clientId)
-          .single();
-
-        if (error || !client?.business_token) {
-          console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Business token não encontrado para cliente: ${clientId}`, error);
-          console.log(`❌ [PRESENCE-KEEP-ALIVE] Marcando failure permanente - token não encontrado`);
-          hasTokenFailureRef.current = true;
-          lastFailureTimeRef.current = Date.now();
-          return false;
-        }
-
-        businessToken = client.business_token;
-        const maskedToken = businessToken.substring(0, 8) + '...' + businessToken.substring(businessToken.length - 4);
-        console.log(`✅ [PRESENCE-KEEP-ALIVE] Business token encontrado: ${maskedToken}`);
-      }
-
-      const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/chat/presence`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${businessToken}`
-        },
-        body: JSON.stringify({
-          remoteJid: chatId,
-          status
-        })
-      });
-
-      if (response.ok) {
-        console.log(`📱 [PRESENCE-KEEP-ALIVE] Presença enviada: ${status} para ${chatId}`);
-        hasTokenFailureRef.current = false; // Reset flag em caso de sucesso
-        return true;
-      } else {
-        const errorText = await response.text();
-        console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Falha ao enviar presença (${response.status}):`, errorText);
-        
-        // Incrementar tentativas para erros temporários
-        retryCountRef.current++;
-        
-        // Para 401/403/404, marcar failure permanente
-        if (response.status === 401 || response.status === 403 || response.status === 404) {
-          console.log(`❌ [PRESENCE-KEEP-ALIVE] Erro ${response.status} - marcando failure permanente`);
-          hasTokenFailureRef.current = true;
-          lastFailureTimeRef.current = Date.now();
-        } else if (retryCountRef.current >= 3) {
-          // Após 3 tentativas de erros temporários, pausar temporariamente
-          console.log(`❌ [PRESENCE-KEEP-ALIVE] Muitas tentativas (${retryCountRef.current}) - pausando temporariamente`);
-          hasTokenFailureRef.current = true;
-          lastFailureTimeRef.current = Date.now();
-        }
-        
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ [PRESENCE-KEEP-ALIVE] Erro ao enviar presença:', error);
-      return false;
-    }
+    
+    return false;
   }, [instanceId, chatId, clientId]);
 
   // Iniciar keep-alive

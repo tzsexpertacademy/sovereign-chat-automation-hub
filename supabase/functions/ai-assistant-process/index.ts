@@ -788,23 +788,10 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         console.log('📱 [PRESENCE] Definindo presença como "disponível" após envio');
         const normalizedChatId = normalizeRemoteJid(resolvedContext.chatId);
         
-        await setPresenceWithRetry(realInstanceId, client.business_token, normalizedChatId, 'available');
-        console.log('✅ [PRESENCE] Presença "disponível" definida com sucesso');
-        
-        // FALLBACK: Iniciar sistema de manutenção contínua de presença
-        console.log('💓 [HEARTBEAT] Iniciando heartbeat de presença contínua...');
-        
-        // Chamar função de manutenção em background (sem await para não bloquear)
-        supabase.functions.invoke('maintain-online-status', {
-          body: {
-            instanceId: realInstanceId,
-            chatId: normalizedChatId,
-            businessToken: client.business_token,
-            clientId: resolvedClientId
-          }
-        }).catch(bgError => {
-          console.warn('⚠️ [HEARTBEAT] Erro ao iniciar manutenção em background:', bgError);
-        });
+        // 🚫 PRESENÇA DESABILITADA: CodeChat v2.2.1 não possui endpoint /chat/presence
+        console.log('🚫 [AI-ASSISTANT] Sistema de presença desabilitado - endpoint não existe no CodeChat v2.2.1');
+        console.log('📋 [AI-ASSISTANT] NOTA: setPresenceWithRetry e maintain-online-status foram desabilitados');
+        console.log('🔄 [AI-ASSISTANT] PresenceKeepAlive deve ser usado quando endpoint correto for encontrado');
 
       } catch (presenceError) {
         console.warn('⚠️ [PRESENCE] Erro ao definir presença como disponível:', presenceError);

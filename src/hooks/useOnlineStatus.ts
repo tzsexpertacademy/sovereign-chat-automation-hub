@@ -15,22 +15,27 @@ export const useOnlineStatus = (clientId: string, isEnabled: boolean = true) => 
   const setOnlineWithTimeout = useCallback(() => {
     if (!enabledRef.current || !clientId) return;
 
+    // 🚫 DESABILITADO: Sistema antigo conflita com PresenceKeepAlive
+    console.log('🚫 [ONLINE-STATUS] Sistema desabilitado - usando PresenceKeepAlive:', {
+      clientId,
+      timestamp: new Date().toLocaleTimeString(),
+      nota: "Este sistema foi substituído pelo PresenceKeepAlive para evitar conflitos"
+    });
+
     setIsOnline(true);
     lastActivityRef.current = Date.now();
-    
-    console.log('📱 Status ONLINE simulado para cliente:', clientId, new Date().toLocaleTimeString());
 
     // Limpar timeout anterior
     if (onlineTimeoutRef.current) {
       clearTimeout(onlineTimeoutRef.current);
     }
 
-    // Manter online por 5 minutos após última atividade
+    // Manter online por 5 minutos após última atividade (sem logs excessivos)
     onlineTimeoutRef.current = setTimeout(() => {
       const timeSinceLastActivity = Date.now() - lastActivityRef.current;
       if (timeSinceLastActivity >= 300000) { // 5 minutos
         setIsOnline(false);
-        console.log('📱 Status OFFLINE por inatividade para cliente:', clientId);
+        console.log('🚫 [ONLINE-STATUS] Status OFFLINE por inatividade (sistema legado):', clientId);
       }
     }, 300000);
   }, [clientId]);
