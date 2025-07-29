@@ -257,16 +257,13 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      // Remover tentativa de endpoint inexistente - focar apenas nos endpoints documentados
-
-      // Configurar privacidade online - CodeChat v2.2.1 (endpoint documentado oficialmente)
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-online-privacy`, {
-        method: 'PATCH',
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/online-privacy`, {
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ action: privacy === 'all' ? 'all' : privacy })
+        body: JSON.stringify({ privacy })
       });
 
       if (!response.ok) {
@@ -304,13 +301,13 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-seen-privacy`, {
-        method: 'PATCH',
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/seen-privacy`, {
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ action: privacy === 'all' ? 'all' : privacy })
+        body: JSON.stringify({ privacy })
       });
 
       if (!response.ok) {
@@ -348,13 +345,13 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-status`, {
-        method: 'PATCH',
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/profile/status`, {
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ profileStatus: status })
+        body: JSON.stringify({ status })
       });
 
       if (!response.ok) {
@@ -367,50 +364,6 @@ class UnifiedYumerService {
       return { success: true, data: result };
     } catch (error) {
       console.error('❌ [PROFILE] Erro ao atualizar status do perfil:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
-    }
-  }
-
-  // Profile Name: Configurar nome do perfil
-  async updateProfileName(instanceId: string, profileName: string): Promise<{ success: boolean; data?: any; error?: string }> {
-    console.log(`👤 [PROFILE] Atualizando nome do perfil: ${profileName}`);
-    
-    try {
-      const { supabase } = await import('@/integrations/supabase/client');
-      const { data: instanceData } = await supabase
-        .from('whatsapp_instances')
-        .select(`
-          instance_id,
-          clients:client_id (
-            business_token
-          )
-        `)
-        .eq('instance_id', instanceId)
-        .single();
-
-      if (!instanceData?.clients?.business_token) {
-        return { success: false, error: 'Business token não encontrado' };
-      }
-
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-name`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${instanceData.clients.business_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ profileName })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
-      }
-
-      const result = await response.json();
-      console.log('✅ [PROFILE] Nome do perfil atualizado:', result);
-      return { success: true, data: result };
-    } catch (error) {
-      console.error('❌ [PROFILE] Erro ao atualizar nome do perfil:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
     }
   }
@@ -868,16 +821,17 @@ class UnifiedYumerService {
       return { success: true, newToken: result.data.newToken };
     }
     
-    return { success: false, error: result.error || 'Falha ao fazer refresh do token' };
-   }
+    return result;
+  }
 
-  // Função para ativar/desativar instância
-  async toggleActivate(instanceId: string, action: 'activate' | 'deactivate'): Promise<{ success: boolean; error?: string }> {
-    console.log(`🔄 [UNIFIED-YUMER] ${action === 'activate' ? 'Ativando' : 'Desativando'} instância ${instanceId}`);
+  // Ativar/desativar instância
+  async toggleActivate(businessId: string, instanceId: string, action: 'activate' | 'deactivate' = 'activate'): Promise<{ success: boolean; data?: any; error?: string }> {
+    console.log(`🔄 [UNIFIED-YUMER] ${action === 'activate' ? 'Ativando' : 'Desativando'} instância:`, instanceId);
     
-    return this.makeRequest(`/api/v2/instance/${instanceId}/${action}`, {
-      method: 'PATCH'
-    });
+    return this.makeRequest(`/api/v2/business/${businessId}/instance/${instanceId}/toggle-activate`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action })
+    }, true, true, businessId);
   }
 
   // Sincronizar instância Supabase ↔ YUMER
@@ -939,7 +893,7 @@ class UnifiedYumerService {
       // 3. Ativar se necessário
       if (instanceResult.data?.state !== 'active') {
         console.log('🔄 [FLOW] Ativando instância...');
-        const activateResult = await this.toggleActivate(String(instanceId), 'activate');
+        const activateResult = await this.toggleActivate(businessId, String(instanceId), 'activate');
         if (!activateResult.success) {
           console.warn('⚠️ [FLOW] Erro ao ativar instância:', activateResult.error);
         }
@@ -1251,8 +1205,8 @@ class UnifiedYumerService {
     };
   }
 
-
   // ==================== CONFIGURAÇÃO ====================
+  
   setRequestConfig(config: Partial<RequestConfig>): void {
     this.requestConfig = { ...this.requestConfig, ...config };
   }
@@ -1297,6 +1251,6 @@ export const yumerApiV2 = {
   getQRCode: (instanceId: string) => unifiedYumerService.getQRCode(instanceId),
   // Novos métodos
   refreshInstanceToken: (businessId: string, instanceId: string, oldToken: string) => unifiedYumerService.refreshInstanceToken(businessId, instanceId, oldToken),
-  toggleActivate: (instanceId: string, action: 'activate' | 'deactivate') => unifiedYumerService.toggleActivate(instanceId, action),
+  toggleActivate: (businessId: string, instanceId: string, action: 'activate' | 'deactivate') => unifiedYumerService.toggleActivate(businessId, instanceId, action),
   createInstanceCompleteFlow: (businessId: string, clientId: string, instanceName?: string) => unifiedYumerService.createInstanceCompleteFlow(businessId, clientId, instanceName)
 };

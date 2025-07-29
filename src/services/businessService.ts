@@ -770,13 +770,9 @@ class BusinessService {
     activate: boolean;
   }> {
     try {
-      const result = await unifiedYumerService.toggleActivate(instanceId, action);
-      if (result.success) {
-        return { 
-          instanceId: instanceId,
-          state: action === 'activate' ? 'active' : 'inactive',
-          activate: action === 'activate' 
-        };
+      const result = await unifiedYumerService.toggleActivate(businessId, instanceId, action);
+      if (result.success && result.data) {
+        return result.data;
       }
       throw new Error(result.error || 'Erro ao alterar status da instância');
     } catch (error) {

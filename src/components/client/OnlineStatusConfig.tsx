@@ -128,23 +128,13 @@ const OnlineStatusConfig: React.FC<OnlineStatusConfigProps> = ({
       
       const { default: unifiedYumerService } = await import('@/services/unifiedYumerService');
       
-      // 1. Testar configuração de privacidade online - PRIORITÁRIO
-      console.log('🔒 [TEST] Testando privacidade online:', config.onlinePrivacy);
+      // Testar configuração de privacidade online
       const onlineResult = await unifiedYumerService.updateOnlinePrivacy(instanceId, config.onlinePrivacy);
-      console.log('🔒 [TEST] Resultado privacidade online:', onlineResult);
-      if (!onlineResult.success) throw new Error(`Online Privacy: ${onlineResult.error}`);
+      if (!onlineResult.success) throw new Error(onlineResult.error);
       
-      // 2. Testar configuração de privacidade de visualização
-      console.log('👁️ [TEST] Testando privacidade de visualização:', config.seenPrivacy);
-      const seenResult = await unifiedYumerService.updateSeenPrivacy(instanceId, config.seenPrivacy);
-      console.log('👁️ [TEST] Resultado privacidade visualização:', seenResult);
-      if (!seenResult.success) throw new Error(`Seen Privacy: ${seenResult.error}`);
-      
-      // 3. Testar configuração de status do perfil
-      console.log('📝 [TEST] Testando status do perfil:', config.profileStatus);
+      // Testar configuração de status do perfil
       const statusResult = await unifiedYumerService.updateProfileStatus(instanceId, config.profileStatus);
-      console.log('📝 [TEST] Resultado status perfil:', statusResult);
-      if (!statusResult.success) throw new Error(`Profile Status: ${statusResult.error}`);
+      if (!statusResult.success) throw new Error(statusResult.error);
       
       setTestingStatus('success');
       toast({

@@ -654,60 +654,26 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         const config = aiConfig.online_status_config;
         console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
         
-        // 1. Configurar privacidade online - CodeChat v2.2.1 (endpoint documentado oficialmente)
-        const onlinePrivacyResponse = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-privacy`, {
-          method: 'PATCH',
+        // Configurar privacidade online para "todos" verem
+        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/profile/online-privacy`, {
+          method: 'PUT',
           headers: {
             'Authorization': `Bearer ${client.business_token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ action: config.onlinePrivacy || 'all' })
+          body: JSON.stringify({ privacy: config.onlinePrivacy || 'all' })
         });
         
-        const onlinePrivacyData = await onlinePrivacyResponse.text();
-        console.log('🔒 [ONLINE-PRIVACY] Response:', onlinePrivacyData);
-        
-        // 2. Configurar privacidade de visualização - CodeChat v2.2.1 (endpoint documentado oficialmente)
-        const seenPrivacyResponse = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/whatsapp/update/profile-seen-privacy`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${client.business_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ action: config.seenPrivacy || 'all' })
-        });
-        
-        const seenPrivacyData = await seenPrivacyResponse.text();
-        console.log('👁️ [SEEN-PRIVACY] Response:', seenPrivacyData);
-        
-        // 3. Configurar status do perfil - CodeChat v2.2.1
+        // Configurar status do perfil
         if (config.profileStatus) {
-          const profileStatusResponse = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/whatsapp/update/profile-status`, {
-            method: 'PATCH',
+          await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/profile/status`, {
+            method: 'PUT',
             headers: {
               'Authorization': `Bearer ${client.business_token}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ profileStatus: config.profileStatus })
+            body: JSON.stringify({ status: config.profileStatus })
           });
-          
-          const profileStatusData = await profileStatusResponse.text();
-          console.log('📝 [PROFILE-STATUS] Response:', profileStatusData);
-        }
-        
-        // 4. Configurar nome do perfil (opcional) - CodeChat v2.2.1
-        if (config.profileName) {
-          const profileNameResponse = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/whatsapp/update/profile-name`, {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${client.business_token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ profileName: config.profileName })
-          });
-          
-          const profileNameData = await profileNameResponse.text();
-          console.log('👤 [PROFILE-NAME] Response:', profileNameData);
         }
         
         console.log('✅ [PROFILE] Configurações de perfil aplicadas com sucesso');
@@ -720,7 +686,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     try {
       console.log('📱 [PRESENCE] Definindo presença como "digitando" para IA');
       
-      await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/chat/presence`, {
+      await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/chat/presence`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${client.business_token}`,
@@ -757,7 +723,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         options: sendOptions
       };
 
-      const response = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/send/text`, {
+      const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/send/text`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${client.business_token}`,
@@ -789,7 +755,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       try {
         console.log('📱 [PRESENCE] Definindo presença como "disponível" após envio');
         
-        await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/chat/presence`, {
+        await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/chat/presence`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${client.business_token}`,
@@ -1172,7 +1138,7 @@ async function sendCodeChatMessage(
       presence: presence
     });
 
-    const response = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${instanceId}/send/text`, {
+    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${businessToken}`,
@@ -1188,7 +1154,7 @@ async function sendCodeChatMessage(
         statusText: response.statusText,
         error: errorText,
         instanceId,
-        url: `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${instanceId}/send/text`
+        url: `https://api.yumer.com.br/api/v2/instance/${instanceId}/send/text`
       });
       return { success: false, error: `HTTP ${response.status}: ${errorText}` };
     }
