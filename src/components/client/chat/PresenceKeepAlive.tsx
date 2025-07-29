@@ -19,7 +19,8 @@ export const PresenceKeepAlive = ({
   
   usePresenceKeepAlive(instanceId, chatId, { 
     enabled,
-    intervalSeconds: 30 
+    intervalSeconds: 30,
+    clientId 
   });
 
   // Este componente não renderiza nada

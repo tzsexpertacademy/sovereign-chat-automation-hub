@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useBusinessToken } from './useBusinessToken';
 
 interface PresenceKeepAliveOptions {
   intervalSeconds?: number;
@@ -12,34 +12,43 @@ interface PresenceKeepAliveOptions {
 export const usePresenceKeepAlive = (
   instanceId: string,
   chatId: string,
-  options: PresenceKeepAliveOptions = {}
+  options: PresenceKeepAliveOptions & { clientId?: string } = {}
 ) => {
-  const { intervalSeconds = 30, enabled = true } = options;
+  const { intervalSeconds = 30, enabled = true, clientId } = options;
   
+  const { getValidToken } = useBusinessToken();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
   const isActiveRef = useRef(enabled);
+  const failureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasTokenFailureRef = useRef(false);
 
   // Atualizar ref quando enabled mudar
   useEffect(() => {
     isActiveRef.current = enabled;
   }, [enabled]);
 
-  // Enviar presença
-  const sendPresence = useCallback(async (status: 'available' | 'unavailable' | 'composing', clientId?: string) => {
-    if (!instanceId || !chatId || !isActiveRef.current) return false;
+  // Enviar presença com token automático
+  const sendPresence = useCallback(async (status: 'available' | 'unavailable' | 'composing') => {
+    if (!instanceId || !chatId || !isActiveRef.current || hasTokenFailureRef.current) return false;
 
     try {
-      // Buscar business token do cliente se fornecido
+      // Obter token válido automaticamente
       let businessToken = '';
       if (clientId) {
-        const { data: client } = await supabase
-          .from('clients')
-          .select('business_token')
-          .eq('id', clientId)
-          .single();
-        
-        businessToken = client?.business_token || '';
+        businessToken = await getValidToken(clientId) || '';
+        if (!businessToken) {
+          console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Token inválido para cliente: ${clientId}`);
+          hasTokenFailureRef.current = true;
+          
+          // Parar tentativas por 5 minutos
+          failureTimeoutRef.current = setTimeout(() => {
+            hasTokenFailureRef.current = false;
+            console.log('🔄 [PRESENCE-KEEP-ALIVE] Tentativas de token reabilitadas');
+          }, 5 * 60 * 1000);
+          
+          return false;
+        }
       }
 
       const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/chat/presence`, {
@@ -56,7 +65,19 @@ export const usePresenceKeepAlive = (
 
       if (response.ok) {
         console.log(`📱 [PRESENCE-KEEP-ALIVE] Presença enviada: ${status} para ${chatId}`);
+        hasTokenFailureRef.current = false; // Reset failure flag on success
         return true;
+      } else if (response.status === 401 || response.status === 404) {
+        console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Falha de autenticação (${response.status}) - delegando para backend`);
+        hasTokenFailureRef.current = true;
+        
+        // Parar tentativas por 5 minutos - backend assume
+        failureTimeoutRef.current = setTimeout(() => {
+          hasTokenFailureRef.current = false;
+          console.log('🔄 [PRESENCE-KEEP-ALIVE] Tentativas de token reabilitadas');
+        }, 5 * 60 * 1000);
+        
+        return false;
       } else {
         console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Falha ao enviar presença:`, response.status);
         return false;
@@ -65,7 +86,7 @@ export const usePresenceKeepAlive = (
       console.error('❌ [PRESENCE-KEEP-ALIVE] Erro ao enviar presença:', error);
       return false;
     }
-  }, [instanceId, chatId]);
+  }, [instanceId, chatId, clientId, getValidToken]);
 
   // Iniciar keep-alive
   const startKeepAlive = useCallback(() => {
