@@ -19,6 +19,7 @@ class OnlineStatusManager {
   private locks = new Map<string, OnlineStatusLock>();
   private readonly LOCK_DURATION = 30000; // 30 segundos
   private isGloballyDisabled = false; // ✅ HABILITADO para usar configurações de perfil
+  private configuredProfiles = new Set<string>(); // Cache de perfis já configurados
 
   private constructor() {
     console.log('🏗️ [STATUS-MANAGER] Inicializando gerenciador com configurações de perfil');
@@ -47,43 +48,82 @@ class OnlineStatusManager {
     console.log('🚫 [STATUS-MANAGER] Sistema desabilitado:', reason || 'sem motivo especificado');
   }
 
-  // Função principal para configurar presença online
-  async configureOnlinePresence(instanceId: string, clientId: string, source: 'ai' | 'user' | 'system' | 'auto-trigger' = 'system'): Promise<boolean> {
+  // Configurar perfil online (uma vez por instância)
+  async configureProfileOnce(instanceId: string, clientId: string, source: 'ai' | 'user' | 'system' | 'auto-trigger' = 'system'): Promise<boolean> {
     if (this.isGloballyDisabled) {
       console.log('🚫 [STATUS-MANAGER] Sistema desabilitado - configuração cancelada');
       return false;
     }
 
+    // Verificar se perfil já foi configurado
+    const profileKey = `${instanceId}:${clientId}`;
+    if (this.configuredProfiles.has(profileKey)) {
+      console.log(`✅ [STATUS-MANAGER] Perfil já configurado para: ${instanceId}`);
+      return true;
+    }
+
     // Verificar se já está sendo processado
-    if (this.isLocked('presence', instanceId)) {
-      console.log(`🔒 [STATUS-MANAGER] Configuração de presença já em andamento para: ${instanceId}`);
+    if (this.isLocked('profile', instanceId)) {
+      console.log(`🔒 [STATUS-MANAGER] Configuração de perfil já em andamento para: ${instanceId}`);
       return false;
     }
 
     // Adquirir lock
-    if (!this.acquireLock('presence', instanceId, source)) {
+    if (!this.acquireLock('profile', instanceId, source)) {
       console.log(`❌ [STATUS-MANAGER] Falha ao adquirir lock para: ${instanceId}`);
       return false;
     }
 
     try {
-      console.log(`🔵 [STATUS-MANAGER] Iniciando configuração de presença: ${instanceId} (por ${source})`);
+      console.log(`🔵 [STATUS-MANAGER] Configurando perfil pela primeira vez: ${instanceId} (por ${source})`);
       
       const result = await unifiedYumerService.setOnlinePresence(instanceId, clientId);
       
       if (result.success) {
-        console.log(`✅ [STATUS-MANAGER] Presença configurada com sucesso para: ${instanceId}`);
+        this.configuredProfiles.add(profileKey);
+        console.log(`✅ [STATUS-MANAGER] Perfil configurado com sucesso para: ${instanceId}`);
         return true;
       } else {
-        console.log(`❌ [STATUS-MANAGER] Falha na configuração: ${result.error}`);
+        console.log(`❌ [STATUS-MANAGER] Falha na configuração do perfil: ${result.error}`);
         return false;
       }
       
     } catch (error) {
-      console.error(`❌ [STATUS-MANAGER] Erro ao configurar presença:`, error);
+      console.error(`❌ [STATUS-MANAGER] Erro ao configurar perfil:`, error);
       return false;
     } finally {
-      this.releaseLock('presence', instanceId, source);
+      this.releaseLock('profile', instanceId, source);
+    }
+  }
+
+  // COMPATIBILIDADE: Função principal (agora delega para configuração de perfil)
+  async configureOnlinePresence(instanceId: string, clientId: string, source: 'ai' | 'user' | 'system' | 'auto-trigger' = 'system'): Promise<boolean> {
+    return this.configureProfileOnce(instanceId, clientId, source);
+  }
+
+  // Enviar presença contínua no chat específico
+  async sendChatPresence(instanceId: string, chatId: string, status: 'available' | 'unavailable' | 'composing', source: 'auto-trigger' | 'manual' = 'auto-trigger'): Promise<boolean> {
+    if (this.isGloballyDisabled) {
+      console.log('🚫 [STATUS-MANAGER] Sistema desabilitado - presença cancelada');
+      return false;
+    }
+
+    try {
+      console.log(`🎯 [STATUS-MANAGER] Enviando presença ${status} para chat ${chatId} (por ${source})`);
+      
+      const result = await unifiedYumerService.setPresence(instanceId, chatId, status);
+      
+      if (result.success) {
+        console.log(`✅ [STATUS-MANAGER] Presença ${status} enviada com sucesso para ${chatId}`);
+        return true;
+      } else {
+        console.log(`❌ [STATUS-MANAGER] Falha no envio de presença: ${result.error}`);
+        return false;
+      }
+      
+    } catch (error) {
+      console.error(`❌ [STATUS-MANAGER] Erro ao enviar presença:`, error);
+      return false;
     }
   }
 

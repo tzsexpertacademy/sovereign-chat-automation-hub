@@ -77,7 +77,7 @@ export const usePresenceKeepAlive = (
     }
   }, [enabled]);
 
-  // Enviar presença usando onlineStatusManager (integração completa)
+  // Enviar presença específica no chat (/chat/presence)
   const sendPresence = useCallback(async (status: 'available' | 'unavailable' | 'composing'): Promise<boolean> => {
     if (!instanceId || !chatId || !clientId) {
       console.log('🚫 [PRESENCE-KEEP-ALIVE] Parâmetros insuficientes:', { instanceId, chatId, clientId });
@@ -89,22 +89,29 @@ export const usePresenceKeepAlive = (
       return false;
     }
 
+    // Só enviar presença se houve atividade nos últimos 5 minutos
+    const timeSinceActivity = Date.now() - lastActivityRef.current;
+    if (timeSinceActivity > 5 * 60 * 1000) {
+      console.log('🔕 [PRESENCE-KEEP-ALIVE] Sem atividade recente, pausando presença');
+      return false;
+    }
+
     try {
       // Importar dinamicamente para evitar dependências circulares
       const { onlineStatusManager } = await import('@/services/onlineStatusManager');
       
-      console.log(`✅ [PRESENCE-KEEP-ALIVE] Enviando presença: ${status} para ${chatId}`);
+      console.log(`🎯 [PRESENCE-KEEP-ALIVE] Enviando presença ${status} para chat ${chatId}`);
       
-      // Usar o sistema completo de presença
-      const success = await onlineStatusManager.configureOnlinePresence(instanceId, clientId, 'auto-trigger');
+      // Usar sendChatPresence específico para presença contínua
+      const success = await onlineStatusManager.sendChatPresence(instanceId, chatId, status, 'auto-trigger');
       
       if (success) {
         retryCountRef.current = 0;
         hasTokenFailureRef.current = false;
-        console.log(`🎯 [PRESENCE-KEEP-ALIVE] Presença ${status} enviada com sucesso`);
+        console.log(`✅ [PRESENCE-KEEP-ALIVE] Presença ${status} enviada com sucesso para ${chatId}`);
         return true;
       } else {
-        throw new Error('Falha na configuração de presença');
+        throw new Error('Falha no envio de presença via sendChatPresence');
       }
     } catch (error) {
       retryCountRef.current++;
@@ -114,7 +121,7 @@ export const usePresenceKeepAlive = (
         hasTokenFailureRef.current = true;
         console.error('💥 [PRESENCE-KEEP-ALIVE] Muitas falhas, pausando sistema:', error);
       } else {
-        console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Erro (tentativa ${retryCountRef.current}/3):`, error);
+        console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Erro ${status} (tentativa ${retryCountRef.current}/3):`, error);
       }
       return false;
     }
