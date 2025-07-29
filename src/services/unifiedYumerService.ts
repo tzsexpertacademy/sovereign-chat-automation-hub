@@ -259,8 +259,8 @@ class UnifiedYumerService {
 
       // Remover tentativa de endpoint inexistente - focar apenas nos endpoints documentados
 
-      // Configurar privacidade online - CodeChat v2.2.1
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-online-privacy`, {
+      // Configurar privacidade online - CodeChat v2.2.1 (endpoint correto da documentação)
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-online-status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
@@ -304,7 +304,7 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-seen-privacy`, {
+      const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-seen-status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${instanceData.clients.business_token}`,
