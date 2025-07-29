@@ -30,6 +30,29 @@ export const usePresenceKeepAlive = (
   const hasTokenFailureRef = useRef(false);
   const retryCountRef = useRef(0);
   const lastFailureTimeRef = useRef<number>(0);
+  const initializationTimeRef = useRef<number>(Date.now());
+
+  // Debug: Verificar estado inicial e forçar reset se necessário
+  useEffect(() => {
+    const now = Date.now();
+    const timeSinceInit = now - initializationTimeRef.current;
+    
+    console.log(`🔍 [PRESENCE-KEEP-ALIVE] Estado inicial: {
+      hasFailure: ${hasTokenFailureRef.current},
+      retryCount: ${retryCountRef.current},
+      lastFailureTime: ${lastFailureTimeRef.current ? new Date(lastFailureTimeRef.current).toLocaleTimeString() : 'nunca'},
+      timeSinceInit: ${timeSinceInit}ms,
+      enabled: ${enabled}
+    }`);
+
+    // Forçar reset se a inicialização aconteceu há mais de 1 minuto
+    if (hasTokenFailureRef.current && timeSinceInit > 60000) {
+      console.log('🔄 [PRESENCE-KEEP-ALIVE] Forçando reset na inicialização - flag muito antiga');
+      hasTokenFailureRef.current = false;
+      retryCountRef.current = 0;
+      lastFailureTimeRef.current = 0;
+    }
+  }, []);
 
   // Atualizar ref quando enabled mudar
   useEffect(() => {
@@ -38,7 +61,13 @@ export const usePresenceKeepAlive = (
     // Reset da flag de failure quando habilitado novamente
     if (enabled && hasTokenFailureRef.current) {
       const timeSinceFailure = Date.now() - lastFailureTimeRef.current;
-      const resetAfter = 3 * 60 * 1000; // 3 minutos
+      const resetAfter = 2 * 60 * 1000; // 2 minutos (reduzido)
+      
+      console.log(`🔍 [PRESENCE-KEEP-ALIVE] Verificando reset: {
+        timeSinceFailure: ${timeSinceFailure}ms,
+        resetAfter: ${resetAfter}ms,
+        shouldReset: ${timeSinceFailure > resetAfter}
+      }`);
       
       if (timeSinceFailure > resetAfter) {
         console.log('🔄 [PRESENCE-KEEP-ALIVE] Resetando flag de failure após timeout');
@@ -55,10 +84,21 @@ export const usePresenceKeepAlive = (
         instanceId: instanceId || 'VAZIO',
         chatId: chatId || 'VAZIO',
         isActive: isActiveRef.current,
-        hasFailure: hasTokenFailureRef.current
+        hasFailure: hasTokenFailureRef.current,
+        lastFailure: lastFailureTimeRef.current ? new Date(lastFailureTimeRef.current).toLocaleTimeString() : 'nunca',
+        retryCount: retryCountRef.current
       });
       return false;
     }
+
+    // 🔍 Log de debug para detectar conflitos com sistemas concorrentes
+    console.log(`🚀 [PRESENCE-KEEP-ALIVE] Enviando presença "${status}": {
+      instanceId: "${instanceId}",
+      chatId: "${chatId}",  
+      clientId: "${clientId}",
+      timestamp: "${new Date().toLocaleTimeString()}",
+      note: "⚠️ Se você ver logs similares de outras fontes (scheduled-heartbeat, maintain-online-status), há CONFLITO!"
+    }`);
 
     try {
       // Buscar business_token diretamente da tabela clients (CodeChat v2.2.1)
