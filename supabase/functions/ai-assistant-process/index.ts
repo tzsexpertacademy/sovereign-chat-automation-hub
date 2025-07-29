@@ -675,7 +675,8 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       realInstanceId
     });
 
-    if (onlineStatusConfig?.enabled) {
+    try {
+      if (onlineStatusConfig?.enabled) {
         console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
         
         try {
