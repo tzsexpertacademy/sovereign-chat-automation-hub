@@ -654,8 +654,8 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         const config = aiConfig.online_status_config;
         console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
         
-        // 1. Configurar privacidade online - CodeChat v2.2.1 (endpoint correto da documentação)
-        const onlinePrivacyResponse = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-status`, {
+        // 1. Configurar privacidade online - CodeChat v2.2.1 (endpoint documentado oficialmente)
+        const onlinePrivacyResponse = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-privacy`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${client.business_token}`,
@@ -667,8 +667,8 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         const onlinePrivacyData = await onlinePrivacyResponse.text();
         console.log('🔒 [ONLINE-PRIVACY] Response:', onlinePrivacyData);
         
-        // 2. Configurar privacidade de visualização - CodeChat v2.2.1 (endpoint correto da documentação)
-        const seenPrivacyResponse = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/whatsapp/update/profile-seen-status`, {
+        // 2. Configurar privacidade de visualização - CodeChat v2.2.1 (endpoint documentado oficialmente)
+        const seenPrivacyResponse = await fetch(`${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '') || 'https://api.yumer.com.br'}/api/v2/instance/${realInstanceId}/whatsapp/update/profile-seen-privacy`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${client.business_token}`,
