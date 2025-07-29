@@ -62,8 +62,7 @@ export const useTicketData = (ticketId: string, clientId: string) => {
         const { data: instances, error } = await supabase
           .from('whatsapp_instances')
           .select('instance_id, phone_number, status, custom_name')
-          .eq('client_id', clientId)
-          .eq('status', 'connected');
+          .eq('client_id', clientId);
 
         if (error) {
           console.error('❌ Erro ao buscar instâncias:', error);
@@ -73,7 +72,10 @@ export const useTicketData = (ticketId: string, clientId: string) => {
         console.log('📱 Instâncias encontradas:', instances);
 
         if (instances && instances.length > 0) {
-          const preferredInstance = instances.find(i => i.instance_id === ticketData.instance_id) || instances[0];
+          // Priorizar instância do ticket, mesmo que não esteja 'connected'
+          const preferredInstance = instances.find(i => i.instance_id === ticketData.instance_id) || 
+                                   instances.find(i => i.status === 'connected') || 
+                                   instances[0];
           
           // Criar nome amigável para exibição
           const displayName = preferredInstance.custom_name || 
@@ -88,11 +90,20 @@ export const useTicketData = (ticketId: string, clientId: string) => {
             displayName: displayName,
             phoneNumber: preferredInstance.phone_number,
             customName: preferredInstance.custom_name,
+            status: preferredInstance.status,
             isPreferred: preferredInstance.instance_id === ticketData.instance_id
           });
         } else {
-          console.log('⚠️ Nenhuma instância WhatsApp conectada');
-          setConnectedInstance(null);
+          console.log('⚠️ Nenhuma instância WhatsApp encontrada');
+          // Fallback: usar instance_id diretamente do ticket se não encontrou instância
+          if (ticketData.instance_id) {
+            console.log('🔄 Usando instance_id do ticket como fallback:', ticketData.instance_id);
+            setConnectedInstance(`WhatsApp ${ticketData.instance_id}`);
+            setActualInstanceId(ticketData.instance_id);
+          } else {
+            setConnectedInstance(null);
+            setActualInstanceId(null);
+          }
         }
       } catch (error) {
         console.error('❌ Erro ao carregar dados do ticket:', error);

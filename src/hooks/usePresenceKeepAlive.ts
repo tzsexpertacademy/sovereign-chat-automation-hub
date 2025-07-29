@@ -10,11 +10,19 @@ interface PresenceKeepAliveOptions {
  * Hook para manter presença online consistente no WhatsApp
  */
 export const usePresenceKeepAlive = (
-  instanceId: string,
-  chatId: string,
+  instanceId: string, 
+  chatId: string, 
   options: PresenceKeepAliveOptions & { clientId?: string } = {}
 ) => {
   const { intervalSeconds = 30, enabled = true, clientId } = options;
+  
+  // Log inicial para debug
+  console.log(`🚀 [PRESENCE-KEEP-ALIVE] Iniciando para:`, {
+    instanceId: instanceId || 'VAZIO',
+    chatId: chatId || 'VAZIO', 
+    clientId: clientId || 'VAZIO',
+    enabled
+  });
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
@@ -28,7 +36,15 @@ export const usePresenceKeepAlive = (
 
   // Enviar presença usando business_token fixo (CodeChat v2.2.1)
   const sendPresence = useCallback(async (status: 'available' | 'unavailable' | 'composing') => {
-    if (!instanceId || !chatId || !isActiveRef.current || hasTokenFailureRef.current) return false;
+    if (!instanceId || !chatId || !isActiveRef.current || hasTokenFailureRef.current) {
+      console.log(`⏭️ [PRESENCE-KEEP-ALIVE] Ignorando envio:`, {
+        instanceId: instanceId || 'VAZIO',
+        chatId: chatId || 'VAZIO',
+        isActive: isActiveRef.current,
+        hasFailure: hasTokenFailureRef.current
+      });
+      return false;
+    }
 
     try {
       // Buscar business_token diretamente da tabela clients (CodeChat v2.2.1)
