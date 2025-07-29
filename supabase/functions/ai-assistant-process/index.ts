@@ -781,6 +781,75 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         });
         
         console.log('✅ [PRESENCE] Presença "disponível" definida com sucesso');
+
+        // 💓 SISTEMA DE HEARTBEAT CONTÍNUO PARA MANTER STATUS ONLINE
+        console.log('💓 [HEARTBEAT] Iniciando heartbeat de presença contínua...');
+        
+        let heartbeatCount = 0;
+        const maxHeartbeats = 60; // ~30 minutos
+        let currentInterval = 30000; // Começar com 30s
+        const maxInterval = 180000; // Máximo 3 minutos
+        
+        const heartbeatFunction = async () => {
+          try {
+            heartbeatCount++;
+            console.log(`💓 [HEARTBEAT] Heartbeat ${heartbeatCount} iniciado`);
+            
+            // Definir presença como "disponível"
+            const presenceResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/chat/presence`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${client.business_token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                remoteJid: resolvedContext.chatId,
+                status: 'available'
+              })
+            });
+
+            if (presenceResponse.ok) {
+              console.log(`✅ [HEARTBEAT] Heartbeat ${heartbeatCount} - presença "disponível" mantida`);
+            } else {
+              console.log(`💓 [HEARTBEAT] Heartbeat ${heartbeatCount} falhou - Status: ${presenceResponse.status}`);
+            }
+
+            // A cada 5 heartbeats, reaplicar configurações de perfil
+            if (heartbeatCount % 5 === 0) {
+              console.log(`🔄 [HEARTBEAT] Reaplicando configurações de perfil (heartbeat ${heartbeatCount})`);
+              try {
+                await applyProfileConfigSequence(realInstanceId, client.business_token, resolvedContext.chatId);
+              } catch (profileError) {
+                console.warn(`⚠️ [HEARTBEAT] Erro ao reaplicar perfil:`, profileError);
+              }
+            }
+
+            // Aumentar gradualmente o intervalo
+            if (heartbeatCount % 10 === 0 && currentInterval < maxInterval) {
+              currentInterval = Math.min(currentInterval * 1.5, maxInterval);
+              console.log(`⏱️ [HEARTBEAT] Intervalo ajustado para: ${currentInterval/1000}s`);
+            }
+
+            // Continuar se ainda não atingiu o máximo
+            if (heartbeatCount < maxHeartbeats) {
+              setTimeout(heartbeatFunction, currentInterval);
+            } else {
+              console.log('💓 [HEARTBEAT] Ciclo de heartbeat finalizado após 30 minutos');
+            }
+
+          } catch (error) {
+            console.error(`❌ [HEARTBEAT] Erro no heartbeat ${heartbeatCount}:`, error);
+            
+            // Tentar novamente após erro, mas reduzir tentativas
+            if (heartbeatCount < maxHeartbeats - 5) {
+              setTimeout(heartbeatFunction, currentInterval * 2);
+            }
+          }
+        };
+
+        // Iniciar o primeiro heartbeat
+        setTimeout(heartbeatFunction, 30000); // Primeiro heartbeat em 30s
+
       } catch (presenceError) {
         console.warn('⚠️ [PRESENCE] Erro ao definir presença como disponível:', presenceError);
       }
