@@ -11,6 +11,7 @@ import { useMessageStatus } from '@/hooks/useMessageStatus';
 import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
+import PresenceKeepAlive from './chat/PresenceKeepAlive';
 
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
@@ -180,6 +181,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
   return (
     <div className="flex-1 flex flex-col h-full">
+      <PresenceKeepAlive
+        clientId={clientId}
+        instanceId={actualInstanceId || ''}
+        chatId={ticket?.chat_id || ''}
+        enabled={!!(actualInstanceId && ticket?.chat_id)}
+      />
+      
       <MessagesList
         messages={messages}
         scrollAreaRef={scrollAreaRef}
