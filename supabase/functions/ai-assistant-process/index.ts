@@ -716,6 +716,25 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       console.warn('⚠️ [PRESENCE] Erro ao definir presença como digitando:', presenceError);
     }
 
+    // Definir presença como "available" após enviar mensagem
+    try {
+      await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/chat/presence`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${client.business_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          remoteJid: resolvedContext.chatId,
+          status: 'available'
+        })
+      });
+      
+      console.log('📱 [PRESENCE] Presença "available" definida após envio');
+    } catch (presenceError) {
+      console.warn('⚠️ [PRESENCE] Erro ao definir presença como available:', presenceError);
+    }
+
     // Enviar usando yumerApiV2 com o ID correto
     const sendOptions = {
       delay: 1200,
