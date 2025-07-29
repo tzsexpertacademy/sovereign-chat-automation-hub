@@ -77,18 +77,47 @@ export const usePresenceKeepAlive = (
     }
   }, [enabled]);
 
-  // Enviar presença usando business_token fixo (CodeChat v2.2.1)
+  // Enviar presença usando onlineStatusManager (integração completa)
   const sendPresence = useCallback(async (status: 'available' | 'unavailable' | 'composing'): Promise<boolean> => {
-    // 🚫 DESABILITADO: CodeChat v2.2.1 não possui endpoint /chat/presence
-    console.log(`🚫 [PRESENCE-KEEP-ALIVE] Sistema temporariamente desabilitado: {
-      motivo: "CodeChat v2.2.1 não possui endpoint /chat/presence",
-      status: "${status}",
-      instanceId: "${instanceId}",
-      chatId: "${chatId}",
-      nota: "Endpoint /api/v2/instance/{id}/chat/presence não existe na API"
-    }`);
-    
-    return false;
+    if (!instanceId || !chatId || !clientId) {
+      console.log('🚫 [PRESENCE-KEEP-ALIVE] Parâmetros insuficientes:', { instanceId, chatId, clientId });
+      return false;
+    }
+
+    if (hasTokenFailureRef.current && retryCountRef.current >= 3) {
+      console.log('🚫 [PRESENCE-KEEP-ALIVE] Muitas falhas, ignorando tentativa');
+      return false;
+    }
+
+    try {
+      // Importar dinamicamente para evitar dependências circulares
+      const { onlineStatusManager } = await import('@/services/onlineStatusManager');
+      
+      console.log(`✅ [PRESENCE-KEEP-ALIVE] Enviando presença: ${status} para ${chatId}`);
+      
+      // Usar o sistema completo de presença
+      const success = await onlineStatusManager.configureOnlinePresence(instanceId, clientId, 'auto-trigger');
+      
+      if (success) {
+        retryCountRef.current = 0;
+        hasTokenFailureRef.current = false;
+        console.log(`🎯 [PRESENCE-KEEP-ALIVE] Presença ${status} enviada com sucesso`);
+        return true;
+      } else {
+        throw new Error('Falha na configuração de presença');
+      }
+    } catch (error) {
+      retryCountRef.current++;
+      lastFailureTimeRef.current = Date.now();
+      
+      if (retryCountRef.current >= 3) {
+        hasTokenFailureRef.current = true;
+        console.error('💥 [PRESENCE-KEEP-ALIVE] Muitas falhas, pausando sistema:', error);
+      } else {
+        console.warn(`⚠️ [PRESENCE-KEEP-ALIVE] Erro (tentativa ${retryCountRef.current}/3):`, error);
+      }
+      return false;
+    }
   }, [instanceId, chatId, clientId]);
 
   // Iniciar keep-alive
