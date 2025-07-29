@@ -257,17 +257,7 @@ class UnifiedYumerService {
         return { success: false, error: 'Business token não encontrado' };
       }
 
-      // Primeiro definir presença global como disponível
-      const presenceResponse = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/set-presence-status`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${instanceData.clients.business_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ presence: 'available' })
-      });
-      
-      console.log('🟢 [PRESENCE] Response:', await presenceResponse.text());
+      // Remover tentativa de endpoint inexistente - focar apenas nos endpoints documentados
 
       // Configurar privacidade online - CodeChat v2.2.1
       const response = await fetch(`${this.config.serverUrl}/api/v2/instance/${instanceId}/whatsapp/update/profile-online-privacy`, {
