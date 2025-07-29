@@ -675,8 +675,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       realInstanceId
     });
 
-    try {
-      if (onlineStatusConfig?.enabled) {
+    if (onlineStatusConfig?.enabled) {
         console.log('🔒 [PROFILE] Aplicando configurações de perfil online');
         
         try {
@@ -820,7 +819,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         messageId: sendResult.messageId
       });
 
-      // 📱 VOLTAR PRESENÇA PARA "DISPONÍVEL" APÓS ENVIO E MANTER POR TEMPO PROLONGADO
+      // 📱 VOLTAR PRESENÇA PARA "DISPONÍVEL" APÓS ENVIO
       try {
         console.log('📱 [PRESENCE] Definindo presença como "disponível" após envio');
         
@@ -837,78 +836,6 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         });
         
         console.log('✅ [PRESENCE] Presença "disponível" definida com sucesso');
-
-        // 💓 IMPLEMENTAR HEARTBEAT DE PRESENÇA CONTÍNUA
-        if (onlineStatusConfig?.enabled) {
-          console.log('💓 [HEARTBEAT] Iniciando heartbeat de presença contínua...');
-          
-          const maintainPresence = async () => {
-            const intervals = [30000, 60000, 90000, 120000, 180000]; // 30s, 1m, 1.5m, 2m, 3m
-            let intervalIndex = 0;
-            
-            for (let i = 0; i < 20; i++) { // Manter por ~30 minutos
-              try {
-                const currentInterval = intervals[Math.min(intervalIndex, intervals.length - 1)];
-                await new Promise(resolve => setTimeout(resolve, currentInterval));
-                
-                const heartbeatResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/chat/presence`, {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${client.business_token}`,
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                    remoteJid: resolvedContext.chatId,
-                    status: 'available'
-                  })
-                });
-                
-                if (heartbeatResponse.ok) {
-                  console.log(`💓 [HEARTBEAT] Heartbeat ${i + 1}/20 executado com sucesso (intervalo: ${currentInterval}ms)`);
-                } else {
-                  console.warn(`💓 [HEARTBEAT] Heartbeat ${i + 1} falhou - Status: ${heartbeatResponse.status}`);
-                }
-                
-                // A cada 5 heartbeats, reaplicar configurações de perfil
-                if (i > 0 && i % 5 === 0) {
-                  console.log('🔄 [HEARTBEAT] Reaplicando configurações de perfil...');
-                  
-                  try {
-                    // Reaplicar privacidade online
-                    await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/whatsapp/update/profile-online-privacy`, {
-                      method: 'PATCH',
-                      headers: {
-                        'Authorization': `Bearer ${client.business_token}`,
-                        'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify({ action: onlineStatusConfig.onlinePrivacy || 'all' })
-                    });
-                    
-                    console.log('🔄 [HEARTBEAT] Configurações reaplicadas com sucesso');
-                  } catch (reapplyError) {
-                    console.error('🔄 [HEARTBEAT] Erro ao reaplicar configurações:', reapplyError);
-                  }
-                }
-                
-                // Aumentar intervalo gradualmente para economizar recursos
-                if (i > 0 && i % 3 === 0 && intervalIndex < intervals.length - 1) {
-                  intervalIndex++;
-                }
-                
-              } catch (heartbeatError) {
-                console.error(`💓 [HEARTBEAT] Erro no heartbeat ${i + 1}:`, heartbeatError);
-              }
-            }
-            
-            console.log('💓 [HEARTBEAT] Heartbeat de presença finalizado após ~30 minutos');
-          };
-          
-          // Executar heartbeat em background (não bloquear o resto da função)
-          maintainPresence().catch(error => {
-            console.error('💓 [HEARTBEAT] Erro no sistema de heartbeat:', error);
-          });
-        }
-
       } catch (presenceError) {
         console.warn('⚠️ [PRESENCE] Erro ao definir presença como disponível:', presenceError);
       }
