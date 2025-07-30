@@ -14,7 +14,7 @@ export const usePresenceKeepAlive = (
   chatId: string, 
   options: PresenceKeepAliveOptions & { clientId?: string } = {}
 ) => {
-  const { intervalSeconds = 30, enabled = true, clientId } = options;
+  const { intervalSeconds = 25, enabled = true, clientId } = options;
   
   // Log inicial para debug
   console.log(`🚀 [PRESENCE-KEEP-ALIVE] Iniciando para:`, {
@@ -89,9 +89,9 @@ export const usePresenceKeepAlive = (
       return false;
     }
 
-    // Só enviar presença se houve atividade nos últimos 5 minutos
+    // Só enviar presença se houve atividade nos últimos 2 minutos (reduzido)
     const timeSinceActivity = Date.now() - lastActivityRef.current;
-    if (timeSinceActivity > 5 * 60 * 1000) {
+    if (timeSinceActivity > 2 * 60 * 1000) {
       console.log('🔕 [PRESENCE-KEEP-ALIVE] Sem atividade recente, pausando presença');
       return false;
     }
@@ -129,25 +129,42 @@ export const usePresenceKeepAlive = (
 
   // Iniciar keep-alive
   const startKeepAlive = useCallback(() => {
-    if (!isActiveRef.current || intervalRef.current) return;
+    if (!isActiveRef.current || intervalRef.current) {
+      console.log(`⏭️ [PRESENCE-KEEP-ALIVE] Não iniciando: isActive=${isActiveRef.current}, hasInterval=${!!intervalRef.current}`);
+      return;
+    }
 
-    console.log(`🚀 [PRESENCE-KEEP-ALIVE] Iniciando para ${chatId} (intervalo: ${intervalSeconds}s)`);
+    console.log(`🚀 [PRESENCE-KEEP-ALIVE] INICIANDO EFETIVAMENTE para ${chatId} (intervalo: ${intervalSeconds}s)`);
+    
+    // Marcar atividade imediatamente para garantir que está ativo
+    lastActivityRef.current = Date.now();
     
     // Enviar presença imediatamente
     sendPresence('available');
     
-    // Configurar intervalo
+    // Configurar intervalo com logs detalhados
     intervalRef.current = setInterval(() => {
       const timeSinceActivity = Date.now() - lastActivityRef.current;
-      const maxInactiveTime = 5 * 60 * 1000; // 5 minutos
+      const maxInactiveTime = 2 * 60 * 1000; // 2 minutos (reduzido)
+      
+      console.log(`🔄 [PRESENCE-KEEP-ALIVE] EXECUTANDO INTERVAL: {
+        chatId: ${chatId},
+        timeSinceActivity: ${timeSinceActivity}ms (${Math.round(timeSinceActivity/1000)}s),
+        maxInactive: ${maxInactiveTime}ms (${maxInactiveTime/1000}s),
+        isActive: ${isActiveRef.current},
+        shouldSend: ${timeSinceActivity < maxInactiveTime && isActiveRef.current}
+      }`);
       
       if (timeSinceActivity < maxInactiveTime && isActiveRef.current) {
+        console.log(`📤 [PRESENCE-KEEP-ALIVE] Enviando 'available' para ${chatId}`);
         sendPresence('available');
       } else {
         console.log('📱 [PRESENCE-KEEP-ALIVE] Pausando por inatividade');
         stopKeepAlive();
       }
     }, intervalSeconds * 1000);
+    
+    console.log(`✅ [PRESENCE-KEEP-ALIVE] Interval configurado com ID: ${intervalRef.current}`);
   }, [chatId, intervalSeconds, sendPresence]);
 
   // Parar keep-alive
@@ -181,13 +198,25 @@ export const usePresenceKeepAlive = (
 
   // Inicializar quando habilitado
   useEffect(() => {
+    console.log(`🎯 [PRESENCE-KEEP-ALIVE] Effect inicialização: {
+      enabled: ${enabled},
+      instanceId: ${instanceId || 'VAZIO'},
+      chatId: ${chatId || 'VAZIO'},
+      shouldStart: ${enabled && instanceId && chatId}
+    }`);
+    
     if (enabled && instanceId && chatId) {
+      // Forçar atividade imediatamente
+      lastActivityRef.current = Date.now();
+      console.log(`⚡ [PRESENCE-KEEP-ALIVE] Forçando atividade inicial e iniciando keep-alive`);
       startKeepAlive();
     } else {
+      console.log(`🛑 [PRESENCE-KEEP-ALIVE] Parando keep-alive (condições não atendidas)`);
       stopKeepAlive();
     }
 
     return () => {
+      console.log(`🧹 [PRESENCE-KEEP-ALIVE] Cleanup do effect`);
       stopKeepAlive();
     };
   }, [enabled, instanceId, chatId, startKeepAlive, stopKeepAlive]);
