@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, FileText, File, FileImage, FileVideo, FileAudio, RotateCcw, ExternalLink } from 'lucide-react';
-import { whatsappDocumentService } from '@/services/whatsappDocumentService';
+import { unifiedMediaService } from '@/services/unifiedMediaService';
 
 interface DocumentViewerProps {
   documentUrl?: string;
@@ -56,14 +56,19 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       setError('');
 
       try {
-        const documentData = {
-          messageId,
-          documentUrl,
-          mediaKey,
-          fileEncSha256
-        };
 
-        const decryptedUrl = await whatsappDocumentService.decryptDocument(documentData);
+        const result = await unifiedMediaService.processDocument(
+          messageId,
+          '', // instanceId será obtido dentro do serviço
+          {
+            url: documentUrl,
+            mimetype: fileType || 'application/pdf',
+            mediaKey: mediaKey,
+            directPath: ''
+          }
+        );
+        
+        const decryptedUrl = result?.success ? result.mediaUrl : null;
         
         if (decryptedUrl) {
           console.log('✅ DocumentViewer: Descriptografia bem-sucedida');

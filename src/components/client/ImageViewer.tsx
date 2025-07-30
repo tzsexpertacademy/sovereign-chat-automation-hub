@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Download, AlertCircle, Loader2, Image as ImageIcon, ZoomIn } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { whatsappImageService } from '@/services/whatsappImageService';
+import { unifiedMediaService } from '@/services/unifiedMediaService';
 
 interface ImageViewerProps {
   imageUrl?: string;
@@ -59,14 +59,19 @@ const ImageViewer = ({
           console.log('🔐 ImageViewer: Descriptografando imagem');
           setIsDecrypting(true);
           
-          const imageData = {
-            messageId,
-            imageUrl,
-            mediaKey,
-            fileEncSha256
-          };
 
-          const decryptedUrl = await whatsappImageService.decryptImage(imageData);
+          const result = await unifiedMediaService.processImage(
+            messageId,
+            '', // instanceId será obtido dentro do serviço
+            {
+              url: imageUrl,
+              mimetype: 'image/jpeg',
+              mediaKey: mediaKey,
+              directPath: ''
+            }
+          );
+          
+          const decryptedUrl = result?.success ? result.mediaUrl : null;
           
           if (decryptedUrl) {
             console.log('✅ ImageViewer: Descriptografia bem-sucedida');

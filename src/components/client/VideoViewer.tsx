@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, Play, Pause, Volume2, VolumeX, RotateCcw } from 'lucide-react';
-import { whatsappVideoService } from '@/services/whatsappVideoService';
+import { unifiedMediaService } from '@/services/unifiedMediaService';
 
 interface VideoViewerProps {
   videoUrl?: string;
@@ -50,24 +50,33 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         return;
       }
 
-      // Tentar descriptografar
-      console.log('🔐 VideoViewer: Iniciando descriptografia', { messageId, hasMediaKey: !!mediaKey });
+      // Tentar descriptografar usando UnifiedMediaService
+      console.log('🔐 VideoViewer: Iniciando descriptografia via UnifiedMediaService', { messageId, hasMediaKey: !!mediaKey });
       setIsDecrypting(true);
       setError('');
 
       try {
-        const videoData = {
+        const result = await unifiedMediaService.processVideo(
           messageId,
-          videoUrl,
-          mediaKey,
-          fileEncSha256
-        };
+          '', // instanceId será obtido dentro do serviço
+          {
+            url: videoUrl,
+            mimetype: 'video/mp4',
+            mediaKey: mediaKey,
+            directPath: ''
+          }
+        );
 
-        const decryptedUrl = await whatsappVideoService.decryptVideo(videoData);
+        console.log('📡 VideoViewer: Resultado da descriptografia:', {
+          success: result?.success,
+          hasMediaUrl: !!result?.mediaUrl,
+          format: result?.format,
+          cached: result?.cached
+        });
         
-        if (decryptedUrl) {
+        if (result?.success && result?.mediaUrl) {
           console.log('✅ VideoViewer: Descriptografia bem-sucedida');
-          setDisplayVideoUrl(decryptedUrl);
+          setDisplayVideoUrl(result.mediaUrl);
         } else {
           console.log('❌ VideoViewer: Falha na descriptografia, tentando URL direta');
           // Fallback: tentar URL original

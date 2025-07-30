@@ -8,10 +8,8 @@ import AudioPlayer from '../AudioPlayer';
 import ImageViewer from '../ImageViewer';
 import VideoViewer from '../VideoViewer';
 import DocumentViewer from '../DocumentViewer';
-import { whatsappAudioService } from '@/services/whatsappAudioService';
-import { whatsappImageService } from '@/services/whatsappImageService';
-import { whatsappVideoService } from '@/services/whatsappVideoService';
-import { whatsappDocumentService } from '@/services/whatsappDocumentService';
+import { unifiedMediaService } from '@/services/unifiedMediaService';
+import { adaptMessageMedia } from '@/utils/mediaDataAdapter';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 
@@ -32,27 +30,27 @@ const MessagesList = ({ messages, scrollAreaRef, getMessageStatus, ticketId, ins
 
   // Logs reduzidos para melhor performance
 const renderMessageContent = (message: any) => {
-    // Renderizar áudio
+  // Renderizar áudio
     if (message.message_type === 'audio') {
-      const audioPlaybackData = whatsappAudioService.getAudioPlaybackData(message);
+      const adaptedData = adaptMessageMedia(message);
       
-      console.log('🎵 MessagesList: Renderizando áudio:', {
-        messageId: message.message_id,
-        hasAudioData: !!audioPlaybackData.audioData,
-        hasAudioUrl: !!audioPlaybackData.audioUrl,
-        needsDecryption: audioPlaybackData.needsDecryption
+      console.log('🎵 MessagesList: Renderizando áudio via UnifiedMediaService:', {
+        messageId: adaptedData.messageId,
+        hasMediaUrl: !!adaptedData.mediaUrl,
+        needsDecryption: adaptedData.needsDecryption,
+        hasMediaKey: !!adaptedData.mediaKey
       });
 
       return (
         <div className="space-y-3 max-w-sm">
           <AudioPlayer 
-            audioUrl={audioPlaybackData.audioUrl}
-            audioData={audioPlaybackData.audioData}
-            duration={message.media_duration}
-            fileName={`audio_${message.message_id || message.id}.ogg`}
-            messageId={audioPlaybackData.messageId}
-            mediaKey={audioPlaybackData.mediaKey}
-            fileEncSha256={audioPlaybackData.fileEncSha256}
+            audioUrl={adaptedData.mediaUrl}
+            audioData={message.audio_base64} // Base64 direto do banco
+            duration={adaptedData.duration}
+            fileName={adaptedData.fileName}
+            messageId={adaptedData.messageId}
+            mediaKey={adaptedData.mediaKey}
+            fileEncSha256={adaptedData.fileEncSha256}
           />
           
           <div className="flex items-center gap-2 text-xs text-gray-600">
@@ -106,49 +104,47 @@ const renderMessageContent = (message: any) => {
 
     // Renderizar imagem
     if (message.message_type === 'image') {
-      const imageDisplayData = whatsappImageService.getImageDisplayData(message);
+      const adaptedData = adaptMessageMedia(message);
       
-      console.log('🖼️ MessagesList: Renderizando imagem:', {
-        messageId: message.message_id,
-        hasImageUrl: !!imageDisplayData.imageUrl,
-        needsDecryption: imageDisplayData.needsDecryption,
-        error: imageDisplayData.error
+      console.log('🖼️ MessagesList: Renderizando imagem via UnifiedMediaService:', {
+        messageId: adaptedData.messageId,
+        hasMediaUrl: !!adaptedData.mediaUrl,
+        needsDecryption: adaptedData.needsDecryption
       });
 
       return (
         <ImageViewer
-          imageUrl={imageDisplayData.imageUrl}
-          messageId={message.message_id || message.id}
-          mediaKey={message.media_key}
-          fileEncSha256={message.file_enc_sha256}
-          needsDecryption={imageDisplayData.needsDecryption}
-          caption={message.content}
-          fileName={`image_${message.message_id || message.id}.jpg`}
+          imageUrl={adaptedData.mediaUrl}
+          messageId={adaptedData.messageId}
+          mediaKey={adaptedData.mediaKey}
+          fileEncSha256={adaptedData.fileEncSha256}
+          needsDecryption={adaptedData.needsDecryption}
+          caption={adaptedData.caption}
+          fileName={adaptedData.fileName}
         />
       );
     }
 
     // Renderizar vídeo
     if (message.message_type === 'video') {
-      const videoDisplayData = whatsappVideoService.getVideoDisplayData(message);
+      const adaptedData = adaptMessageMedia(message);
       
-      console.log('🎥 MessagesList: Renderizando vídeo:', {
-        messageId: message.message_id,
-        hasVideoUrl: !!videoDisplayData.videoUrl,
-        needsDecryption: videoDisplayData.needsDecryption,
-        error: videoDisplayData.error
+      console.log('🎥 MessagesList: Renderizando vídeo via UnifiedMediaService:', {
+        messageId: adaptedData.messageId,
+        hasMediaUrl: !!adaptedData.mediaUrl,
+        needsDecryption: adaptedData.needsDecryption
       });
 
       return (
         <div className="space-y-2 max-w-md">
           <VideoViewer
-            videoUrl={videoDisplayData.videoUrl}
-            messageId={message.message_id || message.id}
-            mediaKey={message.media_key}
-            fileEncSha256={message.file_enc_sha256}
-            needsDecryption={videoDisplayData.needsDecryption}
-            caption={message.content}
-            fileName={`video_${message.message_id || message.id}.mp4`}
+            videoUrl={adaptedData.mediaUrl}
+            messageId={adaptedData.messageId}
+            mediaKey={adaptedData.mediaKey}
+            fileEncSha256={adaptedData.fileEncSha256}
+            needsDecryption={adaptedData.needsDecryption}
+            caption={adaptedData.caption}
+            fileName={adaptedData.fileName}
           />
           
           <div className="flex items-center gap-2 text-xs text-gray-600">
@@ -164,27 +160,26 @@ const renderMessageContent = (message: any) => {
 
     // Renderizar documento
     if (message.message_type === 'document') {
-      const documentDisplayData = whatsappDocumentService.getDocumentDisplayData(message);
+      const adaptedData = adaptMessageMedia(message);
       
-      console.log('📄 MessagesList: Renderizando documento:', {
-        messageId: message.message_id,
-        hasDocumentUrl: !!documentDisplayData.documentUrl,
-        needsDecryption: documentDisplayData.needsDecryption,
-        fileName: documentDisplayData.fileName,
-        error: documentDisplayData.error
+      console.log('📄 MessagesList: Renderizando documento via UnifiedMediaService:', {
+        messageId: adaptedData.messageId,
+        hasMediaUrl: !!adaptedData.mediaUrl,
+        needsDecryption: adaptedData.needsDecryption,
+        fileName: adaptedData.fileName
       });
 
       return (
         <div className="space-y-2 max-w-sm">
           <DocumentViewer
-            documentUrl={documentDisplayData.documentUrl}
-            messageId={message.message_id || message.id}
-            mediaKey={message.media_key}
-            fileEncSha256={message.file_enc_sha256}
-            needsDecryption={documentDisplayData.needsDecryption}
-            caption={message.content}
-            fileName={documentDisplayData.fileName || `document_${message.message_id || message.id}`}
-            fileType={documentDisplayData.fileType}
+            documentUrl={adaptedData.mediaUrl}
+            messageId={adaptedData.messageId}
+            mediaKey={adaptedData.mediaKey}
+            fileEncSha256={adaptedData.fileEncSha256}
+            needsDecryption={adaptedData.needsDecryption}
+            caption={adaptedData.caption}
+            fileName={adaptedData.fileName}
+            fileType={adaptedData.fileType}
           />
           
           <div className="flex items-center gap-2 text-xs text-gray-600">
