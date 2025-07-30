@@ -3,15 +3,21 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Users, Trash2 } from 'lucide-react';
+import WebSocketStatus from '../WebSocketStatus';
 
 interface TicketHeaderProps {
   queueInfo: any;
   onClearHistory: () => void;
   isClearing: boolean;
   messagesCount: number;
+  websocketStatus?: {
+    isConnected: boolean;
+    isFallbackActive: boolean;
+    reconnectAttempts: number;
+  };
 }
 
-const TicketHeader = ({ queueInfo, onClearHistory, isClearing, messagesCount }: TicketHeaderProps) => {
+const TicketHeader = ({ queueInfo, onClearHistory, isClearing, messagesCount, websocketStatus }: TicketHeaderProps) => {
   if (!queueInfo) return null;
 
   return (
@@ -23,6 +29,14 @@ const TicketHeader = ({ queueInfo, onClearHistory, isClearing, messagesCount }: 
           <Badge variant="secondary" className="text-xs">
             🤖 {queueInfo.assistants.name}
           </Badge>
+        )}
+        
+        {websocketStatus && (
+          <WebSocketStatus
+            isConnected={websocketStatus.isConnected}
+            isFallbackActive={websocketStatus.isFallbackActive}
+            reconnectAttempts={websocketStatus.reconnectAttempts}
+          />
         )}
       </div>
       

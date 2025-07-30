@@ -15,6 +15,9 @@ import PresenceKeepAlive from './chat/PresenceKeepAlive';
 
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
+import { useWebSocketRealtime } from '@/hooks/useWebSocketRealtime';
+import { webSocketConfigService } from '@/services/webSocketConfigService';
+import WebSocketStatus from './WebSocketStatus';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -34,6 +37,24 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { getMessageStatus } = useMessageStatus({ ticketId });
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
+
+  // WebSocket Real-time - Fase 2: Integração Gradual
+  const { isConnected: wsConnected, isFallbackActive, reconnectAttempts } = useWebSocketRealtime({
+    clientId,
+    instanceId: actualInstanceId || '',
+    enabled: !!(actualInstanceId && ticket?.chat_id),
+    onMessage: (wsMessage) => {
+      console.log('📨 [WEBSOCKET] Nova mensagem via WebSocket:', wsMessage);
+      // Mensagens do WebSocket vão ser automaticamente sincronizadas pelo Supabase
+      // O sistema atual já escuta mudanças no banco via useTicketMessages
+    },
+    onConnectionUpdate: (status) => {
+      console.log('🔄 [WEBSOCKET] Status de conexão atualizado:', status);
+    },
+    onPresenceUpdate: (presence) => {
+      console.log('👤 [WEBSOCKET] Presença atualizada:', presence);
+    }
+  });
 
   // Limpar estado quando mudar de ticket
   useEffect(() => {
@@ -188,6 +209,15 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         enabled={!!(actualInstanceId && ticket?.chat_id)}
       />
       
+      {/* WebSocket Status - Fase 3: Monitoramento */}
+      <div className="flex justify-end p-2 border-b bg-background">
+        <WebSocketStatus
+          isConnected={wsConnected}
+          isFallbackActive={isFallbackActive}
+          reconnectAttempts={reconnectAttempts}
+        />
+      </div>
+
       <MessagesList
         messages={messages}
         scrollAreaRef={scrollAreaRef}
