@@ -2,28 +2,29 @@
 export class AudioConverter {
   /**
    * Converte áudio para formato otimizado para WhatsApp COM metadados de duração
+   * SOLUÇÃO DEFINITIVA: Sempre converte para WAV com estrutura completa
    */
   static async convertToOGGWithDuration(audioBlob: Blob, duration: number): Promise<Blob> {
     try {
-      console.log('🔄 Criando áudio com duração para WhatsApp...', { duration, type: audioBlob.type });
+      console.log('🔄 Forçando conversão para WAV com duração completa...', { duration, type: audioBlob.type });
       
-      // Para WebM/OGG gravados, tentar manter formato mas garantir metadados
-      if (audioBlob.type.includes('webm') || audioBlob.type.includes('ogg')) {
-        console.log('✅ Formato nativo detectado, otimizando metadados...');
-        
-        // Tentar criar OGG com metadados corretos
-        const optimizedBlob = await this.createOGGWithMetadata(audioBlob, duration);
-        if (optimizedBlob) {
-          return optimizedBlob;
-        }
-      }
-
-      // Fallback: Converter para WAV com header completo
-      console.log('⚡ Convertendo para WAV com metadados completos...');
-      return this.convertToWAVWithDuration(audioBlob, duration);
+      // CORREÇÃO RADICAL: Sempre converter para WAV com estrutura completa
+      // porque o WhatsApp não reconhece metadados em WebM/OGG do MediaRecorder
+      const wavBlob = await this.convertToWAVWithDuration(audioBlob, duration);
+      
+      console.log('✅ WAV criado com estrutura completa para WhatsApp');
+      return wavBlob;
+      
     } catch (error) {
-      console.error('❌ Erro na otimização, usando fallback WAV:', error);
-      return this.convertToWAVWithDuration(audioBlob, duration);
+      console.error('❌ Erro na conversão, tentando fallback:', error);
+      
+      // Fallback: tentar criar WAV simples
+      try {
+        return await this.convertToWAV(audioBlob);
+      } catch (fallbackError) {
+        console.error('❌ Fallback também falhou, retornando original:', fallbackError);
+        return audioBlob;
+      }
     }
   }
 
@@ -46,29 +47,41 @@ export class AudioConverter {
 
   /**
    * Converte para WAV com duração adequada para WhatsApp
+   * SOLUÇÃO ROBUSTA: Reconstrói o áudio completamente
    */
   static async convertToWAVWithDuration(audioBlob: Blob, duration: number): Promise<Blob> {
     try {
-      console.log('🔄 Convertendo para WAV com duração:', duration);
+      console.log('🔄 Reconstruindo áudio como WAV com duração:', duration);
       
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const arrayBuffer = await audioBlob.arrayBuffer();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
       
-      // Criar WAV com header completo incluindo duração calculada
-      const wavBuffer = this.audioBufferToWavWithDuration(audioBuffer, duration);
+      // CORREÇÃO: Usar a duração real do AudioBuffer se for mais precisa
+      const realDuration = audioBuffer.duration;
+      const finalDuration = Math.abs(realDuration - duration) < 0.1 ? realDuration : duration;
+      
+      console.log('🔍 Durações:', { 
+        passed: duration, 
+        detected: realDuration, 
+        final: finalDuration 
+      });
+      
+      // Criar WAV com header completo e duração precisa
+      const wavBuffer = this.createPreciseWAV(audioBuffer, finalDuration);
       const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
       
-      console.log('✅ WAV criado com metadados:', {
-        duration: duration,
+      console.log('✅ WAV reconstruído:', {
+        duration: finalDuration,
         size: wavBlob.size,
         type: wavBlob.type,
-        sampleRate: audioBuffer.sampleRate
+        sampleRate: audioBuffer.sampleRate,
+        channels: audioBuffer.numberOfChannels
       });
       
       return wavBlob;
     } catch (error) {
-      console.error('❌ Erro na conversão WAV:', error);
+      console.error('❌ Erro na reconstrução WAV:', error);
       throw error;
     }
   }
@@ -149,23 +162,27 @@ export class AudioConverter {
   }
 
   /**
-   * Converte AudioBuffer para WAV com duração específica para WhatsApp
+   * Cria WAV com precisão total para WhatsApp
    */
-  private static audioBufferToWavWithDuration(buffer: AudioBuffer, duration: number): ArrayBuffer {
+  private static createPreciseWAV(buffer: AudioBuffer, duration: number): ArrayBuffer {
     const length = buffer.length;
     const numberOfChannels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
     
-    // Calcular tamanho baseado na duração real para metadados precisos
-    const expectedSamples = Math.floor(duration * sampleRate);
-    const actualLength = Math.min(length, expectedSamples);
+    // CORREÇÃO: Usar samples exatos baseados na duração
+    const exactSamples = Math.floor(duration * sampleRate);
+    const finalLength = Math.min(length, exactSamples);
     
-    const arrayBuffer = new ArrayBuffer(44 + actualLength * numberOfChannels * 2);
+    // Calcular tamanhos precisos para header WAV
+    const dataSize = finalLength * numberOfChannels * 2; // 16-bit samples
+    const fileSize = 36 + dataSize;
+    
+    const arrayBuffer = new ArrayBuffer(44 + dataSize);
     const view = new DataView(arrayBuffer);
     
-    console.log(`🔧 Criando WAV: ${duration}s, ${sampleRate}Hz, ${numberOfChannels}ch, ${actualLength} samples`);
+    console.log(`🔧 WAV preciso: ${duration}s exatos, ${sampleRate}Hz, ${numberOfChannels}ch, ${finalLength}/${length} samples`);
     
-    // WAV header otimizado para WhatsApp
+    // Header WAV PRECISO para WhatsApp
     const writeString = (offset: number, string: string) => {
       for (let i = 0; i < string.length; i++) {
         view.setUint8(offset + i, string.charCodeAt(i));
@@ -173,32 +190,46 @@ export class AudioConverter {
     };
     
     let offset = 0;
+    
+    // RIFF header
     writeString(offset, 'RIFF'); offset += 4;
-    view.setUint32(offset, 36 + actualLength * numberOfChannels * 2, true); offset += 4;
+    view.setUint32(offset, fileSize, true); offset += 4; // Tamanho preciso do arquivo
     writeString(offset, 'WAVE'); offset += 4;
+    
+    // fmt chunk
     writeString(offset, 'fmt '); offset += 4;
-    view.setUint32(offset, 16, true); offset += 4;
+    view.setUint32(offset, 16, true); offset += 4; // fmt chunk size
     view.setUint16(offset, 1, true); offset += 2; // PCM format
-    view.setUint16(offset, numberOfChannels, true); offset += 2;
-    view.setUint32(offset, sampleRate, true); offset += 4;
+    view.setUint16(offset, numberOfChannels, true); offset += 2; // canais
+    view.setUint32(offset, sampleRate, true); offset += 4; // sample rate
     view.setUint32(offset, sampleRate * numberOfChannels * 2, true); offset += 4; // byte rate
     view.setUint16(offset, numberOfChannels * 2, true); offset += 2; // block align
     view.setUint16(offset, 16, true); offset += 2; // bits per sample
-    writeString(offset, 'data'); offset += 4;
-    view.setUint32(offset, actualLength * numberOfChannels * 2, true); offset += 4;
     
-    // Converter samples com duração precisa
+    // data chunk
+    writeString(offset, 'data'); offset += 4;
+    view.setUint32(offset, dataSize, true); offset += 4; // Tamanho preciso dos dados
+    
+    // Converter samples com qualidade máxima
     const channels = [];
     for (let channel = 0; channel < numberOfChannels; channel++) {
       channels.push(buffer.getChannelData(channel));
     }
     
-    let sampleOffset = offset;
-    for (let i = 0; i < actualLength; i++) {
+    // Escrever samples com precisão total
+    for (let i = 0; i < finalLength; i++) {
       for (let channel = 0; channel < numberOfChannels; channel++) {
-        const sample = Math.max(-1, Math.min(1, channels[channel][i] || 0));
-        view.setInt16(sampleOffset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-        sampleOffset += 2;
+        // Obter sample ou 0 se não existir
+        const sample = i < channels[channel].length ? channels[channel][i] : 0;
+        
+        // Converter para 16-bit com qualidade máxima
+        const clampedSample = Math.max(-1, Math.min(1, sample));
+        const int16Sample = clampedSample < 0 
+          ? Math.floor(clampedSample * 0x8000) 
+          : Math.floor(clampedSample * 0x7FFF);
+        
+        view.setInt16(offset, int16Sample, true);
+        offset += 2;
       }
     }
     
