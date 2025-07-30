@@ -45,67 +45,32 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     });
   }, []);
 
-  // WebSocket Integration - CANAL PRINCIPAL com Socket.IO
+  // WebSocket Integration - PRIORIDADE MÁXIMA 
   const webSocketConfig = {
     clientId,
     instanceId: instanceId || '',
     enabled: !!(instanceId && ticketId),
     onMessage: useCallback((wsMessage: any) => {
-      console.log('🎯 [FASE-4] PROCESSAMENTO AVANÇADO de mensagem Socket.IO:', wsMessage);
+      console.log('📨 [UNIFIED] *** MENSAGEM WEBSOCKET RECEBIDA ***:', wsMessage);
       
-      // 🔍 VALIDAÇÃO RIGOROSA BASEADA NOS LOGS REAIS
-      if (!wsMessage || !wsMessage.messageId || !wsMessage.instanceInstanceId) {
-        console.warn('❌ [FASE-4] MENSAGEM INVÁLIDA - campos obrigatórios ausentes:', {
-          hasMessage: !!wsMessage,
-          hasMessageId: !!wsMessage?.messageId,
-          hasInstanceId: !!wsMessage?.instanceInstanceId,
-          receivedKeys: Object.keys(wsMessage || {})
-        });
+      if (!wsMessage || !wsMessage.messageId) {
+        console.warn('⚠️ [UNIFIED] Mensagem WebSocket inválida');
         return;
       }
 
-      // ✅ VERIFICAR INSTÂNCIA (segurança)
-      if (wsMessage.instanceInstanceId !== instanceId) {
-        console.log('📋 [FASE-4] Mensagem de instância diferente ignorada:', {
-          recebidaDe: wsMessage.instanceInstanceId,
-          esperado: instanceId
-        });
-        return;
-      }
-
-      // 🎯 PROCESSAMENTO BASEADO NA ESTRUTURA REAL DOS LOGS
       try {
-        // Extrair dados conforme estrutura real: 
-        // messageId, keyFromMe, keyRemoteJid, pushName, contentType, content: { text }, messageTimestamp
-        const messagePhone = wsMessage.keyRemoteJid?.replace(/@(s\.whatsapp\.net|c\.us)$/, '') || 'Desconhecido';
-        
-        // ✅ NORMALIZAÇÃO ROBUSTA
-        const normalizedMessage = {
-          messageId: wsMessage.messageId,
-          fromMe: Boolean(wsMessage.keyFromMe),
-          contentType: wsMessage.contentType || 'text',
-          content: wsMessage.content?.text || 
-                   wsMessage.content?.caption || 
-                   JSON.stringify(wsMessage.content || {}),
-          timestamp: wsMessage.messageTimestamp 
-            ? new Date(Number(wsMessage.messageTimestamp) * 1000).toISOString()
-            : new Date().toISOString(),
-          senderName: wsMessage.pushName || (wsMessage.keyFromMe ? 'Atendente' : `Cliente ${messagePhone}`),
-          chatId: wsMessage.keyRemoteJid,
-          isGroup: Boolean(wsMessage.isGroup),
-          source: wsMessage.source || 'websocket-realtime'
-        };
-
-        // 🎯 CONVERTER PARA FORMATO TICKET MESSAGE
+        // Converter mensagem WebSocket para formato TicketMessage
         const ticketMessage: TicketMessage = {
           id: `ws_${wsMessage.messageId}_${Date.now()}`,
           ticket_id: ticketId,
-          message_id: normalizedMessage.messageId,
-          from_me: normalizedMessage.fromMe,
-          sender_name: normalizedMessage.senderName,
-          content: normalizedMessage.content,
-          message_type: normalizedMessage.contentType,
-          timestamp: normalizedMessage.timestamp,
+          message_id: wsMessage.messageId,
+          from_me: wsMessage.keyFromMe || false,
+          sender_name: wsMessage.pushName || (wsMessage.keyFromMe ? 'Atendente' : 'Cliente'),
+          content: wsMessage.content?.text || wsMessage.content || '[SEM CONTEÚDO]',
+          message_type: wsMessage.contentType || 'text',
+          timestamp: wsMessage.messageTimestamp 
+            ? new Date(Number(wsMessage.messageTimestamp) * 1000).toISOString()
+            : new Date().toISOString(),
           media_url: null,
           media_duration: null,
           is_internal_note: false,
@@ -114,41 +79,27 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
           created_at: new Date().toISOString()
         };
 
-        // ⚠️ VALIDAÇÃO DE CONTEÚDO
-        if (!ticketMessage.content || ticketMessage.content.trim() === '' || ticketMessage.content === '{}') {
-          console.warn('⚠️ [FASE-4] Mensagem sem conteúdo válido, mas processando mesmo assim:', {
-            messageId: ticketMessage.message_id,
-            contentType: ticketMessage.message_type,
-            originalContent: wsMessage.content
-          });
-          ticketMessage.content = `[${ticketMessage.message_type.toUpperCase()}]`;
-        }
-
-        console.log('✅ [FASE-4] MENSAGEM PROCESSADA COM SUCESSO:', {
+        console.log('✅ [UNIFIED] *** MENSAGEM WEBSOCKET PROCESSADA ***:', {
           messageId: ticketMessage.message_id,
           fromMe: ticketMessage.from_me,
-          contentPreview: ticketMessage.content.substring(0, 100),
-          sender: ticketMessage.sender_name,
-          type: ticketMessage.message_type
+          content: ticketMessage.content?.substring(0, 50)
         });
 
-        // 💾 SALVAR NO BANCO (apenas mensagens de clientes)
-        if (!normalizedMessage.fromMe) {
+        // Salvar no banco se for mensagem de cliente
+        if (!ticketMessage.from_me && ticketMessage.content?.trim()) {
           ticketsService.addTicketMessage(ticketMessage).catch(error => {
-            console.error('❌ [FASE-4] ERRO ao salvar mensagem:', error);
+            console.error('❌ [UNIFIED] Erro ao salvar mensagem WebSocket:', error);
           });
         }
 
-        // 🔄 ADICIONAR À LISTA DE MENSAGENS
+        // Adicionar à lista com máxima prioridade
         addMessageSafely(ticketMessage, 'websocket');
         lastLoadRef.current = Date.now();
 
-        console.log('🎉 [FASE-4] MENSAGEM ADICIONADA COM SUCESSO VIA WEBSOCKET!');
+        console.log('🎉 [UNIFIED] *** MENSAGEM WEBSOCKET ADICIONADA COM SUCESSO ***');
 
       } catch (error) {
-        console.error('❌ [FASE-4] ERRO CRÍTICO no processamento:', error, {
-          originalMessage: wsMessage
-        });
+        console.error('❌ [UNIFIED] Erro ao processar mensagem WebSocket:', error);
       }
     }, [ticketId, instanceId, addMessageSafely])
   };
@@ -181,11 +132,11 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     }
   }, [ticketId]);
 
-  // Supabase Realtime - CANAL SECUNDÁRIO (backup)
+  // Supabase Realtime - FALLBACK quando WebSocket falha
   const setupSupabaseListener = useCallback(() => {
     if (!ticketId) return null;
     
-    console.log('🔔 [UNIFIED] Configurando Supabase listener para ticket:', ticketId);
+    console.log('🔔 [UNIFIED] Configurando Supabase listener (fallback)...');
     
     const channel = supabase
       .channel(`unified-ticket-${ticketId}`)
@@ -198,18 +149,18 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
           filter: `ticket_id=eq.${ticketId}`
         },
         (payload) => {
-          // Se WebSocket está ativo, usar com prioridade mais baixa
+          // PRIORIDADE: WebSocket > Supabase > Polling
           if (wsConnected && !isFallbackActive) {
-            console.log('📡 [UNIFIED] Supabase update ignorado - WebSocket ativo');
+            console.log('⏭️ [UNIFIED] Supabase ignorado - WebSocket ativo');
             return;
           }
           
-          console.log('📨 [UNIFIED] Mudança via Supabase:', payload.eventType);
+          console.log('📨 [UNIFIED] Mudança via Supabase (fallback):', payload.eventType);
           
           if (payload.eventType === 'INSERT' && payload.new) {
             const newMessage = payload.new as TicketMessage;
             
-            // Verificar se já existe via WebSocket
+            // Verificar duplicatas
             if (!messageIdsRef.current.has(newMessage.message_id)) {
               addMessageSafely(newMessage, 'supabase');
             }
@@ -217,11 +168,6 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
             const updatedMessage = payload.new as TicketMessage;
             setMessages(prev => 
               prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
-            );
-            setLastUpdateSource('supabase');
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            setMessages(prev => 
-              prev.filter(msg => msg.id !== (payload.old as any).id)
             );
             setLastUpdateSource('supabase');
           }
@@ -236,7 +182,7 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     return channel;
   }, [ticketId, wsConnected, isFallbackActive, addMessageSafely]);
 
-  // Polling inteligente otimizado - CANAL TERCIÁRIO (último recurso)
+  // Polling inteligente - ÚLTIMO RECURSO quando tudo falha
   const startIntelligentPolling = useCallback(() => {
     if (pollTimeoutRef.current) {
       clearTimeout(pollTimeoutRef.current);
@@ -245,18 +191,19 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     pollTimeoutRef.current = setTimeout(() => {
       const timeSinceLastLoad = Date.now() - lastLoadRef.current;
       const shouldPoll = 
-        timeSinceLastLoad > 60000 && // 60s sem atualização (aumentado)
-        (!wsConnected || isFallbackActive) && // WebSocket não está funcionando
-        currentTicketRef.current === ticketId; // Ainda no mesmo ticket
+        timeSinceLastLoad > 30000 && // 30s sem atualização
+        (!wsConnected || isFallbackActive) && // WebSocket não funcionando
+        currentTicketRef.current === ticketId; // Mesmo ticket
 
       if (shouldPoll) {
-        console.log('🔄 [UNIFIED] Polling de emergência ativado');
+        console.log('🔄 [UNIFIED] *** POLLING DE EMERGÊNCIA ATIVADO ***');
         loadMessages(true);
+      } else if (wsConnected && !isFallbackActive) {
+        console.log('✅ [UNIFIED] *** POLLING DESABILITADO - WEBSOCKET ATIVO ***');
       }
       
-      // Intervalo maior para reduzir carga
       startIntelligentPolling();
-    }, 45000); // 45s entre verificações
+    }, 20000); // Verificar a cada 20s
   }, [ticketId, wsConnected, isFallbackActive, loadMessages]);
 
   // Effect principal
