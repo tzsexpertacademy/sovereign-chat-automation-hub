@@ -579,26 +579,13 @@ class YumerApiV2Service {
   }
 
   /**
-   * ✅ NOVA FUNCIONALIDADE: Enviar atualização de presença invisível
-   * Envia mensagem vazia apenas para atualizar status 'available'
+   * ✅ HEARTBEAT DE PRESENÇA DESABILITADO
+   * Endpoint /chat/presence não existe na API v2.2.1
    */
   async sendPresenceHeartbeat(instanceId: string, chatId: string): Promise<boolean> {
-    try {
-      // Usar endpoint de presence direto ao invés de send/text
-      await this.makeRequest(`/api/v2/instance/${instanceId}/chat/presence`, {
-        method: 'POST',
-        body: JSON.stringify({
-          chatId: chatId,
-          state: 'available',
-          media: 'none'
-        })
-      }, true, instanceId);
-
-      return true;
-    } catch (error) {
-      console.warn(`⚠️ [YUMER-API] Fallback: presença não suportada na instância ${instanceId}`);
-      return false;
-    }
+    // Endpoint removido - não suportado na API atual
+    console.log(`ℹ️ [YUMER-API] Presença via endpoint desabilitada para: ${instanceId}`);
+    return false;
   }
 
   /**

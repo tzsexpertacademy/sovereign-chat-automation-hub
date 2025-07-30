@@ -200,7 +200,7 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     return channel;
   }, [ticketId, wsConnected, isFallbackActive, addMessageSafely]);
 
-  // Polling inteligente - CANAL TERCIÁRIO (último recurso)
+  // Polling inteligente otimizado - CANAL TERCIÁRIO (último recurso)
   const startIntelligentPolling = useCallback(() => {
     if (pollTimeoutRef.current) {
       clearTimeout(pollTimeoutRef.current);
@@ -209,7 +209,7 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     pollTimeoutRef.current = setTimeout(() => {
       const timeSinceLastLoad = Date.now() - lastLoadRef.current;
       const shouldPoll = 
-        timeSinceLastLoad > 45000 && // 45s sem atualização
+        timeSinceLastLoad > 60000 && // 60s sem atualização (aumentado)
         (!wsConnected || isFallbackActive) && // WebSocket não está funcionando
         currentTicketRef.current === ticketId; // Ainda no mesmo ticket
 
@@ -218,8 +218,9 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
         loadMessages(true);
       }
       
+      // Intervalo maior para reduzir carga
       startIntelligentPolling();
-    }, 30000);
+    }, 45000); // 45s entre verificações
   }, [ticketId, wsConnected, isFallbackActive, loadMessages]);
 
   // Effect principal

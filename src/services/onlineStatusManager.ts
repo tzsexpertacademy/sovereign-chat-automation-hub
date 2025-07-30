@@ -101,31 +101,16 @@ class OnlineStatusManager {
     return this.configureProfileOnce(instanceId, clientId, source);
   }
 
-  // ✅ NOVA IMPLEMENTAÇÃO: Heartbeat de presença usando API v2.2.1
+  // ✅ HEARTBEAT DESABILITADO - API /chat/presence não existe
   async sendPresenceHeartbeat(instanceId: string, chatId: string, clientId: string): Promise<boolean> {
     if (this.isGloballyDisabled) {
       console.log('🚫 [STATUS-MANAGER] Sistema desabilitado - heartbeat cancelado');
       return false;
     }
 
-    try {
-      // Importar YumerApiV2Service dinamicamente
-      const yumerApiV2Service = (await import('./yumerApiV2Service')).default;
-      
-      // Enviar heartbeat usando novo método
-      const success = await yumerApiV2Service.sendPresenceHeartbeat(instanceId, chatId);
-      
-      if (success) {
-        console.log(`💓 [STATUS-MANAGER] Heartbeat enviado com sucesso para: ${chatId}`);
-        return true;
-      } else {
-        console.log(`❌ [STATUS-MANAGER] Falha no heartbeat para: ${chatId}`);
-        return false;
-      }
-    } catch (error) {
-      console.error(`💥 [STATUS-MANAGER] Erro no heartbeat:`, error);
-      return false;
-    }
+    // Endpoint /chat/presence não existe na API v2.2.1
+    console.log(`ℹ️ [STATUS-MANAGER] Heartbeat de presença desabilitado (endpoint inexistente)`);
+    return false;
   }
 
   // Timer automático para heartbeat contínuo
@@ -137,16 +122,8 @@ class OnlineStatusManager {
     // Parar timer existente se houver
     this.stopContinuousHeartbeat(instanceId, chatId);
     
-    // Primeiro heartbeat imediato
-    this.sendPresenceHeartbeat(instanceId, chatId, clientId);
-    
-    // Configurar timer para heartbeats contínuos
-    const timer = setInterval(() => {
-      this.sendPresenceHeartbeat(instanceId, chatId, clientId);
-    }, intervalMs);
-    
-    this.heartbeatTimers.set(timerKey, timer);
-    console.log(`🔄 [STATUS-MANAGER] Heartbeat contínuo iniciado para: ${chatId} (${intervalMs}ms)`);
+    // Heartbeat desabilitado - endpoint inexistente
+    console.log(`ℹ️ [STATUS-MANAGER] Heartbeat contínuo desabilitado (endpoint inexistente)`);
   }
 
   stopContinuousHeartbeat(instanceId: string, chatId: string): void {

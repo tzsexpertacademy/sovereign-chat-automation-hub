@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot, User, Mic, Image as ImageIcon, Video, FileText } from 'lucide-react';
@@ -21,15 +21,15 @@ interface MessagesListProps {
   instanceId?: string;
 }
 
-const MessagesList = ({ messages, scrollAreaRef, getMessageStatus, ticketId, instanceId }: MessagesListProps) => {
+const MessagesList = memo(({ messages, scrollAreaRef, getMessageStatus, ticketId, instanceId }: MessagesListProps) => {
   // 👀 INDICADORES DE PRESENÇA IMEDIATOS: Hook para presença em tempo real
   const { isTyping } = useTicketRealtimeImproved(ticketId || '');
   
   // 🚫 REMOVIDO: useRealTimePresence - IA controla status online
   const isRecording = false; // Simplificado
 
-  // Logs reduzidos para melhor performance
-const renderMessageContent = (message: any) => {
+  // Memoizar função de renderização para melhor performance
+  const renderMessageContent = useMemo(() => (message: any) => {
   // Renderizar áudio
     if (message.message_type === 'audio') {
       const adaptedData = adaptMessageMedia(message);
@@ -193,7 +193,10 @@ const renderMessageContent = (message: any) => {
       }
       return part;
     });
-  };
+  }, []);
+
+  // Memoizar lista de mensagens
+  const memoizedMessages = useMemo(() => messages, [messages]);
 
   if (messages.length === 0) {
     return (
@@ -233,7 +236,7 @@ const renderMessageContent = (message: any) => {
           </div>
         )}
         
-        {messages.map((message) => (
+        {memoizedMessages.map((message) => (
           <div
             key={`${message.id}-${message.timestamp}`}
             className={`flex gap-3 ${message.from_me ? 'justify-end' : 'justify-start'}`}
@@ -294,6 +297,6 @@ const renderMessageContent = (message: any) => {
       </div>
     </ScrollArea>
   );
-};
+});
 
 export default MessagesList;

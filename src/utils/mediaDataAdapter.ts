@@ -31,9 +31,23 @@ export const adaptMessageMedia = (message: any): AdaptedMediaData => {
     fileEncSha256
   );
 
-  // Log reduzido para evitar spam
-  if (!mediaUrl && !mediaKey) {
+// Cache estático para throttling de logs (evitar spam)
+  const logKey = `${messageId}-${message.message_type}`;
+  
+  // Usar uma variável global para cache
+  if (!globalThis._mediaAdapterCache) {
+    globalThis._mediaAdapterCache = new Set<string>();
+  }
+  
+  // Log throttling para evitar spam nos mesmos arquivos
+  if (!mediaUrl && !mediaKey && !globalThis._mediaAdapterCache.has(logKey)) {
     console.warn('⚠️ MediaAdapter: Mídia sem URL/Key:', messageId);
+    globalThis._mediaAdapterCache.add(logKey);
+    
+    // Limpar cache após 60 segundos para não crescer indefinidamente
+    setTimeout(() => {
+      globalThis._mediaAdapterCache?.delete(logKey);
+    }, 60000);
   }
 
   return {
