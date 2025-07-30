@@ -1285,6 +1285,36 @@ export type Database = {
           },
         ]
       }
+      media_cache: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          media_type: string
+          media_url: string
+          message_id: string
+          mime_type: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          media_type: string
+          media_url: string
+          message_id: string
+          mime_type: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          media_type?: string
+          media_url?: string
+          message_id?: string
+          mime_type?: string
+        }
+        Relationships: []
+      }
       message_batches: {
         Row: {
           chat_id: string
@@ -2136,6 +2166,10 @@ export type Database = {
         Returns: number
       }
       cleanup_expired_decrypted_videos: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      cleanup_expired_media_cache: {
         Args: Record<PropertyKey, never>
         Returns: number
       }

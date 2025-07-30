@@ -75,13 +75,34 @@ class UnifiedMediaService {
       return this.cache.get(cacheKey)!;
     }
 
-    // 2. TODO: Adicionar cache do Supabase após migração aprovada
-    
+    // 2. Verificar cache no Supabase
+    const cachedMedia = await this.getCachedMedia(mediaData.messageId);
+    if (cachedMedia) {
+      console.log('💾 [UNIFIED-MEDIA] Mídia encontrada no cache do Supabase');
+      const result: ProcessedMedia = {
+        success: true,
+        mediaUrl: cachedMedia.media_url,
+        mimeType: cachedMedia.mime_type,
+        format: this.extractFormat(cachedMedia.mime_type),
+        cached: true
+      };
+      this.cache.set(cacheKey, result);
+      return result;
+    }
+
     // 3. Processar via API nativa
     try {
       const result = await this.downloadMediaDirectly(mediaData);
       
       if (result.success && result.mediaUrl) {
+        // Salvar no cache do Supabase
+        await this.saveCachedMedia({
+          message_id: mediaData.messageId,
+          media_type: mediaData.contentType,
+          media_url: result.mediaUrl,
+          mime_type: result.mimeType || 'application/octet-stream'
+        });
+        
         // Salvar no cache local
         this.cache.set(cacheKey, result);
       }
@@ -164,7 +185,73 @@ class UnifiedMediaService {
     }
   }
 
-  // TODO: Métodos de cache do Supabase serão adicionados após aprovação da migração
+  /**
+   * Buscar mídia do cache no Supabase
+   */
+  private async getCachedMedia(messageId: string): Promise<MediaCacheEntry | null> {
+    try {
+      const { data, error } = await supabase
+        .from('media_cache')
+        .select('*')
+        .eq('message_id', messageId)
+        .gt('expires_at', new Date().toISOString())
+        .single();
+
+      if (error || !data) {
+        return null;
+      }
+
+      return data as MediaCacheEntry;
+    } catch (error) {
+      console.warn('⚠️ [UNIFIED-MEDIA] Erro ao buscar cache:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Salvar mídia no cache do Supabase
+   */
+  private async saveCachedMedia(mediaInfo: {
+    message_id: string;
+    media_type: string;
+    media_url: string;
+    mime_type: string;
+  }): Promise<void> {
+    try {
+      // TTL baseado no tipo de mídia
+      const ttlHours = this.getTTLByType(mediaInfo.media_type);
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + ttlHours);
+
+      const { error } = await supabase
+        .from('media_cache')
+        .upsert({
+          ...mediaInfo,
+          expires_at: expiresAt.toISOString()
+        });
+
+      if (error) {
+        console.warn('⚠️ [UNIFIED-MEDIA] Erro ao salvar cache:', error);
+      } else {
+        console.log('💾 [UNIFIED-MEDIA] Mídia salva no cache');
+      }
+    } catch (error) {
+      console.warn('⚠️ [UNIFIED-MEDIA] Erro ao salvar cache:', error);
+    }
+  }
+
+  /**
+   * TTL baseado no tipo de mídia
+   */
+  private getTTLByType(mediaType: string): number {
+    switch (mediaType) {
+      case 'audio': return 4; // 4 horas - áudios são menores
+      case 'image': return 12; // 12 horas - imagens são médias
+      case 'document': return 24; // 24 horas - documentos são importantes
+      case 'video': return 6; // 6 horas - vídeos são pesados
+      default: return 8; // 8 horas - padrão
+    }
+  }
 
   /**
    * Extrair formato do MIME type
@@ -186,27 +273,67 @@ class UnifiedMediaService {
   }
 
   /**
-   * Limpar cache expirado (apenas cache local por enquanto)
+   * Limpar cache expirado
    */
   async cleanExpiredCache(): Promise<number> {
-    // TODO: Implementar após migração do banco
-    console.log('🧹 [UNIFIED-MEDIA] Limpeza de cache será implementada após migração');
-    return 0;
+    try {
+      const { data, error } = await supabase
+        .from('media_cache')
+        .delete()
+        .lt('expires_at', new Date().toISOString())
+        .select('id');
+
+      if (error) {
+        console.error('❌ [UNIFIED-MEDIA] Erro ao limpar cache:', error);
+        return 0;
+      }
+
+      const cleanedCount = data?.length || 0;
+      console.log(`🧹 [UNIFIED-MEDIA] Cache limpo: ${cleanedCount} itens removidos`);
+      return cleanedCount;
+    } catch (error) {
+      console.error('❌ [UNIFIED-MEDIA] Erro ao limpar cache:', error);
+      return 0;
+    }
   }
 
   /**
-   * Estatísticas do cache (apenas cache local por enquanto)
+   * Estatísticas do cache
    */
   async getCacheStats(): Promise<{
     localCacheSize: number;
     dbCacheSize: number;
     totalExpired: number;
   }> {
-    return {
-      localCacheSize: this.cache.size,
-      dbCacheSize: 0, // TODO: Implementar após migração
-      totalExpired: 0 // TODO: Implementar após migração
-    };
+    try {
+      const { data, error } = await supabase
+        .from('media_cache')
+        .select('id, expires_at')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        return {
+          localCacheSize: this.cache.size,
+          dbCacheSize: 0,
+          totalExpired: 0
+        };
+      }
+
+      const now = new Date();
+      const expired = data.filter(item => new Date(item.expires_at) < now).length;
+
+      return {
+        localCacheSize: this.cache.size,
+        dbCacheSize: data.length,
+        totalExpired: expired
+      };
+    } catch (error) {
+      return {
+        localCacheSize: this.cache.size,
+        dbCacheSize: 0,
+        totalExpired: 0
+      };
+    }
   }
 
   /**
