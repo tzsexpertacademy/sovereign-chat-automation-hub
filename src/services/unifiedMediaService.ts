@@ -62,12 +62,7 @@ class UnifiedMediaService {
   async processMedia(mediaData: MediaData): Promise<ProcessedMedia> {
     const cacheKey = `${mediaData.instanceId}:${mediaData.messageId}`;
     
-    console.log('🎬 [UNIFIED-MEDIA] Processando mídia:', {
-      messageId: mediaData.messageId,
-      type: mediaData.contentType,
-      hasUrl: !!mediaData.content.url,
-      hasMediaKey: !!mediaData.content.mediaKey
-    });
+    // Log reduzido para performance
 
     // 1. Verificar cache local
     if (this.cache.has(cacheKey)) {

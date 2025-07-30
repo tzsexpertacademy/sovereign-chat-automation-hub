@@ -31,13 +31,10 @@ export const adaptMessageMedia = (message: any): AdaptedMediaData => {
     fileEncSha256
   );
 
-  console.log('🔄 MediaAdapter: Adaptando dados:', {
-    messageId,
-    hasMediaUrl: !!mediaUrl,
-    hasMediaKey: !!mediaKey,
-    needsDecryption,
-    messageType: message.message_type
-  });
+  // Log reduzido para evitar spam
+  if (!mediaUrl && !mediaKey) {
+    console.warn('⚠️ MediaAdapter: Mídia sem URL/Key:', messageId);
+  }
 
   return {
     messageId,

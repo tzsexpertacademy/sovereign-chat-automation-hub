@@ -35,12 +35,16 @@ class SystemLogsService {
     };
 
     console.log = (...args) => {
-      this.addLog({
-        level: "info",
-        component: "Frontend Console",
-        message: args.join(" "),
-        source: "frontend"
-      });
+      const message = args.join(" ");
+      // Filtrar logs repetitivos de mídia
+      if (!message.includes('MediaAdapter') && !message.includes('MessagesList: Renderizando')) {
+        this.addLog({
+          level: "info",
+          component: "Frontend Console",
+          message,
+          source: "frontend"
+        });
+      }
       originalConsole.log(...args);
     };
 

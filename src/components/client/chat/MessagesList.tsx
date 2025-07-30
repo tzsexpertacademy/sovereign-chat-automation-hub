@@ -34,12 +34,7 @@ const renderMessageContent = (message: any) => {
     if (message.message_type === 'audio') {
       const adaptedData = adaptMessageMedia(message);
       
-      console.log('🎵 MessagesList: Renderizando áudio via UnifiedMediaService:', {
-        messageId: adaptedData.messageId,
-        hasMediaUrl: !!adaptedData.mediaUrl,
-        needsDecryption: adaptedData.needsDecryption,
-        hasMediaKey: !!adaptedData.mediaKey
-      });
+      // Log reduzido
 
       return (
         <div className="space-y-3 max-w-sm">
@@ -106,11 +101,7 @@ const renderMessageContent = (message: any) => {
     if (message.message_type === 'image') {
       const adaptedData = adaptMessageMedia(message);
       
-      console.log('🖼️ MessagesList: Renderizando imagem via UnifiedMediaService:', {
-        messageId: adaptedData.messageId,
-        hasMediaUrl: !!adaptedData.mediaUrl,
-        needsDecryption: adaptedData.needsDecryption
-      });
+      // Log reduzido
 
       return (
         <ImageViewer
@@ -129,11 +120,7 @@ const renderMessageContent = (message: any) => {
     if (message.message_type === 'video') {
       const adaptedData = adaptMessageMedia(message);
       
-      console.log('🎥 MessagesList: Renderizando vídeo via UnifiedMediaService:', {
-        messageId: adaptedData.messageId,
-        hasMediaUrl: !!adaptedData.mediaUrl,
-        needsDecryption: adaptedData.needsDecryption
-      });
+      // Log reduzido
 
       return (
         <div className="space-y-2 max-w-md">
@@ -162,12 +149,7 @@ const renderMessageContent = (message: any) => {
     if (message.message_type === 'document') {
       const adaptedData = adaptMessageMedia(message);
       
-      console.log('📄 MessagesList: Renderizando documento via UnifiedMediaService:', {
-        messageId: adaptedData.messageId,
-        hasMediaUrl: !!adaptedData.mediaUrl,
-        needsDecryption: adaptedData.needsDecryption,
-        fileName: adaptedData.fileName
-      });
+      // Log reduzido
 
       return (
         <div className="space-y-2 max-w-sm">

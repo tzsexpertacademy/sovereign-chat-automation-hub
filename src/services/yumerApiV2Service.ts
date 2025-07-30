@@ -584,27 +584,19 @@ class YumerApiV2Service {
    */
   async sendPresenceHeartbeat(instanceId: string, chatId: string): Promise<boolean> {
     try {
-      console.log(`💓 [YUMER-API] Enviando heartbeat de presença para: ${chatId}`);
-      
-      // Usar endpoint send/text com conteúdo vazio apenas para atualizar presença
-      await this.makeRequest(`/api/v2/instance/${instanceId}/send/text`, {
+      // Usar endpoint de presence direto ao invés de send/text
+      await this.makeRequest(`/api/v2/instance/${instanceId}/chat/presence`, {
         method: 'POST',
         body: JSON.stringify({
-          recipient: chatId,
-          options: {
-            presence: 'available', // Status online
-            delay: 0
-          },
-          textMessage: {
-            text: '' // Conteúdo vazio - apenas para trigger de presença
-          }
+          chatId: chatId,
+          state: 'available',
+          media: 'none'
         })
       }, true, instanceId);
 
-      console.log(`✅ [YUMER-API] Heartbeat de presença enviado com sucesso`);
       return true;
     } catch (error) {
-      console.error(`❌ [YUMER-API] Erro ao enviar heartbeat de presença:`, error);
+      console.warn(`⚠️ [YUMER-API] Fallback: presença não suportada na instância ${instanceId}`);
       return false;
     }
   }
