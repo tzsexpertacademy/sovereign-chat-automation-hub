@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { businessTokenService } from './businessTokenService';
 import { webSocketConfigService } from './webSocketConfigService';
+import { supabase } from '@/integrations/supabase/client';
 
 interface SocketIOConnectionConfig {
   instanceId: string;
@@ -110,18 +111,51 @@ class SocketIOWebSocketService {
    */
   private async getInstanceJWT(instanceId: string, clientId: string): Promise<string | null> {
     try {
-      // Primeiro tentar obter da base de dados
-      const { data } = await fetch('/api/supabase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `SELECT auth_jwt FROM whatsapp_instances WHERE instance_id = '${instanceId}' AND client_id = '${clientId}'`
-        })
-      }).then(r => r.json());
+      // 🔑 CORREÇÃO CRÍTICA: Usar Supabase diretamente ao invés do endpoint inexistente
+      console.log('🔍 [FASE-1] Consultando JWT da instância no Supabase...');
+      
+      // Primeiro verificar se existe JWT no whatsapp_instances
+      const { data: instanceData, error: instanceError } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('instance_id', instanceId)
+        .eq('client_id', clientId)
+        .single();
 
-      if (data && data.length > 0 && data[0].auth_jwt) {
-        console.log('✅ [FASE-1] JWT obtido da base de dados');
-        return data[0].auth_jwt;
+      // Se não encontrou na instância, buscar o business_token no cliente
+      const { data: clientData, error: clientError } = await supabase
+        .from('clients')
+        .select('business_token')
+        .eq('id', clientId)
+        .single();
+
+      if (instanceError) {
+        console.warn('⚠️ [FASE-1] Erro ao consultar instância:', instanceError.message);
+      }
+
+      if (clientError) {
+        console.warn('⚠️ [FASE-1] Erro ao consultar cliente:', clientError.message);
+      }
+
+      // Usar business_token do cliente
+      const businessToken = clientData?.business_token;
+      
+      if (businessToken) {
+        console.log('✅ [FASE-1] JWT obtido da base de dados Supabase (cliente)');
+        
+        // Verificar se o token não está expirado
+        try {
+          const payload = JSON.parse(atob(businessToken.split('.')[1]));
+          const isExpired = payload.exp && Date.now() / 1000 > payload.exp;
+          
+          if (isExpired) {
+            console.warn('⚠️ [FASE-1] JWT expirado, regenerando...');
+          } else {
+            return businessToken;
+          }
+        } catch (e) {
+          console.warn('⚠️ [FASE-1] Erro ao verificar JWT, regenerando...');
+        }
       }
 
       // Se não existe, regenerar via business token service
