@@ -41,6 +41,18 @@ export const useAudioHandling = (ticketId: string) => {
       // Iniciar indicadores visuais
       markActivity();
 
+      // CORREÇÃO: Processar áudio com metadados de duração para WhatsApp
+      console.log('🔧 Processando áudio com metadados de duração...');
+      const optimizedAudioBlob = await AudioConverter.convertToOGGWithDuration(audioBlob, duration);
+      
+      console.log('✅ Áudio otimizado:', {
+        originalSize: audioBlob.size,
+        optimizedSize: optimizedAudioBlob.size,
+        originalType: audioBlob.type,
+        optimizedType: optimizedAudioBlob.type,
+        duration: duration
+      });
+
       // Registrar mensagem como processando
       await ticketsService.addTicketMessage({
         ticket_id: ticketId,
@@ -61,9 +73,9 @@ export const useAudioHandling = (ticketId: string) => {
         description: `Via Yumer API v2.2.1 (${duration}s)`,
       });
 
-      // Usar sistema corrigido com Yumer API v2 COM DURAÇÃO
+      // Usar sistema corrigido com Yumer API v2 COM DURAÇÃO E METADADOS
       const result = await AudioSender.sendWithIntelligentRetry(
-        audioBlob,
+        optimizedAudioBlob, // CORREÇÃO: Usar áudio com metadados
         ticket.chat_id,
         connectedInstance,
         messageId,
