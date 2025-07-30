@@ -51,73 +51,105 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     instanceId: instanceId || '',
     enabled: !!(instanceId && ticketId),
     onMessage: useCallback((wsMessage: any) => {
-      console.log('🔗 [WEBSOCKET] Processando mensagem via Socket.IO:', wsMessage);
+      console.log('🎯 [FASE-4] PROCESSAMENTO AVANÇADO de mensagem Socket.IO:', wsMessage);
       
-      // Verificar se mensagem é válida (baseado nos logs do servidor)
-      if (!wsMessage || !wsMessage.messageId) {
-        console.warn('⚠️ [WEBSOCKET] Mensagem inválida, ignorando:', wsMessage);
+      // 🔍 VALIDAÇÃO RIGOROSA BASEADA NOS LOGS REAIS
+      if (!wsMessage || !wsMessage.messageId || !wsMessage.instanceInstanceId) {
+        console.warn('❌ [FASE-4] MENSAGEM INVÁLIDA - campos obrigatórios ausentes:', {
+          hasMessage: !!wsMessage,
+          hasMessageId: !!wsMessage?.messageId,
+          hasInstanceId: !!wsMessage?.instanceInstanceId,
+          receivedKeys: Object.keys(wsMessage || {})
+        });
         return;
       }
 
-      // Verificar se é da nossa instância
+      // ✅ VERIFICAR INSTÂNCIA (segurança)
       if (wsMessage.instanceInstanceId !== instanceId) {
-        console.log('📋 [WEBSOCKET] Mensagem de outra instância, ignorando');
+        console.log('📋 [FASE-4] Mensagem de instância diferente ignorada:', {
+          recebidaDe: wsMessage.instanceInstanceId,
+          esperado: instanceId
+        });
         return;
       }
 
-      // Processar mensagem diretamente - simplificado para corrigir erro de coluna
-      const messagePhone = wsMessage.keyRemoteJid?.replace('@s.whatsapp.net', '');
-      console.log('📋 [WEBSOCKET] Processando mensagem do telefone:', messagePhone);
+      // 🎯 PROCESSAMENTO BASEADO NA ESTRUTURA REAL DOS LOGS
+      try {
+        // Extrair dados conforme estrutura real: 
+        // messageId, keyFromMe, keyRemoteJid, pushName, contentType, content: { text }, messageTimestamp
+        const messagePhone = wsMessage.keyRemoteJid?.replace(/@(s\.whatsapp\.net|c\.us)$/, '') || 'Desconhecido';
+        
+        // ✅ NORMALIZAÇÃO ROBUSTA
+        const normalizedMessage = {
+          messageId: wsMessage.messageId,
+          fromMe: Boolean(wsMessage.keyFromMe),
+          contentType: wsMessage.contentType || 'text',
+          content: wsMessage.content?.text || 
+                   wsMessage.content?.caption || 
+                   JSON.stringify(wsMessage.content || {}),
+          timestamp: wsMessage.messageTimestamp 
+            ? new Date(Number(wsMessage.messageTimestamp) * 1000).toISOString()
+            : new Date().toISOString(),
+          senderName: wsMessage.pushName || (wsMessage.keyFromMe ? 'Atendente' : `Cliente ${messagePhone}`),
+          chatId: wsMessage.keyRemoteJid,
+          isGroup: Boolean(wsMessage.isGroup),
+          source: wsMessage.source || 'websocket-realtime'
+        };
 
-          // Normalizar dados da mensagem baseado na estrutura real dos logs
-          const normalizedMessage = {
-            messageId: wsMessage.messageId,
-            fromMe: wsMessage.keyFromMe || false,
-            content: wsMessage.content?.text || JSON.stringify(wsMessage.content || {}),
-            messageType: wsMessage.contentType || 'text',
-            timestamp: wsMessage.messageTimestamp 
-              ? new Date(wsMessage.messageTimestamp * 1000).toISOString()
-              : new Date().toISOString(),
-            senderName: wsMessage.pushName || 'Cliente',
-            chatId: wsMessage.keyRemoteJid,
-            source: wsMessage.source || 'web'
-          };
+        // 🎯 CONVERTER PARA FORMATO TICKET MESSAGE
+        const ticketMessage: TicketMessage = {
+          id: `ws_${wsMessage.messageId}_${Date.now()}`,
+          ticket_id: ticketId,
+          message_id: normalizedMessage.messageId,
+          from_me: normalizedMessage.fromMe,
+          sender_name: normalizedMessage.senderName,
+          content: normalizedMessage.content,
+          message_type: normalizedMessage.contentType,
+          timestamp: normalizedMessage.timestamp,
+          media_url: null,
+          media_duration: null,
+          is_internal_note: false,
+          is_ai_response: false,
+          processing_status: 'completed',
+          created_at: new Date().toISOString()
+        };
 
-          // Converter formato para TicketMessage
-          const ticketMessage: TicketMessage = {
-            id: `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            ticket_id: ticketId,
-            message_id: normalizedMessage.messageId,
-            from_me: normalizedMessage.fromMe,
-            sender_name: normalizedMessage.fromMe ? 'Atendente' : normalizedMessage.senderName,
-            content: normalizedMessage.content,
-            message_type: normalizedMessage.messageType,
-            timestamp: normalizedMessage.timestamp,
-            media_url: null,
-            media_duration: null,
-            is_internal_note: false,
-            is_ai_response: false,
-            processing_status: 'completed',
-            created_at: new Date().toISOString()
-          };
+        // ⚠️ VALIDAÇÃO DE CONTEÚDO
+        if (!ticketMessage.content || ticketMessage.content.trim() === '' || ticketMessage.content === '{}') {
+          console.warn('⚠️ [FASE-4] Mensagem sem conteúdo válido, mas processando mesmo assim:', {
+            messageId: ticketMessage.message_id,
+            contentType: ticketMessage.message_type,
+            originalContent: wsMessage.content
+          });
+          ticketMessage.content = `[${ticketMessage.message_type.toUpperCase()}]`;
+        }
 
-          // Evitar salvar mensagens vazias
-          if (!ticketMessage.content || ticketMessage.content === '{}') {
-            console.warn('⚠️ [WEBSOCKET] Mensagem sem conteúdo válido, ignorando');
-            return;
-          }
+        console.log('✅ [FASE-4] MENSAGEM PROCESSADA COM SUCESSO:', {
+          messageId: ticketMessage.message_id,
+          fromMe: ticketMessage.from_me,
+          contentPreview: ticketMessage.content.substring(0, 100),
+          sender: ticketMessage.sender_name,
+          type: ticketMessage.message_type
+        });
 
-          console.log('🔄 [WEBSOCKET] Mensagem processada:', ticketMessage);
+        // 💾 SALVAR NO BANCO (apenas mensagens de clientes)
+        if (!normalizedMessage.fromMe) {
+          ticketsService.addTicketMessage(ticketMessage).catch(error => {
+            console.error('❌ [FASE-4] ERRO ao salvar mensagem:', error);
+          });
+        }
 
-      // Salvar automaticamente no banco se não for mensagem própria
-      if (!normalizedMessage.fromMe) {
-        ticketsService.addTicketMessage(ticketMessage).catch(error => {
-          console.error('❌ Erro ao salvar mensagem do WebSocket:', error);
+        // 🔄 ADICIONAR À LISTA DE MENSAGENS
+        addMessageSafely(ticketMessage, 'websocket');
+        lastLoadRef.current = Date.now();
+
+        console.log('🎉 [FASE-4] MENSAGEM ADICIONADA COM SUCESSO VIA WEBSOCKET!');
+
+      } catch (error) {
+        console.error('❌ [FASE-4] ERRO CRÍTICO no processamento:', error, {
+          originalMessage: wsMessage
         });
       }
-
-      addMessageSafely(ticketMessage, 'websocket');
-      lastLoadRef.current = Date.now();
     }, [ticketId, instanceId, addMessageSafely])
   };
 

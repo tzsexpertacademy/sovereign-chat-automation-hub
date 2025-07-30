@@ -35,79 +35,125 @@ class SocketIOWebSocketService {
 
   /**
    * Conecta usando Socket.IO conforme documentação oficial da API
+   * FASE 1 & 2: JWT + Configuração da API
    */
   async connect(config: SocketIOConnectionConfig): Promise<boolean> {
     try {
-      console.log('🔌 [SOCKET.IO] Iniciando conexão...', {
+      console.log('🔌 [SOCKET.IO] INICIANDO PLANO DE CORREÇÃO COMPLETA...', {
         instanceId: config.instanceId,
         clientId: config.clientId
       });
 
       this.config = config;
+      
+      // 🎯 FASE 1: REGENERAR JWT TOKEN
+      console.log('🔑 [FASE-1] Regenerando JWT para instância:', config.instanceId);
+      
+      // Forçar regeneração do token
+      const tokenResult = await businessTokenService.ensureValidToken(config.clientId);
+      if (!tokenResult.success || !tokenResult.token) {
+        console.error('❌ [FASE-1] FALHA CRÍTICA: Token JWT não regenerado', tokenResult.error);
+        this.updateStatus({ error: `JWT CRÍTICO: ${tokenResult.error}` });
+        return false;
+      }
+      
+      console.log('✅ [FASE-1] JWT regenerado com sucesso');
 
-      // Fase 1: Configurar WebSocket na API
+      // 🎯 FASE 2: CONFIGURAR WEBSOCKET NA API
+      console.log('🔧 [FASE-2] Configurando WebSocket na API...');
+      
       const configured = await webSocketConfigService.ensureWebSocketConfigured(config.instanceId);
       if (!configured) {
-        console.error('❌ [SOCKET.IO] Falha ao configurar WebSocket na API');
-        this.updateStatus({ error: 'Falha ao configurar WebSocket na API' });
+        console.error('❌ [FASE-2] FALHA CRÍTICA: WebSocket não configurado na API');
+        this.updateStatus({ error: 'CONFIGURAÇÃO CRÍTICA: WebSocket não habilitado' });
         return false;
       }
-
-      // Fase 2: Obter token JWT válido
-      const token = await businessTokenService.getValidBusinessToken(config.clientId);
-      if (!token) {
-        console.error('❌ [SOCKET.IO] Falha ao obter token JWT válido');
-        this.updateStatus({ error: 'Token JWT inválido' });
-        return false;
-      }
-
-      // Fase 3: Criar conexão Socket.IO conforme documentação
-      // URL: wss://api.domain.com (conforme docs: const socket = io('wss://api.domain.com'))
-      this.socket = io('wss://api.yumer.com.br', {
-        transports: ['websocket'],
-        timeout: 15000,
-        reconnection: false, // Controlaremos manualmente
-        auth: {
-          token: `Bearer ${token}`,
-          instanceId: config.instanceId
-        },
-        extraHeaders: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      this.setupEventListeners();
       
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          console.error('❌ [SOCKET.IO] Timeout na conexão');
-          resolve(false);
-        }, 15000);
+      console.log('✅ [FASE-2] WebSocket configurado na API');
 
-        this.socket!.on('connect', () => {
-          clearTimeout(timeout);
-          console.log('✅ [SOCKET.IO] Conectado com sucesso!');
-          this.updateStatus({
-            connected: true,
-            authenticated: true,
-            configured: true,
-            reconnectAttempts: 0,
-            error: undefined
+      // 🎯 FASE 3: TESTE MÚLTIPLAS URLs
+      console.log('🌐 [FASE-3] Testando URLs de conexão...');
+      
+      const urls = [
+        'wss://api.yumer.com.br',
+        'https://api.yumer.com.br',
+        'ws://api.yumer.com.br'
+      ];
+      
+      let connected = false;
+      for (const url of urls) {
+        console.log(`🔗 [FASE-3] Testando URL: ${url}`);
+        
+        try {
+          this.socket = io(url, {
+            transports: ['websocket', 'polling'],
+            timeout: 10000,
+            reconnection: false,
+            auth: {
+              token: `Bearer ${tokenResult.token}`,
+              instanceId: config.instanceId,
+              clientId: config.clientId
+            },
+            extraHeaders: {
+              'Authorization': `Bearer ${tokenResult.token}`,
+              'X-Instance-Id': config.instanceId,
+              'X-Client-Id': config.clientId
+            }
           });
-          this.startHeartbeat();
-          resolve(true);
-        });
 
-        this.socket!.on('connect_error', (error) => {
-          clearTimeout(timeout);
-          console.error('❌ [SOCKET.IO] Erro de conexão:', error);
-          this.updateStatus({ 
-            error: `Erro de conexão: ${error.message}`,
-            reconnectAttempts: this.status.reconnectAttempts + 1
+          this.setupEventListeners();
+          
+          const connectionResult = await new Promise<boolean>((resolve) => {
+            const timeout = setTimeout(() => {
+              console.warn(`⏰ [FASE-3] Timeout para URL: ${url}`);
+              resolve(false);
+            }, 10000);
+
+            this.socket!.on('connect', () => {
+              clearTimeout(timeout);
+              console.log(`✅ [FASE-3] CONECTADO COM SUCESSO em: ${url}`);
+              resolve(true);
+            });
+
+            this.socket!.on('connect_error', (error) => {
+              clearTimeout(timeout);
+              console.warn(`❌ [FASE-3] Erro em ${url}:`, error.message);
+              resolve(false);
+            });
           });
-          resolve(false);
-        });
+          
+          if (connectionResult) {
+            connected = true;
+            break;
+          } else {
+            this.socket?.disconnect();
+            this.socket = null;
+          }
+          
+        } catch (error: any) {
+          console.warn(`❌ [FASE-3] Exceção em ${url}:`, error.message);
+          continue;
+        }
+      }
+      
+      if (!connected) {
+        console.error('❌ [FASE-3] FALHA CRÍTICA: Nenhuma URL funcionou');
+        this.updateStatus({ error: 'CONEXÃO CRÍTICA: Todas as URLs falharam' });
+        return false;
+      }
+
+      this.updateStatus({
+        connected: true,
+        authenticated: true,
+        configured: true,
+        reconnectAttempts: 0,
+        error: undefined
       });
+      
+      this.startHeartbeat();
+      
+      console.log('🎉 [SOCKET.IO] PLANO DE CORREÇÃO EXECUTADO COM SUCESSO!');
+      return true;
 
     } catch (error: any) {
       console.error('❌ [SOCKET.IO] Erro ao conectar:', error);
@@ -170,32 +216,80 @@ class SocketIOWebSocketService {
   }
 
   /**
-   * Processa mensagens recebidas via WebSocket
-   * Estrutura baseada nos logs do servidor
+   * 🎯 FASE 3: MAPEAR EVENTOS CORRETOS
+   * Processa mensagens conforme estrutura real dos logs do servidor
    */
   private processMessage(data: any): void {
     try {
-      console.log('📨 [SOCKET.IO] Processando mensagem:', data);
+      console.log('📨 [SOCKET.IO] FASE-3: Processando mensagem conforme logs reais:', data);
 
-      // Estrutura esperada baseada nos logs:
+      // 🔍 ESTRUTURA REAL DOS LOGS DO SERVIDOR:
       // {
       //   messageId: '01K1E3A4KXBCVF30H2Y47VHSMT',
+      //   keyId: '3EB0D2B3BDE6384A245209',
+      //   keyFromMe: false,
       //   keyRemoteJid: '554796451886@s.whatsapp.net',
+      //   pushName: 'Thalis Zulianello Silva',
+      //   contentType: 'text',
+      //   isGroup: false,
       //   content: { text: 'cade você' },
+      //   source: 'web',
       //   messageTimestamp: 1753893638,
       //   instanceInstanceId: '01K11NBE1QB0GVFMME8NA4YPCB'
       // }
 
-      // Verificar se é da nossa instância
-      if (this.config && data.instanceInstanceId === this.config.instanceId) {
-        console.log('✅ [SOCKET.IO] Mensagem da nossa instância, processando...');
-        this.config.onMessage?.(data);
+      // ✅ VALIDAÇÃO RIGOROSA
+      if (!data || !data.messageId || !data.instanceInstanceId) {
+        console.warn('⚠️ [SOCKET.IO] FASE-3: Mensagem inválida - campos obrigatórios ausentes:', {
+          hasData: !!data,
+          hasMessageId: !!data?.messageId,
+          hasInstanceId: !!data?.instanceInstanceId
+        });
+        return;
+      }
+
+      // ✅ VERIFICAR INSTÂNCIA CORRETA
+      if (this.config && data.instanceInstanceId !== this.config.instanceId) {
+        console.log('📋 [SOCKET.IO] FASE-3: Mensagem de outra instância ignorada:', {
+          mensagemDe: data.instanceInstanceId,
+          esperado: this.config.instanceId
+        });
+        return;
+      }
+
+      // ✅ ESTRUTURA NORMALIZADA CONFORME LOGS
+      const normalizedMessage = {
+        messageId: data.messageId,
+        keyId: data.keyId,
+        keyFromMe: data.keyFromMe || false,
+        keyRemoteJid: data.keyRemoteJid,
+        pushName: data.pushName || 'Cliente',
+        contentType: data.contentType || 'text',
+        isGroup: data.isGroup || false,
+        content: data.content || {},
+        source: data.source || 'web',
+        messageTimestamp: data.messageTimestamp,
+        instanceInstanceId: data.instanceInstanceId,
+        createdAt: data.createdAt || new Date().toISOString()
+      };
+
+      console.log('✅ [SOCKET.IO] FASE-3: Mensagem normalizada com sucesso:', {
+        messageId: normalizedMessage.messageId,
+        from: normalizedMessage.keyRemoteJid,
+        contentType: normalizedMessage.contentType,
+        isFromMe: normalizedMessage.keyFromMe,
+        text: normalizedMessage.content?.text?.substring(0, 50) || 'sem texto'
+      });
+
+      // 🎯 ENVIAR PARA CALLBACK
+      if (this.config?.onMessage) {
+        this.config.onMessage(normalizedMessage);
       } else {
-        console.log('⚠️ [SOCKET.IO] Mensagem de outra instância, ignorando');
+        console.warn('⚠️ [SOCKET.IO] FASE-3: Callback onMessage não definido');
       }
 
     } catch (error) {
-      console.error('❌ [SOCKET.IO] Erro ao processar mensagem:', error);
+      console.error('❌ [SOCKET.IO] FASE-3: ERRO CRÍTICO ao processar mensagem:', error);
     }
   }
 
