@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { usePresenceKeepAlive } from '@/hooks/usePresenceKeepAlive';
 import { onlineStatusManager } from '@/services/onlineStatusManager';
 
 interface PresenceKeepAliveProps {
@@ -10,8 +9,8 @@ interface PresenceKeepAliveProps {
 }
 
 /**
- * Componente para manter presença online no chat ativo
- * Sistema híbrido: configuração de perfil (uma vez) + presença contínua no chat
+ * Componente simplificado para presença online
+ * Usa apenas endpoints válidos da API CodeChat v2.2.1
  */
 export const PresenceKeepAlive = ({ 
   clientId, 
@@ -20,14 +19,14 @@ export const PresenceKeepAlive = ({
   enabled = true 
 }: PresenceKeepAliveProps) => {
   
-  // 1. Configurar perfil online uma única vez por instância
+  // Configurar perfil online uma única vez por sessão
   useEffect(() => {
     if (enabled && instanceId && clientId) {
-      console.log('🔧 [PRESENCE-COMPONENT] Configurando perfil online inicial');
+      console.log('🔧 [PRESENCE-COMPONENT] Configurando perfil online (endpoints válidos)');
       onlineStatusManager.configureProfileOnce(instanceId, clientId, 'system')
         .then(success => {
           if (success) {
-            console.log('✅ [PRESENCE-COMPONENT] Perfil configurado com sucesso');
+            console.log('✅ [PRESENCE-COMPONENT] Perfil online configurado com sucesso');
           } else {
             console.log('❌ [PRESENCE-COMPONENT] Falha na configuração do perfil');
           }
@@ -37,13 +36,6 @@ export const PresenceKeepAlive = ({
         });
     }
   }, [instanceId, clientId, enabled]);
-
-  // 2. Manter presença contínua no chat específico (25 segundos)
-  usePresenceKeepAlive(instanceId, chatId, { 
-    enabled,
-    intervalSeconds: 25, // Mais frequente para garantir visibilidade
-    clientId 
-  });
 
   // Este componente não renderiza nada
   return null;

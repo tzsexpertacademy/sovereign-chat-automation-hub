@@ -447,45 +447,9 @@ class UnifiedYumerService {
   }
 
   // ==================== PRESENÇA EM CHATS - CODECHAT V2.2.1 ====================
-  
-  // Presença: Online/Offline em chat específico
-  async setPresence(instanceId: string, chatId: string, status: 'composing' | 'available' | 'unavailable' = 'available'): Promise<{ success: boolean; error?: string }> {
-    console.log(`🟢 [PRESENCE] Definindo presença ${status} para ${chatId}`);
-    
-    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/presence`, {
-      method: 'POST',
-      body: JSON.stringify({
-        remoteJid: chatId,
-        status
-      })
-    });
-  }
-
-  // Typing: Simulação de digitação
-  async setTyping(instanceId: string, chatId: string, isTyping: boolean = true): Promise<{ success: boolean; error?: string }> {
-    console.log(`⌨️ [TYPING] ${isTyping ? 'Iniciando' : 'Parando'} digitação para ${chatId}`);
-    
-    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/typing`, {
-      method: 'POST',
-      body: JSON.stringify({
-        remoteJid: chatId,
-        typing: isTyping
-      })
-    });
-  }
-
-  // Recording: Simulação de gravação
-  async setRecording(instanceId: string, chatId: string, isRecording: boolean = true): Promise<{ success: boolean; error?: string }> {
-    console.log(`🎙️ [RECORDING] ${isRecording ? 'Iniciando' : 'Parando'} gravação para ${chatId}`);
-    
-    return this.makeRequest(`/api/v2/instance/${instanceId}/chat/recording`, {
-      method: 'POST',
-      body: JSON.stringify({
-        remoteJid: chatId,
-        recording: isRecording
-      })
-    });
-  }
+  // 🚫 REMOVIDO: Endpoints /chat/presence, /chat/typing e /chat/recording 
+  // não existem no CodeChat API v2.2.1
+  // Usar apenas setOnlinePresence() para configurar perfil e privacidade
 
   // Mark as Read: Marcar mensagem como lida
   async markAsRead(instanceId: string, messageId: string, chatId?: string): Promise<{ success: boolean; error?: string }> {

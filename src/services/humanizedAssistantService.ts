@@ -637,7 +637,8 @@ Responda apenas com a mensagem, sem explicações adicionais.`;
 
   private async setRealPresence(instanceId: string, chatId: string, presence: 'available' | 'composing' | 'unavailable'): Promise<void> {
     try {
-      await unifiedYumerService.setPresence(instanceId, chatId, presence);
+      // 🚫 DESABILITADO: setPresence não existe no CodeChat v2.2.1
+      console.log(`🚫 [HUMANIZED-ASSISTANT] setPresence desabilitado (endpoint inexistente): ${presence} para ${chatId}`);
     } catch (error) {
       console.warn('⚠️ [HUMANIZED-ASSISTANT] Erro na presença real:', error);
     }

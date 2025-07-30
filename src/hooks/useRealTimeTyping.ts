@@ -73,8 +73,8 @@ export const useRealTimeTyping = (instanceId: string) => {
 
       console.log(`⌨️ [REAL-TYPING] Iniciando typing para ${chatId}`);
       
-      // Definir presença como "composing" via CodeChat API
-      await unifiedYumerService.setPresence(instanceId, chatId, 'composing');
+      // 🚫 DESABILITADO: setPresence não existe no CodeChat v2.2.1
+      console.log(`🚫 [REAL-TYPING] setPresence desabilitado (endpoint inexistente): composing para ${chatId}`);
       
       const duration = text ? calculateTypingDuration(text) : config.minDuration;
       const startTime = Date.now();
@@ -117,8 +117,8 @@ export const useRealTimeTyping = (instanceId: string) => {
     try {
       console.log(`⌨️ [REAL-TYPING] Parando typing para ${typingState.chatId}`);
       
-      // Definir presença como "available" via CodeChat API
-      await unifiedYumerService.setPresence(instanceId, typingState.chatId, 'available');
+      // 🚫 DESABILITADO: setPresence não existe no CodeChat v2.2.1
+      console.log(`🚫 [REAL-TYPING] setPresence desabilitado (endpoint inexistente): available para ${typingState.chatId}`);
       
       // Limpar timeout
       if (typingTimeoutRef.current) {
@@ -156,8 +156,8 @@ export const useRealTimeTyping = (instanceId: string) => {
 
       console.log(`🎤 [REAL-TYPING] Iniciando recording para ${chatId}`);
       
-      // CodeChat v2.2.1 não tem presence "recording", usar "composing"
-      await unifiedYumerService.setPresence(instanceId, chatId, 'composing');
+      // 🚫 DESABILITADO: setPresence não existe no CodeChat v2.2.1
+      console.log(`🚫 [REAL-TYPING] setPresence desabilitado (endpoint inexistente): composing para ${chatId}`);
       
       const recordDuration = duration || 5000; // 5s padrão
       const startTime = Date.now();
@@ -192,7 +192,8 @@ export const useRealTimeTyping = (instanceId: string) => {
     try {
       console.log(`🎤 [REAL-TYPING] Parando recording para ${typingState.chatId}`);
       
-      await unifiedYumerService.setPresence(instanceId, typingState.chatId, 'available');
+      // 🚫 DESABILITADO: setPresence não existe no CodeChat v2.2.1
+      console.log(`🚫 [REAL-TYPING] setPresence desabilitado (endpoint inexistente): available para ${typingState.chatId}`);
       
       // Limpar timeout
       if (recordingTimeoutRef.current) {
@@ -248,7 +249,8 @@ export const useRealTimeTyping = (instanceId: string) => {
       }
 
       if (typingState.chatId) {
-        await unifiedYumerService.setPresence(instanceId, typingState.chatId, 'available');
+        // 🚫 DESABILITADO: setPresence não existe no CodeChat v2.2.1
+        console.log(`🚫 [REAL-TYPING] setPresence desabilitado (endpoint inexistente): available para ${typingState.chatId}`);
       }
 
       setTypingState({

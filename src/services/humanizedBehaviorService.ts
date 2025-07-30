@@ -101,7 +101,8 @@ export class HumanizedBehaviorService {
   // Simular presença online
   async setOnline(instanceId: string, chatId: string): Promise<void> {
     try {
-      await unifiedYumerService.setPresence(instanceId, chatId, 'available');
+      // 🚫 DESABILITADO: setPresence não existe no CodeChat v2.2.1
+      console.log(`🚫 [HUMANIZED] setPresence desabilitado (endpoint inexistente): available para ${chatId}`);
       console.log(`🟢 [HUMANIZED] Definido como online: ${chatId}`);
     } catch (error) {
       console.warn('⚠️ [HUMANIZED] Erro ao definir presença online:', error);
@@ -111,21 +112,22 @@ export class HumanizedBehaviorService {
   // Simular typing indicator
   async simulateTyping(instanceId: string, chatId: string, duration: number): Promise<void> {
     try {
-      // Iniciar typing
-      await unifiedYumerService.setTyping(instanceId, chatId, true);
+      // 🚫 DESABILITADO: setTyping não existe no CodeChat v2.2.1
+      console.log(`🚫 [HUMANIZED] setTyping desabilitado (endpoint inexistente): true para ${chatId}`);
       console.log(`⌨️ [HUMANIZED] Iniciando typing por ${duration}ms: ${chatId}`);
       
       // Aguardar duração
       await new Promise(resolve => setTimeout(resolve, duration));
       
-      // Parar typing
-      await unifiedYumerService.setTyping(instanceId, chatId, false);
+      // 🚫 DESABILITADO: setTyping não existe no CodeChat v2.2.1
+      console.log(`🚫 [HUMANIZED] setTyping desabilitado (endpoint inexistente): false para ${chatId}`);
       console.log(`⌨️ [HUMANIZED] Parando typing: ${chatId}`);
     } catch (error) {
       console.warn('⚠️ [HUMANIZED] Erro ao simular typing:', error);
       // Tentar parar typing mesmo com erro
       try {
-        await unifiedYumerService.setTyping(instanceId, chatId, false);
+        // 🚫 DESABILITADO: setTyping não existe no CodeChat v2.2.1
+        console.log(`🚫 [HUMANIZED] setTyping desabilitado (endpoint inexistente): false para ${chatId}`);
       } catch (stopError) {
         console.warn('⚠️ [HUMANIZED] Erro ao parar typing:', stopError);
       }

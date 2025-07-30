@@ -76,7 +76,8 @@ export const useRealTimePresence = (instanceId: string) => {
 
       presenceTimeoutRef.current = setTimeout(async () => {
         try {
-          await unifiedYumerService.setPresence(instanceId, chatId, status);
+          // 🚫 DESABILITADO: setPresence não existe no CodeChat v2.2.1
+          console.log(`🚫 [REAL-PRESENCE] setPresence desabilitado (endpoint inexistente): ${status} para ${chatId}`);
           
           setPresenceState({
             status,

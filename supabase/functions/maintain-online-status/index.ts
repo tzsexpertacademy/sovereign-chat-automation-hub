@@ -152,26 +152,17 @@ Deno.serve(async (req) => {
         heartbeatCount++;
         console.log(`💓 [MAINTAIN-HEARTBEAT] Heartbeat ${heartbeatCount} iniciado`);
         
-        // Definir presença como "disponível"
-        const presenceSuccess = await httpCallWithRetry(
-          `https://api.yumer.com.br/api/v2/instance/${instanceId}/chat/presence`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${businessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              remoteJid: chatId,
-              status: 'available'
-            })
-          }
-        );
+        // 🚫 PRESENÇA DESABILITADA: Endpoint /chat/presence não existe no CodeChat v2.2.1
+        console.log(`🚫 [MAINTAIN-HEARTBEAT] Heartbeat ${heartbeatCount} - presença via perfil mantida`);
+        console.log(`⚠️ [MAINTAIN-HEARTBEAT] NOTA: /api/v2/instance/{id}/chat/presence não existe - usando apenas configuração de perfil`);
+        
+        // Aplicar apenas configurações de perfil (endpoints válidos)
+        const profileSuccess = await applyFullProfileConfig(instanceId, businessToken, aiConfig.online_status_config);
 
-        if (presenceSuccess) {
-          console.log(`✅ [MAINTAIN-HEARTBEAT] Heartbeat ${heartbeatCount} - presença "disponível" mantida`);
+        if (profileSuccess) {
+          console.log(`✅ [MAINTAIN-HEARTBEAT] Heartbeat ${heartbeatCount} - configuração de perfil mantida`);
         } else {
-          console.log(`❌ [MAINTAIN-HEARTBEAT] Heartbeat ${heartbeatCount} falhou - tentando novamente...`);
+          console.log(`❌ [MAINTAIN-HEARTBEAT] Heartbeat ${heartbeatCount} falhou na configuração de perfil`);
         }
 
         // A cada 5 heartbeats, reaplicar configurações de perfil

@@ -108,23 +108,10 @@ class OnlineStatusManager {
       return false;
     }
 
-    try {
-      console.log(`🎯 [STATUS-MANAGER] Enviando presença ${status} para chat ${chatId} (por ${source})`);
-      
-      const result = await unifiedYumerService.setPresence(instanceId, chatId, status);
-      
-      if (result.success) {
-        console.log(`✅ [STATUS-MANAGER] Presença ${status} enviada com sucesso para ${chatId}`);
-        return true;
-      } else {
-        console.log(`❌ [STATUS-MANAGER] Falha no envio de presença: ${result.error}`);
-        return false;
-      }
-      
-    } catch (error) {
-      console.error(`❌ [STATUS-MANAGER] Erro ao enviar presença:`, error);
-      return false;
-    }
+    // 🚫 REMOVIDO: setPresence não existe no CodeChat v2.2.1
+    console.log(`🚫 [STATUS-MANAGER] sendChatPresence DESABILITADO - endpoint /chat/presence não existe`);
+    console.log(`🔧 [STATUS-MANAGER] Parâmetros: ${status} para ${chatId} (${source})`);
+    return false;
   }
 
   // Verificar se chat está bloqueado
