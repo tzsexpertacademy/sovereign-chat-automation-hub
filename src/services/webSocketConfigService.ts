@@ -1,4 +1,4 @@
-import yumerApiV2Service from './yumerApiV2Service';
+import { supabase } from '@/integrations/supabase/client';
 
 interface WebSocketConfig {
   enabled: boolean;
@@ -67,13 +67,25 @@ export class WebSocketConfigService {
 
       const config = this.getDefaultConfig();
       
-      // Usar método específico ou criar um simples
+      // Buscar business token para autenticação
+      const { data: instance } = await supabase
+        .from('whatsapp_instances')
+        .select('auth_jwt')
+        .eq('instance_id', instanceId)
+        .single();
+
+      if (!instance?.auth_jwt) {
+        console.error('❌ [WEBSOCKET-CONFIG] Token JWT não encontrado para instância');
+        return false;
+      }
+      
       const url = `https://api.yumer.com.br/api/v2/instance/${instanceId}/socket`;
       
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${instance.auth_jwt}`
         },
         body: JSON.stringify(config)
       });

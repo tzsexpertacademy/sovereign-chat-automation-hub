@@ -45,65 +45,69 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     });
   }, []);
 
-  // WebSocket Integration - CANAL PRINCIPAL
+  // WebSocket Integration - CANAL PRINCIPAL com Socket.IO
   const webSocketConfig = {
     clientId,
     instanceId: instanceId || '',
     enabled: !!(instanceId && ticketId),
     onMessage: useCallback((wsMessage: any) => {
-      console.log('🔗 [WEBSOCKET] Processando mensagem:', wsMessage);
+      console.log('🔗 [WEBSOCKET] Processando mensagem via Socket.IO:', wsMessage);
       
-      // Verificar se mensagem é válida
+      // Verificar se mensagem é válida (baseado nos logs do servidor)
       if (!wsMessage || !wsMessage.messageId) {
-        console.warn('⚠️ [WEBSOCKET] Mensagem inválida, ignorando');
+        console.warn('⚠️ [WEBSOCKET] Mensagem inválida, ignorando:', wsMessage);
         return;
       }
 
-      // Normalizar dados da mensagem para diferentes formatos da API
-      const normalizedMessage = {
-        messageId: wsMessage.messageId || wsMessage.id || wsMessage.key?.id,
-        fromMe: wsMessage.fromMe || wsMessage.key?.fromMe || false,
-        content: wsMessage.message?.conversation || wsMessage.message?.extendedTextMessage?.text || wsMessage.content || wsMessage.text || '',
-        messageType: wsMessage.messageType || wsMessage.message?.messageType || 'text',
-        timestamp: wsMessage.messageTimestamp || wsMessage.timestamp || new Date().toISOString(),
-        senderName: wsMessage.pushName || wsMessage.senderName || 'Cliente',
-        chatId: wsMessage.key?.remoteJid || wsMessage.chatId,
-        mediaUrl: wsMessage.message?.mediaUrl || wsMessage.mediaUrl,
-        mediaDuration: wsMessage.message?.mediaDuration || wsMessage.mediaDuration
-      };
-
-      // Verificar se é do chat atual (apenas se tivermos chatId)
-      if (normalizedMessage.chatId && currentTicketRef.current) {
-        const currentChatId = currentTicketRef.current.replace('ticket_', '');
-        if (normalizedMessage.chatId !== currentChatId) {
-          console.log('📋 [WEBSOCKET] Mensagem de outro chat, ignorando:', normalizedMessage.chatId);
-          return;
-        }
-      }
-
-      // Converter formato para TicketMessage
-      const ticketMessage: TicketMessage = {
-        id: `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        ticket_id: ticketId,
-        message_id: normalizedMessage.messageId,
-        from_me: normalizedMessage.fromMe,
-        sender_name: normalizedMessage.fromMe ? 'Atendente' : normalizedMessage.senderName,
-        content: normalizedMessage.content,
-        message_type: normalizedMessage.messageType,
-        timestamp: normalizedMessage.timestamp,
-        media_url: normalizedMessage.mediaUrl,
-        media_duration: normalizedMessage.mediaDuration,
-        is_internal_note: false,
-        is_ai_response: false,
-        processing_status: 'completed',
-        created_at: new Date().toISOString()
-      };
-
-      // Evitar salvar mensagens vazias
-      if (!ticketMessage.content && !ticketMessage.media_url) {
-        console.warn('⚠️ [WEBSOCKET] Mensagem sem conteúdo, ignorando');
+      // Verificar se é da nossa instância
+      if (wsMessage.instanceInstanceId !== instanceId) {
+        console.log('📋 [WEBSOCKET] Mensagem de outra instância, ignorando');
         return;
       }
+
+      // Processar mensagem diretamente - simplificado para corrigir erro de coluna
+      const messagePhone = wsMessage.keyRemoteJid?.replace('@s.whatsapp.net', '');
+      console.log('📋 [WEBSOCKET] Processando mensagem do telefone:', messagePhone);
+
+          // Normalizar dados da mensagem baseado na estrutura real dos logs
+          const normalizedMessage = {
+            messageId: wsMessage.messageId,
+            fromMe: wsMessage.keyFromMe || false,
+            content: wsMessage.content?.text || JSON.stringify(wsMessage.content || {}),
+            messageType: wsMessage.contentType || 'text',
+            timestamp: wsMessage.messageTimestamp 
+              ? new Date(wsMessage.messageTimestamp * 1000).toISOString()
+              : new Date().toISOString(),
+            senderName: wsMessage.pushName || 'Cliente',
+            chatId: wsMessage.keyRemoteJid,
+            source: wsMessage.source || 'web'
+          };
+
+          // Converter formato para TicketMessage
+          const ticketMessage: TicketMessage = {
+            id: `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            ticket_id: ticketId,
+            message_id: normalizedMessage.messageId,
+            from_me: normalizedMessage.fromMe,
+            sender_name: normalizedMessage.fromMe ? 'Atendente' : normalizedMessage.senderName,
+            content: normalizedMessage.content,
+            message_type: normalizedMessage.messageType,
+            timestamp: normalizedMessage.timestamp,
+            media_url: null,
+            media_duration: null,
+            is_internal_note: false,
+            is_ai_response: false,
+            processing_status: 'completed',
+            created_at: new Date().toISOString()
+          };
+
+          // Evitar salvar mensagens vazias
+          if (!ticketMessage.content || ticketMessage.content === '{}') {
+            console.warn('⚠️ [WEBSOCKET] Mensagem sem conteúdo válido, ignorando');
+            return;
+          }
+
+          console.log('🔄 [WEBSOCKET] Mensagem processada:', ticketMessage);
 
       // Salvar automaticamente no banco se não for mensagem própria
       if (!normalizedMessage.fromMe) {
@@ -114,7 +118,7 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
 
       addMessageSafely(ticketMessage, 'websocket');
       lastLoadRef.current = Date.now();
-    }, [ticketId, addMessageSafely])
+    }, [ticketId, instanceId, addMessageSafely])
   };
 
   const { isConnected: wsConnected, isFallbackActive, reconnectAttempts } = useWebSocketRealtime(webSocketConfig);

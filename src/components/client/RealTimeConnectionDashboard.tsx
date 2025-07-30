@@ -11,6 +11,8 @@ interface RealTimeConnectionDashboardProps {
   lastUpdateSource: string;
   messageCount: number;
   onReload?: () => void;
+  instanceId?: string;
+  clientId?: string;
   className?: string;
 }
 
@@ -21,6 +23,8 @@ export const RealTimeConnectionDashboard = ({
   lastUpdateSource,
   messageCount,
   onReload,
+  instanceId,
+  clientId,
   className = ''
 }: RealTimeConnectionDashboardProps) => {
   
