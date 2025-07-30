@@ -61,12 +61,13 @@ export const useAudioHandling = (ticketId: string) => {
         description: `Via Yumer API v2.2.1 (${duration}s)`,
       });
 
-      // Usar sistema corrigido com Yumer API v2
+      // Usar sistema corrigido com Yumer API v2 COM DURAÇÃO
       const result = await AudioSender.sendWithIntelligentRetry(
         audioBlob,
         ticket.chat_id,
         connectedInstance,
-        messageId
+        messageId,
+        duration // CORREÇÃO: Passar duração do áudio gravado
       );
 
       if (result.success) {

@@ -656,10 +656,33 @@ class YumerApiV2Service {
   /**
    * Envia arquivo de áudio via multipart/form-data
    */
-  async sendAudioFile(instanceId: string, recipient: string, audioBlob: Blob, options?: Partial<SendMessageOptions>): Promise<MessageInfo> {
+  async sendAudioFile(instanceId: string, recipient: string, audioBlob: Blob, options?: Partial<SendMessageOptions & { duration?: number }>): Promise<MessageInfo> {
     const formData = new FormData();
     formData.append('recipient', recipient);
-    formData.append('attachment', audioBlob, `audio_${Date.now()}.ogg`);
+    
+    // Detectar formato do áudio e usar extensão correta
+    const audioType = audioBlob.type.toLowerCase();
+    let fileName = `audio_${Date.now()}`;
+    
+    if (audioType.includes('ogg') || audioType.includes('opus')) {
+      fileName += '.ogg';
+    } else if (audioType.includes('webm')) {
+      fileName += '.ogg'; // Converter WebM para OGG no nome para WhatsApp
+    } else if (audioType.includes('wav')) {
+      fileName += '.wav';
+    } else if (audioType.includes('mp3')) {
+      fileName += '.mp3';
+    } else {
+      fileName += '.ogg'; // Default para WhatsApp
+    }
+    
+    formData.append('attachment', audioBlob, fileName);
+    
+    // CORREÇÃO: Incluir duração se fornecida
+    if (options?.duration !== undefined) {
+      formData.append('duration', Math.round(options.duration).toString());
+      console.log(`[YumerApiV2.2.1] Incluindo duração do áudio: ${options.duration}s`);
+    }
     
     if (options?.delay !== undefined) {
       formData.append('delay', options.delay.toString());
@@ -676,7 +699,7 @@ class YumerApiV2Service {
       formData.append('externalAttributes', externalAttrs);
     }
 
-    console.log(`[YumerApiV2.2.1] Enviando arquivo de áudio para ${recipient} na instância ${instanceId}`);
+    console.log(`[YumerApiV2.2.1] Enviando ${fileName} (${Math.round(audioBlob.size/1024)}KB) para ${recipient} na instância ${instanceId}`);
     return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/audio-file`, {
       method: 'POST',
       body: formData

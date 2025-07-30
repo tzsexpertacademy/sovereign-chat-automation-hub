@@ -16,7 +16,8 @@ export class AudioSender {
     audioBlob: Blob,
     chatId: string,
     instanceId: string,
-    messageId: string
+    messageId: string,
+    duration?: number
   ): Promise<AudioSendResult> {
     console.log('🎵 ===== INICIANDO ENVIO VIA YUMER API V2 =====');
     console.log('🔧 Sistema corrigido: usando API oficial Yumer v2.2.1');
@@ -36,10 +37,11 @@ export class AudioSender {
       console.log(`📤 Tentativa ${attempts}/${maxAttempts}: sendAudioFile com multipart/form-data`);
 
       try {
-        // Usar sendAudioFile para envio direto do blob
+        // Usar sendAudioFile para envio direto do blob COM DURAÇÃO
         const response = await yumerApiV2.sendAudioFile(instanceId, chatId, audioBlob, {
           delay: 1200,
-          messageId: messageId
+          messageId: messageId,
+          duration: duration // CORREÇÃO: Passar duração para o WhatsApp
         });
 
         console.log('✅ Sucesso via sendAudioFile:', response);
