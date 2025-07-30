@@ -101,11 +101,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
       const chat = tickets.find(ticket => ticket.id === currentChatId);
       setSelectedChat(chat || null);
       
-      console.log('📋 [CHAT-INTERFACE] Chat selecionado:', {
-        chatId: currentChatId,
-        found: !!chat,
-        chatTitle: chat?.title
-      });
+      // Chat selecionado (log removido para performance)
     } else if (!currentChatId) {
       setSelectedChat(null);
     }

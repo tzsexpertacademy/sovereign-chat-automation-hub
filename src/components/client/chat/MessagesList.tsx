@@ -30,12 +30,7 @@ const MessagesList = ({ messages, scrollAreaRef, getMessageStatus, ticketId, ins
   // 🚫 REMOVIDO: useRealTimePresence - IA controla status online
   const isRecording = false; // Simplificado
 
-  console.log('🎭 [MESSAGES-LIST] Indicadores de presença:', {
-    isTyping,
-    isRecording,
-    ticketId,
-    instanceId
-  });
+  // Logs reduzidos para melhor performance
 const renderMessageContent = (message: any) => {
     // Renderizar áudio
     if (message.message_type === 'audio') {

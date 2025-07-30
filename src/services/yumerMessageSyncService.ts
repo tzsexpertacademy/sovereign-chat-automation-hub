@@ -27,7 +27,7 @@ export const yumerMessageSyncService = {
         .eq('client_id', clientId);
 
       if (instancesError || !instances || instances.length === 0) {
-        console.log('⚠️ [YUMER-SYNC] Nenhuma instância encontrada para o cliente');
+        // Reduzido: apenas retorna sem log para evitar spam
         return { converted: 0, errors: 0 };
       }
 

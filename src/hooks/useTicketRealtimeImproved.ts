@@ -205,12 +205,12 @@ export const useTicketRealtimeImproved = (clientId: string) => {
 
     messageSyncChannelRef.current = messagesChannel;
 
-    // Sincronização automática periódica (a cada 30 segundos)
+    // Sincronização automática periódica (a cada 2 minutos para reduzir carga)
     const syncInterval = setInterval(() => {
       if (mountedRef.current) {
         syncUnprocessedMessages();
       }
-    }, 30000);
+    }, 120000);
 
     return () => {
       console.log('🔌 [REALTIME] Limpando listeners YUMER');

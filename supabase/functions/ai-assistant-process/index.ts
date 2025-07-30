@@ -695,45 +695,8 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       console.warn('⚠️ [PROFILE] Erro ao aplicar configurações de perfil:', profileError);
     }
 
-    // 📱 DEFINIR PRESENÇA COMO "DIGITANDO" ANTES DE RESPONDER
-    try {
-      console.log('📱 [PRESENCE] Definindo presença como "digitando" para IA');
-      
-      await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/chat/presence`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${client.business_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          remoteJid: resolvedContext.chatId,
-          status: 'composing'
-        })
-      });
-      
-      console.log('✅ [PRESENCE] Presença "digitando" definida com sucesso');
-    } catch (presenceError) {
-      console.warn('⚠️ [PRESENCE] Erro ao definir presença como digitando:', presenceError);
-    }
-
-    // Definir presença como "available" após enviar mensagem
-    try {
-      await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/chat/presence`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${client.business_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          remoteJid: resolvedContext.chatId,
-          status: 'available'
-        })
-      });
-      
-      console.log('📱 [PRESENCE] Presença "available" definida após envio');
-    } catch (presenceError) {
-      console.warn('⚠️ [PRESENCE] Erro ao definir presença como available:', presenceError);
-    }
+    // 🚫 REMOVIDO: Presença via chat/presence - endpoint não existe mais
+    // A presença é controlada automaticamente via configurações de perfil
 
     // Enviar usando yumerApiV2 com o ID correto
     const sendOptions = {
@@ -783,19 +746,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         messageId: sendResult.messageId
       });
 
-      // 📱 VOLTAR PRESENÇA PARA "DISPONÍVEL" APÓS ENVIO - FALLBACK CRÍTICO
-      try {
-        console.log('📱 [PRESENCE] Definindo presença como "disponível" após envio');
-        const normalizedChatId = normalizeRemoteJid(resolvedContext.chatId);
-        
-        // 🚫 PRESENÇA DESABILITADA: CodeChat v2.2.1 não possui endpoint /chat/presence
-        console.log('🚫 [AI-ASSISTANT] Sistema de presença desabilitado - endpoint não existe no CodeChat v2.2.1');
-        console.log('📋 [AI-ASSISTANT] NOTA: setPresenceWithRetry e maintain-online-status foram desabilitados');
-        console.log('🔄 [AI-ASSISTANT] PresenceKeepAlive deve ser usado quando endpoint correto for encontrado');
-
-      } catch (presenceError) {
-        console.warn('⚠️ [PRESENCE] Erro ao definir presença como disponível:', presenceError);
-      }
+      // 🚫 REMOVIDO: Presença pós-envio - gerenciado via profile-status apenas
       
     } catch (sendError: any) {
       console.error('❌ [AI-ASSISTANT] Erro ao enviar via API direta:', sendError);
