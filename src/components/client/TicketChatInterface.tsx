@@ -2,9 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { unifiedMessageService } from '@/services/unifiedMessageService';
 import { ticketsService } from '@/services/ticketsService';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useTicketMessages } from '@/hooks/useTicketMessages';
+import { useUnifiedTicketMessages } from '@/hooks/useUnifiedTicketMessages';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
@@ -15,9 +14,8 @@ import PresenceKeepAlive from './chat/PresenceKeepAlive';
 
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
-import { useWebSocketRealtime } from '@/hooks/useWebSocketRealtime';
-import { webSocketConfigService } from '@/services/webSocketConfigService';
 import WebSocketStatus from './WebSocketStatus';
+import UnifiedMessagesDebug from './UnifiedMessagesDebug';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -27,10 +25,10 @@ interface TicketChatInterfaceProps {
 const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) => {
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
-  const { messages, isLoading } = useTicketMessages(ticketId);
   const { toast } = useToast();
   const { markActivity, isOnline } = useOnlineStatus(clientId, true);
   const { simulateHumanTyping, isTyping, isRecording } = useHumanizedTyping(clientId);
@@ -38,22 +36,19 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
 
-  // WebSocket Real-time - Fase 2: Integração Gradual
-  const { isConnected: wsConnected, isFallbackActive, reconnectAttempts } = useWebSocketRealtime({
+  // Unified Messages - WebSocket + Supabase + Polling inteligente
+  const { 
+    messages, 
+    isLoading, 
+    wsConnected, 
+    isFallbackActive, 
+    reconnectAttempts, 
+    lastUpdateSource,
+    reload 
+  } = useUnifiedTicketMessages({
+    ticketId,
     clientId,
-    instanceId: actualInstanceId || '',
-    enabled: !!(actualInstanceId && ticket?.chat_id),
-    onMessage: (wsMessage) => {
-      console.log('📨 [WEBSOCKET] Nova mensagem via WebSocket:', wsMessage);
-      // Mensagens do WebSocket vão ser automaticamente sincronizadas pelo Supabase
-      // O sistema atual já escuta mudanças no banco via useTicketMessages
-    },
-    onConnectionUpdate: (status) => {
-      console.log('🔄 [WEBSOCKET] Status de conexão atualizado:', status);
-    },
-    onPresenceUpdate: (presence) => {
-      console.log('👤 [WEBSOCKET] Presença atualizada:', presence);
-    }
+    instanceId: actualInstanceId
   });
 
   // Limpar estado quando mudar de ticket
@@ -209,14 +204,39 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         enabled={!!(actualInstanceId && ticket?.chat_id)}
       />
       
-      {/* WebSocket Status - Fase 3: Monitoramento */}
-      <div className="flex justify-end p-2 border-b bg-background">
+      {/* WebSocket Status - Sistema Unificado */}
+      <div className="flex justify-between items-center p-2 border-b bg-background">
+        <div className="flex items-center gap-2">
+          <div className="text-xs text-muted-foreground">
+            Última atualização: <span className="font-medium text-foreground">{lastUpdateSource}</span>
+          </div>
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="text-xs text-muted-foreground hover:text-foreground underline"
+          >
+            {showDebug ? 'Ocultar' : 'Debug'}
+          </button>
+        </div>
         <WebSocketStatus
           isConnected={wsConnected}
           isFallbackActive={isFallbackActive}
           reconnectAttempts={reconnectAttempts}
         />
       </div>
+
+      {/* Painel de Debug */}
+      {showDebug && (
+        <div className="p-2 border-b bg-muted/20">
+          <UnifiedMessagesDebug
+            wsConnected={wsConnected}
+            isFallbackActive={isFallbackActive}
+            reconnectAttempts={reconnectAttempts}
+            lastUpdateSource={lastUpdateSource}
+            messagesCount={messages.length}
+            onReload={reload}
+          />
+        </div>
+      )}
 
       <MessagesList
         messages={messages}
