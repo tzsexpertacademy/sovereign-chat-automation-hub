@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, Volume2, Download, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { whatsappAudioService } from '@/services/whatsappAudioService';
+import { unifiedMediaService } from '@/services/unifiedMediaService';
 
 interface AudioPlayerProps {
   audioUrl?: string;
@@ -121,17 +121,41 @@ const AudioPlayer = ({
         fileEncSha256: fileEncSha256
       };
 
-      const result = await whatsappAudioService.decryptAudio(audioData);
+      const result = await unifiedMediaService.processAudio(
+        messageId,
+        '', // instanceId será obtido dentro do serviço 
+        {
+          url: encryptedUrl,
+          mimetype: 'audio/ogg',
+          mediaKey: mediaKey,
+          directPath: ''
+        }
+      );
 
       console.log('📡 Player: Resultado da descriptografia:', {
-        hasDecryptedData: !!result?.decryptedData,
+        success: result?.success,
+        hasMediaUrl: !!result?.mediaUrl,
         format: result?.format,
         cached: result?.cached
       });
 
-      if (result?.decryptedData) {
+      if (result?.success && result?.mediaUrl) {
         console.log('✅ Player: Áudio descriptografado com sucesso');
-        return result.decryptedData;
+        // Converter blob URL para base64 se necessário
+        if (result.mediaUrl.startsWith('blob:')) {
+          try {
+            const response = await fetch(result.mediaUrl);
+            const blob = await response.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            const uint8Array = new Uint8Array(arrayBuffer);
+            const base64 = btoa(String.fromCharCode(...uint8Array));
+            return base64;
+          } catch (e) {
+            console.error('❌ Player: Erro ao converter blob para base64:', e);
+            return null;
+          }
+        }
+        return result.mediaUrl;
       }
 
       console.error('❌ Player: Falha na descriptografia');
