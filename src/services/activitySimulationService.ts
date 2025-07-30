@@ -3,7 +3,7 @@
  * Mantém o status "online" através de atividade simulada
  */
 
-import unifiedYumerService from './unifiedYumerService';
+import { onlineStatusManager } from './onlineStatusManager';
 
 interface ActivitySession {
   instanceId: string;
@@ -93,27 +93,16 @@ class ActivitySimulationService {
     }
   }
   
-  // Simular atividade invisível
+  // Estratégia A: Manter presença apenas via reconfiguração de perfil
   private async simulateInvisibleActivity(session: ActivitySession): Promise<void> {
-    const { instanceId, chatId, clientId } = session;
+    const { instanceId, clientId } = session;
     
     try {
-      // Tentar enviar reação invisível ou marcar como lido
-      // Isso pode manter a conexão ativa sem enviar mensagem visível
-      await unifiedYumerService.markAsRead(instanceId, 'heartbeat', chatId);
-      
-      // Alternativa: configurar perfil novamente se necessário
-      const currentTime = Date.now();
-      const profileKey = `${instanceId}:${clientId}`;
-      
-      // Reconfigurar perfil a cada 5 minutos para manter status
-      if (currentTime % 300000 < this.HEARTBEAT_INTERVAL) {
-        await unifiedYumerService.setOnlinePresence(instanceId, clientId);
-        console.log(`🔄 [ACTIVITY-SIM] Perfil reconfigurado para: ${instanceId}`);
-      }
-      
+      // Estratégia A: Apenas reconfigurar perfil online para manter presença
+      await onlineStatusManager.configureOnlinePresence(instanceId, clientId, 'auto-trigger');
+      console.log(`🔄 [ACTIVITY-SIM] Perfil reconfigurado para: ${instanceId}`);
     } catch (error) {
-      console.error(`❌ [ACTIVITY-SIM] Erro na simulação:`, error);
+      console.error(`❌ [ACTIVITY-SIM] Erro ao reconfigurar perfil:`, error);
     }
   }
   
