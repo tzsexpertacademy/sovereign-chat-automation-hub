@@ -93,16 +93,16 @@ class ActivitySimulationService {
     }
   }
   
-  // Estratégia A: Manter presença apenas via reconfiguração de perfil
+  // ✅ NOVA ESTRATÉGIA: Usar heartbeat de presença via API v2.2.1
   private async simulateInvisibleActivity(session: ActivitySession): Promise<void> {
-    const { instanceId, clientId } = session;
+    const { instanceId, chatId, clientId } = session;
     
     try {
-      // Estratégia A: Apenas reconfigurar perfil online para manter presença
-      await onlineStatusManager.configureOnlinePresence(instanceId, clientId, 'auto-trigger');
-      console.log(`🔄 [ACTIVITY-SIM] Perfil reconfigurado para: ${instanceId}`);
+      // Usar novo método de heartbeat que funciona com API v2.2.1
+      await onlineStatusManager.sendPresenceHeartbeat(instanceId, chatId, clientId);
+      console.log(`💓 [ACTIVITY-SIM] Heartbeat de presença enviado para: ${chatId}`);
     } catch (error) {
-      console.error(`❌ [ACTIVITY-SIM] Erro ao reconfigurar perfil:`, error);
+      console.error(`❌ [ACTIVITY-SIM] Erro no heartbeat de presença:`, error);
     }
   }
   

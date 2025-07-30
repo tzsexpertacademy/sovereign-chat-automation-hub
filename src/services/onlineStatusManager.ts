@@ -101,17 +101,63 @@ class OnlineStatusManager {
     return this.configureProfileOnce(instanceId, clientId, source);
   }
 
-  // Enviar presença contínua no chat específico
-  async sendChatPresence(instanceId: string, chatId: string, status: 'available' | 'unavailable' | 'composing', source: 'auto-trigger' | 'manual' = 'auto-trigger'): Promise<boolean> {
+  // ✅ NOVA IMPLEMENTAÇÃO: Heartbeat de presença usando API v2.2.1
+  async sendPresenceHeartbeat(instanceId: string, chatId: string, clientId: string): Promise<boolean> {
     if (this.isGloballyDisabled) {
-      console.log('🚫 [STATUS-MANAGER] Sistema desabilitado - presença cancelada');
+      console.log('🚫 [STATUS-MANAGER] Sistema desabilitado - heartbeat cancelado');
       return false;
     }
 
-    // 🚫 REMOVIDO: setPresence não existe no CodeChat v2.2.1
-    console.log(`🚫 [STATUS-MANAGER] sendChatPresence DESABILITADO - endpoint /chat/presence não existe`);
-    console.log(`🔧 [STATUS-MANAGER] Parâmetros: ${status} para ${chatId} (${source})`);
-    return false;
+    try {
+      // Importar YumerApiV2Service dinamicamente
+      const yumerApiV2Service = (await import('./yumerApiV2Service')).default;
+      
+      // Enviar heartbeat usando novo método
+      const success = await yumerApiV2Service.sendPresenceHeartbeat(instanceId, chatId);
+      
+      if (success) {
+        console.log(`💓 [STATUS-MANAGER] Heartbeat enviado com sucesso para: ${chatId}`);
+        return true;
+      } else {
+        console.log(`❌ [STATUS-MANAGER] Falha no heartbeat para: ${chatId}`);
+        return false;
+      }
+    } catch (error) {
+      console.error(`💥 [STATUS-MANAGER] Erro no heartbeat:`, error);
+      return false;
+    }
+  }
+
+  // Timer automático para heartbeat contínuo
+  private heartbeatTimers = new Map<string, NodeJS.Timeout>();
+
+  startContinuousHeartbeat(instanceId: string, chatId: string, clientId: string, intervalMs: number = 30000): void {
+    const timerKey = `${instanceId}:${chatId}`;
+    
+    // Parar timer existente se houver
+    this.stopContinuousHeartbeat(instanceId, chatId);
+    
+    // Primeiro heartbeat imediato
+    this.sendPresenceHeartbeat(instanceId, chatId, clientId);
+    
+    // Configurar timer para heartbeats contínuos
+    const timer = setInterval(() => {
+      this.sendPresenceHeartbeat(instanceId, chatId, clientId);
+    }, intervalMs);
+    
+    this.heartbeatTimers.set(timerKey, timer);
+    console.log(`🔄 [STATUS-MANAGER] Heartbeat contínuo iniciado para: ${chatId} (${intervalMs}ms)`);
+  }
+
+  stopContinuousHeartbeat(instanceId: string, chatId: string): void {
+    const timerKey = `${instanceId}:${chatId}`;
+    const timer = this.heartbeatTimers.get(timerKey);
+    
+    if (timer) {
+      clearInterval(timer);
+      this.heartbeatTimers.delete(timerKey);
+      console.log(`⏹️ [STATUS-MANAGER] Heartbeat contínuo parado para: ${chatId}`);
+    }
   }
 
   // Verificar se chat está bloqueado

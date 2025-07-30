@@ -526,7 +526,7 @@ class YumerApiV2Service {
   private prepareMessageOptions(customOptions?: Partial<SendMessageOptions>): SendMessageOptions {
     const defaultOptions: SendMessageOptions = {
       delay: 1200,
-      presence: "composing"
+      presence: "available" // ✅ CORRIGIDO: usar 'available' por padrão para manter online
     };
 
     const mergedOptions = { ...defaultOptions, ...customOptions };
@@ -576,6 +576,37 @@ class YumerApiV2Service {
         options: messageOptions
       })
     }, true, instanceId);
+  }
+
+  /**
+   * ✅ NOVA FUNCIONALIDADE: Enviar atualização de presença invisível
+   * Envia mensagem vazia apenas para atualizar status 'available'
+   */
+  async sendPresenceHeartbeat(instanceId: string, chatId: string): Promise<boolean> {
+    try {
+      console.log(`💓 [YUMER-API] Enviando heartbeat de presença para: ${chatId}`);
+      
+      // Usar endpoint send/text com conteúdo vazio apenas para atualizar presença
+      await this.makeRequest(`/api/v2/instance/${instanceId}/send/text`, {
+        method: 'POST',
+        body: JSON.stringify({
+          recipient: chatId,
+          options: {
+            presence: 'available', // Status online
+            delay: 0
+          },
+          textMessage: {
+            text: '' // Conteúdo vazio - apenas para trigger de presença
+          }
+        })
+      }, true, instanceId);
+
+      console.log(`✅ [YUMER-API] Heartbeat de presença enviado com sucesso`);
+      return true;
+    } catch (error) {
+      console.error(`❌ [YUMER-API] Erro ao enviar heartbeat de presença:`, error);
+      return false;
+    }
   }
 
   /**
