@@ -8,6 +8,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import yumerApiV2Service from "./yumerApiV2Service";
 import { businessTokenService } from "./businessTokenService";
+import { socketIOWebSocketService } from "./socketIOWebSocketService";
 
 export interface UnifiedMessageOptions {
   instanceId: string;
@@ -61,8 +62,40 @@ class UnifiedMessageService {
         externalAttributes: `source=${options.source || 'manual'};humanized=${options.humanized || false};timestamp=${Date.now()}`
       };
 
-      // 4. ENVIAR VIA YUMER API V2 (ÚNICO MÉTODO)
-      console.log('📤 [UNIFIED-MSG] Enviando via yumerApiV2 com ID correto:', {
+      // 4. TENTAR ENVIO VIA WEBSOCKET PRIMEIRO (PRIORIDADE)
+      console.log('📤 [UNIFIED-MSG] Tentando envio via WebSocket...');
+      
+      if (socketIOWebSocketService.isConnected()) {
+        console.log('🚀 [UNIFIED-MSG] WebSocket conectado - usando envio prioritário');
+        
+        const wsResult = await socketIOWebSocketService.sendMessage(
+          options.chatId,
+          options.message,
+          {
+            messageType: 'text',
+            delay: sendOptions.delay,
+            presence: sendOptions.presence
+          }
+        );
+        
+        if (wsResult.success) {
+          console.log('✅ [UNIFIED-MSG] Mensagem enviada via WebSocket com sucesso:', wsResult);
+          
+          return {
+            success: true,
+            messageId: wsResult.messageId || `ws_msg_${Date.now()}`,
+            timestamp: Date.now(),
+            details: { method: 'websocket', ...wsResult }
+          };
+        } else {
+          console.warn('⚠️ [UNIFIED-MSG] Falha no WebSocket, usando fallback REST:', wsResult.error);
+        }
+      } else {
+        console.log('⚠️ [UNIFIED-MSG] WebSocket não conectado, usando REST direto');
+      }
+
+      // 5. FALLBACK VIA YUMER API V2 (caso WebSocket falhe)
+      console.log('📤 [UNIFIED-MSG] Enviando via yumerApiV2 (fallback) com ID correto:', {
         originalId: options.instanceId,
         realInstanceId,
         chatId: options.chatId
@@ -79,9 +112,9 @@ class UnifiedMessageService {
 
       return {
         success: true,
-        messageId: result.key?.id || `unified_msg_${Date.now()}`,
+        messageId: result.key?.id || `rest_msg_${Date.now()}`,
         timestamp: Date.now(),
-        details: result
+        details: { method: 'rest-fallback', ...result }
       };
 
     } catch (error: any) {

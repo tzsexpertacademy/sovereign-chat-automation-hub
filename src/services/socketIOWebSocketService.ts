@@ -496,6 +496,78 @@ class SocketIOWebSocketService {
   }
 
   /**
+   * 🚀 ENVIAR MENSAGEM VIA WEBSOCKET - CRÍTICO PARA UNIFICAÇÃO
+   */
+  async sendMessage(chatId: string, message: string, options?: {
+    messageType?: 'text' | 'audio' | 'image' | 'video' | 'document';
+    delay?: number;
+    presence?: 'composing' | 'recording' | 'available';
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      if (!this.isConnected()) {
+        console.error('❌ [SOCKET.IO-SEND] WebSocket não conectado');
+        return { success: false, error: 'WebSocket não conectado' };
+      }
+
+      if (!this.socket) {
+        console.error('❌ [SOCKET.IO-SEND] Socket não disponível');
+        return { success: false, error: 'Socket não disponível' };
+      }
+
+      const messageId = `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const messageData = {
+        chatId,
+        message,
+        messageId,
+        messageType: options?.messageType || 'text',
+        delay: options?.delay || 0,
+        presence: options?.presence || 'composing',
+        timestamp: Date.now()
+      };
+
+      console.log('📤 [SOCKET.IO-SEND] Enviando via WebSocket:', {
+        chatId,
+        messagePreview: message.substring(0, 50) + '...',
+        messageId,
+        type: messageData.messageType
+      });
+
+      // Enviar via Socket.IO
+      const response = await new Promise<any>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Timeout no envio via WebSocket'));
+        }, 10000);
+
+        this.socket!.emit('send.message', messageData, (response: any) => {
+          clearTimeout(timeout);
+          resolve(response);
+        });
+      });
+
+      if (response?.success) {
+        console.log('✅ [SOCKET.IO-SEND] Mensagem enviada com sucesso via WebSocket:', response);
+        return {
+          success: true,
+          messageId: response.messageId || messageId
+        };
+      } else {
+        console.error('❌ [SOCKET.IO-SEND] Falha no envio via WebSocket:', response);
+        return {
+          success: false,
+          error: response?.error || 'Erro desconhecido no WebSocket'
+        };
+      }
+
+    } catch (error: any) {
+      console.error('❌ [SOCKET.IO-SEND] Erro crítico no envio via WebSocket:', error);
+      return {
+        success: false,
+        error: error.message || 'Erro crítico no WebSocket'
+      };
+    }
+  }
+
+  /**
    * Testa a conectividade Socket.IO
    */
   async testConnection(instanceId: string, clientId: string): Promise<boolean> {
