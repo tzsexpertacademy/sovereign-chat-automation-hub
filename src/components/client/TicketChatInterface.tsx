@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { unifiedMessageService } from '@/services/unifiedMessageService';
 import { ticketsService } from '@/services/ticketsService';
 import { useToast } from '@/hooks/use-toast';
-import { useUnifiedTicketMessages } from '@/hooks/useUnifiedTicketMessages';
+import { useSimpleTicketMessages } from '@/hooks/useSimpleTicketMessages';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
@@ -14,8 +14,7 @@ import PresenceKeepAlive from './chat/PresenceKeepAlive';
 
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
-import WebSocketStatus from './WebSocketStatus';
-import UnifiedMessagesDebug from './UnifiedMessagesDebug';
+import SimpleRealtimeStatus from './SimpleRealtimeStatus';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -25,7 +24,6 @@ interface TicketChatInterfaceProps {
 const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) => {
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
@@ -36,21 +34,17 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
 
-  // Unified Messages - WebSocket + Supabase + Polling inteligente
+  // Sistema Simplificado - Supabase Realtime + Polling backup
   const { 
     messages, 
     isLoading, 
-    wsConnected, 
-    isFallbackActive, 
-    reconnectAttempts,
-    isCircuitBreakerBlocked,
-    circuitBreakerUnblockTime,
     lastUpdateSource,
-    reload 
-  } = useUnifiedTicketMessages({
+    reload,
+    isSupabaseActive,
+    isPollingActive
+  } = useSimpleTicketMessages({
     ticketId,
-    clientId,
-    instanceId: actualInstanceId
+    clientId
   });
 
   // Limpar estado quando mudar de ticket
@@ -206,41 +200,17 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         enabled={!!(actualInstanceId && ticket?.chat_id)}
       />
       
-      {/* WebSocket Status - Sistema Unificado */}
+      {/* Status Simplificado - Supabase Realtime */}
       <div className="flex justify-between items-center p-2 border-b bg-background">
-        <div className="flex items-center gap-2">
-          <div className="text-xs text-muted-foreground">
-            Última atualização: <span className="font-medium text-foreground">{lastUpdateSource}</span>
-          </div>
-          <button
-            onClick={() => setShowDebug(!showDebug)}
-            className="text-xs text-muted-foreground hover:text-foreground underline"
-          >
-            {showDebug ? 'Ocultar' : 'Debug'}
-          </button>
+        <div className="text-xs text-muted-foreground">
+          Sistema: <span className="font-medium text-green-600">Supabase Realtime + REST</span>
         </div>
-        <WebSocketStatus
-          isConnected={wsConnected}
-          isFallbackActive={isFallbackActive}
-          reconnectAttempts={reconnectAttempts}
-          isCircuitBreakerBlocked={isCircuitBreakerBlocked}
-          circuitBreakerUnblockTime={circuitBreakerUnblockTime}
+        <SimpleRealtimeStatus
+          lastUpdateSource={lastUpdateSource}
+          messagesCount={messages.length}
+          onReload={reload}
         />
       </div>
-
-      {/* Painel de Debug */}
-      {showDebug && (
-        <div className="p-2 border-b bg-muted/20">
-          <UnifiedMessagesDebug
-            wsConnected={wsConnected}
-            isFallbackActive={isFallbackActive}
-            reconnectAttempts={reconnectAttempts}
-            lastUpdateSource={lastUpdateSource}
-            messagesCount={messages.length}
-            onReload={reload}
-          />
-        </div>
-      )}
 
       <MessagesList
         messages={messages}
@@ -248,9 +218,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         getMessageStatus={(messageId: string) => getMessageStatus(messageId)}
         ticketId={ticketId}
         instanceId={ticket?.instance_id}
-        wsConnected={wsConnected}
-        isFallbackActive={isFallbackActive}
-        isCircuitBreakerBlocked={isCircuitBreakerBlocked}
+        wsConnected={isSupabaseActive}
+        isFallbackActive={!isSupabaseActive}
+        isCircuitBreakerBlocked={false}
         lastUpdateSource={lastUpdateSource}
       />
 
