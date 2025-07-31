@@ -14,6 +14,7 @@ import TicketActionsMenu from './TicketActionsMenu';
 import ChatHeaderImproved from './chat/ChatHeaderImproved';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 import { useRealtimeSidebar } from '@/hooks/useRealtimeSidebar';
+import { useWhatsAppMessageSync } from '@/hooks/useWhatsAppMessageSync';
 import TypingIndicator from './TypingIndicator';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 import { supabase } from '@/integrations/supabase/client';
@@ -83,6 +84,16 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     clientId,
     onTicketUpdate: handleTicketUpdate,
     onNewMessage: handleNewMessage
+  });
+
+  // 🚀 SINCRONIZAÇÃO AUTOMÁTICA WhatsApp → Tickets
+  useWhatsAppMessageSync({
+    clientId,
+    onMessageProcessed: (messageId) => {
+      console.log('✅ [WA-SYNC] Mensagem processada:', messageId);
+      // Forçar reload dos tickets para pegar novas mensagens
+      reloadTickets();
+    }
   });
 
   // Sincronizar sidebar com tickets principais
