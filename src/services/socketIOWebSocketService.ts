@@ -567,44 +567,72 @@ class SocketIOWebSocketService {
         return { success: false, error: 'Socket não disponível' };
       }
 
-      const messageId = `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Usar estrutura compatível com REST API Yumer
       const messageData = {
-        chatId,
-        message,
-        messageId,
-        messageType: options?.messageType || 'text',
-        delay: options?.delay || 0,
-        presence: options?.presence || 'composing',
-        timestamp: Date.now()
+        recipient: chatId,
+        textMessage: {
+          text: message
+        },
+        options: {
+          delay: options?.delay || 0,
+          presence: options?.presence || 'composing'
+        }
       };
 
-      console.log('📤 [SOCKET.IO-SEND] Enviando via WebSocket:', {
+      console.log('📤 [SOCKET.IO-SEND] *** ENVIANDO VIA WEBSOCKET COM ESTRUTURA CORRETA ***', {
         chatId,
         messagePreview: message.substring(0, 50) + '...',
-        messageId,
-        type: messageData.messageType
+        evento: 'send.text',
+        estrutura: 'REST-compatible'
       });
 
-      // Enviar via Socket.IO
-      const response = await new Promise<any>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Timeout no envio via WebSocket'));
-        }, 10000);
+      // Tentar múltiplos eventos conhecidos
+      const eventos = ['send.text', 'sendText', 'send.message', 'message.send'];
+      let response: any = null;
+      let eventoUsado = '';
 
-        this.socket!.emit('send.message', messageData, (response: any) => {
-          clearTimeout(timeout);
-          resolve(response);
-        });
-      });
+      for (const evento of eventos) {
+        try {
+          console.log(`🔄 [SOCKET.IO-SEND] Testando evento: ${evento}`);
+          
+          response = await new Promise<any>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error(`Timeout no evento ${evento}`));
+            }, 5000); // Reduzido para 5s
+
+            this.socket!.emit(evento, messageData, (response: any) => {
+              clearTimeout(timeout);
+              resolve(response);
+            });
+          });
+
+          if (response) {
+            eventoUsado = evento;
+            console.log(`✅ [SOCKET.IO-SEND] Evento funcionou: ${evento}`, response);
+            break;
+          }
+        } catch (error) {
+          console.log(`⚠️ [SOCKET.IO-SEND] Evento ${evento} falhou:`, error);
+          continue;
+        }
+      }
+
+      if (!response && !eventoUsado) {
+        console.error('❌ [SOCKET.IO-SEND] Nenhum evento WebSocket funcionou - todos os eventos falharam');
+        return {
+          success: false,
+          error: 'Nenhum evento WebSocket reconhecido pelo servidor'
+        };
+      }
 
       if (response?.success) {
-        console.log('✅ [SOCKET.IO-SEND] Mensagem enviada com sucesso via WebSocket:', response);
+        console.log(`✅ [SOCKET.IO-SEND] Mensagem enviada com sucesso via WebSocket usando evento: ${eventoUsado}`, response);
         return {
           success: true,
-          messageId: response.messageId || messageId
+          messageId: response.messageId || `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
         };
       } else {
-        console.error('❌ [SOCKET.IO-SEND] Falha no envio via WebSocket:', response);
+        console.error(`❌ [SOCKET.IO-SEND] Falha no envio via WebSocket com evento ${eventoUsado}:`, response);
         return {
           success: false,
           error: response?.error || 'Erro desconhecido no WebSocket'
