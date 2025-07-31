@@ -42,86 +42,20 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
   }, []);
 
   const connect = useCallback(async () => {
-    if (!config.enabled || !config.instanceId || isConnectingRef.current) {
-      console.log('🚫 [WEBSOCKET] WebSocket desabilitado, instância não definida ou já conectando');
-      return;
-    }
-
-    // Verificar status do circuit breaker
-    const circuitStatus = socketIOWebSocketService.getCircuitBreakerStatus();
-    if (circuitStatus.blocked) {
-      console.warn('🚫 [WEBSOCKET] Circuit breaker ativo - usando Supabase por', new Date(circuitStatus.unblockTime).toLocaleTimeString());
-      updateStatus({ 
-        fallbackActive: true,
-        circuitBreakerBlocked: true,
-        circuitBreakerUnblockTime: circuitStatus.unblockTime
-      });
-      return;
-    }
-
-    if (status.reconnectAttempts >= status.maxReconnectAttempts) {
-      console.warn('⚠️ [WEBSOCKET] Máximo de tentativas atingido, ativando fallback permanente');
-      updateStatus({ fallbackActive: true });
-      return;
-    }
-
-    isConnectingRef.current = true;
-
-    try {
-      console.log('🔌 [WEBSOCKET] Conectando via Socket.IO...', {
-        instanceId: config.instanceId,
-        clientId: config.clientId,
-        attempt: status.reconnectAttempts + 1
-      });
-
-      // Usar o novo serviço Socket.IO
-      const connected = await socketIOWebSocketService.connect({
-        instanceId: config.instanceId,
-        clientId: config.clientId,
-        onMessage: config.onMessage,
-        onQRUpdate: config.onQRUpdate,
-        onConnectionUpdate: config.onConnectionUpdate,
-        onPresenceUpdate: config.onPresenceUpdate
-      });
-
-      isConnectingRef.current = false;
-
-      if (connected) {
-        updateStatus({
-          connected: true,
-          reconnectAttempts: 0,
-          fallbackActive: false,
-          configured: true,
-          circuitBreakerBlocked: false,
-          circuitBreakerUnblockTime: 0
-        });
-      } else {
-        // Verificar se falhou por circuit breaker
-        const circuitStatus = socketIOWebSocketService.getCircuitBreakerStatus();
-        
-        updateStatus({
-          connected: false,
-          reconnectAttempts: status.reconnectAttempts + 1,
-          fallbackActive: true,
-          circuitBreakerBlocked: circuitStatus.blocked,
-          circuitBreakerUnblockTime: circuitStatus.unblockTime
-        });
-
-        // Só tentar reconectar se não for circuit breaker
-        if (status.reconnectAttempts < status.maxReconnectAttempts && !circuitStatus.blocked) {
-          scheduleReconnect();
-        }
-      }
-
-    } catch (error) {
-      console.error('❌ [WEBSOCKET] Erro ao conectar:', error);
-      isConnectingRef.current = false;
-      updateStatus({
-        connected: false,
-        fallbackActive: true
-      });
-    }
-  }, [config.enabled, config.instanceId, config.clientId, updateStatus, status.reconnectAttempts, status.maxReconnectAttempts]);
+    // WebSocket COMPLETAMENTE DESABILITADO
+    console.log('🚫 [WEBSOCKET] *** WEBSOCKET DESABILITADO - SISTEMA 100% SUPABASE ***');
+    
+    updateStatus({
+      connected: false,
+      reconnectAttempts: 0,
+      fallbackActive: true, // Supabase sempre ativo
+      configured: false,
+      circuitBreakerBlocked: false,
+      circuitBreakerUnblockTime: 0
+    });
+    
+    return;
+  }, [updateStatus]);
 
   const scheduleReconnect = useCallback(() => {
     // Reconexão mais rápida - máximo 5 segundos

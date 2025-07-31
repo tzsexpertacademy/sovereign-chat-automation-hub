@@ -14,7 +14,7 @@ import PresenceKeepAlive from './chat/PresenceKeepAlive';
 
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
-import SimpleRealtimeStatus from './SimpleRealtimeStatus';
+import FinalSimpleStatus from './FinalSimpleStatus';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -200,12 +200,12 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         enabled={!!(actualInstanceId && ticket?.chat_id)}
       />
       
-      {/* Status Simplificado - Supabase Realtime */}
+      {/* Status Final - Sistema 100% Supabase + REST */}
       <div className="flex justify-between items-center p-2 border-b bg-background">
         <div className="text-xs text-muted-foreground">
-          Sistema: <span className="font-medium text-green-600">Supabase Realtime + REST</span>
+          <span className="font-medium text-green-600">✅ Sistema 100% Supabase + REST</span>
         </div>
-        <SimpleRealtimeStatus
+        <FinalSimpleStatus
           lastUpdateSource={lastUpdateSource}
           messagesCount={messages.length}
           onReload={reload}

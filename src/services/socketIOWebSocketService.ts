@@ -44,87 +44,23 @@ class SocketIOWebSocketService {
   };
 
   /**
-   * ESTRATÉGIA HÍBRIDA: WebSocket para RECEBER + REST para ENVIAR
-   * - Circuit breaker para detectar servidor 500
-   * - Fallback rápido quando servidor indisponível
-   * - Timeout otimizado para falha rápida
+   * WEBSOCKET DESABILITADO - Sistema 100% Supabase + REST
+   * Sempre retorna false para evitar tentativas de conexão
    */
   async connect(config: SocketIOConnectionConfig): Promise<boolean> {
-    try {
-      // Verificar circuit breaker
-      if (this.isCircuitBreakerBlocked()) {
-        console.warn('🚫 [SOCKET.IO] *** CIRCUIT BREAKER ATIVO - SERVIDOR INDISPONÍVEL ***');
-        return false;
-      }
-
-      console.log('🔌 [SOCKET.IO] *** INICIANDO ESTRATÉGIA HÍBRIDA ***', {
-        instanceId: config.instanceId,
-        clientId: config.clientId
-      });
-
-      this.config = config;
-      
-      // 🎯 FASE 1: OBTER JWT DA INSTÂNCIA (correção crítica)
-      console.log('🔑 [FASE-1] Obtendo JWT da instância:', config.instanceId);
-      
-      const jwt = await this.getInstanceJWT(config.instanceId, config.clientId);
-      if (!jwt) {
-        console.error('❌ [FASE-1] FALHA CRÍTICA: JWT da instância não obtido');
-        this.updateStatus({ error: 'JWT CRÍTICO: Não foi possível obter JWT da instância' });
-        return false;
-      }
-      
-      console.log('✅ [FASE-1] JWT da instância obtido com sucesso');
-
-      // 🎯 FASE 2: CONFIGURAR WEBSOCKET VIA API (correção crítica)
-      console.log('🔧 [FASE-2] Configurando WebSocket via API com autenticação...');
-      
-      const configured = await this.configureWebSocketAPI(config.instanceId, jwt);
-      if (!configured) {
-        console.error('❌ [FASE-2] FALHA CRÍTICA: WebSocket não configurado via API');
-        this.updateStatus({ error: 'CONFIGURAÇÃO CRÍTICA: API WebSocket não configurada' });
-        return false;
-      }
-      
-      console.log('✅ [FASE-2] WebSocket configurado via API');
-
-      // 🎯 FASE 3: CONECTAR SOCKET.IO COM URL CORRETA
-      console.log('🌐 [FASE-3] Conectando Socket.IO na URL correta...');
-      
-      const socketConnected = await this.connectSocketIO(config.instanceId, jwt);
-      if (!socketConnected) {
-        console.error('❌ [FASE-3] FALHA CRÍTICA: Socket.IO não conectou');
-        this.updateStatus({ error: 'CONEXÃO CRÍTICA: Socket.IO falhou' });
-        return false;
-      }
-      
-      console.log('✅ [FASE-3] Socket.IO conectado');
-
-      this.updateStatus({
-        connected: true,
-        authenticated: true,
-        configured: true,
-        reconnectAttempts: 0,
-        error: undefined
-      });
-      
-      this.startHeartbeat();
-      
-      console.log('🎉 [SOCKET.IO] *** PLANO DE CORREÇÃO FINAL EXECUTADO COM SUCESSO! ***');
-      return true;
-
-    } catch (error: any) {
-      console.error('❌ [SOCKET.IO] Erro crítico na estratégia híbrida:', error);
-      
-      // Ativar circuit breaker em caso de erro de rede
-      if (error.name === 'AbortError' || error.code === 'ECONNREFUSED') {
-        this.activateCircuitBreaker();
-        console.error('🚫 [CIRCUIT-BREAKER] Erro de conexão - Bloqueando por 5 minutos');
-      }
-      
-      this.updateStatus({ error: error.message });
-      return false;
-    }
+    console.log('🚫 [SOCKET.IO] *** WEBSOCKET DESABILITADO - SISTEMA 100% SUPABASE ***');
+    console.log('✅ [SYSTEM] Usando Supabase Realtime + REST API (estratégia definitiva)');
+    
+    this.config = config;
+    this.updateStatus({
+      connected: false,
+      authenticated: false,
+      configured: false,
+      reconnectAttempts: 0,
+      error: 'WebSocket desabilitado - usando Supabase + REST'
+    });
+    
+    return false;
   }
 
   /**
