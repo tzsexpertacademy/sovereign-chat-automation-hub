@@ -62,29 +62,17 @@ class SocketIOWebSocketService {
       
       console.log('✅ [FASE-1] JWT da instância obtido com sucesso');
 
-      // 🎯 FASE 2: CONFIGURAR WEBSOCKET VIA API (correção crítica)
-      console.log('🔧 [FASE-2] Configurando WebSocket via API com autenticação...');
-      
-      const configured = await this.configureWebSocketAPI(config.instanceId, jwt);
-      if (!configured) {
-        console.error('❌ [FASE-2] FALHA CRÍTICA: WebSocket não configurado via API');
-        this.updateStatus({ error: 'CONFIGURAÇÃO CRÍTICA: API WebSocket não configurada' });
-        return false;
-      }
-      
-      console.log('✅ [FASE-2] WebSocket configurado via API');
-
-      // 🎯 FASE 3: CONECTAR SOCKET.IO COM URL CORRETA
-      console.log('🌐 [FASE-3] Conectando Socket.IO na URL correta...');
+      // 🎯 FASE 2: CONECTAR SOCKET.IO DIRETAMENTE (conforme documentação oficial)
+      console.log('🌐 [FASE-2] Conectando Socket.IO diretamente conforme documentação...');
       
       const socketConnected = await this.connectSocketIO(config.instanceId, jwt);
       if (!socketConnected) {
-        console.error('❌ [FASE-3] FALHA CRÍTICA: Socket.IO não conectou');
+        console.error('❌ [FASE-2] FALHA CRÍTICA: Socket.IO não conectou');
         this.updateStatus({ error: 'CONEXÃO CRÍTICA: Socket.IO falhou' });
         return false;
       }
       
-      console.log('✅ [FASE-3] Socket.IO conectado');
+      console.log('✅ [FASE-2] Socket.IO conectado');
 
       this.updateStatus({
         connected: true,
@@ -147,16 +135,18 @@ class SocketIOWebSocketService {
         try {
           const payload = JSON.parse(atob(businessToken.split('.')[1]));
           const currentTime = Math.floor(Date.now() / 1000);
-          const isExpired = payload.exp && currentTime > payload.exp;
+          const buffer = 300; // 5 minutos de buffer
+          const isExpired = payload.exp && currentTime > (payload.exp - buffer);
           
           if (isExpired) {
-            console.warn('⚠️ [FASE-1] JWT expirado, regenerando...', {
+            console.warn('⚠️ [FASE-1] JWT próximo do vencimento, regenerando...', {
               exp: payload.exp,
               current: currentTime,
-              expired: isExpired
+              buffer,
+              timeLeft: payload.exp - currentTime
             });
           } else {
-            console.log('✅ [FASE-1] JWT válido, não expirado');
+            console.log('✅ [FASE-1] JWT válido com tempo suficiente');
             return businessToken;
           }
         } catch (e) {
@@ -248,16 +238,17 @@ class SocketIOWebSocketService {
       console.log(`🔌 [FASE-3] Conectando Socket.IO em: ${socketUrl}`);
 
       this.socket = io(socketUrl, {
-        transports: ['websocket'], // Priorizar WebSocket conforme logs
-        timeout: 15000,
-        reconnection: false, // Controlar reconexão manualmente
-        auth: {
-          token: jwt,
+        extraHeaders: {
+          'Authorization': `Bearer ${jwt}`
+        },
+        query: {
           instanceId: instanceId
         },
-        extraHeaders: {
-          'Authorization': `Bearer ${jwt}` // CRÍTICO - autenticação correta
-        }
+        transports: ['websocket'],
+        timeout: 20000,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
       });
 
       this.setupEventListeners();

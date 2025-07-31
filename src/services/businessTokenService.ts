@@ -46,14 +46,15 @@ export class BusinessTokenService {
         return { success: false, error: 'Token business inválido' };
       }
 
-      // Verificar se o token não está expirado
+      // Verificar se o token não está expirado (com buffer)
       try {
         const payload = JSON.parse(atob(realToken.split('.')[1]));
         const currentTime = Math.floor(Date.now() / 1000);
+        const buffer = 300; // 5 minutos de buffer
         
-        if (payload.exp && currentTime > payload.exp) {
-          console.warn('⚠️ [BUSINESS-TOKEN] Token expirado. Exp:', payload.exp, 'Current:', currentTime);
-          return { success: false, error: 'Token expirado' };
+        if (payload.exp && currentTime > (payload.exp - buffer)) {
+          console.warn('⚠️ [BUSINESS-TOKEN] Token próximo do vencimento. Exp:', payload.exp, 'Current:', currentTime);
+          return { success: false, error: 'Token próximo do vencimento' };
         }
         
         console.log('✅ [BUSINESS-TOKEN] Token real válido obtido');
