@@ -15,6 +15,8 @@ interface WhatsAppMessage {
   media_url?: string;
   media_key?: string;
   file_enc_sha256?: string;
+  file_sha256?: string;
+  direct_path?: string;
   media_mime_type?: string;
   media_duration?: number;
   raw_data?: any;
@@ -200,7 +202,9 @@ export const whatsappMessageProcessor = {
         ticketId,
         messageType: message.message_type,
         hasMediaUrl: !!message.media_url,
-        hasBody: !!message.body
+        hasMediaKey: !!message.media_key,
+        hasBody: !!message.body,
+        mediaMimeType: message.media_mime_type
       });
 
       const { error } = await supabase
@@ -214,13 +218,13 @@ export const whatsappMessageProcessor = {
           timestamp: message.timestamp,
           sender_name: message.contact_name,
           processing_status: 'processed',
-          // Transferir dados de mídia para ticket_messages
+          // 🔥 TRANSFERIR TODOS OS DADOS DE MÍDIA para ticket_messages
           media_url: message.media_url,
           media_key: message.media_key,
           file_enc_sha256: message.file_enc_sha256,
+          file_sha256: message.file_sha256,
           media_mime_type: message.media_mime_type,
-          media_duration: message.media_duration,
-          raw_data: message.raw_data
+          media_duration: message.media_duration
         });
 
       if (error) {

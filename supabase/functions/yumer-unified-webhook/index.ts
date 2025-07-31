@@ -103,52 +103,68 @@ async function processMessageBatch(yumerData: any) {
     const pushName = messageData.pushName || 'Cliente';
     const phoneNumber = chatId?.replace('@s.whatsapp.net', '') || '';
     
-    // DETECTAR TIPO DE MENSAGEM E MÍDIA
+    // DETECTAR TIPO DE MENSAGEM E MÍDIA CORRIGIDO
     let content = '';
     let messageType = 'text';
     let mediaUrl = null;
     let mediaKey = null;
     let fileEncSha256 = null;
+    let fileSha256 = null;
+    let directPath = null;
     let mediaMimeType = null;
     let mediaDuration = null;
     
-    if (messageData.content?.text) {
-      content = messageData.content.text;
-      messageType = 'text';
-    } else if (messageData.content?.imageMessage) {
-      const img = messageData.content.imageMessage;
+    // 🔥 CORREÇÃO: Detectar contentType para identificar mídias corretamente
+    if (messageData.contentType === 'image' || messageData.content?.imageMessage) {
+      const img = messageData.content?.imageMessage || messageData.content;
       content = img.caption || '📷 Imagem';
-      messageType = 'image';
+      messageType = 'image';  // ✅ CORRIGIDO: Era 'text' antes
       mediaUrl = img.url;
       mediaKey = img.mediaKey;
       fileEncSha256 = img.fileEncSha256;
+      fileSha256 = img.fileSha256;
+      directPath = img.directPath;
       mediaMimeType = img.mimetype || 'image/jpeg';
-    } else if (messageData.content?.audioMessage) {
-      const audio = messageData.content.audioMessage;
+      console.log('🖼️ [DETECT] Imagem detectada:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey });
+    } else if (messageData.contentType === 'audio' || messageData.content?.audioMessage) {
+      const audio = messageData.content?.audioMessage || messageData.content;
       content = '🎵 Áudio';
       messageType = 'audio';
       mediaUrl = audio.url;
       mediaKey = audio.mediaKey;
       fileEncSha256 = audio.fileEncSha256;
+      fileSha256 = audio.fileSha256;
+      directPath = audio.directPath;
       mediaMimeType = audio.mimetype || 'audio/ogg';
       mediaDuration = audio.seconds;
-    } else if (messageData.content?.videoMessage) {
-      const video = messageData.content.videoMessage;
+      console.log('🎵 [DETECT] Áudio detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey });
+    } else if (messageData.contentType === 'video' || messageData.content?.videoMessage) {
+      const video = messageData.content?.videoMessage || messageData.content;
       content = video.caption || '🎥 Vídeo';
       messageType = 'video';
       mediaUrl = video.url;
       mediaKey = video.mediaKey;
       fileEncSha256 = video.fileEncSha256;
+      fileSha256 = video.fileSha256;
+      directPath = video.directPath;
       mediaMimeType = video.mimetype || 'video/mp4';
       mediaDuration = video.seconds;
-    } else if (messageData.content?.documentMessage) {
-      const doc = messageData.content.documentMessage;
+      console.log('🎥 [DETECT] Vídeo detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey });
+    } else if (messageData.contentType === 'document' || messageData.content?.documentMessage) {
+      const doc = messageData.content?.documentMessage || messageData.content;
       content = doc.fileName || '📄 Documento';
       messageType = 'document';
       mediaUrl = doc.url;
       mediaKey = doc.mediaKey;
       fileEncSha256 = doc.fileEncSha256;
+      fileSha256 = doc.fileSha256;
+      directPath = doc.directPath;
       mediaMimeType = doc.mimetype || 'application/pdf';
+      console.log('📄 [DETECT] Documento detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey });
+    } else if (messageData.content?.text) {
+      content = messageData.content.text;
+      messageType = 'text';
+      console.log('📝 [DETECT] Texto detectado');
     }
 
     console.log('🔥 [BATCH-SIMPLES] Dados extraídos:', {
@@ -156,8 +172,10 @@ async function processMessageBatch(yumerData: any) {
       messageId,
       content: content.substring(0, 50),
       messageType,
+      contentType: messageData.contentType,
       hasMediaUrl: !!mediaUrl,
       hasMediaKey: !!mediaKey,
+      hasFileEncSha256: !!fileEncSha256,
       fromMe,
       pushName
     });
@@ -182,7 +200,7 @@ async function processMessageBatch(yumerData: any) {
       return await processSingleMessage(yumerData, false);
     }
 
-    // SALVAR MENSAGEM NO BANCO PRIMEIRO (com dados de mídia)
+    // SALVAR MENSAGEM NO BANCO PRIMEIRO (com dados de mídia completos)
     await saveMessageToDatabase({
       ...messageData,
       messageType,
@@ -190,6 +208,8 @@ async function processMessageBatch(yumerData: any) {
       mediaUrl,
       mediaKey,
       fileEncSha256,
+      fileSha256,
+      directPath,
       mediaMimeType,
       mediaDuration
     }, instance, chatId, pushName, phoneNumber);
@@ -323,10 +343,12 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
       timestamp: new Date(messageData.messageTimestamp * 1000),
       contact_name: pushName,
       phone_number: phoneNumber,
-      // DADOS DE MÍDIA
+      // DADOS DE MÍDIA COMPLETOS
       media_url: messageData.mediaUrl,
       media_key: messageData.mediaKey,
       file_enc_sha256: messageData.fileEncSha256,
+      file_sha256: messageData.fileSha256,
+      direct_path: messageData.directPath,
       media_mime_type: messageData.mediaMimeType,
       media_duration: messageData.mediaDuration,
       raw_data: messageData, // Salvar payload completo para debug

@@ -10,6 +10,9 @@ interface ImageViewerProps {
   messageId?: string;
   mediaKey?: string;
   fileEncSha256?: string;
+  fileSha256?: string;
+  directPath?: string;
+  mediaMimeType?: string;
   needsDecryption?: boolean;
   caption?: string;
   fileName?: string;
@@ -20,6 +23,9 @@ const ImageViewer = ({
   messageId,
   mediaKey,
   fileEncSha256,
+  fileSha256,
+  directPath,
+  mediaMimeType,
   needsDecryption = false,
   caption,
   fileName = 'image.jpg'
@@ -43,6 +49,8 @@ const ImageViewer = ({
         hasImageUrl: !!imageUrl,
         needsDecryption,
         hasDecryptionKeys: !!(messageId && mediaKey),
+        hasFileEncSha256: !!fileEncSha256,
+        mediaMimeType,
         imageUrl: imageUrl?.substring(0, 100) + '...'
       });
 
@@ -54,20 +62,19 @@ const ImageViewer = ({
           return;
         }
 
-        // 2. Imagem criptografada com chaves
-        if (needsDecryption && imageUrl && messageId && mediaKey) {
-          console.log('🔐 ImageViewer: Processando imagem');
+        // 2. Imagem com dados completos (priorizar download direto)
+        if (imageUrl && mediaKey) {
+          console.log('🔐 ImageViewer: Processando imagem com dados completos');
           setIsDecrypting(true);
           
-
           const result = await unifiedMediaService.processImage(
-            messageId,
+            messageId || '',
             '', // instanceId será obtido dentro do serviço
             {
               url: imageUrl,
-              mimetype: 'image/jpeg',
+              mimetype: mediaMimeType || 'image/jpeg',
               mediaKey: mediaKey,
-              directPath: ''
+              directPath: directPath || ''
             }
           );
           
