@@ -107,76 +107,41 @@ class SocketIOWebSocketService {
   }
 
   /**
-   * FASE 1: Obter JWT da instância corretamente
+   * FASE 1: Obter business_token diretamente do Supabase (sem verificação de expiração)
    */
   private async getInstanceJWT(instanceId: string, clientId: string): Promise<string | null> {
     try {
-      // 🔑 CORREÇÃO CRÍTICA: Usar Supabase diretamente ao invés do endpoint inexistente
-      console.log('🔍 [FASE-1] Consultando JWT da instância no Supabase...');
+      console.log('✅ [FASE-1] Buscando business_token no Supabase (mesmo dos outros serviços)...');
       
-      // Primeiro verificar se existe JWT no whatsapp_instances
-      const { data: instanceData, error: instanceError } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .eq('instance_id', instanceId)
-        .eq('client_id', clientId)
-        .single();
-
-      // Se não encontrou na instância, buscar o business_token no cliente
+      // Buscar o business_token diretamente do cliente no Supabase
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
         .select('business_token')
         .eq('id', clientId)
         .single();
 
-      if (instanceError) {
-        console.warn('⚠️ [FASE-1] Erro ao consultar instância:', instanceError.message);
-      }
-
       if (clientError) {
-        console.warn('⚠️ [FASE-1] Erro ao consultar cliente:', clientError.message);
+        console.error('❌ [FASE-1] Erro ao buscar cliente:', clientError);
+        return null;
       }
 
-      // Usar business_token do cliente
-      const businessToken = clientData?.business_token;
-      
-      if (businessToken) {
-        console.log('✅ [FASE-1] JWT obtido da base de dados Supabase (cliente)');
-        
-        // Verificar se o token não está expirado
-        try {
-          const payload = JSON.parse(atob(businessToken.split('.')[1]));
-          const currentTime = Math.floor(Date.now() / 1000);
-          const buffer = 300; // 5 minutos de buffer
-          const isExpired = payload.exp && currentTime > (payload.exp - buffer);
-          
-          if (isExpired) {
-            console.warn('⚠️ [FASE-1] JWT próximo do vencimento, regenerando...', {
-              exp: payload.exp,
-              current: currentTime,
-              buffer,
-              timeLeft: payload.exp - currentTime
-            });
-          } else {
-            console.log('✅ [FASE-1] JWT válido com tempo suficiente');
-            return businessToken;
-          }
-        } catch (e) {
-          console.warn('⚠️ [FASE-1] Erro ao verificar JWT, regenerando...', e);
-        }
+      if (!clientData?.business_token) {
+        console.error('❌ [FASE-1] Business token não encontrado para o cliente');
+        return null;
       }
 
-      // Se não existe, regenerar via business token service
-      console.log('🔄 [FASE-1] Regenerando JWT via business token service...');
-      const tokenResult = await businessTokenService.ensureValidToken(clientId);
-      
-      if (tokenResult.success && tokenResult.token) {
-        return tokenResult.token;
+      const jwt = clientData.business_token;
+
+      // Verificar se o token tem formato válido
+      if (!jwt || jwt.split('.').length !== 3) {
+        console.error('❌ [FASE-1] JWT inválido:', jwt);
+        return null;
       }
 
-      return null;
+      console.log('✅ [FASE-1] Business token obtido (usando mesmo token dos outros serviços)');
+      return jwt;
     } catch (error) {
-      console.error('❌ [FASE-1] Erro ao obter JWT:', error);
+      console.error('❌ [FASE-1] Erro ao obter business token:', error);
       return null;
     }
   }

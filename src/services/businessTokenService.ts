@@ -20,17 +20,16 @@ export class BusinessTokenService {
   }
 
   /**
-   * 🎯 USAR SEMPRE JWT REAL DO BANCO DE DADOS
-   * CORREÇÃO: Removido mock, usa apenas JWT real
+   * Obter business_token diretamente do Supabase (sem regeneração forçada)
    */
   async ensureValidToken(clientId: string): Promise<BusinessTokenResult> {
     try {
-      console.log('🔑 [BUSINESS-TOKEN] Obtendo JWT real para cliente:', clientId);
+      console.log('🔑 [BUSINESS-TOKEN] Obtendo business_token para cliente:', clientId);
       
       // Buscar business_token real do cliente
       const { data: client, error: clientError } = await supabase
         .from('clients')
-        .select('id, business_token, business_id')
+        .select('id, business_token')
         .eq('id', clientId)
         .single();
 
@@ -46,49 +45,19 @@ export class BusinessTokenService {
         return { success: false, error: 'Token business inválido' };
       }
 
-      // Verificar se o token não está expirado
-      try {
-        const payload = JSON.parse(atob(realToken.split('.')[1]));
-        const currentTime = Math.floor(Date.now() / 1000);
-        
-        if (payload.exp && currentTime > payload.exp) {
-          console.warn('⚠️ [BUSINESS-TOKEN] Token expirado. Exp:', payload.exp, 'Current:', currentTime);
-          
-          // Tentar regenerar token usando API da Yumer
-          const regenerateResult = await this.regenerateTokenViaAPI(client.business_id);
-          if (regenerateResult.success && regenerateResult.token) {
-            // Atualizar na base de dados
-            await supabase
-              .from('clients')
-              .update({ business_token: regenerateResult.token })
-              .eq('id', clientId);
-            
-            console.log('✅ [BUSINESS-TOKEN] Token regenerado com sucesso');
-            return { success: true, token: regenerateResult.token };
-          }
-          
-          return { success: false, error: 'Token expirado e não foi possível regenerar' };
-        }
-        
-        console.log('✅ [BUSINESS-TOKEN] Token real válido obtido');
-        
-        // Cachear token válido
-        this.tokenCache.set(clientId, {
-          token: realToken,
-          expires: payload.exp ? payload.exp * 1000 : Date.now() + 3600000
-        });
+      console.log('✅ [BUSINESS-TOKEN] Token obtido (mesmo usado pelos outros serviços)');
+      
+      // Cachear token válido
+      this.tokenCache.set(clientId, {
+        token: realToken,
+        expires: Date.now() + 3600000 // 1 hora
+      });
 
-        return { 
-          success: true, 
-          token: realToken,
-          expiresAt: payload.exp ? new Date(payload.exp * 1000).toISOString() : undefined
-        };
+      return { 
+        success: true, 
+        token: realToken
+      };
         
-      } catch (e) {
-        console.error('❌ [BUSINESS-TOKEN] Erro ao decodificar JWT:', e);
-        return { success: false, error: 'Token corrompido' };
-      }
-
     } catch (error: any) {
       console.error('❌ [BUSINESS-TOKEN] ERRO CRÍTICO:', error);
       return { 
