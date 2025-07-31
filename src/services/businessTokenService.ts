@@ -20,50 +20,80 @@ export class BusinessTokenService {
   }
 
   /**
-   * 🎯 FASE 1: REGENERAR TOKEN BUSINESS
-   * Força regeneração completa do token JWT
+   * 🎯 OBTER TOKEN REAL DO CLIENTE
+   * Busca o business_token válido do banco de dados
    */
   async ensureValidToken(clientId: string): Promise<BusinessTokenResult> {
     try {
-      console.log('🔑 [BUSINESS-TOKEN] FASE-1: Regenerando token para cliente:', clientId);
+      console.log('🔑 [BUSINESS-TOKEN] Obtendo token real para cliente:', clientId);
       
-      // Limpar cache para forçar regeneração
+      // Limpar cache para forçar busca atual
       this.tokenCache.delete(clientId);
       
-      // Buscar business associado ao cliente
-      const { data: business, error: businessError } = await supabase
+      // Buscar business_token do cliente
+      const { data: client, error: clientError } = await supabase
         .from('clients')
-        .select('id, business_token')
+        .select('business_token, business_id')
         .eq('id', clientId)
         .single();
 
-      if (businessError || !business) {
-        console.error('❌ [BUSINESS-TOKEN] Business não encontrado:', businessError);
-        return { success: false, error: 'Business não encontrado' };
+      if (clientError || !client) {
+        console.error('❌ [BUSINESS-TOKEN] Cliente não encontrado:', clientError);
+        return { success: false, error: 'Cliente não encontrado' };
       }
 
-      // Simular token válido para testes
-      const mockToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
-      
+      // Verificar se existe business_token
+      if (!client.business_token) {
+        console.log('⚠️ [BUSINESS-TOKEN] Token não existe, tentando regenerar...');
+        
+        if (client.business_id) {
+          const regenerateResult = await this.regenerateTokenViaAPI(client.business_id);
+          if (!regenerateResult.success) {
+            return regenerateResult;
+          }
+          
+          // Buscar token regenerado
+          const { data: updatedClient } = await supabase
+            .from('clients')
+            .select('business_token')
+            .eq('id', clientId)
+            .single();
+            
+          if (updatedClient?.business_token) {
+            client.business_token = updatedClient.business_token;
+          }
+        }
+        
+        if (!client.business_token) {
+          return { success: false, error: 'Token não disponível e regeneração falhou' };
+        }
+      }
+
+      // Validar formato do token
+      if (!this.validateTokenFormat(client.business_token)) {
+        console.error('❌ [BUSINESS-TOKEN] Token com formato inválido');
+        return { success: false, error: 'Token com formato inválido' };
+      }
+
       // Cachear token válido
       this.tokenCache.set(clientId, {
-        token: mockToken,
+        token: client.business_token,
         expires: Date.now() + 3600000 // 1 hora
       });
 
-      console.log('✅ [BUSINESS-TOKEN] FASE-1 CONCLUÍDA: Token regenerado com sucesso');
+      console.log('✅ [BUSINESS-TOKEN] Token real obtido com sucesso');
       
       return { 
         success: true, 
-        token: mockToken,
+        token: client.business_token,
         expiresAt: new Date(Date.now() + 3600000).toISOString()
       };
 
     } catch (error: any) {
-      console.error('❌ [BUSINESS-TOKEN] ERRO CRÍTICO na regeneração:', error);
+      console.error('❌ [BUSINESS-TOKEN] ERRO ao obter token:', error);
       return { 
         success: false, 
-        error: `Erro crítico: ${error.message}` 
+        error: `Erro: ${error.message}` 
       };
     }
   }
