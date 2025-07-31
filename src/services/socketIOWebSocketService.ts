@@ -239,6 +239,32 @@ class SocketIOWebSocketService {
       if (!response.ok) {
         console.error('❌ [FASE-2] Erro na configuração API:', response.status, response.statusText);
         
+        // Tratar erro 400 "Socket já registrado"
+        if (response.status === 400) {
+          const errorData = await response.json().catch(() => null);
+          
+          if (errorData?.message) {
+            const errorMessage = Array.isArray(errorData.message) 
+              ? errorData.message.join(' ') 
+              : errorData.message;
+            
+            if (errorMessage.includes('socket registered') || errorMessage.includes('socket already registered')) {
+              console.warn('⚠️ [FASE-2] ERRO 400: Socket já existe no servidor - ATIVANDO CIRCUIT BREAKER');
+              
+              // Ativar circuit breaker por 30 minutos para este erro específico
+              this.circuitBreaker = {
+                consecutiveFailures: 999,
+                lastFailureTime: Date.now(),
+                blockedUntil: Date.now() + (30 * 60 * 1000), // 30 minutos
+                isBlocked: true
+              };
+              
+              console.error('🚫 [CIRCUIT-BREAKER] Socket já registrado - Sistema funcionará via Supabase por 30 minutos');
+              return false;
+            }
+          }
+        }
+        
         // Detectar erro 500 do servidor
         if (response.status === 500) {
           this.activateCircuitBreaker();

@@ -27,9 +27,9 @@ const WebSocketStatus = ({
   };
 
   const getStatusText = () => {
-    if (isCircuitBreakerBlocked) return 'Servidor Indisponível';
+    if (isCircuitBreakerBlocked) return 'Socket já registrado';
     if (isConnected) return 'WebSocket • Recebendo';
-    if (isFallbackActive) return 'Supabase • Fallback';
+    if (isFallbackActive) return 'Supabase • Ativo';
     return 'Desconectado';
   };
 

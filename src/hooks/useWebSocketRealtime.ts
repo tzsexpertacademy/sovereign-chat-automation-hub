@@ -50,7 +50,7 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
     // Verificar status do circuit breaker
     const circuitStatus = socketIOWebSocketService.getCircuitBreakerStatus();
     if (circuitStatus.blocked) {
-      console.warn('🚫 [WEBSOCKET] Circuit breaker ativo - servidor indisponível');
+      console.warn('🚫 [WEBSOCKET] Circuit breaker ativo - usando Supabase por', new Date(circuitStatus.unblockTime).toLocaleTimeString());
       updateStatus({ 
         fallbackActive: true,
         circuitBreakerBlocked: true,
