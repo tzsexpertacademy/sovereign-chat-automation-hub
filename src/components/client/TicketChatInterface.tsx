@@ -34,14 +34,17 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
 
-  // Sistema Simplificado - Supabase Realtime + Polling backup
+  // Sistema 100% Real-Time - Supabase + Optimistic Updates
   const { 
     messages, 
     isLoading, 
     lastUpdateSource,
     reload,
     isSupabaseActive,
-    isPollingActive
+    isPollingActive,
+    addOptimisticMessage,
+    confirmOptimisticMessage,
+    failOptimisticMessage
   } = useSimpleTicketMessages({
     ticketId,
     clientId
@@ -94,24 +97,33 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     try {
       setIsSending(true);
       const messageToSend = newMessage.trim();
-      const messageId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const messageId = `rest_msg_${Date.now()}`;
       const timestamp = new Date().toISOString();
       
-      // Limpar input imediatamente para feedback visual
+      // Limpar input imediatamente
       setNewMessage('');
       
+      // ⚡ OPTIMISTIC UPDATE - Mostrar mensagem INSTANTANEAMENTE
+      const optimisticMessageId = addOptimisticMessage({
+        message_id: messageId,
+        content: messageToSend,
+        message_type: 'text',
+        from_me: true,
+        sender_name: 'Enviando...',
+        timestamp: timestamp,
+        processing_status: 'sending'
+      });
       
-      console.log('📤 [TICKET-SEND] Iniciando envio:', {
+      console.log('⚡ [REAL-TIME] Mensagem otimista criada, iniciando envio real:', {
         instanceId: actualInstanceId,
         chatId: ticket.chat_id,
         messagePreview: messageToSend.substring(0, 50) + '...',
-        customerPhone: ticket.customer?.phone,
-        ticketId
+        optimisticId: optimisticMessageId
       });
 
       markActivity();
 
-      // Enviar mensagem manual via serviço unificado
+      // Enviar mensagem via API
       const response = await unifiedMessageService.sendManualMessage(
         actualInstanceId,
         ticket.chat_id,
@@ -119,18 +131,10 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         clientId
       );
       
-      console.log('📡 [TICKET-SEND] Resposta completa:', {
-        success: response.success,
-        error: response.error,
-        details: response.details,
-        messageId: response.messageId,
-        timestamp: response.timestamp
-      });
-
       if (response.success) {
-        console.log('✅ [TICKET-SEND] Mensagem enviada - salvando no ticket');
+        console.log('✅ [REAL-TIME] Enviado com sucesso, salvando no banco...');
 
-        // Salvar no banco de dados com timestamp real da API
+        // Salvar no banco com o messageId real
         await ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: response.messageId || messageId,
@@ -144,28 +148,28 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: typeof response.timestamp === 'string' ? response.timestamp : timestamp
         });
 
-        console.log('💾 [TICKET-SEND] Mensagem salva no ticket com sucesso');
+        // ✅ Confirmar mensagem otimista (será substituída pelo Supabase)
+        confirmOptimisticMessage(optimisticMessageId);
+        
+        console.log('💾 [REAL-TIME] Mensagem confirmada e salva no banco');
       } else {
-        console.error('❌ [TICKET-SEND] Falha no envio:', {
-          error: response.error,
-          details: response.details,
-          instanceId: actualInstanceId
-        });
+        console.error('❌ [REAL-TIME] Falha no envio:', response.error);
+        
+        // ❌ Marcar mensagem otimista como falhada
+        failOptimisticMessage(optimisticMessageId);
         
         toast({
           title: "❌ Erro no Envio",
-          description: response.details ? 
-            `${response.error}\n${response.details}` : 
-            (response.error || "Erro desconhecido ao enviar mensagem"),
+          description: response.details || response.error || "Erro desconhecido",
           variant: "destructive"
         });
       }
     } catch (error) {
-      console.error('❌ [TICKET-SEND] Erro crítico:', error);
+      console.error('❌ [REAL-TIME] Erro crítico:', error);
       
       toast({
         title: "❌ Erro Crítico",
-        description: "Falha na comunicação com o servidor. Verifique sua conexão.",
+        description: "Falha na comunicação com o servidor.",
         variant: "destructive"
       });
     } finally {
@@ -200,10 +204,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         enabled={!!(actualInstanceId && ticket?.chat_id)}
       />
       
-      {/* Status Final - Sistema 100% Supabase + REST */}
+      {/* Status - Chat 100% Real-Time */}
       <div className="flex justify-between items-center p-2 border-b bg-background">
         <div className="text-xs text-muted-foreground">
-          <span className="font-medium text-green-600">✅ Sistema 100% Supabase + REST</span>
+          <span className="font-medium text-green-600">⚡ Chat 100% Real-Time</span>
+          <span className="ml-2 text-xs text-muted-foreground">
+            Instantâneo via Supabase + Optimistic Updates
+          </span>
         </div>
         <FinalSimpleStatus
           lastUpdateSource={lastUpdateSource}
