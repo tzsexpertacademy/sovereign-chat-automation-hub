@@ -13,6 +13,7 @@ import TicketChatInterface from './TicketChatInterface';
 import TicketActionsMenu from './TicketActionsMenu';
 import ChatHeaderImproved from './chat/ChatHeaderImproved';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
+import { useRealtimeSidebar } from '@/hooks/useRealtimeSidebar';
 import TypingIndicator from './TypingIndicator';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,6 +51,44 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     reloadTickets,
     forceSyncMessages
   } = useTicketRealtimeImproved(clientId);
+
+  // 📡 SIDEBAR EM TEMPO REAL
+  const [sidebarTickets, setSidebarTickets] = useState(tickets);
+  
+  const handleTicketUpdate = useCallback((updatedTicket: any) => {
+    setSidebarTickets(prev => 
+      prev.map(ticket => 
+        ticket.id === updatedTicket.id 
+          ? { ...ticket, ...updatedTicket }
+          : ticket
+      )
+    );
+  }, []);
+
+  const handleNewMessage = useCallback((ticketId: string, preview: string) => {
+    setSidebarTickets(prev => 
+      prev.map(ticket => 
+        ticket.id === ticketId 
+          ? { 
+              ...ticket, 
+              last_message_preview: preview,
+              last_message_at: new Date().toISOString()
+            }
+          : ticket
+      )
+    );
+  }, []);
+
+  useRealtimeSidebar({
+    clientId,
+    onTicketUpdate: handleTicketUpdate,
+    onNewMessage: handleNewMessage
+  });
+
+  // Sincronizar sidebar com tickets principais
+  useEffect(() => {
+    setSidebarTickets(tickets);
+  }, [tickets]);
 
   // Estado para armazenar informações das filas
   const [queuesMap, setQueuesMap] = useState<Map<string, any>>(new Map());
@@ -97,15 +136,13 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
   const currentChatId = chatId || selectedChatId;
 
   useEffect(() => {
-    if (currentChatId && tickets.length > 0) {
-      const chat = tickets.find(ticket => ticket.id === currentChatId);
+    if (currentChatId && sidebarTickets.length > 0) {
+      const chat = sidebarTickets.find(ticket => ticket.id === currentChatId);
       setSelectedChat(chat || null);
-      
-      // Chat selecionado (log removido para performance)
     } else if (!currentChatId) {
       setSelectedChat(null);
     }
-  }, [currentChatId, tickets, markTicketAsRead]);
+  }, [currentChatId, sidebarTickets, markTicketAsRead]);
 
   const handleSelectChat = useCallback((ticketId: string) => {
     onSelectChat(ticketId);
@@ -365,7 +402,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
               <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
               Carregando conversas...
             </div>
-          ) : tickets.length === 0 ? (
+          ) : sidebarTickets.length === 0 ? (
             <div className="p-4 text-center text-gray-500">
               <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
               <p className="text-sm mb-2">Nenhuma conversa encontrada</p>
@@ -375,7 +412,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
             </div>
           ) : (
             <ul className="divide-y divide-gray-100">
-              {tickets.map((chat) => (
+              {sidebarTickets.map((chat) => (
                 <li
                   key={chat.id}
                   className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors relative ${

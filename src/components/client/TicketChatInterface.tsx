@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { unifiedMessageService } from '@/services/unifiedMessageService';
 import { ticketsService } from '@/services/ticketsService';
 import { useToast } from '@/hooks/use-toast';
-import { useSimpleTicketMessages } from '@/hooks/useSimpleTicketMessages';
+import { useOptimizedTicketMessages } from '@/hooks/useOptimizedTicketMessages';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
@@ -45,7 +45,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     addOptimisticMessage,
     confirmOptimisticMessage,
     failOptimisticMessage
-  } = useSimpleTicketMessages({
+  } = useOptimizedTicketMessages({
     ticketId,
     clientId
   });

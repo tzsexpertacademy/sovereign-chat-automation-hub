@@ -39,17 +39,11 @@ const MessagesList = memo(({
   isCircuitBreakerBlocked = false,
   lastUpdateSource = 'polling'
 }: MessagesListProps) => {
-  // Debug das mensagens recebidas
-  console.log('📋 [MESSAGES-LIST] Renderizando mensagens:', {
-    total: messages.length,
-    messagesPreview: messages.map(m => ({
-      id: m.id,
-      messageId: m.message_id,
-      fromMe: m.from_me,
-      content: m.content?.substring(0, 30) + '...',
-      timestamp: m.timestamp
-    }))
-  });
+  // ✅ Log otimizado - apenas mudanças significativas
+  const messagesCount = messages.length;
+  if (messagesCount === 0 || messagesCount % 50 === 0) {
+    console.log('📋 [MESSAGES-LIST] Status:', { total: messagesCount });
+  }
 
   // 👀 INDICADORES DE PRESENÇA IMEDIATOS: Hook para presença em tempo real
   const { isTyping } = useTicketRealtimeImproved(ticketId || '');
@@ -236,25 +230,13 @@ const MessagesList = memo(({
       new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
     
-    console.log('📋 [MESSAGES-LIST] Mensagens ordenadas:', {
-      total: sortedMessages.length,
-      first: sortedMessages[0] ? {
-        id: sortedMessages[0].id,
-        fromMe: sortedMessages[0].from_me,
-        content: sortedMessages[0].content?.substring(0, 30)
-      } : null,
-      last: sortedMessages[sortedMessages.length - 1] ? {
-        id: sortedMessages[sortedMessages.length - 1].id,
-        fromMe: sortedMessages[sortedMessages.length - 1].from_me,
-        content: sortedMessages[sortedMessages.length - 1].content?.substring(0, 30)
-      } : null
-    });
+    // ✅ Log removido para performance
     
     return sortedMessages;
   }, [messages]);
 
   if (messages.length === 0) {
-    console.log('📋 [MESSAGES-LIST] Nenhuma mensagem para exibir');
+    // ✅ Log removido para performance
     return (
       <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
         <div className="text-center text-gray-500 py-8">
@@ -305,14 +287,7 @@ const MessagesList = memo(({
         )}
         
         {memoizedMessages.map((message, index) => {
-          console.log(`📋 [MESSAGES-LIST] Renderizando mensagem ${index + 1}:`, {
-            id: message.id,
-            messageId: message.message_id,
-            fromMe: message.from_me,
-            content: message.content?.substring(0, 50),
-            isAI: message.is_ai_response,
-            timestamp: message.timestamp
-          });
+          // ✅ Log removido para eliminar logs infinitos
           
           return (
             <div
