@@ -71,6 +71,7 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
       isConnectingRef.current = false;
 
       if (connected) {
+        console.log('🎉 [WEBSOCKET] *** WEBSOCKET CONECTADO COM SUCESSO - RESETANDO FALLBACK ***');
         updateStatus({
           connected: true,
           reconnectAttempts: 0,

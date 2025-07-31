@@ -63,10 +63,17 @@ class UnifiedMessageService {
       };
 
       // 4. TENTAR ENVIO VIA WEBSOCKET PRIMEIRO (PRIORIDADE)
-      console.log('📤 [UNIFIED-MSG] Tentando envio via WebSocket...');
+      const wsStatus = socketIOWebSocketService.getStatus();
+      console.log('📤 [UNIFIED-MSG] Status completo do WebSocket:', {
+        connected: wsStatus.connected,
+        authenticated: wsStatus.authenticated,
+        configured: wsStatus.configured,
+        reconnectAttempts: wsStatus.reconnectAttempts,
+        isConnectedMethod: socketIOWebSocketService.isConnected()
+      });
       
       if (socketIOWebSocketService.isConnected()) {
-        console.log('🚀 [UNIFIED-MSG] WebSocket conectado - usando envio prioritário');
+        console.log('🚀 [UNIFIED-MSG] *** FORÇANDO ENVIO VIA WEBSOCKET ***');
         
         const wsResult = await socketIOWebSocketService.sendMessage(
           options.chatId,
