@@ -137,10 +137,17 @@ function convertObjectToBase64(data: any): string | null {
     // Se já é string, retornar como está
     if (typeof data === 'string') return data;
     
-    // Se é objeto com propriedades numéricas (Uint8Array serializado), converter
+    // Se é objeto com propriedades numéricas ordenadas (Uint8Array serializado), converter
     if (typeof data === 'object' && !Array.isArray(data)) {
-      const values = Object.values(data as Record<string, number>);
-      const uint8Array = new Uint8Array(values);
+      // Obter chaves numéricas ordenadas
+      const keys = Object.keys(data).map(Number).sort((a, b) => a - b);
+      const uint8Array = new Uint8Array(keys.length);
+      
+      // Preencher array ordenado
+      keys.forEach((key, index) => {
+        uint8Array[index] = data[key];
+      });
+      
       return btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
     }
     

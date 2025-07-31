@@ -91,35 +91,54 @@ const ImageViewer = ({
               }
             }
 
-            // Primeiro tentar o unifiedMediaService
-            const result = await unifiedMediaService.processImage(
-              messageId || '',
-              instanceId,
-              {
-                url: imageUrl,
-                mimetype: mediaMimeType || 'image/jpeg',
-                mediaKey: mediaKey,
-                directPath: directPath || ''
+            if (instanceId) {
+              // Tentar download direto primeiro
+              const { directMediaDownloadService } = await import('@/services/directMediaDownloadService');
+              
+              const result = await directMediaDownloadService.downloadMedia(
+                instanceId,
+                imageUrl,
+                mediaKey,
+                directPath || '',
+                mediaMimeType || 'image/jpeg',
+                'image'
+              );
+
+              if (result.success && result.mediaUrl) {
+                console.log('✅ ImageViewer: Download direto bem-sucedido');
+                setDisplayImageUrl(result.mediaUrl);
+                return;
               }
-            );
-            
-            if (result?.success && result.mediaUrl) {
-              console.log('✅ ImageViewer: Processamento bem-sucedido via unifiedMediaService');
-              setDisplayImageUrl(result.mediaUrl);
-              setIsDecrypting(false);
+              
+              console.log('⚠️ ImageViewer: Download direto falhou, tentando método legado');
+              
+              // Fallback: tentar unifiedMediaService
+              const fallbackResult = await unifiedMediaService.processImage(
+                messageId || '',
+                instanceId,
+                {
+                  url: imageUrl,
+                  mimetype: mediaMimeType || 'image/jpeg',
+                  mediaKey: mediaKey,
+                  directPath: directPath || ''
+                }
+              );
+              
+              if (fallbackResult?.success && fallbackResult.mediaUrl) {
+                console.log('✅ ImageViewer: Processamento bem-sucedido via unifiedMediaService');
+                setDisplayImageUrl(fallbackResult.mediaUrl);
+                return;
+              }
+              
+              console.log('⚠️ ImageViewer: Todos os métodos falharam, usando URL original');
+              // Fallback final: tentar URL original
+              setDisplayImageUrl(imageUrl);
               return;
             }
-            
-            console.log('⚠️ ImageViewer: unifiedMediaService falhou, tentando URL direta como fallback');
-            // Fallback: tentar URL original
-            setDisplayImageUrl(imageUrl);
-            setIsDecrypting(false);
-            return;
           } catch (error) {
             console.error('❌ ImageViewer: Erro no processamento:', error);
             // Fallback final: tentar URL original
             setDisplayImageUrl(imageUrl);
-            setIsDecrypting(false);
             return;
           }
         }

@@ -22,7 +22,57 @@ class DirectMediaDownloadService {
   private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 
   /**
-   * Download direto de mídia usando endpoint da API Yumer (CORRIGIDO)
+   * Converter buffer/objeto para Base64 string
+   */
+  private convertToBase64(data: any): string | null {
+    try {
+      if (typeof data === 'string') {
+        return data; // Já é string Base64
+      }
+      
+      if (data instanceof Uint8Array) {
+        return btoa(String.fromCharCode(...data));
+      }
+      
+      if (typeof data === 'object' && data !== null) {
+        // Converter objeto {0: 251, 1: 128, ...} para Uint8Array
+        const keys = Object.keys(data).map(Number).sort((a, b) => a - b);
+        const bytes = new Uint8Array(keys.length);
+        keys.forEach((key, index) => {
+          bytes[index] = data[key];
+        });
+        return btoa(String.fromCharCode(...bytes));
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ DirectMedia: Erro ao converter para Base64:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Buscar instanceId interno do Supabase
+   */
+  private async getInternalInstanceId(externalInstanceId: string): Promise<string | null> {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      const { data } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id')
+        .eq('instance_id', externalInstanceId)
+        .single();
+        
+      return data?.instance_id || null;
+    } catch (error) {
+      console.error('❌ DirectMedia: Erro ao buscar instance ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Download direto de mídia usando endpoint da API Yumer
    */
   async downloadMedia(
     instanceId: string,
@@ -48,19 +98,30 @@ class DirectMediaDownloadService {
     try {
       console.log('🔄 DirectMedia: Baixando', contentType, 'via API direta');
       
+      // Converter mediaKey se necessário
+      const base64MediaKey = this.convertToBase64(mediaKey);
+      if (!base64MediaKey) {
+        throw new Error('Falha na conversão do media key');
+      }
+
       const requestBody: MediaDownloadRequest = {
         contentType,
         content: {
           url: mediaUrl,
           mimetype,
-          mediaKey,
+          mediaKey: base64MediaKey,
           directPath
         }
       };
 
-      // 🔥 CORREÇÃO: Usar instanceId correto (internal instance ID)
+      // Buscar instanceId interno
+      const internalInstanceId = await this.getInternalInstanceId(instanceId);
+      if (!internalInstanceId) {
+        throw new Error('Instance ID não encontrado');
+      }
+
       const response = await unifiedYumerService.makeRequest(
-        `/api/v2/instance/${instanceId}/media/directly-download`,
+        `/api/v2/instance/${internalInstanceId}/media/directly-download`,
         {
           method: 'POST',
           headers: {
