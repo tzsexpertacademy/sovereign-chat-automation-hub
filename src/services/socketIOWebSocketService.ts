@@ -147,20 +147,99 @@ class SocketIOWebSocketService {
   }
 
   /**
-   * FASE 2: Configurar WebSocket via API com autenticação correta
+   * FASE 2A: Verificar se já existe WebSocket configurado
+   */
+  private async checkExistingWebSocket(instanceId: string, jwt: string): Promise<{ exists: boolean; working: boolean }> {
+    try {
+      console.log('🔍 [FASE-2A] Verificando WebSocket existente...');
+
+      const response = await fetch(`${this.baseUrl}/api/v2/instance/${instanceId}/socket`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (response.ok) {
+        const socketData = await response.json();
+        console.log('✅ [FASE-2A] WebSocket já existe:', socketData);
+        return { exists: true, working: true };
+      } else if (response.status === 404) {
+        console.log('📝 [FASE-2A] Nenhum WebSocket encontrado (404)');
+        return { exists: false, working: false };
+      } else {
+        console.log('⚠️ [FASE-2A] WebSocket existe mas com problemas:', response.status);
+        return { exists: true, working: false };
+      }
+
+    } catch (error) {
+      console.error('❌ [FASE-2A] Erro ao verificar WebSocket existente:', error);
+      return { exists: false, working: false };
+    }
+  }
+
+  /**
+   * FASE 2B: Limpar WebSocket existente se necessário
+   */
+  private async cleanupExistingWebSocket(instanceId: string, jwt: string): Promise<boolean> {
+    try {
+      console.log('🧹 [FASE-2B] Limpando WebSocket existente...');
+
+      const response = await fetch(`${this.baseUrl}/api/v2/instance/${instanceId}/socket`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (response.ok) {
+        console.log('✅ [FASE-2B] WebSocket existente removido');
+        return true;
+      } else {
+        console.warn('⚠️ [FASE-2B] Falha ao remover WebSocket:', response.status);
+        return false;
+      }
+
+    } catch (error) {
+      console.error('❌ [FASE-2B] Erro ao limpar WebSocket:', error);
+      return false;
+    }
+  }
+
+  /**
+   * FASE 2C: Configurar WebSocket via API com verificação inteligente
    */
   private async configureWebSocketAPI(instanceId: string, jwt: string): Promise<boolean> {
     try {
-      console.log('🔧 [FASE-2] Configurando WebSocket com Authorization header...');
-      
-      // Configuração WebSocket conforme documentação
+      console.log('🔧 [FASE-2C] Configurando WebSocket com verificação inteligente...');
+
+      // Primeiro, verificar se já existe um WebSocket
+      const { exists, working } = await this.checkExistingWebSocket(instanceId, jwt);
+
+      if (exists && working) {
+        console.log('✅ [FASE-2C] WebSocket existente funcionando, reutilizando...');
+        return true;
+      }
+
+      if (exists && !working) {
+        console.log('🧹 [FASE-2C] WebSocket existe mas com problemas, limpando...');
+        await this.cleanupExistingWebSocket(instanceId, jwt);
+        // Aguardar um pouco após limpeza
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Agora criar um novo WebSocket
+      console.log('🔧 [FASE-2C] Criando novo WebSocket...');
+
       const config = {
         enabled: true,
         events: {
           qrcodeUpdate: true,
           stateInstance: false,
           messagesSet: false,
-          messagesUpsert: true, // CRÍTICO - evento principal
+          messagesUpsert: true,
           messagesUpdate: true,
           sendMessage: true,
           contactsSet: false,
@@ -182,24 +261,24 @@ class SocketIOWebSocketService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${jwt}` // CRÍTICO - correção da autenticação
+          'Authorization': `Bearer ${jwt}`
         },
         body: JSON.stringify(config)
       });
 
       if (!response.ok) {
-        console.error('❌ [FASE-2] Erro na configuração API:', response.status, response.statusText);
         const errorText = await response.text();
-        console.error('❌ [FASE-2] Detalhes do erro:', errorText);
+        console.error(`❌ [FASE-2C] Erro na configuração API: ${response.status}`);
+        console.error(`❌ [FASE-2C] Detalhes do erro:`, errorText);
         return false;
       }
 
       const result = await response.json();
-      console.log('✅ [FASE-2] WebSocket configurado com sucesso:', result);
+      console.log('✅ [FASE-2C] WebSocket configurado com sucesso:', result);
       
       return true;
     } catch (error) {
-      console.error('❌ [FASE-2] Erro ao configurar WebSocket via API:', error);
+      console.error('❌ [FASE-2C] Erro ao configurar WebSocket via API:', error);
       return false;
     }
   }
