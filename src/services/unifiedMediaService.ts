@@ -114,20 +114,27 @@ class UnifiedMediaService {
     }
   }
 
-  /**
-   * Download direto usando endpoint nativo /media/directly-download
-   */
-  private async downloadMediaDirectly(mediaData: MediaData): Promise<ProcessedMedia> {
-    try {
-      // Buscar business_token da instância
-      const { data: instanceData } = await supabase
-        .from('whatsapp_instances')
-        .select(`
-          instance_id,
-          clients:client_id (
-            business_token
-          )
-        `)
+   /**
+    * Download direto usando endpoint nativo /media/directly-download (CORRIGIDO)
+    */
+   private async downloadMediaDirectly(mediaData: MediaData): Promise<ProcessedMedia> {
+     try {
+       console.log('🔄 [UNIFIED-MEDIA] Iniciando download direto para:', {
+         messageId: mediaData.messageId,
+         contentType: mediaData.contentType,
+         hasUrl: !!mediaData.content.url,
+         hasMediaKey: !!mediaData.content.mediaKey
+       });
+
+       // Buscar business_token da instância
+       const { data: instanceData } = await supabase
+         .from('whatsapp_instances')
+         .select(`
+           instance_id,
+           clients:client_id (
+             business_token
+           )
+         `)
         .eq('instance_id', mediaData.instanceId)
         .single();
 

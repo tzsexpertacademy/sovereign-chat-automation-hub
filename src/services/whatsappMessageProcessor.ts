@@ -194,7 +194,7 @@ export const whatsappMessageProcessor = {
     return newTicket.id;
   },
 
-  // 💾 SALVAR mensagem no ticket (com tratamento de duplicatas e mídia)
+  // 💾 SALVAR mensagem no ticket (com tratamento de duplicatas e mídia CORRIGIDO)
   async saveMessageToTicket(message: WhatsAppMessage, ticketId: string): Promise<void> {
     try {
       console.log('📨 Salvando mensagem no ticket:', {

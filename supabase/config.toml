@@ -27,3 +27,6 @@ verify_jwt = false
 
 [functions.fix-tickets-assignment]
 verify_jwt = false
+
+[functions.fix-media-keys]
+verify_jwt = false

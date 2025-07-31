@@ -120,47 +120,51 @@ async function processMessageBatch(yumerData: any) {
       content = img.caption || '📷 Imagem';
       messageType = 'image';  // ✅ CORRIGIDO: Era 'text' antes
       mediaUrl = img.url;
-      mediaKey = img.mediaKey;
-      fileEncSha256 = img.fileEncSha256;
-      fileSha256 = img.fileSha256;
+      // 🔥 CORREÇÃO CRÍTICA: Converter mediaKey de Uint8Array para Base64
+      mediaKey = img.mediaKey ? convertUint8ArrayToBase64(img.mediaKey) : null;
+      fileEncSha256 = img.fileEncSha256 ? convertUint8ArrayToBase64(img.fileEncSha256) : null;
+      fileSha256 = img.fileSha256 ? convertUint8ArrayToBase64(img.fileSha256) : null;
       directPath = img.directPath;
       mediaMimeType = img.mimetype || 'image/jpeg';
-      console.log('🖼️ [DETECT] Imagem detectada:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey });
+      console.log('🖼️ [DETECT] Imagem detectada:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey, mediaKeyType: typeof mediaKey });
     } else if (messageData.contentType === 'audio' || messageData.content?.audioMessage) {
       const audio = messageData.content?.audioMessage || messageData.content;
       content = '🎵 Áudio';
       messageType = 'audio';
       mediaUrl = audio.url;
-      mediaKey = audio.mediaKey;
-      fileEncSha256 = audio.fileEncSha256;
-      fileSha256 = audio.fileSha256;
+      // 🔥 CORREÇÃO CRÍTICA: Converter mediaKey de Uint8Array para Base64
+      mediaKey = audio.mediaKey ? convertUint8ArrayToBase64(audio.mediaKey) : null;
+      fileEncSha256 = audio.fileEncSha256 ? convertUint8ArrayToBase64(audio.fileEncSha256) : null;
+      fileSha256 = audio.fileSha256 ? convertUint8ArrayToBase64(audio.fileSha256) : null;
       directPath = audio.directPath;
       mediaMimeType = audio.mimetype || 'audio/ogg';
       mediaDuration = audio.seconds;
-      console.log('🎵 [DETECT] Áudio detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey });
+      console.log('🎵 [DETECT] Áudio detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey, mediaKeyType: typeof mediaKey });
     } else if (messageData.contentType === 'video' || messageData.content?.videoMessage) {
       const video = messageData.content?.videoMessage || messageData.content;
       content = video.caption || '🎥 Vídeo';
       messageType = 'video';
       mediaUrl = video.url;
-      mediaKey = video.mediaKey;
-      fileEncSha256 = video.fileEncSha256;
-      fileSha256 = video.fileSha256;
+      // 🔥 CORREÇÃO CRÍTICA: Converter mediaKey de Uint8Array para Base64
+      mediaKey = video.mediaKey ? convertUint8ArrayToBase64(video.mediaKey) : null;
+      fileEncSha256 = video.fileEncSha256 ? convertUint8ArrayToBase64(video.fileEncSha256) : null;
+      fileSha256 = video.fileSha256 ? convertUint8ArrayToBase64(video.fileSha256) : null;
       directPath = video.directPath;
       mediaMimeType = video.mimetype || 'video/mp4';
       mediaDuration = video.seconds;
-      console.log('🎥 [DETECT] Vídeo detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey });
+      console.log('🎥 [DETECT] Vídeo detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey, mediaKeyType: typeof mediaKey });
     } else if (messageData.contentType === 'document' || messageData.content?.documentMessage) {
       const doc = messageData.content?.documentMessage || messageData.content;
       content = doc.fileName || '📄 Documento';
       messageType = 'document';
       mediaUrl = doc.url;
-      mediaKey = doc.mediaKey;
-      fileEncSha256 = doc.fileEncSha256;
-      fileSha256 = doc.fileSha256;
+      // 🔥 CORREÇÃO CRÍTICA: Converter mediaKey de Uint8Array para Base64
+      mediaKey = doc.mediaKey ? convertUint8ArrayToBase64(doc.mediaKey) : null;
+      fileEncSha256 = doc.fileEncSha256 ? convertUint8ArrayToBase64(doc.fileEncSha256) : null;
+      fileSha256 = doc.fileSha256 ? convertUint8ArrayToBase64(doc.fileSha256) : null;
       directPath = doc.directPath;
       mediaMimeType = doc.mimetype || 'application/pdf';
-      console.log('📄 [DETECT] Documento detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey });
+      console.log('📄 [DETECT] Documento detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey, mediaKeyType: typeof mediaKey });
     } else if (messageData.content?.text) {
       content = messageData.content.text;
       messageType = 'text';
@@ -371,6 +375,41 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
 
   } catch (error) {
     console.error('🔥 [SAVE-DB] ERRO CRÍTICO:', error);
+  }
+}
+
+/**
+ * 🔥 FUNÇÃO CRÍTICA: Converter Uint8Array para Base64
+ */
+function convertUint8ArrayToBase64(data: any): string | null {
+  try {
+    if (!data) return null;
+    
+    // Se já é string, retornar como está
+    if (typeof data === 'string') return data;
+    
+    // Se é objeto com propriedades numéricas (Uint8Array serializado), converter
+    if (typeof data === 'object' && !Array.isArray(data)) {
+      const uint8Array = new Uint8Array(Object.values(data as Record<string, number>));
+      return btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
+    }
+    
+    // Se é array, converter diretamente
+    if (Array.isArray(data)) {
+      const uint8Array = new Uint8Array(data);
+      return btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
+    }
+    
+    // Se é Uint8Array, converter
+    if (data instanceof Uint8Array) {
+      return btoa(String.fromCharCode.apply(null, Array.from(data)));
+    }
+    
+    console.error('🔥 [CONVERT] Tipo de dados não reconhecido:', typeof data);
+    return null;
+  } catch (error) {
+    console.error('🔥 [CONVERT] Erro na conversão:', error);
+    return null;
   }
 }
 

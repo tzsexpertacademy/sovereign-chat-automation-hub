@@ -4,6 +4,7 @@ import { Download, AlertCircle, Loader2, Image as ImageIcon, ZoomIn } from 'luci
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { unifiedMediaService } from '@/services/unifiedMediaService';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ImageViewerProps {
   imageUrl?: string;
@@ -62,34 +63,65 @@ const ImageViewer = ({
           return;
         }
 
-        // 2. Imagem com dados completos (priorizar download direto)
+        // 2. Imagem com dados completos (priorizar download direto via directMediaDownloadService)
         if (imageUrl && mediaKey) {
           console.log('🔐 ImageViewer: Processando imagem com dados completos');
           setIsDecrypting(true);
           
-          const result = await unifiedMediaService.processImage(
-            messageId || '',
-            '', // instanceId será obtido dentro do serviço
-            {
-              url: imageUrl,
-              mimetype: mediaMimeType || 'image/jpeg',
-              mediaKey: mediaKey,
-              directPath: directPath || ''
+          try {
+            // 🔥 CORREÇÃO: Buscar instanceId do ticket para usar no download
+            const currentUrl = window.location.pathname;
+            const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+            const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
+            
+            let instanceId = '';
+            if (ticketId) {
+              try {
+                const { data: ticketData } = await supabase
+                  .from('conversation_tickets')
+                  .select('instance_id')
+                  .eq('id', ticketId)
+                  .single();
+                
+                if (ticketData?.instance_id) {
+                  instanceId = ticketData.instance_id;
+                }
+              } catch (error) {
+                console.error('❌ ImageViewer: Erro ao buscar instanceId:', error);
+              }
             }
-          );
-          
-          const processedUrl = result?.success ? result.mediaUrl : null;
-          
-          if (processedUrl) {
-            console.log('✅ ImageViewer: Processamento bem-sucedido');
-            setDisplayImageUrl(processedUrl);
-          } else {
-            console.log('❌ ImageViewer: Falha no processamento, tentando URL direta');
+
+            // Primeiro tentar o unifiedMediaService
+            const result = await unifiedMediaService.processImage(
+              messageId || '',
+              instanceId,
+              {
+                url: imageUrl,
+                mimetype: mediaMimeType || 'image/jpeg',
+                mediaKey: mediaKey,
+                directPath: directPath || ''
+              }
+            );
+            
+            if (result?.success && result.mediaUrl) {
+              console.log('✅ ImageViewer: Processamento bem-sucedido via unifiedMediaService');
+              setDisplayImageUrl(result.mediaUrl);
+              setIsDecrypting(false);
+              return;
+            }
+            
+            console.log('⚠️ ImageViewer: unifiedMediaService falhou, tentando URL direta como fallback');
             // Fallback: tentar URL original
             setDisplayImageUrl(imageUrl);
+            setIsDecrypting(false);
+            return;
+          } catch (error) {
+            console.error('❌ ImageViewer: Erro no processamento:', error);
+            // Fallback final: tentar URL original
+            setDisplayImageUrl(imageUrl);
+            setIsDecrypting(false);
+            return;
           }
-          setIsDecrypting(false);
-          return;
         }
 
         // 3. Erro: falta de dados

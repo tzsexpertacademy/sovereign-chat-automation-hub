@@ -22,7 +22,7 @@ class DirectMediaDownloadService {
   private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 
   /**
-   * Download direto de mídia usando endpoint da API Yumer
+   * Download direto de mídia usando endpoint da API Yumer (CORRIGIDO)
    */
   async downloadMedia(
     instanceId: string,
@@ -58,7 +58,7 @@ class DirectMediaDownloadService {
         }
       };
 
-      // Fazer request para endpoint de download direto
+      // 🔥 CORREÇÃO: Usar instanceId correto (internal instance ID)
       const response = await unifiedYumerService.makeRequest(
         `/api/v2/instance/${instanceId}/media/directly-download`,
         {
@@ -71,8 +71,24 @@ class DirectMediaDownloadService {
       );
 
       if (response.success && response.data) {
-        // Converter response para blob URL
-        const blob = new Blob([response.data as BlobPart], { type: mimetype });
+        // Verificar se é ArrayBuffer ou outro tipo de dados binários
+        let blob: Blob;
+        
+        if (response.data instanceof ArrayBuffer) {
+          blob = new Blob([response.data], { type: mimetype });
+        } else if (typeof response.data === 'string') {
+          // Se é base64, converter
+          const binaryString = atob(response.data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          blob = new Blob([bytes], { type: mimetype });
+        } else {
+          // Fallback para outros tipos
+          blob = new Blob([response.data as BlobPart], { type: mimetype });
+        }
+        
         const blobUrl = URL.createObjectURL(blob);
         
         // Cachear resultado
