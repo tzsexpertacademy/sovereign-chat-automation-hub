@@ -194,23 +194,23 @@ const AudioPlayer = ({
           return;
         }
 
-        // 2. Áudio criptografado (.enc) com chaves de descriptografia
+        // 2. Áudio criptografado (.enc) com chaves de processamento
         if (audioUrl?.includes('.enc') && messageId && mediaKey) {
-          console.log('🔐 Player: Detectado áudio criptografado, iniciando descriptografia');
+          console.log('🔐 Player: Detectado áudio criptografado, iniciando processamento');
           setIsDecrypting(true);
           
           const result = await decryptWhatsAppAudio(audioUrl);
           
           if (result) {
-            console.log('✅ Player: Descriptografia bem-sucedida');
+            console.log('✅ Player: Processamento bem-sucedido');
             const sources = createAudioSources(result);
             setAudioSrc(sources[0]);
             setDecryptionAttempted(true);
             setIsDecrypting(false);
             return;
           } else {
-            console.log('❌ Player: Falha na descriptografia');
-            setError('Falha na descriptografia do áudio');
+            console.log('❌ Player: Falha no processamento');
+            setError('Falha no processamento do áudio');
             setDecryptionAttempted(true);
           }
           setIsDecrypting(false);

@@ -68,13 +68,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
           }
         );
         
-        const decryptedUrl = result?.success ? result.mediaUrl : null;
+        const processedUrl = result?.success ? result.mediaUrl : null;
         
-        if (decryptedUrl) {
-          console.log('✅ DocumentViewer: Descriptografia bem-sucedida');
-          setDisplayDocumentUrl(decryptedUrl);
+        if (processedUrl) {
+          console.log('✅ DocumentViewer: Processamento bem-sucedido');
+          setDisplayDocumentUrl(processedUrl);
         } else {
-          console.log('❌ DocumentViewer: Falha na descriptografia, tentando URL direta');
+          console.log('❌ DocumentViewer: Falha no processamento, tentando URL direta');
           // Fallback: tentar URL original
           setDisplayDocumentUrl(documentUrl);
         }

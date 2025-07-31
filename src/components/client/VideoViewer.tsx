@@ -50,8 +50,8 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         return;
       }
 
-      // Tentar descriptografar usando UnifiedMediaService
-      console.log('🔐 VideoViewer: Iniciando descriptografia via UnifiedMediaService', { messageId, hasMediaKey: !!mediaKey });
+      // Tentar processamento via UnifiedMediaService (que tentará download direto primeiro)
+      console.log('🔐 VideoViewer: Iniciando processamento via UnifiedMediaService', { messageId, hasMediaKey: !!mediaKey });
       setIsDecrypting(true);
       setError('');
 
@@ -67,7 +67,7 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
           }
         );
 
-        console.log('📡 VideoViewer: Resultado da descriptografia:', {
+        console.log('📡 VideoViewer: Resultado do processamento:', {
           success: result?.success,
           hasMediaUrl: !!result?.mediaUrl,
           format: result?.format,
@@ -75,15 +75,15 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         });
         
         if (result?.success && result?.mediaUrl) {
-          console.log('✅ VideoViewer: Descriptografia bem-sucedida');
+          console.log('✅ VideoViewer: Processamento bem-sucedido');
           setDisplayVideoUrl(result.mediaUrl);
         } else {
-          console.log('❌ VideoViewer: Falha na descriptografia, tentando URL direta');
+          console.log('❌ VideoViewer: Falha no processamento, tentando URL direta');
           // Fallback: tentar URL original
           setDisplayVideoUrl(videoUrl);
         }
       } catch (err) {
-        console.error('❌ VideoViewer: Erro na descriptografia:', err);
+        console.error('❌ VideoViewer: Erro no processamento:', err);
         // Fallback: tentar URL original
         setDisplayVideoUrl(videoUrl);
       } finally {

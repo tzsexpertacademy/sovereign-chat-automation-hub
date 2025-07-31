@@ -56,7 +56,7 @@ const ImageViewer = ({
 
         // 2. Imagem criptografada com chaves
         if (needsDecryption && imageUrl && messageId && mediaKey) {
-          console.log('🔐 ImageViewer: Descriptografando imagem');
+          console.log('🔐 ImageViewer: Processando imagem');
           setIsDecrypting(true);
           
 
@@ -71,13 +71,13 @@ const ImageViewer = ({
             }
           );
           
-          const decryptedUrl = result?.success ? result.mediaUrl : null;
+          const processedUrl = result?.success ? result.mediaUrl : null;
           
-          if (decryptedUrl) {
-            console.log('✅ ImageViewer: Descriptografia bem-sucedida');
-            setDisplayImageUrl(decryptedUrl);
+          if (processedUrl) {
+            console.log('✅ ImageViewer: Processamento bem-sucedido');
+            setDisplayImageUrl(processedUrl);
           } else {
-            console.log('❌ ImageViewer: Falha na descriptografia, tentando URL direta');
+            console.log('❌ ImageViewer: Falha no processamento, tentando URL direta');
             // Fallback: tentar URL original
             setDisplayImageUrl(imageUrl);
           }

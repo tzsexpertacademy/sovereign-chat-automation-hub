@@ -11,6 +11,13 @@ interface WhatsAppMessage {
   is_processed: boolean;
   phone_number?: string;
   contact_name?: string;
+  message_type?: string;
+  media_url?: string;
+  media_key?: string;
+  file_enc_sha256?: string;
+  media_mime_type?: string;
+  media_duration?: number;
+  raw_data?: any;
 }
 
 export const whatsappMessageProcessor = {
@@ -185,20 +192,35 @@ export const whatsappMessageProcessor = {
     return newTicket.id;
   },
 
-  // 💾 SALVAR mensagem no ticket (com tratamento de duplicatas)
+  // 💾 SALVAR mensagem no ticket (com tratamento de duplicatas e mídia)
   async saveMessageToTicket(message: WhatsAppMessage, ticketId: string): Promise<void> {
     try {
+      console.log('📨 Salvando mensagem no ticket:', {
+        messageId: message.message_id,
+        ticketId,
+        messageType: message.message_type,
+        hasMediaUrl: !!message.media_url,
+        hasBody: !!message.body
+      });
+
       const { error } = await supabase
         .from('ticket_messages')
         .insert({
           ticket_id: ticketId,
           message_id: message.message_id,
           content: message.body || '',
-          message_type: 'text',
+          message_type: message.message_type || 'text',
           from_me: message.from_me,
           timestamp: message.timestamp,
           sender_name: message.contact_name,
-          processing_status: 'processed'
+          processing_status: 'processed',
+          // Transferir dados de mídia para ticket_messages
+          media_url: message.media_url,
+          media_key: message.media_key,
+          file_enc_sha256: message.file_enc_sha256,
+          media_mime_type: message.media_mime_type,
+          media_duration: message.media_duration,
+          raw_data: message.raw_data
         });
 
       if (error) {
@@ -209,6 +231,8 @@ export const whatsappMessageProcessor = {
         }
         throw new Error(`Erro ao salvar mensagem no ticket: ${error.message}`);
       }
+      
+      console.log('✅ Mensagem salva no ticket com sucesso');
     } catch (error: any) {
       if (error.code === '23505') {
         console.log('📝 [WA-PROCESSOR] Mensagem já existe (constraint catch):', message.message_id);

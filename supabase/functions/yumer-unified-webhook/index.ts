@@ -96,18 +96,68 @@ async function processMessageBatch(yumerData: any) {
       });
     }
 
-    // EXTRAIR DADOS BÁSICOS DA MENSAGEM
+    // EXTRAIR DADOS BÁSICOS DA MENSAGEM + MÍDIA
     const chatId = messageData.keyRemoteJid;
     const messageId = messageData.keyId;
-    const content = messageData.content?.text || '';
     const fromMe = messageData.keyFromMe || false;
     const pushName = messageData.pushName || 'Cliente';
     const phoneNumber = chatId?.replace('@s.whatsapp.net', '') || '';
+    
+    // DETECTAR TIPO DE MENSAGEM E MÍDIA
+    let content = '';
+    let messageType = 'text';
+    let mediaUrl = null;
+    let mediaKey = null;
+    let fileEncSha256 = null;
+    let mediaMimeType = null;
+    let mediaDuration = null;
+    
+    if (messageData.content?.text) {
+      content = messageData.content.text;
+      messageType = 'text';
+    } else if (messageData.content?.imageMessage) {
+      const img = messageData.content.imageMessage;
+      content = img.caption || '📷 Imagem';
+      messageType = 'image';
+      mediaUrl = img.url;
+      mediaKey = img.mediaKey;
+      fileEncSha256 = img.fileEncSha256;
+      mediaMimeType = img.mimetype || 'image/jpeg';
+    } else if (messageData.content?.audioMessage) {
+      const audio = messageData.content.audioMessage;
+      content = '🎵 Áudio';
+      messageType = 'audio';
+      mediaUrl = audio.url;
+      mediaKey = audio.mediaKey;
+      fileEncSha256 = audio.fileEncSha256;
+      mediaMimeType = audio.mimetype || 'audio/ogg';
+      mediaDuration = audio.seconds;
+    } else if (messageData.content?.videoMessage) {
+      const video = messageData.content.videoMessage;
+      content = video.caption || '🎥 Vídeo';
+      messageType = 'video';
+      mediaUrl = video.url;
+      mediaKey = video.mediaKey;
+      fileEncSha256 = video.fileEncSha256;
+      mediaMimeType = video.mimetype || 'video/mp4';
+      mediaDuration = video.seconds;
+    } else if (messageData.content?.documentMessage) {
+      const doc = messageData.content.documentMessage;
+      content = doc.fileName || '📄 Documento';
+      messageType = 'document';
+      mediaUrl = doc.url;
+      mediaKey = doc.mediaKey;
+      fileEncSha256 = doc.fileEncSha256;
+      mediaMimeType = doc.mimetype || 'application/pdf';
+    }
 
     console.log('🔥 [BATCH-SIMPLES] Dados extraídos:', {
       chatId: chatId?.substring(0, 20),
       messageId,
       content: content.substring(0, 50),
+      messageType,
+      hasMediaUrl: !!mediaUrl,
+      hasMediaKey: !!mediaKey,
       fromMe,
       pushName
     });
@@ -132,8 +182,17 @@ async function processMessageBatch(yumerData: any) {
       return await processSingleMessage(yumerData, false);
     }
 
-    // SALVAR MENSAGEM NO BANCO PRIMEIRO
-    await saveMessageToDatabase(messageData, instance, chatId, pushName, phoneNumber);
+    // SALVAR MENSAGEM NO BANCO PRIMEIRO (com dados de mídia)
+    await saveMessageToDatabase({
+      ...messageData,
+      messageType,
+      content,
+      mediaUrl,
+      mediaKey,
+      fileEncSha256,
+      mediaMimeType,
+      mediaDuration
+    }, instance, chatId, pushName, phoneNumber);
 
     // ✅ SISTEMA DE BATCH PERSISTENTE NO SUPABASE
     await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
@@ -245,23 +304,32 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
   }
 }
 
-// ✅ SALVAR MENSAGEM NO BANCO
+// ✅ SALVAR MENSAGEM NO BANCO (com suporte a mídia)
 async function saveMessageToDatabase(messageData: any, instance: any, chatId: string, pushName: string, phoneNumber: string) {
   try {
-    console.log('🔥 [SAVE-DB] Salvando mensagem no banco');
+    console.log('🔥 [SAVE-DB] Salvando mensagem no banco:', {
+      messageType: messageData.messageType,
+      hasMediaUrl: !!messageData.mediaUrl,
+      hasMediaKey: !!messageData.mediaKey
+    });
 
     const messageToSave = {
       message_id: messageData.keyId,
       chat_id: chatId,
       instance_id: instance.instance_id,
-      message_type: 'text',
-      body: messageData.content?.text || '',
+      message_type: messageData.messageType || 'text',
+      body: messageData.content || '',
       from_me: messageData.keyFromMe || false,
       timestamp: new Date(messageData.messageTimestamp * 1000),
       contact_name: pushName,
       phone_number: phoneNumber,
-      media_url: null,
-      media_mime_type: null,
+      // DADOS DE MÍDIA
+      media_url: messageData.mediaUrl,
+      media_key: messageData.mediaKey,
+      file_enc_sha256: messageData.fileEncSha256,
+      media_mime_type: messageData.mediaMimeType,
+      media_duration: messageData.mediaDuration,
+      raw_data: messageData, // Salvar payload completo para debug
       is_processed: false // ✅ NÃO MARCAR COMO PROCESSADO AINDA
     };
 
