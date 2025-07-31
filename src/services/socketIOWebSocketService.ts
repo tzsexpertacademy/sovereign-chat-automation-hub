@@ -34,16 +34,30 @@ class SocketIOWebSocketService {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private baseUrl = 'https://api.yumer.com.br';
+  
+  // Circuit breaker para detectar servidor indisponível
+  private circuitBreaker = {
+    consecutiveFailures: 0,
+    lastFailureTime: 0,
+    blockedUntil: 0,
+    isBlocked: false
+  };
 
   /**
-   * PLANO DE CORREÇÃO FINAL - Baseado nos logs reais do servidor
-   * FASE 1: Autenticação correta com Authorization header
-   * FASE 2: URL correta do WebSocket  
-   * FASE 3: Configuração da API antes da conexão
+   * ESTRATÉGIA HÍBRIDA: WebSocket para RECEBER + REST para ENVIAR
+   * - Circuit breaker para detectar servidor 500
+   * - Fallback rápido quando servidor indisponível
+   * - Timeout otimizado para falha rápida
    */
   async connect(config: SocketIOConnectionConfig): Promise<boolean> {
     try {
-      console.log('🔌 [SOCKET.IO] *** INICIANDO PLANO DE CORREÇÃO FINAL ***', {
+      // Verificar circuit breaker
+      if (this.isCircuitBreakerBlocked()) {
+        console.warn('🚫 [SOCKET.IO] *** CIRCUIT BREAKER ATIVO - SERVIDOR INDISPONÍVEL ***');
+        return false;
+      }
+
+      console.log('🔌 [SOCKET.IO] *** INICIANDO ESTRATÉGIA HÍBRIDA ***', {
         instanceId: config.instanceId,
         clientId: config.clientId
       });
@@ -100,7 +114,14 @@ class SocketIOWebSocketService {
       return true;
 
     } catch (error: any) {
-      console.error('❌ [SOCKET.IO] Erro crítico no plano de correção:', error);
+      console.error('❌ [SOCKET.IO] Erro crítico na estratégia híbrida:', error);
+      
+      // Ativar circuit breaker em caso de erro de rede
+      if (error.name === 'AbortError' || error.code === 'ECONNREFUSED') {
+        this.activateCircuitBreaker();
+        console.error('🚫 [CIRCUIT-BREAKER] Erro de conexão - Bloqueando por 5 minutos');
+      }
+      
       this.updateStatus({ error: error.message });
       return false;
     }
@@ -209,13 +230,21 @@ class SocketIOWebSocketService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${jwt}` // CRÍTICO - correção da autenticação
+          'Authorization': `Bearer ${jwt}`
         },
-        body: JSON.stringify(config)
+        body: JSON.stringify(config),
+        signal: AbortSignal.timeout(3000) // Timeout rápido para detectar problema do servidor
       });
 
       if (!response.ok) {
         console.error('❌ [FASE-2] Erro na configuração API:', response.status, response.statusText);
+        
+        // Detectar erro 500 do servidor
+        if (response.status === 500) {
+          this.activateCircuitBreaker();
+          console.error('🚫 [CIRCUIT-BREAKER] Servidor retornou 500 - Bloqueando por 5 minutos');
+        }
+        
         const errorText = await response.text();
         console.error('❌ [FASE-2] Detalhes do erro:', errorText);
         return false;
@@ -242,26 +271,26 @@ class SocketIOWebSocketService {
       console.log(`🔌 [FASE-3] Conectando Socket.IO em: ${socketUrl}`);
 
       this.socket = io(socketUrl, {
-        transports: ['websocket'], // Priorizar WebSocket conforme logs
-        timeout: 15000,
-        reconnection: false, // Controlar reconexão manualmente
+        transports: ['websocket'],
+        timeout: 3000, // Timeout rápido para falha rápida
+        reconnection: false,
         auth: {
           token: jwt,
           instanceId: instanceId
         },
         extraHeaders: {
-          'Authorization': `Bearer ${jwt}` // CRÍTICO - autenticação correta
+          'Authorization': `Bearer ${jwt}`
         }
       });
 
       this.setupEventListeners();
       
-      // Aguardar conexão
+      // Aguardar conexão com timeout otimizado
       const connected = await new Promise<boolean>((resolve) => {
         const timeout = setTimeout(() => {
-          console.warn('⏰ [FASE-3] Timeout na conexão Socket.IO');
+          console.warn('⏰ [FASE-3] Timeout na conexão Socket.IO (3s)');
           resolve(false);
-        }, 15000);
+        }, 3000);
 
         this.socket!.on('connect', () => {
           clearTimeout(timeout);
@@ -493,6 +522,49 @@ class SocketIOWebSocketService {
 
   isConnected(): boolean {
     return this.status.connected && this.socket?.connected === true;
+  }
+
+  /**
+   * Circuit breaker para detectar servidor indisponível
+   */
+  private isCircuitBreakerBlocked(): boolean {
+    if (this.circuitBreaker.isBlocked && Date.now() < this.circuitBreaker.blockedUntil) {
+      return true;
+    }
+    
+    if (this.circuitBreaker.isBlocked && Date.now() >= this.circuitBreaker.blockedUntil) {
+      console.log('✅ [CIRCUIT-BREAKER] Desbloqueando - Tentando novamente');
+      this.resetCircuitBreaker();
+    }
+    
+    return false;
+  }
+
+  private activateCircuitBreaker(): void {
+    this.circuitBreaker.consecutiveFailures++;
+    this.circuitBreaker.lastFailureTime = Date.now();
+    
+    if (this.circuitBreaker.consecutiveFailures >= 3) {
+      this.circuitBreaker.isBlocked = true;
+      this.circuitBreaker.blockedUntil = Date.now() + (5 * 60 * 1000); // 5 minutos
+      
+      console.warn('🚫 [CIRCUIT-BREAKER] *** SERVIDOR WEBSOCKET INDISPONÍVEL ***');
+      console.warn('🔄 [CIRCUIT-BREAKER] Próxima tentativa em 5 minutos');
+    }
+  }
+
+  private resetCircuitBreaker(): void {
+    this.circuitBreaker.consecutiveFailures = 0;
+    this.circuitBreaker.isBlocked = false;
+    this.circuitBreaker.blockedUntil = 0;
+  }
+
+  getCircuitBreakerStatus() {
+    return {
+      blocked: this.circuitBreaker.isBlocked,
+      failures: this.circuitBreaker.consecutiveFailures,
+      unblockTime: this.circuitBreaker.blockedUntil
+    };
   }
 
   /**

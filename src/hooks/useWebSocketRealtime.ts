@@ -19,6 +19,8 @@ interface WebSocketStatus {
   fallbackActive: boolean;
   configured: boolean;
   maxReconnectAttempts: number;
+  circuitBreakerBlocked: boolean;
+  circuitBreakerUnblockTime: number;
 }
 
 export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
@@ -27,7 +29,9 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
     reconnectAttempts: 0,
     fallbackActive: false,
     configured: false,
-    maxReconnectAttempts: 3
+    maxReconnectAttempts: 3,
+    circuitBreakerBlocked: false,
+    circuitBreakerUnblockTime: 0
   });
   
   const debounceTimeoutRef = useRef<NodeJS.Timeout>();
@@ -40,6 +44,18 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
   const connect = useCallback(async () => {
     if (!config.enabled || !config.instanceId || isConnectingRef.current) {
       console.log('🚫 [WEBSOCKET] WebSocket desabilitado, instância não definida ou já conectando');
+      return;
+    }
+
+    // Verificar status do circuit breaker
+    const circuitStatus = socketIOWebSocketService.getCircuitBreakerStatus();
+    if (circuitStatus.blocked) {
+      console.warn('🚫 [WEBSOCKET] Circuit breaker ativo - servidor indisponível');
+      updateStatus({ 
+        fallbackActive: true,
+        circuitBreakerBlocked: true,
+        circuitBreakerUnblockTime: circuitStatus.unblockTime
+      });
       return;
     }
 
@@ -75,16 +91,24 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
           connected: true,
           reconnectAttempts: 0,
           fallbackActive: false,
-          configured: true
+          configured: true,
+          circuitBreakerBlocked: false,
+          circuitBreakerUnblockTime: 0
         });
       } else {
+        // Verificar se falhou por circuit breaker
+        const circuitStatus = socketIOWebSocketService.getCircuitBreakerStatus();
+        
         updateStatus({
           connected: false,
           reconnectAttempts: status.reconnectAttempts + 1,
-          fallbackActive: true
+          fallbackActive: true,
+          circuitBreakerBlocked: circuitStatus.blocked,
+          circuitBreakerUnblockTime: circuitStatus.unblockTime
         });
 
-        if (status.reconnectAttempts < status.maxReconnectAttempts) {
+        // Só tentar reconectar se não for circuit breaker
+        if (status.reconnectAttempts < status.maxReconnectAttempts && !circuitStatus.blocked) {
           scheduleReconnect();
         }
       }
@@ -100,7 +124,8 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
   }, [config.enabled, config.instanceId, config.clientId, updateStatus, status.reconnectAttempts, status.maxReconnectAttempts]);
 
   const scheduleReconnect = useCallback(() => {
-    const delay = Math.min(1000 * Math.pow(2, status.reconnectAttempts), 30000); // Max 30s
+    // Reconexão mais rápida - máximo 5 segundos
+    const delay = Math.min(1000 * Math.pow(2, status.reconnectAttempts), 5000);
     console.log(`⏰ [WEBSOCKET] Reagendando reconexão em ${delay}ms...`);
 
     setTimeout(() => {
@@ -123,7 +148,9 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
       connected: false,
       reconnectAttempts: 0,
       fallbackActive: false,
-      configured: false
+      configured: false,
+      circuitBreakerBlocked: false,
+      circuitBreakerUnblockTime: 0
     });
   }, [updateStatus]);
 
@@ -169,6 +196,8 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
     isConnected: status.connected,
     isFallbackActive: status.fallbackActive,
     reconnectAttempts: status.reconnectAttempts,
-    isConfigured: status.configured
+    isConfigured: status.configured,
+    isCircuitBreakerBlocked: status.circuitBreakerBlocked,
+    circuitBreakerUnblockTime: status.circuitBreakerUnblockTime
   };
 };

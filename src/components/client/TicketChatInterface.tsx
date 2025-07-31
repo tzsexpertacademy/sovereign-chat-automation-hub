@@ -42,7 +42,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     isLoading, 
     wsConnected, 
     isFallbackActive, 
-    reconnectAttempts, 
+    reconnectAttempts,
+    isCircuitBreakerBlocked,
+    circuitBreakerUnblockTime,
     lastUpdateSource,
     reload 
   } = useUnifiedTicketMessages({
@@ -221,6 +223,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           isConnected={wsConnected}
           isFallbackActive={isFallbackActive}
           reconnectAttempts={reconnectAttempts}
+          isCircuitBreakerBlocked={isCircuitBreakerBlocked}
+          circuitBreakerUnblockTime={circuitBreakerUnblockTime}
         />
       </div>
 

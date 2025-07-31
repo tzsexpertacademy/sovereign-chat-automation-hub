@@ -104,7 +104,13 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     }, [ticketId, instanceId, addMessageSafely])
   };
 
-  const { isConnected: wsConnected, isFallbackActive, reconnectAttempts } = useWebSocketRealtime(webSocketConfig);
+  const { 
+    isConnected: wsConnected, 
+    isFallbackActive, 
+    reconnectAttempts,
+    isCircuitBreakerBlocked,
+    circuitBreakerUnblockTime
+  } = useWebSocketRealtime(webSocketConfig);
 
   // Carregar mensagens iniciais
   const loadMessages = useCallback(async (isPolling = false) => {
@@ -258,6 +264,8 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     wsConnected,
     isFallbackActive,
     reconnectAttempts,
+    isCircuitBreakerBlocked,
+    circuitBreakerUnblockTime,
     lastUpdateSource,
     // Função para recarregar manualmente
     reload: () => loadMessages(false)

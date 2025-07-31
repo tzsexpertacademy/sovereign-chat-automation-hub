@@ -32,6 +32,7 @@ class UnifiedMessageService {
   
   /**
    * MÉTODO PRINCIPAL - ÚNICO PONTO DE ENVIO PARA TUDO
+   * ESTRATÉGIA HÍBRIDA: SEMPRE REST para envio (nunca WebSocket)
    */
   async sendMessage(options: UnifiedMessageOptions): Promise<UnifiedMessageResult> {
     try {
@@ -61,11 +62,12 @@ class UnifiedMessageService {
         externalAttributes: `source=${options.source || 'manual'};humanized=${options.humanized || false};timestamp=${Date.now()}`
       };
 
-      // 4. ENVIAR VIA YUMER API V2 (ÚNICO MÉTODO)
-      console.log('📤 [UNIFIED-MSG] Enviando via yumerApiV2 com ID correto:', {
+      // 4. ENVIAR VIA YUMER API V2 - SEMPRE REST (ESTRATÉGIA HÍBRIDA)
+      console.log('📤 [UNIFIED-MSG] *** ENVIANDO VIA REST API (ESTRATÉGIA HÍBRIDA) ***:', {
         originalId: options.instanceId,
         realInstanceId,
-        chatId: options.chatId
+        chatId: options.chatId,
+        strategy: 'HYBRID: REST for sending'
       });
 
       const result = await yumerApiV2Service.sendText(
