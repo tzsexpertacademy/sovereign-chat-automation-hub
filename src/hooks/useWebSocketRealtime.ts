@@ -71,7 +71,6 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
       isConnectingRef.current = false;
 
       if (connected) {
-        console.log('🎉 [WEBSOCKET] *** WEBSOCKET CONECTADO COM SUCESSO - RESETANDO FALLBACK ***');
         updateStatus({
           connected: true,
           reconnectAttempts: 0,
@@ -101,9 +100,8 @@ export const useWebSocketRealtime = (config: WebSocketRealtimeConfig) => {
   }, [config.enabled, config.instanceId, config.clientId, updateStatus, status.reconnectAttempts, status.maxReconnectAttempts]);
 
   const scheduleReconnect = useCallback(() => {
-    // Usar estratégia de backoff exponencial mais agressiva
-    const delay = Math.min(500 * Math.pow(2, status.reconnectAttempts), 5000); // Max 5s
-    console.log(`⏰ [WEBSOCKET] Reagendando reconexão otimizada em ${delay}ms...`);
+    const delay = Math.min(1000 * Math.pow(2, status.reconnectAttempts), 30000); // Max 30s
+    console.log(`⏰ [WEBSOCKET] Reagendando reconexão em ${delay}ms...`);
 
     setTimeout(() => {
       connect();

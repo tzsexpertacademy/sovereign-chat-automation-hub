@@ -19,15 +19,6 @@ interface SocketIOStatus {
   lastHeartbeat?: Date;
   reconnectAttempts: number;
   error?: string;
-  circuitBreakerOpen?: boolean;
-  lastCircuitBreakerReset?: Date;
-  serverHealthy?: boolean;
-  lastHealthCheck?: Date;
-  performanceMetrics?: {
-    connectionTime?: number;
-    lastMessageLatency?: number;
-    totalMessagesProcessed?: number;
-  };
 }
 
 class SocketIOWebSocketService {
@@ -37,67 +28,27 @@ class SocketIOWebSocketService {
     connected: false,
     authenticated: false,
     configured: false,
-    reconnectAttempts: 0,
-    circuitBreakerOpen: false,
-    serverHealthy: true,
-    performanceMetrics: {
-      totalMessagesProcessed: 0
-    }
+    reconnectAttempts: 0
   };
   private maxReconnectAttempts = 3;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
-  private healthCheckInterval: NodeJS.Timeout | null = null;
   private baseUrl = 'https://api.yumer.com.br';
-  
-  // Circuit Breaker Configuration
-  private circuitBreakerThreshold = 3; // Falhas consecutivas para abrir
-  private circuitBreakerResetTime = 5 * 60 * 1000; // 5 minutos
-  private consecutiveFailures = 0;
-  
-  // Performance optimizations
-  private connectTimeout = 3000; // Reduzido de 10s para 3s
-  private messageTimeout = 2000; // Reduzido de 5s para 2s
-  private healthCheckInterval_ms = 30000; // 30 segundos
 
   /**
-   * PLANO DE PERFORMANCE OTIMIZADA - Circuit Breaker + Health Checks
-   * FASE 1: Verificar circuit breaker e saúde do servidor
-   * FASE 2: Conexão otimizada com timeouts reduzidos
-   * FASE 3: Monitoramento de performance em tempo real
+   * PLANO DE CORREÇÃO FINAL - Baseado nos logs reais do servidor
+   * FASE 1: Autenticação correta com Authorization header
+   * FASE 2: URL correta do WebSocket  
+   * FASE 3: Configuração da API antes da conexão
    */
   async connect(config: SocketIOConnectionConfig): Promise<boolean> {
-    const startTime = Date.now();
-    
     try {
-      console.log('🔌 [SOCKET.IO] *** INICIANDO CONEXÃO OTIMIZADA ***', {
+      console.log('🔌 [SOCKET.IO] *** INICIANDO PLANO DE CORREÇÃO FINAL ***', {
         instanceId: config.instanceId,
-        clientId: config.clientId,
-        circuitBreakerOpen: this.status.circuitBreakerOpen,
-        serverHealthy: this.status.serverHealthy
+        clientId: config.clientId
       });
 
-      // ⚡ FASE 0: Verificar circuit breaker
-      if (this.isCircuitBreakerOpen()) {
-        console.warn('🚫 [CIRCUIT-BREAKER] Circuit breaker ativo - bloqueando tentativa');
-        return false;
-      }
-
-      // ⚡ FASE 0.5: Health check rápido do servidor
-      const serverHealthy = await this.quickHealthCheck(config.instanceId);
-      if (!serverHealthy) {
-        console.warn('🏥 [HEALTH-CHECK] Servidor não está saudável - ativando circuit breaker');
-        this.openCircuitBreaker();
-        return false;
-      }
-
       this.config = config;
-      
-      // ⚡ Registrar tempo de conexão para métricas
-      this.status.performanceMetrics = {
-        ...this.status.performanceMetrics,
-        connectionTime: startTime
-      };
       
       // 🎯 FASE 1: OBTER JWT DA INSTÂNCIA (correção crítica)
       console.log('🔑 [FASE-1] Obtendo JWT da instância:', config.instanceId);
@@ -111,8 +62,8 @@ class SocketIOWebSocketService {
       
       console.log('✅ [FASE-1] JWT da instância obtido com sucesso');
 
-      // 🎯 FASE 2: CONFIGURAR WEBSOCKET VIA API REST (obrigatório conforme documentação)
-      console.log('🔧 [FASE-2] Configurando WebSocket via API REST...');
+      // 🎯 FASE 2: CONFIGURAR WEBSOCKET VIA API (correção crítica)
+      console.log('🔧 [FASE-2] Configurando WebSocket via API com autenticação...');
       
       const configured = await this.configureWebSocketAPI(config.instanceId, jwt);
       if (!configured) {
@@ -123,312 +74,120 @@ class SocketIOWebSocketService {
       
       console.log('✅ [FASE-2] WebSocket configurado via API');
 
-      // 🎯 FASE 3: CONECTAR SOCKET.IO APÓS CONFIGURAÇÃO
-      console.log('🌐 [FASE-3] Conectando Socket.IO após configuração...');
+      // 🎯 FASE 3: CONECTAR SOCKET.IO COM URL CORRETA
+      console.log('🌐 [FASE-3] Conectando Socket.IO na URL correta...');
       
       const socketConnected = await this.connectSocketIO(config.instanceId, jwt);
       if (!socketConnected) {
         console.error('❌ [FASE-3] FALHA CRÍTICA: Socket.IO não conectou');
-        this.recordFailure();
         this.updateStatus({ error: 'CONEXÃO CRÍTICA: Socket.IO falhou' });
         return false;
       }
       
       console.log('✅ [FASE-3] Socket.IO conectado');
 
-      // ⚡ Calcular tempo total de conexão
-      const connectionTime = Date.now() - startTime;
-      console.log(`⚡ [PERFORMANCE] Conexão estabelecida em ${connectionTime}ms`);
-
-      this.recordSuccess();
       this.updateStatus({
         connected: true,
         authenticated: true,
         configured: true,
         reconnectAttempts: 0,
-        error: undefined,
-        performanceMetrics: {
-          ...this.status.performanceMetrics,
-          connectionTime
-        }
+        error: undefined
       });
       
       this.startHeartbeat();
-      this.startHealthCheck();
       
-      console.log('🎉 [SOCKET.IO] *** CONEXÃO OTIMIZADA EXECUTADA COM SUCESSO! ***');
+      console.log('🎉 [SOCKET.IO] *** PLANO DE CORREÇÃO FINAL EXECUTADO COM SUCESSO! ***');
       return true;
 
     } catch (error: any) {
-      console.error('❌ [SOCKET.IO] Erro crítico na conexão otimizada:', error);
-      this.recordFailure();
+      console.error('❌ [SOCKET.IO] Erro crítico no plano de correção:', error);
       this.updateStatus({ error: error.message });
       return false;
     }
   }
 
   /**
-   * ⚡ CIRCUIT BREAKER - Verificar se está aberto
-   */
-  private isCircuitBreakerOpen(): boolean {
-    if (!this.status.circuitBreakerOpen) return false;
-    
-    // Verificar se é hora de tentar novamente (5 minutos)
-    if (this.status.lastCircuitBreakerReset) {
-      const timeSinceReset = Date.now() - this.status.lastCircuitBreakerReset.getTime();
-      if (timeSinceReset > this.circuitBreakerResetTime) {
-        console.log('🔄 [CIRCUIT-BREAKER] Tempo de reset atingido, fechando circuit breaker');
-        this.closeCircuitBreaker();
-        return false;
-      }
-    }
-    
-    return true;
-  }
-
-  /**
-   * ⚡ CIRCUIT BREAKER - Abrir após muitas falhas
-   */
-  private openCircuitBreaker(): void {
-    console.warn('🚫 [CIRCUIT-BREAKER] ATIVANDO CIRCUIT BREAKER - muitas falhas consecutivas');
-    this.updateStatus({
-      circuitBreakerOpen: true,
-      lastCircuitBreakerReset: new Date(),
-      serverHealthy: false
-    });
-  }
-
-  /**
-   * ⚡ CIRCUIT BREAKER - Fechar após tempo de reset
-   */
-  private closeCircuitBreaker(): void {
-    console.log('✅ [CIRCUIT-BREAKER] Fechando circuit breaker - tentando novamente');
-    this.consecutiveFailures = 0;
-    this.updateStatus({
-      circuitBreakerOpen: false,
-      serverHealthy: true
-    });
-  }
-
-  /**
-   * ⚡ HEALTH CHECK - Verificação rápida do servidor
-   */
-  private async quickHealthCheck(instanceId: string): Promise<boolean> {
-    try {
-      console.log('🏥 [HEALTH-CHECK] Verificando saúde do servidor...');
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
-      
-      const response = await fetch(`${this.baseUrl}/api/v2/instance/${instanceId}/status`, {
-        method: 'GET',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      clearTimeout(timeoutId);
-      
-      const isHealthy = response.status < 500; // Qualquer coisa diferente de 5xx é OK
-      
-      this.updateStatus({
-        serverHealthy: isHealthy,
-        lastHealthCheck: new Date()
-      });
-      
-      console.log(`🏥 [HEALTH-CHECK] Servidor ${isHealthy ? 'saudável' : 'não saudável'} (${response.status})`);
-      return isHealthy;
-      
-    } catch (error) {
-      console.warn('🏥 [HEALTH-CHECK] Falha no health check:', error);
-      this.updateStatus({
-        serverHealthy: false,
-        lastHealthCheck: new Date()
-      });
-      return false;
-    }
-  }
-
-  /**
-   * ⚡ Registrar sucesso (para circuit breaker)
-   */
-  private recordSuccess(): void {
-    this.consecutiveFailures = 0;
-    if (this.status.circuitBreakerOpen) {
-      this.closeCircuitBreaker();
-    }
-  }
-
-  /**
-   * ⚡ Registrar falha (para circuit breaker)
-   */
-  private recordFailure(): void {
-    this.consecutiveFailures++;
-    console.warn(`⚠️ [CIRCUIT-BREAKER] Falha ${this.consecutiveFailures}/${this.circuitBreakerThreshold}`);
-    
-    if (this.consecutiveFailures >= this.circuitBreakerThreshold) {
-      this.openCircuitBreaker();
-    }
-  }
-
-  /**
-   * ⚡ Health check periódico
-   */
-  private startHealthCheck(): void {
-    this.stopHealthCheck();
-    
-    this.healthCheckInterval = setInterval(async () => {
-      if (this.config?.instanceId) {
-        await this.quickHealthCheck(this.config.instanceId);
-      }
-    }, this.healthCheckInterval_ms);
-  }
-
-  /**
-   * ⚡ Parar health check
-   */
-  private stopHealthCheck(): void {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = null;
-    }
-  }
-
-  /**
-   * FASE 1: Obter business_token diretamente do Supabase (sem verificação de expiração)
+   * FASE 1: Obter JWT da instância corretamente
    */
   private async getInstanceJWT(instanceId: string, clientId: string): Promise<string | null> {
     try {
-      console.log('✅ [FASE-1] Buscando business_token no Supabase (mesmo dos outros serviços)...');
+      // 🔑 CORREÇÃO CRÍTICA: Usar Supabase diretamente ao invés do endpoint inexistente
+      console.log('🔍 [FASE-1] Consultando JWT da instância no Supabase...');
       
-      // Buscar o business_token diretamente do cliente no Supabase
+      // Primeiro verificar se existe JWT no whatsapp_instances
+      const { data: instanceData, error: instanceError } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('instance_id', instanceId)
+        .eq('client_id', clientId)
+        .single();
+
+      // Se não encontrou na instância, buscar o business_token no cliente
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
         .select('business_token')
         .eq('id', clientId)
         .single();
 
+      if (instanceError) {
+        console.warn('⚠️ [FASE-1] Erro ao consultar instância:', instanceError.message);
+      }
+
       if (clientError) {
-        console.error('❌ [FASE-1] Erro ao buscar cliente:', clientError);
-        return null;
+        console.warn('⚠️ [FASE-1] Erro ao consultar cliente:', clientError.message);
       }
 
-      if (!clientData?.business_token) {
-        console.error('❌ [FASE-1] Business token não encontrado para o cliente');
-        return null;
+      // Usar business_token do cliente
+      const businessToken = clientData?.business_token;
+      
+      if (businessToken) {
+        console.log('✅ [FASE-1] JWT obtido da base de dados Supabase (cliente)');
+        
+        // Verificar se o token não está expirado
+        try {
+          const payload = JSON.parse(atob(businessToken.split('.')[1]));
+          const isExpired = payload.exp && Date.now() / 1000 > payload.exp;
+          
+          if (isExpired) {
+            console.warn('⚠️ [FASE-1] JWT expirado, regenerando...');
+          } else {
+            return businessToken;
+          }
+        } catch (e) {
+          console.warn('⚠️ [FASE-1] Erro ao verificar JWT, regenerando...');
+        }
       }
 
-      const jwt = clientData.business_token;
-
-      // Verificar se o token tem formato válido
-      if (!jwt || jwt.split('.').length !== 3) {
-        console.error('❌ [FASE-1] JWT inválido:', jwt);
-        return null;
+      // Se não existe, regenerar via business token service
+      console.log('🔄 [FASE-1] Regenerando JWT via business token service...');
+      const tokenResult = await businessTokenService.ensureValidToken(clientId);
+      
+      if (tokenResult.success && tokenResult.token) {
+        return tokenResult.token;
       }
 
-      console.log('✅ [FASE-1] Business token obtido (usando mesmo token dos outros serviços)');
-      return jwt;
+      return null;
     } catch (error) {
-      console.error('❌ [FASE-1] Erro ao obter business token:', error);
+      console.error('❌ [FASE-1] Erro ao obter JWT:', error);
       return null;
     }
   }
 
   /**
-   * FASE 2A: Verificar se já existe WebSocket configurado
-   */
-  private async checkExistingWebSocket(instanceId: string, jwt: string): Promise<{ exists: boolean; working: boolean }> {
-    try {
-      console.log('🔍 [FASE-2A] Verificando WebSocket existente...');
-
-      const response = await fetch(`${this.baseUrl}/api/v2/instance/${instanceId}/socket`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-        }
-      });
-
-      if (response.ok) {
-        const socketData = await response.json();
-        console.log('✅ [FASE-2A] WebSocket já existe:', socketData);
-        return { exists: true, working: true };
-      } else if (response.status === 404) {
-        console.log('📝 [FASE-2A] Nenhum WebSocket encontrado (404)');
-        return { exists: false, working: false };
-      } else {
-        console.log('⚠️ [FASE-2A] WebSocket existe mas com problemas:', response.status);
-        return { exists: true, working: false };
-      }
-
-    } catch (error) {
-      console.error('❌ [FASE-2A] Erro ao verificar WebSocket existente:', error);
-      return { exists: false, working: false };
-    }
-  }
-
-  /**
-   * FASE 2B: Limpar WebSocket existente se necessário
-   */
-  private async cleanupExistingWebSocket(instanceId: string, jwt: string): Promise<boolean> {
-    try {
-      console.log('🧹 [FASE-2B] Limpando WebSocket existente...');
-
-      const response = await fetch(`${this.baseUrl}/api/v2/instance/${instanceId}/socket`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-        }
-      });
-
-      if (response.ok) {
-        console.log('✅ [FASE-2B] WebSocket existente removido');
-        return true;
-      } else {
-        console.warn('⚠️ [FASE-2B] Falha ao remover WebSocket:', response.status);
-        return false;
-      }
-
-    } catch (error) {
-      console.error('❌ [FASE-2B] Erro ao limpar WebSocket:', error);
-      return false;
-    }
-  }
-
-  /**
-   * FASE 2C: Configurar WebSocket via API com verificação inteligente
+   * FASE 2: Configurar WebSocket via API com autenticação correta
    */
   private async configureWebSocketAPI(instanceId: string, jwt: string): Promise<boolean> {
     try {
-      console.log('🔧 [FASE-2C] Configurando WebSocket com verificação inteligente...');
-
-      // Primeiro, verificar se já existe um WebSocket
-      const { exists, working } = await this.checkExistingWebSocket(instanceId, jwt);
-
-      if (exists && working) {
-        console.log('✅ [FASE-2C] WebSocket existente funcionando, reutilizando...');
-        return true;
-      }
-
-      if (exists && !working) {
-        console.log('🧹 [FASE-2C] WebSocket existe mas com problemas, limpando...');
-        await this.cleanupExistingWebSocket(instanceId, jwt);
-        // Aguardar um pouco após limpeza
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      // Agora criar um novo WebSocket
-      console.log('🔧 [FASE-2C] Criando novo WebSocket...');
-
+      console.log('🔧 [FASE-2] Configurando WebSocket com Authorization header...');
+      
+      // Configuração WebSocket conforme documentação
       const config = {
         enabled: true,
         events: {
           qrcodeUpdate: true,
           stateInstance: false,
           messagesSet: false,
-          messagesUpsert: true,
+          messagesUpsert: true, // CRÍTICO - evento principal
           messagesUpdate: true,
           sendMessage: true,
           contactsSet: false,
@@ -450,24 +209,24 @@ class SocketIOWebSocketService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${jwt}`
+          'Authorization': `Bearer ${jwt}` // CRÍTICO - correção da autenticação
         },
         body: JSON.stringify(config)
       });
 
       if (!response.ok) {
+        console.error('❌ [FASE-2] Erro na configuração API:', response.status, response.statusText);
         const errorText = await response.text();
-        console.error(`❌ [FASE-2C] Erro na configuração API: ${response.status}`);
-        console.error(`❌ [FASE-2C] Detalhes do erro:`, errorText);
+        console.error('❌ [FASE-2] Detalhes do erro:', errorText);
         return false;
       }
 
       const result = await response.json();
-      console.log('✅ [FASE-2C] WebSocket configurado com sucesso:', result);
+      console.log('✅ [FASE-2] WebSocket configurado com sucesso:', result);
       
       return true;
     } catch (error) {
-      console.error('❌ [FASE-2C] Erro ao configurar WebSocket via API:', error);
+      console.error('❌ [FASE-2] Erro ao configurar WebSocket via API:', error);
       return false;
     }
   }
@@ -483,17 +242,16 @@ class SocketIOWebSocketService {
       console.log(`🔌 [FASE-3] Conectando Socket.IO em: ${socketUrl}`);
 
       this.socket = io(socketUrl, {
-        extraHeaders: {
-          'Authorization': `Bearer ${jwt}`
-        },
-        query: {
+        transports: ['websocket'], // Priorizar WebSocket conforme logs
+        timeout: 15000,
+        reconnection: false, // Controlar reconexão manualmente
+        auth: {
+          token: jwt,
           instanceId: instanceId
         },
-        transports: ['websocket'],
-        timeout: this.connectTimeout, // 3s otimizado
-        reconnection: false, // Gerenciado pelo circuit breaker
-        reconnectionAttempts: 1,
-        reconnectionDelay: 1000
+        extraHeaders: {
+          'Authorization': `Bearer ${jwt}` // CRÍTICO - autenticação correta
+        }
       });
 
       this.setupEventListeners();
@@ -503,7 +261,7 @@ class SocketIOWebSocketService {
         const timeout = setTimeout(() => {
           console.warn('⏰ [FASE-3] Timeout na conexão Socket.IO');
           resolve(false);
-        }, this.connectTimeout);
+        }, 15000);
 
         this.socket!.on('connect', () => {
           clearTimeout(timeout);
@@ -709,7 +467,6 @@ class SocketIOWebSocketService {
     console.log('🔌 [SOCKET.IO] Desconectando...');
     
     this.stopHeartbeat();
-    this.stopHealthCheck();
     
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -736,106 +493,6 @@ class SocketIOWebSocketService {
 
   isConnected(): boolean {
     return this.status.connected && this.socket?.connected === true;
-  }
-
-  /**
-   * 🚀 ENVIAR MENSAGEM VIA WEBSOCKET - CRÍTICO PARA UNIFICAÇÃO
-   */
-  async sendMessage(chatId: string, message: string, options?: {
-    messageType?: 'text' | 'audio' | 'image' | 'video' | 'document';
-    delay?: number;
-    presence?: 'composing' | 'recording' | 'available';
-  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    try {
-      if (!this.isConnected()) {
-        console.error('❌ [SOCKET.IO-SEND] WebSocket não conectado');
-        return { success: false, error: 'WebSocket não conectado' };
-      }
-
-      if (!this.socket) {
-        console.error('❌ [SOCKET.IO-SEND] Socket não disponível');
-        return { success: false, error: 'Socket não disponível' };
-      }
-
-      // Usar estrutura compatível com REST API Yumer
-      const messageData = {
-        recipient: chatId,
-        textMessage: {
-          text: message
-        },
-        options: {
-          delay: options?.delay || 0,
-          presence: options?.presence || 'composing'
-        }
-      };
-
-      console.log('📤 [SOCKET.IO-SEND] *** ENVIANDO VIA WEBSOCKET COM ESTRUTURA CORRETA ***', {
-        chatId,
-        messagePreview: message.substring(0, 50) + '...',
-        evento: 'send.text',
-        estrutura: 'REST-compatible'
-      });
-
-      // Tentar múltiplos eventos conhecidos
-      const eventos = ['send.text', 'sendText', 'send.message', 'message.send'];
-      let response: any = null;
-      let eventoUsado = '';
-
-      for (const evento of eventos) {
-        try {
-          console.log(`🔄 [SOCKET.IO-SEND] Testando evento: ${evento}`);
-          
-          response = await new Promise<any>((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              reject(new Error(`Timeout no evento ${evento}`));
-            }, this.messageTimeout); // 2s otimizado
-
-            this.socket!.emit(evento, messageData, (response: any) => {
-              clearTimeout(timeout);
-              resolve(response);
-            });
-          });
-
-          if (response) {
-            eventoUsado = evento;
-            console.log(`✅ [SOCKET.IO-SEND] Evento funcionou: ${evento}`, response);
-            break;
-          }
-        } catch (error) {
-          console.log(`⚠️ [SOCKET.IO-SEND] Evento ${evento} falhou:`, error);
-          continue;
-        }
-      }
-
-      if (!response && !eventoUsado) {
-        console.error('❌ [SOCKET.IO-SEND] Nenhum evento WebSocket funcionou - todos os eventos falharam');
-        return {
-          success: false,
-          error: 'Nenhum evento WebSocket reconhecido pelo servidor'
-        };
-      }
-
-      if (response?.success) {
-        console.log(`✅ [SOCKET.IO-SEND] Mensagem enviada com sucesso via WebSocket usando evento: ${eventoUsado}`, response);
-        return {
-          success: true,
-          messageId: response.messageId || `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        };
-      } else {
-        console.error(`❌ [SOCKET.IO-SEND] Falha no envio via WebSocket com evento ${eventoUsado}:`, response);
-        return {
-          success: false,
-          error: response?.error || 'Erro desconhecido no WebSocket'
-        };
-      }
-
-    } catch (error: any) {
-      console.error('❌ [SOCKET.IO-SEND] Erro crítico no envio via WebSocket:', error);
-      return {
-        success: false,
-        error: error.message || 'Erro crítico no WebSocket'
-      };
-    }
   }
 
   /**

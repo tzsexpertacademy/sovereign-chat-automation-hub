@@ -151,7 +151,7 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
         (payload) => {
           // PRIORIDADE: WebSocket > Supabase > Polling
           if (wsConnected && !isFallbackActive) {
-            console.log('⏭️ [UNIFIED] *** SUPABASE IGNORADO - WEBSOCKET PRIORITÁRIO ***');
+            console.log('⏭️ [UNIFIED] Supabase ignorado - WebSocket ativo');
             return;
           }
           
