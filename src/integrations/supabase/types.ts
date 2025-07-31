@@ -1849,6 +1849,7 @@ export type Database = {
           is_internal_note: boolean | null
           media_duration: number | null
           media_key: string | null
+          media_mime_type: string | null
           media_transcription: string | null
           media_url: string | null
           message_id: string
@@ -1871,6 +1872,7 @@ export type Database = {
           is_internal_note?: boolean | null
           media_duration?: number | null
           media_key?: string | null
+          media_mime_type?: string | null
           media_transcription?: string | null
           media_url?: string | null
           message_id: string
@@ -1893,6 +1895,7 @@ export type Database = {
           is_internal_note?: boolean | null
           media_duration?: number | null
           media_key?: string | null
+          media_mime_type?: string | null
           media_transcription?: string | null
           media_url?: string | null
           message_id?: string
