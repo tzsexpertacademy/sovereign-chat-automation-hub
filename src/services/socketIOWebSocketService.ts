@@ -19,6 +19,15 @@ interface SocketIOStatus {
   lastHeartbeat?: Date;
   reconnectAttempts: number;
   error?: string;
+  circuitBreakerOpen?: boolean;
+  lastCircuitBreakerReset?: Date;
+  serverHealthy?: boolean;
+  lastHealthCheck?: Date;
+  performanceMetrics?: {
+    connectionTime?: number;
+    lastMessageLatency?: number;
+    totalMessagesProcessed?: number;
+  };
 }
 
 class SocketIOWebSocketService {
@@ -28,27 +37,67 @@ class SocketIOWebSocketService {
     connected: false,
     authenticated: false,
     configured: false,
-    reconnectAttempts: 0
+    reconnectAttempts: 0,
+    circuitBreakerOpen: false,
+    serverHealthy: true,
+    performanceMetrics: {
+      totalMessagesProcessed: 0
+    }
   };
   private maxReconnectAttempts = 3;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private healthCheckInterval: NodeJS.Timeout | null = null;
   private baseUrl = 'https://api.yumer.com.br';
+  
+  // Circuit Breaker Configuration
+  private circuitBreakerThreshold = 3; // Falhas consecutivas para abrir
+  private circuitBreakerResetTime = 5 * 60 * 1000; // 5 minutos
+  private consecutiveFailures = 0;
+  
+  // Performance optimizations
+  private connectTimeout = 3000; // Reduzido de 10s para 3s
+  private messageTimeout = 2000; // Reduzido de 5s para 2s
+  private healthCheckInterval_ms = 30000; // 30 segundos
 
   /**
-   * PLANO DE CORREÇÃO FINAL - Baseado nos logs reais do servidor
-   * FASE 1: Autenticação correta com Authorization header
-   * FASE 2: URL correta do WebSocket  
-   * FASE 3: Configuração da API antes da conexão
+   * PLANO DE PERFORMANCE OTIMIZADA - Circuit Breaker + Health Checks
+   * FASE 1: Verificar circuit breaker e saúde do servidor
+   * FASE 2: Conexão otimizada com timeouts reduzidos
+   * FASE 3: Monitoramento de performance em tempo real
    */
   async connect(config: SocketIOConnectionConfig): Promise<boolean> {
+    const startTime = Date.now();
+    
     try {
-      console.log('🔌 [SOCKET.IO] *** INICIANDO PLANO DE CORREÇÃO FINAL ***', {
+      console.log('🔌 [SOCKET.IO] *** INICIANDO CONEXÃO OTIMIZADA ***', {
         instanceId: config.instanceId,
-        clientId: config.clientId
+        clientId: config.clientId,
+        circuitBreakerOpen: this.status.circuitBreakerOpen,
+        serverHealthy: this.status.serverHealthy
       });
 
+      // ⚡ FASE 0: Verificar circuit breaker
+      if (this.isCircuitBreakerOpen()) {
+        console.warn('🚫 [CIRCUIT-BREAKER] Circuit breaker ativo - bloqueando tentativa');
+        return false;
+      }
+
+      // ⚡ FASE 0.5: Health check rápido do servidor
+      const serverHealthy = await this.quickHealthCheck(config.instanceId);
+      if (!serverHealthy) {
+        console.warn('🏥 [HEALTH-CHECK] Servidor não está saudável - ativando circuit breaker');
+        this.openCircuitBreaker();
+        return false;
+      }
+
       this.config = config;
+      
+      // ⚡ Registrar tempo de conexão para métricas
+      this.status.performanceMetrics = {
+        ...this.status.performanceMetrics,
+        connectionTime: startTime
+      };
       
       // 🎯 FASE 1: OBTER JWT DA INSTÂNCIA (correção crítica)
       console.log('🔑 [FASE-1] Obtendo JWT da instância:', config.instanceId);
@@ -80,29 +129,169 @@ class SocketIOWebSocketService {
       const socketConnected = await this.connectSocketIO(config.instanceId, jwt);
       if (!socketConnected) {
         console.error('❌ [FASE-3] FALHA CRÍTICA: Socket.IO não conectou');
+        this.recordFailure();
         this.updateStatus({ error: 'CONEXÃO CRÍTICA: Socket.IO falhou' });
         return false;
       }
       
       console.log('✅ [FASE-3] Socket.IO conectado');
 
+      // ⚡ Calcular tempo total de conexão
+      const connectionTime = Date.now() - startTime;
+      console.log(`⚡ [PERFORMANCE] Conexão estabelecida em ${connectionTime}ms`);
+
+      this.recordSuccess();
       this.updateStatus({
         connected: true,
         authenticated: true,
         configured: true,
         reconnectAttempts: 0,
-        error: undefined
+        error: undefined,
+        performanceMetrics: {
+          ...this.status.performanceMetrics,
+          connectionTime
+        }
       });
       
       this.startHeartbeat();
+      this.startHealthCheck();
       
-      console.log('🎉 [SOCKET.IO] *** PLANO DE CORREÇÃO FINAL EXECUTADO COM SUCESSO! ***');
+      console.log('🎉 [SOCKET.IO] *** CONEXÃO OTIMIZADA EXECUTADA COM SUCESSO! ***');
       return true;
 
     } catch (error: any) {
-      console.error('❌ [SOCKET.IO] Erro crítico no plano de correção:', error);
+      console.error('❌ [SOCKET.IO] Erro crítico na conexão otimizada:', error);
+      this.recordFailure();
       this.updateStatus({ error: error.message });
       return false;
+    }
+  }
+
+  /**
+   * ⚡ CIRCUIT BREAKER - Verificar se está aberto
+   */
+  private isCircuitBreakerOpen(): boolean {
+    if (!this.status.circuitBreakerOpen) return false;
+    
+    // Verificar se é hora de tentar novamente (5 minutos)
+    if (this.status.lastCircuitBreakerReset) {
+      const timeSinceReset = Date.now() - this.status.lastCircuitBreakerReset.getTime();
+      if (timeSinceReset > this.circuitBreakerResetTime) {
+        console.log('🔄 [CIRCUIT-BREAKER] Tempo de reset atingido, fechando circuit breaker');
+        this.closeCircuitBreaker();
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  /**
+   * ⚡ CIRCUIT BREAKER - Abrir após muitas falhas
+   */
+  private openCircuitBreaker(): void {
+    console.warn('🚫 [CIRCUIT-BREAKER] ATIVANDO CIRCUIT BREAKER - muitas falhas consecutivas');
+    this.updateStatus({
+      circuitBreakerOpen: true,
+      lastCircuitBreakerReset: new Date(),
+      serverHealthy: false
+    });
+  }
+
+  /**
+   * ⚡ CIRCUIT BREAKER - Fechar após tempo de reset
+   */
+  private closeCircuitBreaker(): void {
+    console.log('✅ [CIRCUIT-BREAKER] Fechando circuit breaker - tentando novamente');
+    this.consecutiveFailures = 0;
+    this.updateStatus({
+      circuitBreakerOpen: false,
+      serverHealthy: true
+    });
+  }
+
+  /**
+   * ⚡ HEALTH CHECK - Verificação rápida do servidor
+   */
+  private async quickHealthCheck(instanceId: string): Promise<boolean> {
+    try {
+      console.log('🏥 [HEALTH-CHECK] Verificando saúde do servidor...');
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
+      
+      const response = await fetch(`${this.baseUrl}/api/v2/instance/${instanceId}/status`, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      const isHealthy = response.status < 500; // Qualquer coisa diferente de 5xx é OK
+      
+      this.updateStatus({
+        serverHealthy: isHealthy,
+        lastHealthCheck: new Date()
+      });
+      
+      console.log(`🏥 [HEALTH-CHECK] Servidor ${isHealthy ? 'saudável' : 'não saudável'} (${response.status})`);
+      return isHealthy;
+      
+    } catch (error) {
+      console.warn('🏥 [HEALTH-CHECK] Falha no health check:', error);
+      this.updateStatus({
+        serverHealthy: false,
+        lastHealthCheck: new Date()
+      });
+      return false;
+    }
+  }
+
+  /**
+   * ⚡ Registrar sucesso (para circuit breaker)
+   */
+  private recordSuccess(): void {
+    this.consecutiveFailures = 0;
+    if (this.status.circuitBreakerOpen) {
+      this.closeCircuitBreaker();
+    }
+  }
+
+  /**
+   * ⚡ Registrar falha (para circuit breaker)
+   */
+  private recordFailure(): void {
+    this.consecutiveFailures++;
+    console.warn(`⚠️ [CIRCUIT-BREAKER] Falha ${this.consecutiveFailures}/${this.circuitBreakerThreshold}`);
+    
+    if (this.consecutiveFailures >= this.circuitBreakerThreshold) {
+      this.openCircuitBreaker();
+    }
+  }
+
+  /**
+   * ⚡ Health check periódico
+   */
+  private startHealthCheck(): void {
+    this.stopHealthCheck();
+    
+    this.healthCheckInterval = setInterval(async () => {
+      if (this.config?.instanceId) {
+        await this.quickHealthCheck(this.config.instanceId);
+      }
+    }, this.healthCheckInterval_ms);
+  }
+
+  /**
+   * ⚡ Parar health check
+   */
+  private stopHealthCheck(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
     }
   }
 
@@ -301,9 +490,9 @@ class SocketIOWebSocketService {
           instanceId: instanceId
         },
         transports: ['websocket'],
-        timeout: 20000,
-        reconnection: true,
-        reconnectionAttempts: 5,
+        timeout: this.connectTimeout, // 3s otimizado
+        reconnection: false, // Gerenciado pelo circuit breaker
+        reconnectionAttempts: 1,
         reconnectionDelay: 1000
       });
 
@@ -314,7 +503,7 @@ class SocketIOWebSocketService {
         const timeout = setTimeout(() => {
           console.warn('⏰ [FASE-3] Timeout na conexão Socket.IO');
           resolve(false);
-        }, 15000);
+        }, this.connectTimeout);
 
         this.socket!.on('connect', () => {
           clearTimeout(timeout);
@@ -520,6 +709,7 @@ class SocketIOWebSocketService {
     console.log('🔌 [SOCKET.IO] Desconectando...');
     
     this.stopHeartbeat();
+    this.stopHealthCheck();
     
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -598,7 +788,7 @@ class SocketIOWebSocketService {
           response = await new Promise<any>((resolve, reject) => {
             const timeout = setTimeout(() => {
               reject(new Error(`Timeout no evento ${evento}`));
-            }, 5000); // Reduzido para 5s
+            }, this.messageTimeout); // 2s otimizado
 
             this.socket!.emit(evento, messageData, (response: any) => {
               clearTimeout(timeout);
