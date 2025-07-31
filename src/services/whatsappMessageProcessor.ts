@@ -62,7 +62,7 @@ export const whatsappMessageProcessor = {
     }
   },
 
-  // 📨 PROCESSAR uma mensagem individual
+  // 📨 PROCESSAR uma mensagem individual (otimizado para batches)
   async processSingleMessage(message: WhatsAppMessage, clientId: string): Promise<void> {
     console.log('📨 [WA-PROCESSOR] Processando mensagem:', {
       messageId: message.message_id,
@@ -71,6 +71,25 @@ export const whatsappMessageProcessor = {
     });
 
     try {
+      // Se já foi processada, pular
+      if (message.is_processed) {
+        console.log('✅ [WA-PROCESSOR] Mensagem já processada:', message.message_id);
+        return;
+      }
+
+      // Verificar se já existe em ticket_messages para evitar duplicação
+      const { data: existingMessage } = await supabase
+        .from('ticket_messages')
+        .select('id')
+        .eq('message_id', message.message_id)
+        .single();
+
+      if (existingMessage) {
+        console.log('🔄 [WA-PROCESSOR] Mensagem já existe em ticket_messages, marcando como processada:', message.message_id);
+        await this.markAsProcessed(message.id);
+        return;
+      }
+
       // 1. Buscar ou criar customer
       const customerId = await this.getOrCreateCustomer(message, clientId);
       
@@ -166,39 +185,112 @@ export const whatsappMessageProcessor = {
     return newTicket.id;
   },
 
-  // 💾 SALVAR mensagem no ticket
+  // 💾 SALVAR mensagem no ticket (com tratamento de duplicatas)
   async saveMessageToTicket(message: WhatsAppMessage, ticketId: string): Promise<void> {
-    const { error } = await supabase
-      .from('ticket_messages')
-      .insert({
-        ticket_id: ticketId,
-        message_id: message.message_id,
-        content: message.body || '',
-        message_type: 'text',
-        from_me: message.from_me,
-        timestamp: message.timestamp,
-        sender_name: message.contact_name,
-        processing_status: 'processed'
-      });
+    try {
+      const { error } = await supabase
+        .from('ticket_messages')
+        .insert({
+          ticket_id: ticketId,
+          message_id: message.message_id,
+          content: message.body || '',
+          message_type: 'text',
+          from_me: message.from_me,
+          timestamp: message.timestamp,
+          sender_name: message.contact_name,
+          processing_status: 'processed'
+        });
 
-    if (error) {
-      throw new Error(`Erro ao salvar mensagem no ticket: ${error.message}`);
+      if (error) {
+        // Se erro de constraint (mensagem duplicada), apenas log sem throw
+        if (error.code === '23505') {
+          console.log('📝 [WA-PROCESSOR] Mensagem já existe (constraint):', message.message_id);
+          return;
+        }
+        throw new Error(`Erro ao salvar mensagem no ticket: ${error.message}`);
+      }
+    } catch (error: any) {
+      if (error.code === '23505') {
+        console.log('📝 [WA-PROCESSOR] Mensagem já existe (constraint catch):', message.message_id);
+        return;
+      }
+      throw error;
     }
   },
 
-  // ✅ MARCAR como processada
+  // ✅ MARCAR como processada (otimizado para batches)
   async markAsProcessed(messageId: string): Promise<void> {
-    const { error } = await supabase
-      .from('whatsapp_messages')
-      .update({
-        is_processed: true,
-        processed_at: new Date().toISOString()
-      })
-      .eq('id', messageId);
+    try {
+      // Verificar se já está processada antes de fazer update
+      const { data: currentStatus } = await supabase
+        .from('whatsapp_messages')
+        .select('is_processed')
+        .eq('id', messageId)
+        .single();
 
-    if (error) {
-      throw new Error(`Erro ao marcar mensagem como processada: ${error.message}`);
+      if (currentStatus?.is_processed) {
+        console.log('📝 [WA-PROCESSOR] Mensagem já marcada como processada:', messageId);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('whatsapp_messages')
+        .update({
+          is_processed: true,
+          processed_at: new Date().toISOString()
+        })
+        .eq('id', messageId);
+
+      if (error) {
+        throw new Error(`Erro ao marcar mensagem como processada: ${error.message}`);
+      }
+    } catch (error: any) {
+      console.error('❌ [WA-PROCESSOR] Erro inesperado ao marcar processada:', error);
+      throw error;
     }
+  },
+
+  // 📦 PROCESSAR múltiplas mensagens em bloco (otimizado)
+  async processBatch(messages: WhatsAppMessage[], clientId: string): Promise<{ processed: number; errors: number; skipped: number }> {
+    let processed = 0;
+    let errors = 0;
+    let skipped = 0;
+
+    console.log(`🔄 [WA-PROCESSOR-BATCH] Iniciando processamento de ${messages.length} mensagens em bloco`);
+
+    // Verificar quais mensagens já existem em ticket_messages
+    const messageIds = messages.map(m => m.message_id);
+    const { data: existingMessages } = await supabase
+      .from('ticket_messages')
+      .select('message_id')
+      .in('message_id', messageIds);
+
+    const existingMessageIds = new Set(existingMessages?.map(m => m.message_id) || []);
+
+    for (const message of messages) {
+      try {
+        if (message.is_processed) {
+          skipped++;
+          continue;
+        }
+
+        if (existingMessageIds.has(message.message_id)) {
+          console.log('🔄 [WA-PROCESSOR-BATCH] Mensagem já existe, marcando como processada:', message.message_id);
+          await this.markAsProcessed(message.id);
+          skipped++;
+          continue;
+        }
+
+        await this.processSingleMessage(message, clientId);
+        processed++;
+      } catch (error) {
+        console.error('❌ [WA-PROCESSOR-BATCH] Erro ao processar mensagem:', message.message_id, error);
+        errors++;
+      }
+    }
+
+    console.log(`✅ [WA-PROCESSOR-BATCH] Batch concluído: ${processed} processadas, ${skipped} puladas, ${errors} erros`);
+    return { processed, errors, skipped };
   },
 
   // 🔧 UTILITÁRIOS

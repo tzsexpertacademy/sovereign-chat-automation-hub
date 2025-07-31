@@ -220,22 +220,40 @@ async function processBatch(batch: any) {
 }
 
 /**
- * MARCAR MENSAGENS COMO PROCESSADAS
+ * MARCAR MENSAGENS COMO PROCESSADAS (OTIMIZADO)
  */
 async function markMessagesAsProcessed(messages: any[]) {
   const messageIds = messages.map(msg => msg.messageId).filter(Boolean);
   
   if (messageIds.length === 0) return;
 
+  // Verificar quais já estão processadas para evitar updates desnecessários
+  const { data: alreadyProcessed } = await supabase
+    .from('whatsapp_messages')
+    .select('message_id')
+    .in('message_id', messageIds)
+    .eq('is_processed', true);
+
+  const alreadyProcessedIds = new Set(alreadyProcessed?.map(m => m.message_id) || []);
+  const toProcess = messageIds.filter(id => !alreadyProcessedIds.has(id));
+
+  if (toProcess.length === 0) {
+    console.log('🤖 [MARK-PROCESSED] ℹ️ Todas as mensagens já estão processadas');
+    return;
+  }
+
   const { error } = await supabase
     .from('whatsapp_messages')
-    .update({ is_processed: true })
-    .in('message_id', messageIds);
+    .update({ 
+      is_processed: true,
+      processed_at: new Date().toISOString()
+    })
+    .in('message_id', toProcess);
 
   if (error) {
     console.error('🤖 [MARK-PROCESSED] ❌ Erro ao marcar mensagens:', error);
   } else {
-    console.log('🤖 [MARK-PROCESSED] ✅ Marcadas', messageIds.length, 'mensagens como processadas');
+    console.log(`🤖 [MARK-PROCESSED] ✅ Marcadas ${toProcess.length} mensagens como processadas (${alreadyProcessedIds.size} já estavam processadas)`);
   }
 }
 
