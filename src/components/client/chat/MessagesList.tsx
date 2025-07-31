@@ -12,6 +12,8 @@ import { unifiedMediaService } from '@/services/unifiedMediaService';
 import { adaptMessageMedia } from '@/utils/mediaDataAdapter';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
+import { useTicketMessagesSync } from '@/hooks/useTicketMessagesSync';
+import RealTimeSync from '../RealTimeSync';
 
 interface MessagesListProps {
   messages: any[];
@@ -19,9 +21,24 @@ interface MessagesListProps {
   getMessageStatus: (messageId: string) => 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   ticketId?: string;
   instanceId?: string;
+  // Status do sistema em tempo real
+  wsConnected?: boolean;
+  isFallbackActive?: boolean;
+  isCircuitBreakerBlocked?: boolean;
+  lastUpdateSource?: 'websocket' | 'supabase' | 'polling';
 }
 
-const MessagesList = memo(({ messages, scrollAreaRef, getMessageStatus, ticketId, instanceId }: MessagesListProps) => {
+const MessagesList = memo(({ 
+  messages, 
+  scrollAreaRef, 
+  getMessageStatus, 
+  ticketId, 
+  instanceId,
+  wsConnected = false,
+  isFallbackActive = false,
+  isCircuitBreakerBlocked = false,
+  lastUpdateSource = 'polling'
+}: MessagesListProps) => {
   // Debug das mensagens recebidas
   console.log('📋 [MESSAGES-LIST] Renderizando mensagens:', {
     total: messages.length,
@@ -36,6 +53,12 @@ const MessagesList = memo(({ messages, scrollAreaRef, getMessageStatus, ticketId
 
   // 👀 INDICADORES DE PRESENÇA IMEDIATOS: Hook para presença em tempo real
   const { isTyping } = useTicketRealtimeImproved(ticketId || '');
+  
+  // 🔄 SYNC DEDICADO para garantir recebimento de mensagens
+  const { newMessagesCount, lastSyncTime } = useTicketMessagesSync({
+    ticketId: ticketId || '',
+    clientId: '' // Pode deixar vazio aqui, pois o filtro é pelo ticketId
+  });
   
   // 🚫 REMOVIDO: useRealTimePresence - IA controla status online
   const isRecording = false; // Simplificado
@@ -244,6 +267,18 @@ const MessagesList = memo(({ messages, scrollAreaRef, getMessageStatus, ticketId
 
   return (
     <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
+      {/* 📊 STATUS SYNC EM TEMPO REAL */}
+      <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 pb-2 mb-4 z-10">
+        <RealTimeSync
+          wsConnected={wsConnected}
+          isFallbackActive={isFallbackActive}
+          isCircuitBreakerBlocked={isCircuitBreakerBlocked}
+          lastUpdateSource={lastUpdateSource}
+          newMessagesCount={newMessagesCount}
+          lastSyncTime={lastSyncTime}
+        />
+      </div>
+      
       <div className="space-y-4">
         {/* 🎭 INDICADORES DE PRESENÇA IMEDIATOS */}
         {(isTyping || isRecording) && (

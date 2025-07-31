@@ -248,6 +248,10 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         getMessageStatus={(messageId: string) => getMessageStatus(messageId)}
         ticketId={ticketId}
         instanceId={ticket?.instance_id}
+        wsConnected={wsConnected}
+        isFallbackActive={isFallbackActive}
+        isCircuitBreakerBlocked={isCircuitBreakerBlocked}
+        lastUpdateSource={lastUpdateSource}
       />
 
       {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (

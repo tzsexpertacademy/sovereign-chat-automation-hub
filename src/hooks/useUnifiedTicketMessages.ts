@@ -138,11 +138,11 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
     }
   }, [ticketId]);
 
-  // Supabase Realtime - FALLBACK quando WebSocket falha
+  // Supabase Realtime - SEMPRE ATIVO para máxima confiabilidade
   const setupSupabaseListener = useCallback(() => {
     if (!ticketId) return null;
     
-    console.log('🔔 [UNIFIED] Configurando Supabase listener (fallback)...');
+    console.log('🔔 [UNIFIED] *** CONFIGURANDO SUPABASE LISTENER SEMPRE ATIVO ***');
     
     const channel = supabase
       .channel(`unified-ticket-${ticketId}`)
@@ -155,20 +155,24 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
           filter: `ticket_id=eq.${ticketId}`
         },
         (payload) => {
-          // PRIORIDADE: WebSocket > Supabase > Polling
-          if (wsConnected && !isFallbackActive) {
-            console.log('⏭️ [UNIFIED] Supabase ignorado - WebSocket ativo');
-            return;
-          }
-          
-          console.log('📨 [UNIFIED] Mudança via Supabase (fallback):', payload.eventType);
+          console.log('📨 [UNIFIED] *** MUDANÇA VIA SUPABASE ***:', payload.eventType);
           
           if (payload.eventType === 'INSERT' && payload.new) {
             const newMessage = payload.new as TicketMessage;
             
-            // Verificar duplicatas
+            console.log('📨 [UNIFIED] *** NOVA MENSAGEM SUPABASE ***:', {
+              messageId: newMessage.message_id,
+              content: newMessage.content?.substring(0, 50),
+              fromMe: newMessage.from_me,
+              timestamp: newMessage.timestamp
+            });
+            
+            // Verificar duplicatas e adicionar
             if (!messageIdsRef.current.has(newMessage.message_id)) {
               addMessageSafely(newMessage, 'supabase');
+              console.log('✅ [UNIFIED] *** MENSAGEM SUPABASE ADICIONADA ***');
+            } else {
+              console.log('⚠️ [UNIFIED] Mensagem duplicada ignorada:', newMessage.message_id);
             }
           } else if (payload.eventType === 'UPDATE' && payload.new) {
             const updatedMessage = payload.new as TicketMessage;
@@ -182,13 +186,13 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
         }
       )
       .subscribe((status) => {
-        console.log('📡 [UNIFIED] Supabase status:', status);
+        console.log('📡 [UNIFIED] *** SUPABASE STATUS ***:', status);
       });
 
     return channel;
   }, [ticketId, wsConnected, isFallbackActive, addMessageSafely]);
 
-  // Polling inteligente - ÚLTIMO RECURSO quando tudo falha
+  // Polling inteligente - MAIS FREQUENTE quando WebSocket bloqueado
   const startIntelligentPolling = useCallback(() => {
     if (pollTimeoutRef.current) {
       clearTimeout(pollTimeoutRef.current);
@@ -196,21 +200,21 @@ export const useUnifiedTicketMessages = ({ ticketId, clientId, instanceId }: Uni
 
     pollTimeoutRef.current = setTimeout(() => {
       const timeSinceLastLoad = Date.now() - lastLoadRef.current;
+      
+      // Polling mais agressivo quando circuit breaker ativo
+      const pollingInterval = isCircuitBreakerBlocked ? 15000 : 30000; // 15s vs 30s
       const shouldPoll = 
-        timeSinceLastLoad > 30000 && // 30s sem atualização
-        (!wsConnected || isFallbackActive) && // WebSocket não funcionando
-        currentTicketRef.current === ticketId; // Mesmo ticket
+        timeSinceLastLoad > pollingInterval && 
+        currentTicketRef.current === ticketId;
 
       if (shouldPoll) {
-        console.log('🔄 [UNIFIED] *** POLLING DE EMERGÊNCIA ATIVADO ***');
+        console.log('🔄 [UNIFIED] *** POLLING ATIVO ***', isCircuitBreakerBlocked ? '(CIRCUIT BREAKER)' : '(NORMAL)');
         loadMessages(true);
-      } else if (wsConnected && !isFallbackActive) {
-        console.log('✅ [UNIFIED] *** POLLING DESABILITADO - WEBSOCKET ATIVO ***');
       }
       
       startIntelligentPolling();
-    }, 20000); // Verificar a cada 20s
-  }, [ticketId, wsConnected, isFallbackActive, loadMessages]);
+    }, isCircuitBreakerBlocked ? 10000 : 20000); // 10s vs 20s
+  }, [ticketId, isCircuitBreakerBlocked, loadMessages]);
 
   // Effect principal
   useEffect(() => {
