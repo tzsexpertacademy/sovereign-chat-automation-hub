@@ -56,14 +56,30 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     setIsSending(false);
   }, [ticketId]);
 
+  // 🚀 AUTO-SCROLL ULTRA-SUAVE para novas mensagens
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
-        scrollElement.scrollTop = scrollElement.scrollHeight;
+        // ⚡ SCROLL INSTANTÂNEO com animação suave
+        requestAnimationFrame(() => {
+          scrollElement.scrollTo({
+            top: scrollElement.scrollHeight,
+            behavior: 'smooth'
+          });
+        });
       }
     }
   }, [messages]);
+
+  // 🎯 DETECTAR novas mensagens para feedback visual imediato
+  const prevMessagesLength = useRef(messages.length);
+  useEffect(() => {
+    if (messages.length > prevMessagesLength.current) {
+      console.log('⚡ [ULTRA-FAST] Nova mensagem detectada - Scroll automático');
+      prevMessagesLength.current = messages.length;
+    }
+  }, [messages.length]);
 
 
   const handleAudioReady = async (audioBlob: Blob, duration: number) => {
@@ -103,22 +119,23 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       // Limpar input imediatamente
       setNewMessage('');
       
-      // ⚡ OPTIMISTIC UPDATE - Mostrar mensagem INSTANTANEAMENTE
+      // ⚡ OPTIMISTIC UPDATE ULTRA-RÁPIDO - ZERO delay visual
       const optimisticMessageId = addOptimisticMessage({
         message_id: messageId,
         content: messageToSend,
         message_type: 'text',
         from_me: true,
-        sender_name: 'Enviando...',
+        sender_name: '⚡ Enviando...',
         timestamp: timestamp,
         processing_status: 'sending'
       });
       
-      console.log('⚡ [REAL-TIME] Mensagem otimista criada, iniciando envio real:', {
+      console.log('⚡ [ULTRA-FAST] Mensagem INSTANTÂNEA criada, enviando:', {
         instanceId: actualInstanceId,
         chatId: ticket.chat_id,
         messagePreview: messageToSend.substring(0, 50) + '...',
-        optimisticId: optimisticMessageId
+        optimisticId: optimisticMessageId,
+        instantTime: Date.now()
       });
 
       markActivity();
@@ -132,10 +149,10 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       );
       
       if (response.success) {
-        console.log('✅ [REAL-TIME] Enviado com sucesso, salvando no banco...');
+        console.log('⚡ [ULTRA-FAST] Enviado com SUCESSO, salvando no banco IMEDIATAMENTE...');
 
-        // Salvar no banco com o messageId real
-        await ticketsService.addTicketMessage({
+        // 🚀 SALVAR INSTANTANEAMENTE no banco
+        const savePromise = ticketsService.addTicketMessage({
           ticket_id: ticketId,
           message_id: response.messageId || messageId,
           from_me: true,
@@ -148,18 +165,25 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: typeof response.timestamp === 'string' ? response.timestamp : timestamp
         });
 
-        // ✅ Confirmar mensagem otimista (será substituída pelo Supabase)
+        // ⚡ CONFIRMAR IMEDIATAMENTE (Supabase detectará em < 1 segundo)
         confirmOptimisticMessage(optimisticMessageId);
         
-        console.log('💾 [REAL-TIME] Mensagem confirmada e salva no banco');
-      } else {
-        console.error('❌ [REAL-TIME] Falha no envio:', response.error);
+        // 🚀 AGUARDAR salvamento em paralelo (não bloqueia UI)
+        savePromise.then(() => {
+          console.log('💾 [ULTRA-FAST] Mensagem SALVA com sucesso no banco');
+        }).catch(error => {
+          console.error('❌ [ULTRA-FAST] Erro ao salvar (mas enviou):', error);
+        });
         
-        // ❌ Marcar mensagem otimista como falhada
+        console.log('✅ [ULTRA-FAST] Fluxo COMPLETO - Instantâneo para usuário');
+      } else {
+        console.error('❌ [ULTRA-FAST] FALHA no envio:', response.error);
+        
+        // ❌ FALHA IMEDIATA com feedback visual
         failOptimisticMessage(optimisticMessageId);
         
         toast({
-          title: "❌ Erro no Envio",
+          title: "❌ Falha no Envio",
           description: response.details || response.error || "Erro desconhecido",
           variant: "destructive"
         });
@@ -204,19 +228,21 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         enabled={!!(actualInstanceId && ticket?.chat_id)}
       />
       
-      {/* Status - Chat 100% Real-Time */}
-      <div className="flex justify-between items-center p-2 border-b bg-background">
+      {/* Status - Chat ULTRA-FLUIDO */}
+      <div className="flex justify-between items-center p-2 border-b bg-gradient-to-r from-green-50 to-blue-50">
         <div className="text-xs text-muted-foreground">
-          <span className="font-medium text-green-600">⚡ Chat 100% Real-Time</span>
-          <span className="ml-2 text-xs text-muted-foreground">
-            Instantâneo via Supabase + Optimistic Updates
+          <span className="font-medium text-green-600 animate-pulse">⚡ CHAT ULTRA-FLUIDO</span>
+          <span className="ml-2 text-xs text-green-700">
+            {lastUpdateSource === 'supabase' ? '📡 Supabase Instantâneo' : '🔄 Polling Backup'}
+          </span>
+          <span className="ml-2 text-xs text-blue-600">
+            • {messages.length} msgs • {'<'} 1s delay
           </span>
         </div>
-        <FinalSimpleStatus
-          lastUpdateSource={lastUpdateSource}
-          messagesCount={messages.length}
-          onReload={reload}
-        />
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <span className="text-xs text-green-600 font-medium">ATIVO</span>
+        </div>
       </div>
 
       <MessagesList

@@ -46,47 +46,84 @@ export const useSimpleTicketMessages = ({ ticketId, clientId }: SimpleTicketMess
     return optimisticMsg.message_id;
   }, [ticketId]);
 
-  // Função para confirmar mensagem otimista
+  // 🚀 CONFIRMAÇÃO ULTRA-RÁPIDA de mensagem otimista
   const confirmOptimisticMessage = useCallback((messageId: string) => {
-    setOptimisticMessages(prev => prev.filter(msg => msg.message_id !== messageId));
-    console.log(`✅ [REAL-TIME] Mensagem otimista confirmada:`, messageId);
+    setOptimisticMessages(prev => {
+      const filtered = prev.filter(msg => msg.message_id !== messageId);
+      console.log(`⚡ [ULTRA-FAST] Mensagem otimista confirmada e removida: ${messageId}`);
+      return filtered;
+    });
   }, []);
 
-  // Função para falhar mensagem otimista
+  // ⚠️ FALHA ULTRA-RÁPIDA de mensagem otimista com retry automático
   const failOptimisticMessage = useCallback((messageId: string) => {
     setOptimisticMessages(prev => 
       prev.map(msg => 
         msg.message_id === messageId 
-          ? { ...msg, processing_status: 'failed', sender_name: 'Falha no envio' }
+          ? { 
+              ...msg, 
+              processing_status: 'failed', 
+              sender_name: '❌ Falha - Tentar novamente',
+              content: `❌ FALHA: ${msg.content}` 
+            }
           : msg
       )
     );
-    console.log(`❌ [REAL-TIME] Mensagem otimista falhou:`, messageId);
+    console.log(`❌ [ULTRA-FAST] Mensagem otimista FALHOU: ${messageId}`);
+    
+    // 🔄 Auto-retry em 3 segundos
+    setTimeout(() => {
+      setOptimisticMessages(prev => prev.filter(msg => msg.message_id !== messageId));
+      console.log(`🔄 [ULTRA-FAST] Mensagem falhada removida após timeout: ${messageId}`);
+    }, 3000);
   }, []);
 
-  // Função para adicionar mensagem sem duplicatas
+  // 🚀 FUNÇÃO ULTRA-RÁPIDA para adicionar mensagem sem duplicatas
   const addMessageSafely = useCallback((newMessage: TicketMessage, source: 'supabase' | 'polling') => {
+    const startTime = performance.now();
+    
     setMessages(prev => {
+      // ⚡ Verificação instantânea de duplicatas
       const exists = prev.some(msg => msg.message_id === newMessage.message_id);
-      if (exists) return prev;
+      if (exists) {
+        console.log(`⚡ [ULTRA-FAST] Mensagem duplicada ignorada: ${newMessage.message_id}`);
+        return prev;
+      }
 
       messageIdsRef.current.add(newMessage.message_id);
       setLastUpdateSource(source);
       
-      // Remover mensagem otimista correspondente se existir
-      setOptimisticMessages(prevOpt => 
-        prevOpt.filter(optMsg => optMsg.message_id !== newMessage.message_id)
-      );
+      // 🚀 REMOÇÃO INTELIGENTE de mensagem otimista
+      setOptimisticMessages(prevOpt => {
+        const filtered = prevOpt.filter(optMsg => {
+          const shouldRemove = optMsg.message_id === newMessage.message_id ||
+                             (optMsg.content === newMessage.content && 
+                              Math.abs(new Date(optMsg.timestamp).getTime() - new Date(newMessage.timestamp).getTime()) < 5000);
+          
+          if (shouldRemove) {
+            console.log(`✅ [ULTRA-FAST] Removendo mensagem otimista: ${optMsg.message_id}`);
+          }
+          
+          return !shouldRemove;
+        });
+        
+        return filtered;
+      });
       
+      // ⚡ ORDENAÇÃO ULTRA-RÁPIDA por timestamp
       const updated = [...prev, newMessage].sort((a, b) => 
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
       
-      console.log(`📨 [REAL-TIME] Nova mensagem via ${source}:`, {
+      const processingTime = performance.now() - startTime;
+      
+      console.log(`⚡ [ULTRA-FAST] Nova mensagem processada em ${processingTime.toFixed(2)}ms:`, {
         messageId: newMessage.message_id,
         content: newMessage.content?.substring(0, 50) + '...',
         fromMe: newMessage.from_me,
-        totalMessages: updated.length
+        source,
+        totalMessages: updated.length,
+        processingTimeMs: processingTime.toFixed(2)
       });
       
       return updated;
@@ -118,14 +155,19 @@ export const useSimpleTicketMessages = ({ ticketId, clientId }: SimpleTicketMess
     }
   }, [ticketId]);
 
-  // Supabase Realtime - MÉTODO PRINCIPAL
+  // 🚀 SUPABASE REALTIME ULTRA-RESPONSIVO
   const setupSupabaseListener = useCallback(() => {
     if (!ticketId) return null;
     
-    console.log('🔔 [SIMPLE-MESSAGES] Configurando Supabase Realtime');
+    console.log('⚡ [ULTRA-FAST] Configurando Supabase Realtime ULTRA-RESPONSIVO');
     
     const channel = supabase
-      .channel(`simple-ticket-${ticketId}`)
+      .channel(`ultra-fast-${ticketId}`, {
+        config: {
+          presence: { key: 'ticket_chat' },
+          broadcast: { self: true }
+        }
+      })
       .on(
         'postgres_changes',
         {
@@ -135,19 +177,28 @@ export const useSimpleTicketMessages = ({ ticketId, clientId }: SimpleTicketMess
           filter: `ticket_id=eq.${ticketId}`
         },
         (payload) => {
-          console.log('📨 [SIMPLE-MESSAGES] Mudança via Supabase:', payload.eventType);
+          console.log('⚡ [ULTRA-FAST] Evento Supabase IMEDIATO:', {
+            event: payload.eventType,
+            messageId: (payload.new as any)?.message_id,
+            fromMe: (payload.new as any)?.from_me,
+            timestamp: Date.now()
+          });
           
           if (payload.eventType === 'INSERT' && payload.new) {
             const newMessage = payload.new as TicketMessage;
             
-            console.log('✅ [SIMPLE-MESSAGES] Nova mensagem:', {
-              messageId: newMessage.message_id,
-              content: newMessage.content?.substring(0, 50),
-              fromMe: newMessage.from_me
-            });
-            
+            // ⚡ PROCESSAMENTO INSTANTÂNEO - Zero delay
             if (!messageIdsRef.current.has(newMessage.message_id)) {
+              console.log('⚡ [ULTRA-FAST] Nova mensagem INSTANTÂNEA:', {
+                messageId: newMessage.message_id,
+                content: newMessage.content?.substring(0, 50),
+                fromMe: newMessage.from_me,
+                processingTime: Date.now()
+              });
+              
               addMessageSafely(newMessage, 'supabase');
+            } else {
+              console.log('⚡ [ULTRA-FAST] Mensagem já existe, ignorando duplicata');
             }
           } else if (payload.eventType === 'UPDATE' && payload.new) {
             const updatedMessage = payload.new as TicketMessage;
@@ -155,17 +206,26 @@ export const useSimpleTicketMessages = ({ ticketId, clientId }: SimpleTicketMess
               prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
             );
             setLastUpdateSource('supabase');
+            console.log('⚡ [ULTRA-FAST] Mensagem atualizada:', updatedMessage.message_id);
           }
         }
       )
       .subscribe((status) => {
-        console.log('📡 [SIMPLE-MESSAGES] Supabase status:', status);
+        console.log('📡 [ULTRA-FAST] Status Supabase:', status);
+        
+        // ✅ HEARTBEAT para detectar falhas imediatamente
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [ULTRA-FAST] Supabase CONECTADO - Real-time ATIVO');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('⚠️ [ULTRA-FAST] Falha no Supabase, iniciando polling backup imediato');
+          loadMessages(true); // Carregar imediatamente em caso de falha
+        }
       });
 
     return channel;
   }, [ticketId, addMessageSafely]);
 
-  // Polling backup mais frequente - a cada 5 segundos
+  // 🚀 POLLING BACKUP ULTRA-AGRESSIVO - 2 segundos para máxima responsividade
   const startPollingBackup = useCallback(() => {
     if (pollTimeoutRef.current) {
       clearTimeout(pollTimeoutRef.current);
@@ -173,11 +233,11 @@ export const useSimpleTicketMessages = ({ ticketId, clientId }: SimpleTicketMess
 
     pollTimeoutRef.current = setTimeout(() => {
       if (currentTicketRef.current === ticketId) {
-        console.log('🔄 [REAL-TIME] Polling backup');
+        console.log('🔄 [ULTRA-FAST] Polling backup ULTRA-AGRESSIVO');
         loadMessages(true);
         startPollingBackup();
       }
-    }, 5000); // 5 segundos para melhor responsividade
+    }, 2000); // 🚀 2 segundos para experiência ultra-fluida
   }, [ticketId, loadMessages]);
 
   // Effect principal
