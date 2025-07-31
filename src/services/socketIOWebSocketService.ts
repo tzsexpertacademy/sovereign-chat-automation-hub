@@ -146,15 +146,21 @@ class SocketIOWebSocketService {
         // Verificar se o token não está expirado
         try {
           const payload = JSON.parse(atob(businessToken.split('.')[1]));
-          const isExpired = payload.exp && Date.now() / 1000 > payload.exp;
+          const currentTime = Math.floor(Date.now() / 1000);
+          const isExpired = payload.exp && currentTime > payload.exp;
           
           if (isExpired) {
-            console.warn('⚠️ [FASE-1] JWT expirado, regenerando...');
+            console.warn('⚠️ [FASE-1] JWT expirado, regenerando...', {
+              exp: payload.exp,
+              current: currentTime,
+              expired: isExpired
+            });
           } else {
+            console.log('✅ [FASE-1] JWT válido, não expirado');
             return businessToken;
           }
         } catch (e) {
-          console.warn('⚠️ [FASE-1] Erro ao verificar JWT, regenerando...');
+          console.warn('⚠️ [FASE-1] Erro ao verificar JWT, regenerando...', e);
         }
       }
 
