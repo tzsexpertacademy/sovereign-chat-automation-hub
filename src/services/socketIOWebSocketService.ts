@@ -62,17 +62,29 @@ class SocketIOWebSocketService {
       
       console.log('✅ [FASE-1] JWT da instância obtido com sucesso');
 
-      // 🎯 FASE 2: CONECTAR SOCKET.IO DIRETAMENTE (conforme documentação oficial)
-      console.log('🌐 [FASE-2] Conectando Socket.IO diretamente conforme documentação...');
+      // 🎯 FASE 2: CONFIGURAR WEBSOCKET VIA API REST (obrigatório conforme documentação)
+      console.log('🔧 [FASE-2] Configurando WebSocket via API REST...');
+      
+      const configured = await this.configureWebSocketAPI(config.instanceId, jwt);
+      if (!configured) {
+        console.error('❌ [FASE-2] FALHA CRÍTICA: WebSocket não configurado via API');
+        this.updateStatus({ error: 'CONFIGURAÇÃO CRÍTICA: API WebSocket não configurada' });
+        return false;
+      }
+      
+      console.log('✅ [FASE-2] WebSocket configurado via API');
+
+      // 🎯 FASE 3: CONECTAR SOCKET.IO APÓS CONFIGURAÇÃO
+      console.log('🌐 [FASE-3] Conectando Socket.IO após configuração...');
       
       const socketConnected = await this.connectSocketIO(config.instanceId, jwt);
       if (!socketConnected) {
-        console.error('❌ [FASE-2] FALHA CRÍTICA: Socket.IO não conectou');
+        console.error('❌ [FASE-3] FALHA CRÍTICA: Socket.IO não conectou');
         this.updateStatus({ error: 'CONEXÃO CRÍTICA: Socket.IO falhou' });
         return false;
       }
       
-      console.log('✅ [FASE-2] Socket.IO conectado');
+      console.log('✅ [FASE-3] Socket.IO conectado');
 
       this.updateStatus({
         connected: true,

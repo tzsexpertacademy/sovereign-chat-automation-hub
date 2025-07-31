@@ -30,7 +30,7 @@ export class BusinessTokenService {
       // Buscar business_token real do cliente
       const { data: client, error: clientError } = await supabase
         .from('clients')
-        .select('id, business_token')
+        .select('id, business_token, business_id')
         .eq('id', clientId)
         .single();
 
@@ -46,15 +46,28 @@ export class BusinessTokenService {
         return { success: false, error: 'Token business inválido' };
       }
 
-      // Verificar se o token não está expirado (com buffer)
+      // Verificar se o token não está expirado
       try {
         const payload = JSON.parse(atob(realToken.split('.')[1]));
         const currentTime = Math.floor(Date.now() / 1000);
-        const buffer = 300; // 5 minutos de buffer
         
-        if (payload.exp && currentTime > (payload.exp - buffer)) {
-          console.warn('⚠️ [BUSINESS-TOKEN] Token próximo do vencimento. Exp:', payload.exp, 'Current:', currentTime);
-          return { success: false, error: 'Token próximo do vencimento' };
+        if (payload.exp && currentTime > payload.exp) {
+          console.warn('⚠️ [BUSINESS-TOKEN] Token expirado. Exp:', payload.exp, 'Current:', currentTime);
+          
+          // Tentar regenerar token usando API da Yumer
+          const regenerateResult = await this.regenerateTokenViaAPI(client.business_id);
+          if (regenerateResult.success && regenerateResult.token) {
+            // Atualizar na base de dados
+            await supabase
+              .from('clients')
+              .update({ business_token: regenerateResult.token })
+              .eq('id', clientId);
+            
+            console.log('✅ [BUSINESS-TOKEN] Token regenerado com sucesso');
+            return { success: true, token: regenerateResult.token };
+          }
+          
+          return { success: false, error: 'Token expirado e não foi possível regenerar' };
         }
         
         console.log('✅ [BUSINESS-TOKEN] Token real válido obtido');
