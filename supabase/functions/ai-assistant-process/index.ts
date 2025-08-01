@@ -1742,11 +1742,11 @@ async function processURLAnalysis(url: string): Promise<string> {
     const html = await response.text();
     
     // Extrair título
-    const titleMatch = html.match(/<title[^>]*>([^<]+)</title>/i);
+    const titleMatch = html.match(new RegExp('<title[^>]*>([^<]+)</title>', 'i'));
     const title = titleMatch ? titleMatch[1].trim() : 'Sem título';
     
     // Extrair descrição (meta description)
-    const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+    const descMatch = html.match(new RegExp('<meta[^>]*name=["\'\\s]*description["\'\\s]*[^>]*content=["\'\\s]*([^"\']+)["\'\\s]*', 'i'));
     const description = descMatch ? descMatch[1].trim() : '';
     
     const analysis = `Página: ${title}${description ? `\nDescrição: ${description}` : ''}`;

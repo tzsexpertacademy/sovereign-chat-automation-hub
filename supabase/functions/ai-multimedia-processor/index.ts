@@ -412,18 +412,18 @@ async function processURLAnalysis(url: string) {
     const html = await response.text();
     
     // Extrair informações básicas
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const titleMatch = html.match(new RegExp('<title[^>]*>([^<]+)</title>', 'i'));
     const title = titleMatch ? titleMatch[1].trim() : 'Sem título';
     
     // Meta description
-    const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+    const descMatch = html.match(new RegExp('<meta[^>]*name=["\'\\s]*description["\'\\s]*[^>]*content=["\'\\s]*([^"\']+)["\'\\s]*', 'i'));
     const description = descMatch ? descMatch[1].trim() : '';
     
     // Open Graph data
-    const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+    const ogTitleMatch = html.match(new RegExp('<meta[^>]*property=["\'\\s]*og:title["\'\\s]*[^>]*content=["\'\\s]*([^"\']+)["\'\\s]*', 'i'));
     const ogTitle = ogTitleMatch ? ogTitleMatch[1].trim() : '';
     
-    const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+    const ogDescMatch = html.match(new RegExp('<meta[^>]*property=["\'\\s]*og:description["\'\\s]*[^>]*content=["\'\\s]*([^"\']+)["\'\\s]*', 'i'));
     const ogDescription = ogDescMatch ? ogDescMatch[1].trim() : '';
     
     // Detectar tipo de site
