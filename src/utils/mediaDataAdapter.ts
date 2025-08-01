@@ -4,6 +4,7 @@ export interface AdaptedMediaData {
   mediaUrl?: string;
   mediaKey?: string;
   fileEncSha256?: string;
+  directPath?: string;
   fileName?: string;
   fileType?: string;
   needsDecryption: boolean;
@@ -30,6 +31,7 @@ export const adaptMessageMedia = (message: any): AdaptedMediaData => {
     fileEncSha256 = JSON.stringify(fileEncSha256);
   }
   
+  const directPath = message.direct_path || message.directPath;
   const fileName = message.media_filename || message.fileName || `media_${messageId}`;
   const fileType = message.media_mimetype || message.mimetype;
   const caption = message.content !== '🎵 Áudio' && message.content !== '🖼️ Imagem' && 
@@ -67,6 +69,7 @@ export const adaptMessageMedia = (message: any): AdaptedMediaData => {
     mediaUrl,
     mediaKey,
     fileEncSha256,
+    directPath,
     fileName,
     fileType,
     needsDecryption,

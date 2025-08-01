@@ -1,5 +1,6 @@
 import unifiedYumerService from './unifiedYumerService';
 import { unifiedMediaCache } from './unifiedMediaCache';
+import { serverConfigService } from './serverConfigService';
 
 interface MediaDownloadRequest {
   contentType: 'image' | 'video' | 'audio' | 'document';
@@ -118,36 +119,43 @@ class DirectMediaDownloadService {
         throw new Error('Instance ID não encontrado');
       }
 
-      const response = await unifiedYumerService.makeRequest(
-        `/api/v2/instance/${internalInstanceId}/media/directly-download`,
-        {
+        // Fazer request com fetch direto para handle binário
+        const config = serverConfigService.getConfig();
+        const apiEndpoint = `https://api.yumer.com.br/api/v2/instance/${internalInstanceId}/media/directly-download`;
+        
+        console.log('🔄 DirectMedia: Chamando endpoint:', apiEndpoint);
+        console.log('📦 DirectMedia: Body:', requestBody);
+        
+        // Buscar token do business para auth
+        let authToken = '';
+        try {
+          const { supabase } = await import('@/integrations/supabase/client');
+          const { data: clientData } = await supabase
+            .from('clients')
+            .select('business_token')
+            .eq('instance_id', instanceId)
+            .single();
+          authToken = clientData?.business_token || '';
+        } catch (error) {
+          console.warn('⚠️ DirectMedia: Erro ao buscar token:', error);
+        }
+        
+        const response = await fetch(apiEndpoint, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
           },
           body: JSON.stringify(requestBody)
-        }
-      );
+        });
 
-      if (response.success && response.data) {
-        // Verificar se é ArrayBuffer ou outro tipo de dados binários
-        let blob: Blob;
-        
-        if (response.data instanceof ArrayBuffer) {
-          blob = new Blob([response.data], { type: mimetype });
-        } else if (typeof response.data === 'string') {
-          // Se é base64, converter
-          const binaryString = atob(response.data);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          blob = new Blob([bytes], { type: mimetype });
-        } else {
-          // Fallback para outros tipos
-          blob = new Blob([response.data as BlobPart], { type: mimetype });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
         }
-        
+
+        // Response é binário direto
+        const arrayBuffer = await response.arrayBuffer();
+        const blob = new Blob([arrayBuffer], { type: mimetype });
         const blobUrl = URL.createObjectURL(blob);
         
         // Cachear resultado no cache unificado
@@ -159,12 +167,11 @@ class DirectMediaDownloadService {
           mediaUrl: blobUrl,
           cached: false
         };
-      }
 
-      console.error('❌ DirectMedia: Falha no download:', response.error);
+      // Este código nunca será alcançado devido ao return acima
       return {
         success: false,
-        error: response.error || 'Falha no download direto'
+        error: 'Falha no download direto'
       };
 
     } catch (error) {

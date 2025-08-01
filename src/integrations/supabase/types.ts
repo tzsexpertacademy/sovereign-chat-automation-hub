@@ -1841,6 +1841,7 @@ export type Database = {
           audio_base64: string | null
           content: string
           created_at: string
+          direct_path: string | null
           file_enc_sha256: string | null
           file_sha256: string | null
           from_me: boolean | null
@@ -1864,6 +1865,7 @@ export type Database = {
           audio_base64?: string | null
           content: string
           created_at?: string
+          direct_path?: string | null
           file_enc_sha256?: string | null
           file_sha256?: string | null
           from_me?: boolean | null
@@ -1887,6 +1889,7 @@ export type Database = {
           audio_base64?: string | null
           content?: string
           created_at?: string
+          direct_path?: string | null
           file_enc_sha256?: string | null
           file_sha256?: string | null
           from_me?: boolean | null
