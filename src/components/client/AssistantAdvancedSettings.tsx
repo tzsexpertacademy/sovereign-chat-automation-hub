@@ -11,11 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, FileText, Image, Video, Trash2, Download, Eye, Settings, Mic, Clock, MessageSquare, Volume2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { assistantsService, AdvancedSettings, MultimediaConfig, HumanizationConfig } from "@/services/assistantsService";
+import { assistantsService, AdvancedSettings, MultimediaConfig } from "@/services/assistantsService";
 import AssistantAudioSettings from "./AssistantAudioSettings";
 import { multimediaAnalysisService } from "@/services/multimediaAnalysisService";
-import { assistantHumanizationService, HumanizedPersonality } from "@/services/assistantHumanizationService";
-import { AssistantHumanizationSettings } from "./AssistantHumanizationSettings";
+
+import { SimpleBehaviorSettings } from "./SimpleBehaviorSettings";
 import MultimediaAnalysisDashboard from "./MultimediaAnalysisDashboard";
 
 interface AssistantAdvancedSettingsProps {
@@ -59,31 +59,15 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
       image_model: 'gpt-4o',
       audio_model: 'whisper-1'
     },
-    // Configurações de humanização
-    humanization_config: {
-      personality_id: 'professional',
-      custom_personality: null,
-      enabled: true
-    }
   });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [personalities, setPersonalities] = useState<HumanizedPersonality[]>([]);
+  
   const { toast } = useToast();
 
   useEffect(() => {
     loadSettings();
-    loadPersonalities();
   }, [assistantId]);
-
-  const loadPersonalities = async () => {
-    try {
-      const availablePersonalities = assistantHumanizationService.getAvailablePersonalities();
-      setPersonalities(availablePersonalities);
-    } catch (error) {
-      console.error('Erro ao carregar personalidades:', error);
-    }
-  };
 
   const loadSettings = async () => {
     try {
@@ -597,50 +581,17 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
         </TabsContent>
 
         <TabsContent value="behavior" className="space-y-6">
-          <AssistantHumanizationSettings
+          <SimpleBehaviorSettings
             assistantId={assistantId}
             assistantName="Assistente"
             onConfigUpdate={(config) => {
-              console.log('🎭 Configuração de humanização atualizada:', config);
+              console.log('🔧 Configuração de comportamento atualizada:', config);
               toast({
-                title: "Humanização Atualizada",
-                description: "Configurações de humanização salvas com sucesso!"
+                title: "Comportamento Atualizado",
+                description: "Configurações de comportamento salvas com sucesso!"
               });
             }}
           />
-          
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Clock className="w-5 h-5" />
-                <span>Indicadores Visuais</span>
-              </CardTitle>
-              <CardDescription>
-                Configurações de indicadores visuais durante o uso
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <Label htmlFor="recording_indicator_enabled">
-                      Mostrar Indicador de Gravação
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Mostra o indicador de gravação enquanto o assistente gera áudio
-                    </p>
-                  </div>
-                  <Switch
-                    id="recording_indicator_enabled"
-                    checked={settings.recording_indicator_enabled}
-                    onCheckedChange={(checked) =>
-                      setSettings(prev => ({ ...prev, recording_indicator_enabled: checked }))
-                    }
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 

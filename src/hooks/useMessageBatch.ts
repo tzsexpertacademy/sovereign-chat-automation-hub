@@ -1,16 +1,18 @@
+/**
+ * Hook para processamento de mensagens em lotes (batch)
+ * Agrupa mensagens recebidas em um período de tempo e processa em conjunto
+ */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { assistantHumanizationService } from '@/services/assistantHumanizationService';
+import { useRef, useState, useCallback, useEffect } from 'react';
 
 interface BatchConfig {
   timeout: number; // tempo em ms para aguardar mais mensagens
   maxBatchSize: number;
   enabled: boolean;
-  assistantId?: string; // ID do assistente para buscar configurações de humanização
+  assistantId?: string;
 }
 
 interface MessageBatch {
-  chatId: string;
   messages: any[];
   timeoutId: NodeJS.Timeout | null;
   lastMessageTime: number;
@@ -18,262 +20,218 @@ interface MessageBatch {
 }
 
 const defaultConfig: BatchConfig = {
-  timeout: 3000, // Reduzido para 3 segundos
-  maxBatchSize: 5, // Reduzido para evitar lotes muito grandes
+  timeout: 2500, // 2.5 segundos por padrão
+  maxBatchSize: 10,
   enabled: true
 };
 
-export const useMessageBatch = (initialCallback?: (chatId: string, messages: any[]) => void, assistantId?: string) => {
-  const [config, setConfig] = useState<BatchConfig>(defaultConfig);
+export const useMessageBatch = (
+  callback: (chatId: string, messages: any[]) => void,
+  assistantId?: string
+) => {
   const batchesRef = useRef<Map<string, MessageBatch>>(new Map());
-  const callbackRef = useRef(initialCallback);
-  const processedMessagesRef = useRef<Set<string>>(new Set());
-  const [humanizedTimeout, setHumanizedTimeout] = useState<number>(defaultConfig.timeout);
+  const [config, setConfig] = useState<BatchConfig>({ ...defaultConfig, assistantId });
 
-  // Carregar configuração de humanização do assistente
-  const loadHumanizationConfig = useCallback(async () => {
-    if (!assistantId) return;
-    
+  // Configuração padrão simplificada
+  const loadHumanizationConfig = useCallback(async (assistantId: string) => {
     try {
-      console.log(`🎭 Carregando configuração de humanização para assistente: ${assistantId}`);
-      const humanizedConfig = await assistantHumanizationService.getHumanizationConfig(assistantId);
+      console.log(`🎭 [MESSAGE-BATCH] Aplicando config padrão para assistente: ${assistantId}`);
       
-      // Converter segundos para milissegundos
-      const timeoutMs = (humanizedConfig.behavior?.messageHandling?.delayBetweenChunks || 3) * 1000;
-      setHumanizedTimeout(timeoutMs);
+      // Usar timeout padrão de 2.5 segundos
+      const defaultTimeout = 2500;
       
-      // Atualizar configuração do batch
-      setConfig(prevConfig => ({
-        ...prevConfig,
-        timeout: timeoutMs,
-        enabled: humanizedConfig.enabled,
-        assistantId
+      setConfig(prev => ({
+        ...prev,
+        timeout: defaultTimeout
       }));
       
-      console.log(`✅ Timeout de humanização carregado: ${timeoutMs}ms`, {
-        enabled: humanizedConfig.enabled,
-        assistantId
-      });
+      console.log('✅ [MESSAGE-BATCH] Timeout padrão aplicado:', defaultTimeout);
       
     } catch (error) {
-      console.error('❌ Erro ao carregar configuração de humanização:', error);
-    }
-  }, [assistantId]);
-
-  // Atualizar a referência do callback quando necessário
-  const updateCallback = useCallback((newCallback: (chatId: string, messages: any[]) => void) => {
-    callbackRef.current = newCallback;
-    console.log('📦 Callback do lote atualizado');
-  }, []);
-
-  const processBatch = useCallback((chatId: string) => {
-    const batch = batchesRef.current.get(chatId);
-    if (!batch || batch.messages.length === 0 || batch.isProcessing) {
-      console.log(`📦 Lote ${chatId} não pode ser processado:`, {
-        exists: !!batch,
-        messageCount: batch?.messages.length || 0,
-        isProcessing: batch?.isProcessing || false
-      });
-      return;
-    }
-
-    console.log(`📦 Processando lote de ${batch.messages.length} mensagens para ${chatId}`);
-    
-    // Marcar como em processamento ANTES de chamar o callback
-    batchesRef.current.set(chatId, {
-      ...batch,
-      isProcessing: true,
-      timeoutId: null
-    });
-    
-    // Chamar callback se existir
-    if (callbackRef.current) {
-      try {
-        callbackRef.current(chatId, [...batch.messages]);
-        console.log(`✅ Callback executado para lote ${chatId}`);
-      } catch (error) {
-        console.error(`❌ Erro ao executar callback do lote ${chatId}:`, error);
-        // Em caso de erro, remover da flag de processamento
-        const currentBatch = batchesRef.current.get(chatId);
-        if (currentBatch) {
-          batchesRef.current.set(chatId, { ...currentBatch, isProcessing: false });
-        }
-      }
-    } else {
-      console.log(`⚠️ Nenhum callback definido para processar lote ${chatId}`);
-      // Se não há callback, limpar o lote imediatamente
-      batchesRef.current.delete(chatId);
+      console.error('❌ [MESSAGE-BATCH] Erro ao aplicar config padrão:', error);
     }
   }, []);
 
+  // Adicionar mensagem ao batch
   const addMessage = useCallback((message: any) => {
     if (!config.enabled) {
-      // Se agrupamento está desabilitado, processar imediatamente
-      console.log('📨 Agrupamento desabilitado, processando mensagem imediatamente');
-      if (callbackRef.current) {
-        callbackRef.current(message.from || message.chatId, [message]);
-      }
+      callback(message.chatId || message.from, [message]);
       return;
     }
 
-    const chatId = message.from || message.chatId;
-    const messageId = message.id || message.key?.id || `msg_${Date.now()}`;
-    const now = Date.now();
+    const chatId = message.chatId || message.from;
+    const batches = batchesRef.current;
     
-    // VERIFICAÇÃO ANTI-DUPLICAÇÃO
-    if (processedMessagesRef.current.has(messageId)) {
-      console.log(`🚫 MENSAGEM duplicada ignorada: ${messageId}`);
-      return;
+    console.log(`📦 [MESSAGE-BATCH] Adicionando mensagem ao batch: ${chatId}`);
+    
+    // Se não existe batch para este chat, criar novo
+    if (!batches.has(chatId)) {
+      batches.set(chatId, {
+        messages: [],
+        timeoutId: null,
+        lastMessageTime: Date.now(),
+        isProcessing: false
+      });
     }
+
+    const batch = batches.get(chatId)!;
     
-    processedMessagesRef.current.add(messageId);
-    
-    console.log(`📨 Adicionando mensagem ao lote ${chatId}:`, {
-      id: messageId,
-      content: message.body?.substring(0, 30) || '[mídia]',
-      fromMe: message.fromMe,
-      timestamp: new Date(message.timestamp || now).toLocaleTimeString()
-    });
-    
-    const existingBatch = batchesRef.current.get(chatId);
-    
-    if (existingBatch) {
-      // Se está processando, decidir o que fazer baseado no tipo de mensagem
-      if (existingBatch.isProcessing) {
-        if (message.fromMe) {
-          console.log(`⚠️ Ignorando nossa mensagem durante processamento do lote ${chatId}`);
-          return;
-        } else {
-          console.log(`🔄 Adicionando mensagem do cliente ao lote em processamento ${chatId}`);
-          const updatedMessages = [...existingBatch.messages, message];
-          
-          batchesRef.current.set(chatId, {
-            ...existingBatch,
-            messages: updatedMessages,
-            lastMessageTime: now
-          });
-          
-          console.log(`📦 Lote em processamento atualizado para ${chatId}: ${updatedMessages.length} mensagens`);
-          return;
-        }
-      }
+    // Se o batch está sendo processado, criar um novo
+    if (batch.isProcessing) {
+      console.log(`⏳ [MESSAGE-BATCH] Batch em processamento, criando novo para: ${chatId}`);
       
-      // Limpar timeout anterior se não estiver processando
-      if (existingBatch.timeoutId && !existingBatch.isProcessing) {
-        clearTimeout(existingBatch.timeoutId);
-        console.log(`⏰ Cancelando timeout anterior para ${chatId}`);
-      }
-      
-      // Adicionar mensagem ao lote existente (não em processamento)
-      if (!existingBatch.isProcessing) {
-        const updatedMessages = [...existingBatch.messages, message];
-        
-        // Verificar se atingiu tamanho máximo
-        if (updatedMessages.length >= config.maxBatchSize) {
-          console.log(`📊 Tamanho máximo atingido (${config.maxBatchSize}), processando imediatamente`);
-          batchesRef.current.delete(chatId);
-          setTimeout(() => {
-            if (callbackRef.current) {
-              callbackRef.current(chatId, updatedMessages);
-            }
-          }, 0);
-          return;
-        }
-        
-        // Configurar novo timeout usando a configuração de humanização
-        const currentTimeout = humanizedTimeout || config.timeout;
-        const timeoutId = setTimeout(() => {
-          console.log(`⏰ Timeout de ${currentTimeout}ms atingido para ${chatId} (humanizado: ${!!assistantId}), processando lote`);
-          processBatch(chatId);
-        }, currentTimeout);
-        
-        batchesRef.current.set(chatId, {
-          ...existingBatch,
-          messages: updatedMessages,
-          timeoutId,
-          lastMessageTime: now,
-          isProcessing: false
-        });
-        
-        console.log(`📦 Lote atualizado para ${chatId}: ${updatedMessages.length} mensagens, próximo timeout em ${currentTimeout}ms`);
-      }
-    } else {
-      // Criar novo lote
-      const currentTimeout = humanizedTimeout || config.timeout;
-      const timeoutId = setTimeout(() => {
-        console.log(`⏰ Timeout inicial de ${currentTimeout}ms atingido para ${chatId} (humanizado: ${!!assistantId}), processando lote`);
-        processBatch(chatId);
-      }, currentTimeout);
-      
-      batchesRef.current.set(chatId, {
-        chatId,
+      batches.set(chatId, {
         messages: [message],
-        timeoutId,
-        lastMessageTime: now,
+        timeoutId: null,
+        lastMessageTime: Date.now(),
         isProcessing: false
       });
       
-      console.log(`📦 Novo lote criado para ${chatId}: 1 mensagem, timeout em ${currentTimeout}ms`);
+      // Processar o novo batch
+      const newBatch = batches.get(chatId)!;
+      newBatch.timeoutId = setTimeout(() => {
+        processBatch(chatId);
+      }, config.timeout);
+      
+      return;
     }
-  }, [config, processBatch]);
 
+    // Limpar timeout anterior se existir
+    if (batch.timeoutId) {
+      clearTimeout(batch.timeoutId);
+    }
+
+    // Adicionar mensagem ao batch
+    batch.messages.push(message);
+    batch.lastMessageTime = Date.now();
+
+    console.log(`📊 [MESSAGE-BATCH] Batch atualizado: ${batch.messages.length}/${config.maxBatchSize} mensagens`);
+
+    // Processar imediatamente se atingiu o limite máximo
+    if (batch.messages.length >= config.maxBatchSize) {
+      console.log(`🚀 [MESSAGE-BATCH] Limite atingido, processando batch: ${chatId}`);
+      processBatch(chatId);
+      return;
+    }
+
+    // Configurar novo timeout
+    batch.timeoutId = setTimeout(() => {
+      processBatch(chatId);
+    }, config.timeout);
+
+  }, [config, callback]);
+
+  // Processar um batch específico
+  const processBatch = useCallback((chatId: string) => {
+    const batches = batchesRef.current;
+    const batch = batches.get(chatId);
+    
+    if (!batch || batch.messages.length === 0) {
+      return;
+    }
+
+    console.log(`⚡ [MESSAGE-BATCH] Processando batch: ${chatId} - ${batch.messages.length} mensagens`);
+
+    // Marcar como processando
+    batch.isProcessing = true;
+    
+    // Limpar timeout
+    if (batch.timeoutId) {
+      clearTimeout(batch.timeoutId);
+      batch.timeoutId = null;
+    }
+
+    // Criar cópia das mensagens
+    const messagesToProcess = [...batch.messages];
+    
+    // Limpar o batch
+    batch.messages = [];
+
+    try {
+      // Processar mensagens
+      callback(chatId, messagesToProcess);
+      console.log(`✅ [MESSAGE-BATCH] Batch processado com sucesso: ${chatId}`);
+    } catch (error) {
+      console.error(`❌ [MESSAGE-BATCH] Erro ao processar batch: ${chatId}`, error);
+    } finally {
+      // Marcar como não processando
+      batch.isProcessing = false;
+    }
+  }, [callback]);
+
+  // Forçar processamento de um batch
   const forceProcessBatch = useCallback((chatId: string) => {
-    console.log(`🔄 Forçando processamento do lote ${chatId}`);
+    console.log(`🔄 [MESSAGE-BATCH] Forçando processamento: ${chatId}`);
     processBatch(chatId);
   }, [processBatch]);
 
+  // Limpar um batch específico
   const clearBatch = useCallback((chatId: string) => {
-    const batch = batchesRef.current.get(chatId);
+    const batches = batchesRef.current;
+    const batch = batches.get(chatId);
     
-    if (batch?.timeoutId) {
-      clearTimeout(batch.timeoutId);
-    }
-    
-    batchesRef.current.delete(chatId);
-    console.log(`🗑️ Lote ${chatId} limpo`);
-  }, []);
-
-  const getBatchInfo = useCallback((chatId: string) => {
-    const batch = batchesRef.current.get(chatId);
-    const currentTimeout = humanizedTimeout || config.timeout;
-    return {
-      exists: !!batch,
-      messageCount: batch?.messages.length || 0,
-      timeRemaining: batch ? currentTimeout - (Date.now() - batch.lastMessageTime) : 0,
-      isProcessing: batch?.isProcessing || false,
-      humanizedTimeout: humanizedTimeout,
-      assistantId: config.assistantId
-    };
-  }, [config.timeout, humanizedTimeout, config.assistantId]);
-
-  const markBatchAsCompleted = useCallback((chatId: string) => {
-    const batch = batchesRef.current.get(chatId);
     if (batch) {
-      console.log(`✅ Marcando lote ${chatId} como concluído`);
       if (batch.timeoutId) {
         clearTimeout(batch.timeoutId);
       }
-      batchesRef.current.delete(chatId);
+      batches.delete(chatId);
+      console.log(`🗑️ [MESSAGE-BATCH] Batch limpo: ${chatId}`);
     }
   }, []);
 
-  // Carregar configuração de humanização quando assistantId mudar
+  // Obter informações de um batch
+  const getBatchInfo = useCallback((chatId: string) => {
+    const batch = batchesRef.current.get(chatId);
+    return batch ? {
+      messageCount: batch.messages.length,
+      isProcessing: batch.isProcessing,
+      lastMessageTime: batch.lastMessageTime,
+      timeRemaining: batch.timeoutId ? config.timeout - (Date.now() - batch.lastMessageTime) : 0
+    } : null;
+  }, [config.timeout]);
+
+  // Marcar batch como completado
+  const markBatchAsCompleted = useCallback((chatId: string) => {
+    const batches = batchesRef.current;
+    const batch = batches.get(chatId);
+    
+    if (batch) {
+      batch.isProcessing = false;
+      console.log(`✨ [MESSAGE-BATCH] Batch marcado como completado: ${chatId}`);
+    }
+  }, []);
+
+  // Atualizar callback
+  const updateCallback = useCallback((newCallback: (chatId: string, messages: any[]) => void) => {
+    console.log('🔄 [MESSAGE-BATCH] Callback atualizado');
+  }, []);
+
+  // Carregar configuração quando assistantId mudar
   useEffect(() => {
     if (assistantId) {
-      loadHumanizationConfig();
+      loadHumanizationConfig(assistantId);
     }
   }, [assistantId, loadHumanizationConfig]);
 
-  // Limpeza periódica de mensagens processadas
+  // Limpeza de referências processadas periodicamente
   useEffect(() => {
-    const cleanup = setInterval(() => {
-      if (processedMessagesRef.current.size > 1000) {
-        console.log('🧹 Limpando cache de mensagens processadas');
-        processedMessagesRef.current.clear();
+    const cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      const batches = batchesRef.current;
+      
+      for (const [chatId, batch] of batches.entries()) {
+        // Limpar batches inativos há mais de 5 minutos
+        if (!batch.isProcessing && (now - batch.lastMessageTime) > 300000) {
+          if (batch.timeoutId) {
+            clearTimeout(batch.timeoutId);
+          }
+          batches.delete(chatId);
+          console.log(`🧹 [MESSAGE-BATCH] Batch inativo limpo: ${chatId}`);
+        }
       }
-    }, 60000); // A cada minuto
+    }, 60000); // Limpar a cada minuto
 
-    return () => clearInterval(cleanup);
+    return () => clearInterval(cleanupInterval);
   }, []);
 
   return {
@@ -285,8 +243,7 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
     getBatchInfo,
     markBatchAsCompleted,
     updateCallback,
-    loadHumanizationConfig,
-    humanizedTimeout,
+    // Stats
     activeBatches: batchesRef.current.size
   };
 };

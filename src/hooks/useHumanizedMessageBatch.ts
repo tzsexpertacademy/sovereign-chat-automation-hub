@@ -1,70 +1,57 @@
 /**
  * Hook personalizado que integra o sistema de processamento em lotes
- * com as configurações de humanização do assistente
+ * com configurações básicas de comportamento (sem personalidades complexas)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useMessageBatch } from './useMessageBatch';
-import { assistantHumanizationService } from '@/services/assistantHumanizationService';
 
 export const useHumanizedMessageBatch = (
   callback: (chatId: string, messages: any[]) => void,
   assistantId?: string
 ) => {
-  const [humanizedTimeout, setHumanizedTimeout] = useState<number>(3000);
-  const [humanizationConfig, setHumanizationConfig] = useState<any>(null);
+  const [humanizedTimeout, setHumanizedTimeout] = useState<number>(2500);
+  const [humanizationConfig, setHumanizationConfig] = useState<{ enabled: boolean; timeout: number } | null>(null);
 
-  // Hook de processamento em lotes com assistente dinâmico
+  // Hook de processamento em lotes
   const messageBatch = useMessageBatch(callback, assistantId);
 
-  // Carregar configuração de humanização quando assistentId mudar
+  // Configuração simplificada sem dependência de personalidades
   useEffect(() => {
-    if (!assistantId) return;
-
-    const loadHumanizationConfig = async () => {
-      try {
-        console.log(`🎭 [HUMANIZED-BATCH] Carregando configuração para assistente: ${assistantId}`);
-        
-        const config = await assistantHumanizationService.getHumanizationConfig(assistantId);
-        setHumanizationConfig(config);
-        
-        // Converter segundos para milissegundos
-        const timeoutMs = (config.behavior?.messageHandling?.delayBetweenChunks || 3) * 1000;
-        setHumanizedTimeout(timeoutMs);
-        
-        console.log(`✅ [HUMANIZED-BATCH] Configuração carregada:`, {
-          enabled: config.enabled,
-          timeout: timeoutMs,
-          assistantId
-        });
-        
-      } catch (error) {
-        console.error('❌ [HUMANIZED-BATCH] Erro ao carregar configuração:', error);
-      }
-    };
-
-    loadHumanizationConfig();
+    if (assistantId) {
+      // Usar timeout padrão para batch de mensagens
+      const timeout = 2500; // 2.5 segundos padrão
+      setHumanizedTimeout(timeout);
+      
+      // Configuração mínima
+      setHumanizationConfig({
+        enabled: true,
+        timeout
+      });
+      
+      console.log('📋 [HUMANIZED-BATCH] Configuração padrão aplicada:', {
+        enabled: true,
+        timeout
+      });
+    }
   }, [assistantId]);
 
-  // Atualizar configuração do batch quando a configuração de humanização mudar
+  // Atualizar configuração do message batch 
   useEffect(() => {
-    if (humanizationConfig) {
-      const timeoutMs = (humanizationConfig.behavior?.messageHandling?.delayBetweenChunks || 3) * 1000;
-      
-      messageBatch.setConfig(prevConfig => ({
-        ...prevConfig,
-        timeout: timeoutMs,
+    if (humanizationConfig && assistantId) {
+      messageBatch.setConfig(prev => ({
+        ...prev,
+        timeout: humanizedTimeout,
         enabled: humanizationConfig.enabled,
         assistantId
       }));
-
-      console.log(`🔄 [HUMANIZED-BATCH] Configuração do batch atualizada:`, {
-        timeout: timeoutMs,
-        enabled: humanizationConfig.enabled,
-        assistantId
+      
+      console.log('🔄 [HUMANIZED-BATCH] Config atualizada:', {
+        timeout: humanizedTimeout,
+        enabled: humanizationConfig.enabled
       });
     }
-  }, [humanizationConfig, assistantId, messageBatch.setConfig]);
+  }, [humanizationConfig, humanizedTimeout, assistantId, messageBatch]);
 
   return {
     ...messageBatch,

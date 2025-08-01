@@ -12,7 +12,7 @@ import { X, Plus, Settings, Zap, Brain, Volume2, Key, CheckCircle, XCircle, Bot 
 import { assistantsService, type Assistant } from "@/services/assistantsService";
 import { aiConfigService } from "@/services/aiConfigService";
 import { useToast } from "@/hooks/use-toast";
-import { AssistantHumanizationSettings } from "./AssistantHumanizationSettings";
+
 
 interface AssistantFormProps {
   clientId: string;
