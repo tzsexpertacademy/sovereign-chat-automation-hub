@@ -38,6 +38,22 @@ export interface RecordingSettings {
   auto_transcribe: boolean;
 }
 
+export interface MultimediaConfig {
+  image_analysis_enabled: boolean;
+  video_analysis_enabled: boolean;
+  document_analysis_enabled: boolean;
+  url_analysis_enabled: boolean;
+  audio_transcription_enabled: boolean;
+  image_model: string;
+  audio_model: string;
+}
+
+export interface HumanizationConfig {
+  personality_id: string;
+  custom_personality: any;
+  enabled: boolean;
+}
+
 export interface AdvancedSettings {
   audio_processing_enabled: boolean;
   voice_cloning_enabled: boolean;
@@ -62,6 +78,10 @@ export interface AdvancedSettings {
   }>;
   audio_library: AudioLibraryItem[];
   recording_settings: RecordingSettings;
+  // Novas configurações
+  multimedia_enabled?: boolean;
+  multimedia_config?: MultimediaConfig;
+  humanization_config?: HumanizationConfig;
 }
 
 export const ELEVENLABS_MODELS = [

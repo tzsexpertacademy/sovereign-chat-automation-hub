@@ -11,8 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, FileText, Image, Video, Trash2, Download, Eye, Settings, Mic, Clock, MessageSquare, Volume2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { assistantsService, AdvancedSettings } from "@/services/assistantsService";
+import { assistantsService, AdvancedSettings, MultimediaConfig, HumanizationConfig } from "@/services/assistantsService";
 import AssistantAudioSettings from "./AssistantAudioSettings";
+import { multimediaAnalysisService } from "@/services/multimediaAnalysisService";
+import { assistantHumanizationService, HumanizedPersonality } from "@/services/assistantHumanizationService";
+import MultimediaAnalysisDashboard from "./MultimediaAnalysisDashboard";
 
 interface AssistantAdvancedSettingsProps {
   assistantId: string;
@@ -45,15 +48,43 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
       max_duration: 60,
       quality: 'medium',
       auto_transcribe: true
+    },
+    // Novas configurações multimídia
+    multimedia_enabled: true,
+    multimedia_config: {
+      image_analysis_enabled: true,
+      video_analysis_enabled: true,
+      document_analysis_enabled: true,
+      url_analysis_enabled: true,
+      audio_transcription_enabled: true,
+      image_model: 'gpt-4o',
+      audio_model: 'whisper-1'
+    },
+    // Configurações de humanização
+    humanization_config: {
+      personality_id: 'professional',
+      custom_personality: null,
+      enabled: true
     }
   });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [personalities, setPersonalities] = useState<HumanizedPersonality[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
     loadSettings();
+    loadPersonalities();
   }, [assistantId]);
+
+  const loadPersonalities = async () => {
+    try {
+      const availablePersonalities = assistantHumanizationService.getAvailablePersonalities();
+      setPersonalities(availablePersonalities);
+    } catch (error) {
+      console.error('Erro ao carregar personalidades:', error);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -182,12 +213,22 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
       <Tabs defaultValue="ai" className="space-y-6">
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="ai">IA & Criatividade</TabsTrigger>
-          <TabsTrigger value="files">Arquivos de Referência</TabsTrigger>
+          <TabsTrigger value="multimedia">
+            <Image className="w-4 h-4 mr-1" />
+            Multimídia
+          </TabsTrigger>
+          <TabsTrigger value="humanization">
+            <MessageSquare className="w-4 h-4 mr-1" />
+            Humanização
+          </TabsTrigger>
           <TabsTrigger value="audio">
             <Volume2 className="w-4 h-4 mr-1" />
             Sistema de Áudio
           </TabsTrigger>
-          <TabsTrigger value="behavior">Comportamento</TabsTrigger>
+          <TabsTrigger value="behavior">
+            <Clock className="w-4 h-4 mr-1" />
+            Comportamento
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="ai" className="space-y-6">
@@ -278,7 +319,186 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
           </Card>
         </TabsContent>
 
-        <TabsContent value="files" className="space-y-6">
+        <TabsContent value="multimedia" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Image className="w-5 h-5" />
+                <span>Análise Multimídia</span>
+              </CardTitle>
+              <CardDescription>
+                Configure o processamento automático de mídias (imagens, vídeos, áudios, documentos e URLs)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              
+              {/* Switch principal */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <h4 className="font-medium">Ativar Análise Multimídia</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Processa automaticamente mídias enviadas pelos usuários
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.multimedia_enabled}
+                  onCheckedChange={(enabled) => 
+                    setSettings(prev => ({ ...prev, multimedia_enabled: enabled }))
+                  }
+                />
+              </div>
+
+              {settings.multimedia_enabled && (
+                <>
+                  {/* Configurações por tipo de mídia */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Tipos de Mídia</h4>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Image className="w-4 h-4" />
+                            <span className="text-sm">Análise de Imagens</span>
+                          </div>
+                          <Switch
+                            checked={settings.multimedia_config?.image_analysis_enabled}
+                            onCheckedChange={(enabled) => 
+                              setSettings(prev => ({
+                                ...prev,
+                                multimedia_config: {
+                                  ...prev.multimedia_config!,
+                                  image_analysis_enabled: enabled
+                                }
+                              }))
+                            }
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Video className="w-4 h-4" />
+                            <span className="text-sm">Análise de Vídeos</span>
+                          </div>
+                          <Switch
+                            checked={settings.multimedia_config?.video_analysis_enabled}
+                            onCheckedChange={(enabled) => 
+                              setSettings(prev => ({
+                                ...prev,
+                                multimedia_config: {
+                                  ...prev.multimedia_config!,
+                                  video_analysis_enabled: enabled
+                                }
+                              }))
+                            }
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <FileText className="w-4 h-4" />
+                            <span className="text-sm">Análise de Documentos</span>
+                          </div>
+                          <Switch
+                            checked={settings.multimedia_config?.document_analysis_enabled}
+                            onCheckedChange={(enabled) => 
+                              setSettings(prev => ({
+                                ...prev,
+                                multimedia_config: {
+                                  ...prev.multimedia_config!,
+                                  document_analysis_enabled: enabled
+                                }
+                              }))
+                            }
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Mic className="w-4 h-4" />
+                            <span className="text-sm">Transcrição de Áudio</span>
+                          </div>
+                          <Switch
+                            checked={settings.multimedia_config?.audio_transcription_enabled}
+                            onCheckedChange={(enabled) => 
+                              setSettings(prev => ({
+                                ...prev,
+                                multimedia_config: {
+                                  ...prev.multimedia_config!,
+                                  audio_transcription_enabled: enabled
+                                }
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h4 className="font-medium">Modelos IA</h4>
+                      
+                      <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="image_model">Modelo para Imagens</Label>
+                          <Select 
+                            value={settings.multimedia_config?.image_model || 'gpt-4o'} 
+                            onValueChange={(value) => 
+                              setSettings(prev => ({
+                                ...prev,
+                                multimedia_config: {
+                                  ...prev.multimedia_config!,
+                                  image_model: value
+                                }
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="gpt-4o">GPT-4 Vision (Recomendado)</SelectItem>
+                              <SelectItem value="gpt-4-turbo">GPT-4 Turbo Vision</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label htmlFor="audio_model">Modelo para Áudio</Label>
+                          <Select 
+                            value={settings.multimedia_config?.audio_model || 'whisper-1'} 
+                            onValueChange={(value) => 
+                              setSettings(prev => ({
+                                ...prev,
+                                multimedia_config: {
+                                  ...prev.multimedia_config!,
+                                  audio_model: value
+                                }
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="whisper-1">Whisper (OpenAI)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dashboard de análises */}
+                  <div className="mt-6">
+                    <MultimediaAnalysisDashboard clientId={assistantId} />
+                  </div>
+                </>
+              )}
+              
+            </CardContent>
+          </Card>
+
+          {/* Arquivos de Referência - Movido para a tab de multimídia */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
@@ -370,6 +590,130 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="humanization" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <MessageSquare className="w-5 h-5" />
+                <span>Personalidade & Humanização</span>
+              </CardTitle>
+              <CardDescription>
+                Configure o comportamento humanizado do assistente
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              
+              {/* Switch principal */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <h4 className="font-medium">Ativar Humanização</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Simula comportamentos humanos naturais nas conversas
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.humanization_config?.enabled}
+                  onCheckedChange={(enabled) => 
+                    setSettings(prev => ({
+                      ...prev,
+                      humanization_config: {
+                        ...prev.humanization_config!,
+                        enabled
+                      }
+                    }))
+                  }
+                />
+              </div>
+
+              {settings.humanization_config?.enabled && (
+                <>
+                  {/* Seletor de personalidade */}
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Personalidade</h4>
+                    <Select 
+                      value={settings.humanization_config?.personality_id || 'professional'} 
+                      onValueChange={(value) => 
+                        setSettings(prev => ({
+                          ...prev,
+                          humanization_config: {
+                            ...prev.humanization_config!,
+                            personality_id: value
+                          }
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {personalities.map((personality) => (
+                          <SelectItem key={personality.id} value={personality.id}>
+                            <div>
+                              <div className="font-medium">{personality.name}</div>
+                               <div className="text-sm text-muted-foreground">
+                                 Tom: {personality.tone}
+                               </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Configurações de nível */}
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Nível de Humanização</h4>
+                    <Select 
+                      value={settings.humanization_level} 
+                      onValueChange={(value: 'basic' | 'advanced' | 'maximum') => 
+                        setSettings(prev => ({ ...prev, humanization_level: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="basic">
+                          <div>
+                            <div className="font-medium">Básico</div>
+                            <div className="text-sm text-muted-foreground">Respostas diretas e objetivas</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="advanced">
+                          <div>
+                            <div className="font-medium">Avançado</div>
+                            <div className="text-sm text-muted-foreground">Comportamento mais natural e empático</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="maximum">
+                          <div>
+                            <div className="font-medium">Máximo</div>
+                            <div className="text-sm text-muted-foreground">Muito humano com variações linguísticas</div>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Exemplo de comportamento */}
+                  <div className="bg-muted p-4 rounded-lg">
+                    <h5 className="font-medium mb-2">💡 Comportamentos ativos:</h5>
+                    <ul className="text-sm space-y-1 text-muted-foreground">
+                      <li>• Indicadores de digitação naturais</li>
+                      <li>• Delays humanizados nas respostas</li>
+                      <li>• Status de presença inteligente</li>
+                      <li>• Variação no tom de acordo com a personalidade</li>
+                      <li>• Quebra de mensagens longas</li>
+                    </ul>
+                  </div>
+                </>
+              )}
+              
+            </CardContent>
+          </Card>
+        </TabsContent>
+
 
         <TabsContent value="audio" className="space-y-6">
           <AssistantAudioSettings

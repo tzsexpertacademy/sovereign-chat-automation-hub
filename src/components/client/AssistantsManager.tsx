@@ -17,8 +17,6 @@ import QueuesList from "./QueuesList";
 import AssistantChat from "./AssistantChat";
 import AssistantAdvancedSettings from "./AssistantAdvancedSettings";
 import EvolutionApiStatus from "./EvolutionApiStatus";
-import HumanizedAssistantManager from "./HumanizedAssistantManager";
-import OnlineStatusConfig from "./OnlineStatusConfig";
 
 const AssistantsManager = () => {
   const { clientId } = useParams();
@@ -197,41 +195,39 @@ const AssistantsManager = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Modelo IA</CardTitle>
-            <Settings className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Processamento Multimídia</CardTitle>
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-lg font-bold">{aiConfig?.default_model}</div>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => setShowConfigForm(true)}
-              className="text-xs p-0 h-auto"
-            >
-              Alterar configuração
-            </Button>
+            <div className="text-2xl font-bold">
+              {assistants.filter(a => {
+                try {
+                  const settings = typeof a.advanced_settings === 'string' 
+                    ? JSON.parse(a.advanced_settings) 
+                    : a.advanced_settings;
+                  return settings?.multimedia_enabled;
+                } catch {
+                  return false;
+                }
+              }).length}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              assistentes com IA multimídia
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tabs principais */}
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="overview">
-            <Bot className="h-4 w-4 mr-2" />
-            Visão Geral
-          </TabsTrigger>
+      {/* Tabs principais - Estrutura simplificada */}
+      <Tabs defaultValue="assistants" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="assistants">
-            <Zap className="h-4 w-4 mr-2" />
+            <Bot className="h-4 w-4 mr-2" />
             Assistentes
           </TabsTrigger>
           <TabsTrigger value="queues">
-            <Settings className="h-4 w-4 mr-2" />
+            <Zap className="h-4 w-4 mr-2" />
             Filas
-          </TabsTrigger>
-          <TabsTrigger value="humanized">
-            <Bot className="h-4 w-4 mr-2" />
-            Humanização
           </TabsTrigger>
           <TabsTrigger value="chat">
             <MessageSquare className="h-4 w-4 mr-2" />
@@ -239,64 +235,11 @@ const AssistantsManager = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-6">
+
+        <TabsContent value="assistants" className="space-y-6">
           {/* Status da API Evolution */}
           <EvolutionApiStatus />
           
-          <div className="flex gap-3">
-            <Button onClick={() => setShowAssistantForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Assistente
-            </Button>
-            <Button onClick={() => setShowQueueForm(true)} variant="outline">
-              <Plus className="h-4 w-4 mr-2" />
-              Nova Fila
-            </Button>
-          </div>
-
-          {/* Listas lado a lado */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <AssistantsList 
-              assistants={assistants}
-              onEdit={(assistant) => {
-                setEditingAssistant(assistant);
-                setShowAssistantForm(true);
-              }}
-              onDelete={async (id) => {
-                await assistantsService.deleteAssistant(id);
-                loadData();
-                toast({
-                  title: "Sucesso",
-                  description: "Assistente removido com sucesso"
-                });
-              }}
-              onToggleStatus={async (id, isActive) => {
-                await assistantsService.toggleAssistantStatus(id, isActive);
-                loadData();
-              }}
-              onAdvancedSettings={handleAdvancedSettings}
-            />
-
-            <QueuesList
-              queues={queues}
-              assistants={assistants}
-              onEdit={(queue) => {
-                setEditingQueue(queue);
-                setShowQueueForm(true);
-              }}
-              onDelete={async (id) => {
-                await queuesService.deleteQueue(id);
-                loadData();
-                toast({
-                  title: "Sucesso", 
-                  description: "Fila removida com sucesso"
-                });
-              }}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="assistants" className="space-y-6">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold">Gerenciar Assistentes</h2>
             <Button onClick={() => setShowAssistantForm(true)}>
@@ -354,12 +297,6 @@ const AssistantsManager = () => {
           />
         </TabsContent>
 
-        <TabsContent value="humanized" className="space-y-6">
-          <div className="space-y-6">
-            <HumanizedAssistantManager clientId={clientId!} />
-            <OnlineStatusConfig clientId={clientId!} />
-          </div>
-        </TabsContent>
 
         <TabsContent value="chat" className="space-y-6">
           <AssistantChat 
