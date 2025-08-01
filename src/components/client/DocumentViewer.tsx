@@ -32,110 +32,21 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   chatId,
   message
 }) => {
-  const [displayDocumentUrl, setDisplayDocumentUrl] = useState<string>('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
 
-  useEffect(() => {
-    const processDocument = async () => {
-      if (!documentUrl && !messageId) {
-        setError('Documento não disponível');
-        return;
-      }
+  // Hook unificado para gerenciar mídia
+  const { displayUrl, isLoading, error, isFromCache, retry, hasRetried } = useUnifiedMedia({
+    messageId: messageId || `doc_${Date.now()}`,
+    mediaUrl: documentUrl,
+    mediaKey,
+    fileEncSha256,
+    directPath,
+    mimetype: fileType || 'application/pdf',
+    contentType: 'document',
+    documentBase64: message?.document_base64
+  });
 
-      setIsProcessing(true);
-      setError('');
-
-      console.log('📄 DocumentViewer: Processando documento:', {
-        hasDocumentUrl: !!documentUrl,
-        hasMessageId: !!messageId,
-        hasMediaKey: !!mediaKey,
-        needsDecryption,
-        fileType
-      });
-
-      try {
-        // PRIORIDADE 1: Se há document_base64 na prop message, usar ele SEMPRE
-        if (message?.document_base64) {
-          console.log('✅ DocumentViewer: Usando document_base64 da prop message');
-          const mimeType = fileType || message.media_mime_type || 'application/octet-stream';
-          const dataUrl = `data:${mimeType};base64,${message.document_base64}`;
-          setDisplayDocumentUrl(dataUrl);
-          setIsProcessing(false);
-          return;
-        }
-
-        // PRIORIDADE 2: Para mensagens manuais sem base64, mostrar erro específico
-        const isManualMessage = messageId?.startsWith('manual_');
-        if (isManualMessage) {
-          console.log('❌ DocumentViewer: Mensagem manual sem document_base64 salvo');
-          setError('Documento manual não disponível - base64 não foi salvo corretamente');
-          return;
-        }
-
-        // PRIORIDADE 3: Mensagens recebidas com mediaKey -> servidor descriptografa
-        if (documentUrl && mediaKey) {
-          console.log('📡 DocumentViewer: Obtendo documento descriptografado do servidor');
-          
-          const currentUrl = window.location.pathname;
-          const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
-          const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
-          
-          if (ticketId) {
-            const { data: ticketData } = await supabase
-              .from('conversation_tickets')
-              .select('instance_id')
-              .eq('id', ticketId)
-              .single();
-            
-            if (ticketData?.instance_id) {
-              const result = await directMediaDownloadService.processMedia(
-                ticketData.instance_id,
-                messageId || `doc_${Date.now()}`,
-                documentUrl,
-                mediaKey,
-                directPath,
-                fileType || 'application/octet-stream',
-                'document'
-              );
-
-              if (result.success && result.mediaUrl) {
-                console.log('✅ DocumentViewer: Documento pronto para exibição');
-                setDisplayDocumentUrl(result.mediaUrl);
-                return;
-              }
-              
-              console.log('❌ DocumentViewer: Falha ao obter documento do servidor');
-            }
-          }
-        }
-
-        // FALLBACK FINAL: URL original
-        if (documentUrl) {
-          console.log('🔄 DocumentViewer: Fallback final - URL original');
-          setDisplayDocumentUrl(documentUrl);
-          return;
-        }
-
-        // Falha total
-        setError('Documento não disponível');
-
-      } catch (error) {
-        console.error('❌ DocumentViewer: Erro no processamento:', error);
-        setError('Erro ao carregar documento');
-        
-        // Último fallback
-        if (documentUrl) {
-          setDisplayDocumentUrl(documentUrl);
-        }
-      } finally {
-        setIsProcessing(false);
-      }
-    };
-
-    processDocument();
-  }, [documentUrl, messageId, mediaKey, directPath, fileType, needsDecryption, instanceId, chatId]);
+  // Usar displayUrl do hook unificado
 
   const getFileIcon = (fileName: string, fileType?: string) => {
     const extension = fileName.split('.').pop()?.toLowerCase();
@@ -165,7 +76,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   };
 
   const handleDownload = async () => {
-    if (!displayDocumentUrl) return;
+    if (!displayUrl) return;
     
     try {
       // Garantir que o arquivo tenha a extensão correta
@@ -183,8 +94,8 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       }
       
       // Se for blob URL, fazer nova requisição para garantir download
-      if (displayDocumentUrl.startsWith('blob:')) {
-        const response = await fetch(displayDocumentUrl);
+      if (displayUrl.startsWith('blob:')) {
+        const response = await fetch(displayUrl);
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         
@@ -200,7 +111,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       } else {
         // Para URLs regulares
         const link = document.createElement('a');
-        link.href = displayDocumentUrl;
+        link.href = displayUrl;
         link.download = downloadFileName;
         document.body.appendChild(link);
         link.click();
@@ -210,12 +121,11 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       console.log('✅ DocumentViewer: Download iniciado com sucesso:', downloadFileName);
     } catch (error) {
       console.error('❌ DocumentViewer: Erro no download:', error);
-      setError('Erro ao baixar documento');
     }
   };
 
   const handlePreview = () => {
-    if (displayDocumentUrl && canPreview(fileName, fileType)) {
+    if (displayUrl && canPreview(fileName, fileType)) {
       setShowPreview(true);
     }
   };
@@ -225,33 +135,35 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     return 'Tamanho desconhecido';
   };
 
-  if (isProcessing) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center p-6 bg-gray-100 rounded-lg">
         <div className="flex items-center gap-3">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-gray-600">Processando documento...</span>
+          <span className="text-gray-600">Carregando documento...</span>
         </div>
       </div>
     );
   }
 
-  if (error && !displayDocumentUrl) {
+  if (error && !displayUrl) {
     return (
       <div className="flex flex-col items-center justify-center p-6 bg-red-50 border border-red-200 rounded-lg">
         <div className="text-red-600 text-center">
           <p className="font-medium">Erro ao carregar documento</p>
           <p className="text-sm mt-1">{error}</p>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="mt-3"
-          onClick={() => window.location.reload()}
-        >
-          <RotateCcw className="w-4 h-4 mr-2" />
-          Tentar novamente
-        </Button>
+        {!hasRetried && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="mt-3"
+            onClick={retry}
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Tentar novamente
+          </Button>
+        )}
       </div>
     );
   }
@@ -259,7 +171,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   return (
     <div className="max-w-sm">
       {/* Preview Modal para PDFs */}
-      {showPreview && displayDocumentUrl && canPreview(fileName, fileType) && (
+      {showPreview && displayUrl && canPreview(fileName, fileType) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowPreview(false)}>
           <div className="bg-white rounded-lg p-4 max-w-4xl max-h-[90vh] w-full mx-4">
             <div className="flex justify-between items-center mb-4">
@@ -269,12 +181,11 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
               </Button>
             </div>
             <iframe
-              src={displayDocumentUrl}
+              src={displayUrl}
               className="w-full h-[70vh] border rounded"
               title={fileName}
               onError={(e) => {
                 console.error('❌ DocumentViewer: Erro no iframe:', e);
-                setError('Erro ao exibir PDF');
               }}
             />
           </div>
@@ -295,7 +206,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
               {fileName}
             </h4>
             <p className="text-xs text-gray-500 mt-1">
-              {formatFileSize(displayDocumentUrl || '')}
+              {formatFileSize(displayUrl || '')}
             </p>
             
             {/* Caption */}
@@ -313,7 +224,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             variant="outline"
             size="sm"
             onClick={handleDownload}
-            disabled={!displayDocumentUrl}
+            disabled={!displayUrl}
             className="flex-1"
           >
             <Download className="w-4 h-4 mr-2" />
@@ -325,7 +236,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
               variant="outline"
               size="sm"
               onClick={handlePreview}
-              disabled={!displayDocumentUrl}
+              disabled={!displayUrl}
             >
               <ExternalLink className="w-4 h-4 mr-2" />
               Visualizar

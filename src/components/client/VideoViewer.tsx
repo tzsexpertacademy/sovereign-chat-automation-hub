@@ -41,94 +41,15 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
     videoBase64: message?.video_base64
   });
 
-  useEffect(() => {
-    const initializeVideo = async () => {
-      // PRIORIDADE 1: Se há video_base64 na prop message, usar ele SEMPRE
-      if (message?.video_base64) {
-        console.log('✅ VideoViewer: Usando video_base64 da prop message');
-        const mimeType = message.media_mime_type || 'video/mp4';
-        const dataUrl = `data:${mimeType};base64,${message.video_base64}`;
-        setDisplayVideoUrl(dataUrl);
-        setIsDecrypting(false);
-        return;
-      }
-
-      if (!videoUrl) {
-        setError('URL do vídeo não disponível');
-        return;
-      }
-
-      // PRIORIDADE 2: Para mensagens manuais sem base64, mostrar erro específico
-      const isManualMessage = messageId?.startsWith('manual_');
-      if (isManualMessage) {
-        console.log('❌ VideoViewer: Mensagem manual sem video_base64 salvo');
-        setError('Vídeo manual não disponível - base64 não foi salvo corretamente');
-        return;
-      }
-
-      // PRIORIDADE 3: Mensagens recebidas com mediaKey -> servidor descriptografa
-      if (mediaKey) {
-        console.log('📡 VideoViewer: Obtendo vídeo descriptografado do servidor');
-        setError('');
-
-        try {
-          const { directMediaDownloadService } = await import('@/services/directMediaDownloadService');
-          
-          const currentUrl = window.location.pathname;
-          const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
-          const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
-          
-          let instanceId = 'default';
-          if (ticketId) {
-            const { supabase } = await import('@/integrations/supabase/client');
-            const { data: ticketData } = await supabase
-              .from('conversation_tickets')
-              .select('instance_id')
-              .eq('id', ticketId)
-              .single();
-            
-            if (ticketData?.instance_id) {
-              instanceId = ticketData.instance_id;
-            }
-          }
-
-          const result = await directMediaDownloadService.processMedia(
-            instanceId,
-            messageId || `video_${Date.now()}`,
-            videoUrl,
-            mediaKey,
-            undefined, // directPath
-            'video/mp4',
-            'video'
-          );
-          
-          if (result.success && result.mediaUrl) {
-            console.log('✅ VideoViewer: Vídeo pronto para exibição');
-            setDisplayVideoUrl(result.mediaUrl);
-            return;
-          } else {
-            console.log('❌ VideoViewer: Falha ao obter vídeo do servidor');
-          }
-        } catch (err) {
-          console.error('❌ VideoViewer: Erro ao obter vídeo:', err);
-        }
-      }
-      
-      // FALLBACK FINAL: URL original
-      console.log('🔄 VideoViewer: Usando URL original como fallback');
-      setDisplayVideoUrl(videoUrl);
-    };
-
-    initializeVideo();
-  }, [videoUrl, messageId, mediaKey, fileEncSha256, needsDecryption]);
+  // Remover lógica antiga - usar apenas o hook unificado
 
   const handleDownload = async () => {
-    if (!displayVideoUrl) return;
+    if (!displayUrl) return;
     
     try {
       // Se for blob URL, fazer nova requisição para garantir download
-      if (displayVideoUrl.startsWith('blob:')) {
-        const response = await fetch(displayVideoUrl);
+      if (displayUrl.startsWith('blob:')) {
+        const response = await fetch(displayUrl);
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         
@@ -144,7 +65,7 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
       } else {
         // Para URLs regulares
         const link = document.createElement('a');
-        link.href = displayVideoUrl;
+        link.href = displayUrl;
         link.download = fileName || 'video.mp4';
         document.body.appendChild(link);
         link.click();
@@ -154,7 +75,6 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
       console.log('✅ VideoViewer: Download iniciado com sucesso');
     } catch (error) {
       console.error('❌ VideoViewer: Erro no download:', error);
-      setError('Erro ao baixar vídeo');
     }
   };
 
@@ -178,36 +98,37 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
 
   const handleVideoError = () => {
     console.log('❌ VideoViewer: Erro ao carregar vídeo');
-    setError('Erro ao carregar vídeo');
   };
 
-  if (isDecrypting) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8 bg-gray-100 rounded-lg">
         <div className="flex items-center gap-3">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-gray-600">Descriptografando vídeo...</span>
+          <span className="text-gray-600">Carregando vídeo...</span>
         </div>
       </div>
     );
   }
 
-  if (error && !displayVideoUrl) {
+  if (error && !displayUrl) {
     return (
       <div className="flex flex-col items-center justify-center p-8 bg-red-50 border border-red-200 rounded-lg">
         <div className="text-red-600 text-center">
           <p className="font-medium">Erro ao carregar vídeo</p>
           <p className="text-sm mt-1">{error}</p>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="mt-3"
-          onClick={() => window.location.reload()}
-        >
-          <RotateCcw className="w-4 h-4 mr-2" />
-          Tentar novamente
-        </Button>
+        {!hasRetried && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="mt-3"
+            onClick={retry}
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Tentar novamente
+          </Button>
+        )}
       </div>
     );
   }
@@ -215,10 +136,10 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
   return (
     <div className="max-w-md">
       <div className="relative bg-black rounded-lg overflow-hidden">
-        {displayVideoUrl ? (
+        {displayUrl ? (
           <video
             ref={setVideoRef}
-            src={displayVideoUrl}
+            src={displayUrl}
             controls
             className="w-full h-auto max-h-64"
             onError={handleVideoError}
@@ -233,16 +154,21 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
             <Play className="w-8 h-8" />
           </div>
         )}
+        {isFromCache && displayUrl && (
+          <div className="absolute top-2 right-2 bg-green-600 text-white text-xs px-2 py-1 rounded">
+            Cache
+          </div>
+        )}
       </div>
 
-      {/* Controles personalizados (opcional - o HTML5 já tem controles) */}
+      {/* Controles personalizados */}
       <div className="flex items-center justify-between mt-2 px-2">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={handlePlayPause}
-            disabled={!displayVideoUrl}
+            disabled={!displayUrl}
           >
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           </Button>
@@ -251,20 +177,33 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleMuteToggle}
-            disabled={!displayVideoUrl}
+            disabled={!displayUrl}
           >
             {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </Button>
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleDownload}
-          disabled={!displayVideoUrl}
-        >
-          <Download className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {error && !hasRetried && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={retry}
+              title="Tentar novamente"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </Button>
+          )}
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDownload}
+            disabled={!displayUrl}
+          >
+            <Download className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Caption */}
