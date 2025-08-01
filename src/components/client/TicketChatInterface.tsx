@@ -251,6 +251,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         getMessageStatus={(messageId: string) => getMessageStatus(messageId)}
         ticketId={ticketId}
         instanceId={ticket?.instance_id}
+        chatId={ticket?.chat_id}
         wsConnected={isSupabaseActive}
         isFallbackActive={!isSupabaseActive}
         isCircuitBreakerBlocked={false}

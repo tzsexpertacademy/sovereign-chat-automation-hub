@@ -21,6 +21,7 @@ interface MessagesListProps {
   getMessageStatus: (messageId: string) => 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   ticketId?: string;
   instanceId?: string;
+  chatId?: string;
   // Status do sistema em tempo real
   wsConnected?: boolean;
   isFallbackActive?: boolean;
@@ -34,6 +35,7 @@ const MessagesList = memo(({
   getMessageStatus, 
   ticketId, 
   instanceId,
+  chatId,
   wsConnected = false,
   isFallbackActive = false,
   isCircuitBreakerBlocked = false,
@@ -191,6 +193,8 @@ const MessagesList = memo(({
             caption={adaptedData.caption}
             fileName={adaptedData.fileName}
             fileType={adaptedData.fileType}
+            instanceId={instanceId}
+            chatId={chatId}
           />
           
           <div className="flex items-center gap-2 text-xs text-gray-600">
@@ -222,7 +226,7 @@ const MessagesList = memo(({
       }
       return part;
     });
-  }, []);
+  }, [instanceId, chatId]);
 
   // Memoizar lista de mensagens ordenadas por timestamp
   const memoizedMessages = useMemo(() => {

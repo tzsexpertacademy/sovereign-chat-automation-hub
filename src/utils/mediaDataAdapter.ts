@@ -15,8 +15,21 @@ export const adaptMessageMedia = (message: any): AdaptedMediaData => {
   // Normalizar campos do banco para interface consistente
   const messageId = message.message_id || message.id;
   const mediaUrl = message.media_url;
-  const mediaKey = message.media_key || message.mediaKey;
-  const fileEncSha256 = message.file_enc_sha256 || message.fileEncSha256;
+  
+  // Processar media_key - converter JSON para string se necessário
+  let mediaKey = message.media_key || message.mediaKey;
+  if (mediaKey && typeof mediaKey === 'object') {
+    console.warn('⚠️ MediaAdapter: Convertendo media_key de JSON para string:', messageId);
+    mediaKey = JSON.stringify(mediaKey);
+  }
+  
+  // Processar file_enc_sha256 - converter JSON para string se necessário
+  let fileEncSha256 = message.file_enc_sha256 || message.fileEncSha256;
+  if (fileEncSha256 && typeof fileEncSha256 === 'object') {
+    console.warn('⚠️ MediaAdapter: Convertendo file_enc_sha256 de JSON para string:', messageId);
+    fileEncSha256 = JSON.stringify(fileEncSha256);
+  }
+  
   const fileName = message.media_filename || message.fileName || `media_${messageId}`;
   const fileType = message.media_mimetype || message.mimetype;
   const caption = message.content !== '🎵 Áudio' && message.content !== '🖼️ Imagem' && 
@@ -24,11 +37,10 @@ export const adaptMessageMedia = (message: any): AdaptedMediaData => {
                   ? message.content : undefined;
   const duration = message.media_duration;
 
-  // Determinar se precisa de descriptografia
+  // Determinar se precisa de processamento via API (qualquer mídia com .enc)
   const needsDecryption = !!(
     mediaUrl?.includes('.enc') && 
-    mediaKey && 
-    fileEncSha256
+    mediaKey
   );
 
 // Cache estático para throttling de logs (evitar spam)

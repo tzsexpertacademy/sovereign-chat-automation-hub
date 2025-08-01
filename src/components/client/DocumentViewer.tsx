@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, FileText, File, FileImage, FileVideo, FileAudio, RotateCcw, ExternalLink } from 'lucide-react';
-import { unifiedMediaService } from '@/services/unifiedMediaService';
+import { mediaDisplayService } from '@/services/mediaDisplayService';
 
 interface DocumentViewerProps {
   documentUrl?: string;
@@ -12,6 +12,8 @@ interface DocumentViewerProps {
   caption?: string;
   fileName?: string;
   fileType?: string;
+  instanceId?: string;
+  chatId?: string;
 }
 
 const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -22,73 +24,80 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   needsDecryption = false,
   caption,
   fileName = 'document',
-  fileType
+  fileType,
+  instanceId,
+  chatId
 }) => {
   const [displayDocumentUrl, setDisplayDocumentUrl] = useState<string>('');
-  const [isDecrypting, setIsDecrypting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     const initializeDocument = async () => {
-      if (!documentUrl) {
+      if (!documentUrl && !messageId) {
         setError('URL do documento não disponível');
         return;
       }
 
-      // Se não precisa de descriptografia, usar URL direta
-      if (!needsDecryption) {
+      // Se tem URL direta e não precisa descriptografar, usar diretamente
+      if (documentUrl && !needsDecryption) {
         console.log('📄 DocumentViewer: Usando URL direta');
         setDisplayDocumentUrl(documentUrl);
         return;
       }
 
-      // Verificar se tem dados necessários para descriptografia
-      if (!messageId || !mediaKey || !fileEncSha256) {
-        console.log('❌ DocumentViewer: Dados insuficientes para descriptografia, tentando URL direta');
-        setDisplayDocumentUrl(documentUrl);
-        return;
-      }
+      // Usar MediaDisplayService para download via API nativa
+      if (messageId && instanceId && chatId) {
+        console.log('🔄 DocumentViewer: Processando via MediaDisplayService');
+        setIsProcessing(true);
+        setError('');
 
-      // Tentar descriptografar
-      console.log('🔐 DocumentViewer: Iniciando descriptografia', { messageId, hasMediaKey: !!mediaKey });
-      setIsDecrypting(true);
-      setError('');
+        try {
+          const result = await mediaDisplayService.displayMedia({
+            instanceId,
+            messageId,
+            chatId,
+            mediaUrl: documentUrl || '',
+            mediaKey: mediaKey || '',
+            directPath: '',
+            mimetype: fileType || 'application/octet-stream',
+            contentType: 'document'
+          });
 
-      try {
-
-        const result = await unifiedMediaService.processDocument(
-          messageId,
-          '', // instanceId será obtido dentro do serviço
-          {
-            url: documentUrl,
-            mimetype: fileType || 'application/pdf',
-            mediaKey: mediaKey,
-            directPath: ''
+          if (result.success && result.mediaUrl) {
+            console.log('✅ DocumentViewer: Documento processado com sucesso via', result.strategy);
+            setDisplayDocumentUrl(result.mediaUrl);
+          } else {
+            console.log('❌ DocumentViewer: Falha no processamento:', result.error);
+            setError(result.error || 'Falha ao processar documento');
+            // Fallback para URL original se disponível
+            if (documentUrl) {
+              setDisplayDocumentUrl(documentUrl);
+            }
           }
-        );
-        
-        const processedUrl = result?.success ? result.mediaUrl : null;
-        
-        if (processedUrl) {
-          console.log('✅ DocumentViewer: Processamento bem-sucedido');
-          setDisplayDocumentUrl(processedUrl);
-        } else {
-          console.log('❌ DocumentViewer: Falha no processamento, tentando URL direta');
-          // Fallback: tentar URL original
-          setDisplayDocumentUrl(documentUrl);
+        } catch (err) {
+          console.error('❌ DocumentViewer: Erro no processamento:', err);
+          setError('Erro ao carregar documento');
+          // Fallback para URL original se disponível
+          if (documentUrl) {
+            setDisplayDocumentUrl(documentUrl);
+          }
+        } finally {
+          setIsProcessing(false);
         }
-      } catch (err) {
-        console.error('❌ DocumentViewer: Erro na descriptografia:', err);
-        // Fallback: tentar URL original
-        setDisplayDocumentUrl(documentUrl);
-      } finally {
-        setIsDecrypting(false);
+      } else {
+        console.log('❌ DocumentViewer: Dados insuficientes para processamento');
+        if (documentUrl) {
+          setDisplayDocumentUrl(documentUrl);
+        } else {
+          setError('Dados insuficientes para carregar documento');
+        }
       }
     };
 
     initializeDocument();
-  }, [documentUrl, messageId, mediaKey, fileEncSha256, needsDecryption]);
+  }, [documentUrl, messageId, mediaKey, fileEncSha256, needsDecryption, instanceId, chatId]);
 
   const getFileIcon = (fileName: string, fileType?: string) => {
     const extension = fileName.split('.').pop()?.toLowerCase();
@@ -140,12 +149,12 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     return 'Tamanho desconhecido';
   };
 
-  if (isDecrypting) {
+  if (isProcessing) {
     return (
       <div className="flex items-center justify-center p-6 bg-gray-100 rounded-lg">
         <div className="flex items-center gap-3">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-gray-600">Descriptografando documento...</span>
+          <span className="text-gray-600">Processando documento...</span>
         </div>
       </div>
     );
@@ -248,9 +257,10 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       {/* Informações de debug (somente em desenvolvimento) */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-2 text-xs text-gray-500">
-          <div>Descriptografia: {needsDecryption ? 'Necessária' : 'Não necessária'}</div>
+          <div>Processamento: {needsDecryption ? 'API nativa' : 'URL direta'}</div>
           <div>Tipo: {fileType || 'Desconhecido'}</div>
           {messageId && <div>ID: {messageId}</div>}
+          {instanceId && <div>Instance: {instanceId}</div>}
         </div>
       )}
     </div>
