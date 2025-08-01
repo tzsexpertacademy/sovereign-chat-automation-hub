@@ -58,16 +58,14 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         return;
       }
 
-      // PRIORIDADE 3: Para mensagens que precisam de descriptografia
+      // PRIORIDADE 3: Mensagens recebidas com mediaKey -> servidor descriptografa
       if (mediaKey) {
-        console.log('🔓 VideoViewer: Tentando descriptografar via DirectMediaDownloadService');
-        setIsDecrypting(true);
+        console.log('📡 VideoViewer: Obtendo vídeo descriptografado do servidor');
         setError('');
 
         try {
           const { directMediaDownloadService } = await import('@/services/directMediaDownloadService');
           
-          // Buscar instanceId do contexto atual
           const currentUrl = window.location.pathname;
           const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
           const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
@@ -85,14 +83,6 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
               instanceId = ticketData.instance_id;
             }
           }
-          
-          console.log('🔍 VideoViewer: Chamando processMedia com dados:', {
-            instanceId,
-            messageId: messageId || `video_${Date.now()}`,
-            videoUrl,
-            mediaKey: typeof mediaKey,
-            mimetype: 'video/mp4'
-          });
 
           const result = await directMediaDownloadService.processMedia(
             instanceId,
@@ -103,20 +93,16 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
             'video/mp4',
             'video'
           );
-
-          console.log('📊 VideoViewer: Resultado processMedia:', result);
           
           if (result.success && result.mediaUrl) {
-            console.log('✅ VideoViewer: Descriptografia bem-sucedida');
+            console.log('✅ VideoViewer: Vídeo pronto para exibição');
             setDisplayVideoUrl(result.mediaUrl);
             return;
           } else {
-            console.log('⚠️ VideoViewer: Descriptografia falhou, usando fallback');
+            console.log('❌ VideoViewer: Falha ao obter vídeo do servidor');
           }
         } catch (err) {
-          console.error('❌ VideoViewer: Erro na descriptografia:', err);
-        } finally {
-          setIsDecrypting(false);
+          console.error('❌ VideoViewer: Erro ao obter vídeo:', err);
         }
       }
       

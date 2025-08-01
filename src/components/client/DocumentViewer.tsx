@@ -75,9 +75,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
           return;
         }
 
-        // PRIORIDADE 3: Para mensagens que precisam de descriptografia
+        // PRIORIDADE 3: Mensagens recebidas com mediaKey -> servidor descriptografa
         if (documentUrl && mediaKey) {
-          console.log('🔓 DocumentViewer: Tentando descriptografar via DirectMediaDownloadService');
+          console.log('📡 DocumentViewer: Obtendo documento descriptografado do servidor');
           
           const currentUrl = window.location.pathname;
           const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
@@ -91,15 +91,6 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
               .single();
             
             if (ticketData?.instance_id) {
-              console.log('🔍 DocumentViewer: Chamando processMedia com dados:', {
-                instanceId: ticketData.instance_id,
-                messageId: messageId || `doc_${Date.now()}`,
-                documentUrl,
-                mediaKey: typeof mediaKey,
-                directPath,
-                mimetype: fileType || 'application/octet-stream'
-              });
-
               const result = await directMediaDownloadService.processMedia(
                 ticketData.instance_id,
                 messageId || `doc_${Date.now()}`,
@@ -110,15 +101,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 'document'
               );
 
-              console.log('📊 DocumentViewer: Resultado processMedia:', result);
-
               if (result.success && result.mediaUrl) {
-                console.log('✅ DocumentViewer: Descriptografia bem-sucedida');
+                console.log('✅ DocumentViewer: Documento pronto para exibição');
                 setDisplayDocumentUrl(result.mediaUrl);
                 return;
               }
               
-              console.log('⚠️ DocumentViewer: Descriptografia falhou, usando fallback');
+              console.log('❌ DocumentViewer: Falha ao obter documento do servidor');
             }
           }
         }

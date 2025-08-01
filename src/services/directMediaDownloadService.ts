@@ -85,20 +85,12 @@ class DirectMediaDownloadService {
     try {
       console.log('🔄 DirectMedia: Processando', contentType);
       
-      // FALLBACK 1: Para mensagens manuais sem mediaKey - usar URL diretamente
-      if (!mediaKey || !directPath) {
-        console.log('📁 DirectMedia: Fallback - usando URL direta (sem descriptografia)');
-        const response = await fetch(mediaUrl);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-        }
-        
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        
+      // Para mensagens manuais sem mediaKey - usar URL diretamente
+      if (!mediaKey) {
+        console.log('📁 DirectMedia: Mensagem manual - usando URL direta');
         return {
           success: true,
-          mediaUrl: blobUrl,
+          mediaUrl: mediaUrl,
           cached: false
         };
       }
@@ -191,15 +183,14 @@ class DirectMediaDownloadService {
           throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
 
-        // Response é binário direto
-        const arrayBuffer = await response.arrayBuffer();
-        const blob = new Blob([arrayBuffer], { type: mimetype });
+        // O servidor já retornou o blob descriptografado - usar diretamente
+        const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
         
         // Cachear resultado no cache unificado
         unifiedMediaCache.set(instanceId, messageId, blobUrl, 'DirectMedia', mediaKey, mimetype);
         
-        console.log('✅ DirectMedia: Download bem-sucedido para', contentType);
+        console.log('✅ DirectMedia: Mídia descriptografada pelo servidor e pronta para uso');
         return {
           success: true,
           mediaUrl: blobUrl,

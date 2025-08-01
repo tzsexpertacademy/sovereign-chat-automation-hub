@@ -77,10 +77,9 @@ const ImageViewer = ({
           return;
         }
         
-        // PRIORIDADE 3: Para mensagens que precisam de descriptografia
+        // PRIORIDADE 3: Mensagens recebidas com mediaKey -> servidor descriptografa
         if (imageUrl && mediaKey) {
-          console.log('🔓 ImageViewer: Tentando descriptografar via DirectMediaDownloadService');
-          setIsDecrypting(true);
+          console.log('📡 ImageViewer: Obtendo imagem descriptografada do servidor');
           
           const currentUrl = window.location.pathname;
           const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
@@ -94,15 +93,6 @@ const ImageViewer = ({
               .single();
             
             if (ticketData?.instance_id) {
-              console.log('🔍 ImageViewer: Chamando processMedia com dados:', {
-                instanceId: ticketData.instance_id,
-                messageId: messageId || `img_${Date.now()}`,
-                imageUrl,
-                mediaKey: typeof mediaKey,
-                directPath,
-                mimetype: mediaMimeType || 'image/jpeg'
-              });
-
               const result = await directMediaDownloadService.processMedia(
                 ticketData.instance_id,
                 messageId || `img_${Date.now()}`,
@@ -113,15 +103,13 @@ const ImageViewer = ({
                 'image'
               );
 
-              console.log('📊 ImageViewer: Resultado processMedia:', result);
-
               if (result.success && result.mediaUrl) {
-                console.log('✅ ImageViewer: Descriptografia bem-sucedida');
+                console.log('✅ ImageViewer: Imagem pronta para exibição');
                 setDisplayImageUrl(result.mediaUrl);
                 return;
               }
               
-              console.log('⚠️ ImageViewer: Descriptografia falhou, usando fallback');
+              console.log('❌ ImageViewer: Falha ao obter imagem do servidor');
             }
           }
         }
