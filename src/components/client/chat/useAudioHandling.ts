@@ -83,15 +83,19 @@ export const useAudioHandling = (ticketId: string) => {
       );
 
       if (result.success) {
-        // Salvar dados do áudio para reprodução
+        // 🔥 CORREÇÃO CRÍTICA: Salvar o áudio OTIMIZADO (que foi enviado)
+        // para garantir que funcione perfeitamente na reprodução
         try {
-          const base64Audio = await AudioConverter.blobToBase64(audioBlob);
+          console.log('💾 Salvando áudio otimizado no banco para reprodução instantânea...');
+          const base64Audio = await AudioConverter.blobToBase64(optimizedAudioBlob);
+          
           await supabase
             .from('ticket_messages')
             .update({ 
               processing_status: 'completed',
               content: `🎵 ${result.message} (${duration}s)`,
               audio_base64: base64Audio,
+              media_duration: Math.round(duration),
               // Para áudios enviados do frontend, salvamos apenas o base64
               // pois não precisam de descriptografia
               media_url: null, // URLs diretas serão tratadas como fallback
@@ -99,6 +103,13 @@ export const useAudioHandling = (ticketId: string) => {
               file_enc_sha256: null
             })
             .eq('message_id', messageId);
+            
+          console.log('✅ Áudio salvo no banco:', {
+            messageId,
+            base64Size: base64Audio.length,
+            duration: Math.round(duration),
+            status: 'completed'
+          });
         } catch (dbError) {
           console.warn('⚠️ Erro ao salvar no banco:', dbError);
         }

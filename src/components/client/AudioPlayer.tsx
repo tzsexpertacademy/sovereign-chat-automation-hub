@@ -186,7 +186,7 @@ const AudioPlayer = ({
       });
 
       try {
-        // 1. PRIORIDADE: Dados base64 já descriptografados
+        // 🔥 1. PRIORIDADE MÁXIMA: Dados base64 já descriptografados (funciona instantaneamente)
         if (audioData && !audioUrl?.includes('.enc')) {
           console.log('✅ Player: Usando dados base64 descriptografados');
           const sources = createAudioSources(audioData);

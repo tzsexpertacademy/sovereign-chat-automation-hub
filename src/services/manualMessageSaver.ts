@@ -13,6 +13,9 @@ export interface ManualMessageData {
   mimeType?: string;
   caption?: string;
   clientId: string;
+  // 🎵 ÁUDIO: Novos campos para garantir funcionamento instantâneo
+  audioBase64?: string;
+  mediaDuration?: number;
 }
 
 class ManualMessageSaver {
@@ -33,6 +36,9 @@ class ManualMessageSaver {
         media_key: data.mediaKey ? this.ensureBase64String(data.mediaKey) : null,
         file_enc_sha256: data.fileEncSha256 ? this.ensureBase64String(data.fileEncSha256) : null,
         media_mime_type: data.mimeType,
+        media_duration: data.mediaDuration,
+        // 🎵 ÁUDIO: Base64 para funcionamento instantâneo
+        audio_base64: data.audioBase64,
         // 🔥 PROPRIEDADES ADICIONAIS PARA CONTROLE
         is_internal_note: false,
         is_ai_response: false,
@@ -112,6 +118,7 @@ class ManualMessageSaver {
       let mediaUrl = data.mediaUrl;
       let mediaKey = data.mediaKey;
       let fileEncSha256 = data.fileEncSha256;
+      let mediaDuration = data.mediaDuration;
 
       if (data.uploadResponse) {
         // ✅ Suporte a estruturas diferentes de resposta
@@ -119,13 +126,28 @@ class ManualMessageSaver {
         mediaUrl = mediaData.url || mediaUrl;
         mediaKey = mediaData.mediaKey || mediaKey;
         fileEncSha256 = mediaData.fileEncSha256 || fileEncSha256;
+        mediaDuration = mediaData.duration || mediaDuration;
         
         console.log('🔍 Dados extraídos do upload:', {
           hasUrl: !!mediaUrl,
           hasKey: !!mediaKey,
           hasHash: !!fileEncSha256,
+          duration: mediaDuration,
           keyType: typeof mediaKey
         });
+      }
+
+      // 🎵 CORREÇÃO ESPECÍFICA PARA ÁUDIO: Converter Blob para Base64
+      let audioBase64 = data.audioBase64;
+      if (data.messageType === 'audio' && data.mediaFile && !audioBase64) {
+        try {
+          console.log('🎵 Convertendo áudio manual para base64...');
+          const { AudioConverter } = await import('@/utils/audioConverter');
+          audioBase64 = await AudioConverter.blobToBase64(data.mediaFile);
+          console.log('✅ Áudio convertido:', { size: audioBase64.length });
+        } catch (audioError) {
+          console.warn('⚠️ Erro ao converter áudio:', audioError);
+        }
       }
 
       return await this.saveManualMessage({
@@ -133,6 +155,8 @@ class ManualMessageSaver {
         mediaUrl,
         mediaKey,
         fileEncSha256,
+        mediaDuration,
+        audioBase64,
         content: data.caption || `📎 ${data.messageType}`,
         fileName: data.fileName || data.mediaFile.name,
         mimeType: data.mimeType || data.mediaFile.type
