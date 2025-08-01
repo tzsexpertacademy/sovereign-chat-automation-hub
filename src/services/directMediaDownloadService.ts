@@ -174,7 +174,7 @@ class DirectMediaDownloadService {
             body: JSON.stringify(requestBody)
           }),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout: API não respondeu em 30s')), 30000)
+            setTimeout(() => reject(new Error('Timeout: API não respondeu em 15s')), 15000)
           )
         ]);
 

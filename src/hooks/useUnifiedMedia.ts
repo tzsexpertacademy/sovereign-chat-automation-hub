@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { directMediaDownloadService } from '@/services/directMediaDownloadService';
 import { supabase } from '@/integrations/supabase/client';
+import { useRetryWithBackoff } from './useRetryWithBackoff';
 
 interface UnifiedMediaData {
   messageId: string;
@@ -38,6 +39,8 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
   const [hasRetried, setHasRetried] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
+  const { retryWithBackoff } = useRetryWithBackoff();
+
   const processMedia = useCallback(async (skipRetry = false) => {
     if (!mediaData.messageId || (!mediaData.mediaUrl && !getBase64Data())) {
       setError('Dados insuficientes para processar mídia');
@@ -61,9 +64,9 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
         return;
       }
 
-      // PRIORIDADE 2: Mensagens recebidas com mediaKey - usar directMediaDownloadService
+      // PRIORIDADE 2: Mensagens recebidas com mediaKey - usar directMediaDownloadService com retry
       if (mediaData.mediaUrl && mediaData.mediaKey) {
-        console.log('🔐 useUnifiedMedia: Processando mídia criptografada');
+        console.log('🔐 useUnifiedMedia: Processando mídia criptografada com retry');
         
         const instanceId = await getInstanceId();
         if (!instanceId) {
@@ -71,24 +74,34 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
           return;
         }
 
-        const result = await directMediaDownloadService.processMedia(
-          instanceId,
-          mediaData.messageId,
-          mediaData.mediaUrl,
-          mediaData.mediaKey,
-          mediaData.directPath,
-          mediaData.mimetype,
-          mediaData.contentType
+        const result = await retryWithBackoff(
+          () => directMediaDownloadService.processMedia(
+            instanceId,
+            mediaData.messageId,
+            mediaData.mediaUrl!,
+            mediaData.mediaKey,
+            mediaData.directPath,
+            mediaData.mimetype,
+            mediaData.contentType
+          ),
+          {
+            maxAttempts: 3,
+            initialDelay: 1000,
+            maxDelay: 10000,
+            backoffMultiplier: 2
+          },
+          `Processamento de ${mediaData.contentType}`
         );
 
         if (result.success && result.mediaUrl) {
-          console.log('✅ useUnifiedMedia: Mídia processada com sucesso');
+          console.log('✅ useUnifiedMedia: Mídia processada com sucesso após retry');
           setDisplayUrl(result.mediaUrl);
           setIsFromCache(result.cached || false);
           return;
         }
 
-        console.warn('⚠️ useUnifiedMedia: Falha no processamento, tentando fallbacks');
+        console.warn('⚠️ useUnifiedMedia: Falha no processamento mesmo com retry, tentando fallbacks');
+        setError(`Falha no processamento: ${result.error}`);
       }
 
       // PRIORIDADE 3: URL direta (fallback)
@@ -113,11 +126,11 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
         return;
       }
       
-      setError('Erro ao carregar mídia');
+      setError(`Erro ao carregar mídia: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     } finally {
       setIsLoading(false);
     }
-  }, [mediaData, retryCount]);
+  }, [mediaData, retryCount, retryWithBackoff]);
 
   const getBase64Data = (): string | null => {
     switch (mediaData.contentType) {

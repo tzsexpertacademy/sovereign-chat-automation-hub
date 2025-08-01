@@ -1,44 +1,39 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { directMediaDownloadService } from '@/services/directMediaDownloadService';
 import { toast } from 'sonner';
 import { TestTube } from 'lucide-react';
 
 export const AudioTestButton = () => {
   const [testing, setTesting] = useState(false);
 
-  const testEdgeFunction = async () => {
+  const testDirectMediaService = async () => {
     setTesting(true);
     
     try {
-      console.log('🧪 [TEST] Testando edge function whatsapp-decrypt-audio...');
+      console.log('🧪 [TEST] Testando directMediaDownloadService...');
       
-      // Chamar a edge function com dados de teste
-      const { data, error } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
-        body: {
-          encryptedData: 'dGVzdGU=', // "teste" em base64
-          mediaKey: 'dGVzdGU=',
-          fileEncSha256: 'sha256test',
-          messageId: 'test-message-id'
-        }
-      });
+      // Teste básico do serviço
+      const testResult = await directMediaDownloadService.downloadMedia(
+        'test-instance',
+        'https://example.com/test.ogg',
+        'dGVzdGU=', // "teste" em base64
+        '/test/path',
+        'audio/ogg',
+        'audio'
+      );
 
-      console.log('🧪 [TEST] Resposta da edge function:', {
-        data,
-        error,
-        success: data?.success,
-        errorMessage: data?.error || error?.message
-      });
+      console.log('🧪 [TEST] Resultado do teste:', testResult);
 
-      if (error) {
-        toast.error(`Erro na edge function: ${error.message}`);
-        return;
-      }
-
-      if (data?.success) {
-        toast.success('Edge function funcionando! ✅');
+      if (testResult.success) {
+        toast.success('DirectMediaDownloadService funcionando! ✅');
+        
+        // Testar estatísticas do cache
+        const stats = directMediaDownloadService.getCacheStats();
+        console.log('📊 [TEST] Estatísticas do cache:', stats);
+        
       } else {
-        toast.warning(`Edge function respondeu mas com erro: ${data?.error || 'Erro desconhecido'}`);
+        toast.warning(`Serviço respondeu mas com erro: ${testResult.error || 'Erro desconhecido'}`);
       }
 
     } catch (error) {
@@ -51,13 +46,13 @@ export const AudioTestButton = () => {
 
   return (
     <Button 
-      onClick={testEdgeFunction}
+      onClick={testDirectMediaService}
       disabled={testing}
       variant="outline"
       size="sm"
     >
       <TestTube className="h-4 w-4 mr-2" />
-      {testing ? 'Testando...' : 'Testar Edge Function'}
+      {testing ? 'Testando...' : 'Testar DirectMedia Service'}
     </Button>
   );
 };

@@ -4,6 +4,8 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
+import { directMediaDownloadService } from './directMediaDownloadService';
+import { useRetryWithBackoff } from '@/hooks/useRetryWithBackoff';
 
 export interface WhatsAppAudioData {
   messageId: string;
@@ -30,13 +32,14 @@ class WhatsAppAudioService {
   private cache = new Map<string, DecryptedAudio>();
 
   /**
-   * Descriptografa áudio do WhatsApp
+   * Descriptografa áudio do WhatsApp usando directMediaDownloadService
    */
   async decryptAudio(audioData: WhatsAppAudioData): Promise<DecryptedAudio> {
     console.log('🔐 [AUDIO-SERVICE] Iniciando descriptografia:', {
       messageId: audioData.messageId,
       hasEncryptedData: !!audioData.encryptedData,
-      hasMediaKey: !!audioData.mediaKey
+      hasMediaKey: !!audioData.mediaKey,
+      hasAudioUrl: !!audioData.audioUrl
     });
 
     // Verificar cache local primeiro
@@ -46,46 +49,109 @@ class WhatsAppAudioService {
     }
 
     try {
-      // Chamar edge function de descriptografia
-      const { data, error } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
-        body: {
-          encryptedData: audioData.encryptedData,
-          mediaUrl: audioData.audioUrl, // Incluir URL para casos onde não há encryptedData
-          mediaKey: audioData.mediaKey,
-          fileEncSha256: audioData.fileEncSha256,
-          messageId: audioData.messageId
+      // Buscar instanceId da URL atual
+      const instanceId = await this.getInstanceIdFromUrl();
+      if (!instanceId) {
+        throw new Error('Instance ID não encontrado na URL');
+      }
+
+      // Usar directMediaDownloadService para descriptografar
+      console.log('🎯 [AUDIO-SERVICE] Usando directMediaDownloadService');
+      const result = await directMediaDownloadService.processMedia(
+        instanceId,
+        audioData.messageId,
+        audioData.audioUrl || '',
+        audioData.mediaKey,
+        audioData.directPath,
+        'audio/ogg',
+        'audio'
+      );
+
+      if (!result.success || !result.mediaUrl) {
+        throw new Error(`Falha no download: ${result.error || 'URL não disponível'}`);
+      }
+
+      // Converter blob URL para base64 se necessário
+      let decryptedData = result.mediaUrl;
+      if (result.mediaUrl.startsWith('blob:')) {
+        try {
+          const response = await fetch(result.mediaUrl);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          const base64Promise = new Promise<string>((resolve, reject) => {
+            reader.onload = () => {
+              const result = reader.result as string;
+              const base64 = result.split(',')[1]; // Remove data:audio/ogg;base64,
+              resolve(base64);
+            };
+            reader.onerror = reject;
+          });
+          reader.readAsDataURL(blob);
+          decryptedData = await base64Promise;
+        } catch (error) {
+          console.warn('⚠️ [AUDIO-SERVICE] Falha ao converter para base64, usando blob URL');
         }
-      });
-
-      if (error) {
-        console.error('❌ [AUDIO-SERVICE] Erro na descriptografia:', error);
-        throw new Error(`Falha na descriptografia: ${error.message}`);
       }
 
-      if (!data.success) {
-        throw new Error(`Descriptografia falhou: ${data.error}`);
-      }
-
-      const result: DecryptedAudio = {
-        decryptedData: data.decryptedAudio,
-        format: data.format,
-        cached: data.cached || false
+      const decryptedAudio: DecryptedAudio = {
+        decryptedData,
+        format: 'ogg',
+        cached: result.cached || false
       };
 
       // Salvar no cache local
-      this.cache.set(audioData.messageId, result);
+      this.cache.set(audioData.messageId, decryptedAudio);
 
       console.log('✅ [AUDIO-SERVICE] Descriptografia concluída:', {
-        format: result.format,
-        cached: result.cached,
-        dataLength: result.decryptedData.length
+        format: decryptedAudio.format,
+        cached: decryptedAudio.cached,
+        dataLength: decryptedAudio.decryptedData.length,
+        isBlob: decryptedAudio.decryptedData.startsWith('blob:')
       });
 
-      return result;
+      return decryptedAudio;
 
     } catch (error) {
       console.error('❌ [AUDIO-SERVICE] Erro crítico na descriptografia:', error);
+      
+      // FALLBACK: Tentar usar URL direta se disponível
+      if (audioData.audioUrl && !audioData.audioUrl.includes('.enc')) {
+        console.log('🔄 [AUDIO-SERVICE] Usando URL direta como fallback');
+        const fallbackResult: DecryptedAudio = {
+          decryptedData: audioData.audioUrl,
+          format: 'ogg',
+          cached: false
+        };
+        this.cache.set(audioData.messageId, fallbackResult);
+        return fallbackResult;
+      }
+      
       throw error;
+    }
+  }
+
+  /**
+   * Buscar instanceId da URL atual
+   */
+  private async getInstanceIdFromUrl(): Promise<string | null> {
+    try {
+      const currentUrl = window.location.pathname;
+      const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+      
+      if (ticketIdMatch) {
+        const { data: ticketData } = await supabase
+          .from('conversation_tickets')
+          .select('instance_id')
+          .eq('id', ticketIdMatch[1])
+          .single();
+        
+        return ticketData?.instance_id || null;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ [AUDIO-SERVICE] Erro ao buscar instance ID:', error);
+      return null;
     }
   }
 
