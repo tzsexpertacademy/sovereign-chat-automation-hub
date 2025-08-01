@@ -79,6 +79,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     if (!displayUrl) return;
     
     try {
+      // Verificar se a URL é criptografada e evitar download direto
+      if (displayUrl.includes('.enc')) {
+        console.warn('❌ DocumentViewer: Tentativa de download de arquivo criptografado bloqueada');
+        alert('Arquivo não disponível para download. Aguarde o processamento.');
+        return;
+      }
+      
       // Garantir que o arquivo tenha a extensão correta
       let downloadFileName = fileName || 'document';
       const extension = fileName?.split('.').pop()?.toLowerCase();
@@ -93,8 +100,8 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         downloadFileName += '.pdf';
       }
       
-      // Se for blob URL, fazer nova requisição para garantir download
-      if (displayUrl.startsWith('blob:')) {
+      // Se for blob URL ou data URL, fazer fetch para garantir download
+      if (displayUrl.startsWith('blob:') || displayUrl.startsWith('data:')) {
         const response = await fetch(displayUrl);
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -109,10 +116,11 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         // Limpar URL temporária
         window.URL.revokeObjectURL(url);
       } else {
-        // Para URLs regulares
+        // Para URLs regulares descriptografadas
         const link = document.createElement('a');
         link.href = displayUrl;
         link.download = downloadFileName;
+        link.target = '_blank'; // Abrir em nova aba como fallback
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -121,6 +129,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       console.log('✅ DocumentViewer: Download iniciado com sucesso:', downloadFileName);
     } catch (error) {
       console.error('❌ DocumentViewer: Erro no download:', error);
+      alert('Erro ao baixar arquivo. Tente novamente.');
     }
   };
 

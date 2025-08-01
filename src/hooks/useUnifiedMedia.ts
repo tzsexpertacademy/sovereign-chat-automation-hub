@@ -43,8 +43,9 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
   const { retryWithBackoff } = useRetryWithBackoff();
 
   const processMedia = useCallback(async (skipRetry = false) => {
-    if (!mediaData.messageId || (!mediaData.mediaUrl && !getBase64Data())) {
-      setError('Dados insuficientes para processar mídia');
+    // Verificar dados básicos
+    if (!mediaData.messageId) {
+      setError('ID da mensagem não encontrado');
       return;
     }
 
@@ -59,7 +60,12 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
     setError(null);
 
     try {
-      console.log('🎯 useUnifiedMedia: Processando', mediaData.contentType, 'para', mediaData.messageId);
+      console.log('🎯 useUnifiedMedia: Processando', mediaData.contentType, 'para', mediaData.messageId, {
+        hasMediaUrl: !!mediaData.mediaUrl,
+        hasMediaKey: !!mediaData.mediaKey,
+        hasBase64: !!getBase64Data(),
+        directPath: mediaData.directPath
+      });
 
       // PRIORIDADE 1: Base64 direto (mensagens manuais/já processadas)
       const base64Data = getBase64Data();
@@ -74,11 +80,11 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
 
       // PRIORIDADE 2: Mensagens recebidas com mediaKey - usar directMediaDownloadService
       if (mediaData.mediaUrl && mediaData.mediaKey) {
-        console.log('🔐 useUnifiedMedia: Processando mídia criptografada');
+        console.log('🔐 useUnifiedMedia: Processando mídia criptografada via directMediaDownloadService');
         
         const instanceId = await getInstanceId();
         if (!instanceId) {
-          setError('Instance ID não encontrado');
+          setError('Instance ID não encontrado para descriptografar mídia');
           return;
         }
 
@@ -93,19 +99,34 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
         );
 
         if (result.success && result.mediaUrl) {
-          console.log('✅ useUnifiedMedia: Mídia processada com sucesso');
+          console.log('✅ useUnifiedMedia: Mídia processada com sucesso via directMediaDownloadService');
           setDisplayUrl(result.mediaUrl);
           setIsFromCache(result.cached || false);
           return;
         }
 
-        console.warn('⚠️ useUnifiedMedia: Falha no processamento:', result.error);
-        setError(`Falha no processamento: ${result.error}`);
+        console.warn('⚠️ useUnifiedMedia: Falha no directMediaDownloadService:', result.error);
+        setError(`Falha na descriptografia: ${result.error}`);
         return;
       }
 
-      // Falha total
-      setError('Mídia não disponível - dados insuficientes');
+      // PRIORIDADE 3: URL direta (fallback para mensagens não criptografadas)
+      if (mediaData.mediaUrl && !mediaData.mediaUrl.includes('.enc')) {
+        console.log('📁 useUnifiedMedia: Usando URL direta (não criptografada)');
+        setDisplayUrl(mediaData.mediaUrl);
+        setIsFromCache(false);
+        return;
+      }
+
+      // Falha: dados insuficientes
+      console.warn('❌ useUnifiedMedia: Dados insuficientes:', {
+        messageId: mediaData.messageId,
+        hasMediaUrl: !!mediaData.mediaUrl,
+        hasMediaKey: !!mediaData.mediaKey,
+        hasBase64: !!getBase64Data(),
+        contentType: mediaData.contentType
+      });
+      setError('Mídia não disponível - dados insuficientes para processamento');
 
     } catch (error) {
       console.error('❌ useUnifiedMedia: Erro no processamento:', error);

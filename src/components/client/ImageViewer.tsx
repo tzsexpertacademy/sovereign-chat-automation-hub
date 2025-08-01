@@ -59,8 +59,15 @@ const ImageViewer = ({
     }
 
     try {
-      // Se é uma URL de dados (base64), converter para blob
-      if (displayUrl.startsWith('data:')) {
+      // Verificar se a URL é criptografada e evitar download direto
+      if (displayUrl.includes('.enc')) {
+        console.warn('❌ ImageViewer: Tentativa de download de arquivo criptografado bloqueada');
+        toast.error('Imagem não disponível para download. Aguarde o processamento.');
+        return;
+      }
+
+      // Se é uma URL de dados (base64) ou blob, converter para blob
+      if (displayUrl.startsWith('data:') || displayUrl.startsWith('blob:')) {
         const response = await fetch(displayUrl);
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
@@ -70,7 +77,7 @@ const ImageViewer = ({
         a.click();
         URL.revokeObjectURL(url);
       } else {
-        // URL direta
+        // URL direta descriptografada
         const a = document.createElement('a');
         a.href = displayUrl;
         a.download = fileName;

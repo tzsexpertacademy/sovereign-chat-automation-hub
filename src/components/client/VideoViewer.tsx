@@ -213,13 +213,6 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         </div>
       )}
 
-      {/* Informações de debug (somente em desenvolvimento) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mt-2 text-xs text-gray-500">
-          <div>Descriptografia: {needsDecryption ? 'Necessária' : 'Não necessária'}</div>
-          {messageId && <div>ID: {messageId}</div>}
-        </div>
-      )}
     </div>
   );
 };
