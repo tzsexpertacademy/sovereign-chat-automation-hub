@@ -38,6 +38,7 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
   const [isFromCache, setIsFromCache] = useState(false);
   const [hasRetried, setHasRetried] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const { retryWithBackoff } = useRetryWithBackoff();
 
@@ -47,6 +48,13 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
       return;
     }
 
+    // Evitar loop infinito
+    if (isProcessing || retryCount >= 3) {
+      console.warn('🛑 useUnifiedMedia: Processamento já em andamento ou limite de retries atingido');
+      return;
+    }
+
+    setIsProcessing(true);
     setIsLoading(true);
     setError(null);
 
@@ -64,9 +72,9 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
         return;
       }
 
-      // PRIORIDADE 2: Mensagens recebidas com mediaKey - usar directMediaDownloadService com retry
+      // PRIORIDADE 2: Mensagens recebidas com mediaKey - usar directMediaDownloadService
       if (mediaData.mediaUrl && mediaData.mediaKey) {
-        console.log('🔐 useUnifiedMedia: Processando mídia criptografada com retry');
+        console.log('🔐 useUnifiedMedia: Processando mídia criptografada');
         
         const instanceId = await getInstanceId();
         if (!instanceId) {
@@ -74,61 +82,37 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
           return;
         }
 
-        const result = await retryWithBackoff(
-          () => directMediaDownloadService.processMedia(
-            instanceId,
-            mediaData.messageId,
-            mediaData.mediaUrl!,
-            mediaData.mediaKey,
-            mediaData.directPath,
-            mediaData.mimetype,
-            mediaData.contentType
-          ),
-          {
-            maxAttempts: 3,
-            initialDelay: 1000,
-            maxDelay: 10000,
-            backoffMultiplier: 2
-          },
-          `Processamento de ${mediaData.contentType}`
+        const result = await directMediaDownloadService.processMedia(
+          instanceId,
+          mediaData.messageId,
+          mediaData.mediaUrl!,
+          mediaData.mediaKey,
+          mediaData.directPath,
+          mediaData.mimetype,
+          mediaData.contentType
         );
 
         if (result.success && result.mediaUrl) {
-          console.log('✅ useUnifiedMedia: Mídia processada com sucesso após retry');
+          console.log('✅ useUnifiedMedia: Mídia processada com sucesso');
           setDisplayUrl(result.mediaUrl);
           setIsFromCache(result.cached || false);
           return;
         }
 
-        console.warn('⚠️ useUnifiedMedia: Falha no processamento mesmo com retry, tentando fallbacks');
+        console.warn('⚠️ useUnifiedMedia: Falha no processamento:', result.error);
         setError(`Falha no processamento: ${result.error}`);
-      }
-
-      // PRIORIDADE 3: URL direta (fallback)
-      if (mediaData.mediaUrl && !mediaData.mediaUrl.includes('.enc')) {
-        console.log('🔄 useUnifiedMedia: Usando URL direta');
-        setDisplayUrl(mediaData.mediaUrl);
-        setIsFromCache(false);
         return;
       }
 
       // Falha total
-      setError('Mídia não disponível');
+      setError('Mídia não disponível - dados insuficientes');
 
     } catch (error) {
       console.error('❌ useUnifiedMedia: Erro no processamento:', error);
-      
-      // Se não foi retry ainda e há URL, tentar URL direta como último recurso
-      if (!skipRetry && mediaData.mediaUrl && retryCount < 2) {
-        console.log('🔄 useUnifiedMedia: Tentando URL direta como último recurso');
-        setDisplayUrl(mediaData.mediaUrl);
-        setIsFromCache(false);
-        return;
-      }
-      
       setError(`Erro ao carregar mídia: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     } finally {
       setIsLoading(false);
+      setIsProcessing(false);
     }
   }, [mediaData, retryCount, retryWithBackoff]);
 
@@ -185,17 +169,26 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
   };
 
   const retry = useCallback(() => {
-    console.log('🔄 useUnifiedMedia: Tentativa de retry');
+    if (retryCount >= 3) {
+      console.warn('🛑 useUnifiedMedia: Limite de retries atingido');
+      return;
+    }
+    
+    console.log('🔄 useUnifiedMedia: Tentativa de retry manual');
     setHasRetried(true);
     setRetryCount(prev => prev + 1);
     setDisplayUrl(null);
+    setError(null);
+    setIsProcessing(false);
     processMedia(true);
-  }, [processMedia]);
+  }, [processMedia, retryCount]);
 
-  // Efeito principal para processar mídia
+  // Efeito principal para processar mídia (apenas uma vez)
   useEffect(() => {
-    processMedia();
-  }, [processMedia]);
+    if (!isProcessing && retryCount === 0) {
+      processMedia();
+    }
+  }, [mediaData.messageId]); // Só reprocessa se o messageId mudar
 
   return {
     displayUrl,
