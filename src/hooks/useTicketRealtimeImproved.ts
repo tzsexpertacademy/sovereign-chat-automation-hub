@@ -30,10 +30,6 @@ export const useTicketRealtimeImproved = (clientId: string) => {
         .select('id', { count: 'exact' })
         .eq('client_id', clientId);
       
-      console.log('📊 [TICKETS] Total de tickets no banco:', ticketCount?.length || 0);
-      if (countError) {
-        console.error('❌ [TICKETS] Erro ao contar tickets:', countError);
-      }
 
       // Verificar mensagens não processadas
       const { data: instances } = await supabase
@@ -49,18 +45,10 @@ export const useTicketRealtimeImproved = (clientId: string) => {
           .in('instance_id', instanceIds)
           .eq('is_processed', false);
         
-        console.log('📨 [TICKETS] Mensagens não processadas:', unprocessedMessages?.length || 0);
+        
       }
       
       const ticketsData = await ticketsService.getTicketsByClient(clientId);
-      console.log('✅ [TICKETS] Tickets carregados via service:', ticketsData.length);
-      console.log('📋 [TICKETS] Primeiros 3 tickets:', ticketsData.slice(0, 3).map(t => ({
-        id: t.id,
-        title: t.title,
-        customerName: t.customer?.name,
-        phone: t.customer?.phone,
-        lastMessage: t.last_message_preview?.substring(0, 50)
-      })));
       
       if (mountedRef.current) {
         setTickets(ticketsData);
@@ -96,18 +84,10 @@ export const useTicketRealtimeImproved = (clientId: string) => {
         setLastSyncTime(new Date());
         
         if (result.converted > 0) {
-          console.log(`✅ [SYNC] ${result.converted} mensagens YUMER convertidas`);
-          
-          // Recarregar tickets após sincronização
           setTimeout(loadTickets, 1000);
-        }
-        
-        if (result.errors > 0) {
-          console.warn(`⚠️ [SYNC] ${result.errors} erros durante conversão YUMER`);
         }
       }
     } catch (error) {
-      console.error('❌ [SYNC] Erro na sincronização YUMER:', error);
       if (mountedRef.current) {
         setSyncStatus('error');
         toast({
@@ -144,7 +124,6 @@ export const useTicketRealtimeImproved = (clientId: string) => {
           filter: `client_id=eq.${clientId}`
         },
         (payload) => {
-          console.log('🔄 [REALTIME] Mudança em tickets detectada:', payload.eventType, (payload.new as any)?.id);
           if (mountedRef.current) {
             setTimeout(loadTickets, 500);
           }
@@ -158,7 +137,6 @@ export const useTicketRealtimeImproved = (clientId: string) => {
           table: 'ticket_messages'
         },
         (payload) => {
-          console.log('📨 [REALTIME] Nova mensagem em ticket detectada:', (payload.new as any)?.id);
           if (mountedRef.current) {
             setTimeout(loadTickets, 500);
           }
@@ -179,8 +157,6 @@ export const useTicketRealtimeImproved = (clientId: string) => {
           table: 'whatsapp_messages'
         },
         async (payload) => {
-          console.log('📨 [REALTIME] Nova mensagem WhatsApp/YUMER detectada:', payload.new?.message_id);
-          
           // Verificar se a mensagem pertence a uma instância do cliente
           const { data: instance } = await supabase
             .from('whatsapp_instances')
@@ -189,14 +165,6 @@ export const useTicketRealtimeImproved = (clientId: string) => {
             .single();
 
           if (instance?.client_id === clientId && mountedRef.current) {
-            console.log('✅ [REALTIME] Mensagem pertence ao cliente, processando...');
-            
-            toast({
-              title: "Nova mensagem recebida",
-              description: "Uma nova mensagem foi detectada e será processada automaticamente"
-            });
-            
-            // Aguardar um pouco e recarregar tickets
             setTimeout(loadTickets, 1000);
           }
         }

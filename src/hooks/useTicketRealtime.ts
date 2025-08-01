@@ -32,10 +32,8 @@ export const useTicketRealtime = (clientId: string) => {
   const { splitMessage } = useSmartMessageSplit();
   
 
-  // Função para normalizar dados da mensagem do WhatsApp - COM LOGS DETALHADOS
+  // Função para normalizar dados da mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
-    console.log('🔧 ===== NORMALIZANDO MENSAGEM WHATSAPP =====');
-    console.log('📱 MENSAGEM ORIGINAL RECEBIDA:', JSON.stringify(message, null, 2));
     
     let chatId = message.from || message.chatId || message.key?.remoteJid || message.chat?.id;
     let phoneNumber = chatId;
@@ -65,13 +63,6 @@ export const useTicketRealtime = (clientId: string) => {
     let mediaUrl = null;
     let mediaData = null;
 
-    console.log('📊 DADOS BÁSICOS EXTRAÍDOS:', {
-      chatId,
-      phoneNumber,
-      customerName,
-      messageType,
-      hasContent: !!content
-    });
 
     // Processar diferentes tipos de mídia - COM LOGS DETALHADOS
     if (message.type === 'image' || (message.hasMedia && message.type !== 'audio' && message.type !== 'ptt')) {
@@ -79,75 +70,36 @@ export const useTicketRealtime = (clientId: string) => {
       messageType = 'image';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
-      console.log('🖼️ PROCESSANDO IMAGEM:', { mediaUrl: !!mediaUrl, mediaData: !!mediaData });
     } else if (message.type === 'audio' || message.type === 'ptt') {
       content = `[Áudio] Mensagem de áudio`;
       messageType = 'audio';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
       
-      console.log('🎵 ===== PROCESSANDO MENSAGEM DE ÁUDIO =====');
-      console.log('📊 DADOS DE ÁUDIO DETECTADOS:', {
-        messageType,
-        hasMediaUrl: !!mediaUrl,
-        hasMediaData: !!mediaData,
-        mediaUrlValue: mediaUrl,
-        mediaDataLength: mediaData?.length || 0,
-        hasMedia: message.hasMedia,
-        allAudioKeys: Object.keys(message).filter(key => 
-          key.toLowerCase().includes('audio') || 
-          key.toLowerCase().includes('media') || 
-          key.toLowerCase().includes('data')
-        )
-      });
-      
-      // VERIFICAR TODAS AS POSSÍVEIS PROPRIEDADES DE ÁUDIO
-      const possibleAudioProps = [
-        'mediaData', 'audioData', 'data', 'base64', 'buffer', 'content',
-        'fileData', 'attachment', 'media', 'audioBase64', 'mediaBase64'
-      ];
-      
-      console.log('🔍 VERIFICANDO PROPRIEDADES DE ÁUDIO NA MENSAGEM:');
-      for (const prop of possibleAudioProps) {
-        if (message[prop]) {
-          console.log(`✅ ENCONTRADO ${prop}:`, {
-            type: typeof message[prop],
-            length: message[prop]?.length,
-            isString: typeof message[prop] === 'string',
-            preview: typeof message[prop] === 'string' ? message[prop].substring(0, 50) : 'not string'
-          });
-        }
-      }
-      
     } else if (message.type === 'video') {
       content = `[Vídeo] ${message.caption || 'Vídeo enviado'}`;
       messageType = 'video';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
-      console.log('🎬 PROCESSANDO VÍDEO:', { mediaUrl: !!mediaUrl, mediaData: !!mediaData });
     } else if (message.type === 'document') {
       content = `[Documento] ${message.filename || 'Documento enviado'}`;
       messageType = 'document';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
-      console.log('📄 PROCESSANDO DOCUMENTO:', { mediaUrl: !!mediaUrl, mediaData: !!mediaData });
     } else if (message.type === 'sticker') {
       content = `[Figurinha] Figurinha enviada`;
       messageType = 'sticker';
       mediaUrl = message.mediaUrl;
       mediaData = message.mediaData;
-      console.log('🎭 PROCESSANDO FIGURINHA:', { mediaUrl: !!mediaUrl, mediaData: !!mediaData });
     } else if (message.type === 'location') {
       content = `[Localização] Localização compartilhada`;
       messageType = 'location';
-      console.log('📍 PROCESSANDO LOCALIZAÇÃO');
     }
     
     if (message.quotedMessage || message.quotedMsg) {
       const quoted = message.quotedMessage || message.quotedMsg;
       const quotedContent = quoted.body || quoted.caption || '[Mídia citada]';
       content = `[Respondendo: "${quotedContent.substring(0, 50)}..."] ${content}`;
-      console.log('💬 MENSAGEM COM CITAÇÃO DETECTADA');
     }
 
     const timestamp = ticketsService.validateAndFixTimestamp(message.timestamp || message.t || Date.now());
@@ -171,13 +123,6 @@ export const useTicketRealtime = (clientId: string) => {
       originalMessage: message
     };
     
-    console.log('✅ MENSAGEM NORMALIZADA:', {
-      id: normalizedMessage.id,
-      type: normalizedMessage.type,
-      hasMediaData: !!normalizedMessage.mediaData,
-      hasOriginalMessage: !!normalizedMessage.originalMessage,
-      fromMe: normalizedMessage.fromMe
-    });
     
     return normalizedMessage;
   }, []);
@@ -192,16 +137,13 @@ export const useTicketRealtime = (clientId: string) => {
     try {
       lastLoadTimeRef.current = now;
       setIsLoading(true);
-      console.log('🔄 CARREGANDO tickets para cliente:', clientId);
-      
       const ticketsData = await ticketsService.getClientTickets(clientId);
-      console.log('✅ TICKETS carregados:', ticketsData.length);
       
       if (mountedRef.current) {
         setTickets(ticketsData);
       }
     } catch (error) {
-      console.error('❌ ERRO ao carregar tickets:', error);
+      console.error('Erro ao carregar tickets:', error);
     } finally {
       if (mountedRef.current) {
         setIsLoading(false);

@@ -1,7 +1,7 @@
 
 import { useState, useCallback } from 'react';
 import { whatsappService } from '@/services/whatsappMultiClient';
-import { useToast } from './use-toast';
+import { cleanToast } from '@/services/cleanToastService';
 import { manualMessageSaver } from '@/services/manualMessageSaver';
 
 export interface MediaMessage {
@@ -25,16 +25,12 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
     audioBlob: null,
     duration: 0
   });
-  const { toast } = useToast();
+  
 
   // Enviar mídia via senders especializados (CORRIGIDO)
   const sendMedia = useCallback(async (mediaMessage: MediaMessage) => {
     if (!clientId) {
-      toast({
-        title: "Erro",
-        description: "Cliente não encontrado",
-        variant: "destructive"
-      });
+      cleanToast.error("Cliente não encontrado");
       return { success: false, error: 'Cliente não encontrado' };
     }
 
@@ -132,10 +128,7 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
           });
         }
 
-        toast({
-          title: "Mídia enviada",
-          description: `${mediaMessage.type} enviado com sucesso`,
-        });
+        cleanToast.fileSent(mediaMessage.file.name);
         
         return { success: true, ...result };
       } else {
@@ -145,25 +138,17 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
 
     } catch (error: any) {
       console.error('❌ [MEDIA-HOOK] Erro ao enviar mídia:', error);
-      toast({
-        title: "Erro ao enviar mídia",
-        description: error.message || "Falha ao enviar arquivo",
-        variant: "destructive"
-      });
+      cleanToast.fileError();
       return { success: false, error: error.message || 'Falha ao enviar mídia' };
     } finally {
       setIsUploading(false);
     }
-  }, [clientId, ticketId, toast]);
+  }, [clientId, ticketId]);
 
   // Processar imagem
   const handleImageUpload = useCallback(async (file: File, to: string, caption?: string) => {
     if (!file.type.startsWith('image/')) {
-      toast({
-        title: "Erro",
-        description: "Arquivo deve ser uma imagem",
-        variant: "destructive"
-      });
+      cleanToast.error("Arquivo deve ser uma imagem");
       return false;
     }
 
@@ -175,26 +160,17 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
     });
     
     return result.success || false;
-  }, [sendMedia, toast]);
+  }, [sendMedia]);
 
   // Processar vídeo
   const handleVideoUpload = useCallback(async (file: File, to: string, caption?: string) => {
     if (!file.type.startsWith('video/')) {
-      toast({
-        title: "Erro",
-        description: "Arquivo deve ser um vídeo",
-        variant: "destructive"
-      });
+      cleanToast.error("Arquivo deve ser um vídeo");
       return false;
     }
 
-    // Verificar tamanho do arquivo (máximo 64MB)
     if (file.size > 64 * 1024 * 1024) {
-      toast({
-        title: "Erro",
-        description: "Vídeo muito grande (máximo 64MB)",
-        variant: "destructive"
-      });
+      cleanToast.error("Vídeo muito grande (máximo 64MB)");
       return false;
     }
 
@@ -206,17 +182,12 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
     });
     
     return result.success || false;
-  }, [sendMedia, toast]);
+  }, [sendMedia]);
 
   // Processar documento
   const handleDocumentUpload = useCallback(async (file: File, to: string, caption?: string) => {
-    // Verificar tamanho do arquivo (máximo 100MB)
     if (file.size > 100 * 1024 * 1024) {
-      toast({
-        title: "Erro",
-        description: "Documento muito grande (máximo 100MB)",
-        variant: "destructive"
-      });
+      cleanToast.error("Documento muito grande (máximo 100MB)");
       return false;
     }
 
@@ -228,26 +199,17 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
     });
     
     return result.success || false;
-  }, [sendMedia, toast]);
+  }, [sendMedia]);
 
   // Processar áudio de arquivo com estratégia avançada
   const handleAudioUpload = useCallback(async (file: File, to: string, caption?: string) => {
     if (!file.type.startsWith('audio/')) {
-      toast({
-        title: "Erro",
-        description: "Arquivo deve ser um áudio",
-        variant: "destructive"
-      });
+      cleanToast.error("Arquivo deve ser um áudio");
       return false;
     }
 
-    // Verificar tamanho do arquivo (máximo 25MB)
     if (file.size > 25 * 1024 * 1024) {
-      toast({
-        title: "Erro",
-        description: "Áudio muito grande (máximo 25MB)",
-        variant: "destructive"
-      });
+      cleanToast.error("Áudio muito grande (máximo 25MB)");
       return false;
     }
 
@@ -275,7 +237,7 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
     } finally {
       setIsUploading(false);
     }
-  }, [sendMedia, toast]);
+  }, [sendMedia]);
 
   // Gravação de áudio
   const startRecording = useCallback(async () => {
@@ -310,15 +272,10 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
       
       return mediaRecorder;
     } catch (error) {
-      console.error('Erro ao iniciar gravação:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível acessar o microfone",
-        variant: "destructive"
-      });
+      cleanToast.error("Não foi possível acessar o microfone");
       return null;
     }
-  }, [toast]);
+  }, []);
 
   const stopRecording = useCallback((mediaRecorder: MediaRecorder | null) => {
     if (mediaRecorder && audioRecording.isRecording) {
@@ -328,11 +285,7 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
 
   const sendAudioRecording = useCallback(async (to: string) => {
     if (!audioRecording.audioBlob) {
-      toast({
-        title: "Erro",
-        description: "Nenhuma gravação de áudio encontrada",
-        variant: "destructive"
-      });
+      cleanToast.error("Nenhuma gravação de áudio encontrada");
       return false;
     }
 
@@ -368,10 +321,7 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
           duration: 0
         });
         
-        toast({
-          title: "Áudio enviado",
-          description: `Gravação de ${audioRecording.duration}s enviada com sucesso`,
-        });
+        cleanToast.audioSent();
       }
 
       return result.success || false;
@@ -381,7 +331,7 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
     } finally {
       setIsUploading(false);
     }
-  }, [audioRecording, sendMedia, toast]);
+  }, [audioRecording, sendMedia]);
 
   const clearSelectedMedia = useCallback(() => {
     setSelectedMedia(null);

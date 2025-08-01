@@ -77,9 +77,8 @@ const AudioPlayer = ({
 
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
     const handleLoadedMetadata = () => setTotalDuration(audio.duration);
-    const handleError = (e: Event) => {
-      console.error('❌ Player: Erro no elemento audio:', e);
-      // Não sobrescrever erro do hook, apenas logar
+    const handleError = () => {
+      // Silencioso - erro já tratado pelo hook unificado
     };
     const handleEnded = () => setIsPlaying(false);
 
@@ -110,7 +109,7 @@ const AudioPlayer = ({
         onPlay?.();
       }
     } catch (error) {
-      console.error('❌ Player: Erro ao tocar áudio:', error);
+      // Silencioso - UI já mostra estado de erro
     }
   };
 
@@ -163,7 +162,6 @@ const AudioPlayer = ({
 
       toast.success('Áudio baixado com sucesso');
     } catch (error) {
-      console.error('❌ Player: Erro ao baixar áudio:', error);
       toast.error('Erro ao baixar áudio');
     }
   };

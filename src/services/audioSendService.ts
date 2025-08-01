@@ -50,16 +50,11 @@ export class AudioSendService {
     duration: number,
     originalFilename?: string
   ): Promise<AudioSendResult> {
-    console.log('🎵 ===== CORREÇÃO DEFINITIVA - APIs CORRETAS =====');
-    console.log('🔧 Usando MessageMedia com whatsapp-web.js v1.25.0+');
-    console.log('📊 Parâmetros:', {
-      clientId,
-      to,
-      audioSize: audioBlob.size,
-      audioType: audioBlob.type,
-      duration,
-      originalFilename
-    });
+    // Log apenas em desenvolvimento
+    if (import.meta.env.DEV) {
+      console.log('🎵 Enviando áudio via APIs corretas');
+      console.log('📊 Parâmetros:', { clientId, to, audioSize: audioBlob.size, duration });
+    }
 
     try {
       // FASE 1: Verificar cliente
@@ -88,11 +83,10 @@ export class AudioSendService {
         reader.readAsDataURL(audioBlob);
       });
 
-      console.log('📦 Base64 preparado:', {
-        hasData: !!base64Audio,
-        dataLength: base64Audio.length,
-        isValid: /^[A-Za-z0-9+/]*={0,2}$/.test(base64Audio)
-      });
+      // Log apenas em desenvolvimento
+      if (import.meta.env.DEV) {
+        console.log('📦 Base64 preparado - tamanho:', base64Audio.length);
+      }
 
       // FASE 3: Estratégias usando APIs corretas do whatsappService
       const strategies = [
@@ -148,9 +142,7 @@ export class AudioSendService {
 
       for (const strategy of strategies) {
         try {
-          console.log(`🚀 TENTANDO: ${strategy.name}`);
           attemptedFormats.push(strategy.name);
-
           const result = await strategy.apiCall();
           
           // ✅ DETECÇÃO REAL DE SUCESSO
@@ -162,7 +154,6 @@ export class AudioSendService {
           );
 
           if (isRealSuccess) {
-            console.log(`✅ SUCESSO REAL com ${strategy.name}:`, result);
             return {
               success: true,
               format: 'audio/ogg',
@@ -173,11 +164,9 @@ export class AudioSendService {
           } else {
             lastError = (typeof result === 'object' && result && 'error' in result ? (result.error as string) : 
                          typeof result === 'object' && result && 'message' in result ? (result.message as string) : 'API retornou falha');
-            console.warn(`⚠️ FALHA REAL ${strategy.name}:`, { result, lastError });
           }
 
         } catch (error) {
-          console.error(`❌ ERRO na estratégia ${strategy.name}:`, error);
           lastError = error.message;
         }
 
@@ -185,8 +174,7 @@ export class AudioSendService {
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
 
-      // FASE 4: Todas falharam - erro real
-      console.error('❌ TODAS as estratégias falharam com APIs corretas');
+      // FASE 4: Todas falharam
       return {
         success: false,
         error: `Falha no envio: ${lastError}`,

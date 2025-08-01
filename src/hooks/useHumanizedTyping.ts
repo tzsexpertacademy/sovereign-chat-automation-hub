@@ -35,7 +35,7 @@ export const useHumanizedTyping = (clientId: string) => {
       Math.min(config.maxDelay, baseTypingTime * variation * complexityFactor)
     );
     
-    console.log(`⌨️ Tempo de digitação calculado: ${finalTime}ms para ${words} palavras`);
+    
     return finalTime;
   }, [config]);
 
@@ -43,36 +43,30 @@ export const useHumanizedTyping = (clientId: string) => {
     if (!config.showTyping) return;
     
     setTypingStatus(prev => new Map(prev).set(chatId, true));
-    console.log(`⌨️ INICIADO: Indicador de digitação para ${chatId}`);
   }, [config.showTyping]);
 
   const stopTyping = useCallback(async (chatId: string) => {
     if (!config.showTyping) return;
     
     setTypingStatus(prev => new Map(prev).set(chatId, false));
-    console.log(`⌨️ PARADO: Indicador de digitação para ${chatId}`);
   }, [config.showTyping]);
 
   const startRecording = useCallback(async (chatId: string) => {
     if (!config.showRecording) return;
     
     setRecordingStatus(prev => new Map(prev).set(chatId, true));
-    console.log(`🎤 INICIADO: Indicador de gravação para ${chatId}`);
   }, [config.showRecording]);
 
   const stopRecording = useCallback(async (chatId: string) => {
     if (!config.showRecording) return;
     
     setRecordingStatus(prev => new Map(prev).set(chatId, false));
-    console.log(`🎤 PARADO: Indicador de gravação para ${chatId}`);
   }, [config.showRecording]);
 
   const simulateHumanTyping = useCallback(async (chatId: string, text: string, isAudio = false) => {
     const typingTime = calculateTypingTime(text);
     
     try {
-      console.log(`🤖 INICIANDO simulação ${isAudio ? 'gravação' : 'digitação'} para: "${text.substring(0, 50)}..."`);
-      
       if (isAudio) {
         await startRecording(chatId);
         await new Promise(resolve => setTimeout(resolve, typingTime));
@@ -82,19 +76,16 @@ export const useHumanizedTyping = (clientId: string) => {
         await new Promise(resolve => setTimeout(resolve, typingTime));
         await stopTyping(chatId);
       }
-      
-      console.log(`✅ CONCLUÍDA simulação ${isAudio ? 'gravação' : 'digitação'} em ${typingTime}ms`);
     } catch (error) {
-      console.error('❌ Erro na simulação de digitação humana:', error);
+      // Silencioso - não é crítico
     }
   }, [calculateTypingTime, startTyping, stopTyping, startRecording, stopRecording]);
 
   const markAsRead = useCallback(async (chatId: string, messageId: string) => {
     try {
-      console.log(`✓✓ LIDA: Mensagem ${messageId} marcada como lida para ${chatId}`);
+      
       return true;
     } catch (error) {
-      console.error('❌ Erro ao marcar como lida:', error);
       return false;
     }
   }, []);
