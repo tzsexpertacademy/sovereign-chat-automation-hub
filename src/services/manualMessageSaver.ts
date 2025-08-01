@@ -20,7 +20,7 @@ class ManualMessageSaver {
     try {
       console.log('💾 Salvando mensagem manual:', data);
 
-      // Salvar no banco via service
+      // 🔥 CORREÇÃO CRÍTICA: Salvar TODOS os metadados de mídia
       const result = await ticketsService.addTicketMessage({
         ticket_id: data.ticketId,
         message_id: data.messageId,
@@ -28,7 +28,12 @@ class ManualMessageSaver {
         sender_name: 'Atendente',
         content: data.content,
         message_type: data.messageType,
+        // 🔥 METADADOS DE MÍDIA COMPLETOS
         media_url: data.mediaUrl,
+        media_key: data.mediaKey ? this.ensureBase64String(data.mediaKey) : null,
+        file_enc_sha256: data.fileEncSha256 ? this.ensureBase64String(data.fileEncSha256) : null,
+        media_mime_type: data.mimeType,
+        // 🔥 PROPRIEDADES ADICIONAIS PARA CONTROLE
         is_internal_note: false,
         is_ai_response: false,
         processing_status: 'completed',
@@ -69,6 +74,28 @@ class ManualMessageSaver {
     }
   }
 
+  // 🔥 HELPER: Garantir que dados sejam Base64 strings
+  private ensureBase64String(data: any): string | null {
+    if (!data) return null;
+    
+    // Se já é string, retorna como está
+    if (typeof data === 'string') return data;
+    
+    // Se é objeto/array (dados malformados), converter para Base64
+    try {
+      if (typeof data === 'object') {
+        // Assumir que é um array de bytes ou Uint8Array serializado
+        const bytes = Array.isArray(data) ? data : Object.values(data);
+        const uint8Array = new Uint8Array(bytes);
+        return btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
+      }
+    } catch (error) {
+      console.warn('⚠️ Erro ao converter dados para Base64:', error);
+    }
+    
+    return null;
+  }
+
   async saveMediaMessage(data: ManualMessageData & { 
     mediaFile: File;
     uploadResponse: any; 
@@ -81,15 +108,24 @@ class ManualMessageSaver {
         hasUploadResponse: !!data.uploadResponse
       });
 
-      // Extrair dados da resposta do upload se disponível
+      // 🔥 CORREÇÃO: Extrair TODOS os dados da resposta do upload
       let mediaUrl = data.mediaUrl;
       let mediaKey = data.mediaKey;
       let fileEncSha256 = data.fileEncSha256;
 
-      if (data.uploadResponse && data.uploadResponse.media) {
-        mediaUrl = data.uploadResponse.media.url || mediaUrl;
-        mediaKey = data.uploadResponse.media.mediaKey || mediaKey;
-        fileEncSha256 = data.uploadResponse.media.fileEncSha256 || fileEncSha256;
+      if (data.uploadResponse) {
+        // ✅ Suporte a estruturas diferentes de resposta
+        const mediaData = data.uploadResponse.media || data.uploadResponse;
+        mediaUrl = mediaData.url || mediaUrl;
+        mediaKey = mediaData.mediaKey || mediaKey;
+        fileEncSha256 = mediaData.fileEncSha256 || fileEncSha256;
+        
+        console.log('🔍 Dados extraídos do upload:', {
+          hasUrl: !!mediaUrl,
+          hasKey: !!mediaKey,
+          hasHash: !!fileEncSha256,
+          keyType: typeof mediaKey
+        });
       }
 
       return await this.saveManualMessage({

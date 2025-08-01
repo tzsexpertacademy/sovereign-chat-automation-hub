@@ -90,7 +90,7 @@ class TicketsService {
 
   async addTicketMessage(message: Partial<TicketMessage>): Promise<TicketMessage> {
     try {
-      // Garantir que campos obrigatórios estejam presentes
+      // 🔥 CORREÇÃO CRÍTICA: Garantir salvamento de TODOS os campos de mídia
       const messageData = {
         content: message.content || '',
         ticket_id: message.ticket_id || '',
@@ -102,6 +102,15 @@ class TicketsService {
         is_internal_note: message.is_internal_note || false,
         is_ai_response: message.is_ai_response || false,
         processing_status: message.processing_status || 'processed',
+        // 🔥 CAMPOS DE MÍDIA OBRIGATÓRIOS
+        media_url: message.media_url || null,
+        media_key: message.media_key || null,
+        file_enc_sha256: message.file_enc_sha256 || null,
+        media_mime_type: message.media_mime_type || null,
+        media_duration: message.media_duration || null,
+        audio_base64: message.audio_base64 || null,
+        media_transcription: message.media_transcription || null,
+        ai_confidence_score: message.ai_confidence_score || null,
         ...message
       };
 
