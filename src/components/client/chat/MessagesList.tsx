@@ -14,6 +14,7 @@ import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 import { useTicketMessagesSync } from '@/hooks/useTicketMessagesSync';
 import RealTimeSync from '../RealTimeSync';
+import { smartLogs } from '@/services/smartLogsService';
 
 interface MessagesListProps {
   messages: any[];
@@ -41,10 +42,10 @@ const MessagesList = memo(({
   isCircuitBreakerBlocked = false,
   lastUpdateSource = 'polling'
 }: MessagesListProps) => {
-  // ✅ Log otimizado - apenas mudanças significativas
+  // Log crítico apenas para debug
   const messagesCount = messages.length;
-  if (messagesCount === 0 || messagesCount % 50 === 0) {
-    console.log('📋 [MESSAGES-LIST] Status:', { total: messagesCount });
+  if (messagesCount === 0) {
+    smartLogs.debug('UI', 'MessagesList vazia', { ticketId });
   }
 
   // 👀 INDICADORES DE PRESENÇA IMEDIATOS: Hook para presença em tempo real
@@ -65,7 +66,7 @@ const MessagesList = memo(({
     if (message.message_type === 'audio') {
       const adaptedData = adaptMessageMedia(message);
       
-      // Log reduzido
+      // Log removido para performance
 
       return (
         <div className="space-y-3 max-w-sm">
@@ -132,7 +133,7 @@ const MessagesList = memo(({
     if (message.message_type === 'image') {
       const adaptedData = adaptMessageMedia(message);
       
-      // Log reduzido
+      // Log removido para performance
 
       return (
         <ImageViewer
@@ -152,7 +153,7 @@ const MessagesList = memo(({
     if (message.message_type === 'video') {
       const adaptedData = adaptMessageMedia(message);
       
-      // Log reduzido
+      // Log removido para performance
 
       return (
         <VideoViewer
@@ -172,7 +173,7 @@ const MessagesList = memo(({
     if (message.message_type === 'document') {
       const adaptedData = adaptMessageMedia(message);
       
-      // Log reduzido
+      // Log removido para performance
 
       return (
         <DocumentViewer
@@ -220,13 +221,13 @@ const MessagesList = memo(({
       new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
     
-    // ✅ Log removido para performance
+    // Log removido para performance
     
     return sortedMessages;
   }, [messages]);
 
   if (messages.length === 0) {
-    // ✅ Log removido para performance
+    // Log removido para performance
     return (
       <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
         <div className="text-center text-gray-500 py-8">
@@ -277,7 +278,7 @@ const MessagesList = memo(({
         )}
         
         {memoizedMessages.map((message, index) => {
-          // ✅ Log removido para eliminar logs infinitos
+          // Log removido para performance
           
           return (
             <div

@@ -240,11 +240,7 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
   useEffect(() => {
     const base64Data = getBase64Data();
     if (base64Data && !displayUrl && !isProcessing) {
-      console.log('⚡ useUnifiedMedia: Base64 detectado após atualização - reprocessando', {
-        messageId: mediaData.messageId,
-        contentType: mediaData.contentType,
-        base64Size: base64Data.length
-      });
+      // Base64 detectado após atualização - reprocessando mídia
       processMedia();
     }
   }, [mediaData.audioBase64, mediaData.imageBase64, mediaData.videoBase64, mediaData.documentBase64]);

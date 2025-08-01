@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { realTimeMessageSync } from '@/services/realTimeMessageSync';
-import { useToast } from '@/hooks/use-toast';
+import { smartLogs } from '@/services/smartLogsService';
 
 interface UseRealTimeMessagesProps {
   clientId: string;
@@ -18,55 +18,33 @@ export const useRealTimeMessages = ({
 }: UseRealTimeMessagesProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<string>('disconnected');
-  const { toast } = useToast();
 
   const handleNewMessage = useCallback((message: any) => {
-    console.log('📨 [HOOK] Nova mensagem recebida:', message);
-    onNewMessage?.(message);
-    
-    toast({
-      title: "Nova mensagem",
-      description: `Mensagem de ${message.sender_name}`,
-      duration: 3000,
+    smartLogs.debug('REALTIME', 'Nova mensagem recebida', { 
+      messageId: message.id, 
+      senderName: message.sender_name 
     });
-  }, [onNewMessage, toast]);
+    onNewMessage?.(message);
+  }, [onNewMessage]);
 
   const handleNewTicket = useCallback((ticket: any) => {
-    console.log('🎫 [HOOK] Novo ticket criado:', ticket);
-    onNewTicket?.(ticket);
-    
-    toast({
-      title: "Nova conversa",
-      description: `Conversa iniciada com ${ticket.title}`,
-      duration: 3000,
+    smartLogs.info('REALTIME', 'Novo ticket criado', { 
+      ticketId: ticket.id, 
+      title: ticket.title 
     });
-  }, [onNewTicket, toast]);
+    onNewTicket?.(ticket);
+  }, [onNewTicket]);
 
   const handleConnectionChange = useCallback((status: string) => {
-    console.log('📡 [HOOK] Status de conexão alterado:', status);
+    smartLogs.info('REALTIME', 'Status de conexão alterado', { status });
     setConnectionStatus(status);
     setIsConnected(status === 'connected');
-    
-    if (status === 'connected') {
-      toast({
-        title: "Conectado",
-        description: "WhatsApp conectado com sucesso",
-        duration: 2000,
-      });
-    } else if (status === 'disconnected') {
-      toast({
-        title: "Desconectado",
-        description: "WhatsApp desconectado",
-        variant: "destructive",
-        duration: 2000,
-      });
-    }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     if (!clientId || !instanceId) return;
 
-    console.log('🚀 [HOOK] Iniciando tempo real para:', { clientId, instanceId });
+    smartLogs.debug('REALTIME', 'Iniciando tempo real', { clientId, instanceId });
 
     // Iniciar sistema de tempo real
     realTimeMessageSync.start({
@@ -79,7 +57,7 @@ export const useRealTimeMessages = ({
 
     // Cleanup ao desmontar
     return () => {
-      console.log('⏹️ [HOOK] Parando tempo real');
+      smartLogs.debug('REALTIME', 'Parando tempo real');
       realTimeMessageSync.stop();
     };
   }, [clientId, instanceId, handleNewMessage, handleNewTicket, handleConnectionChange]);

@@ -100,12 +100,7 @@ export const useTicketMessages = (ticketId: string) => {
             
             if (payload.eventType === 'INSERT' && payload.new) {
               const newMessage = payload.new as TicketMessage;
-              console.log('📨 Nova mensagem via realtime:', {
-                messageId: newMessage.message_id,
-                type: newMessage.message_type,
-                fromMe: newMessage.from_me,
-                hasAudio: !!newMessage.audio_base64
-              });
+               // Nova mensagem via realtime detectada
               setMessages(prev => {
                 const exists = prev.some(msg => msg.id === newMessage.id);
                 if (exists) return prev;
@@ -116,21 +111,15 @@ export const useTicketMessages = (ticketId: string) => {
               });
             } else if (payload.eventType === 'UPDATE' && payload.new) {
               const updatedMessage = payload.new as TicketMessage;
-              console.log('🔄 Mensagem atualizada via realtime:', {
-                messageId: updatedMessage.message_id,
-                status: updatedMessage.processing_status,
-                type: updatedMessage.message_type,
-                hasAudio: !!updatedMessage.audio_base64,
-                fromMe: updatedMessage.from_me
-              });
-              
-              // ⚡ OTIMIZAÇÃO: Detectar áudios CRM que acabaram de ficar prontos
-              if (updatedMessage.message_type === 'audio' && 
-                  updatedMessage.from_me && 
-                  updatedMessage.processing_status === 'completed' &&
-                  updatedMessage.audio_base64) {
-                console.log('⚡ Áudio CRM detectado como pronto via realtime - forçando atualização');
-              }
+               // Mensagem atualizada via realtime
+               
+               // ⚡ OTIMIZAÇÃO: Detectar áudios CRM que acabaram de ficar prontos
+               if (updatedMessage.message_type === 'audio' && 
+                   updatedMessage.from_me && 
+                   updatedMessage.processing_status === 'completed' &&
+                   updatedMessage.audio_base64) {
+                 // Áudio CRM pronto - UI será atualizada automaticamente
+               }
               
               setMessages(prev => 
                 prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)

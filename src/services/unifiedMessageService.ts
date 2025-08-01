@@ -8,6 +8,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import yumerApiV2Service from "./yumerApiV2Service";
 import { businessTokenService } from "./businessTokenService";
+import { smartLogs } from "./smartLogsService";
 
 export interface UnifiedMessageOptions {
   instanceId: string;
@@ -36,12 +37,11 @@ class UnifiedMessageService {
    */
   async sendMessage(options: UnifiedMessageOptions): Promise<UnifiedMessageResult> {
     try {
-      console.log('📤 [UNIFIED-MSG] Enviando mensagem:', {
+      smartLogs.info('MESSAGE', 'Enviando mensagem', {
         instanceId: options.instanceId,
         chatId: options.chatId,
         messageLength: options.message.length,
-        source: options.source || 'manual',
-        humanized: options.humanized
+        source: options.source || 'manual'
       });
 
       // 1. RESOLVER INSTANCE ID REAL
@@ -63,13 +63,6 @@ class UnifiedMessageService {
       };
 
       // 4. ENVIAR VIA YUMER API V2 - SEMPRE REST (ESTRATÉGIA HÍBRIDA)
-      console.log('📤 [UNIFIED-MSG] *** ENVIANDO VIA REST API (ESTRATÉGIA HÍBRIDA) ***:', {
-        originalId: options.instanceId,
-        realInstanceId,
-        chatId: options.chatId,
-        strategy: 'HYBRID: REST for sending'
-      });
-
       const result = await yumerApiV2Service.sendText(
         realInstanceId,
         options.chatId,
@@ -77,7 +70,7 @@ class UnifiedMessageService {
         sendOptions
       );
 
-      console.log('✅ [UNIFIED-MSG] Mensagem enviada com sucesso:', result);
+      smartLogs.info('MESSAGE', 'Mensagem enviada com sucesso', { messageId: result.key?.id });
 
       return {
         success: true,
@@ -87,7 +80,7 @@ class UnifiedMessageService {
       };
 
     } catch (error: any) {
-      console.error('❌ [UNIFIED-MSG] Erro ao enviar mensagem:', error);
+      smartLogs.error('MESSAGE', 'Erro ao enviar mensagem', { error: error.message });
       
       return {
         success: false,
@@ -105,8 +98,6 @@ class UnifiedMessageService {
     try {
       // Se é UUID (interno do Supabase), buscar o instance_id real
       if (instanceId.includes('-')) {
-        console.log('🔍 [UNIFIED-MSG] Resolvendo ID interno para real:', instanceId);
-        
         const { data, error } = await supabase
           .from('whatsapp_instances')
           .select('instance_id')
@@ -114,14 +105,9 @@ class UnifiedMessageService {
           .single();
         
         if (error || !data) {
-          console.error('❌ [UNIFIED-MSG] Erro ao resolver instance_id:', error);
+          smartLogs.error('MESSAGE', 'Erro ao resolver instance_id', { instanceId, error: error?.message });
           return null;
         }
-        
-        console.log('✅ [UNIFIED-MSG] ID resolvido:', {
-          internal: instanceId,
-          real: data.instance_id
-        });
         
         return data.instance_id;
       }
@@ -130,7 +116,7 @@ class UnifiedMessageService {
       return instanceId;
       
     } catch (error) {
-      console.error('❌ [UNIFIED-MSG] Erro ao resolver instance_id:', error);
+      smartLogs.error('MESSAGE', 'Erro ao resolver instance_id', { instanceId, error });
       return null;
     }
   }
@@ -140,19 +126,15 @@ class UnifiedMessageService {
    */
   private async ensureValidBusinessToken(clientId: string): Promise<void> {
     try {
-      console.log('🔐 [UNIFIED-MSG] Verificando business token para cliente:', clientId);
-      
       const result = await businessTokenService.ensureValidToken(clientId);
       
       if (!result.success) {
-        console.error('❌ [UNIFIED-MSG] Falha ao garantir token válido:', result.error);
+        smartLogs.error('MESSAGE', 'Business token inválido', { clientId, error: result.error });
         throw new Error(`Business token inválido: ${result.error}`);
       }
       
-      console.log('✅ [UNIFIED-MSG] Business token válido confirmado');
-      
     } catch (error) {
-      console.error('❌ [UNIFIED-MSG] Erro ao verificar business token:', error);
+      smartLogs.error('MESSAGE', 'Erro ao verificar business token', { clientId, error });
       throw error;
     }
   }

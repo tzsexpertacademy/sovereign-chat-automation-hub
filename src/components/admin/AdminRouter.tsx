@@ -7,6 +7,7 @@ import { PlansManagement } from "./PlansManagementModern";
 import ServerManagement from "./ServerManagement";
 import ApiCodechat from "./ApiCodechat";
 import SystemLogsModern from "./SystemLogsModern";
+import { SystemLogsClean } from "./SystemLogsClean";
 import DevelopmentPlan from "./DevelopmentPlan";
 import { FixTicketsAssignment } from "./FixTicketsAssignment";
 
@@ -22,7 +23,7 @@ const AdminRouter = () => {
       <Route path="/server-config" element={<ServerManagement />} />
       <Route path="/server-config-v2" element={<ServerManagement />} />
       <Route path="/diagnostics" element={<ApiCodechat />} />
-      <Route path="/logs" element={<SystemLogsModern />} />
+      <Route path="/logs" element={<SystemLogsClean />} />
       <Route path="/advanced" element={<DevelopmentPlan />} />
       <Route path="/fix-tickets" element={<FixTicketsAssignment />} />
     </Routes>
