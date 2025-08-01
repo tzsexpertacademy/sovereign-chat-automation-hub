@@ -589,7 +589,7 @@ class YumerApiV2Service {
   }
 
   /**
-   * Envia mídia usando multipart/form-data (alternativa mais eficiente para arquivos grandes)
+   * Envia mídia usando multipart/form-data (CORRIGIDO - igual ao sendAudioFile que funciona)
    */
   async sendMediaFile(instanceId: string, chatId: string, file: File, options?: { 
     caption?: string; 
@@ -597,26 +597,69 @@ class YumerApiV2Service {
     messageId?: string;
     mediatype?: 'image' | 'video' | 'document' | 'sticker' | 'audio';
   }): Promise<MessageInfo> {
+    console.log('📤 [YumerApiV2.2.1] ===== ENVIANDO MÍDIA VIA MEDIA-FILE =====');
+    console.log('🔧 Sistema corrigido: replicando lógica do sendAudioFile que funciona');
+    console.log('📊 Dados do arquivo:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      chatId,
+      instanceId
+    });
+
     const formData = new FormData();
     formData.append('recipient', chatId);
-    formData.append('attachment', file);
     
     // Detectar tipo de mídia baseado no arquivo
     const detectedType = options?.mediatype || this.detectMediaTypeFromFile(file);
-    formData.append('mediatype', detectedType);
+    console.log(`🎯 [YumerApiV2.2.1] Tipo detectado: ${detectedType}`);
     
-    if (options?.caption) {
-      formData.append('caption', options.caption);
+    // Criar nome de arquivo adequado
+    let fileName = `${detectedType}_${Date.now()}`;
+    if (file.name && file.name.includes('.')) {
+      const extension = file.name.split('.').pop();
+      fileName += `.${extension}`;
+    } else {
+      // Usar extensão baseada no tipo
+      if (detectedType === 'image') fileName += '.jpg';
+      else if (detectedType === 'video') fileName += '.mp4';
+      else if (detectedType === 'document') fileName += '.pdf';
+      else fileName += '.bin';
     }
     
-    if (options?.delay) {
+    formData.append('attachment', file, fileName);
+    formData.append('mediatype', detectedType);
+    
+    // Adicionar opções igual ao sendAudioFile
+    if (options?.caption) {
+      formData.append('caption', options.caption);
+      console.log(`📝 [YumerApiV2.2.1] Caption: ${options.caption}`);
+    }
+    
+    if (options?.delay !== undefined) {
       formData.append('delay', options.delay.toString());
+      console.log(`⏱️ [YumerApiV2.2.1] Delay: ${options.delay}ms`);
+    } else {
+      formData.append('delay', '1200'); // Default igual ao sendAudioFile
     }
     
     if (options?.messageId) {
-      formData.append('externalAttributes', JSON.stringify({ messageId: options.messageId }));
+      formData.append('messageId', options.messageId);
+      console.log(`🆔 [YumerApiV2.2.1] MessageId: ${options.messageId}`);
     }
+    
+    // ExternalAttributes para tracking
+    const externalAttributes = {
+      source: 'sendMediaFile',
+      mediaType: detectedType,
+      fileName: fileName,
+      fileSize: file.size,
+      timestamp: Date.now()
+    };
+    formData.append('externalAttributes', JSON.stringify(externalAttributes));
 
+    console.log(`📤 [YumerApiV2.2.1] Enviando ${fileName} (${Math.round(file.size/1024)}KB) para ${chatId} na instância ${instanceId}`);
+    
     return this.makeRequest<MessageInfo>(`/api/v2/instance/${instanceId}/send/media-file`, {
       method: 'POST',
       body: formData

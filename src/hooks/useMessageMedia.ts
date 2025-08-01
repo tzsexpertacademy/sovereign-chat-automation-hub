@@ -27,7 +27,7 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
   });
   const { toast } = useToast();
 
-  // Enviar mídia via endpoint correto
+  // Enviar mídia via senders especializados (CORRIGIDO)
   const sendMedia = useCallback(async (mediaMessage: MediaMessage) => {
     if (!clientId) {
       toast({
@@ -41,25 +41,86 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
     try {
       setIsUploading(true);
       
-      console.log(`📤 Enviando ${mediaMessage.type} para ${mediaMessage.to}:`, {
+      console.log(`📤 [MEDIA-HOOK] Enviando ${mediaMessage.type} para ${mediaMessage.to}:`, {
         filename: mediaMessage.file.name,
         size: mediaMessage.file.size,
-        type: mediaMessage.file.type
+        type: mediaMessage.file.type,
+        clientId
       });
       
-      // Usar endpoint correto para envio de mídia
-      const result = await whatsappService.sendMedia(clientId, mediaMessage.to, mediaMessage.file, mediaMessage.caption);
-      
-      console.log('📤 Resultado do envio de mídia:', result);
+      const messageId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      let result: any;
 
-      if (result && typeof result === 'object' && 'success' in result && result.success) {
-        // Salvar mensagem no banco com metadados completos
+      // Usar senders especializados baseados no AudioSender que funciona
+      if (mediaMessage.type === 'audio') {
+        const { AudioSender } = await import('@/services/audioSender');
+        const blob = new Blob([mediaMessage.file], { type: mediaMessage.file.type });
+        
+        result = await AudioSender.sendWithIntelligentRetry(
+          blob,
+          mediaMessage.to,
+          clientId,
+          messageId
+        );
+        
+        console.log('✅ [MEDIA-HOOK] Áudio enviado via AudioSender:', result);
+      } else if (mediaMessage.type === 'image') {
+        const { ImageSender } = await import('@/services/imageSender');
+        const blob = new Blob([mediaMessage.file], { type: mediaMessage.file.type });
+        
+        result = await ImageSender.sendWithIntelligentRetry(
+          blob,
+          mediaMessage.to,
+          clientId,
+          messageId,
+          mediaMessage.caption
+        );
+        
+        console.log('✅ [MEDIA-HOOK] Imagem enviada via ImageSender:', result);
+      } else if (mediaMessage.type === 'video') {
+        const { VideoSender } = await import('@/services/videoSender');
+        const blob = new Blob([mediaMessage.file], { type: mediaMessage.file.type });
+        
+        result = await VideoSender.sendWithIntelligentRetry(
+          blob,
+          mediaMessage.to,
+          clientId,
+          messageId,
+          mediaMessage.caption
+        );
+        
+        console.log('✅ [MEDIA-HOOK] Vídeo enviado via VideoSender:', result);
+      } else if (mediaMessage.type === 'document') {
+        const { DocumentSender } = await import('@/services/documentSender');
+        const blob = new Blob([mediaMessage.file], { type: mediaMessage.file.type });
+        
+        result = await DocumentSender.sendWithIntelligentRetry(
+          blob,
+          mediaMessage.to,
+          clientId,
+          messageId,
+          mediaMessage.file.name,
+          mediaMessage.caption
+        );
+        
+        console.log('✅ [MEDIA-HOOK] Documento enviado via DocumentSender:', result);
+      } else {
+        // Fallback para tipos desconhecidos
+        result = await whatsappService.sendMedia(clientId, mediaMessage.to, mediaMessage.file, mediaMessage.caption);
+        console.log('✅ [MEDIA-HOOK] Mídia enviada via fallback:', result);
+      }
+
+      // Verificar sucesso baseado no padrão dos senders
+      const isSuccess = result && (result.success === true || result === true);
+      
+      if (isSuccess) {
+        // Salvar mensagem no banco
         if (ticketId) {
-          console.log('💾 Salvando mensagem manual com metadados da API:', result);
+          console.log('💾 [MEDIA-HOOK] Salvando mensagem no ticket:', ticketId);
           
           await manualMessageSaver.saveMediaMessage({
             ticketId,
-            messageId: `manual_${Date.now()}`,
+            messageId,
             content: mediaMessage.caption || `📎 ${mediaMessage.type}`,
             messageType: mediaMessage.type,
             mediaFile: mediaMessage.file,
@@ -75,38 +136,15 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
           title: "Mídia enviada",
           description: `${mediaMessage.type} enviado com sucesso`,
         });
-        return result;
-      } else if (typeof result === 'boolean' && result === true) {
-        // Salvar mensagem no banco com fallback para resposta boolean
-        if (ticketId) {
-          console.log('💾 Salvando mensagem manual (resposta boolean)');
-          
-          await manualMessageSaver.saveMediaMessage({
-            ticketId,
-            messageId: `manual_${Date.now()}`,
-            content: mediaMessage.caption || `📎 ${mediaMessage.type}`,
-            messageType: mediaMessage.type,
-            mediaFile: mediaMessage.file,
-            uploadResponse: null,
-            fileName: mediaMessage.file.name,
-            mimeType: mediaMessage.file.type,
-            caption: mediaMessage.caption,
-            clientId
-          });
-        }
-
-        toast({
-          title: "Mídia enviada",
-          description: `${mediaMessage.type} enviado com sucesso`,
-        });
-        return { success: true };
+        
+        return { success: true, ...result };
       } else {
-        const errorMessage = typeof result === 'object' && 'error' in result ? result.error : 'Falha ao enviar mídia';
+        const errorMessage = result?.error || 'Falha ao enviar mídia';
         throw new Error(errorMessage);
       }
 
     } catch (error: any) {
-      console.error('❌ Erro ao enviar mídia:', error);
+      console.error('❌ [MEDIA-HOOK] Erro ao enviar mídia:', error);
       toast({
         title: "Erro ao enviar mídia",
         description: error.message || "Falha ao enviar arquivo",
@@ -116,7 +154,7 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
     } finally {
       setIsUploading(false);
     }
-  }, [clientId, toast]);
+  }, [clientId, ticketId, toast]);
 
   // Processar imagem
   const handleImageUpload = useCallback(async (file: File, to: string, caption?: string) => {

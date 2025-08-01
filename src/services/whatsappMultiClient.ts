@@ -306,7 +306,7 @@ export class WhatsAppMultiClient {
           true;
       }
 
-      // Para outros tipos (imagem, vídeo, documento), usar FormData primeiro com fallback para base64
+      // Para outros tipos (imagem, vídeo, documento), usar os novos senders especializados
       if (file && !media) {
         console.log(`📤 Enviando ${detectedType} para ${targetTo}:`, {
           name: file.name,
@@ -314,34 +314,62 @@ export class WhatsAppMultiClient {
           type: file.type
         });
 
-        try {
-          // TENTATIVA 1: Usar FormData (mais eficiente)
-          console.log('🚀 Tentativa 1: Enviando via FormData (sendMediaFile)...');
+        const messageId = `media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Usar senders especializados baseados no tipo
+        if (detectedType === 'image') {
+          const { ImageSender } = await import('@/services/imageSender');
+          const blob = new Blob([file], { type: file.type });
           
+          const result = await ImageSender.sendWithIntelligentRetry(
+            blob, targetTo, instanceId, messageId, mediaCaption
+          );
+          
+          if (result.success) {
+            console.log('✅ Imagem enviada com sucesso via ImageSender');
+            return typeof instanceIdOrOptions === 'string' ? { success: true } : true;
+          } else {
+            throw new Error(result.error || 'Falha no envio de imagem');
+          }
+        } else if (detectedType === 'video') {
+          const { VideoSender } = await import('@/services/videoSender');
+          const blob = new Blob([file], { type: file.type });
+          
+          const result = await VideoSender.sendWithIntelligentRetry(
+            blob, targetTo, instanceId, messageId, mediaCaption
+          );
+          
+          if (result.success) {
+            console.log('✅ Vídeo enviado com sucesso via VideoSender');
+            return typeof instanceIdOrOptions === 'string' ? { success: true } : true;
+          } else {
+            throw new Error(result.error || 'Falha no envio de vídeo');
+          }
+        } else if (detectedType === 'document') {
+          const { DocumentSender } = await import('@/services/documentSender');
+          const blob = new Blob([file], { type: file.type });
+          
+          const result = await DocumentSender.sendWithIntelligentRetry(
+            blob, targetTo, instanceId, messageId, file.name, mediaCaption
+          );
+          
+          if (result.success) {
+            console.log('✅ Documento enviado com sucesso via DocumentSender');
+            return typeof instanceIdOrOptions === 'string' ? { success: true } : true;
+          } else {
+            throw new Error(result.error || 'Falha no envio de documento');
+          }
+        } else {
+          // Fallback: usar método genérico corrigido
           await yumerApiV2.sendMediaFile(instanceId, targetTo, file, {
             caption: mediaCaption,
             delay: 1200,
-            messageId: `media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            messageId: messageId,
             mediatype: detectedType as 'image' | 'video' | 'document' | 'sticker'
           });
-
-          console.log('✅ Sucesso via FormData');
-          return typeof instanceIdOrOptions === 'string' ? 
-            { success: true } : 
-            true;
-
-        } catch (formDataError) {
-          console.warn('⚠️ FormData falhou, tentando fallback para base64:', formDataError);
           
-          // FALLBACK: Converter para base64 e usar método tradicional
-          media = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          });
-          
-          console.log('🔄 Tentativa 2: Enviando via base64 (sendMedia)...');
+          console.log('✅ Mídia enviada via sendMediaFile corrigido');
+          return typeof instanceIdOrOptions === 'string' ? { success: true } : true;
         }
       }
 
