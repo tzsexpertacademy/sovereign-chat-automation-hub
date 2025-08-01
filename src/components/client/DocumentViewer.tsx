@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Download, FileText, File, FileImage, FileVideo, FileAudio, RotateCcw, ExternalLink } from 'lucide-react';
+import { Download, FileText, File, FileImage, FileVideo, FileAudio, RotateCcw, ExternalLink, Loader2 } from 'lucide-react';
 import { directMediaDownloadService } from '@/services/directMediaDownloadService';
 import { supabase } from '@/integrations/supabase/client';
+import { useMediaRecovery } from '@/hooks/useMediaRecovery';
+import { toast } from 'sonner';
 
 interface DocumentViewerProps {
   documentUrl?: string;
@@ -37,6 +39,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
+  const { recoverMedia, isRecovering, clearRecoveryState } = useMediaRecovery();
 
   useEffect(() => {
     const processDocument = async () => {
@@ -48,12 +51,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       setIsProcessing(true);
       setError('');
 
-      console.log('📄 DocumentViewer: Processando documento:', {
+      console.log('📄 DocumentViewer: INICIANDO PROCESSAMENTO', {
         hasDocumentUrl: !!documentUrl,
         hasMessageId: !!messageId,
         hasMediaKey: !!mediaKey,
         needsDecryption,
-        fileType
+        fileType,
+        timestamp: new Date().toISOString()
       });
 
       try {
@@ -330,6 +334,64 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             >
               <ExternalLink className="w-4 h-4 mr-2" />
               Visualizar
+            </Button>
+          )}
+
+          {/* Botão de recuperação para documentos com problemas */}
+          {(error || !displayDocumentUrl) && documentUrl && mediaKey && messageId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  console.log('🔄 DocumentViewer: INICIANDO RECUPERAÇÃO MANUAL');
+                  clearRecoveryState();
+                  
+                  const currentUrl = window.location.pathname;
+                  const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+                  let instanceId = 'default';
+                  
+                  if (ticketIdMatch) {
+                    const { data: ticketData } = await supabase
+                      .from('conversation_tickets')
+                      .select('instance_id')
+                      .eq('id', ticketIdMatch[1])
+                      .single();
+                    
+                    if (ticketData?.instance_id) {
+                      instanceId = ticketData.instance_id;
+                    }
+                  }
+
+                  const result = await recoverMedia(
+                    instanceId,
+                    messageId,
+                    documentUrl,
+                    mediaKey,
+                    undefined,
+                    fileType || 'application/octet-stream',
+                    'document'
+                  );
+
+                  if (result.success && result.mediaUrl) {
+                    console.log('✅ DocumentViewer: RECUPERAÇÃO BEM-SUCEDIDA');
+                    setDisplayDocumentUrl(result.mediaUrl);
+                    setError('');
+                    toast.success('Documento recuperado com sucesso!');
+                  }
+                } catch (error) {
+                  console.error('❌ DocumentViewer: FALHA NA RECUPERAÇÃO:', error);
+                  toast.error('Falha na recuperação do documento');
+                }
+              }}
+              disabled={isRecovering}
+              title="Tentar recuperar documento"
+            >
+              {isRecovering ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RotateCcw className="w-4 h-4" />
+              )}
             </Button>
           )}
         </div>

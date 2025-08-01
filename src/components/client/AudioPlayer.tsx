@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, Volume2, Download, AlertCircle, Loader2 } from 'lucide-react';
+import { Play, Pause, Volume2, Download, AlertCircle, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { directMediaDownloadService } from '@/services/directMediaDownloadService';
+import { useMediaRecovery } from '@/hooks/useMediaRecovery';
 
 interface AudioPlayerProps {
   audioUrl?: string;
@@ -36,6 +37,7 @@ const AudioPlayer = ({
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [decryptionAttempted, setDecryptionAttempted] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const { recoverMedia, isRecovering, error: recoveryError, clearRecoveryState } = useMediaRecovery();
 
   // Detectar formato de áudio pelos headers
   const detectAudioFormat = (base64Data: string): string => {
@@ -172,13 +174,14 @@ const AudioPlayer = ({
       setIsLoading(true);
       setError(null);
       
-      console.log('🎵 Player: Iniciando com dados:', {
+      console.log('🎵 Player: INICIANDO PROCESSAMENTO', {
         hasAudioData: !!audioData,
         hasAudioUrl: !!audioUrl,
         audioDataLength: audioData?.length,
         isEncrypted: audioUrl?.includes('.enc'),
         hasDecryptionKeys: !!(messageId && mediaKey),
-        audioUrl: audioUrl?.substring(0, 100) + '...'
+        audioUrl: audioUrl?.substring(0, 100) + '...',
+        timestamp: new Date().toISOString()
       });
 
       try {
@@ -192,26 +195,33 @@ const AudioPlayer = ({
 
         // 2. Áudio criptografado (.enc) com chaves de processamento
         if (audioUrl?.includes('.enc') && messageId && mediaKey) {
-          console.log('🔐 Player: Detectado áudio criptografado, iniciando processamento');
+          console.log('🔐 Player: DETECTADO ÁUDIO CRIPTOGRAFADO - iniciando descriptografia');
           setIsDecrypting(true);
           
-          const result = await decryptWhatsAppAudio(audioUrl);
-          
-          if (result) {
-            console.log('✅ Player: Processamento bem-sucedido');
-            // Se é blob URL, usar diretamente; se é base64, criar sources
-            if (result.startsWith('blob:')) {
-              setAudioSrc(result);
+          try {
+            const result = await decryptWhatsAppAudio(audioUrl);
+            
+            if (result) {
+              console.log('✅ Player: DESCRIPTOGRAFIA BEM-SUCEDIDA');
+              // Se é blob URL, usar diretamente; se é base64, criar sources
+              if (result.startsWith('blob:')) {
+                setAudioSrc(result);
+              } else {
+                const sources = createAudioSources(result);
+                setAudioSrc(sources[0]);
+              }
+              setDecryptionAttempted(true);
+              setIsDecrypting(false);
+              clearRecoveryState(); // Limpar estados de recovery se sucesso
+              return;
             } else {
-              const sources = createAudioSources(result);
-              setAudioSrc(sources[0]);
+              console.log('❌ Player: FALHA NA DESCRIPTOGRAFIA INICIAL');
+              setError('Falha no processamento do áudio - tente o botão de recuperação');
+              setDecryptionAttempted(true);
             }
-            setDecryptionAttempted(true);
-            setIsDecrypting(false);
-            return;
-          } else {
-            console.log('❌ Player: Falha no processamento');
-            setError('Falha no processamento do áudio');
+          } catch (decryptError) {
+            console.error('❌ Player: ERRO NA DESCRIPTOGRAFIA:', decryptError);
+            setError('Erro na descriptografia - tente o botão de recuperação');
             setDecryptionAttempted(true);
           }
           setIsDecrypting(false);
@@ -480,6 +490,69 @@ const AudioPlayer = ({
         )}
       </Button>
 
+      {/* Botão de recuperação para áudios com problemas */}
+      {(error || (decryptionAttempted && !audioSrc)) && audioUrl?.includes('.enc') && messageId && mediaKey && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+            if (!audioUrl || !messageId || !mediaKey) return;
+            
+            try {
+              console.log('🔄 Player: INICIANDO RECUPERAÇÃO MANUAL');
+              clearRecoveryState();
+              
+              const currentUrl = window.location.pathname;
+              const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+              let instanceId = 'default';
+              
+              if (ticketIdMatch) {
+                const { supabase } = await import('@/integrations/supabase/client');
+                const { data: ticketData } = await supabase
+                  .from('conversation_tickets')
+                  .select('instance_id')
+                  .eq('id', ticketIdMatch[1])
+                  .single();
+                
+                if (ticketData?.instance_id) {
+                  instanceId = ticketData.instance_id;
+                }
+              }
+
+              const result = await recoverMedia(
+                instanceId,
+                messageId,
+                audioUrl,
+                mediaKey,
+                undefined,
+                'audio/ogg',
+                'audio'
+              );
+
+              if (result.success && result.mediaUrl) {
+                console.log('✅ Player: RECUPERAÇÃO BEM-SUCEDIDA');
+                setAudioSrc(result.mediaUrl);
+                setError(null);
+                setDecryptionAttempted(true);
+                toast.success('Áudio recuperado com sucesso!');
+              }
+            } catch (error) {
+              console.error('❌ Player: FALHA NA RECUPERAÇÃO:', error);
+              toast.error('Falha na recuperação do áudio');
+            }
+          }}
+          disabled={isRecovering}
+          className="h-8 w-8 p-0"
+          title="Tentar recuperar áudio"
+        >
+          {isRecovering ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RotateCcw className="h-3 w-3" />
+          )}
+        </Button>
+      )}
+
       {/* Status indicators */}
       <div className="flex flex-col items-end text-xs min-w-[80px]">
         {isDecrypting && (
@@ -489,7 +562,14 @@ const AudioPlayer = ({
           </div>
         )}
         
-        {error && (
+        {isRecovering && (
+          <div className="text-blue-600 flex items-center">
+            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+            Recuperando...
+          </div>
+        )}
+        
+        {error && !isRecovering && (
           <div className="text-destructive flex items-center">
             <AlertCircle className="h-3 w-3 mr-1" />
             <span className="truncate max-w-[60px]" title={error}>
@@ -498,13 +578,13 @@ const AudioPlayer = ({
           </div>
         )}
         
-        {audioSrc && !error && !isDecrypting && (
+        {audioSrc && !error && !isDecrypting && !isRecovering && (
           <div className="text-green-600 flex items-center">
             ✓ Pronto
           </div>
         )}
 
-        {decryptionAttempted && !audioSrc && (
+        {decryptionAttempted && !audioSrc && !isRecovering && (
           <div className="text-orange-600 flex items-center text-xs">
             ⚠️ Falha
           </div>
