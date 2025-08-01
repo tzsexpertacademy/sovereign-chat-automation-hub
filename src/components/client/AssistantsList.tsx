@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Bot, Edit, Trash2, Zap, Settings, TestTube } from "lucide-react";
+import { Bot, Edit, Trash2, Zap, Settings } from "lucide-react";
 import { type AssistantWithQueues } from "@/services/assistantsService";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,63 +25,6 @@ const jsonToStringArray = (json: any): string[] => {
 
 const AssistantsList = ({ assistants, onEdit, onDelete, onToggleStatus, onAdvancedSettings }: AssistantsListProps) => {
   
-  const handleTestAssistant = async (assistant: AssistantWithQueues) => {
-    try {
-      toast.info("🧪 Testando assistente com Evolution API v2.2.1...");
-      
-      // Buscar primeira instância ativa do cliente
-      const { data: instances } = await supabase
-        .from('whatsapp_instances')
-        .select('instance_id, status')
-        .eq('client_id', assistant.client_id)
-        .eq('status', 'connected')
-        .limit(1);
-      
-      if (!instances || instances.length === 0) {
-        toast.error("❌ Nenhuma instância WhatsApp conectada encontrada");
-        return;
-      }
-      
-      const instanceId = instances[0].instance_id;
-      
-      // Simular mensagem de teste para o assistente
-      const { data, error } = await supabase.functions.invoke('ai-assistant-process', {
-        body: {
-          ticketId: 'test-' + Date.now(),
-          message: 'Olá, teste da Evolution API v2.2.1',
-          clientId: assistant.client_id,
-          instanceId: instanceId,
-          assistant: {
-            id: assistant.id,
-            name: assistant.name,
-            prompt: assistant.prompt,
-            model: assistant.model || 'gpt-4o-mini'
-          },
-          context: {
-            customerName: 'Teste Sistema',
-            phoneNumber: '554700000000',
-            chatId: '554700000000@s.whatsapp.net'
-          }
-        }
-      });
-      
-      if (error) {
-        console.error('❌ Erro no teste:', error);
-        toast.error(`❌ Erro no teste: ${error.message}`);
-        return;
-      }
-      
-      if (data?.success) {
-        toast.success(`✅ Assistente testado com sucesso! Resposta gerada e enviada via Evolution API v2.2.1`);
-      } else {
-        toast.warning(`⚠️ Resposta gerada mas falha no envio: ${data?.error || 'Erro desconhecido'}`);
-      }
-      
-    } catch (error) {
-      console.error('❌ Erro ao testar assistente:', error);
-      toast.error("❌ Erro ao testar assistente");
-    }
-  };
   if (assistants.length === 0) {
     return (
       <Card>
@@ -170,15 +113,6 @@ const AssistantsList = ({ assistants, onEdit, onDelete, onToggleStatus, onAdvanc
                 >
                   <Settings className="h-3 w-3 mr-1" />
                   Configurações
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleTestAssistant(assistant)}
-                  className="text-green-600 border-green-300 hover:bg-green-50"
-                >
-                  <TestTube className="h-3 w-3 mr-1" />
-                  Testar
                 </Button>
                 <Button
                   size="sm"

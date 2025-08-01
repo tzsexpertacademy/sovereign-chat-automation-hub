@@ -373,7 +373,7 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="basic" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 Básicas
@@ -382,17 +382,9 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
                 <Key className="h-4 w-4" />
                 OpenAI Config
               </TabsTrigger>
-              <TabsTrigger value="ai" className="flex items-center gap-2">
-                <Brain className="h-4 w-4" />
-                IA & Criatividade
-              </TabsTrigger>
-              <TabsTrigger value="advanced" className="flex items-center gap-2">
-                <Zap className="h-4 w-4" />
-                Humanização
-              </TabsTrigger>
               <TabsTrigger value="audio" className="flex items-center gap-2">
                 <Volume2 className="h-4 w-4" />
-                Áudio
+                Áudio Básico
               </TabsTrigger>
             </TabsList>
             
@@ -594,122 +586,6 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
               </Card>
             </TabsContent>
 
-            <TabsContent value="ai" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Brain className="h-5 w-5" />
-                    Configurações de IA
-                  </CardTitle>
-                  <CardDescription>
-                    Ajuste o comportamento e criatividade das respostas da IA
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-3">
-                      <Label htmlFor="temperature">
-                        Temperatura (Criatividade): {temperature}
-                      </Label>
-                      <Input
-                        id="temperature"
-                        type="range"
-                        min="0"
-                        max="2"
-                        step="0.1"
-                        value={temperature}
-                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                        className="w-full"
-                      />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Conservador (0.0)</span>
-                        <span>Balanceado (1.0)</span>
-                        <span>Criativo (2.0)</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {temperature <= 0.3 ? "Respostas muito precisas e consistentes" :
-                         temperature <= 0.7 ? "Equilíbrio entre precisão e criatividade" :
-                         temperature <= 1.2 ? "Respostas mais criativas e variadas" :
-                         "Respostas muito criativas e imprevisíveis"}
-                      </p>
-                    </div>
-
-                    <div className="space-y-3">
-                      <Label htmlFor="maxTokens">
-                        Tamanho Máximo da Resposta: {maxTokens} tokens
-                      </Label>
-                      <Input
-                        id="maxTokens"
-                        type="range"
-                        min="100"
-                        max="4000"
-                        step="100"
-                        value={maxTokens}
-                        onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-                        className="w-full"
-                      />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Curto (100)</span>
-                        <span>Médio (1000)</span>
-                        <span>Longo (4000)</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {maxTokens <= 500 ? "Respostas curtas e diretas" :
-                         maxTokens <= 1500 ? "Respostas de tamanho médio" :
-                         "Respostas longas e detalhadas"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <h4 className="font-medium text-blue-900 mb-2">💡 Dicas de Configuração</h4>
-                    <ul className="text-sm text-blue-800 space-y-1">
-                      <li>• <strong>Atendimento:</strong> Temperatura 0.3-0.5, Tokens 200-800</li>
-                      <li>• <strong>Vendas:</strong> Temperatura 0.5-0.8, Tokens 300-1000</li>
-                      <li>• <strong>Criativo:</strong> Temperatura 0.8-1.2, Tokens 500-2000</li>
-                      <li>• <strong>Suporte Técnico:</strong> Temperatura 0.2-0.4, Tokens 400-1500</li>
-                    </ul>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="advanced" className="space-y-6">
-              {assistant?.id ? (
-                <AssistantHumanizationSettings
-                  assistantId={assistant.id}
-                  assistantName={name || assistant.name}
-                  onConfigUpdate={(config) => {
-                    console.log('🎭 Configuração de humanização atualizada:', config);
-                    toast({
-                      title: "Humanização Atualizada",
-                      description: "Configurações de humanização salvas com sucesso!"
-                    });
-                  }}
-                />
-              ) : (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Bot className="h-5 w-5" />
-                      Configurações de Humanização
-                    </CardTitle>
-                    <CardDescription>
-                      Salve o assistente primeiro para configurar a humanização
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                      <p className="text-sm text-amber-800">
-                        ⚠️ Para configurar comportamentos humanizados (typing, delays, divisão de mensagens), 
-                        é necessário salvar o assistente primeiro. Clique em "Criar Assistente" e depois 
-                        edite-o para acessar essas configurações.
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
 
             <TabsContent value="audio" className="space-y-6">
               <Card>

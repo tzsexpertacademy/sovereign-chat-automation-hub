@@ -15,6 +15,7 @@ import { assistantsService, AdvancedSettings, MultimediaConfig, HumanizationConf
 import AssistantAudioSettings from "./AssistantAudioSettings";
 import { multimediaAnalysisService } from "@/services/multimediaAnalysisService";
 import { assistantHumanizationService, HumanizedPersonality } from "@/services/assistantHumanizationService";
+import { AssistantHumanizationSettings } from "./AssistantHumanizationSettings";
 import MultimediaAnalysisDashboard from "./MultimediaAnalysisDashboard";
 
 interface AssistantAdvancedSettingsProps {
@@ -211,15 +212,11 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
       </div>
 
       <Tabs defaultValue="ai" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="ai">IA & Criatividade</TabsTrigger>
           <TabsTrigger value="multimedia">
             <Image className="w-4 h-4 mr-1" />
             Multimídia
-          </TabsTrigger>
-          <TabsTrigger value="humanization">
-            <MessageSquare className="w-4 h-4 mr-1" />
-            Humanização
           </TabsTrigger>
           <TabsTrigger value="audio">
             <Volume2 className="w-4 h-4 mr-1" />
@@ -591,128 +588,6 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
           </Card>
         </TabsContent>
 
-        <TabsContent value="humanization" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <MessageSquare className="w-5 h-5" />
-                <span>Personalidade & Humanização</span>
-              </CardTitle>
-              <CardDescription>
-                Configure o comportamento humanizado do assistente
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              
-              {/* Switch principal */}
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Ativar Humanização</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Simula comportamentos humanos naturais nas conversas
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.humanization_config?.enabled}
-                  onCheckedChange={(enabled) => 
-                    setSettings(prev => ({
-                      ...prev,
-                      humanization_config: {
-                        ...prev.humanization_config!,
-                        enabled
-                      }
-                    }))
-                  }
-                />
-              </div>
-
-              {settings.humanization_config?.enabled && (
-                <>
-                  {/* Seletor de personalidade */}
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Personalidade</h4>
-                    <Select 
-                      value={settings.humanization_config?.personality_id || 'professional'} 
-                      onValueChange={(value) => 
-                        setSettings(prev => ({
-                          ...prev,
-                          humanization_config: {
-                            ...prev.humanization_config!,
-                            personality_id: value
-                          }
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {personalities.map((personality) => (
-                          <SelectItem key={personality.id} value={personality.id}>
-                            <div>
-                              <div className="font-medium">{personality.name}</div>
-                               <div className="text-sm text-muted-foreground">
-                                 Tom: {personality.tone}
-                               </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Configurações de nível */}
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Nível de Humanização</h4>
-                    <Select 
-                      value={settings.humanization_level} 
-                      onValueChange={(value: 'basic' | 'advanced' | 'maximum') => 
-                        setSettings(prev => ({ ...prev, humanization_level: value }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="basic">
-                          <div>
-                            <div className="font-medium">Básico</div>
-                            <div className="text-sm text-muted-foreground">Respostas diretas e objetivas</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="advanced">
-                          <div>
-                            <div className="font-medium">Avançado</div>
-                            <div className="text-sm text-muted-foreground">Comportamento mais natural e empático</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="maximum">
-                          <div>
-                            <div className="font-medium">Máximo</div>
-                            <div className="text-sm text-muted-foreground">Muito humano com variações linguísticas</div>
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Exemplo de comportamento */}
-                  <div className="bg-muted p-4 rounded-lg">
-                    <h5 className="font-medium mb-2">💡 Comportamentos ativos:</h5>
-                    <ul className="text-sm space-y-1 text-muted-foreground">
-                      <li>• Indicadores de digitação naturais</li>
-                      <li>• Delays humanizados nas respostas</li>
-                      <li>• Status de presença inteligente</li>
-                      <li>• Variação no tom de acordo com a personalidade</li>
-                      <li>• Quebra de mensagens longas</li>
-                    </ul>
-                  </div>
-                </>
-              )}
-              
-            </CardContent>
-          </Card>
-        </TabsContent>
 
 
         <TabsContent value="audio" className="space-y-6">
@@ -724,21 +599,33 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
         </TabsContent>
 
         <TabsContent value="behavior" className="space-y-6">
+          <AssistantHumanizationSettings
+            assistantId={assistantId}
+            assistantName="Assistente"
+            onConfigUpdate={(config) => {
+              console.log('🎭 Configuração de humanização atualizada:', config);
+              toast({
+                title: "Humanização Atualizada",
+                description: "Configurações de humanização salvas com sucesso!"
+              });
+            }}
+          />
+          
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Clock className="w-5 h-5" />
-                <span>Comportamento & Delay</span>
+                <span>Comportamento & Timing</span>
               </CardTitle>
               <CardDescription>
-                Ajuste o comportamento e os delays do assistente
+                Configurações de timing e indicadores visuais
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="response_delay_seconds">
-                    Delay na Resposta (segundos): {settings.response_delay_seconds}
+                    Delay Extra na Resposta (segundos): {settings.response_delay_seconds}
                   </Label>
                   <div className="mt-2">
                     <Slider
@@ -752,7 +639,7 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
                     />
                   </div>
                   <p className="text-sm text-gray-500">
-                    Tempo de espera antes de enviar a resposta
+                    Delay adicional além da humanização automática
                   </p>
                 </div>
 
@@ -795,22 +682,6 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
                     Tempo máximo para processar mensagens em lote
                   </p>
                 </div>
-
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="typing_indicator_enabled">
-                    Mostrar Indicador de Digitação
-                  </Label>
-                  <Switch
-                    id="typing_indicator_enabled"
-                    checked={settings.typing_indicator_enabled}
-                    onCheckedChange={(checked) =>
-                      setSettings(prev => ({ ...prev, typing_indicator_enabled: checked }))
-                    }
-                  />
-                </div>
-                <p className="text-sm text-gray-500">
-                  Mostra o indicador de digitação enquanto o assistente processa
-                </p>
 
                 <div className="flex items-center justify-between">
                   <Label htmlFor="recording_indicator_enabled">
