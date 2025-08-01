@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, Play, Pause, Volume2, VolumeX, RotateCcw } from 'lucide-react';
-import { directMediaDownloadService } from '@/services/directMediaDownloadService';
+import { useUnifiedMedia } from '@/hooks/useUnifiedMedia';
 
 interface VideoViewerProps {
   videoUrl?: string;
@@ -26,12 +26,20 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
   message,
   instanceId
 }) => {
-  const [displayVideoUrl, setDisplayVideoUrl] = useState<string>('');
-  const [isDecrypting, setIsDecrypting] = useState(false);
-  const [error, setError] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [videoRef, setVideoRef] = useState<HTMLVideoElement | null>(null);
+
+  // Hook unificado para gerenciar mídia
+  const { displayUrl, isLoading, error, isFromCache, retry, hasRetried } = useUnifiedMedia({
+    messageId: messageId || `video_${Date.now()}`,
+    mediaUrl: videoUrl,
+    mediaKey,
+    fileEncSha256,
+    mimetype: 'video/mp4',
+    contentType: 'video',
+    videoBase64: message?.video_base64
+  });
 
   useEffect(() => {
     const initializeVideo = async () => {

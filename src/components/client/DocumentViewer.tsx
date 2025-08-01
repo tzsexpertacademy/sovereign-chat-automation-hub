@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, FileText, File, FileImage, FileVideo, FileAudio, RotateCcw, ExternalLink } from 'lucide-react';
-import { directMediaDownloadService } from '@/services/directMediaDownloadService';
-import { supabase } from '@/integrations/supabase/client';
+import { useUnifiedMedia } from '@/hooks/useUnifiedMedia';
 
 interface DocumentViewerProps {
   documentUrl?: string;

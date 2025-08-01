@@ -1,4 +1,3 @@
-import unifiedYumerService from './unifiedYumerService';
 import { unifiedMediaCache } from './unifiedMediaCache';
 import { serverConfigService } from './serverConfigService';
 
@@ -72,7 +71,7 @@ class DirectMediaDownloadService {
   }
 
   /**
-   * Download direto de mídia usando APENAS o endpoint directly-download
+   * Download direto de mídia com fallbacks inteligentes e robustos
    */
   async downloadMedia(
     instanceId: string,
@@ -83,11 +82,11 @@ class DirectMediaDownloadService {
     contentType: 'image' | 'video' | 'audio' | 'document' = 'document'
   ): Promise<MediaDownloadResult> {
     try {
-      console.log('🔄 DirectMedia: Processando', contentType);
+      console.log('🔄 DirectMedia: Processando', contentType, '- URL:', mediaUrl?.substring(0, 100));
       
-      // Para mensagens manuais sem mediaKey - usar URL diretamente
-      if (!mediaKey) {
-        console.log('📁 DirectMedia: Mensagem manual - usando URL direta');
+      // FALLBACK 1: Para mensagens manuais sem mediaKey - usar URL diretamente
+      if (!mediaKey || !mediaUrl?.includes('.enc')) {
+        console.log('📁 DirectMedia: Mensagem manual/não criptografada - usando URL direta');
         return {
           success: true,
           mediaUrl: mediaUrl,
@@ -165,22 +164,33 @@ class DirectMediaDownloadService {
           console.warn('⚠️ DirectMedia: Erro ao buscar token:', error);
         }
         
-        const response = await fetch(apiEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify(requestBody)
-        });
+        const response = await Promise.race([
+          fetch(apiEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify(requestBody)
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout: API não respondeu em 30s')), 30000)
+          )
+        ]);
 
         console.log('📡 DirectMedia: Response status:', response.status);
-        console.log('📡 DirectMedia: Response headers:', Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
           const errorText = await response.text();
           console.error('❌ DirectMedia: Erro da API:', errorText);
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
+          
+          // FALLBACK 2: Tentar URL original se API falhar
+          console.log('🔄 DirectMedia: API falhou, tentando URL original como fallback');
+          return {
+            success: true,
+            mediaUrl: mediaUrl,
+            cached: false
+          };
         }
 
         // O servidor já retornou o blob descriptografado - usar diretamente
@@ -205,6 +215,17 @@ class DirectMediaDownloadService {
 
     } catch (error) {
       console.error('❌ DirectMedia: Erro no download:', error);
+      
+      // FALLBACK 3: Em caso de erro, tentar URL original
+      if (mediaUrl && !mediaUrl.includes('blob:')) {
+        console.log('🔄 DirectMedia: Erro na API, usando URL original como fallback');
+        return {
+          success: true,
+          mediaUrl: mediaUrl,
+          cached: false
+        };
+      }
+      
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Erro desconhecido'

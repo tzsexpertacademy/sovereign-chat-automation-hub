@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Download, AlertCircle, Loader2, Image as ImageIcon, ZoomIn } from 'lucide-react';
+import { Download, AlertCircle, Loader2, Image as ImageIcon, ZoomIn, RotateCcw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { directMediaDownloadService } from '@/services/directMediaDownloadService';
-import { supabase } from '@/integrations/supabase/client';
+import { useUnifiedMedia } from '@/hooks/useUnifiedMedia';
 
 interface ImageViewerProps {
   imageUrl?: string;
@@ -35,133 +34,34 @@ const ImageViewer = ({
   message,
   instanceId
 }: ImageViewerProps) => {
-  const [displayImageUrl, setDisplayImageUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isDecrypting, setIsDecrypting] = useState(false);
+  // Hook unificado para gerenciar mídia
+  const { displayUrl, isLoading, error, isFromCache, retry, hasRetried } = useUnifiedMedia({
+    messageId: messageId || `image_${Date.now()}`,
+    mediaUrl: imageUrl,
+    mediaKey,
+    fileEncSha256,
+    directPath,
+    mimetype: mediaMimeType || 'image/jpeg',
+    contentType: 'image',
+    imageBase64: message?.image_base64
+  });
 
-  // Inicializar imagem com estratégia otimizada
-  useEffect(() => {
-    let mounted = true;
-    
-    const processImage = async () => {
-      if (!mounted) return;
-      
-      setIsLoading(true);
-      setError(null);
-      
-      console.log('🖼️ ImageViewer: Processando imagem:', {
-        hasImageUrl: !!imageUrl,
-        hasMessageId: !!messageId,
-        hasMediaKey: !!mediaKey,
-        needsDecryption,
-        mediaMimeType
-      });
-
-      try {
-        // PRIORIDADE 1: Se há image_base64 na prop message, usar ele SEMPRE
-        if (message?.image_base64) {
-          console.log('✅ ImageViewer: Usando image_base64 da prop message');
-          const mimeType = mediaMimeType || message.media_mime_type || 'image/jpeg';
-          const dataUrl = `data:${mimeType};base64,${message.image_base64}`;
-          setDisplayImageUrl(dataUrl);
-          setIsLoading(false);
-          return;
-        }
-
-        // PRIORIDADE 2: Para mensagens manuais sem base64, mostrar erro específico
-        const isManualMessage = messageId?.startsWith('manual_');
-        if (isManualMessage) {
-          console.log('❌ ImageViewer: Mensagem manual sem image_base64 salvo');
-          setError('Imagem manual não disponível - base64 não foi salvo corretamente');
-          return;
-        }
-        
-        // PRIORIDADE 3: Mensagens recebidas com mediaKey -> servidor descriptografa
-        if (imageUrl && mediaKey) {
-          console.log('📡 ImageViewer: Obtendo imagem descriptografada do servidor');
-          
-          const currentUrl = window.location.pathname;
-          const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
-          const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
-          
-          if (ticketId) {
-            const { data: ticketData } = await supabase
-              .from('conversation_tickets')
-              .select('instance_id')
-              .eq('id', ticketId)
-              .single();
-            
-            if (ticketData?.instance_id) {
-              const result = await directMediaDownloadService.processMedia(
-                ticketData.instance_id,
-                messageId || `img_${Date.now()}`,
-                imageUrl,
-                mediaKey,
-                directPath,
-                mediaMimeType || 'image/jpeg',
-                'image'
-              );
-
-              if (result.success && result.mediaUrl) {
-                console.log('✅ ImageViewer: Imagem pronta para exibição');
-                setDisplayImageUrl(result.mediaUrl);
-                return;
-              }
-              
-              console.log('❌ ImageViewer: Falha ao obter imagem do servidor');
-            }
-          }
-        }
-
-        // FALLBACK FINAL: URL original 
-        if (imageUrl) {
-          console.log('🔄 ImageViewer: Fallback final - URL original');
-          setDisplayImageUrl(imageUrl);
-          return;
-        }
-
-        // Falha total
-        setError('Imagem não disponível');
-
-      } catch (error) {
-        console.error('❌ ImageViewer: Erro no processamento:', error);
-        setError('Erro ao carregar imagem');
-        
-        // Último fallback
-        if (imageUrl) {
-          setDisplayImageUrl(imageUrl);
-        }
-      } finally {
-        setIsLoading(false);
-        setIsDecrypting(false);
-      }
-    };
-
-    processImage();
-    
-    return () => {
-      mounted = false;
-    };
-  }, [imageUrl, messageId, mediaKey, directPath, mediaMimeType, needsDecryption]);
+  // Usar displayUrl do hook unificado
 
   const handleImageError = () => {
     console.error('❌ ImageViewer: Erro ao carregar imagem no elemento img');
-    setError('Erro ao carregar imagem');
   };
 
   const downloadImage = async () => {
-    try {
-      setIsLoading(true);
-      
-      if (!displayImageUrl) {
-        toast.error('Nenhuma imagem disponível para download');
-        return;
-      }
+    if (!displayUrl) {
+      toast.error('Nenhuma imagem disponível para download');
+      return;
+    }
 
+    try {
       // Se é uma URL de dados (base64), converter para blob
-      if (displayImageUrl.startsWith('data:')) {
-        const response = await fetch(displayImageUrl);
+      if (displayUrl.startsWith('data:')) {
+        const response = await fetch(displayUrl);
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -172,7 +72,7 @@ const ImageViewer = ({
       } else {
         // URL direta
         const a = document.createElement('a');
-        a.href = displayImageUrl;
+        a.href = displayUrl;
         a.download = fileName;
         a.target = '_blank';
         a.click();
@@ -182,20 +82,18 @@ const ImageViewer = ({
     } catch (error) {
       console.error('❌ ImageViewer: Erro ao baixar imagem:', error);
       toast.error('Erro ao baixar imagem');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Renderizar preview pequeno da imagem
   const renderImagePreview = () => {
-    if (isLoading || isDecrypting) {
+    if (isLoading) {
       return (
         <div className="flex items-center justify-center w-48 h-32 bg-muted rounded-lg border">
           <div className="flex flex-col items-center gap-2">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             <span className="text-xs text-muted-foreground">
-              {isDecrypting ? 'Descriptografando...' : 'Carregando...'}
+              Carregando...
             </span>
           </div>
         </div>
@@ -210,16 +108,27 @@ const ImageViewer = ({
             <span className="text-xs text-destructive text-center px-2" title={error}>
               {error}
             </span>
+            {!hasRetried && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={retry}
+                className="h-6 px-2 text-xs"
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Tentar novamente
+              </Button>
+            )}
           </div>
         </div>
       );
     }
 
-    if (displayImageUrl) {
+    if (displayUrl) {
       return (
         <div className="relative group">
           <img
-            src={displayImageUrl}
+            src={displayUrl}
             alt={caption || "Imagem"}
             className="w-48 h-32 object-cover rounded-lg border cursor-pointer hover:opacity-90 transition-opacity"
             onError={handleImageError}
@@ -227,6 +136,11 @@ const ImageViewer = ({
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded-lg transition-colors flex items-center justify-center">
             <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
+          {isFromCache && (
+            <div className="absolute top-1 right-1 bg-green-600 text-white text-xs px-1 rounded">
+              Cache
+            </div>
+          )}
         </div>
       );
     }
@@ -254,9 +168,9 @@ const ImageViewer = ({
             <DialogTitle>Visualizar Imagem</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center space-y-4">
-            {displayImageUrl && !error ? (
+            {displayUrl && !error ? (
               <img
-                src={displayImageUrl}
+                src={displayUrl}
                 alt={caption || "Imagem em tamanho completo"}
                 className="max-w-full max-h-[60vh] object-contain rounded-lg"
                 onError={handleImageError}
@@ -268,6 +182,17 @@ const ImageViewer = ({
                   <span className="text-muted-foreground">
                     {error || 'Imagem não disponível'}
                   </span>
+                  {error && !hasRetried && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={retry}
+                      className="mt-2"
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Tentar novamente
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -292,7 +217,7 @@ const ImageViewer = ({
           variant="ghost"
           size="sm"
           onClick={downloadImage}
-          disabled={!displayImageUrl || isLoading}
+          disabled={!displayUrl || isLoading}
           className="h-6 px-2 text-xs"
           title="Baixar imagem"
         >
