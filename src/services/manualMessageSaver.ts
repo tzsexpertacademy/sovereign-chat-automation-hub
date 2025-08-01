@@ -27,7 +27,7 @@ class ManualMessageSaver {
       console.log('💾 Salvando mensagem manual:', data);
 
       // 🔥 CORREÇÃO CRÍTICA: Salvar TODOS os metadados de mídia
-      const result = await ticketsService.addTicketMessage({
+      const messageData: any = {
         ticket_id: data.ticketId,
         message_id: data.messageId,
         from_me: true,
@@ -40,17 +40,20 @@ class ManualMessageSaver {
         file_enc_sha256: data.fileEncSha256 ? this.ensureBase64String(data.fileEncSha256) : null,
         media_mime_type: data.mimeType,
         media_duration: data.mediaDuration,
-        // 🎵 MÍDIA BASE64: Para funcionamento instantâneo de todas as mídias
-        audio_base64: data.audioBase64,
-        ...(data.imageBase64 && { image_base64: data.imageBase64 }),
-        ...(data.videoBase64 && { video_base64: data.videoBase64 }),
-        ...(data.documentBase64 && { document_base64: data.documentBase64 }),
         // 🔥 PROPRIEDADES ADICIONAIS PARA CONTROLE
         is_internal_note: false,
         is_ai_response: false,
         processing_status: 'completed',
         timestamp: new Date().toISOString()
-      });
+      };
+
+      // 🎵 MÍDIA BASE64: Adicionar base64 apenas se existir
+      if (data.audioBase64) messageData.audio_base64 = data.audioBase64;
+      if (data.imageBase64) messageData.image_base64 = data.imageBase64;
+      if (data.videoBase64) messageData.video_base64 = data.videoBase64;
+      if (data.documentBase64) messageData.document_base64 = data.documentBase64;
+
+      const result = await ticketsService.addTicketMessage(messageData);
 
       if (result && result.id) {
         console.log('✅ Mensagem manual salva com sucesso');

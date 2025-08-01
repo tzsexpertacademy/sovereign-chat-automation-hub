@@ -68,13 +68,16 @@ const ImageViewer = ({
           return;
         }
 
-        // PRIORIDADE 2: Detectar se é mensagem manual
+        // PRIORIDADE 2: Detectar se é mensagem manual (nunca descriptografar)
         const isManualMessage = messageId?.startsWith('manual_');
         
-        // Para mensagens manuais, usar URL direta se não tiver media_key
-        if (isManualMessage && !mediaKey) {
-          console.log('📤 ImageViewer: Mensagem manual sem criptografia - usando URL direta');
-          setDisplayImageUrl(imageUrl);
+        if (isManualMessage) {
+          console.log('📤 ImageViewer: Mensagem manual - usando URL direta sem descriptografia');
+          if (imageUrl) {
+            setDisplayImageUrl(imageUrl);
+          } else {
+            setError('URL da imagem manual não disponível');
+          }
           return;
         }
         

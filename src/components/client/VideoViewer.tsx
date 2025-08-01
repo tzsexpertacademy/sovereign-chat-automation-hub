@@ -49,13 +49,16 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         return;
       }
 
-      // PRIORIDADE 2: Detectar se é mensagem manual
+      // PRIORIDADE 2: Detectar se é mensagem manual (nunca descriptografar)
       const isManualMessage = messageId?.startsWith('manual_');
       
-      // Para mensagens manuais, usar URL direta se não tiver media_key
-      if (isManualMessage && !mediaKey) {
-        console.log('📤 VideoViewer: Mensagem manual sem criptografia - usando URL direta');
-        setDisplayVideoUrl(videoUrl);
+      if (isManualMessage) {
+        console.log('📤 VideoViewer: Mensagem manual - usando URL direta sem descriptografia');
+        if (videoUrl) {
+          setDisplayVideoUrl(videoUrl);
+        } else {
+          setError('URL do vídeo manual não disponível');
+        }
         return;
       }
 

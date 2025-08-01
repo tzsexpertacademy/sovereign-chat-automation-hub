@@ -66,13 +66,16 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
           return;
         }
 
-        // PRIORIDADE 2: Detectar se é mensagem manual
+        // PRIORIDADE 2: Detectar se é mensagem manual (nunca descriptografar)
         const isManualMessage = messageId?.startsWith('manual_');
         
-        // Para mensagens manuais, usar URL direta se não tiver media_key
-        if (isManualMessage && !mediaKey) {
-          console.log('📤 DocumentViewer: Mensagem manual sem criptografia - usando URL direta');
-          setDisplayDocumentUrl(documentUrl);
+        if (isManualMessage) {
+          console.log('📤 DocumentViewer: Mensagem manual - usando URL direta sem descriptografia');
+          if (documentUrl) {
+            setDisplayDocumentUrl(documentUrl);
+          } else {
+            setError('URL do documento manual não disponível');
+          }
           return;
         }
 
