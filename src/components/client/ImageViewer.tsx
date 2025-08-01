@@ -4,7 +4,6 @@ import { Download, AlertCircle, Loader2, Image as ImageIcon, ZoomIn } from 'luci
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { directMediaDownloadService } from '@/services/directMediaDownloadService';
-import { mediaDisplayService } from '@/services/mediaDisplayService';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ImageViewerProps {

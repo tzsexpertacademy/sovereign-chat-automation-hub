@@ -1,6 +1,6 @@
 /**
  * Cache unificado para otimizar performance de mídia
- * Centraliza gestão de cache entre DirectMediaDownloadService e MediaDisplayService
+ * Centraliza gestão de cache para DirectMediaDownloadService
  */
 
 interface CacheEntry {
