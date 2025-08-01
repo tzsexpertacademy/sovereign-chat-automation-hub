@@ -59,6 +59,14 @@ const ImageViewer = ({
     }
 
     try {
+      console.log('📥 ImageViewer: Iniciando download de imagem:', {
+        displayUrl: displayUrl.substring(0, 100) + '...',
+        isDataUrl: displayUrl.startsWith('data:'),
+        isBlobUrl: displayUrl.startsWith('blob:'),
+        isEncFile: displayUrl.includes('.enc'),
+        fileName
+      });
+
       // Verificar se a URL é criptografada e evitar download direto
       if (displayUrl.includes('.enc')) {
         console.warn('❌ ImageViewer: Tentativa de download de arquivo criptografado bloqueada');
@@ -68,6 +76,7 @@ const ImageViewer = ({
 
       // Se é uma URL de dados (base64) ou blob, converter para blob
       if (displayUrl.startsWith('data:') || displayUrl.startsWith('blob:')) {
+        console.log('📋 ImageViewer: Fazendo download de data/blob URL');
         const response = await fetch(displayUrl);
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
@@ -76,13 +85,16 @@ const ImageViewer = ({
         a.download = fileName;
         a.click();
         URL.revokeObjectURL(url);
+        console.log('✅ ImageViewer: Download de blob concluído');
       } else {
         // URL direta descriptografada
+        console.log('📋 ImageViewer: Fazendo download de URL direta');
         const a = document.createElement('a');
         a.href = displayUrl;
         a.download = fileName;
         a.target = '_blank';
         a.click();
+        console.log('✅ ImageViewer: Download de URL direta concluído');
       }
       
       toast.success('Download da imagem iniciado');

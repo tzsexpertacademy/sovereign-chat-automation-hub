@@ -138,21 +138,18 @@ class DirectMediaDownloadService {
       };
 
       // Buscar instanceId interno
+      console.log('🔍 DirectMedia: Buscando instanceId interno para:', instanceId);
       const internalInstanceId = await this.getInternalInstanceId(instanceId);
+      console.log('📋 DirectMedia: InstanceId interno obtido:', internalInstanceId);
+      
       if (!internalInstanceId) {
-        throw new Error('Instance ID não encontrado');
+        throw new Error('Instance ID não encontrado no banco de dados');
       }
 
-        // Fazer request com fetch direto para handle binário
-        const config = serverConfigService.getConfig();
-        const apiEndpoint = `https://api.yumer.com.br/api/v2/instance/${internalInstanceId}/media/directly-download`;
-        
-        console.log('🔄 DirectMedia: Chamando endpoint:', apiEndpoint);
-        console.log('📦 DirectMedia: Body:', JSON.stringify(requestBody, null, 2));
-        
         // Buscar token do business para auth
         let authToken = '';
         try {
+          console.log('🔑 DirectMedia: Buscando business_token para instance:', instanceId);
           const { supabase } = await import('@/integrations/supabase/client');
           const { data: clientData } = await supabase
             .from('clients')
@@ -160,9 +157,21 @@ class DirectMediaDownloadService {
             .eq('instance_id', instanceId)
             .single();
           authToken = clientData?.business_token || '';
+          console.log('📋 DirectMedia: Business token obtido:', authToken ? 'SIM' : 'NÃO');
         } catch (error) {
-          console.warn('⚠️ DirectMedia: Erro ao buscar token:', error);
+          console.error('❌ DirectMedia: Erro ao buscar token:', error);
         }
+        
+        // Fazer request com fetch direto para handle binário
+        const config = serverConfigService.getConfig();
+        const apiEndpoint = `https://api.yumer.com.br/api/v2/instance/${internalInstanceId}/media/directly-download`;
+        
+        console.log('🔄 DirectMedia: Chamando endpoint:', apiEndpoint);
+        console.log('📦 DirectMedia: Request body:', JSON.stringify(requestBody, null, 2));
+        console.log('🔑 DirectMedia: Headers:', {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken.substring(0, 20)}...`
+        });
         
         const response = await Promise.race([
           fetch(apiEndpoint, {

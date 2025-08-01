@@ -80,14 +80,26 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
 
       // PRIORIDADE 2: Mensagens recebidas com mediaKey - usar directMediaDownloadService
       if (mediaData.mediaUrl && mediaData.mediaKey) {
-        console.log('🔐 useUnifiedMedia: Processando mídia criptografada via directMediaDownloadService');
+        console.log('🔐 useUnifiedMedia: Mídia criptografada detectada - chamando directMediaDownloadService');
+        console.log('📋 useUnifiedMedia: Parâmetros:', {
+          messageId: mediaData.messageId,
+          mediaUrl: mediaData.mediaUrl?.substring(0, 100) + '...',
+          hasMediaKey: !!mediaData.mediaKey,
+          mediaKeyType: typeof mediaData.mediaKey,
+          directPath: mediaData.directPath,
+          mimetype: mediaData.mimetype,
+          contentType: mediaData.contentType
+        });
         
         const instanceId = await getInstanceId();
+        console.log('🔍 useUnifiedMedia: Instance ID obtido:', instanceId);
+        
         if (!instanceId) {
           setError('Instance ID não encontrado para descriptografar mídia');
           return;
         }
 
+        console.log('📞 useUnifiedMedia: Chamando directMediaDownloadService.processMedia...');
         const result = await directMediaDownloadService.processMedia(
           instanceId,
           mediaData.messageId,
@@ -98,6 +110,13 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
           mediaData.contentType
         );
 
+        console.log('📋 useUnifiedMedia: Resultado do directMediaDownloadService:', {
+          success: result.success,
+          hasMediaUrl: !!result.mediaUrl,
+          cached: result.cached,
+          error: result.error
+        });
+
         if (result.success && result.mediaUrl) {
           console.log('✅ useUnifiedMedia: Mídia processada com sucesso via directMediaDownloadService');
           setDisplayUrl(result.mediaUrl);
@@ -105,7 +124,7 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
           return;
         }
 
-        console.warn('⚠️ useUnifiedMedia: Falha no directMediaDownloadService:', result.error);
+        console.error('❌ useUnifiedMedia: Falha no directMediaDownloadService:', result.error);
         setError(`Falha na descriptografia: ${result.error}`);
         return;
       }
