@@ -56,16 +56,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       });
 
       try {
-        // ESTRATÉGIA 1: URL direta para mensagens manuais
-        if (documentUrl && !needsDecryption && !messageId) {
-          console.log('✅ DocumentViewer: URL direta (mensagem manual)');
-          setDisplayDocumentUrl(documentUrl);
-          return;
-        }
-
-        // ESTRATÉGIA 2: DirectMediaDownloadService para mensagens com metadados
-        if (messageId && mediaKey && documentUrl && directPath) {
-          console.log('🚀 DocumentViewer: Usando DirectMediaDownloadService');
+        // ESTRATÉGIA ÚNICA: DirectMediaDownloadService sempre
+        if (documentUrl) {
+          console.log('🎯 DocumentViewer: Usando DirectMediaDownloadService');
           
           const currentUrl = window.location.pathname;
           const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
@@ -81,7 +74,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
             if (ticketData?.instance_id) {
               const result = await directMediaDownloadService.processMedia(
                 ticketData.instance_id,
-                messageId,
+                messageId || `doc_${Date.now()}`,
                 documentUrl,
                 mediaKey,
                 directPath,
@@ -95,63 +88,14 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 return;
               }
               
-              console.log('⚠️ DocumentViewer: DirectMedia falhou:', result.error);
+              console.log('⚠️ DocumentViewer: DirectMedia falhou, usando fallback');
             }
           }
         }
 
-        // ESTRATÉGIA 3: MediaDisplayService (fallback) com dados do contexto
-        if (messageId) {
-          console.log('🔄 DocumentViewer: Fallback MediaDisplayService');
-          
-          let finalInstanceId = instanceId;
-          let finalChatId = chatId;
-          
-          // Se não temos instanceId/chatId, buscar do ticket atual
-          if (!finalInstanceId || !finalChatId) {
-            const currentUrl = window.location.pathname;
-            const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
-            const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
-            
-            if (ticketId) {
-              const { data: ticketData } = await supabase
-                .from('conversation_tickets')
-                .select('instance_id, chat_id')
-                .eq('id', ticketId)
-                .single();
-              
-              if (ticketData) {
-                finalInstanceId = ticketData.instance_id;
-                finalChatId = ticketData.chat_id;
-              }
-            }
-          }
-          
-          if (finalInstanceId && finalChatId) {
-            const result = await mediaDisplayService.displayMedia({
-              instanceId: finalInstanceId,
-              messageId,
-              chatId: finalChatId,
-              mediaUrl: documentUrl || '',
-              mediaKey: mediaKey || '',
-              directPath: directPath || '',
-              mimetype: fileType || 'application/octet-stream',
-              contentType: 'document'
-            });
-
-            if (result.success && result.mediaUrl) {
-              console.log(`✅ DocumentViewer: Fallback sucesso via ${result.strategy}`);
-              setDisplayDocumentUrl(result.mediaUrl);
-              return;
-            }
-            
-            console.log('⚠️ DocumentViewer: Fallback falhou:', result.error);
-          }
-        }
-
-        // ESTRATÉGIA 4: URL original como último recurso
+        // FALLBACK FINAL: URL original
         if (documentUrl) {
-          console.log('🔄 DocumentViewer: Último recurso - URL original');
+          console.log('🔄 DocumentViewer: Fallback final - URL original');
           setDisplayDocumentUrl(documentUrl);
           return;
         }

@@ -72,30 +72,51 @@ class DirectMediaDownloadService {
   }
 
   /**
-   * Download direto de mídia usando endpoint da API Yumer
+   * Download direto de mídia usando APENAS o endpoint directly-download
    */
   async downloadMedia(
     instanceId: string,
     mediaUrl: string,
-    mediaKey: string,
-    directPath: string,
-    mimetype: string,
-    contentType: 'image' | 'video' | 'audio' | 'document'
+    mediaKey?: string,
+    directPath?: string,
+    mimetype?: string,
+    contentType: 'image' | 'video' | 'audio' | 'document' = 'document'
   ): Promise<MediaDownloadResult> {
-    // Verificar cache unificado primeiro
-    const messageId = `direct_${Date.now()}`;
-    const cached = unifiedMediaCache.get(instanceId, messageId, mediaKey);
-    if (cached) {
-      console.log('📦 DirectMedia: Cache HIT para', contentType);
-      return {
-        success: true,
-        mediaUrl: cached,
-        cached: true
-      };
-    }
-
     try {
-      console.log('🔄 DirectMedia: Baixando', contentType, 'via API direta');
+      console.log('🔄 DirectMedia: Processando', contentType);
+      
+      // FALLBACK 1: Para mensagens manuais sem mediaKey - usar URL diretamente
+      if (!mediaKey || !directPath) {
+        console.log('📁 DirectMedia: Fallback - usando URL direta (sem descriptografia)');
+        const response = await fetch(mediaUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        
+        return {
+          success: true,
+          mediaUrl: blobUrl,
+          cached: false
+        };
+      }
+      
+      // Verificar cache unificado para mensagens com mediaKey
+      const messageId = `direct_${Date.now()}`;
+      const cached = unifiedMediaCache.get(instanceId, messageId, mediaKey);
+      if (cached) {
+        console.log('📦 DirectMedia: Cache HIT para', contentType);
+        return {
+          success: true,
+          mediaUrl: cached,
+          cached: true
+        };
+      }
+      
+      // PRINCIPAL: usar endpoint directly-download
+      console.log('🎯 DirectMedia: Usando directly-download');
       
       // Converter mediaKey se necessário
       const base64MediaKey = this.convertToBase64(mediaKey);
@@ -107,9 +128,9 @@ class DirectMediaDownloadService {
         contentType,
         content: {
           url: mediaUrl,
-          mimetype,
+          mimetype: mimetype || 'application/octet-stream',
           mediaKey: base64MediaKey,
-          directPath
+          directPath: directPath
         }
       };
 
@@ -184,32 +205,34 @@ class DirectMediaDownloadService {
   }
 
   /**
-   * Buscar mídia processada (com fallback para descriptografia)
+   * Buscar mídia processada - SIMPLIFICADO para usar apenas directly-download
    */
   async processMedia(
     instanceId: string,
     messageId: string,
     mediaUrl: string,
-    mediaKey: string,
-    directPath: string,
-    mimetype: string,
-    contentType: 'image' | 'video' | 'audio' | 'document'
+    mediaKey?: string,
+    directPath?: string,
+    mimetype?: string,
+    contentType: 'image' | 'video' | 'audio' | 'document' = 'document'
   ): Promise<MediaDownloadResult> {
     console.log('🎯 DirectMedia: Processando', contentType, 'para', messageId);
 
-    // Verificar cache primeiro
-    const cached = unifiedMediaCache.get(instanceId, messageId, mediaKey);
-    if (cached) {
-      console.log('📦 DirectMedia: Cache HIT para processMedia');
-      return {
-        success: true,
-        mediaUrl: cached,
-        cached: true
-      };
+    // Verificar cache primeiro se temos mediaKey
+    if (mediaKey) {
+      const cached = unifiedMediaCache.get(instanceId, messageId, mediaKey);
+      if (cached) {
+        console.log('📦 DirectMedia: Cache HIT para processMedia');
+        return {
+          success: true,
+          mediaUrl: cached,
+          cached: true
+        };
+      }
     }
 
-    // Tentar download direto
-    const directResult = await this.downloadMedia(
+    // Usar downloadMedia único e simplificado
+    const result = await this.downloadMedia(
       instanceId,
       mediaUrl,
       mediaKey,
@@ -218,57 +241,12 @@ class DirectMediaDownloadService {
       contentType
     );
 
-    if (directResult.success && directResult.mediaUrl) {
-      // Salvar no cache com o messageId real
-      unifiedMediaCache.set(instanceId, messageId, directResult.mediaUrl, 'DirectMedia', mediaKey, mimetype);
-      return directResult;
+    // Salvar no cache se sucesso e temos mediaKey
+    if (result.success && result.mediaUrl && mediaKey) {
+      unifiedMediaCache.set(instanceId, messageId, result.mediaUrl, 'DirectMedia', mediaKey, mimetype);
     }
 
-    console.log('⚡ DirectMedia: Download direto falhou, tentando fallback');
-    
-    // Fallback: tentar MediaDisplayService
-    try {
-      const { mediaDisplayService } = await import('./mediaDisplayService');
-      
-      // Buscar dados do ticket para usar no fallback
-      const { supabase } = await import('@/integrations/supabase/client');
-      const { data: ticketData } = await supabase
-        .from('conversation_tickets')
-        .select('chat_id')
-        .eq('instance_id', instanceId)
-        .limit(1)
-        .single();
-      
-      if (ticketData?.chat_id) {
-        const fallbackResult = await mediaDisplayService.displayMedia({
-          instanceId,
-          messageId,
-          chatId: ticketData.chat_id,
-          mediaUrl,
-          mediaKey,
-          directPath,
-          mimetype,
-          contentType
-        });
-
-        if (fallbackResult.success && fallbackResult.mediaUrl) {
-          console.log('✅ DirectMedia: Fallback sucesso via', fallbackResult.strategy);
-          unifiedMediaCache.set(instanceId, messageId, fallbackResult.mediaUrl, `Fallback-${fallbackResult.strategy}`, mediaKey, mimetype);
-          return {
-            success: true,
-            mediaUrl: fallbackResult.mediaUrl,
-            cached: false
-          };
-        }
-      }
-    } catch (error) {
-      console.error('❌ DirectMedia: Erro no fallback:', error);
-    }
-    
-    return {
-      success: false,
-      error: 'Todos os métodos de download falharam'
-    };
+    return result;
   }
 
   /**

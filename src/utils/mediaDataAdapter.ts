@@ -31,7 +31,19 @@ export const adaptMessageMedia = (message: any): AdaptedMediaData => {
     fileEncSha256 = JSON.stringify(fileEncSha256);
   }
   
-  const directPath = message.direct_path || message.directPath;
+  // Extrair directPath da media_url para mensagens recebidas
+  let directPath = message.direct_path || message.directPath;
+  
+  // Para mensagens recebidas: extrair directPath da URL (remover domínio)
+  if (!directPath && mediaUrl && mediaUrl.includes('whatsapp.net')) {
+    const urlObj = new URL(mediaUrl);
+    directPath = urlObj.pathname + urlObj.search;
+  }
+  
+  // Para mensagens manuais: usar a URL completa como directPath se não temos metadata
+  if (!directPath && mediaUrl && !mediaUrl.includes('whatsapp.net')) {
+    directPath = mediaUrl;
+  }
   const fileName = message.media_filename || message.fileName || `media_${messageId}`;
   const fileType = message.media_mimetype || message.mimetype;
   const caption = message.content !== '🎵 Áudio' && message.content !== '🖼️ Imagem' && 

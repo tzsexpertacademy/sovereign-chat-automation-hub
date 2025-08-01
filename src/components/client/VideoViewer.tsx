@@ -36,55 +36,52 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         return;
       }
 
-      // Se não precisa de descriptografia, usar URL direta
-      if (!needsDecryption) {
-        console.log('🎥 VideoViewer: Usando URL direta');
-        setDisplayVideoUrl(videoUrl);
-        return;
-      }
-
-      // Verificar se tem dados necessários para descriptografia
-      if (!messageId || !mediaKey || !fileEncSha256) {
-        console.log('❌ VideoViewer: Dados insuficientes para descriptografia, tentando URL direta');
-        setDisplayVideoUrl(videoUrl);
-        return;
-      }
-
-      // Tentar processamento via UnifiedMediaService (que tentará download direto primeiro)
-      console.log('🔐 VideoViewer: Iniciando processamento via UnifiedMediaService', { messageId, hasMediaKey: !!mediaKey });
-      setIsDecrypting(true);
+      // ESTRATÉGIA ÚNICA: DirectMediaDownloadService sempre
+      console.log('🎯 VideoViewer: Usando DirectMediaDownloadService');
+      setIsDecrypting(!!mediaKey);
       setError('');
 
       try {
-        const result = await unifiedMediaService.processVideo(
-          messageId,
-          '', // instanceId será obtido dentro do serviço
-          {
-            url: videoUrl,
-            mimetype: 'video/mp4',
-            mediaKey: mediaKey,
-            directPath: ''
-          }
-        );
-
-        console.log('📡 VideoViewer: Resultado do processamento:', {
-          success: result?.success,
-          hasMediaUrl: !!result?.mediaUrl,
-          format: result?.format,
-          cached: result?.cached
-        });
+        const { directMediaDownloadService } = await import('@/services/directMediaDownloadService');
         
-        if (result?.success && result?.mediaUrl) {
+        // Buscar instanceId do contexto atual
+        const currentUrl = window.location.pathname;
+        const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+        const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
+        
+        let instanceId = 'default';
+        if (ticketId) {
+          const { supabase } = await import('@/integrations/supabase/client');
+          const { data: ticketData } = await supabase
+            .from('conversation_tickets')
+            .select('instance_id')
+            .eq('id', ticketId)
+            .single();
+          
+          if (ticketData?.instance_id) {
+            instanceId = ticketData.instance_id;
+          }
+        }
+        
+        const result = await directMediaDownloadService.processMedia(
+          instanceId,
+          messageId || `video_${Date.now()}`,
+          videoUrl,
+          mediaKey,
+          undefined, // directPath
+          'video/mp4',
+          'video'
+        );
+        
+        if (result.success && result.mediaUrl) {
           console.log('✅ VideoViewer: Processamento bem-sucedido');
           setDisplayVideoUrl(result.mediaUrl);
         } else {
-          console.log('❌ VideoViewer: Falha no processamento, tentando URL direta');
-          // Fallback: tentar URL original
+          console.log('⚠️ VideoViewer: DirectMedia falhou, usando fallback');
           setDisplayVideoUrl(videoUrl);
         }
       } catch (err) {
         console.error('❌ VideoViewer: Erro no processamento:', err);
-        // Fallback: tentar URL original
         setDisplayVideoUrl(videoUrl);
       } finally {
         setIsDecrypting(false);

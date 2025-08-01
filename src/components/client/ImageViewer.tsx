@@ -56,17 +56,10 @@ const ImageViewer = ({
       });
 
       try {
-        // ESTRATÉGIA 1: URL direta para mensagens manuais
-        if (imageUrl && !needsDecryption && !messageId) {
-          console.log('✅ ImageViewer: URL direta (mensagem manual)');
-          setDisplayImageUrl(imageUrl);
-          return;
-        }
-
-        // ESTRATÉGIA 2: DirectMediaDownloadService para mensagens com metadados
-        if (messageId && mediaKey && imageUrl && directPath) {
-          console.log('🚀 ImageViewer: Usando DirectMediaDownloadService');
-          setIsDecrypting(true);
+        // ESTRATÉGIA ÚNICA: DirectMediaDownloadService sempre
+        if (imageUrl) {
+          console.log('🎯 ImageViewer: Usando DirectMediaDownloadService');
+          setIsDecrypting(!!mediaKey);
           
           const currentUrl = window.location.pathname;
           const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
@@ -82,7 +75,7 @@ const ImageViewer = ({
             if (ticketData?.instance_id) {
               const result = await directMediaDownloadService.processMedia(
                 ticketData.instance_id,
-                messageId,
+                messageId || `img_${Date.now()}`,
                 imageUrl,
                 mediaKey,
                 directPath,
@@ -96,52 +89,14 @@ const ImageViewer = ({
                 return;
               }
               
-              console.log('⚠️ ImageViewer: DirectMedia falhou:', result.error);
+              console.log('⚠️ ImageViewer: DirectMedia falhou, usando fallback');
             }
           }
         }
 
-        // ESTRATÉGIA 3: MediaDisplayService (fallback)
-        if (messageId) {
-          console.log('🔄 ImageViewer: Fallback MediaDisplayService');
-          
-          const currentUrl = window.location.pathname;
-          const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
-          const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
-          
-          if (ticketId) {
-            const { data: ticketData } = await supabase
-              .from('conversation_tickets')
-              .select('instance_id, chat_id')
-              .eq('id', ticketId)
-              .single();
-            
-            if (ticketData?.instance_id && ticketData?.chat_id) {
-              const result = await mediaDisplayService.displayMedia({
-                instanceId: ticketData.instance_id,
-                messageId: messageId,
-                chatId: ticketData.chat_id,
-                mediaUrl: imageUrl || '',
-                mediaKey: mediaKey || '',
-                directPath: directPath || '',
-                mimetype: mediaMimeType || 'image/jpeg',
-                contentType: 'image'
-              });
-
-              if (result.success && result.mediaUrl) {
-                console.log(`✅ ImageViewer: Fallback sucesso via ${result.strategy}`);
-                setDisplayImageUrl(result.mediaUrl);
-                return;
-              }
-              
-              console.log('⚠️ ImageViewer: Fallback falhou:', result.error);
-            }
-          }
-        }
-
-        // ESTRATÉGIA 4: URL original como último recurso
+        // FALLBACK FINAL: URL original 
         if (imageUrl) {
-          console.log('🔄 ImageViewer: Último recurso - URL original');
+          console.log('🔄 ImageViewer: Fallback final - URL original');
           setDisplayImageUrl(imageUrl);
           return;
         }
