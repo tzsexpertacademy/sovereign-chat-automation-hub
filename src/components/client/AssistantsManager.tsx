@@ -13,7 +13,7 @@ import AssistantForm from "./AssistantForm";
 import AssistantsList from "./AssistantsList";
 import AssistantChat from "./AssistantChat";
 import AssistantAdvancedSettings from "./AssistantAdvancedSettings";
-import EvolutionApiStatus from "./EvolutionApiStatus";
+
 
 const AssistantsManager = () => {
   const { clientId } = useParams();
@@ -214,8 +214,6 @@ const AssistantsManager = () => {
 
 
         <TabsContent value="assistants" className="space-y-6">
-          {/* Status da API Evolution */}
-          <EvolutionApiStatus />
           
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold">Gerenciar Assistentes</h2>
