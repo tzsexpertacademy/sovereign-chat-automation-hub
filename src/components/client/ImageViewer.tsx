@@ -34,6 +34,16 @@ const ImageViewer = ({
   message,
   instanceId
 }: ImageViewerProps) => {
+  // Debug logs para investigar problema da imagem
+  console.log('🖼️ ImageViewer Debug:', {
+    messageId,
+    imageUrl,
+    mediaKey: mediaKey ? 'presente' : 'ausente',
+    imageBase64: message?.image_base64 ? 'presente' : 'ausente',
+    mediaMimeType,
+    needsDecryption
+  });
+
   // Hook unificado para gerenciar mídia
   const { displayUrl, isLoading, error, isFromCache, retry, hasRetried } = useUnifiedMedia({
     messageId: messageId || `image_${Date.now()}`,
@@ -44,6 +54,14 @@ const ImageViewer = ({
     mimetype: mediaMimeType || 'image/jpeg',
     contentType: 'image',
     imageBase64: message?.image_base64
+  });
+
+  // Debug do resultado do hook
+  console.log('🖼️ ImageViewer Result:', {
+    displayUrl: displayUrl ? 'presente' : 'ausente',
+    isLoading,
+    error,
+    isFromCache
   });
 
   // Usar displayUrl do hook unificado
