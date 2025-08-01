@@ -19,7 +19,7 @@ export class DocumentSender {
     caption?: string
   ): Promise<DocumentSendResult> {
     console.log('📄 ===== INICIANDO ENVIO VIA YUMER API V2 =====');
-    console.log('🔧 Sistema corrigido: usando API oficial Yumer v2.2.1');
+    console.log('🔧 CORRIGIDO: Replicando exatamente a estrutura do sendAudioFile que funciona');
     console.log('📊 Dados do documento:', {
       size: documentBlob.size,
       type: documentBlob.type,

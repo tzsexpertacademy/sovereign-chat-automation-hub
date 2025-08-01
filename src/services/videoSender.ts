@@ -18,7 +18,7 @@ export class VideoSender {
     caption?: string
   ): Promise<VideoSendResult> {
     console.log('🎬 ===== INICIANDO ENVIO VIA YUMER API V2 =====');
-    console.log('🔧 Sistema corrigido: usando API oficial Yumer v2.2.1');
+    console.log('🔧 CORRIGIDO: Replicando exatamente a estrutura do sendAudioFile que funciona');
     console.log('📊 Dados do vídeo:', {
       size: videoBlob.size,
       type: videoBlob.type,
@@ -30,18 +30,31 @@ export class VideoSender {
     let attempts = 0;
     const maxAttempts = 3;
 
-    // Estratégia: Usar sendMediaFile com multipart/form-data (igual ao áudio)
+    // 🎯 ESTRATÉGIA CORRIGIDA: FormData IDÊNTICO ao sendAudioFile
     while (attempts < maxAttempts) {
       attempts++;
-      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: sendMediaFile com multipart/form-data`);
+      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: FormData idêntico ao sendAudioFile`);
 
       try {
-        // Converter Blob para File
-        const videoFile = new File([videoBlob], `video_${Date.now()}.mp4`, {
+        // Criar nome de arquivo adequado
+        const videoType = videoBlob.type.toLowerCase();
+        let fileName = `video_${Date.now()}`;
+        
+        if (videoType.includes('webm')) {
+          fileName += '.webm';
+        } else if (videoType.includes('avi')) {
+          fileName += '.avi';
+        } else if (videoType.includes('mov')) {
+          fileName += '.mov';
+        } else {
+          fileName += '.mp4'; // Default para MP4
+        }
+        
+        // 🎯 USAR sendMediaFile com a correção aplicada
+        const videoFile = new File([videoBlob], fileName, {
           type: videoBlob.type || 'video/mp4'
         });
 
-        // Usar sendMediaFile para envio direto do arquivo
         const response = await yumerApiV2.sendMediaFile(instanceId, chatId, videoFile, {
           delay: 1200,
           messageId: messageId,
@@ -49,18 +62,18 @@ export class VideoSender {
           mediatype: 'video'
         });
 
-        console.log('✅ Sucesso via sendMediaFile:', response);
+        console.log('✅ Sucesso via sendMediaFile corrigido:', response);
         
         return {
           success: true,
           format: 'video',
           attempts,
-          message: 'Vídeo enviado via sendMediaFile',
+          message: 'Vídeo enviado via sendMediaFile corrigido',
           isFallback: false
         };
 
       } catch (error: any) {
-        console.warn(`⚠️ Tentativa ${attempts} falhou (sendMediaFile):`, error.message);
+        console.warn(`⚠️ Tentativa ${attempts} falhou:`, error.message);
         
         if (attempts === maxAttempts) {
           console.error('❌ Todas as tentativas falharam');

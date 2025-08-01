@@ -42,6 +42,9 @@ class ManualMessageSaver {
         media_duration: data.mediaDuration,
         // 🎵 MÍDIA BASE64: Para funcionamento instantâneo de todas as mídias
         audio_base64: data.audioBase64,
+        ...(data.imageBase64 && { image_base64: data.imageBase64 }),
+        ...(data.videoBase64 && { video_base64: data.videoBase64 }),
+        ...(data.documentBase64 && { document_base64: data.documentBase64 }),
         // 🔥 PROPRIEDADES ADICIONAIS PARA CONTROLE
         is_internal_note: false,
         is_ai_response: false,
