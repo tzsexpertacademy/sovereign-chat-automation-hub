@@ -169,6 +169,20 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     if (!displayDocumentUrl) return;
     
     try {
+      // Garantir que o arquivo tenha a extensão correta
+      let downloadFileName = fileName || 'document';
+      const extension = fileName?.split('.').pop()?.toLowerCase();
+      const type = fileType?.toLowerCase();
+      
+      // Se é PDF mas não tem extensão .pdf, adicionar
+      if ((type?.includes('pdf') || extension === 'pdf') && !downloadFileName.endsWith('.pdf')) {
+        downloadFileName = downloadFileName.replace(/\.[^.]*$/, '') + '.pdf';
+      }
+      // Se não tem extensão e não sabemos o tipo, usar .pdf como padrão para documentos
+      else if (!downloadFileName.includes('.') && !type) {
+        downloadFileName += '.pdf';
+      }
+      
       // Se for blob URL, fazer nova requisição para garantir download
       if (displayDocumentUrl.startsWith('blob:')) {
         const response = await fetch(displayDocumentUrl);
@@ -177,7 +191,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         
         const link = document.createElement('a');
         link.href = url;
-        link.download = fileName || 'document.pdf';
+        link.download = downloadFileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -188,13 +202,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         // Para URLs regulares
         const link = document.createElement('a');
         link.href = displayDocumentUrl;
-        link.download = fileName || 'document.pdf';
+        link.download = downloadFileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
       }
       
-      console.log('✅ DocumentViewer: Download iniciado com sucesso');
+      console.log('✅ DocumentViewer: Download iniciado com sucesso:', downloadFileName);
     } catch (error) {
       console.error('❌ DocumentViewer: Erro no download:', error);
       setError('Erro ao baixar documento');
