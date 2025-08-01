@@ -13,8 +13,11 @@ export interface ManualMessageData {
   mimeType?: string;
   caption?: string;
   clientId: string;
-  // 🎵 ÁUDIO: Novos campos para garantir funcionamento instantâneo
+  // 🎵 MÍDIA: Campos para funcionamento instantâneo de todas as mídias
   audioBase64?: string;
+  imageBase64?: string;
+  videoBase64?: string;
+  documentBase64?: string;
   mediaDuration?: number;
 }
 
@@ -37,7 +40,7 @@ class ManualMessageSaver {
         file_enc_sha256: data.fileEncSha256 ? this.ensureBase64String(data.fileEncSha256) : null,
         media_mime_type: data.mimeType,
         media_duration: data.mediaDuration,
-        // 🎵 ÁUDIO: Base64 para funcionamento instantâneo
+        // 🎵 MÍDIA BASE64: Para funcionamento instantâneo de todas as mídias
         audio_base64: data.audioBase64,
         // 🔥 PROPRIEDADES ADICIONAIS PARA CONTROLE
         is_internal_note: false,
@@ -102,6 +105,32 @@ class ManualMessageSaver {
     return null;
   }
 
+  // 🎬 HELPER: Verificar se já tem base64 para a mídia
+  private hasMediaBase64(data: ManualMessageData): boolean {
+    switch (data.messageType) {
+      case 'audio': return !!data.audioBase64;
+      case 'image': return !!data.imageBase64;
+      case 'video': return !!data.videoBase64;
+      case 'document': return !!data.documentBase64;
+      default: return false;
+    }
+  }
+
+  // 🎬 HELPER: Converter File para Base64
+  private async convertFileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remover o prefixo data:mime/type;base64, se existir
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
   async saveMediaMessage(data: ManualMessageData & { 
     mediaFile: File;
     uploadResponse: any; 
@@ -137,16 +166,37 @@ class ManualMessageSaver {
         });
       }
 
-      // 🎵 CORREÇÃO ESPECÍFICA PARA ÁUDIO: Converter Blob para Base64
+      // 🎵 CORREÇÃO PARA TODAS AS MÍDIAS: Converter File para Base64
       let audioBase64 = data.audioBase64;
-      if (data.messageType === 'audio' && data.mediaFile && !audioBase64) {
+      let imageBase64 = data.imageBase64;
+      let videoBase64 = data.videoBase64;
+      let documentBase64 = data.documentBase64;
+
+      if (data.mediaFile && !this.hasMediaBase64(data)) {
         try {
-          console.log('🎵 Convertendo áudio manual para base64...');
-          const { AudioConverter } = await import('@/utils/audioConverter');
-          audioBase64 = await AudioConverter.blobToBase64(data.mediaFile);
-          console.log('✅ Áudio convertido:', { size: audioBase64.length });
-        } catch (audioError) {
-          console.warn('⚠️ Erro ao converter áudio:', audioError);
+          console.log(`🎬 Convertendo ${data.messageType} manual para base64...`);
+          const base64Data = await this.convertFileToBase64(data.mediaFile);
+          
+          switch (data.messageType) {
+            case 'audio':
+              audioBase64 = base64Data;
+              console.log('✅ Áudio convertido:', { size: base64Data.length });
+              break;
+            case 'image':
+              imageBase64 = base64Data;
+              console.log('✅ Imagem convertida:', { size: base64Data.length });
+              break;
+            case 'video':
+              videoBase64 = base64Data;
+              console.log('✅ Vídeo convertido:', { size: base64Data.length });
+              break;
+            case 'document':
+              documentBase64 = base64Data;
+              console.log('✅ Documento convertido:', { size: base64Data.length });
+              break;
+          }
+        } catch (conversionError) {
+          console.warn(`⚠️ Erro ao converter ${data.messageType}:`, conversionError);
         }
       }
 
@@ -157,6 +207,9 @@ class ManualMessageSaver {
         fileEncSha256,
         mediaDuration,
         audioBase64,
+        imageBase64,
+        videoBase64,
+        documentBase64,
         content: data.caption || `📎 ${data.messageType}`,
         fileName: data.fileName || data.mediaFile.name,
         mimeType: data.mimeType || data.mediaFile.type
