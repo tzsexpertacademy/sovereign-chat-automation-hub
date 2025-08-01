@@ -56,9 +56,19 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       });
 
       try {
-        // ESTRATÉGIA ÚNICA: DirectMediaDownloadService sempre
-        if (documentUrl) {
-          console.log('🎯 DocumentViewer: Usando DirectMediaDownloadService');
+        // Detectar se é mensagem manual
+        const isManualMessage = messageId?.startsWith('manual_');
+        
+        // Para mensagens manuais, usar URL direta se não tiver media_key
+        if (isManualMessage && !mediaKey) {
+          console.log('📤 DocumentViewer: Mensagem manual sem criptografia - usando URL direta');
+          setDisplayDocumentUrl(documentUrl);
+          return;
+        }
+
+        // Para mensagens que precisam de descriptografia
+        if (documentUrl && mediaKey) {
+          console.log('🔓 DocumentViewer: Tentando descriptografar via DirectMediaDownloadService');
           
           const currentUrl = window.location.pathname;
           const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
@@ -83,12 +93,12 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
               );
 
               if (result.success && result.mediaUrl) {
-                console.log('✅ DocumentViewer: Sucesso via DirectMedia');
+                console.log('✅ DocumentViewer: Descriptografia bem-sucedida');
                 setDisplayDocumentUrl(result.mediaUrl);
                 return;
               }
               
-              console.log('⚠️ DocumentViewer: DirectMedia falhou, usando fallback');
+              console.log('⚠️ DocumentViewer: Descriptografia falhou, usando fallback');
             }
           }
         }

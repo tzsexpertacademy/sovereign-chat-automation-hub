@@ -36,56 +36,71 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         return;
       }
 
-      // ESTRATÉGIA ÚNICA: DirectMediaDownloadService sempre
-      console.log('🎯 VideoViewer: Usando DirectMediaDownloadService');
-      setIsDecrypting(!!mediaKey);
-      setError('');
-
-      try {
-        const { directMediaDownloadService } = await import('@/services/directMediaDownloadService');
-        
-        // Buscar instanceId do contexto atual
-        const currentUrl = window.location.pathname;
-        const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
-        const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
-        
-        let instanceId = 'default';
-        if (ticketId) {
-          const { supabase } = await import('@/integrations/supabase/client');
-          const { data: ticketData } = await supabase
-            .from('conversation_tickets')
-            .select('instance_id')
-            .eq('id', ticketId)
-            .single();
-          
-          if (ticketData?.instance_id) {
-            instanceId = ticketData.instance_id;
-          }
-        }
-        
-        const result = await directMediaDownloadService.processMedia(
-          instanceId,
-          messageId || `video_${Date.now()}`,
-          videoUrl,
-          mediaKey,
-          undefined, // directPath
-          'video/mp4',
-          'video'
-        );
-        
-        if (result.success && result.mediaUrl) {
-          console.log('✅ VideoViewer: Processamento bem-sucedido');
-          setDisplayVideoUrl(result.mediaUrl);
-        } else {
-          console.log('⚠️ VideoViewer: DirectMedia falhou, usando fallback');
-          setDisplayVideoUrl(videoUrl);
-        }
-      } catch (err) {
-        console.error('❌ VideoViewer: Erro no processamento:', err);
+      // Detectar se é mensagem manual
+      const isManualMessage = messageId?.startsWith('manual_');
+      
+      // Para mensagens manuais, usar URL direta se não tiver media_key
+      if (isManualMessage && !mediaKey) {
+        console.log('📤 VideoViewer: Mensagem manual sem criptografia - usando URL direta');
         setDisplayVideoUrl(videoUrl);
-      } finally {
-        setIsDecrypting(false);
+        return;
       }
+
+      // Para mensagens que precisam de descriptografia
+      if (mediaKey) {
+        console.log('🔓 VideoViewer: Tentando descriptografar via DirectMediaDownloadService');
+        setIsDecrypting(true);
+        setError('');
+
+        try {
+          const { directMediaDownloadService } = await import('@/services/directMediaDownloadService');
+          
+          // Buscar instanceId do contexto atual
+          const currentUrl = window.location.pathname;
+          const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+          const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
+          
+          let instanceId = 'default';
+          if (ticketId) {
+            const { supabase } = await import('@/integrations/supabase/client');
+            const { data: ticketData } = await supabase
+              .from('conversation_tickets')
+              .select('instance_id')
+              .eq('id', ticketId)
+              .single();
+            
+            if (ticketData?.instance_id) {
+              instanceId = ticketData.instance_id;
+            }
+          }
+          
+          const result = await directMediaDownloadService.processMedia(
+            instanceId,
+            messageId || `video_${Date.now()}`,
+            videoUrl,
+            mediaKey,
+            undefined, // directPath
+            'video/mp4',
+            'video'
+          );
+          
+          if (result.success && result.mediaUrl) {
+            console.log('✅ VideoViewer: Descriptografia bem-sucedida');
+            setDisplayVideoUrl(result.mediaUrl);
+            return;
+          } else {
+            console.log('⚠️ VideoViewer: Descriptografia falhou, usando fallback');
+          }
+        } catch (err) {
+          console.error('❌ VideoViewer: Erro na descriptografia:', err);
+        } finally {
+          setIsDecrypting(false);
+        }
+      }
+      
+      // FALLBACK FINAL: URL original
+      console.log('🔄 VideoViewer: Usando URL original como fallback');
+      setDisplayVideoUrl(videoUrl);
     };
 
     initializeVideo();

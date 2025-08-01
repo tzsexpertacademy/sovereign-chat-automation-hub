@@ -56,10 +56,20 @@ const ImageViewer = ({
       });
 
       try {
-        // ESTRATÉGIA ÚNICA: DirectMediaDownloadService sempre
-        if (imageUrl) {
-          console.log('🎯 ImageViewer: Usando DirectMediaDownloadService');
-          setIsDecrypting(!!mediaKey);
+        // Detectar se é mensagem manual
+        const isManualMessage = messageId?.startsWith('manual_');
+        
+        // Para mensagens manuais, usar URL direta se não tiver media_key
+        if (isManualMessage && !mediaKey) {
+          console.log('📤 ImageViewer: Mensagem manual sem criptografia - usando URL direta');
+          setDisplayImageUrl(imageUrl);
+          return;
+        }
+        
+        // Para mensagens que precisam de descriptografia
+        if (imageUrl && mediaKey) {
+          console.log('🔓 ImageViewer: Tentando descriptografar via DirectMediaDownloadService');
+          setIsDecrypting(true);
           
           const currentUrl = window.location.pathname;
           const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
@@ -84,12 +94,12 @@ const ImageViewer = ({
               );
 
               if (result.success && result.mediaUrl) {
-                console.log('✅ ImageViewer: Sucesso via DirectMedia');
+                console.log('✅ ImageViewer: Descriptografia bem-sucedida');
                 setDisplayImageUrl(result.mediaUrl);
                 return;
               }
               
-              console.log('⚠️ ImageViewer: DirectMedia falhou, usando fallback');
+              console.log('⚠️ ImageViewer: Descriptografia falhou, usando fallback');
             }
           }
         }
