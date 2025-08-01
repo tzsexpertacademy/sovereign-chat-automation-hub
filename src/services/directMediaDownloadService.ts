@@ -113,11 +113,11 @@ class DirectMediaDownloadService {
     contentType: 'image' | 'video' | 'audio' | 'document' = 'document'
   ): Promise<MediaDownloadResult> {
     try {
-      console.log('🔄 DirectMedia: Processando', contentType, '- URL:', mediaUrl?.substring(0, 100));
+      console.log(`🔄 [MEDIA-${contentType.toUpperCase()}] Processando - URL:`, mediaUrl?.substring(0, 100));
       
       // FALLBACK 1: Para mensagens manuais sem mediaKey - usar URL diretamente
       if (!mediaKey || !mediaUrl?.includes('.enc')) {
-        console.log('📁 DirectMedia: Mensagem manual/não criptografada - usando URL direta');
+        console.log(`📁 [MEDIA-${contentType.toUpperCase()}] Mensagem manual/não criptografada - usando URL direta`);
         return {
           success: true,
           mediaUrl: mediaUrl,
@@ -138,11 +138,12 @@ class DirectMediaDownloadService {
       }
       
       // PRINCIPAL: usar endpoint directly-download
-      console.log('🎯 DirectMedia: Usando directly-download');
-      console.log('📋 DirectMedia: Dados de entrada:', {
+      console.log(`🎯 [MEDIA-${contentType.toUpperCase()}] Usando directly-download`);
+      console.log(`📋 [MEDIA-${contentType.toUpperCase()}] Dados de entrada:`, {
         contentType,
-        mediaUrl,
+        mediaUrl: mediaUrl.substring(0, 100) + '...',
         mediaKey: typeof mediaKey,
+        mediaKeyLength: typeof mediaKey === 'string' ? mediaKey.length : 'N/A',
         directPath,
         mimetype
       });
@@ -150,13 +151,16 @@ class DirectMediaDownloadService {
       // Converter mediaKey se necessário - garantir que é Base64 string
       let base64MediaKey = mediaKey;
       if (typeof mediaKey === 'object' && mediaKey !== null) {
-        console.log('🔄 DirectMedia: Convertendo mediaKey de objeto para Base64');
+        console.log(`🔄 [MEDIA-${contentType.toUpperCase()}] Convertendo mediaKey de objeto para Base64`);
         base64MediaKey = this.convertToBase64(mediaKey);
       }
       
       if (!base64MediaKey || typeof base64MediaKey !== 'string') {
-        throw new Error(`MediaKey inválido: ${typeof mediaKey}`);
+        console.error(`❌ [MEDIA-${contentType.toUpperCase()}] MediaKey inválido:`, typeof mediaKey);
+        throw new Error(`MediaKey inválido para ${contentType}: ${typeof mediaKey}`);
       }
+      
+      console.log(`✅ [MEDIA-${contentType.toUpperCase()}] MediaKey validado - Length: ${base64MediaKey.length}`);
 
       const requestBody: MediaDownloadRequest = {
         contentType,
@@ -167,11 +171,19 @@ class DirectMediaDownloadService {
           directPath: directPath || ''
         }
       };
+      
+      console.log(`📤 [MEDIA-${contentType.toUpperCase()}] Request body preparado:`, {
+        contentType: requestBody.contentType,
+        url: requestBody.content.url.substring(0, 100) + '...',
+        mimetype: requestBody.content.mimetype,
+        mediaKeyLength: requestBody.content.mediaKey.length,
+        directPath: requestBody.content.directPath
+      });
 
       // Buscar instanceId interno
-      console.log('🔍 DirectMedia: Buscando instanceId interno para:', instanceId);
+      console.log(`🔍 [MEDIA-${contentType.toUpperCase()}] Buscando instanceId interno para:`, instanceId);
       const internalInstanceId = await this.getInternalInstanceId(instanceId);
-      console.log('📋 DirectMedia: InstanceId interno obtido:', internalInstanceId);
+      console.log(`📋 [MEDIA-${contentType.toUpperCase()}] InstanceId interno obtido:`, internalInstanceId);
       
       if (!internalInstanceId) {
         throw new Error('Instance ID não encontrado no banco de dados');
@@ -210,32 +222,44 @@ class DirectMediaDownloadService {
           )
         ]);
 
-        console.log('📥 [MEDIA-DOWNLOAD] Response status:', response.status);
+        console.log(`📥 [MEDIA-${contentType.toUpperCase()}] Response status:`, response.status);
+        console.log(`📥 [MEDIA-${contentType.toUpperCase()}] Response headers:`, Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('❌ [MEDIA-DOWNLOAD] Erro da API:', response.status, errorText);
+          console.error(`❌ [MEDIA-${contentType.toUpperCase()}] Erro da API:`, response.status, errorText);
+          console.error(`❌ [MEDIA-${contentType.toUpperCase()}] Request que falhou:`, {
+            endpoint: apiEndpoint,
+            contentType: requestBody.contentType,
+            mimetype: requestBody.content.mimetype
+          });
           
-          // FALLBACK 2: Tentar URL original se API falhar
-          console.log('🔄 [MEDIA-DOWNLOAD] API falhou, tentando URL original como fallback');
-          return {
-            success: true,
-            mediaUrl: mediaUrl,
-            cached: false
-          };
+          // REMOVIDO FALLBACK PROBLEMÁTICO - não retornar URL criptografada
+          throw new Error(`API directly-download falhou para ${contentType}: ${response.status} ${errorText}`);
         }
 
         // O servidor já retornou o blob descriptografado - usar diretamente
         const blob = await response.blob();
         
+        console.log(`📦 [MEDIA-${contentType.toUpperCase()}] Blob recebido:`, {
+          size: blob.size,
+          type: blob.type,
+          contentType: requestBody.contentType
+        });
+        
         if (blob.size === 0) {
-          console.error('❌ [MEDIA-DOWNLOAD] Blob vazio recebido da API');
-          throw new Error('Blob vazio recebido');
+          console.error(`❌ [MEDIA-${contentType.toUpperCase()}] Blob vazio recebido da API`);
+          throw new Error(`Blob vazio recebido para ${contentType}`);
+        }
+        
+        // Verificar se o tipo MIME está correto para imagens
+        if (contentType === 'image' && blob.type && !blob.type.startsWith('image/')) {
+          console.warn(`⚠️ [MEDIA-${contentType.toUpperCase()}] Tipo MIME inesperado:`, blob.type, 'esperado image/*');
         }
         
         const blobUrl = URL.createObjectURL(blob);
         
-        console.log('✅ [MEDIA-DOWNLOAD] Download direto bem-sucedido:', {
+        console.log(`✅ [MEDIA-${contentType.toUpperCase()}] Download direto bem-sucedido:`, {
           blobSize: blob.size,
           blobType: blob.type,
           mediaUrl: blobUrl.substring(0, 50) + '...'
@@ -244,7 +268,7 @@ class DirectMediaDownloadService {
         // Cachear resultado no cache unificado
         unifiedMediaCache.set(instanceId, messageId, blobUrl, 'DirectMedia', mediaKey, mimetype);
         
-        console.log('✅ [MEDIA-DOWNLOAD] Mídia descriptografada pelo servidor e pronta para uso');
+        console.log(`✅ [MEDIA-${contentType.toUpperCase()}] Mídia descriptografada pelo servidor e pronta para uso`);
         return {
           success: true,
           mediaUrl: blobUrl,
@@ -258,18 +282,10 @@ class DirectMediaDownloadService {
       };
 
     } catch (error) {
-      console.error('❌ DirectMedia: Erro no download:', error);
+      console.error(`❌ [MEDIA-${contentType.toUpperCase()}] Erro no download:`, error);
       
-      // FALLBACK 3: Em caso de erro, tentar URL original
-      if (mediaUrl && !mediaUrl.includes('blob:')) {
-        console.log('🔄 DirectMedia: Erro na API, usando URL original como fallback');
-        return {
-          success: true,
-          mediaUrl: mediaUrl,
-          cached: false
-        };
-      }
-      
+      // REMOVIDO FALLBACK PARA URL CRIPTOGRAFADA - nunca retornar .enc
+      // Se a API falhar, melhor retornar erro do que baixar arquivo criptografado
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Erro desconhecido'
