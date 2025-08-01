@@ -36,8 +36,6 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
       style: 0.5
     },
     response_delay_seconds: 3,
-    message_processing_delay_seconds: 10,
-    message_batch_timeout_seconds: 10,
     typing_indicator_enabled: true,
     recording_indicator_enabled: true,
     humanization_level: 'advanced',
@@ -615,78 +613,23 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Clock className="w-5 h-5" />
-                <span>Comportamento & Timing</span>
+                <span>Indicadores Visuais</span>
               </CardTitle>
               <CardDescription>
-                Configurações de timing e indicadores visuais
+                Configurações de indicadores visuais durante o uso
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4">
-                <div>
-                  <Label htmlFor="response_delay_seconds">
-                    Delay Extra na Resposta (segundos): {settings.response_delay_seconds}
-                  </Label>
-                  <div className="mt-2">
-                    <Slider
-                      id="response_delay_seconds"
-                      value={[settings.response_delay_seconds]}
-                      onValueChange={(value) => setSettings(prev => ({ ...prev, response_delay_seconds: value[0] }))}
-                      min={0}
-                      max={10}
-                      step={1}
-                      className="w-full"
-                    />
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    Delay adicional além da humanização automática
-                  </p>
-                </div>
-
-                <div>
-                  <Label htmlFor="message_processing_delay_seconds">
-                    Tempo para processar mensagens em lote (segundos): {settings.message_processing_delay_seconds}
-                  </Label>
-                  <div className="mt-2">
-                    <Slider
-                      id="message_processing_delay_seconds"
-                      value={[settings.message_processing_delay_seconds]}
-                      onValueChange={(value) => setSettings(prev => ({ ...prev, message_processing_delay_seconds: value[0] }))}
-                      min={0}
-                      max={30}
-                      step={1}
-                      className="w-full"
-                    />
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    Tempo máximo para agrupar mensagens antes de processar
-                  </p>
-                </div>
-
-                <div>
-                  <Label htmlFor="message_batch_timeout_seconds">
-                    Tempo limite para processamento em lote (segundos): {settings.message_batch_timeout_seconds}
-                  </Label>
-                  <div className="mt-2">
-                    <Slider
-                      id="message_batch_timeout_seconds"
-                      value={[settings.message_batch_timeout_seconds]}
-                      onValueChange={(value) => setSettings(prev => ({ ...prev, message_batch_timeout_seconds: value[0] }))}
-                      min={0}
-                      max={30}
-                      step={1}
-                      className="w-full"
-                    />
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    Tempo máximo para processar mensagens em lote
-                  </p>
-                </div>
-
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="recording_indicator_enabled">
-                    Mostrar Indicador de Gravação
-                  </Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="recording_indicator_enabled">
+                      Mostrar Indicador de Gravação
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Mostra o indicador de gravação enquanto o assistente gera áudio
+                    </p>
+                  </div>
                   <Switch
                     id="recording_indicator_enabled"
                     checked={settings.recording_indicator_enabled}
@@ -695,9 +638,6 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
                     }
                   />
                 </div>
-                <p className="text-sm text-gray-500">
-                  Mostra o indicador de gravação enquanto o assistente gera áudio
-                </p>
               </div>
             </CardContent>
           </Card>

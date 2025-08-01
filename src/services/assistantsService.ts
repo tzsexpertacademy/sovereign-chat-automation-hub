@@ -62,8 +62,6 @@ export interface AdvancedSettings {
   eleven_labs_model: string;
   voice_settings: VoiceSettings;
   response_delay_seconds: number;
-  message_processing_delay_seconds: number;
-  message_batch_timeout_seconds: number;
   typing_indicator_enabled: boolean;
   recording_indicator_enabled: boolean;
   humanization_level: 'basic' | 'advanced' | 'maximum';
