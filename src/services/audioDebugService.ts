@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { whatsappAudioService } from './whatsappAudioService';
+import { directMediaDownloadService } from './directMediaDownloadService';
 
 interface AudioDebugResult {
   step: string;
@@ -69,22 +69,24 @@ export class AudioDebugService {
             fileEncSha256: message.file_enc_sha256
           };
           
-          const decryptResult = await whatsappAudioService.decryptAudio(audioData);
+          const decryptResult = await directMediaDownloadService.downloadMedia(
+            'debug', message.media_url, audioData.mediaKey, '', '', 'audio'
+          );
 
           results.push({
             step: 'decrypt_audio',
-            success: !!decryptResult?.decryptedData,
+            success: decryptResult.success,
             data: {
-              format: decryptResult?.format,
-              cached: decryptResult?.cached,
-              audioLength: decryptResult?.decryptedData?.length
+              success: decryptResult.success,
+              cached: decryptResult.cached,
+              mediaUrl: decryptResult.mediaUrl
             },
-            error: !decryptResult?.decryptedData ? 'Descriptografia falhou' : undefined,
+            error: !decryptResult.success ? 'Download de mídia falhou' : undefined,
             duration: Date.now() - step2Start
           });
 
           // ETAPA 3: Verificar transcrição
-          if (decryptResult?.decryptedData) {
+          if (decryptResult.success) {
             const step3Start = Date.now();
             
             try {
@@ -113,25 +115,23 @@ export class AudioDebugService {
               });
             }
 
-            // ETAPA 4: Testar criação de data URL
+            // ETAPA 4: Verificar URL de mídia
             const step4Start = Date.now();
             
             try {
-              const dataUrl = `data:audio/${decryptResult.format || 'ogg'};base64,${decryptResult.decryptedData}`;
-
               results.push({
-                step: 'create_data_url',
+                step: 'check_media_url',
                 success: true,
                 data: {
-                  dataUrlLength: dataUrl.length,
-                  mimeType: dataUrl.split(';')[0].replace('data:', '')
+                  mediaUrl: decryptResult.mediaUrl,
+                  cached: decryptResult.cached
                 },
                 duration: Date.now() - step4Start
               });
 
             } catch (error) {
               results.push({
-                step: 'create_data_url',
+                step: 'check_media_url',
                 success: false,
                 error: error.message,
                 duration: Date.now() - step4Start
@@ -210,18 +210,19 @@ export class AudioDebugService {
         fileEncSha256: message.file_enc_sha256
       };
       
-      const result = await whatsappAudioService.decryptAudio(audioData);
+      const result = await directMediaDownloadService.downloadMedia(
+        'debug', audioData.mediaUrl, audioData.mediaKey, '', '', 'audio'
+      );
 
       return {
         step: 'decrypt_test',
-        success: !!result?.decryptedData,
+        success: result.success,
         data: {
-          format: result?.format,
-          cached: result?.cached,
-          audioLength: result?.decryptedData?.length,
-          hasAudio: !!result?.decryptedData
+          success: result.success,
+          cached: result.cached,
+          mediaUrl: result.mediaUrl
         },
-        error: !result?.decryptedData ? 'Descriptografia falhou' : undefined,
+        error: !result.success ? 'Download de mídia falhou' : undefined,
         duration: Date.now() - startTime
       };
 
