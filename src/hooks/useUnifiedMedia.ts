@@ -67,14 +67,20 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
         directPath: mediaData.directPath
       });
 
-      // PRIORIDADE 1: Base64 direto (mensagens manuais/já processadas)
+      // ⚡ PRIORIDADE 1: Base64 direto (mensagens manuais/já processadas - CRM audios)
       const base64Data = getBase64Data();
       if (base64Data) {
-        console.log('✅ useUnifiedMedia: Usando dados base64');
+        console.log('✅ useUnifiedMedia: Base64 detectado para CRM audio - reprodução instantânea', {
+          messageId: mediaData.messageId,
+          contentType: mediaData.contentType,
+          base64Size: base64Data.length,
+          timeStamp: new Date().toISOString()
+        });
         const mimeType = mediaData.mimetype || getDefaultMimeType();
         const dataUrl = `data:${mimeType};base64,${base64Data}`;
         setDisplayUrl(dataUrl);
         setIsFromCache(true);
+        setIsLoading(false); // ⚡ OTIMIZAÇÃO: Parar loading imediatamente
         return;
       }
 

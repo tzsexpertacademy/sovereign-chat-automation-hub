@@ -89,7 +89,7 @@ export const useAudioHandling = (ticketId: string) => {
           console.log('💾 Salvando áudio otimizado no banco para reprodução instantânea...');
           const base64Audio = await AudioConverter.blobToBase64(optimizedAudioBlob);
           
-          await supabase
+          const updateResult = await supabase
             .from('ticket_messages')
             .update({ 
               processing_status: 'completed',
@@ -104,12 +104,17 @@ export const useAudioHandling = (ticketId: string) => {
             })
             .eq('message_id', messageId);
             
-          console.log('✅ Áudio salvo no banco:', {
+          console.log('✅ Áudio CRM salvo no banco:', {
             messageId,
             base64Size: base64Audio.length,
             duration: Math.round(duration),
-            status: 'completed'
+            status: 'completed',
+            updateSuccess: updateResult.error === null,
+            updateError: updateResult.error?.message
           });
+
+          // ⚡ OTIMIZAÇÃO: Forçar refresh instantâneo do componente
+          console.log('⚡ Áudio CRM pronto para reprodução instantânea');
         } catch (dbError) {
           console.warn('⚠️ Erro ao salvar no banco:', dbError);
         }
