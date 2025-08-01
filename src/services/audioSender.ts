@@ -1,6 +1,7 @@
 
 import { yumerApiV2 } from '@/services/yumerApiV2Service';
 import { AudioConverter } from '@/utils/audioConverter';
+import { AudioUploadService } from '@/services/audioUploadService';
 
 export interface AudioSendResult {
   success: boolean;
@@ -19,51 +20,99 @@ export class AudioSender {
     messageId: string,
     duration?: number
   ): Promise<AudioSendResult> {
-    console.log('🎵 ===== INICIANDO ENVIO VIA YUMER API V2 =====');
-    console.log('🔧 Sistema corrigido: usando API oficial Yumer v2.2.1');
+    console.log('🎵 ===== INICIANDO ENVIO VIA ENDPOINT ESPECÍFICO /send/audio =====');
+    console.log('🔧 Sistema otimizado: upload → URL → endpoint WhatsApp específico');
     console.log('📊 Dados do áudio:', {
       size: audioBlob.size,
       type: audioBlob.type,
       chatId,
-      instanceId
+      instanceId,
+      duration
     });
 
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 2;
+    let uploadFileName: string | undefined;
 
-    // Estratégia: Usar sendAudioFile com multipart/form-data
+    // ESTRATÉGIA OTIMIZADA: Upload para obter URL → Usar endpoint específico
     while (attempts < maxAttempts) {
       attempts++;
-      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: sendAudioFile com multipart/form-data`);
+      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: Upload + /send/audio`);
 
       try {
-        // Usar sendAudioFile para envio direto do blob COM DURAÇÃO
-        const response = await yumerApiV2.sendAudioFile(instanceId, chatId, audioBlob, {
-          delay: 1200,
+        // ETAPA 1: Upload do áudio para obter URL pública
+        console.log('📤 ETAPA 1: Fazendo upload do áudio...');
+        const uploadResult = await AudioUploadService.uploadAudioBlob(audioBlob, messageId);
+        
+        if (!uploadResult.success || !uploadResult.url) {
+          throw new Error(`Falha no upload: ${uploadResult.error}`);
+        }
+
+        uploadFileName = uploadResult.fileName;
+        console.log(`✅ Upload realizado: ${uploadResult.url}`);
+
+        // ETAPA 2: Enviar via endpoint específico /send/audio
+        console.log('🎵 ETAPA 2: Enviando via /send/audio (endpoint específico do WhatsApp)...');
+        const response = await yumerApiV2.sendWhatsAppAudio(instanceId, chatId, uploadResult.url, {
+          delay: 800, // Delay menor pois não há processamento de arquivo
           messageId: messageId,
-          duration: duration // CORREÇÃO: Passar duração para o WhatsApp
+          presence: 'recording' // Aparece como gravação no WhatsApp
         });
 
-        console.log('✅ Sucesso via sendAudioFile:', response);
+        console.log('✅ Sucesso via endpoint específico /send/audio:', response);
+        
+        // ETAPA 3: Limpeza do arquivo temporário (não crítico)
+        if (uploadFileName) {
+          AudioUploadService.cleanupTempAudio(uploadFileName).catch(err => {
+            console.warn('⚠️ Erro na limpeza (não crítico):', err);
+          });
+        }
         
         return {
           success: true,
           format: 'ogg',
           attempts,
-          message: 'Áudio enviado via sendAudioFile',
+          message: 'Áudio enviado via endpoint específico /send/audio',
           isFallback: false
         };
 
       } catch (error: any) {
-        console.warn(`⚠️ Tentativa ${attempts} falhou (sendAudioFile):`, error.message);
+        console.warn(`⚠️ Tentativa ${attempts} falhou:`, error.message);
+        
+        // Limpar arquivo em caso de erro
+        if (uploadFileName) {
+          AudioUploadService.cleanupTempAudio(uploadFileName).catch(() => {});
+        }
         
         if (attempts === maxAttempts) {
-          console.error('❌ Todas as tentativas falharam');
-          return {
-            success: false,
-            error: `Falha após ${attempts} tentativas: ${error.message}`,
-            attempts
-          };
+          console.error('❌ Todas as tentativas falharam, tentando fallback...');
+          
+          // FALLBACK: Tentar método anterior como último recurso
+          try {
+            console.log('🔄 FALLBACK: Tentando sendAudioFile...');
+            const fallbackResponse = await yumerApiV2.sendAudioFile(instanceId, chatId, audioBlob, {
+              delay: 1200,
+              messageId: messageId + '_fallback',
+              duration: duration
+            });
+
+            console.log('✅ Sucesso via fallback (sendAudioFile):', fallbackResponse);
+            
+            return {
+              success: true,
+              format: 'ogg',
+              attempts: attempts + 1,
+              message: 'Áudio enviado via fallback (sendAudioFile)',
+              isFallback: true
+            };
+          } catch (fallbackError: any) {
+            console.error('❌ Fallback também falhou:', fallbackError);
+            return {
+              success: false,
+              error: `Falha completa após ${attempts} tentativas + fallback: ${error.message}`,
+              attempts: attempts + 1
+            };
+          }
         }
         
         // Aguardar antes da próxima tentativa
