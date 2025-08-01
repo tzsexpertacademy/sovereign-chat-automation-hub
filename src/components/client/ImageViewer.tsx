@@ -63,83 +63,61 @@ const ImageViewer = ({
           return;
         }
 
-        // 2. Imagem com dados completos (priorizar download direto via directMediaDownloadService)
-        if (imageUrl && mediaKey) {
-          console.log('🔐 ImageViewer: Processando imagem com dados completos');
+        // 2. Buscar dados do ticket para usar MediaDisplayService
+        const currentUrl = window.location.pathname;
+        const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+        const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
+        
+        if (ticketId && messageId) {
+          console.log('🔄 ImageViewer: Processando via MediaDisplayService');
           setIsDecrypting(true);
           
           try {
-            // 🔥 CORREÇÃO: Buscar instanceId do ticket para usar no download
-            const currentUrl = window.location.pathname;
-            const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
-            const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
+            // Buscar dados do ticket
+            const { data: ticketData } = await supabase
+              .from('conversation_tickets')
+              .select('instance_id, chat_id')
+              .eq('id', ticketId)
+              .single();
             
-            let instanceId = '';
-            if (ticketId) {
-              try {
-                const { data: ticketData } = await supabase
-                  .from('conversation_tickets')
-                  .select('instance_id')
-                  .eq('id', ticketId)
-                  .single();
-                
-                if (ticketData?.instance_id) {
-                  instanceId = ticketData.instance_id;
-                }
-              } catch (error) {
-                console.error('❌ ImageViewer: Erro ao buscar instanceId:', error);
-              }
-            }
-
-            if (instanceId) {
-              // Tentar download direto primeiro
-              const { directMediaDownloadService } = await import('@/services/directMediaDownloadService');
+            if (ticketData?.instance_id && ticketData?.chat_id) {
+              const { mediaDisplayService } = await import('@/services/mediaDisplayService');
               
-              const result = await directMediaDownloadService.downloadMedia(
-                instanceId,
-                imageUrl,
-                mediaKey,
-                directPath || '',
-                mediaMimeType || 'image/jpeg',
-                'image'
-              );
+              const result = await mediaDisplayService.displayMedia({
+                instanceId: ticketData.instance_id,
+                messageId: messageId,
+                chatId: ticketData.chat_id,
+                mediaUrl: imageUrl,
+                mediaKey: mediaKey,
+                directPath: directPath,
+                mimetype: mediaMimeType || 'image/jpeg',
+                contentType: 'image'
+              });
 
               if (result.success && result.mediaUrl) {
-                console.log('✅ ImageViewer: Download direto bem-sucedido');
+                console.log(`✅ ImageViewer: Sucesso via ${result.strategy}`);
                 setDisplayImageUrl(result.mediaUrl);
                 return;
               }
               
-              console.log('⚠️ ImageViewer: Download direto falhou, tentando método legado');
+              console.log('⚠️ ImageViewer: MediaDisplayService falhou:', result.error);
               
-              // Fallback: tentar unifiedMediaService
-              const fallbackResult = await unifiedMediaService.processImage(
-                messageId || '',
-                instanceId,
-                {
-                  url: imageUrl,
-                  mimetype: mediaMimeType || 'image/jpeg',
-                  mediaKey: mediaKey,
-                  directPath: directPath || ''
-                }
-              );
-              
-              if (fallbackResult?.success && fallbackResult.mediaUrl) {
-                console.log('✅ ImageViewer: Processamento bem-sucedido via unifiedMediaService');
-                setDisplayImageUrl(fallbackResult.mediaUrl);
+              // Fallback: tentar URL original se existir
+              if (imageUrl) {
+                console.log('🔄 ImageViewer: Fallback para URL original');
+                setDisplayImageUrl(imageUrl);
                 return;
               }
-              
-              console.log('⚠️ ImageViewer: Todos os métodos falharam, usando URL original');
-              // Fallback final: tentar URL original
+            }
+          } catch (error) {
+            console.error('❌ ImageViewer: Erro no MediaDisplayService:', error);
+            
+            // Fallback: tentar URL original se existir
+            if (imageUrl) {
+              console.log('🔄 ImageViewer: Fallback para URL original após erro');
               setDisplayImageUrl(imageUrl);
               return;
             }
-          } catch (error) {
-            console.error('❌ ImageViewer: Erro no processamento:', error);
-            // Fallback final: tentar URL original
-            setDisplayImageUrl(imageUrl);
-            return;
           }
         }
 

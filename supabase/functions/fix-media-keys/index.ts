@@ -19,23 +19,36 @@ serve(async (req) => {
   try {
     console.log('🔧 [MEDIA-KEYS-FIX] Iniciando correção de media keys...');
 
-    // 1. Buscar mensagens com media_key no formato incorreto (objeto JSON)
-    const { data: brokenMessages, error: fetchError } = await supabase
-      .from('whatsapp_messages')
-      .select('id, message_id, media_key, file_enc_sha256, file_sha256, raw_data')
+    // Buscar mensagens de imagem com media_key em formato de objeto nas duas tabelas
+    const { data: ticketMessages, error: ticketFetchError } = await supabase
+      .from('ticket_messages')
+      .select('id, message_id, media_key, file_enc_sha256, file_sha256, message_type')
+      .eq('message_type', 'image')
       .not('media_key', 'is', null)
-      .limit(100);
+      .limit(50);
 
-    if (fetchError) {
-      console.error('❌ [MEDIA-KEYS-FIX] Erro ao buscar mensagens:', fetchError);
-      return new Response(JSON.stringify({ error: fetchError.message }), {
+    const { data: whatsappMessages, error: whatsappFetchError } = await supabase
+      .from('whatsapp_messages')
+      .select('id, message_id, media_key, file_enc_sha256, file_sha256, message_type')
+      .eq('message_type', 'image')
+      .not('media_key', 'is', null)
+      .limit(50);
+
+    if (ticketFetchError || whatsappFetchError) {
+      console.error('❌ [MEDIA-KEYS-FIX] Erro ao buscar mensagens:', ticketFetchError || whatsappFetchError);
+      return new Response(JSON.stringify({ error: 'Erro ao buscar mensagens' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    if (!brokenMessages || brokenMessages.length === 0) {
-      console.log('✅ [MEDIA-KEYS-FIX] Nenhuma mensagem para corrigir');
+    const allMessages = [
+      ...(ticketMessages || []).map(m => ({...m, source: 'ticket_messages'})),
+      ...(whatsappMessages || []).map(m => ({...m, source: 'whatsapp_messages'}))
+    ];
+
+    if (allMessages.length === 0) {
+      console.log('✅ [MEDIA-KEYS-FIX] Nenhuma mensagem de imagem para corrigir');
       return new Response(JSON.stringify({ 
         success: true, 
         fixed: 0, 
@@ -45,60 +58,76 @@ serve(async (req) => {
       });
     }
 
-    console.log(`🔧 [MEDIA-KEYS-FIX] Encontradas ${brokenMessages.length} mensagens para verificar`);
+    console.log(`🔧 [MEDIA-KEYS-FIX] Encontradas ${allMessages.length} mensagens para verificar`);
 
     let fixed = 0;
     let errors = 0;
+    let alreadyFixed = 0;
 
-    for (const message of brokenMessages) {
+    for (const message of allMessages) {
       try {
-        // Verificar se media_key precisa de correção
-        const needsFix = typeof message.media_key === 'object' && message.media_key !== null;
-        
-        if (!needsFix) {
-          console.log(`⏭️ [MEDIA-KEYS-FIX] Mensagem ${message.message_id} já tem media_key correto`);
-          continue;
+        let needsUpdate = false;
+        let updatedFields: any = {};
+
+        // Verificar e corrigir media_key
+        if (message.media_key && typeof message.media_key === 'object') {
+          const correctedMediaKey = convertObjectToBase64(message.media_key);
+          if (correctedMediaKey) {
+            updatedFields.media_key = correctedMediaKey;
+            needsUpdate = true;
+            console.log(`🔑 [MEDIA-KEYS-FIX] Convertendo media_key para ${message.message_id}`);
+          }
+        } else if (typeof message.media_key === 'string') {
+          alreadyFixed++;
         }
 
-        console.log(`🔧 [MEDIA-KEYS-FIX] Corrigindo mensagem ${message.message_id}`);
-
-        // Converter media_key de objeto para Base64
-        const correctedMediaKey = convertObjectToBase64(message.media_key);
-        const correctedFileEncSha256 = convertObjectToBase64(message.file_enc_sha256);
-        const correctedFileSha256 = convertObjectToBase64(message.file_sha256);
-
-        // Atualizar mensagem
-        const { error: updateError } = await supabase
-          .from('whatsapp_messages')
-          .update({
-            media_key: correctedMediaKey,
-            file_enc_sha256: correctedFileEncSha256,
-            file_sha256: correctedFileSha256
-          })
-          .eq('id', message.id);
-
-        if (updateError) {
-          console.error(`❌ [MEDIA-KEYS-FIX] Erro ao atualizar mensagem ${message.message_id}:`, updateError);
-          errors++;
-          continue;
+        // Verificar e corrigir file_enc_sha256
+        if (message.file_enc_sha256 && typeof message.file_enc_sha256 === 'object') {
+          const correctedFileEncSha256 = convertObjectToBase64(message.file_enc_sha256);
+          if (correctedFileEncSha256) {
+            updatedFields.file_enc_sha256 = correctedFileEncSha256;
+            needsUpdate = true;
+            console.log(`🔐 [MEDIA-KEYS-FIX] Convertendo file_enc_sha256 para ${message.message_id}`);
+          }
         }
 
-        // Também corrigir em ticket_messages se existir
-        const { error: ticketUpdateError } = await supabase
-          .from('ticket_messages')
-          .update({
-            media_key: correctedMediaKey,
-            file_enc_sha256: correctedFileEncSha256,
-            file_sha256: correctedFileSha256
-          })
-          .eq('message_id', message.message_id);
-
-        if (ticketUpdateError && ticketUpdateError.code !== 'PGRST116') {
-          console.error(`⚠️ [MEDIA-KEYS-FIX] Erro ao atualizar ticket_message ${message.message_id}:`, ticketUpdateError);
+        // Verificar e corrigir file_sha256
+        if (message.file_sha256 && typeof message.file_sha256 === 'object') {
+          const correctedFileSha256 = convertObjectToBase64(message.file_sha256);
+          if (correctedFileSha256) {
+            updatedFields.file_sha256 = correctedFileSha256;
+            needsUpdate = true;
+            console.log(`🔒 [MEDIA-KEYS-FIX] Convertendo file_sha256 para ${message.message_id}`);
+          }
         }
 
-        fixed++;
-        console.log(`✅ [MEDIA-KEYS-FIX] Mensagem ${message.message_id} corrigida`);
+        if (needsUpdate) {
+          // Atualizar na tabela de origem
+          const { error: updateError } = await supabase
+            .from(message.source)
+            .update(updatedFields)
+            .eq('id', message.id);
+
+          if (updateError) {
+            console.error(`❌ [MEDIA-KEYS-FIX] Erro ao atualizar ${message.source} ${message.id}:`, updateError);
+            errors++;
+            continue;
+          }
+
+          // Tentar atualizar na tabela cruzada também
+          const otherTable = message.source === 'ticket_messages' ? 'whatsapp_messages' : 'ticket_messages';
+          const { error: crossUpdateError } = await supabase
+            .from(otherTable)
+            .update(updatedFields)
+            .eq('message_id', message.message_id);
+
+          if (crossUpdateError && crossUpdateError.code !== 'PGRST116') {
+            console.log(`ℹ️ [MEDIA-KEYS-FIX] Não foi possível atualizar ${otherTable} para ${message.message_id} (pode ser normal)`);
+          }
+
+          fixed++;
+          console.log(`✅ [MEDIA-KEYS-FIX] Mensagem ${message.message_id} corrigida em ${message.source}`);
+        }
 
       } catch (error) {
         console.error(`❌ [MEDIA-KEYS-FIX] Erro ao processar mensagem ${message.message_id}:`, error);
@@ -106,15 +135,18 @@ serve(async (req) => {
       }
     }
 
-    console.log(`🎉 [MEDIA-KEYS-FIX] Correção concluída: ${fixed} corrigidas, ${errors} erros`);
-
-    return new Response(JSON.stringify({ 
-      success: true, 
+    const summary = {
+      success: true,
       fixed,
       errors,
-      total: brokenMessages.length,
-      message: `Correção concluída: ${fixed} mensagens corrigidas`
-    }), {
+      alreadyFixed,
+      total: allMessages.length,
+      message: `Correção concluída: ${fixed} corrigidas, ${alreadyFixed} já estavam corretas, ${errors} erros`
+    };
+
+    console.log('🎉 [MEDIA-KEYS-FIX] Resumo:', summary);
+
+    return new Response(JSON.stringify(summary), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
