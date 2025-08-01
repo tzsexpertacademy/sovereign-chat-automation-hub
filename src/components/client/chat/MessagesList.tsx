@@ -175,26 +175,19 @@ const MessagesList = memo(({
       // Log reduzido
 
       return (
-        <div className="space-y-2 max-w-sm">
-          <DocumentViewer
-            documentUrl={adaptedData.mediaUrl}
-            messageId={adaptedData.messageId}
-            mediaKey={adaptedData.mediaKey}
-            fileEncSha256={adaptedData.fileEncSha256}
-            needsDecryption={adaptedData.needsDecryption}
-            caption={adaptedData.caption}
-            fileName={adaptedData.fileName}
-            fileType={adaptedData.fileType}
-            instanceId={instanceId}
-            chatId={chatId}
-            message={message}
-          />
-          
-          <div className="flex items-center gap-2 text-xs text-gray-600">
-            <FileText className="w-3 h-3" />
-            <span>Documento</span>
-          </div>
-        </div>
+        <DocumentViewer
+          documentUrl={adaptedData.mediaUrl}
+          messageId={adaptedData.messageId}
+          mediaKey={adaptedData.mediaKey}
+          fileEncSha256={adaptedData.fileEncSha256}
+          needsDecryption={adaptedData.needsDecryption}
+          caption={adaptedData.caption}
+          fileName={adaptedData.fileName}
+          fileType={adaptedData.fileType}
+          instanceId={instanceId}
+          chatId={chatId}
+          message={message}
+        />
       );
     }
 

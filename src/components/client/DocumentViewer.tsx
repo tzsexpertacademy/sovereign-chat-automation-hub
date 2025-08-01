@@ -245,15 +245,6 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         </div>
       </div>
 
-      {/* Informações de debug (somente em desenvolvimento) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mt-2 text-xs text-gray-500">
-          <div>Processamento: {needsDecryption ? 'API nativa' : 'URL direta'}</div>
-          <div>Tipo: {fileType || 'Desconhecido'}</div>
-          {messageId && <div>ID: {messageId}</div>}
-          {instanceId && <div>Instance: {instanceId}</div>}
-        </div>
-      )}
     </div>
   );
 };
