@@ -68,16 +68,11 @@ const ImageViewer = ({
           return;
         }
 
-        // PRIORIDADE 2: Detectar se é mensagem manual (nunca descriptografar)
+        // PRIORIDADE 2: Para mensagens manuais sem base64, mostrar erro específico
         const isManualMessage = messageId?.startsWith('manual_');
-        
         if (isManualMessage) {
-          console.log('📤 ImageViewer: Mensagem manual - usando URL direta sem descriptografia');
-          if (imageUrl) {
-            setDisplayImageUrl(imageUrl);
-          } else {
-            setError('URL da imagem manual não disponível');
-          }
+          console.log('❌ ImageViewer: Mensagem manual sem image_base64 salvo');
+          setError('Imagem manual não disponível - base64 não foi salvo corretamente');
           return;
         }
         

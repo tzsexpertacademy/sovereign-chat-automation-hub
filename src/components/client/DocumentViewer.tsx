@@ -66,16 +66,11 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
           return;
         }
 
-        // PRIORIDADE 2: Detectar se é mensagem manual (nunca descriptografar)
+        // PRIORIDADE 2: Para mensagens manuais sem base64, mostrar erro específico
         const isManualMessage = messageId?.startsWith('manual_');
-        
         if (isManualMessage) {
-          console.log('📤 DocumentViewer: Mensagem manual - usando URL direta sem descriptografia');
-          if (documentUrl) {
-            setDisplayDocumentUrl(documentUrl);
-          } else {
-            setError('URL do documento manual não disponível');
-          }
+          console.log('❌ DocumentViewer: Mensagem manual sem document_base64 salvo');
+          setError('Documento manual não disponível - base64 não foi salvo corretamente');
           return;
         }
 

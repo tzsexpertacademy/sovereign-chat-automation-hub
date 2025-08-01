@@ -49,16 +49,11 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         return;
       }
 
-      // PRIORIDADE 2: Detectar se é mensagem manual (nunca descriptografar)
+      // PRIORIDADE 2: Para mensagens manuais sem base64, mostrar erro específico
       const isManualMessage = messageId?.startsWith('manual_');
-      
       if (isManualMessage) {
-        console.log('📤 VideoViewer: Mensagem manual - usando URL direta sem descriptografia');
-        if (videoUrl) {
-          setDisplayVideoUrl(videoUrl);
-        } else {
-          setError('URL do vídeo manual não disponível');
-        }
+        console.log('❌ VideoViewer: Mensagem manual sem video_base64 salvo');
+        setError('Vídeo manual não disponível - base64 não foi salvo corretamente');
         return;
       }
 
