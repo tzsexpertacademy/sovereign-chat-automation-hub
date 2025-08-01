@@ -319,6 +319,64 @@ function extractMessageContent(messageObj: any): string {
   return '[Mensagem]'
 }
 
+function extractMediaData(messageObj: any): any {
+  if (!messageObj) return null
+  
+  // Áudio
+  if (messageObj.audioMessage) {
+    return {
+      media_url: messageObj.audioMessage.url,
+      media_key: messageObj.audioMessage.mediaKey,
+      file_enc_sha256: messageObj.audioMessage.fileEncSha256,
+      file_sha256: messageObj.audioMessage.fileSha256,
+      direct_path: messageObj.audioMessage.directPath,
+      mime_type: messageObj.audioMessage.mimetype,
+      media_duration: messageObj.audioMessage.seconds
+    }
+  }
+  
+  // Imagem
+  if (messageObj.imageMessage) {
+    return {
+      media_url: messageObj.imageMessage.url,
+      media_key: messageObj.imageMessage.mediaKey,
+      file_enc_sha256: messageObj.imageMessage.fileEncSha256,
+      file_sha256: messageObj.imageMessage.fileSha256,
+      direct_path: messageObj.imageMessage.directPath,
+      mime_type: messageObj.imageMessage.mimetype
+    }
+  }
+  
+  // Vídeo
+  if (messageObj.videoMessage) {
+    return {
+      media_url: messageObj.videoMessage.url,
+      media_key: messageObj.videoMessage.mediaKey,
+      file_enc_sha256: messageObj.videoMessage.fileEncSha256,
+      file_sha256: messageObj.videoMessage.fileSha256,
+      direct_path: messageObj.videoMessage.directPath,
+      mime_type: messageObj.videoMessage.mimetype,
+      media_duration: messageObj.videoMessage.seconds
+    }
+  }
+  
+  // Documento
+  if (messageObj.documentMessage) {
+    return {
+      media_url: messageObj.documentMessage.url,
+      media_key: messageObj.documentMessage.mediaKey,
+      file_enc_sha256: messageObj.documentMessage.fileEncSha256,
+      file_sha256: messageObj.documentMessage.fileSha256,
+      direct_path: messageObj.documentMessage.directPath,
+      mime_type: messageObj.documentMessage.mimetype,
+      file_name: messageObj.documentMessage.fileName,
+      file_length: messageObj.documentMessage.fileLength
+    }
+  }
+  
+  return null
+}
+
 function extractMessageType(messageObj: any): string {
   if (!messageObj) return 'text'
   

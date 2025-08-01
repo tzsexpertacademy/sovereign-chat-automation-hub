@@ -102,6 +102,10 @@ serve(async (req) => {
         });
       }
 
+      // Extrair dados de mídia se aplicável
+      const mediaData = extractMediaData(messageData.message);
+      const messageType = getMessageType(messageData.message);
+      
       // Inserir mensagem
       const messageRecord = {
         ticket_id: ticketId,
@@ -109,10 +113,19 @@ serve(async (req) => {
         from_me: messageData.key?.fromMe || false,
         sender_name: messageData.key?.fromMe ? 'Atendente' : customerName,
         content: content,
-        message_type: getMessageType(messageData.message),
+        message_type: messageType,
         timestamp: new Date(messageData.messageTimestamp * 1000).toISOString(),
-        processing_status: 'received',
-        is_ai_response: false
+        processing_status: mediaData ? 'pending' : 'received',
+        is_ai_response: false,
+        // Dados de mídia criptografada
+        ...(mediaData && {
+          media_url: mediaData.media_url,
+          media_key: mediaData.media_key,
+          file_enc_sha256: mediaData.file_enc_sha256,
+          file_sha256: mediaData.file_sha256,
+          media_duration: mediaData.media_duration,
+          file_name: mediaData.file_name
+        })
       };
 
       const { error: messageError } = await supabase
@@ -128,6 +141,20 @@ serve(async (req) => {
       }
 
       console.log('✅ [WEBHOOK] Mensagem processada com sucesso:', messageData.key?.id);
+
+      // Se tem mídia pendente, processar automaticamente
+      if (mediaData && messageType !== 'text') {
+        console.log('🎯 [WEBHOOK] Iniciando processamento de mídia para:', messageType);
+        
+        try {
+          // Chamar função de processamento de mídia (não aguardar resposta)
+          supabase.functions.invoke('process-received-media').catch(error => {
+            console.error('❌ [WEBHOOK] Erro ao processar mídia:', error);
+          });
+        } catch (error) {
+          console.error('❌ [WEBHOOK] Erro ao invocar processamento de mídia:', error);
+        }
+      }
 
       // Se não for mensagem enviada por nós, processar com IA (implementar depois)
       if (!messageData.key?.fromMe) {
@@ -168,4 +195,62 @@ function getMessageType(message: any): string {
   if (message?.audioMessage) return 'audio';
   if (message?.documentMessage) return 'document';
   return 'unknown';
+}
+
+function extractMediaData(message: any): any {
+  if (!message) return null
+  
+  // Áudio
+  if (message.audioMessage) {
+    return {
+      media_url: message.audioMessage.url,
+      media_key: message.audioMessage.mediaKey,
+      file_enc_sha256: message.audioMessage.fileEncSha256,
+      file_sha256: message.audioMessage.fileSha256,
+      direct_path: message.audioMessage.directPath,
+      mime_type: message.audioMessage.mimetype,
+      media_duration: message.audioMessage.seconds
+    }
+  }
+  
+  // Imagem
+  if (message.imageMessage) {
+    return {
+      media_url: message.imageMessage.url,
+      media_key: message.imageMessage.mediaKey,
+      file_enc_sha256: message.imageMessage.fileEncSha256,
+      file_sha256: message.imageMessage.fileSha256,
+      direct_path: message.imageMessage.directPath,
+      mime_type: message.imageMessage.mimetype
+    }
+  }
+  
+  // Vídeo
+  if (message.videoMessage) {
+    return {
+      media_url: message.videoMessage.url,
+      media_key: message.videoMessage.mediaKey,
+      file_enc_sha256: message.videoMessage.fileEncSha256,
+      file_sha256: message.videoMessage.fileSha256,
+      direct_path: message.videoMessage.directPath,
+      mime_type: message.videoMessage.mimetype,
+      media_duration: message.videoMessage.seconds
+    }
+  }
+  
+  // Documento
+  if (message.documentMessage) {
+    return {
+      media_url: message.documentMessage.url,
+      media_key: message.documentMessage.mediaKey,
+      file_enc_sha256: message.documentMessage.fileEncSha256,
+      file_sha256: message.documentMessage.fileSha256,
+      direct_path: message.documentMessage.directPath,
+      mime_type: message.documentMessage.mimetype,
+      file_name: message.documentMessage.fileName,
+      file_length: message.documentMessage.fileLength
+    }
+  }
+  
+  return null
 }
