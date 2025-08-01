@@ -8,9 +8,8 @@ import { audioService } from '@/services/audioService';
 import { useHumanizedTyping } from './useHumanizedTyping';
 import { useAutoReactions } from './useAutoReactions';
 import { useOnlineStatus } from './useOnlineStatus';
-import { useSmartMessageSplit } from './useSmartMessageSplit';
-import { useHumanizedMessageBatch } from './useHumanizedMessageBatch';
 import { useMessageStatus } from './useMessageStatus';
+import { unifiedMessageService } from '@/services/unifiedMessageService';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
@@ -27,10 +26,9 @@ export const useTicketRealtime = (clientId: string) => {
   const processingRef = useRef<Set<string>>(new Set());
 
   // Hooks humanizados
-  const { simulateHumanTyping, markAsRead, isTyping, isRecording } = useHumanizedTyping(clientId);
+  const { markAsRead, isTyping, isRecording } = useHumanizedTyping(clientId);
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
-  const { splitMessage } = useSmartMessageSplit();
   
 
   // Função para normalizar dados da mensagem do WhatsApp
@@ -400,52 +398,76 @@ export const useTicketRealtime = (clientId: string) => {
       if (assistantResponse?.trim() && mountedRef.current) {
         console.log(`🤖 RESPOSTA recebida (${assistantResponse.length} chars)`);
         
-        // SIMULAR DIGITAÇÃO
+        // USAR SISTEMA INTEGRADO DE BLOCOS
         try {
-          await simulateHumanTyping(message.from, assistantResponse);
-        } catch (typingError) {
-          console.warn('⚠️ ERRO na simulação de digitação:', typingError);
-        }
-        
-        // QUEBRAR EM BLOCOS
-        const messageBlocks = splitMessage(assistantResponse);
-        console.log(`📝 RESPOSTA dividida em ${messageBlocks.length} blocos`);
-        
-        // ENVIAR CADA BLOCO
-        for (let i = 0; i < messageBlocks.length; i++) {
-          if (!mountedRef.current || !processingRef.current.has(ticketId)) {
-            console.log('❌ INTERROMPENDO envio - componente desmontado ou processamento cancelado');
-            break;
-          }
-          
-          const blockContent = messageBlocks[i];
-          console.log(`📤 ENVIANDO bloco ${i + 1}/${messageBlocks.length}`);
-          
-          if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-          }
-          
-          try {
-            const aiMessageId = `ai_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
-            
-            if (processedMessagesRef.current.has(aiMessageId)) {
-              console.log(`⚠️ MENSAGEM já processada: ${aiMessageId}`);
-              continue;
+          const chunkedResult = await unifiedMessageService.sendSmartMessage(
+            instanceId,
+            message.from,
+            assistantResponse,
+            clientId,
+            assistant.id,
+            {
+              onProgress: (sent, total) => {
+                console.log(`📤 Progresso: ${sent}/${total} blocos enviados`);
+              },
+              onTypingStart: () => {
+                console.log('⌨️ Iniciando simulação de digitação');
+                setAssistantTyping(true);
+              },
+              onTypingStop: () => {
+                console.log('✋ Parando simulação de digitação');
+                setAssistantTyping(false);
+              }
             }
+          );
+
+          console.log(`✅ ENVIO CONCLUÍDO:`, {
+            success: chunkedResult.success,
+            totalChunks: chunkedResult.totalChunks,
+            sentChunks: chunkedResult.sentChunks,
+            messageIds: chunkedResult.messageIds.length
+          });
+
+          // SALVAR MENSAGENS NO BANCO
+          if (chunkedResult.success && chunkedResult.messageIds.length > 0) {
+            for (let i = 0; i < chunkedResult.messageIds.length; i++) {
+              const messageId = chunkedResult.messageIds[i];
+              
+              try {
+                await ticketsService.addTicketMessage({
+                  ticket_id: ticketId,
+                  message_id: messageId,
+                  from_me: true,
+                  sender_name: `🤖 ${assistant.name}`,
+                  content: `[Bloco ${i + 1}/${chunkedResult.totalChunks}] Resposta da IA`,
+                  message_type: 'text',
+                  is_internal_note: false,
+                  is_ai_response: true,
+                  ai_confidence_score: 0.9,
+                  processing_status: 'completed',
+                  timestamp: new Date().toISOString()
+                });
+              } catch (saveError) {
+                console.warn(`⚠️ Erro ao salvar mensagem ${messageId}:`, saveError);
+              }
+            }
+          }
+          
+        } catch (sendError) {
+          console.error('❌ ERRO CRÍTICO ao enviar resposta em blocos:', sendError);
+          
+          // FALLBACK: tentar envio direto sem blocos
+          try {
+            console.log('🔄 TENTANDO fallback com envio direto...');
+            const fallbackResult = await whatsappService.sendMessage(instanceId, message.from, assistantResponse);
             
-            processedMessagesRef.current.add(aiMessageId);
-            
-            // ENVIAR VIA WHATSAPP
-            const sendResult = await whatsappService.sendMessage(instanceId, message.from, blockContent);
-            console.log(`📤 RESULTADO envio bloco ${i + 1}:`, sendResult.success ? 'SUCCESS' : 'FAILED');
-            
-            if (sendResult.success) {
+            if (fallbackResult.success) {
               await ticketsService.addTicketMessage({
                 ticket_id: ticketId,
-                message_id: aiMessageId,
+                message_id: `fallback_${Date.now()}`,
                 from_me: true,
                 sender_name: `🤖 ${assistant.name}`,
-                content: blockContent,
+                content: assistantResponse,
                 message_type: 'text',
                 is_internal_note: false,
                 is_ai_response: true,
@@ -453,12 +475,10 @@ export const useTicketRealtime = (clientId: string) => {
                 processing_status: 'completed',
                 timestamp: new Date().toISOString()
               });
-              
-              console.log(`💾 MENSAGEM IA salva no ticket`);
+              console.log('✅ Fallback enviado com sucesso');
             }
-            
-          } catch (sendError) {
-            console.error(`❌ ERRO ao enviar bloco ${i + 1}:`, sendError);
+          } catch (fallbackError) {
+            console.error('❌ FALLBACK também falhou:', fallbackError);
           }
         }
 
@@ -486,10 +506,10 @@ export const useTicketRealtime = (clientId: string) => {
       processingRef.current.delete(ticketId);
       console.log(`✅ PROCESSAMENTO finalizado (${processingKey})`);
     }
-  }, [clientId, simulateHumanTyping, markAsRead, splitMessage, markActivity]);
+  }, [clientId, markAsRead, markActivity]);
 
-  // Hook para agrupamento de mensagens com humanização integrada
-  const { addMessage, getBatchInfo, markBatchAsCompleted, humanizedTimeout, isHumanized } = useHumanizedMessageBatch(async (chatId: string, messages: any[]) => {
+  // Processamento de lote simplificado (sem hook complexo)
+  const processBatchMessages = useCallback(async (chatId: string, messages: any[]) => {
     console.log(`📦 ===== PROCESSBATCH CHAMADO =====`);
     console.log(`📱 Chat: ${chatId}`);
     console.log(`📨 Mensagens: ${messages.length}`);
@@ -512,7 +532,6 @@ export const useTicketRealtime = (clientId: string) => {
 
     if (newMessages.length === 0) {
       console.log('📦 TODAS mensagens já foram processadas');
-      markBatchAsCompleted(chatId);
       return;
     }
 
@@ -548,7 +567,6 @@ export const useTicketRealtime = (clientId: string) => {
         }
       }
       
-      markBatchAsCompleted(chatId);
       setTimeout(() => {
         if (mountedRef.current) {
           loadTickets();
@@ -649,10 +667,8 @@ export const useTicketRealtime = (clientId: string) => {
       
     } catch (error) {
       console.error('❌ ERRO ao processar lote:', error);
-    } finally {
-      markBatchAsCompleted(chatId);
     }
-  });
+  }, [clientId, loadTickets, normalizeWhatsAppMessage, processWithAssistant, processReaction, markActivity]);
 
   // CONFIGURAR LISTENERS
   useEffect(() => {
@@ -696,7 +712,7 @@ export const useTicketRealtime = (clientId: string) => {
         }
         
         processedMessagesRef.current.add(messageKey);
-        addMessage(message);
+        processBatchMessages(message.from || message.chat?.id, [message]);
       });
 
       const channel = supabase
@@ -741,7 +757,7 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       processingRef.current.clear();
     };
-  }, [clientId, loadTickets, addMessage, currentAssistantId]);
+  }, [clientId, loadTickets, processBatchMessages, currentAssistantId]);
 
   const reloadTickets = useCallback(() => {
     if (mountedRef.current) {
@@ -755,7 +771,6 @@ export const useTicketRealtime = (clientId: string) => {
     isTyping: assistantTyping,
     isOnline,
     reloadTickets,
-    getBatchInfo,
     isAssistantTyping: (chatId: string) => isTyping(chatId),
     isAssistantRecording: (chatId: string) => isRecording(chatId)
   };

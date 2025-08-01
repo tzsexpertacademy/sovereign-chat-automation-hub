@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import yumerApiV2Service from "./yumerApiV2Service";
 import { businessTokenService } from "./businessTokenService";
 import { smartLogs } from "./smartLogsService";
+import { messageChunksService, type ChunkedMessageOptions, type ChunkedMessageResult } from "./messageChunksService";
 
 export interface UnifiedMessageOptions {
   instanceId: string;
@@ -167,6 +168,70 @@ class UnifiedMessageService {
       source: 'manual',
       humanized: false,
       delay: 0
+    });
+  }
+
+  /**
+   * ENVIO EM BLOCOS - INTEGRAÇÃO COM messageChunksService
+   * Detecta automaticamente mensagens longas e aplica configurações do assistente
+   */
+  async sendMessageInChunks(options: ChunkedMessageOptions): Promise<ChunkedMessageResult> {
+    smartLogs.info('MESSAGE', 'Iniciando envio em blocos via unifiedMessageService', {
+      chatId: options.chatId,
+      messageLength: options.message.length,
+      assistantId: options.assistantId
+    });
+
+    return messageChunksService.sendMessageInChunks(options);
+  }
+
+  /**
+   * MÉTODO INTELIGENTE - DETECTA AUTOMATICAMENTE SE DEVE USAR BLOCOS
+   * Usado quando queremos que o sistema decida automaticamente
+   */
+  async sendSmartMessage(
+    instanceId: string,
+    chatId: string, 
+    message: string,
+    clientId?: string,
+    assistantId?: string,
+    callbacks?: {
+      onProgress?: (sent: number, total: number) => void;
+      onTypingStart?: () => void;
+      onTypingStop?: () => void;
+    }
+  ): Promise<ChunkedMessageResult> {
+    
+    // Para mensagens curtas ou sem assistente, usar envio direto
+    if (!assistantId || message.length <= 200) {
+      const result = await this.sendMessage({
+        instanceId,
+        chatId,
+        message,
+        clientId,
+        source: assistantId ? 'ai' : 'manual',
+        humanized: !!assistantId
+      });
+
+      return {
+        success: result.success,
+        totalChunks: 1,
+        sentChunks: result.success ? 1 : 0,
+        messageIds: result.messageId ? [result.messageId] : [],
+        errors: result.error ? [result.error] : [],
+        timestamp: Date.now()
+      };
+    }
+
+    // Para mensagens longas com assistente, usar sistema de blocos
+    return this.sendMessageInChunks({
+      instanceId,
+      chatId,
+      message,
+      clientId,
+      assistantId,
+      source: 'ai',
+      ...callbacks
     });
   }
 }
