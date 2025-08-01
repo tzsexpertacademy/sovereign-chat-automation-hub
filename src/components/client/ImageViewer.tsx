@@ -94,6 +94,15 @@ const ImageViewer = ({
               .single();
             
             if (ticketData?.instance_id) {
+              console.log('🔍 ImageViewer: Chamando processMedia com dados:', {
+                instanceId: ticketData.instance_id,
+                messageId: messageId || `img_${Date.now()}`,
+                imageUrl,
+                mediaKey: typeof mediaKey,
+                directPath,
+                mimetype: mediaMimeType || 'image/jpeg'
+              });
+
               const result = await directMediaDownloadService.processMedia(
                 ticketData.instance_id,
                 messageId || `img_${Date.now()}`,
@@ -103,6 +112,8 @@ const ImageViewer = ({
                 mediaMimeType || 'image/jpeg',
                 'image'
               );
+
+              console.log('📊 ImageViewer: Resultado processMedia:', result);
 
               if (result.success && result.mediaUrl) {
                 console.log('✅ ImageViewer: Descriptografia bem-sucedida');

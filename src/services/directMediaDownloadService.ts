@@ -117,11 +117,23 @@ class DirectMediaDownloadService {
       
       // PRINCIPAL: usar endpoint directly-download
       console.log('🎯 DirectMedia: Usando directly-download');
+      console.log('📋 DirectMedia: Dados de entrada:', {
+        contentType,
+        mediaUrl,
+        mediaKey: typeof mediaKey,
+        directPath,
+        mimetype
+      });
       
-      // Converter mediaKey se necessário
-      const base64MediaKey = this.convertToBase64(mediaKey);
-      if (!base64MediaKey) {
-        throw new Error('Falha na conversão do media key');
+      // Converter mediaKey se necessário - garantir que é Base64 string
+      let base64MediaKey = mediaKey;
+      if (typeof mediaKey === 'object' && mediaKey !== null) {
+        console.log('🔄 DirectMedia: Convertendo mediaKey de objeto para Base64');
+        base64MediaKey = this.convertToBase64(mediaKey);
+      }
+      
+      if (!base64MediaKey || typeof base64MediaKey !== 'string') {
+        throw new Error(`MediaKey inválido: ${typeof mediaKey}`);
       }
 
       const requestBody: MediaDownloadRequest = {
@@ -130,7 +142,7 @@ class DirectMediaDownloadService {
           url: mediaUrl,
           mimetype: mimetype || 'application/octet-stream',
           mediaKey: base64MediaKey,
-          directPath: directPath
+          directPath: directPath || ''
         }
       };
 
@@ -145,7 +157,7 @@ class DirectMediaDownloadService {
         const apiEndpoint = `https://api.yumer.com.br/api/v2/instance/${internalInstanceId}/media/directly-download`;
         
         console.log('🔄 DirectMedia: Chamando endpoint:', apiEndpoint);
-        console.log('📦 DirectMedia: Body:', requestBody);
+        console.log('📦 DirectMedia: Body:', JSON.stringify(requestBody, null, 2));
         
         // Buscar token do business para auth
         let authToken = '';
@@ -170,8 +182,13 @@ class DirectMediaDownloadService {
           body: JSON.stringify(requestBody)
         });
 
+        console.log('📡 DirectMedia: Response status:', response.status);
+        console.log('📡 DirectMedia: Response headers:', Object.fromEntries(response.headers.entries()));
+
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+          const errorText = await response.text();
+          console.error('❌ DirectMedia: Erro da API:', errorText);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
 
         // Response é binário direto

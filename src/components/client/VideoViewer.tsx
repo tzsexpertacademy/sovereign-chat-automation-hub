@@ -86,6 +86,14 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
             }
           }
           
+          console.log('🔍 VideoViewer: Chamando processMedia com dados:', {
+            instanceId,
+            messageId: messageId || `video_${Date.now()}`,
+            videoUrl,
+            mediaKey: typeof mediaKey,
+            mimetype: 'video/mp4'
+          });
+
           const result = await directMediaDownloadService.processMedia(
             instanceId,
             messageId || `video_${Date.now()}`,
@@ -95,6 +103,8 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
             'video/mp4',
             'video'
           );
+
+          console.log('📊 VideoViewer: Resultado processMedia:', result);
           
           if (result.success && result.mediaUrl) {
             console.log('✅ VideoViewer: Descriptografia bem-sucedida');

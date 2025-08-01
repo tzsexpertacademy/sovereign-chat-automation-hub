@@ -91,6 +91,15 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
               .single();
             
             if (ticketData?.instance_id) {
+              console.log('🔍 DocumentViewer: Chamando processMedia com dados:', {
+                instanceId: ticketData.instance_id,
+                messageId: messageId || `doc_${Date.now()}`,
+                documentUrl,
+                mediaKey: typeof mediaKey,
+                directPath,
+                mimetype: fileType || 'application/octet-stream'
+              });
+
               const result = await directMediaDownloadService.processMedia(
                 ticketData.instance_id,
                 messageId || `doc_${Date.now()}`,
@@ -100,6 +109,8 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 fileType || 'application/octet-stream',
                 'document'
               );
+
+              console.log('📊 DocumentViewer: Resultado processMedia:', result);
 
               if (result.success && result.mediaUrl) {
                 console.log('✅ DocumentViewer: Descriptografia bem-sucedida');
