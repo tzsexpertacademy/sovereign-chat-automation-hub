@@ -50,22 +50,53 @@ class DirectMediaDownloadService {
     }
   }
 
+  private businessToken: string | null = null;
+
   /**
-   * Buscar instanceId interno do Supabase
+   * Buscar instanceId interno e business_token do Supabase
    */
   private async getInternalInstanceId(externalInstanceId: string): Promise<string | null> {
     try {
+      console.log('🔍 [MEDIA-DOWNLOAD] Buscando dados da instância para:', externalInstanceId);
       const { supabase } = await import('@/integrations/supabase/client');
       
-      const { data } = await supabase
+      // Buscar instance_id na tabela whatsapp_instances
+      const { data: instanceData, error: instanceError } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id')
+        .select('instance_id, client_id')
         .eq('instance_id', externalInstanceId)
         .single();
-        
-      return data?.instance_id || null;
+
+      if (instanceError || !instanceData) {
+        console.error('❌ [MEDIA-DOWNLOAD] Erro ao buscar instância:', instanceError);
+        return null;
+      }
+
+      console.log('✅ [MEDIA-DOWNLOAD] Instância encontrada:', {
+        instance_id: instanceData.instance_id,
+        client_id: instanceData.client_id
+      });
+
+      // Buscar business_token do cliente
+      const { data: clientData, error: clientError } = await supabase
+        .from('clients')
+        .select('business_token')
+        .eq('id', instanceData.client_id)
+        .single();
+
+      if (clientError || !clientData?.business_token) {
+        console.error('❌ [MEDIA-DOWNLOAD] Erro ao buscar business_token:', clientError);
+        return null;
+      }
+
+      console.log('✅ [MEDIA-DOWNLOAD] Business token encontrado');
+      
+      // Armazenar business_token para uso posterior
+      this.businessToken = clientData.business_token;
+      
+      return instanceData.instance_id;
     } catch (error) {
-      console.error('❌ DirectMedia: Erro ao buscar instance ID:', error);
+      console.error('❌ [MEDIA-DOWNLOAD] Erro na busca dos dados:', error);
       return null;
     }
   }
@@ -146,31 +177,23 @@ class DirectMediaDownloadService {
         throw new Error('Instance ID não encontrado no banco de dados');
       }
 
-        // Buscar token do business para auth
-        let authToken = '';
-        try {
-          console.log('🔑 DirectMedia: Buscando business_token para instance:', instanceId);
-          const { supabase } = await import('@/integrations/supabase/client');
-          const { data: clientData } = await supabase
-            .from('clients')
-            .select('business_token')
-            .eq('instance_id', instanceId)
-            .single();
-          authToken = clientData?.business_token || '';
-          console.log('📋 DirectMedia: Business token obtido:', authToken ? 'SIM' : 'NÃO');
-        } catch (error) {
-          console.error('❌ DirectMedia: Erro ao buscar token:', error);
+        // Usar o business_token já obtido
+        if (!this.businessToken) {
+          console.error('❌ [MEDIA-DOWNLOAD] Business token não encontrado');
+          throw new Error('Business token não disponível');
         }
+        
+        console.log('✅ [MEDIA-DOWNLOAD] Usando business token armazenado');
         
         // Fazer request com fetch direto para handle binário
         const config = serverConfigService.getConfig();
         const apiEndpoint = `https://api.yumer.com.br/api/v2/instance/${internalInstanceId}/media/directly-download`;
         
-        console.log('🔄 DirectMedia: Chamando endpoint:', apiEndpoint);
-        console.log('📦 DirectMedia: Request body:', JSON.stringify(requestBody, null, 2));
-        console.log('🔑 DirectMedia: Headers:', {
+        console.log('📡 [MEDIA-DOWNLOAD] Chamando endpoint:', apiEndpoint);
+        console.log('📤 [MEDIA-DOWNLOAD] Request body:', JSON.stringify(requestBody, null, 2));
+        console.log('🔑 [MEDIA-DOWNLOAD] Headers:', {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken.substring(0, 20)}...`
+          'Authorization': `Bearer ${this.businessToken.substring(0, 20)}...`
         });
         
         const response = await Promise.race([
@@ -178,7 +201,7 @@ class DirectMediaDownloadService {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${authToken}`
+              'Authorization': `Bearer ${this.businessToken}`
             },
             body: JSON.stringify(requestBody)
           }),
@@ -187,14 +210,14 @@ class DirectMediaDownloadService {
           )
         ]);
 
-        console.log('📡 DirectMedia: Response status:', response.status);
+        console.log('📥 [MEDIA-DOWNLOAD] Response status:', response.status);
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('❌ DirectMedia: Erro da API:', errorText);
+          console.error('❌ [MEDIA-DOWNLOAD] Erro da API:', response.status, errorText);
           
           // FALLBACK 2: Tentar URL original se API falhar
-          console.log('🔄 DirectMedia: API falhou, tentando URL original como fallback');
+          console.log('🔄 [MEDIA-DOWNLOAD] API falhou, tentando URL original como fallback');
           return {
             success: true,
             mediaUrl: mediaUrl,
@@ -204,12 +227,24 @@ class DirectMediaDownloadService {
 
         // O servidor já retornou o blob descriptografado - usar diretamente
         const blob = await response.blob();
+        
+        if (blob.size === 0) {
+          console.error('❌ [MEDIA-DOWNLOAD] Blob vazio recebido da API');
+          throw new Error('Blob vazio recebido');
+        }
+        
         const blobUrl = URL.createObjectURL(blob);
+        
+        console.log('✅ [MEDIA-DOWNLOAD] Download direto bem-sucedido:', {
+          blobSize: blob.size,
+          blobType: blob.type,
+          mediaUrl: blobUrl.substring(0, 50) + '...'
+        });
         
         // Cachear resultado no cache unificado
         unifiedMediaCache.set(instanceId, messageId, blobUrl, 'DirectMedia', mediaKey, mimetype);
         
-        console.log('✅ DirectMedia: Mídia descriptografada pelo servidor e pronta para uso');
+        console.log('✅ [MEDIA-DOWNLOAD] Mídia descriptografada pelo servidor e pronta para uso');
         return {
           success: true,
           mediaUrl: blobUrl,
