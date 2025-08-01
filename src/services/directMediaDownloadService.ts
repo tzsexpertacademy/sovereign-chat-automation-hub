@@ -102,7 +102,21 @@ class DirectMediaDownloadService {
   }
 
   /**
-   * Download direto de mídia com fallbacks inteligentes e robustos
+   * Domínios do WhatsApp que sempre usam mídia criptografada
+   */
+  private isWhatsAppEncryptedDomain(url: string): boolean {
+    const encryptedDomains = [
+      'mmg.whatsapp.net',
+      'pps.whatsapp.net',
+      'media-iad1-1.cdn.whatsapp.net',
+      'media-lga3-1.cdn.whatsapp.net'
+    ];
+    
+    return encryptedDomains.some(domain => url.includes(domain));
+  }
+
+  /**
+   * Download direto de mídia com lógica corrigida para URLs criptografadas
    */
   async downloadMedia(
     instanceId: string,
@@ -114,15 +128,23 @@ class DirectMediaDownloadService {
   ): Promise<MediaDownloadResult> {
     try {
       console.log(`🔄 [MEDIA-${contentType.toUpperCase()}] Processando - URL:`, mediaUrl?.substring(0, 100));
+      console.log(`🔍 [MEDIA-${contentType.toUpperCase()}] MediaKey presente:`, !!mediaKey);
+      console.log(`🌐 [MEDIA-${contentType.toUpperCase()}] Domínio WhatsApp detectado:`, this.isWhatsAppEncryptedDomain(mediaUrl || ''));
       
-      // FALLBACK 1: Para mensagens manuais sem mediaKey - usar URL diretamente
-      if (!mediaKey || !mediaUrl?.includes('.enc')) {
-        console.log(`📁 [MEDIA-${contentType.toUpperCase()}] Mensagem manual/não criptografada - usando URL direta`);
+      // NOVA LÓGICA: Se não tem mediaKey válido, assumir que é mensagem manual/não-criptografada
+      if (!mediaKey || typeof mediaKey !== 'string' && typeof mediaKey !== 'object') {
+        console.log(`📁 [MEDIA-${contentType.toUpperCase()}] Sem mediaKey válido - usando URL direta`);
         return {
           success: true,
           mediaUrl: mediaUrl,
           cached: false
         };
+      }
+
+      // Se tem mediaKey OU é domínio do WhatsApp, sempre usar directly-download
+      if (mediaKey || this.isWhatsAppEncryptedDomain(mediaUrl || '')) {
+        console.log(`🔐 [MEDIA-${contentType.toUpperCase()}] Mídia criptografada detectada - usando directly-download`);
+        console.log(`📋 [MEDIA-${contentType.toUpperCase()}] Razão: ${mediaKey ? 'MediaKey presente' : 'Domínio WhatsApp'}`);
       }
       
       // Verificar cache unificado para mensagens com mediaKey
