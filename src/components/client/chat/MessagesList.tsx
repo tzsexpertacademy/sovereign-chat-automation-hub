@@ -143,6 +143,7 @@ const MessagesList = memo(({
           needsDecryption={adaptedData.needsDecryption}
           caption={adaptedData.caption}
           fileName={adaptedData.fileName}
+          message={message}
         />
       );
     }
@@ -163,6 +164,7 @@ const MessagesList = memo(({
             needsDecryption={adaptedData.needsDecryption}
             caption={adaptedData.caption}
             fileName={adaptedData.fileName}
+            message={message}
           />
           
           <div className="flex items-center gap-2 text-xs text-gray-600">
@@ -195,6 +197,7 @@ const MessagesList = memo(({
             fileType={adaptedData.fileType}
             instanceId={instanceId}
             chatId={chatId}
+            message={message}
           />
           
           <div className="flex items-center gap-2 text-xs text-gray-600">

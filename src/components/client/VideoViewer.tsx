@@ -35,12 +35,13 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
 
   useEffect(() => {
     const initializeVideo = async () => {
-      // PRIORIDADE 1: Se já tem video_base64, usar diretamente
+      // PRIORIDADE 1: Se há video_base64 na prop message, usar ele SEMPRE
       if (message?.video_base64) {
-        console.log('✅ VideoViewer: Usando video_base64 diretamente');
+        console.log('✅ VideoViewer: Usando video_base64 da prop message');
         const mimeType = message.media_mime_type || 'video/mp4';
         const dataUrl = `data:${mimeType};base64,${message.video_base64}`;
         setDisplayVideoUrl(dataUrl);
+        setIsDecrypting(false);
         return;
       }
 

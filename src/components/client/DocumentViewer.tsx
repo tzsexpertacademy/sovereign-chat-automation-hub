@@ -57,12 +57,13 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       });
 
       try {
-        // PRIORIDADE 1: Se já tem document_base64, usar diretamente
+        // PRIORIDADE 1: Se há document_base64 na prop message, usar ele SEMPRE
         if (message?.document_base64) {
-          console.log('✅ DocumentViewer: Usando document_base64 diretamente');
+          console.log('✅ DocumentViewer: Usando document_base64 da prop message');
           const mimeType = fileType || message.media_mime_type || 'application/octet-stream';
           const dataUrl = `data:${mimeType};base64,${message.document_base64}`;
           setDisplayDocumentUrl(dataUrl);
+          setIsProcessing(false);
           return;
         }
 

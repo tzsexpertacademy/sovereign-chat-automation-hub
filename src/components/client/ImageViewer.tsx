@@ -59,12 +59,13 @@ const ImageViewer = ({
       });
 
       try {
-        // PRIORIDADE 1: Se já tem image_base64, usar diretamente
+        // PRIORIDADE 1: Se há image_base64 na prop message, usar ele SEMPRE
         if (message?.image_base64) {
-          console.log('✅ ImageViewer: Usando image_base64 diretamente');
+          console.log('✅ ImageViewer: Usando image_base64 da prop message');
           const mimeType = mediaMimeType || message.media_mime_type || 'image/jpeg';
           const dataUrl = `data:${mimeType};base64,${message.image_base64}`;
           setDisplayImageUrl(dataUrl);
+          setIsLoading(false);
           return;
         }
 
