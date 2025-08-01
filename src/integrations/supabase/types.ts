@@ -2180,6 +2180,14 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      fix_malformed_media_keys: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          fixed_count: number
+          total_checked: number
+          error_messages: string[]
+        }[]
+      }
       get_decrypted_audio: {
         Args: { p_message_id: string }
         Returns: {

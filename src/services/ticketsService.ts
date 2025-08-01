@@ -16,6 +16,10 @@ export interface TicketMessage {
   processing_status: string;
   created_at: string;
   media_url?: string;
+  // 🔥 CAMPOS DE MÍDIA ADICIONADOS
+  media_key?: string;
+  file_enc_sha256?: string;
+  media_mime_type?: string;
   audio_base64?: string;
   media_duration?: number;
   media_transcription?: string;
