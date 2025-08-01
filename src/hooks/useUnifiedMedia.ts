@@ -229,12 +229,25 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
     processMedia(true);
   }, [processMedia, retryCount]);
 
-  // Efeito principal para processar mídia (apenas uma vez)
+  // Efeito principal para processar mídia
   useEffect(() => {
     if (!isProcessing && retryCount === 0) {
       processMedia();
     }
   }, [mediaData.messageId]); // Só reprocessa se o messageId mudar
+
+  // ⚡ CRÍTICO: Efeito adicional para detectar mudanças no base64 (áudios CRM)
+  useEffect(() => {
+    const base64Data = getBase64Data();
+    if (base64Data && !displayUrl && !isProcessing) {
+      console.log('⚡ useUnifiedMedia: Base64 detectado após atualização - reprocessando', {
+        messageId: mediaData.messageId,
+        contentType: mediaData.contentType,
+        base64Size: base64Data.length
+      });
+      processMedia();
+    }
+  }, [mediaData.audioBase64, mediaData.imageBase64, mediaData.videoBase64, mediaData.documentBase64]);
 
   return {
     displayUrl,

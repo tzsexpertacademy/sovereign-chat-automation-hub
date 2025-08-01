@@ -123,6 +123,15 @@ export const useTicketMessages = (ticketId: string) => {
                 hasAudio: !!updatedMessage.audio_base64,
                 fromMe: updatedMessage.from_me
               });
+              
+              // ⚡ OTIMIZAÇÃO: Detectar áudios CRM que acabaram de ficar prontos
+              if (updatedMessage.message_type === 'audio' && 
+                  updatedMessage.from_me && 
+                  updatedMessage.processing_status === 'completed' &&
+                  updatedMessage.audio_base64) {
+                console.log('⚡ Áudio CRM detectado como pronto via realtime - forçando atualização');
+              }
+              
               setMessages(prev => 
                 prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
               );
