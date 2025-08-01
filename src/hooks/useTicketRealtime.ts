@@ -9,13 +9,14 @@ import { useHumanizedTyping } from './useHumanizedTyping';
 import { useAutoReactions } from './useAutoReactions';
 import { useOnlineStatus } from './useOnlineStatus';
 import { useSmartMessageSplit } from './useSmartMessageSplit';
-import { useMessageBatch } from './useMessageBatch';
+import { useHumanizedMessageBatch } from './useHumanizedMessageBatch';
 import { useMessageStatus } from './useMessageStatus';
 
 export const useTicketRealtime = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [assistantTyping, setAssistantTyping] = useState(false);
+  const [currentAssistantId, setCurrentAssistantId] = useState<string | undefined>();
   
   const channelRef = useRef<any>(null);
   const socketRef = useRef<any>(null);
@@ -214,7 +215,7 @@ export const useTicketRealtime = (clientId: string) => {
 
       const instanceId = instances[0].instance_id;
 
-      // ATUALIZAR TICKET
+      // ATUALIZAR TICKET E ASSISTENTE ATUAL
       await supabase
         .from('conversation_tickets')
         .update({
@@ -223,6 +224,15 @@ export const useTicketRealtime = (clientId: string) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', ticketId);
+
+      // Atualizar assistente atual e recarregar configuração de humanização
+      if (assistant.id !== currentAssistantId) {
+        console.log(`🎭 Mudança de assistente detectada: ${currentAssistantId} → ${assistant.id}`);
+        setCurrentAssistantId(assistant.id);
+        
+        // Configuração de humanização será recarregada automaticamente pelo hook
+        console.log(`✅ Assistente atualizado para: ${assistant.id}`);
+      }
 
       // CONTEXTO
       const ticketMessages = await ticketsService.getTicketMessages(ticketId, 50);
@@ -478,8 +488,8 @@ export const useTicketRealtime = (clientId: string) => {
     }
   }, [clientId, simulateHumanTyping, markAsRead, splitMessage, markActivity]);
 
-  // Hook para agrupamento de mensagens
-  const { addMessage, getBatchInfo, markBatchAsCompleted } = useMessageBatch(async (chatId: string, messages: any[]) => {
+  // Hook para agrupamento de mensagens com humanização integrada
+  const { addMessage, getBatchInfo, markBatchAsCompleted, humanizedTimeout, isHumanized } = useHumanizedMessageBatch(async (chatId: string, messages: any[]) => {
     console.log(`📦 ===== PROCESSBATCH CHAMADO =====`);
     console.log(`📱 Chat: ${chatId}`);
     console.log(`📨 Mensagens: ${messages.length}`);
@@ -731,7 +741,7 @@ export const useTicketRealtime = (clientId: string) => {
       processedMessagesRef.current.clear();
       processingRef.current.clear();
     };
-  }, [clientId, loadTickets, addMessage]);
+  }, [clientId, loadTickets, addMessage, currentAssistantId]);
 
   const reloadTickets = useCallback(() => {
     if (mountedRef.current) {

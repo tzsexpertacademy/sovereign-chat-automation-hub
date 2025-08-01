@@ -1,10 +1,12 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { assistantHumanizationService } from '@/services/assistantHumanizationService';
 
 interface BatchConfig {
   timeout: number; // tempo em ms para aguardar mais mensagens
   maxBatchSize: number;
   enabled: boolean;
+  assistantId?: string; // ID do assistente para buscar configurações de humanização
 }
 
 interface MessageBatch {
@@ -21,11 +23,42 @@ const defaultConfig: BatchConfig = {
   enabled: true
 };
 
-export const useMessageBatch = (initialCallback?: (chatId: string, messages: any[]) => void) => {
+export const useMessageBatch = (initialCallback?: (chatId: string, messages: any[]) => void, assistantId?: string) => {
   const [config, setConfig] = useState<BatchConfig>(defaultConfig);
   const batchesRef = useRef<Map<string, MessageBatch>>(new Map());
   const callbackRef = useRef(initialCallback);
   const processedMessagesRef = useRef<Set<string>>(new Set());
+  const [humanizedTimeout, setHumanizedTimeout] = useState<number>(defaultConfig.timeout);
+
+  // Carregar configuração de humanização do assistente
+  const loadHumanizationConfig = useCallback(async () => {
+    if (!assistantId) return;
+    
+    try {
+      console.log(`🎭 Carregando configuração de humanização para assistente: ${assistantId}`);
+      const humanizedConfig = await assistantHumanizationService.getHumanizationConfig(assistantId);
+      
+      // Converter segundos para milissegundos
+      const timeoutMs = (humanizedConfig.behavior?.messageHandling?.delayBetweenChunks || 3) * 1000;
+      setHumanizedTimeout(timeoutMs);
+      
+      // Atualizar configuração do batch
+      setConfig(prevConfig => ({
+        ...prevConfig,
+        timeout: timeoutMs,
+        enabled: humanizedConfig.enabled,
+        assistantId
+      }));
+      
+      console.log(`✅ Timeout de humanização carregado: ${timeoutMs}ms`, {
+        enabled: humanizedConfig.enabled,
+        assistantId
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao carregar configuração de humanização:', error);
+    }
+  }, [assistantId]);
 
   // Atualizar a referência do callback quando necessário
   const updateCallback = useCallback((newCallback: (chatId: string, messages: any[]) => void) => {
@@ -147,11 +180,12 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
           return;
         }
         
-        // Configurar novo timeout
+        // Configurar novo timeout usando a configuração de humanização
+        const currentTimeout = humanizedTimeout || config.timeout;
         const timeoutId = setTimeout(() => {
-          console.log(`⏰ Timeout de ${config.timeout}ms atingido para ${chatId}, processando lote`);
+          console.log(`⏰ Timeout de ${currentTimeout}ms atingido para ${chatId} (humanizado: ${!!assistantId}), processando lote`);
           processBatch(chatId);
-        }, config.timeout);
+        }, currentTimeout);
         
         batchesRef.current.set(chatId, {
           ...existingBatch,
@@ -161,14 +195,15 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
           isProcessing: false
         });
         
-        console.log(`📦 Lote atualizado para ${chatId}: ${updatedMessages.length} mensagens, próximo timeout em ${config.timeout}ms`);
+        console.log(`📦 Lote atualizado para ${chatId}: ${updatedMessages.length} mensagens, próximo timeout em ${currentTimeout}ms`);
       }
     } else {
       // Criar novo lote
+      const currentTimeout = humanizedTimeout || config.timeout;
       const timeoutId = setTimeout(() => {
-        console.log(`⏰ Timeout inicial de ${config.timeout}ms atingido para ${chatId}, processando lote`);
+        console.log(`⏰ Timeout inicial de ${currentTimeout}ms atingido para ${chatId} (humanizado: ${!!assistantId}), processando lote`);
         processBatch(chatId);
-      }, config.timeout);
+      }, currentTimeout);
       
       batchesRef.current.set(chatId, {
         chatId,
@@ -178,7 +213,7 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
         isProcessing: false
       });
       
-      console.log(`📦 Novo lote criado para ${chatId}: 1 mensagem, timeout em ${config.timeout}ms`);
+      console.log(`📦 Novo lote criado para ${chatId}: 1 mensagem, timeout em ${currentTimeout}ms`);
     }
   }, [config, processBatch]);
 
@@ -200,13 +235,16 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
 
   const getBatchInfo = useCallback((chatId: string) => {
     const batch = batchesRef.current.get(chatId);
+    const currentTimeout = humanizedTimeout || config.timeout;
     return {
       exists: !!batch,
       messageCount: batch?.messages.length || 0,
-      timeRemaining: batch ? config.timeout - (Date.now() - batch.lastMessageTime) : 0,
-      isProcessing: batch?.isProcessing || false
+      timeRemaining: batch ? currentTimeout - (Date.now() - batch.lastMessageTime) : 0,
+      isProcessing: batch?.isProcessing || false,
+      humanizedTimeout: humanizedTimeout,
+      assistantId: config.assistantId
     };
-  }, [config.timeout]);
+  }, [config.timeout, humanizedTimeout, config.assistantId]);
 
   const markBatchAsCompleted = useCallback((chatId: string) => {
     const batch = batchesRef.current.get(chatId);
@@ -218,6 +256,13 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
       batchesRef.current.delete(chatId);
     }
   }, []);
+
+  // Carregar configuração de humanização quando assistantId mudar
+  useEffect(() => {
+    if (assistantId) {
+      loadHumanizationConfig();
+    }
+  }, [assistantId, loadHumanizationConfig]);
 
   // Limpeza periódica de mensagens processadas
   useEffect(() => {
@@ -240,6 +285,8 @@ export const useMessageBatch = (initialCallback?: (chatId: string, messages: any
     getBatchInfo,
     markBatchAsCompleted,
     updateCallback,
+    loadHumanizationConfig,
+    humanizedTimeout,
     activeBatches: batchesRef.current.size
   };
 };
