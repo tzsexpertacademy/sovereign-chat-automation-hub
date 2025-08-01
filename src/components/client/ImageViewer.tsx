@@ -17,6 +17,8 @@ interface ImageViewerProps {
   needsDecryption?: boolean;
   caption?: string;
   fileName?: string;
+  message?: any; // Objeto da mensagem completo para acessar image_base64
+  instanceId?: string;
 }
 
 const ImageViewer = ({ 
@@ -29,7 +31,9 @@ const ImageViewer = ({
   mediaMimeType,
   needsDecryption = false,
   caption,
-  fileName = 'image.jpg'
+  fileName = 'image.jpg',
+  message,
+  instanceId
 }: ImageViewerProps) => {
   const [displayImageUrl, setDisplayImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -55,7 +59,16 @@ const ImageViewer = ({
       });
 
       try {
-        // Detectar se é mensagem manual
+        // PRIORIDADE 1: Se já tem image_base64, usar diretamente
+        if (message?.image_base64) {
+          console.log('✅ ImageViewer: Usando image_base64 diretamente');
+          const mimeType = mediaMimeType || message.media_mime_type || 'image/jpeg';
+          const dataUrl = `data:${mimeType};base64,${message.image_base64}`;
+          setDisplayImageUrl(dataUrl);
+          return;
+        }
+
+        // PRIORIDADE 2: Detectar se é mensagem manual
         const isManualMessage = messageId?.startsWith('manual_');
         
         // Para mensagens manuais, usar URL direta se não tiver media_key
@@ -65,7 +78,7 @@ const ImageViewer = ({
           return;
         }
         
-        // Para mensagens que precisam de descriptografia
+        // PRIORIDADE 3: Para mensagens que precisam de descriptografia
         if (imageUrl && mediaKey) {
           console.log('🔓 ImageViewer: Tentando descriptografar via DirectMediaDownloadService');
           setIsDecrypting(true);

@@ -11,6 +11,8 @@ interface VideoViewerProps {
   needsDecryption?: boolean;
   caption?: string;
   fileName?: string;
+  message?: any; // Objeto da mensagem completo para acessar video_base64
+  instanceId?: string;
 }
 
 const VideoViewer: React.FC<VideoViewerProps> = ({
@@ -20,7 +22,9 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
   fileEncSha256,
   needsDecryption = false,
   caption,
-  fileName = 'video.mp4'
+  fileName = 'video.mp4',
+  message,
+  instanceId
 }) => {
   const [displayVideoUrl, setDisplayVideoUrl] = useState<string>('');
   const [isDecrypting, setIsDecrypting] = useState(false);
@@ -31,12 +35,21 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
 
   useEffect(() => {
     const initializeVideo = async () => {
+      // PRIORIDADE 1: Se já tem video_base64, usar diretamente
+      if (message?.video_base64) {
+        console.log('✅ VideoViewer: Usando video_base64 diretamente');
+        const mimeType = message.media_mime_type || 'video/mp4';
+        const dataUrl = `data:${mimeType};base64,${message.video_base64}`;
+        setDisplayVideoUrl(dataUrl);
+        return;
+      }
+
       if (!videoUrl) {
         setError('URL do vídeo não disponível');
         return;
       }
 
-      // Detectar se é mensagem manual
+      // PRIORIDADE 2: Detectar se é mensagem manual
       const isManualMessage = messageId?.startsWith('manual_');
       
       // Para mensagens manuais, usar URL direta se não tiver media_key
@@ -46,7 +59,7 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         return;
       }
 
-      // Para mensagens que precisam de descriptografia
+      // PRIORIDADE 3: Para mensagens que precisam de descriptografia
       if (mediaKey) {
         console.log('🔓 VideoViewer: Tentando descriptografar via DirectMediaDownloadService');
         setIsDecrypting(true);

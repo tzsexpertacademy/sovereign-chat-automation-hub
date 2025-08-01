@@ -22,10 +22,6 @@ Deno.serve(async (req) => {
       .select('*')
       .eq('processing_status', 'pending')
       .in('message_type', ['audio', 'image', 'video', 'document'])
-      .is('audio_base64', null)
-      .is('image_base64', null)
-      .is('video_base64', null)
-      .is('document_base64', null)
       .not('media_key', 'is', null)
       .not('media_url', 'is', null)
       .limit(10)
@@ -54,11 +50,11 @@ Deno.serve(async (req) => {
       try {
         console.log(`📱 Processando mídia: ${message.message_type} - ${message.message_id}`)
 
-        // Buscar dados da instância
+        // Buscar dados da instância usando instance_id como string
         const { data: instanceData } = await supabase
           .from('whatsapp_instances')
           .select('instance_id, business_token')
-          .eq('id', message.instance_id)
+          .eq('instance_id', message.instance_id)
           .single()
 
         if (!instanceData) {
@@ -106,19 +102,15 @@ Deno.serve(async (req) => {
         switch (message.message_type) {
           case 'audio':
             updateData.audio_base64 = base64Data
-            updateData.has_audio_base64 = true
             break
           case 'image':
             updateData.image_base64 = base64Data
-            updateData.has_image_base64 = true
             break
           case 'video':
             updateData.video_base64 = base64Data
-            updateData.has_video_base64 = true
             break
           case 'document':
             updateData.document_base64 = base64Data
-            updateData.has_document_base64 = true
             break
         }
 

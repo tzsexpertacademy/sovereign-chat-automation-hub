@@ -16,6 +16,7 @@ interface DocumentViewerProps {
   fileType?: string;
   instanceId?: string;
   chatId?: string;
+  message?: any; // Objeto da mensagem completo para acessar document_base64
 }
 
 const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -29,7 +30,8 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   fileName = 'document',
   fileType,
   instanceId,
-  chatId
+  chatId,
+  message
 }) => {
   const [displayDocumentUrl, setDisplayDocumentUrl] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -55,7 +57,16 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
       });
 
       try {
-        // Detectar se é mensagem manual
+        // PRIORIDADE 1: Se já tem document_base64, usar diretamente
+        if (message?.document_base64) {
+          console.log('✅ DocumentViewer: Usando document_base64 diretamente');
+          const mimeType = fileType || message.media_mime_type || 'application/octet-stream';
+          const dataUrl = `data:${mimeType};base64,${message.document_base64}`;
+          setDisplayDocumentUrl(dataUrl);
+          return;
+        }
+
+        // PRIORIDADE 2: Detectar se é mensagem manual
         const isManualMessage = messageId?.startsWith('manual_');
         
         // Para mensagens manuais, usar URL direta se não tiver media_key
@@ -65,7 +76,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
           return;
         }
 
-        // Para mensagens que precisam de descriptografia
+        // PRIORIDADE 3: Para mensagens que precisam de descriptografia
         if (documentUrl && mediaKey) {
           console.log('🔓 DocumentViewer: Tentando descriptografar via DirectMediaDownloadService');
           

@@ -1842,10 +1842,12 @@ export type Database = {
           content: string
           created_at: string
           direct_path: string | null
+          document_base64: string | null
           file_enc_sha256: string | null
           file_sha256: string | null
           from_me: boolean | null
           id: string
+          image_base64: string | null
           is_ai_response: boolean | null
           is_internal_note: boolean | null
           media_duration: number | null
@@ -1859,6 +1861,7 @@ export type Database = {
           sender_name: string | null
           ticket_id: string
           timestamp: string
+          video_base64: string | null
         }
         Insert: {
           ai_confidence_score?: number | null
@@ -1866,10 +1869,12 @@ export type Database = {
           content: string
           created_at?: string
           direct_path?: string | null
+          document_base64?: string | null
           file_enc_sha256?: string | null
           file_sha256?: string | null
           from_me?: boolean | null
           id?: string
+          image_base64?: string | null
           is_ai_response?: boolean | null
           is_internal_note?: boolean | null
           media_duration?: number | null
@@ -1883,6 +1888,7 @@ export type Database = {
           sender_name?: string | null
           ticket_id: string
           timestamp: string
+          video_base64?: string | null
         }
         Update: {
           ai_confidence_score?: number | null
@@ -1890,10 +1896,12 @@ export type Database = {
           content?: string
           created_at?: string
           direct_path?: string | null
+          document_base64?: string | null
           file_enc_sha256?: string | null
           file_sha256?: string | null
           from_me?: boolean | null
           id?: string
+          image_base64?: string | null
           is_ai_response?: boolean | null
           is_internal_note?: boolean | null
           media_duration?: number | null
@@ -1907,6 +1915,7 @@ export type Database = {
           sender_name?: string | null
           ticket_id?: string
           timestamp?: string
+          video_base64?: string | null
         }
         Relationships: [
           {
