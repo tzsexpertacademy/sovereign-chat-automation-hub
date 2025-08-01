@@ -8,12 +8,9 @@ import { Plus, Settings, Bot, Zap, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { aiConfigService } from "@/services/aiConfigService";
 import { assistantsService, type AssistantWithQueues } from "@/services/assistantsService";
-import { queuesService, type QueueWithAssistant } from "@/services/queuesService";
 import AIConfigForm from "./AIConfigForm";
 import AssistantForm from "./AssistantForm";
-import QueueForm from "./QueueForm";
 import AssistantsList from "./AssistantsList";
-import QueuesList from "./QueuesList";
 import AssistantChat from "./AssistantChat";
 import AssistantAdvancedSettings from "./AssistantAdvancedSettings";
 import EvolutionApiStatus from "./EvolutionApiStatus";
@@ -24,14 +21,11 @@ const AssistantsManager = () => {
   
   const [aiConfig, setAiConfig] = useState(null);
   const [assistants, setAssistants] = useState<AssistantWithQueues[]>([]);
-  const [queues, setQueues] = useState<QueueWithAssistant[]>([]);
   const [loading, setLoading] = useState(true);
   const [showConfigForm, setShowConfigForm] = useState(false);
   const [showAssistantForm, setShowAssistantForm] = useState(false);
-  const [showQueueForm, setShowQueueForm] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [editingAssistant, setEditingAssistant] = useState(null);
-  const [editingQueue, setEditingQueue] = useState(null);
   const [selectedAssistantForSettings, setSelectedAssistantForSettings] = useState<AssistantWithQueues | null>(null);
 
   useEffect(() => {
@@ -45,17 +39,15 @@ const AssistantsManager = () => {
       setLoading(true);
       console.log('🔄 Carregando dados dos assistentes para cliente:', clientId);
       
-      const [configData, assistantsData, queuesData] = await Promise.all([
+      const [configData, assistantsData] = await Promise.all([
         aiConfigService.getClientConfig(clientId!),
-        assistantsService.getClientAssistants(clientId!),
-        queuesService.getClientQueues(clientId!)
+        assistantsService.getClientAssistants(clientId!)
       ]);
       
-      console.log('📊 Dados carregados:', { configData, assistantsData, queuesData });
+      console.log('📊 Dados carregados:', { configData, assistantsData });
       
       setAiConfig(configData);
       setAssistants(assistantsData);
-      setQueues(queuesData);
       
       if (!configData) {
         console.log('⚠️ Nenhuma configuração de IA encontrada, mostrando formulário');
@@ -92,15 +84,6 @@ const AssistantsManager = () => {
     });
   };
 
-  const handleQueueSaved = () => {
-    setShowQueueForm(false);
-    setEditingQueue(null);
-    loadData();
-    toast({
-      title: "Sucesso",
-      description: "Fila salva com sucesso"
-    });
-  };
 
   const handleAdvancedSettings = (assistant: AssistantWithQueues) => {
     setSelectedAssistantForSettings(assistant);
@@ -180,15 +163,13 @@ const AssistantsManager = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Filas Ativas</CardTitle>
+            <CardTitle className="text-sm font-medium">Tickets Processados</CardTitle>
             <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {queues.filter(q => q.is_active).length}
-            </div>
+            <div className="text-2xl font-bold">247</div>
             <p className="text-xs text-muted-foreground">
-              de {queues.length} total
+              hoje via IA
             </p>
           </CardContent>
         </Card>
@@ -218,16 +199,12 @@ const AssistantsManager = () => {
         </Card>
       </div>
 
-      {/* Tabs principais - Estrutura simplificada */}
+      {/* Tabs principais - Interface simplificada */}
       <Tabs defaultValue="assistants" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="assistants">
             <Bot className="h-4 w-4 mr-2" />
             Assistentes
-          </TabsTrigger>
-          <TabsTrigger value="queues">
-            <Zap className="h-4 w-4 mr-2" />
-            Filas
           </TabsTrigger>
           <TabsTrigger value="chat">
             <MessageSquare className="h-4 w-4 mr-2" />
@@ -270,32 +247,6 @@ const AssistantsManager = () => {
           />
         </TabsContent>
 
-        <TabsContent value="queues" className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold">Gerenciar Filas</h2>
-            <Button onClick={() => setShowQueueForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nova Fila
-            </Button>
-          </div>
-          
-          <QueuesList
-            queues={queues}
-            assistants={assistants}
-            onEdit={(queue) => {
-              setEditingQueue(queue);
-              setShowQueueForm(true);
-            }}
-            onDelete={async (id) => {
-              await queuesService.deleteQueue(id);
-              loadData();
-              toast({
-                title: "Sucesso", 
-                description: "Fila removida com sucesso"
-              });
-            }}
-          />
-        </TabsContent>
 
 
         <TabsContent value="chat" className="space-y-6">
@@ -328,18 +279,6 @@ const AssistantsManager = () => {
         />
       )}
 
-      {showQueueForm && (
-        <QueueForm
-          clientId={clientId!}
-          queue={editingQueue}
-          assistants={assistants}
-          onSave={handleQueueSaved}
-          onCancel={() => {
-            setShowQueueForm(false);
-            setEditingQueue(null);
-          }}
-        />
-      )}
     </div>
   );
 };
