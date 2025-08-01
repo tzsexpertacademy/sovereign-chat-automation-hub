@@ -165,15 +165,39 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
     return type?.includes('pdf') || extension === 'pdf';
   };
 
-  const handleDownload = () => {
-    if (displayDocumentUrl) {
-      const link = document.createElement('a');
-      link.href = displayDocumentUrl;
-      link.download = fileName;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  const handleDownload = async () => {
+    if (!displayDocumentUrl) return;
+    
+    try {
+      // Se for blob URL, fazer nova requisição para garantir download
+      if (displayDocumentUrl.startsWith('blob:')) {
+        const response = await fetch(displayDocumentUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName || 'document.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Limpar URL temporária
+        window.URL.revokeObjectURL(url);
+      } else {
+        // Para URLs regulares
+        const link = document.createElement('a');
+        link.href = displayDocumentUrl;
+        link.download = fileName || 'document.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      
+      console.log('✅ DocumentViewer: Download iniciado com sucesso');
+    } catch (error) {
+      console.error('❌ DocumentViewer: Erro no download:', error);
+      setError('Erro ao baixar documento');
     }
   };
 

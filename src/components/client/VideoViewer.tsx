@@ -114,15 +114,39 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
     initializeVideo();
   }, [videoUrl, messageId, mediaKey, fileEncSha256, needsDecryption]);
 
-  const handleDownload = () => {
-    if (displayVideoUrl) {
-      const link = document.createElement('a');
-      link.href = displayVideoUrl;
-      link.download = fileName;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  const handleDownload = async () => {
+    if (!displayVideoUrl) return;
+    
+    try {
+      // Se for blob URL, fazer nova requisição para garantir download
+      if (displayVideoUrl.startsWith('blob:')) {
+        const response = await fetch(displayVideoUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName || 'video.mp4';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Limpar URL temporária
+        window.URL.revokeObjectURL(url);
+      } else {
+        // Para URLs regulares
+        const link = document.createElement('a');
+        link.href = displayVideoUrl;
+        link.download = fileName || 'video.mp4';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      
+      console.log('✅ VideoViewer: Download iniciado com sucesso');
+    } catch (error) {
+      console.error('❌ VideoViewer: Erro no download:', error);
+      setError('Erro ao baixar vídeo');
     }
   };
 

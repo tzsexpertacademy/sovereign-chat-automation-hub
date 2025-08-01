@@ -149,21 +149,8 @@ const AudioPlayer = ({
       });
 
       if (result?.success && result?.mediaUrl) {
-        console.log('✅ Player: Áudio descriptografado com sucesso');
-        // O directMediaDownloadService retorna blob URL, converter para base64
-        if (result.mediaUrl.startsWith('blob:')) {
-          try {
-            const response = await fetch(result.mediaUrl);
-            const blob = await response.blob();
-            const arrayBuffer = await blob.arrayBuffer();
-            const uint8Array = new Uint8Array(arrayBuffer);
-            const base64 = btoa(String.fromCharCode(...uint8Array));
-            return base64;
-          } catch (e) {
-            console.error('❌ Player: Erro ao converter blob para base64:', e);
-            return null;
-          }
-        }
+        console.log('✅ Player: Áudio descriptografado com sucesso - usando blob URL diretamente');
+        // Usar blob URL diretamente no elemento audio
         return result.mediaUrl;
       }
 
@@ -212,8 +199,13 @@ const AudioPlayer = ({
           
           if (result) {
             console.log('✅ Player: Processamento bem-sucedido');
-            const sources = createAudioSources(result);
-            setAudioSrc(sources[0]);
+            // Se é blob URL, usar diretamente; se é base64, criar sources
+            if (result.startsWith('blob:')) {
+              setAudioSrc(result);
+            } else {
+              const sources = createAudioSources(result);
+              setAudioSrc(sources[0]);
+            }
             setDecryptionAttempted(true);
             setIsDecrypting(false);
             return;
@@ -368,16 +360,29 @@ const AudioPlayer = ({
         const decryptedData = await decryptWhatsAppAudio(audioUrl);
         
         if (decryptedData) {
-          const blob = new Blob([Uint8Array.from(atob(decryptedData), c => c.charCodeAt(0))], { 
-            type: 'audio/ogg' 
-          });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = fileName.replace(/\.[^.]+$/, '.ogg');
-          a.click();
-          URL.revokeObjectURL(url);
-          toast.success('Áudio descriptografado e baixado');
+          // Se é blob URL, usar diretamente
+          if (decryptedData.startsWith('blob:')) {
+            const response = await fetch(decryptedData);
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName.replace(/\.[^.]+$/, '.ogg');
+            a.click();
+            URL.revokeObjectURL(url);
+          } else {
+            // Se é base64, converter para blob
+            const blob = new Blob([Uint8Array.from(atob(decryptedData), c => c.charCodeAt(0))], { 
+              type: 'audio/ogg' 
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName.replace(/\.[^.]+$/, '.ogg');
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+          toast.success('Áudio baixado com sucesso');
           return;
         } else {
           toast.error('Não foi possível descriptografar o áudio para download');
@@ -388,10 +393,23 @@ const AudioPlayer = ({
       // Fallback para download direto da URL
       if (audioSrc || audioUrl) {
         const downloadUrl = audioSrc || audioUrl!;
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = fileName;
-        a.click();
+        
+        // Se for blob URL, fazer nova requisição
+        if (downloadUrl.startsWith('blob:')) {
+          const response = await fetch(downloadUrl);
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          a.click();
+          URL.revokeObjectURL(url);
+        } else {
+          const a = document.createElement('a');
+          a.href = downloadUrl;
+          a.download = fileName;
+          a.click();
+        }
         toast.success('Download iniciado');
       } else {
         toast.error('Nenhum áudio disponível para download');
