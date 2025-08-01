@@ -494,6 +494,76 @@ serve(async (req) => {
       hasPrompt: !!safeAssistant.prompt
     });
 
+    // ✅ NOVA: Detecção e processamento automático de mídia
+    let mediaAnalysis = '';
+    let processedContent = messageContent;
+    
+    // Buscar mensagens de mídia não processadas
+    const { data: unprocessedMessages } = await supabase
+      .from('ticket_messages')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .in('message_type', ['image', 'video', 'audio', 'document'])
+      .is('media_transcription', null)
+      .order('timestamp', { ascending: false })
+      .limit(5);
+
+    if (unprocessedMessages && unprocessedMessages.length > 0) {
+      console.log('🎬 [MULTIMEDIA] Encontradas mensagens de mídia para processar:', unprocessedMessages.length);
+      
+      for (const mediaMsg of unprocessedMessages) {
+        try {
+          let analysis = '';
+          
+          switch (mediaMsg.message_type) {
+            case 'image':
+              if (mediaMsg.image_base64) {
+                analysis = await processImageWithVision(mediaMsg.image_base64, openAIApiKey);
+                mediaAnalysis += `\n[IMAGEM ANALISADA]: ${analysis}`;
+              }
+              break;
+              
+            case 'audio':
+              if (mediaMsg.audio_base64) {
+                analysis = await processAudioTranscription(mediaMsg.audio_base64, openAIApiKey);
+                mediaAnalysis += `\n[ÁUDIO TRANSCRITO]: ${analysis}`;
+              }
+              break;
+              
+            case 'video':
+              if (mediaMsg.video_base64) {
+                analysis = await processVideoAnalysis(mediaMsg.video_base64, openAIApiKey);
+                mediaAnalysis += `\n[VÍDEO ANALISADO]: ${analysis}`;
+              }
+              break;
+              
+            case 'document':
+              if (mediaMsg.document_base64) {
+                analysis = await processDocumentExtraction(mediaMsg.document_base64, mediaMsg.media_mime_type);
+                mediaAnalysis += `\n[DOCUMENTO EXTRAÍDO]: ${analysis}`;
+              }
+              break;
+          }
+          
+          // Salvar análise no banco
+          if (analysis) {
+            await supabase
+              .from('ticket_messages')
+              .update({ media_transcription: analysis })
+              .eq('id', mediaMsg.id);
+          }
+          
+        } catch (error) {
+          console.error('❌ [MULTIMEDIA] Erro ao processar mídia:', error);
+        }
+      }
+    }
+
+    // Adicionar análises de mídia ao contexto
+    if (mediaAnalysis) {
+      processedContent = `${messageContent}\n\n--- MÍDIAS ANALISADAS ---${mediaAnalysis}\n--- FIM DAS ANÁLISES ---`;
+    }
+
     // 🎯 CONSTRUIR PROMPT PARA BATCH: Considerar todas as mensagens como contexto único
     const isBatchProcessing = messages && Array.isArray(messages) && messages.length > 1;
     const contextMessage = isBatchProcessing 
@@ -1490,5 +1560,202 @@ async function applyProfileConfigSequence(instanceId: string, businessToken: str
   } catch (error) {
     console.error('❌ [PROFILE-SEQUENCE] Erro na aplicação sequencial:', error);
     throw error;
+  }
+}
+
+// ==================== FUNÇÕES DE PROCESSAMENTO MULTIMÍDIA ====================
+
+/**
+ * Processar imagem com GPT-4 Vision
+ */
+async function processImageWithVision(imageBase64: string, apiKey: string): Promise<string> {
+  try {
+    console.log('🖼️ [IMAGE-VISION] Processando imagem com GPT-4 Vision');
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Analise esta imagem detalhadamente em português. Descreva o que você vê, identifique textos se houver, e forneça informações úteis para um assistente de atendimento ao cliente.'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${imageBase64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 1000
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro na API OpenAI: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const analysis = data.choices[0].message.content;
+    
+    console.log('✅ [IMAGE-VISION] Análise concluída:', analysis.substring(0, 100));
+    return analysis;
+    
+  } catch (error) {
+    console.error('❌ [IMAGE-VISION] Erro ao processar imagem:', error);
+    return '[Erro ao analisar imagem]';
+  }
+}
+
+/**
+ * Transcrever áudio
+ */
+async function processAudioTranscription(audioBase64: string, apiKey: string): Promise<string> {
+  try {
+    console.log('🎵 [AUDIO] Transcrevendo áudio');
+    
+    // Converter base64 para blob
+    const binaryString = atob(audioBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    const formData = new FormData();
+    const blob = new Blob([bytes], { type: 'audio/ogg' });
+    formData.append('file', blob, 'audio.ogg');
+    formData.append('model', 'whisper-1');
+    formData.append('language', 'pt');
+
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro na API OpenAI: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ [AUDIO] Transcrição concluída:', data.text);
+    return data.text || '[Áudio não pôde ser transcrito]';
+    
+  } catch (error) {
+    console.error('❌ [AUDIO] Erro ao transcrever áudio:', error);
+    return '[Erro ao transcrever áudio]';
+  }
+}
+
+/**
+ * Analisar vídeo (extração de frame + análise)
+ */
+async function processVideoAnalysis(videoBase64: string, apiKey: string): Promise<string> {
+  try {
+    console.log('🎬 [VIDEO] Analisando vídeo');
+    
+    // Para vídeos, vamos extrair o primeiro frame como imagem
+    // Em uma implementação mais avançada, poderíamos usar FFmpeg
+    // Por enquanto, retornamos uma análise básica
+    
+    console.log('⚠️ [VIDEO] Análise básica - extração de frames não implementada');
+    return '[Vídeo recebido - análise visual completa em desenvolvimento. Descreva brevemente o conteúdo do vídeo para melhor atendimento.]';
+    
+  } catch (error) {
+    console.error('❌ [VIDEO] Erro ao analisar vídeo:', error);
+    return '[Erro ao analisar vídeo]';
+  }
+}
+
+/**
+ * Extrair texto de documentos
+ */
+async function processDocumentExtraction(documentBase64: string, mimeType: string): Promise<string> {
+  try {
+    console.log('📄 [DOCUMENT] Extraindo texto de documento:', mimeType);
+    
+    if (mimeType?.includes('pdf')) {
+      return await extractPDFText(documentBase64);
+    } else if (mimeType?.includes('text')) {
+      // Texto simples
+      const text = atob(documentBase64);
+      return text.length > 2000 ? text.substring(0, 2000) + '...' : text;
+    } else {
+      console.log('📄 [DOCUMENT] Tipo de documento não suportado para extração:', mimeType);
+      return `[Documento ${mimeType} recebido - extração de texto não suportada para este formato]`;
+    }
+    
+  } catch (error) {
+    console.error('❌ [DOCUMENT] Erro ao extrair texto:', error);
+    return '[Erro ao extrair texto do documento]';
+  }
+}
+
+/**
+ * Extrair texto de PDF (implementação básica)
+ */
+async function extractPDFText(pdfBase64: string): Promise<string> {
+  try {
+    console.log('📄 [PDF] Extraindo texto de PDF');
+    
+    // Implementação básica - em produção seria melhor usar uma library especializada
+    // Por enquanto, indicamos que o PDF foi recebido
+    
+    const pdfSize = Math.round(pdfBase64.length * 0.75 / 1024); // Tamanho aproximado em KB
+    return `[PDF recebido (${pdfSize}KB) - análise de conteúdo em desenvolvimento. Descreva brevemente o conteúdo do documento para melhor atendimento.]`;
+    
+  } catch (error) {
+    console.error('❌ [PDF] Erro ao extrair texto:', error);
+    return '[Erro ao processar PDF]';
+  }
+}
+
+/**
+ * Analisar URL (web scraping básico)
+ */
+async function processURLAnalysis(url: string): Promise<string> {
+  try {
+    console.log('🌐 [URL] Analisando URL:', url);
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const html = await response.text();
+    
+    // Extrair título
+    const titleMatch = html.match(/<title[^>]*>([^<]+)</title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : 'Sem título';
+    
+    // Extrair descrição (meta description)
+    const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+    const description = descMatch ? descMatch[1].trim() : '';
+    
+    const analysis = `Página: ${title}${description ? `\nDescrição: ${description}` : ''}`;
+    
+    console.log('✅ [URL] Análise concluída:', analysis);
+    return analysis;
+    
+  } catch (error) {
+    console.error('❌ [URL] Erro ao analisar URL:', error);
+    return `[Erro ao analisar a URL: ${url}]`;
   }
 }
