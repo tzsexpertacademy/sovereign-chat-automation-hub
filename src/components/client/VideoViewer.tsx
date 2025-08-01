@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, Play, Pause, Volume2, VolumeX, RotateCcw } from 'lucide-react';
-import { unifiedMediaService } from '@/services/unifiedMediaService';
+import { directMediaDownloadService } from '@/services/directMediaDownloadService';
 
 interface VideoViewerProps {
   videoUrl?: string;

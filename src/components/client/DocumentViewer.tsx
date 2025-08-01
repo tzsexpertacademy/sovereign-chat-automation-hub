@@ -235,6 +235,10 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
               src={displayDocumentUrl}
               className="w-full h-[70vh] border rounded"
               title={fileName}
+              onError={(e) => {
+                console.error('❌ DocumentViewer: Erro no iframe:', e);
+                setError('Erro ao exibir PDF');
+              }}
             />
           </div>
         </div>

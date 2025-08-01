@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, Volume2, Download, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { unifiedMediaService } from '@/services/unifiedMediaService';
+import { directMediaDownloadService } from '@/services/directMediaDownloadService';
 
 interface AudioPlayerProps {
   audioUrl?: string;
@@ -104,44 +104,53 @@ const AudioPlayer = ({
     }
   };
 
-  // Descriptografar áudio WhatsApp usando serviço unificado
+  // Descriptografar áudio WhatsApp usando directMediaDownloadService
   const decryptWhatsAppAudio = async (encryptedUrl: string): Promise<string | null> => {
     try {
-      console.log('🔐 Player: Iniciando descriptografia via serviço unificado');
+      console.log('🔐 Player: Iniciando descriptografia via directMediaDownloadService');
       
       if (!messageId || !mediaKey) {
         console.error('❌ Player: Chaves de descriptografia não disponíveis');
         return null;
       }
 
-      const audioData = {
-        mediaUrl: encryptedUrl,
-        mediaKey: mediaKey,
-        messageId: messageId,
-        fileEncSha256: fileEncSha256
-      };
-
-      const result = await unifiedMediaService.processAudio(
-        messageId,
-        '', // instanceId será obtido dentro do serviço 
-        {
-          url: encryptedUrl,
-          mimetype: 'audio/ogg',
-          mediaKey: mediaKey,
-          directPath: ''
+      // Obter instanceId do ticket atual
+      const currentUrl = window.location.pathname;
+      const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+      let instanceId = 'default';
+      
+      if (ticketIdMatch) {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: ticketData } = await supabase
+          .from('conversation_tickets')
+          .select('instance_id')
+          .eq('id', ticketIdMatch[1])
+          .single();
+        
+        if (ticketData?.instance_id) {
+          instanceId = ticketData.instance_id;
         }
+      }
+
+      const result = await directMediaDownloadService.processMedia(
+        instanceId,
+        messageId,
+        encryptedUrl,
+        mediaKey,
+        undefined, // directPath
+        'audio/ogg',
+        'audio'
       );
 
       console.log('📡 Player: Resultado da descriptografia:', {
         success: result?.success,
         hasMediaUrl: !!result?.mediaUrl,
-        format: result?.format,
         cached: result?.cached
       });
 
       if (result?.success && result?.mediaUrl) {
         console.log('✅ Player: Áudio descriptografado com sucesso');
-        // Converter blob URL para base64 se necessário
+        // O directMediaDownloadService retorna blob URL, converter para base64
         if (result.mediaUrl.startsWith('blob:')) {
           try {
             const response = await fetch(result.mediaUrl);
