@@ -275,6 +275,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         isSending={isSending}
         onKeyPress={handleKeyPress}
         chatId={ticket?.chat_id || ''}
+        ticketId={ticketId}
       />
     </div>
   );

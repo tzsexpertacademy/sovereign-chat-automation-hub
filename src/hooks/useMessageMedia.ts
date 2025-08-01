@@ -2,6 +2,7 @@
 import { useState, useCallback } from 'react';
 import { whatsappService } from '@/services/whatsappMultiClient';
 import { useToast } from './use-toast';
+import { manualMessageSaver } from '@/services/manualMessageSaver';
 
 export interface MediaMessage {
   type: 'image' | 'audio' | 'video' | 'document';
@@ -16,7 +17,7 @@ export interface AudioRecording {
   duration: number;
 }
 
-export const useMessageMedia = (clientId: string) => {
+export const useMessageMedia = (clientId: string, ticketId?: string) => {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
   const [audioRecording, setAudioRecording] = useState<AudioRecording>({
@@ -48,14 +49,48 @@ export const useMessageMedia = (clientId: string) => {
       
       // Usar endpoint correto para envio de mídia
       const result = await whatsappService.sendMedia(clientId, mediaMessage.to, mediaMessage.file, mediaMessage.caption);
+      
+      console.log('📤 Resultado do envio de mídia:', result);
 
       if (result && typeof result === 'object' && 'success' in result && result.success) {
+        // Salvar mensagem no banco após envio bem-sucedido
+        if (ticketId) {
+          await manualMessageSaver.saveMediaMessage({
+            ticketId,
+            messageId: `manual_${Date.now()}`,
+            content: mediaMessage.caption || `📎 ${mediaMessage.type}`,
+            messageType: mediaMessage.type,
+            mediaFile: mediaMessage.file,
+            uploadResponse: result,
+            fileName: mediaMessage.file.name,
+            mimeType: mediaMessage.file.type,
+            caption: mediaMessage.caption,
+            clientId
+          });
+        }
+
         toast({
           title: "Mídia enviada",
           description: `${mediaMessage.type} enviado com sucesso`,
         });
         return result;
       } else if (typeof result === 'boolean' && result === true) {
+        // Salvar mensagem no banco após envio bem-sucedido
+        if (ticketId) {
+          await manualMessageSaver.saveMediaMessage({
+            ticketId,
+            messageId: `manual_${Date.now()}`,
+            content: mediaMessage.caption || `📎 ${mediaMessage.type}`,
+            messageType: mediaMessage.type,
+            mediaFile: mediaMessage.file,
+            uploadResponse: null,
+            fileName: mediaMessage.file.name,
+            mimeType: mediaMessage.file.type,
+            caption: mediaMessage.caption,
+            clientId
+          });
+        }
+
         toast({
           title: "Mídia enviada",
           description: `${mediaMessage.type} enviado com sucesso`,

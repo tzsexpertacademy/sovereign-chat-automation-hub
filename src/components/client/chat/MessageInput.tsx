@@ -17,6 +17,7 @@ interface MessageInputProps {
   isSending: boolean;
   onKeyPress: (e: React.KeyboardEvent) => void;
   chatId: string;
+  ticketId?: string;
 }
 
 const MessageInput = ({
@@ -27,10 +28,11 @@ const MessageInput = ({
   connectedInstance,
   isSending,
   onKeyPress,
-  chatId
+  chatId,
+  ticketId
 }: MessageInputProps) => {
   const [selectedFile, setSelectedFile] = useState<{ file: File; type: 'image' | 'video' | 'audio' | 'document' } | null>(null);
-  const { isUploading, handleImageUpload, handleVideoUpload, handleAudioUpload, handleDocumentUpload } = useMessageMedia(connectedInstance || '');
+  const { isUploading, handleImageUpload, handleVideoUpload, handleAudioUpload, handleDocumentUpload } = useMessageMedia(connectedInstance || '', ticketId);
 
   const handleFileSelect = (file: File, type: 'image' | 'video' | 'audio' | 'document') => {
     setSelectedFile({ file, type });

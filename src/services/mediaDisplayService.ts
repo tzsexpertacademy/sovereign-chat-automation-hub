@@ -26,30 +26,32 @@ class MediaDisplayService {
    * Converter dados JSON/objeto para Base64 string
    */
   private convertToBase64(data: any): string | null {
-    try {
-      if (typeof data === 'string') {
-        return data; // Já é string Base64
+    if (!data) return null;
+    
+    if (typeof data === 'string') return data;
+    
+    if (data && typeof data === 'object') {
+      // Se for um Uint8Array object serializado como JSON
+      if (data.constructor === Object && typeof data['0'] === 'number') {
+        const bytes = Object.keys(data).map(key => data[key]);
+        return Buffer.from(bytes).toString('base64');
       }
       
-      if (data instanceof Uint8Array) {
-        return btoa(String.fromCharCode(...data));
+      // Se for um array
+      if (Array.isArray(data)) {
+        return Buffer.from(data).toString('base64');
       }
       
-      if (typeof data === 'object' && data !== null) {
-        // Converter objeto {0: 251, 1: 128, ...} para Uint8Array
-        const keys = Object.keys(data).map(Number).sort((a, b) => a - b);
-        const bytes = new Uint8Array(keys.length);
-        keys.forEach((key, index) => {
-          bytes[index] = data[key];
-        });
-        return btoa(String.fromCharCode(...bytes));
+      // Se for um objeto serializado, tentar JSON.stringify e converter
+      try {
+        const jsonString = JSON.stringify(data);
+        return Buffer.from(jsonString, 'utf8').toString('base64');
+      } catch (e) {
+        console.warn('Falha ao converter objeto para base64:', e);
       }
-      
-      return null;
-    } catch (error) {
-      console.error('❌ MediaDisplay: Erro ao converter para Base64:', error);
-      return null;
     }
+    
+    return null;
   }
 
   /**

@@ -19,18 +19,18 @@ serve(async (req) => {
   try {
     console.log('🔧 [MEDIA-KEYS-FIX] Iniciando correção de media keys...');
 
-    // Buscar mensagens de imagem com media_key em formato de objeto nas duas tabelas
+    // Buscar mensagens com media_key não-null nas duas tabelas
     const { data: ticketMessages, error: ticketFetchError } = await supabase
       .from('ticket_messages')
       .select('id, message_id, media_key, file_enc_sha256, file_sha256, message_type')
-      .eq('message_type', 'image')
+      .in('message_type', ['image', 'video', 'audio', 'document'])
       .not('media_key', 'is', null)
       .limit(50);
 
     const { data: whatsappMessages, error: whatsappFetchError } = await supabase
       .from('whatsapp_messages')
       .select('id, message_id, media_key, file_enc_sha256, file_sha256, message_type')
-      .eq('message_type', 'image')
+      .in('message_type', ['image', 'video', 'audio', 'document'])
       .not('media_key', 'is', null)
       .limit(50);
 
