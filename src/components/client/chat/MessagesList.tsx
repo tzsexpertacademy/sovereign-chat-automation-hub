@@ -8,7 +8,7 @@ import AudioPlayer from '../AudioPlayer';
 import ImageViewer from '../ImageViewer';
 import VideoViewer from '../VideoViewer';
 import DocumentViewer from '../DocumentViewer';
-
+import { unifiedMediaService } from '@/services/unifiedMediaService';
 import { adaptMessageMedia } from '@/utils/mediaDataAdapter';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';

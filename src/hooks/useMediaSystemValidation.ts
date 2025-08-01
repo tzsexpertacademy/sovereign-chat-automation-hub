@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import { directMediaDownloadService } from '@/services/directMediaDownloadService';
+import { unifiedMediaService } from '@/services/unifiedMediaService';
 
 interface MediaSystemStatus {
   isReady: boolean;
   cacheStats: {
-    totalEntries: number;
-    memoryUsage: string;
-    expiredEntries: number;
-    hitRate: number;
+    localCacheSize: number;
+    dbCacheSize: number;
+    totalExpired: number;
   };
   lastValidation: Date | null;
   errors: string[];
@@ -17,10 +16,9 @@ export const useMediaSystemValidation = () => {
   const [status, setStatus] = useState<MediaSystemStatus>({
     isReady: false,
     cacheStats: {
-      totalEntries: 0,
-      memoryUsage: '0 MB',
-      expiredEntries: 0,
-      hitRate: 0
+      localCacheSize: 0,
+      dbCacheSize: 0,
+      totalExpired: 0
     },
     lastValidation: null,
     errors: []
@@ -33,24 +31,23 @@ export const useMediaSystemValidation = () => {
       const errors: string[] = [];
       
       // Verificar cache stats
-      const cacheStats = directMediaDownloadService.getCacheStats();
+      const cacheStats = await unifiedMediaService.getCacheStats();
       
       // Limpar cache expirado
-      const expiredCount = directMediaDownloadService.clearExpiredCache();
+      const expiredCount = await unifiedMediaService.cleanExpiredCache();
       
       console.log('📊 MediaSystem: Stats obtidas:', {
-        totalEntries: cacheStats.totalEntries,
-        memoryUsage: cacheStats.memoryUsage,
-        expired: cacheStats.expiredEntries,
-        cleanedNow: expiredCount,
-        hitRate: cacheStats.hitRate
+        localCache: cacheStats.localCacheSize,
+        dbCache: cacheStats.dbCacheSize,
+        expired: cacheStats.totalExpired,
+        cleanedNow: expiredCount
       });
 
       setStatus({
         isReady: true,
         cacheStats: {
           ...cacheStats,
-          expiredEntries: expiredCount
+          totalExpired: expiredCount
         },
         lastValidation: new Date(),
         errors
@@ -80,7 +77,7 @@ export const useMediaSystemValidation = () => {
     status,
     validateSystem,
     clearLocalCache: () => {
-      directMediaDownloadService.clearCache();
+      unifiedMediaService.clearLocalCache();
       validateSystem();
     }
   };

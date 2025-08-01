@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Download, Play, Pause, Volume2, VolumeX, RotateCcw, Loader2 } from 'lucide-react';
+import { Download, Play, Pause, Volume2, VolumeX, RotateCcw } from 'lucide-react';
 import { directMediaDownloadService } from '@/services/directMediaDownloadService';
-import { useMediaRecovery } from '@/hooks/useMediaRecovery';
-import { toast } from 'sonner';
 
 interface VideoViewerProps {
   videoUrl?: string;
@@ -34,7 +32,6 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [videoRef, setVideoRef] = useState<HTMLVideoElement | null>(null);
-  const { recoverMedia, isRecovering, clearRecoveryState } = useMediaRecovery();
 
   useEffect(() => {
     const initializeVideo = async () => {
@@ -260,65 +257,6 @@ const VideoViewer: React.FC<VideoViewerProps> = ({
         >
           <Download className="w-4 h-4" />
         </Button>
-
-        {/* Botão de recuperação para vídeos com problemas */}
-        {(error || !displayVideoUrl) && videoUrl && mediaKey && messageId && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              try {
-                console.log('🔄 VideoViewer: INICIANDO RECUPERAÇÃO MANUAL');
-                clearRecoveryState();
-                
-                const currentUrl = window.location.pathname;
-                const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
-                let instanceId = 'default';
-                
-                if (ticketIdMatch) {
-                  const { supabase } = await import('@/integrations/supabase/client');
-                  const { data: ticketData } = await supabase
-                    .from('conversation_tickets')
-                    .select('instance_id')
-                    .eq('id', ticketIdMatch[1])
-                    .single();
-                  
-                  if (ticketData?.instance_id) {
-                    instanceId = ticketData.instance_id;
-                  }
-                }
-
-                const result = await recoverMedia(
-                  instanceId,
-                  messageId,
-                  videoUrl,
-                  mediaKey,
-                  undefined,
-                  'video/mp4',
-                  'video'
-                );
-
-                if (result.success && result.mediaUrl) {
-                  console.log('✅ VideoViewer: RECUPERAÇÃO BEM-SUCEDIDA');
-                  setDisplayVideoUrl(result.mediaUrl);
-                  setError('');
-                  toast.success('Vídeo recuperado com sucesso!');
-                }
-              } catch (error) {
-                console.error('❌ VideoViewer: FALHA NA RECUPERAÇÃO:', error);
-                toast.error('Falha na recuperação do vídeo');
-              }
-            }}
-            disabled={isRecovering}
-            title="Tentar recuperar vídeo"
-          >
-            {isRecovering ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RotateCcw className="w-4 h-4" />
-            )}
-          </Button>
-        )}
       </div>
 
       {/* Caption */}
