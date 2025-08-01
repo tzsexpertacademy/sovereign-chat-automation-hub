@@ -1,4 +1,5 @@
 import unifiedYumerService from './unifiedYumerService';
+import { unifiedMediaCache } from './unifiedMediaCache';
 
 interface MediaDownloadRequest {
   contentType: 'image' | 'video' | 'audio' | 'document';
@@ -18,8 +19,6 @@ interface MediaDownloadResult {
 }
 
 class DirectMediaDownloadService {
-  private cache = new Map<string, { url: string; timestamp: number }>();
-  private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 
   /**
    * Converter buffer/objeto para Base64 string
@@ -82,12 +81,11 @@ class DirectMediaDownloadService {
     mimetype: string,
     contentType: 'image' | 'video' | 'audio' | 'document'
   ): Promise<MediaDownloadResult> {
-    const cacheKey = `${instanceId}-${mediaKey}`;
-    
-    // Verificar cache primeiro
-    const cached = this.getCachedMedia(cacheKey);
+    // Verificar cache unificado primeiro
+    const messageId = `direct_${Date.now()}`;
+    const cached = unifiedMediaCache.get(instanceId, messageId, mediaKey);
     if (cached) {
-      console.log('📦 DirectMedia: Usando cache para', contentType);
+      console.log('📦 DirectMedia: Cache HIT para', contentType);
       return {
         success: true,
         mediaUrl: cached,
@@ -152,8 +150,8 @@ class DirectMediaDownloadService {
         
         const blobUrl = URL.createObjectURL(blob);
         
-        // Cachear resultado
-        this.setCachedMedia(cacheKey, blobUrl);
+        // Cachear resultado no cache unificado
+        unifiedMediaCache.set(instanceId, messageId, blobUrl, 'DirectMedia', mediaKey, mimetype);
         
         console.log('✅ DirectMedia: Download bem-sucedido para', contentType);
         return {
@@ -192,7 +190,18 @@ class DirectMediaDownloadService {
   ): Promise<MediaDownloadResult> {
     console.log('🎯 DirectMedia: Processando', contentType, 'para', messageId);
 
-    // Tentar download direto primeiro
+    // Verificar cache primeiro
+    const cached = unifiedMediaCache.get(instanceId, messageId, mediaKey);
+    if (cached) {
+      console.log('📦 DirectMedia: Cache HIT para processMedia');
+      return {
+        success: true,
+        mediaUrl: cached,
+        cached: true
+      };
+    }
+
+    // Tentar download direto
     const directResult = await this.downloadMedia(
       instanceId,
       mediaUrl,
@@ -202,79 +211,85 @@ class DirectMediaDownloadService {
       contentType
     );
 
-    if (directResult.success) {
+    if (directResult.success && directResult.mediaUrl) {
+      // Salvar no cache com o messageId real
+      unifiedMediaCache.set(instanceId, messageId, directResult.mediaUrl, 'DirectMedia', mediaKey, mimetype);
       return directResult;
     }
 
-    console.log('⚡ DirectMedia: Download direto falhou, tentando fallback para descriptografia');
+    console.log('⚡ DirectMedia: Download direto falhou, tentando fallback');
     
-    // TODO: Implementar fallback para sistema de descriptografia existente
-    // Por enquanto retornamos erro
+    // Fallback: tentar MediaDisplayService
+    try {
+      const { mediaDisplayService } = await import('./mediaDisplayService');
+      
+      // Buscar dados do ticket para usar no fallback
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: ticketData } = await supabase
+        .from('conversation_tickets')
+        .select('chat_id')
+        .eq('instance_id', instanceId)
+        .limit(1)
+        .single();
+      
+      if (ticketData?.chat_id) {
+        const fallbackResult = await mediaDisplayService.displayMedia({
+          instanceId,
+          messageId,
+          chatId: ticketData.chat_id,
+          mediaUrl,
+          mediaKey,
+          directPath,
+          mimetype,
+          contentType
+        });
+
+        if (fallbackResult.success && fallbackResult.mediaUrl) {
+          console.log('✅ DirectMedia: Fallback sucesso via', fallbackResult.strategy);
+          unifiedMediaCache.set(instanceId, messageId, fallbackResult.mediaUrl, `Fallback-${fallbackResult.strategy}`, mediaKey, mimetype);
+          return {
+            success: true,
+            mediaUrl: fallbackResult.mediaUrl,
+            cached: false
+          };
+        }
+      }
+    } catch (error) {
+      console.error('❌ DirectMedia: Erro no fallback:', error);
+    }
+    
     return {
       success: false,
-      error: 'Download direto falhou e fallback não implementado ainda'
+      error: 'Todos os métodos de download falharam'
     };
   }
 
-  private getCachedMedia(cacheKey: string): string | null {
-    const cached = this.cache.get(cacheKey);
-    if (!cached) return null;
-
-    // Verificar se não expirou
-    if (Date.now() - cached.timestamp > this.CACHE_TTL) {
-      this.cache.delete(cacheKey);
-      URL.revokeObjectURL(cached.url); // Limpar blob URL
-      return null;
-    }
-
-    return cached.url;
-  }
-
-  private setCachedMedia(cacheKey: string, url: string): void {
-    this.cache.set(cacheKey, {
-      url,
-      timestamp: Date.now()
-    });
-  }
-
   /**
-   * Limpar cache expirado
+   * Limpar cache expirado (delega para cache unificado)
    */
   clearExpiredCache(): number {
-    let cleared = 0;
-    const now = Date.now();
-    
-    for (const [key, value] of this.cache.entries()) {
-      if (now - value.timestamp > this.CACHE_TTL) {
-        URL.revokeObjectURL(value.url);
-        this.cache.delete(key);
-        cleared++;
-      }
-    }
-    
-    console.log(`🧹 DirectMedia: Limpou ${cleared} itens do cache`);
-    return cleared;
+    return unifiedMediaCache.cleanExpired();
   }
 
   /**
-   * Estatísticas do cache
+   * Estatísticas do cache (delega para cache unificado)
    */
-  getCacheStats(): { size: number; keys: string[] } {
-    return {
-      size: this.cache.size,
-      keys: Array.from(this.cache.keys())
-    };
+  getCacheStats() {
+    return unifiedMediaCache.getStats();
   }
 
   /**
-   * Limpar todo o cache
+   * Limpar todo o cache (delega para cache unificado)
    */
   clearCache(): void {
-    for (const value of this.cache.values()) {
-      URL.revokeObjectURL(value.url);
-    }
-    this.cache.clear();
-    console.log('🗑️ DirectMedia: Cache completamente limpo');
+    unifiedMediaCache.clear();
+  }
+
+  /**
+   * Log do status do cache
+   */
+  logCacheStatus(): void {
+    unifiedMediaCache.logStatus();
   }
 }
 

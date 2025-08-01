@@ -53,8 +53,10 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
       console.log('📤 Resultado do envio de mídia:', result);
 
       if (result && typeof result === 'object' && 'success' in result && result.success) {
-        // Salvar mensagem no banco após envio bem-sucedido
+        // Salvar mensagem no banco com metadados completos
         if (ticketId) {
+          console.log('💾 Salvando mensagem manual com metadados da API:', result);
+          
           await manualMessageSaver.saveMediaMessage({
             ticketId,
             messageId: `manual_${Date.now()}`,
@@ -75,8 +77,10 @@ export const useMessageMedia = (clientId: string, ticketId?: string) => {
         });
         return result;
       } else if (typeof result === 'boolean' && result === true) {
-        // Salvar mensagem no banco após envio bem-sucedido
+        // Salvar mensagem no banco com fallback para resposta boolean
         if (ticketId) {
+          console.log('💾 Salvando mensagem manual (resposta boolean)');
+          
           await manualMessageSaver.saveMediaMessage({
             ticketId,
             messageId: `manual_${Date.now()}`,

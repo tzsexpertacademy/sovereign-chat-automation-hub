@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, FileText, File, FileImage, FileVideo, FileAudio, RotateCcw, ExternalLink } from 'lucide-react';
+import { directMediaDownloadService } from '@/services/directMediaDownloadService';
 import { mediaDisplayService } from '@/services/mediaDisplayService';
+import { supabase } from '@/integrations/supabase/client';
 
 interface DocumentViewerProps {
   documentUrl?: string;
   messageId?: string;
   mediaKey?: string;
   fileEncSha256?: string;
+  directPath?: string;
   needsDecryption?: boolean;
   caption?: string;
   fileName?: string;
@@ -21,6 +24,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   messageId,
   mediaKey,
   fileEncSha256,
+  directPath,
   needsDecryption = false,
   caption,
   fileName = 'document',
@@ -34,70 +38,142 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
-    const initializeDocument = async () => {
+    const processDocument = async () => {
       if (!documentUrl && !messageId) {
-        setError('URL do documento não disponível');
+        setError('Documento não disponível');
         return;
       }
 
-      // Se tem URL direta e não precisa descriptografar, usar diretamente
-      if (documentUrl && !needsDecryption) {
-        console.log('📄 DocumentViewer: Usando URL direta');
-        setDisplayDocumentUrl(documentUrl);
-        return;
-      }
+      setIsProcessing(true);
+      setError('');
 
-      // Usar MediaDisplayService para download via API nativa
-      if (messageId && instanceId && chatId) {
-        console.log('🔄 DocumentViewer: Processando via MediaDisplayService');
-        setIsProcessing(true);
-        setError('');
+      console.log('📄 DocumentViewer: Processando documento:', {
+        hasDocumentUrl: !!documentUrl,
+        hasMessageId: !!messageId,
+        hasMediaKey: !!mediaKey,
+        needsDecryption,
+        fileType
+      });
 
-        try {
-          const result = await mediaDisplayService.displayMedia({
-            instanceId,
-            messageId,
-            chatId,
-            mediaUrl: documentUrl || '',
-            mediaKey: mediaKey || '',
-            directPath: '',
-            mimetype: fileType || 'application/octet-stream',
-            contentType: 'document'
-          });
+      try {
+        // ESTRATÉGIA 1: URL direta para mensagens manuais
+        if (documentUrl && !needsDecryption && !messageId) {
+          console.log('✅ DocumentViewer: URL direta (mensagem manual)');
+          setDisplayDocumentUrl(documentUrl);
+          return;
+        }
 
-          if (result.success && result.mediaUrl) {
-            console.log('✅ DocumentViewer: Documento processado com sucesso via', result.strategy);
-            setDisplayDocumentUrl(result.mediaUrl);
-          } else {
-            console.log('❌ DocumentViewer: Falha no processamento:', result.error);
-            setError(result.error || 'Falha ao processar documento');
-            // Fallback para URL original se disponível
-            if (documentUrl) {
-              setDisplayDocumentUrl(documentUrl);
+        // ESTRATÉGIA 2: DirectMediaDownloadService para mensagens com metadados
+        if (messageId && mediaKey && documentUrl && directPath) {
+          console.log('🚀 DocumentViewer: Usando DirectMediaDownloadService');
+          
+          const currentUrl = window.location.pathname;
+          const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+          const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
+          
+          if (ticketId) {
+            const { data: ticketData } = await supabase
+              .from('conversation_tickets')
+              .select('instance_id')
+              .eq('id', ticketId)
+              .single();
+            
+            if (ticketData?.instance_id) {
+              const result = await directMediaDownloadService.processMedia(
+                ticketData.instance_id,
+                messageId,
+                documentUrl,
+                mediaKey,
+                directPath,
+                fileType || 'application/octet-stream',
+                'document'
+              );
+
+              if (result.success && result.mediaUrl) {
+                console.log('✅ DocumentViewer: Sucesso via DirectMedia');
+                setDisplayDocumentUrl(result.mediaUrl);
+                return;
+              }
+              
+              console.log('⚠️ DocumentViewer: DirectMedia falhou:', result.error);
             }
           }
-        } catch (err) {
-          console.error('❌ DocumentViewer: Erro no processamento:', err);
-          setError('Erro ao carregar documento');
-          // Fallback para URL original se disponível
-          if (documentUrl) {
-            setDisplayDocumentUrl(documentUrl);
-          }
-        } finally {
-          setIsProcessing(false);
         }
-      } else {
-        console.log('❌ DocumentViewer: Dados insuficientes para processamento');
+
+        // ESTRATÉGIA 3: MediaDisplayService (fallback) com dados do contexto
+        if (messageId) {
+          console.log('🔄 DocumentViewer: Fallback MediaDisplayService');
+          
+          let finalInstanceId = instanceId;
+          let finalChatId = chatId;
+          
+          // Se não temos instanceId/chatId, buscar do ticket atual
+          if (!finalInstanceId || !finalChatId) {
+            const currentUrl = window.location.pathname;
+            const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+            const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
+            
+            if (ticketId) {
+              const { data: ticketData } = await supabase
+                .from('conversation_tickets')
+                .select('instance_id, chat_id')
+                .eq('id', ticketId)
+                .single();
+              
+              if (ticketData) {
+                finalInstanceId = ticketData.instance_id;
+                finalChatId = ticketData.chat_id;
+              }
+            }
+          }
+          
+          if (finalInstanceId && finalChatId) {
+            const result = await mediaDisplayService.displayMedia({
+              instanceId: finalInstanceId,
+              messageId,
+              chatId: finalChatId,
+              mediaUrl: documentUrl || '',
+              mediaKey: mediaKey || '',
+              directPath: directPath || '',
+              mimetype: fileType || 'application/octet-stream',
+              contentType: 'document'
+            });
+
+            if (result.success && result.mediaUrl) {
+              console.log(`✅ DocumentViewer: Fallback sucesso via ${result.strategy}`);
+              setDisplayDocumentUrl(result.mediaUrl);
+              return;
+            }
+            
+            console.log('⚠️ DocumentViewer: Fallback falhou:', result.error);
+          }
+        }
+
+        // ESTRATÉGIA 4: URL original como último recurso
+        if (documentUrl) {
+          console.log('🔄 DocumentViewer: Último recurso - URL original');
+          setDisplayDocumentUrl(documentUrl);
+          return;
+        }
+
+        // Falha total
+        setError('Documento não disponível');
+
+      } catch (error) {
+        console.error('❌ DocumentViewer: Erro no processamento:', error);
+        setError('Erro ao carregar documento');
+        
+        // Último fallback
         if (documentUrl) {
           setDisplayDocumentUrl(documentUrl);
-        } else {
-          setError('Dados insuficientes para carregar documento');
         }
+      } finally {
+        setIsProcessing(false);
       }
     };
 
-    initializeDocument();
-  }, [documentUrl, messageId, mediaKey, fileEncSha256, needsDecryption, instanceId, chatId]);
+    processDocument();
+  }, [documentUrl, messageId, mediaKey, directPath, fileType, needsDecryption, instanceId, chatId]);
 
   const getFileIcon = (fileName: string, fileType?: string) => {
     const extension = fileName.split('.').pop()?.toLowerCase();

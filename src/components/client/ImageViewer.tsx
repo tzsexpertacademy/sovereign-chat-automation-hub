@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Download, AlertCircle, Loader2, Image as ImageIcon, ZoomIn } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { unifiedMediaService } from '@/services/unifiedMediaService';
+import { directMediaDownloadService } from '@/services/directMediaDownloadService';
+import { mediaDisplayService } from '@/services/mediaDisplayService';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ImageViewerProps {
@@ -36,44 +37,79 @@ const ImageViewer = ({
   const [error, setError] = useState<string | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
 
-  // Inicializar imagem
+  // Inicializar imagem com estratégia otimizada
   useEffect(() => {
     let mounted = true;
     
-    const initializeImage = async () => {
+    const processImage = async () => {
       if (!mounted) return;
       
       setIsLoading(true);
       setError(null);
       
-      console.log('🖼️ ImageViewer: Iniciando com dados:', {
+      console.log('🖼️ ImageViewer: Processando imagem:', {
         hasImageUrl: !!imageUrl,
+        hasMessageId: !!messageId,
+        hasMediaKey: !!mediaKey,
         needsDecryption,
-        hasDecryptionKeys: !!(messageId && mediaKey),
-        hasFileEncSha256: !!fileEncSha256,
-        mediaMimeType,
-        imageUrl: imageUrl?.substring(0, 100) + '...'
+        mediaMimeType
       });
 
       try {
-        // 1. URL direta (não criptografada)
-        if (imageUrl && !needsDecryption) {
-          console.log('✅ ImageViewer: Usando URL direta');
+        // ESTRATÉGIA 1: URL direta para mensagens manuais
+        if (imageUrl && !needsDecryption && !messageId) {
+          console.log('✅ ImageViewer: URL direta (mensagem manual)');
           setDisplayImageUrl(imageUrl);
           return;
         }
 
-        // 2. Buscar dados do ticket para usar MediaDisplayService
-        const currentUrl = window.location.pathname;
-        const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
-        const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
-        
-        if (ticketId && messageId) {
-          console.log('🔄 ImageViewer: Processando via MediaDisplayService');
+        // ESTRATÉGIA 2: DirectMediaDownloadService para mensagens com metadados
+        if (messageId && mediaKey && imageUrl && directPath) {
+          console.log('🚀 ImageViewer: Usando DirectMediaDownloadService');
           setIsDecrypting(true);
           
-          try {
-            // Buscar dados do ticket
+          const currentUrl = window.location.pathname;
+          const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+          const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
+          
+          if (ticketId) {
+            const { data: ticketData } = await supabase
+              .from('conversation_tickets')
+              .select('instance_id')
+              .eq('id', ticketId)
+              .single();
+            
+            if (ticketData?.instance_id) {
+              const result = await directMediaDownloadService.processMedia(
+                ticketData.instance_id,
+                messageId,
+                imageUrl,
+                mediaKey,
+                directPath,
+                mediaMimeType || 'image/jpeg',
+                'image'
+              );
+
+              if (result.success && result.mediaUrl) {
+                console.log('✅ ImageViewer: Sucesso via DirectMedia');
+                setDisplayImageUrl(result.mediaUrl);
+                return;
+              }
+              
+              console.log('⚠️ ImageViewer: DirectMedia falhou:', result.error);
+            }
+          }
+        }
+
+        // ESTRATÉGIA 3: MediaDisplayService (fallback)
+        if (messageId) {
+          console.log('🔄 ImageViewer: Fallback MediaDisplayService');
+          
+          const currentUrl = window.location.pathname;
+          const ticketIdMatch = currentUrl.match(/\/chat\/([^\/]+)/);
+          const ticketId = ticketIdMatch ? ticketIdMatch[1] : null;
+          
+          if (ticketId) {
             const { data: ticketData } = await supabase
               .from('conversation_tickets')
               .select('instance_id, chat_id')
@@ -81,72 +117,58 @@ const ImageViewer = ({
               .single();
             
             if (ticketData?.instance_id && ticketData?.chat_id) {
-              const { mediaDisplayService } = await import('@/services/mediaDisplayService');
-              
               const result = await mediaDisplayService.displayMedia({
                 instanceId: ticketData.instance_id,
                 messageId: messageId,
                 chatId: ticketData.chat_id,
-                mediaUrl: imageUrl,
-                mediaKey: mediaKey,
-                directPath: directPath,
+                mediaUrl: imageUrl || '',
+                mediaKey: mediaKey || '',
+                directPath: directPath || '',
                 mimetype: mediaMimeType || 'image/jpeg',
                 contentType: 'image'
               });
 
               if (result.success && result.mediaUrl) {
-                console.log(`✅ ImageViewer: Sucesso via ${result.strategy}`);
+                console.log(`✅ ImageViewer: Fallback sucesso via ${result.strategy}`);
                 setDisplayImageUrl(result.mediaUrl);
                 return;
               }
               
-              console.log('⚠️ ImageViewer: MediaDisplayService falhou:', result.error);
-              
-              // Fallback: tentar URL original se existir
-              if (imageUrl) {
-                console.log('🔄 ImageViewer: Fallback para URL original');
-                setDisplayImageUrl(imageUrl);
-                return;
-              }
-            }
-          } catch (error) {
-            console.error('❌ ImageViewer: Erro no MediaDisplayService:', error);
-            
-            // Fallback: tentar URL original se existir
-            if (imageUrl) {
-              console.log('🔄 ImageViewer: Fallback para URL original após erro');
-              setDisplayImageUrl(imageUrl);
-              return;
+              console.log('⚠️ ImageViewer: Fallback falhou:', result.error);
             }
           }
         }
 
-        // 3. Erro: falta de dados
-        if (!imageUrl) {
-          setError('URL da imagem não disponível');
+        // ESTRATÉGIA 4: URL original como último recurso
+        if (imageUrl) {
+          console.log('🔄 ImageViewer: Último recurso - URL original');
+          setDisplayImageUrl(imageUrl);
           return;
         }
 
-        if (needsDecryption && (!messageId || !mediaKey)) {
-          setError('Imagem criptografada sem chaves');
-          return;
-        }
+        // Falha total
+        setError('Imagem não disponível');
 
       } catch (error) {
-        console.error('❌ ImageViewer: Erro na inicialização:', error);
+        console.error('❌ ImageViewer: Erro no processamento:', error);
         setError('Erro ao carregar imagem');
+        
+        // Último fallback
+        if (imageUrl) {
+          setDisplayImageUrl(imageUrl);
+        }
       } finally {
         setIsLoading(false);
         setIsDecrypting(false);
       }
     };
 
-    initializeImage();
+    processImage();
     
     return () => {
       mounted = false;
     };
-  }, [imageUrl, messageId, mediaKey, needsDecryption]);
+  }, [imageUrl, messageId, mediaKey, directPath, mediaMimeType, needsDecryption]);
 
   const handleImageError = () => {
     console.error('❌ ImageViewer: Erro ao carregar imagem no elemento img');
