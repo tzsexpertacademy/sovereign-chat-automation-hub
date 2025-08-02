@@ -768,55 +768,144 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     // 🚫 REMOVIDO: Presença via chat/presence - endpoint não existe mais
     // A presença é controlada automaticamente via configurações de perfil
 
-    // Enviar usando yumerApiV2 com o ID correto
-    const sendOptions = {
-      delay: 1200,
-      presence: 'composing',
-      externalAttributes: `source=ai-assistant;ticketId=${ticketId};assistantId=${safeAssistant.id};timestamp=${Date.now()}`
-    };
+    // 🚀 USAR SISTEMA DE BLOCOS QUANDO NECESSÁRIO
+    const shouldUseChunks = aiResponse.length > humanizedConfig.behavior.messageHandling.maxCharsPerChunk;
+    
+    console.log('🤖 [AI-ASSISTANT] DECISÃO DE ENVIO:', {
+      responseLength: aiResponse.length,
+      maxCharsPerChunk: humanizedConfig.behavior.messageHandling.maxCharsPerChunk,
+      splitLongMessages: humanizedConfig.behavior.messageHandling.splitLongMessages,
+      shouldUseChunks,
+      willUseChunks: shouldUseChunks && humanizedConfig.behavior.messageHandling.splitLongMessages
+    });
 
     let sendResult;
     try {
-      // USAR IMPLEMENTAÇÃO DIRETA PARA EVITAR PROBLEMAS DE IMPORTAÇÃO
-      console.log('📤 [AI-ASSISTANT] Enviando via API Yumer v2 diretamente...');
-      
-      const sendData = {
-        recipient: resolvedContext.chatId,
-        textMessage: {
-          text: aiResponse
-        },
-        options: sendOptions
-      };
+      if (shouldUseChunks && humanizedConfig.behavior.messageHandling.splitLongMessages) {
+        // ENVIO EM BLOCOS
+        console.log('📦 [AI-ASSISTANT] Enviando em blocos...');
+        
+        const chunks = splitMessageIntoChunks(
+          aiResponse, 
+          humanizedConfig.behavior.messageHandling.maxCharsPerChunk
+        );
+        
+        console.log('🔢 [AI-ASSISTANT] Blocos criados:', {
+          totalChunks: chunks.length,
+          chunks: chunks.map(c => c.substring(0, 50) + '...')
+        });
 
-      const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/send/text`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${client.business_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(sendData)
-      });
+        const messageIds: string[] = [];
+        let chunkIndex = 0;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        for (const chunk of chunks) {
+          chunkIndex++;
+          
+          console.log(`📤 [AI-ASSISTANT] Enviando bloco ${chunkIndex}/${chunks.length}:`, {
+            length: chunk.length,
+            preview: chunk.substring(0, 100) + '...'
+          });
+
+          const sendOptions = {
+            delay: humanizedConfig.behavior.messageHandling.delayBetweenChunks,
+            presence: 'composing',
+            externalAttributes: `source=ai;humanized=true;timestamp=${Date.now()}`
+          };
+
+          const sendData = {
+            recipient: resolvedContext.chatId,
+            textMessage: {
+              text: chunk
+            },
+            options: sendOptions
+          };
+
+          const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/send/text`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${client.business_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(sendData)
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`❌ [AI-ASSISTANT] Erro no bloco ${chunkIndex}:`, errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
+
+          const result = await response.json();
+          messageIds.push(result.key?.id || `ai_chunk_${chunkIndex}_${Date.now()}`);
+          
+          console.log(`✅ [AI-ASSISTANT] Bloco ${chunkIndex}/${chunks.length} enviado com sucesso`);
+
+          // Aguardar delay entre chunks (exceto no último)
+          if (chunkIndex < chunks.length) {
+            console.log(`⏱️ [AI-ASSISTANT] Aguardando ${humanizedConfig.behavior.messageHandling.delayBetweenChunks}ms antes do próximo bloco`);
+            await new Promise(resolve => setTimeout(resolve, humanizedConfig.behavior.messageHandling.delayBetweenChunks));
+          }
+        }
+
+        sendResult = {
+          success: true,
+          messageId: messageIds[0], // Primeiro bloco como ID principal
+          messageIds,
+          totalChunks: chunks.length,
+          details: { type: 'chunked', chunks: chunks.length }
+        };
+
+        console.log('✅ [AI-ASSISTANT] Todos os blocos enviados com sucesso:', {
+          totalChunks: chunks.length,
+          messageIds
+        });
+
+      } else {
+        // ENVIO DIRETO (mensagem curta ou sistema de blocos desabilitado)
+        console.log('📤 [AI-ASSISTANT] Enviando mensagem direta (sem blocos)...');
+        
+        const sendOptions = {
+          delay: 1200,
+          presence: 'composing',
+          externalAttributes: `source=ai-assistant;ticketId=${ticketId};assistantId=${safeAssistant.id};timestamp=${Date.now()}`
+        };
+        
+        const sendData = {
+          recipient: resolvedContext.chatId,
+          textMessage: {
+            text: aiResponse
+          },
+          options: sendOptions
+        };
+
+        const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${realInstanceId}/send/text`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${client.business_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(sendData)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const result = await response.json();
+        
+        sendResult = {
+          success: true,
+          messageId: result.key?.id || `ai_msg_${Date.now()}`,
+          details: result
+        };
+        
+        console.log('✅ [AI-ASSISTANT] Mensagem enviada com sucesso via API direta:', {
+          realInstanceId,
+          chatId: resolvedContext.chatId,
+          messageId: sendResult.messageId
+        });
       }
-
-      const result = await response.json();
-      
-      sendResult = {
-        success: true,
-        messageId: result.key?.id || `ai_msg_${Date.now()}`,
-        details: result
-      };
-      
-      console.log('✅ [AI-ASSISTANT] Mensagem enviada com sucesso via API direta:', {
-        realInstanceId,
-        chatId: resolvedContext.chatId,
-        messageId: sendResult.messageId
-      });
-
-      // 🚫 REMOVIDO: Presença pós-envio - gerenciado via profile-status apenas
       
     } catch (sendError: any) {
       console.error('❌ [AI-ASSISTANT] Erro ao enviar via API direta:', sendError);
@@ -1701,6 +1790,66 @@ async function processDocumentExtraction(documentBase64: string, mimeType: strin
     console.error('❌ [DOCUMENT] Erro ao extrair texto:', error);
     return '[Erro ao extrair texto do documento]';
   }
+}
+
+/**
+ * Dividir mensagem em blocos respeitando pontuação
+ */
+function splitMessageIntoChunks(message: string, maxChars: number): string[] {
+  if (message.length <= maxChars) {
+    return [message];
+  }
+
+  const sentences = message.split(/(?<=[.!?])\s+/);
+  const chunks: string[] = [];
+  let currentChunk = '';
+
+  for (const sentence of sentences) {
+    // Se a frase sozinha é maior que o limite, quebrar por palavras
+    if (sentence.length > maxChars) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      const words = sentence.split(' ');
+      let wordChunk = '';
+      
+      for (const word of words) {
+        if ((wordChunk + ' ' + word).length > maxChars) {
+          if (wordChunk) {
+            chunks.push(wordChunk.trim());
+            wordChunk = word;
+          } else {
+            // Palavra muito longa, forçar quebra
+            chunks.push(word);
+          }
+        } else {
+          wordChunk = wordChunk ? wordChunk + ' ' + word : word;
+        }
+      }
+      
+      if (wordChunk) {
+        currentChunk = wordChunk;
+      }
+    } else {
+      // Verificar se cabe no chunk atual
+      if ((currentChunk + ' ' + sentence).length > maxChars) {
+        if (currentChunk) {
+          chunks.push(currentChunk.trim());
+        }
+        currentChunk = sentence;
+      } else {
+        currentChunk = currentChunk ? currentChunk + ' ' + sentence : sentence;
+      }
+    }
+  }
+
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+
+  return chunks.filter(chunk => chunk.length > 0);
 }
 
 /**
