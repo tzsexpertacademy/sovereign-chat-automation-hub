@@ -12,7 +12,9 @@ import { Upload, Play, Pause, Trash2, Volume2, Mic, TestTube, Plus, Loader2 } fr
 import { useToast } from "@/hooks/use-toast";
 import { assistantsService, ELEVENLABS_MODELS, type AdvancedSettings, type AudioLibraryItem } from "@/services/assistantsService";
 import { elevenLabsService } from "@/services/elevenLabsService";
+import { fishAudioService } from "@/services/fishAudioService";
 import ElevenLabsVoiceSelector from "./ElevenLabsVoiceSelector";
+import FishAudioVoiceSelector from "./FishAudioVoiceSelector";
 
 interface AssistantAudioSettingsProps {
   assistantId: string;
@@ -23,6 +25,8 @@ interface AssistantAudioSettingsProps {
 const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: AssistantAudioSettingsProps) => {
   const [testingVoice, setTestingVoice] = useState(false);
   const [validatingApi, setValidatingApi] = useState(false);
+  const [testingFishVoice, setTestingFishVoice] = useState(false);
+  const [validatingFishApi, setValidatingFishApi] = useState(false);
   const [newAudioTrigger, setNewAudioTrigger] = useState("");
   const [newAudioCategory, setNewAudioCategory] = useState("geral");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -111,6 +115,43 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
     }
   };
 
+  const handleFishApiValidation = async () => {
+    if (!settings.fish_audio_api_key) {
+      toast({
+        title: "API Key Necessária",
+        description: "Insira sua API Key do Fish.Audio primeiro",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setValidatingFishApi(true);
+    try {
+      const isValid = await fishAudioService.validateApiKey(settings.fish_audio_api_key);
+
+      if (isValid) {
+        toast({
+          title: "API Válida",
+          description: "Conexão com Fish.Audio estabelecida com sucesso",
+        });
+      } else {
+        toast({
+          title: "API Inválida",
+          description: "Verifique sua API Key do Fish.Audio",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro de Validação",
+        description: "Não foi possível validar a API Key do Fish.Audio",
+        variant: "destructive",
+      });
+    } finally {
+      setValidatingFishApi(false);
+    }
+  };
+
   const handleAudioUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -184,12 +225,198 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
   };
 
   return (
-    <Tabs defaultValue="elevenlabs" className="space-y-6">
-      <TabsList className="grid w-full grid-cols-3">
-        <TabsTrigger value="elevenlabs">ElevenLabs TTS</TabsTrigger>
-        <TabsTrigger value="library">Biblioteca de Áudios</TabsTrigger>
+    <Tabs defaultValue="provider" className="space-y-6">
+      <TabsList className="grid w-full grid-cols-4">
+        <TabsTrigger value="provider">Provedor</TabsTrigger>
+        <TabsTrigger value="fishaudio">Fish.Audio TTS</TabsTrigger>
+        <TabsTrigger value="library">Biblioteca</TabsTrigger>
         <TabsTrigger value="recording">Configurações</TabsTrigger>
       </TabsList>
+
+      <TabsContent value="provider" className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Volume2 className="w-5 h-5" />
+              <span>Seleção de Provedor de Áudio</span>
+            </CardTitle>
+            <CardDescription>
+              Escolha qual provedor de text-to-speech usar para gerar áudios
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div 
+                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                  settings.audio_provider === 'elevenlabs' ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'
+                }`}
+                onClick={() => onSettingsChange({ ...settings, audio_provider: 'elevenlabs' })}
+              >
+                <h3 className="font-medium mb-2">ElevenLabs</h3>
+                <p className="text-sm text-muted-foreground">
+                  Vozes ultra-realistas e emocionais. Ideal para conteúdo profissional.
+                </p>
+                <Badge variant={settings.audio_provider === 'elevenlabs' ? 'default' : 'outline'} className="mt-2">
+                  Premium
+                </Badge>
+              </div>
+              
+              <div 
+                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                  settings.audio_provider === 'fishaudio' ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'
+                }`}
+                onClick={() => onSettingsChange({ ...settings, audio_provider: 'fishaudio' })}
+              >
+                <h3 className="font-medium mb-2">Fish.Audio</h3>
+                <p className="text-sm text-muted-foreground">
+                  Clonagem de voz avançada e customizável. Ideal para vozes específicas.
+                </p>
+                <Badge variant={settings.audio_provider === 'fishaudio' ? 'default' : 'outline'} className="mt-2">
+                  Clonagem
+                </Badge>
+              </div>
+              
+              <div 
+                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                  settings.audio_provider === 'both' ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'
+                }`}
+                onClick={() => onSettingsChange({ ...settings, audio_provider: 'both' })}
+              >
+                <h3 className="font-medium mb-2">Ambos</h3>
+                <p className="text-sm text-muted-foreground">
+                  Use os dois provedores com fallback automático para máxima disponibilidade.
+                </p>
+                <Badge variant={settings.audio_provider === 'both' ? 'default' : 'outline'} className="mt-2">
+                  Híbrido
+                </Badge>
+              </div>
+            </div>
+
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h4 className="font-medium text-blue-900 mb-2">💡 Como usar comandos de áudio:</h4>
+              <div className="space-y-2 text-sm text-blue-800">
+                <p><code className="bg-blue-100 px-1 rounded">audio:texto</code> - Gera áudio com voz clonada do provedor selecionado</p>
+                <p><code className="bg-blue-100 px-1 rounded">audiogeonomedoaudio:</code> - Reproduz áudio da biblioteca</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="fishaudio" className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Volume2 className="w-5 h-5" />
+              <span>Configuração Fish.Audio</span>
+            </CardTitle>
+            <CardDescription>
+              Configure a integração com Fish.Audio para clonagem de voz avançada
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="fish_audio_enabled">Habilitar Fish.Audio TTS</Label>
+              <Switch
+                id="fish_audio_enabled"
+                checked={settings.fish_audio_enabled || false}
+                onCheckedChange={(checked) =>
+                  onSettingsChange({ ...settings, fish_audio_enabled: checked })
+                }
+              />
+            </div>
+
+            {settings.fish_audio_enabled && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="fish_audio_api_key">API Key do Fish.Audio</Label>
+                  <div className="flex space-x-2">
+                    <Input
+                      id="fish_audio_api_key"
+                      type="password"
+                      value={settings.fish_audio_api_key || ''}
+                      onChange={(e) =>
+                        onSettingsChange({ ...settings, fish_audio_api_key: e.target.value })
+                      }
+                      placeholder="Sua API Key do Fish.Audio..."
+                    />
+                    <Button 
+                      variant="outline" 
+                      onClick={handleFishApiValidation}
+                      disabled={validatingFishApi}
+                    >
+                      {validatingFishApi ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        "Validar"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="fish_audio_format">Formato de Áudio</Label>
+                    <Select 
+                      value={settings.fish_audio_format || 'mp3'} 
+                      onValueChange={(value: 'mp3' | 'wav' | 'pcm') => 
+                        onSettingsChange({ ...settings, fish_audio_format: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mp3">MP3 (Recomendado)</SelectItem>
+                        <SelectItem value="wav">WAV (Alta qualidade)</SelectItem>
+                        <SelectItem value="pcm">PCM (Raw audio)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="fish_audio_quality">Qualidade/Latência</Label>
+                    <Select 
+                      value={settings.fish_audio_quality || 'balanced'} 
+                      onValueChange={(value: 'normal' | 'balanced') => 
+                        onSettingsChange({ ...settings, fish_audio_quality: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="normal">Normal (Mais rápido)</SelectItem>
+                        <SelectItem value="balanced">Balanceado (Qualidade/Velocidade)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {settings.fish_audio_api_key && (
+                  <FishAudioVoiceSelector
+                    apiKey={settings.fish_audio_api_key}
+                    selectedVoiceId={settings.fish_audio_voice_id || ''}
+                    onVoiceChange={(voiceId) => 
+                      onSettingsChange({ ...settings, fish_audio_voice_id: voiceId })
+                    }
+                  />
+                )}
+
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <h4 className="font-medium text-green-900 mb-2">🐟 Fish.Audio Features:</h4>
+                  <ul className="text-sm text-green-800 space-y-1">
+                    <li>• Clonagem de voz com alta fidelidade</li>
+                    <li>• Suporte a múltiplas linguagens</li>
+                    <li>• Controle fino de qualidade e latência</li>
+                    <li>• Formatos de áudio flexíveis</li>
+                  </ul>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
 
       <TabsContent value="elevenlabs" className="space-y-6">
         <Card>

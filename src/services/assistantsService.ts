@@ -55,18 +55,35 @@ export interface HumanizationConfig {
 }
 
 export interface AdvancedSettings {
+  // Audio Provider Selection
+  audio_provider?: 'elevenlabs' | 'fishaudio' | 'both';
+  
+  // General Audio
   audio_processing_enabled: boolean;
   voice_cloning_enabled: boolean;
+  
+  // ElevenLabs TTS
   eleven_labs_voice_id: string;
   eleven_labs_api_key: string;
   eleven_labs_model: string;
   voice_settings: VoiceSettings;
+  
+  // Fish.Audio TTS
+  fish_audio_enabled?: boolean;
+  fish_audio_api_key?: string;
+  fish_audio_voice_id?: string;
+  fish_audio_format?: 'mp3' | 'wav' | 'pcm';
+  fish_audio_quality?: 'normal' | 'balanced';
+  
+  // Behavior
   response_delay_seconds: number;
   typing_indicator_enabled: boolean;
   recording_indicator_enabled: boolean;
   humanization_level: 'basic' | 'advanced' | 'maximum';
   temperature: number;
   max_tokens: number;
+  
+  // Media & Files
   custom_files: Array<{
     id: string;
     name: string;
@@ -76,7 +93,8 @@ export interface AdvancedSettings {
   }>;
   audio_library: AudioLibraryItem[];
   recording_settings: RecordingSettings;
-  // Novas configurações
+  
+  // Advanced Features
   multimedia_enabled?: boolean;
   multimedia_config?: MultimediaConfig;
   humanization_config?: HumanizationConfig;
