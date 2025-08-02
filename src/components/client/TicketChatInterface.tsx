@@ -31,7 +31,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   
   const { toast } = useToast();
   const { markActivity, isOnline } = useOnlineStatus(clientId, true);
-  const { simulateHumanTyping, isTyping, isRecording } = useHumanizedTyping(clientId);
+  const { simulateHumanTyping, isTyping, isRecording, startTyping, stopTyping } = useHumanizedTyping(clientId);
   const { getMessageStatus } = useMessageStatus({ ticketId });
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
@@ -114,24 +114,12 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
     const messageToSend = newMessage.trim();
 
-    // 🚨 INTERCEPTAR COMANDO DEBUG ESPECIAL COM DEBOUNCE
+    // 🚨 INTERCEPTAR COMANDO DEBUG ESPECIAL COM DEBOUNCE E TYPING INTEGRADO
     if (messageToSend === '/debugbloco') {
       const currentTime = Date.now();
-      const timeSinceLastExecution = currentTime - lastDebugExecutionRef.current;
       const executionId = `debug_${currentTime}`;
       
-      // 🛡️ DEBOUNCE: Prevenir execuções múltiplas em 2 segundos
-      if (timeSinceLastExecution < 2000) {
-        console.warn(`🚨 [DEBUG] Comando /debugbloco BLOQUEADO - muito rápido (${timeSinceLastExecution}ms). Aguarde ${2000 - timeSinceLastExecution}ms`);
-        toast({
-          title: "⚠️ Comando Bloqueado",
-          description: `Aguarde ${Math.ceil((2000 - timeSinceLastExecution) / 1000)}s antes de executar novamente.`,
-          variant: "destructive"
-        });
-        return;
-      }
-      
-      // 🔒 VERIFICAR se já está executando
+      // 🔒 VERIFICAR se já está executando (simplified)
       if (debugCommandExecutingRef.current) {
         console.warn('🚨 [DEBUG] Comando /debugbloco BLOQUEADO - já executando');
         toast({
@@ -146,28 +134,43 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         debugCommandExecutingRef.current = true;
         lastDebugExecutionRef.current = currentTime;
         
-        console.log(`🚨 [DEBUG-${executionId}] Comando /debugbloco INICIANDO - teste isolado`);
+        console.log(`🚨 [DEBUG-${executionId}] Comando /debugbloco INICIANDO`);
         setNewMessage('');
         
-        const { debugBlocoService } = await import('@/services/debugBlocoService');
-        await debugBlocoService.handleDebugCommand(
-          ticketId,
-          clientId,
-          actualInstanceId,
-          ticket.chat_id
-        );
+        // IMPORTAR E EXECUTAR COM LOGGING EXTENSIVO
+        try {
+          console.log(`📦 [DEBUG-${executionId}] Importando debugBlocoService...`);
+          const serviceModule = await import('@/services/debugBlocoService');
+          console.log(`✅ [DEBUG-${executionId}] debugBlocoService importado:`, !!serviceModule.debugBlocoService);
+          
+          if (!serviceModule.debugBlocoService) {
+            throw new Error('debugBlocoService não encontrado no módulo');
+          }
+          
+          console.log(`🎯 [DEBUG-${executionId}] Executando handleDebugCommand...`);
+          await serviceModule.debugBlocoService.handleDebugCommand(
+            ticketId,
+            clientId,
+            actualInstanceId,
+            ticket.chat_id
+          );
+          
+          console.log(`✅ [DEBUG-${executionId}] handleDebugCommand CONCLUÍDO`);
+        } catch (importError) {
+          console.error(`❌ [DEBUG-${executionId}] Erro na importação/execução:`, importError);
+          throw new Error(`Falha na importação: ${importError instanceof Error ? importError.message : 'Erro desconhecido'}`);
+        }
         
-        console.log(`✅ [DEBUG-${executionId}] Comando /debugbloco CONCLUÍDO com sucesso`);
         toast({
           title: "✅ Debug Executado",
-          description: "Teste do sistema de blocos concluído! Verifique os logs.",
+          description: "Teste do sistema de blocos concluído! Verifique as mensagens do chat.",
           variant: "default"
         });
       } catch (error) {
         console.error(`❌ [DEBUG-${executionId}] Erro no comando /debugbloco:`, error);
         toast({
           title: "❌ Erro no Debug",
-          description: "Falha ao executar teste do sistema de blocos.",
+          description: error instanceof Error ? error.message : "Falha ao executar teste do sistema de blocos.",
           variant: "destructive"
         });
       } finally {
@@ -218,7 +221,20 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         ticket.chat_id,
         messageToSend,
         clientId,
-        ticket.assigned_assistant_id || undefined
+        ticket.assigned_assistant_id || undefined,
+        {
+          onProgress: (sent, total) => {
+            console.log(`📊 Progresso: ${sent}/${total} blocos`);
+          },
+          onTypingStart: () => {
+            console.log('🔄 Iniciando typing contínuo');
+            startTyping(ticket.chat_id);
+          },
+          onTypingStop: () => {
+            console.log('🛑 Finalizando typing contínuo');
+            stopTyping(ticket.chat_id);
+          }
+        }
       );
       
       if (response.success) {

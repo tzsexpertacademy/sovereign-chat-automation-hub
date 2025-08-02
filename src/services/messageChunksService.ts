@@ -122,7 +122,7 @@ class MessageChunksService {
         }))
       });
 
-      // 4. ENVIAR CADA BLOCO COM DELAYS E TYPING - VERSÃO CORRIGIDA
+      // 5. ENVIO COM TYPING CONTÍNUO - NOVA VERSÃO
       const results: UnifiedMessageResult[] = [];
       const messageIds: string[] = [];
       const errors: string[] = [];
@@ -132,6 +132,14 @@ class MessageChunksService {
         delayBetweenChunks: config.delayBetweenChunks,
         typingEnabled: config.typingEnabled
       });
+
+      // 🎯 TYPING CONTÍNUO: Iniciar uma única vez no primeiro bloco
+      let typingStarted = false;
+      if (config.typingEnabled && options.onTypingStart) {
+        smartLogs.info('MESSAGE', '🔄 INICIANDO TYPING CONTÍNUO para toda a sequência');
+        options.onTypingStart();
+        typingStarted = true;
+      }
 
       for (let i = 0; i < chunks.length; i++) {
         if (!this.activeProcesses.get(processKey)) {
@@ -146,30 +154,19 @@ class MessageChunksService {
         smartLogs.info('MESSAGE', `📤 ENVIANDO BLOCO ${chunkNumber}/${chunks.length}`, {
           chunkLength: chunk.length,
           chunkPreview: chunk.substring(0, 100) + '...',
-          isLastChunk
+          isLastChunk,
+          typingContinuo: typingStarted
         });
 
-        // CALLBACK: Typing Start
-        if (config.typingEnabled && options.onTypingStart) {
-          smartLogs.info('MESSAGE', `⌨️ CALLBACK: Typing Start para bloco ${chunkNumber}`);
-          options.onTypingStart();
-        }
-
-        // SIMULAR DIGITAÇÃO
+        // SIMULAR DIGITAÇÃO para este bloco específico
         if (config.typingEnabled) {
           const typingDuration = this.calculateTypingDuration(chunk, config);
-          smartLogs.info('MESSAGE', `⌨️ SIMULANDO digitação por ${typingDuration}ms`, {
+          smartLogs.info('MESSAGE', `⌨️ SIMULANDO digitação por ${typingDuration}ms (bloco ${chunkNumber})`, {
             chunkNumber,
             chunkLength: chunk.length,
             typingSpeed: config.typingSpeed
           });
           await this.delay(typingDuration);
-        }
-
-        // CALLBACK: Typing Stop
-        if (config.typingEnabled && options.onTypingStop) {
-          smartLogs.info('MESSAGE', `✋ CALLBACK: Typing Stop para bloco ${chunkNumber}`);
-          options.onTypingStop();
         }
 
         // ENVIAR BLOCO
@@ -226,6 +223,12 @@ class MessageChunksService {
           
           await this.delay(finalDelay);
         }
+      }
+
+      // 🛑 TYPING CONTÍNUO: Parar apenas no final de toda a sequência
+      if (typingStarted && config.typingEnabled && options.onTypingStop) {
+        smartLogs.info('MESSAGE', '🛑 FINALIZANDO TYPING CONTÍNUO - sequência completa');
+        options.onTypingStop();
       }
 
       // 5. RESULTADO FINAL
