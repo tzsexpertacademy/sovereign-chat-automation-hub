@@ -648,13 +648,8 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     let finalResponse = aiResponse;
     
     try {
-      // Timeout de 10 segundos para comandos de áudio
-      const audioPromise = processAudioCommands(aiResponse, ticketId, safeAssistant, resolvedInstanceId, client?.business_token || '');
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Audio processing timeout')), 10000)
-      );
-      
-      const audioCommands = await Promise.race([audioPromise, timeoutPromise]) as any;
+      // Processar comandos de áudio sem timeout agressivo
+      const audioCommands = await processAudioCommands(aiResponse, ticketId, safeAssistant, resolvedInstanceId, client?.business_token || '');
       
       if (audioCommands.hasAudioCommands) {
         console.log('🎵 [AUDIO-COMMANDS] ✅ Comandos de áudio processados:', audioCommands.processedCount);
@@ -2113,9 +2108,7 @@ async function processAudioCommands(
   instanceId: string, 
   businessToken: string
 ): Promise<{ hasAudioCommands: boolean; processedCount: number; remainingText: string }> {
-  console.log('🎵 [PROCESS-AUDIO] 🚀 Iniciando processamento...');
-  console.log('🎵 [PROCESS-AUDIO] Business token:', businessToken ? '✅ presente' : '❌ ausente');
-  console.log('🎵 [PROCESS-AUDIO] Message length:', message.length);
+  console.log('🎵 [PROCESS-AUDIO] Iniciando processamento de comandos de áudio');
   
   // VALIDAÇÃO CRÍTICA: Business token obrigatório
   if (!businessToken || businessToken.trim() === '') {
@@ -2179,12 +2172,7 @@ async function processAudioCommands(
     
     const hasAudioCommands = processedCount > 0;
     
-    console.log('🎵 [PROCESS-AUDIO] ✅ Processamento concluído:', {
-      hasAudioCommands,
-      processedCount,
-      remainingTextLength: remainingText.length,
-      businessTokenPresent: !!businessToken
-    });
+    console.log('🎵 [PROCESS-AUDIO] Processamento concluído - comandos:', processedCount);
     
     return { hasAudioCommands, processedCount, remainingText };
     
