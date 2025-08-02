@@ -2250,8 +2250,8 @@ async function processAudioCommands(
     // ✅ REGEX UNIVERSAL PARA DETECTAR audio: COM E SEM ASPAS
     const audioTextPattern = /audio\s*:\s*(?:"([^"]+)"|([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$))/gi;
     
-    // ✅ REGEX MELHORADO PARA BIBLIOTECA: aceita audiogeono[nome]: e audio[nome]: COM OU SEM DOIS PONTOS
-    const audioLibraryPattern = /(?:audiogeono\s*([^:\s\n]+)|audio\s*([^:\s\n]+))\s*:?/gi;
+    // ✅ REGEX CORRIGIDO PARA BIBLIOTECA: captura qualquer comando que comece com audio seguido de palavra e dois pontos
+    const audioLibraryPattern = /audio\s*([^:\s\n]+)\s*:/gi;
     
     console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
     console.log('🔍 [AUDIO-COMMANDS] Mensagem completa:', message);
@@ -2632,22 +2632,22 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
       
       console.log('🔍 [AUDIO-LIBRARY] Testando match:', { trigger, contra: normalizedSearchName });
       
-      // 1. Match exato
+      // 1. Match exato do trigger
       if (trigger === normalizedSearchName) {
         console.log('✅ [AUDIO-LIBRARY] Match exato encontrado');
         return true;
       }
       
-      // 2. Buscar por trigger sem prefixo "audiogeono"
-      if (trigger.startsWith('audiogeono') && 
-          trigger.substring(10) === normalizedSearchName) {
-        console.log('✅ [AUDIO-LIBRARY] Match sem prefixo encontrado');
+      // 2. Match ignorando prefixo "audio" - para casos como "audiogeonothaliszu" vs "geonothaliszu"
+      if (normalizedSearchName.startsWith('audio') && 
+          trigger === normalizedSearchName.substring(5)) {
+        console.log('✅ [AUDIO-LIBRARY] Match sem prefixo "audio" encontrado');
         return true;
       }
       
-      // 3. Buscar adicionando prefixo "audiogeono"
-      if (trigger === `audiogeono${normalizedSearchName}`) {
-        console.log('✅ [AUDIO-LIBRARY] Match com prefixo encontrado');
+      // 3. Match adicionando prefixo "audio" - para casos como "geonothaliszu" vs "audiogeonothaliszu"
+      if (trigger === `audio${normalizedSearchName}`) {
+        console.log('✅ [AUDIO-LIBRARY] Match com prefixo "audio" encontrado');
         return true;
       }
       
@@ -2674,6 +2674,17 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
         procurandoPor: normalizedSearchName,
         triggersDisponiveis: library.map(item => item.trigger)
       });
+      
+      // 🎯 FALLBACK INTELIGENTE: Sugerir triggers similares
+      const similarTriggers = library
+        .filter(item => item.trigger.toLowerCase().includes(normalizedSearchName.substring(0, 4)))
+        .map(item => item.trigger)
+        .slice(0, 3);
+      
+      if (similarTriggers.length > 0) {
+        console.log('💡 [AUDIO-LIBRARY] Triggers similares encontrados:', similarTriggers);
+      }
+      
       return null;
     }
     
