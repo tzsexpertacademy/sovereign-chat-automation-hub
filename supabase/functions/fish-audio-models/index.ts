@@ -53,12 +53,29 @@ serve(async (req) => {
     if (action === 'list') {
       console.log('📋 [FISH-AUDIO-MODELS] Buscando modelos...');
       
+      // Verificar créditos primeiro
+      console.log('💰 [FISH-AUDIO-MODELS] Verificando créditos...');
+      const creditResponse = await fetch('https://api.fish.audio/wallet/self/api-credit', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+        },
+      });
+
+      if (creditResponse.ok) {
+        const creditData = await creditResponse.json();
+        console.log('💰 [FISH-AUDIO-MODELS] Créditos disponíveis:', {
+          credit: creditData.credit || 0,
+          freeCredit: creditData.free_credit || 0
+        });
+      }
+
       // Primeiro, buscar modelos pessoais do usuário (vozes clonadas)
       let userModels = [];
       try {
-        console.log('👤 [FISH-AUDIO-MODELS] Buscando modelos pessoais com visibility=private...');
+        console.log('👤 [FISH-AUDIO-MODELS] Buscando modelos pessoais com self=true...');
         
-        const userResponse = await fetch('https://api.fish.audio/model?visibility=private&type=tts&state=trained&page_size=100', {
+        const userResponse = await fetch('https://api.fish.audio/model?self=true&type=tts&state=trained&page_size=100', {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${apiKey}`,

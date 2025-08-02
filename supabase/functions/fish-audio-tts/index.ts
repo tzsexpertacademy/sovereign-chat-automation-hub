@@ -43,22 +43,44 @@ serve(async (req) => {
       latency
     });
 
+    // Verificar créditos primeiro
+    console.log('💰 [FISH-AUDIO-TTS] Verificando créditos...');
+    const creditResponse = await fetch('https://api.fish.audio/wallet/self/api-credit', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    });
+
+    if (creditResponse.ok) {
+      const creditData = await creditResponse.json();
+      console.log('💰 [FISH-AUDIO-TTS] Créditos disponíveis:', {
+        credit: creditData.credit || 0,
+        freeCredit: creditData.free_credit || 0
+      });
+      
+      if ((creditData.credit || 0) + (creditData.free_credit || 0) <= 0) {
+        throw new Error('Créditos insuficientes na Fish.Audio');
+      }
+    }
+
     // Fazer requisição para Fish.Audio API usando endpoint correto
     const response = await fetch('https://api.fish.audio/v1/tts', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'model': format === 'mp3' ? 'speech-1.5' : 'speech-1.6'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         text,
         reference_id,
-        format,
-        normalize,
-        mp3_bitrate,
-        opus_bitrate,
-        latency
+        format: format || 'mp3',
+        normalize: normalize !== false,
+        temperature: 0.7,
+        top_p: 0.9,
+        chunk_length: 200,
+        ...(format === 'mp3' && { mp3_bitrate: mp3_bitrate || 128 }),
+        ...(format === 'opus' && { opus_bitrate: opus_bitrate || 32 })
       }),
     });
 

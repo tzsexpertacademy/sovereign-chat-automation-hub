@@ -2244,14 +2244,15 @@ async function processAudioCommands(
     let processedCount = 0;
     let remainingText = message;
     
-    // ✅ PADRÕES MELHORADOS PARA DETECÇÃO DE ÁUDIO
-    const audioTextPattern = /audio:\s*"([^"]+)"|audio:\s*([^"\n\r]+?)(?=\n|\r|$|audio:|áudio:)/gi;
+    // ✅ PADRÕES MELHORADOS PARA DETECÇÃO DE ÁUDIO - CORRIGIDO
+    const audioTextPattern = /audio:\s*"([^"]+)"|audio:\s*([^"\n\r]+?)(?=\s*\n|\s*\r|$)/gi;
     const audioLibraryPattern = /audiogeono([^:]+):/gi;
     
     console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
     console.log('🔍 [AUDIO-COMMANDS] Padrões sendo usados:', {
       audioTextPattern: audioTextPattern.source,
-      messagePreview: message.substring(0, 100) + '...'
+      messagePreview: message.substring(0, 100) + '...',
+      messageComplete: message
     });
     
     // 1. PROCESSAR COMANDOS audio:texto (TTS)
@@ -2390,6 +2391,7 @@ async function generateTTSAudio(text: string, assistant: any): Promise<{ success
     
     if (!advancedSettings.eleven_labs_api_key && !advancedSettings.fish_audio_api_key) {
       console.error('⚠️ [TTS] Nenhuma API de TTS configurada no assistente');
+      console.log('📝 [TTS] Fallback: Retornando falha para enviar como texto');
       return { success: false, error: 'TTS não configurado - adicione API key do ElevenLabs ou Fish.Audio' };
     }
     
@@ -2444,38 +2446,45 @@ async function generateTTSAudio(text: string, assistant: any): Promise<{ success
     // Tentar Fish.Audio como fallback
     if (advancedSettings.fish_audio_api_key && advancedSettings.fish_audio_voice_id) {
       
-      console.log('🐟 [TTS] Tentando Fish.Audio...', {
+      console.log('🐟 [TTS] Tentando Fish.Audio como fallback...', {
         referenceId: advancedSettings.fish_audio_voice_id,
         format: advancedSettings.fish_audio_format || 'mp3'
       });
       
       try {
-        const fishAudioResult = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/fish-audio-tts`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-            'Content-Type': 'application/json',
+        const fishAudioResult = await retryWithBackoff(
+          async () => {
+            const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/fish-audio-tts`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                apiKey: advancedSettings.fish_audio_api_key,
+                text,
+                reference_id: advancedSettings.fish_audio_voice_id,
+                format: advancedSettings.fish_audio_format || 'mp3',
+                normalize: true
+              })
+            });
+            
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(`Fish.Audio API error: ${errorData.error || response.statusText}`);
+            }
+            
+            return response.json();
           },
-          body: JSON.stringify({
-            apiKey: advancedSettings.fish_audio_api_key,
-            text,
-            reference_id: advancedSettings.fish_audio_voice_id,
-            format: advancedSettings.fish_audio_format || 'mp3',
-            latency: advancedSettings.fish_audio_quality || 'balanced'
-          })
-        });
+          { maxAttempts: 2, initialDelay: 1000, maxDelay: 3000, backoffMultiplier: 2 },
+          'Fish.Audio TTS'
+        );
         
-        if (fishAudioResult.ok) {
-          const data = await fishAudioResult.json();
-          console.log('✅ [TTS] Fish.Audio TTS gerado com sucesso');
-          return { success: true, audioBase64: data.audioBase64 };
-        } else {
-          const errorData = await fishAudioResult.json().catch(() => ({}));
-          console.error('❌ [TTS] Fish.Audio falhou:', errorData);
-          return { success: false, error: `Fish.Audio: ${errorData.error || 'Erro desconhecido'}` };
-        }
+        console.log('✅ [TTS] Fish.Audio TTS gerado com sucesso');
+        return { success: true, audioBase64: fishAudioResult.audioBase64 };
+        
       } catch (error) {
-        console.error('❌ [TTS] Erro no Fish.Audio:', error);
+        console.error('❌ [TTS] Fish.Audio falhou após retries:', error);
         return { success: false, error: `Fish.Audio: ${error.message}` };
       }
     }
