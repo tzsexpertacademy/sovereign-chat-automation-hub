@@ -226,9 +226,10 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
 
   return (
     <Tabs defaultValue="provider" className="space-y-6">
-      <TabsList className="grid w-full grid-cols-4">
+      <TabsList className="grid w-full grid-cols-5">
         <TabsTrigger value="provider">Provedor</TabsTrigger>
-        <TabsTrigger value="fishaudio">Fish.Audio TTS</TabsTrigger>
+        <TabsTrigger value="elevenlabs">ElevenLabs</TabsTrigger>
+        <TabsTrigger value="fishaudio">Fish.Audio</TabsTrigger>
         <TabsTrigger value="library">Biblioteca</TabsTrigger>
         <TabsTrigger value="recording">Configurações</TabsTrigger>
       </TabsList>
@@ -299,6 +300,168 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
                 <p><code className="bg-blue-100 px-1 rounded">audiogeonomedoaudio:</code> - Reproduz áudio da biblioteca</p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="elevenlabs" className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Volume2 className="w-5 h-5" />
+              <span>Configuração ElevenLabs</span>
+            </CardTitle>
+            <CardDescription>
+              Configure a integração com ElevenLabs para gerar áudio das respostas do assistente
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="voice_cloning_enabled">Habilitar Geração de Áudio</Label>
+              <Switch
+                id="voice_cloning_enabled"
+                checked={settings.voice_cloning_enabled}
+                onCheckedChange={(checked) =>
+                  onSettingsChange({ ...settings, voice_cloning_enabled: checked })
+                }
+              />
+            </div>
+
+            {settings.voice_cloning_enabled && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="eleven_labs_api_key">API Key do ElevenLabs</Label>
+                  <div className="flex space-x-2">
+                    <Input
+                      id="eleven_labs_api_key"
+                      type="password"
+                      value={settings.eleven_labs_api_key || ''}
+                      onChange={(e) =>
+                        onSettingsChange({ ...settings, eleven_labs_api_key: e.target.value })
+                      }
+                      placeholder="Sua API Key do ElevenLabs..."
+                    />
+                    <Button 
+                      variant="outline" 
+                      onClick={handleApiValidation}
+                      disabled={validatingApi}
+                    >
+                      {validatingApi ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        "Validar"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="eleven_labs_model">Modelo TTS</Label>
+                  <Select 
+                    value={settings.eleven_labs_model || 'eleven_multilingual_v2'} 
+                    onValueChange={(value) => 
+                      onSettingsChange({ ...settings, eleven_labs_model: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ELEVENLABS_MODELS.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {settings.eleven_labs_api_key && (
+                  <ElevenLabsVoiceSelector
+                    apiKey={settings.eleven_labs_api_key}
+                    selectedVoiceId={settings.eleven_labs_voice_id || ''}
+                    onVoiceChange={(voiceId) => 
+                      onSettingsChange({ ...settings, eleven_labs_voice_id: voiceId })
+                    }
+                    model={settings.eleven_labs_model || 'eleven_multilingual_v2'}
+                  />
+                )}
+
+                <div className="space-y-4">
+                  <Label>Configurações de Voz</Label>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="stability" className="text-sm">
+                        Estabilidade: {settings.voice_settings?.stability || 0.5}
+                      </Label>
+                    </div>
+                    <Slider
+                      id="stability"
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      value={[settings.voice_settings?.stability || 0.5]}
+                      onValueChange={(value) =>
+                        onSettingsChange({
+                          ...settings,
+                          voice_settings: { ...settings.voice_settings, stability: value[0] }
+                        })
+                      }
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="similarity_boost" className="text-sm">
+                        Similarity Boost: {settings.voice_settings?.similarity_boost || 0.5}
+                      </Label>
+                    </div>
+                    <Slider
+                      id="similarity_boost"
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      value={[settings.voice_settings?.similarity_boost || 0.5]}
+                      onValueChange={(value) =>
+                        onSettingsChange({
+                          ...settings,
+                          voice_settings: { ...settings.voice_settings, similarity_boost: value[0] }
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <Button 
+                  onClick={handleVoiceTest}
+                  disabled={testingVoice || !settings.eleven_labs_voice_id}
+                  className="w-full"
+                >
+                  {testingVoice ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Testando Voz...
+                    </>
+                  ) : (
+                    <>
+                      <TestTube className="w-4 h-4 mr-2" />
+                      Testar Voz ElevenLabs
+                    </>
+                  )}
+                </Button>
+
+                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <h4 className="font-medium text-purple-900 mb-2">🎭 ElevenLabs Features:</h4>
+                  <ul className="text-sm text-purple-800 space-y-1">
+                    <li>• Vozes ultra-realistas com emoção</li>
+                    <li>• Múltiplos idiomas e sotaques</li>
+                    <li>• Controle fino de estabilidade</li>
+                    <li>• Modelos otimizados para diferentes usos</li>
+                  </ul>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </TabsContent>

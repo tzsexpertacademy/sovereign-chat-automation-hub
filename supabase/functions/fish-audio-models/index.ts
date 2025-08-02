@@ -25,7 +25,7 @@ serve(async (req) => {
     if (action === 'validate') {
       console.log('🔑 [FISH-AUDIO-MODELS] Validando API Key...');
       
-      const validateResponse = await fetch('https://api.fish.audio/v1/models', {
+      const validateResponse = await fetch('https://api.fish.audio/v1/tts', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -46,7 +46,7 @@ serve(async (req) => {
     if (action === 'list') {
       console.log('📋 [FISH-AUDIO-MODELS] Buscando modelos...');
       
-      const response = await fetch('https://api.fish.audio/v1/models', {
+      const response = await fetch('https://api.fish.audio/model', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
