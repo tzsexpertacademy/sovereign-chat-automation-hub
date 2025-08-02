@@ -305,6 +305,13 @@ class UnifiedMessageService {
         will_call: 'messageChunksService.sendMessageInChunks'
       });
       
+      console.log('🚀 [SMART] CHAMANDO messageChunksService com callbacks:', {
+        hasOnProgress: !!callbacks?.onProgress,
+        hasOnTypingStart: !!callbacks?.onTypingStart,
+        hasOnTypingStop: !!callbacks?.onTypingStop,
+        assistantId: finalAssistantId
+      });
+
       const result = await this.sendMessageInChunks({
         instanceId,
         chatId,

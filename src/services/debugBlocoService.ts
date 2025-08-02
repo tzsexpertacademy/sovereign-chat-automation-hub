@@ -19,11 +19,24 @@ export const debugBlocoService = {
     instanceId: string,
     chatId: string
   ): Promise<void> {
-    smartLogs.info('MESSAGE', '🚨 COMANDO /debugbloco EXECUTADO', {
+    // LOGS ROBUSTOS - com fallback caso smartLogs falhe
+    try {
+      smartLogs.info('MESSAGE', '🚨 COMANDO /debugbloco EXECUTADO', {
+        ticketId,
+        clientId,
+        instanceId,
+        chatId
+      });
+    } catch (logError) {
+      console.warn('⚠️ smartLogs indisponível, usando console direto:', logError);
+    }
+
+    console.log('🚨 [DEBUG-BLOCO] COMANDO EXECUTADO', {
       ticketId,
       clientId,
       instanceId,
-      chatId
+      chatId,
+      timestamp: new Date().toISOString()
     });
 
     try {
@@ -75,7 +88,14 @@ Esta é uma funcionalidade crítica para o CRM Yumer e deve funcionar perfeitame
         assistantId
       });
 
-      // 4. EXECUTAR TESTE DO SISTEMA DE BLOCOS
+      // 4. EXECUTAR TESTE DO SISTEMA DE BLOCOS COM CALLBACKS ROBUSTOS
+      console.log('🔥 [DEBUG-BLOCO] Iniciando teste com messageChunksService', {
+        messageLength: testMessage.length,
+        assistantId,
+        instanceId,
+        chatId
+      });
+
       const result = await messageChunksService.sendMessageInChunks({
         instanceId,
         chatId,
@@ -84,13 +104,28 @@ Esta é uma funcionalidade crítica para o CRM Yumer e deve funcionar perfeitame
         assistantId,
         source: 'ai',
         onProgress: (sent, total) => {
-          smartLogs.info('MESSAGE', `📊 PROGRESSO: ${sent}/${total} blocos enviados`);
+          console.log(`📊 [DEBUG-BLOCO] PROGRESSO: ${sent}/${total} blocos enviados`);
+          try {
+            smartLogs.info('MESSAGE', `📊 PROGRESSO: ${sent}/${total} blocos enviados`);
+          } catch (e) {
+            // Ignorar erro de log
+          }
         },
         onTypingStart: () => {
-          smartLogs.info('MESSAGE', '⌨️ TYPING START DETECTADO');
+          console.log('⌨️ [DEBUG-BLOCO] TYPING START DETECTADO');
+          try {
+            smartLogs.info('MESSAGE', '⌨️ TYPING START DETECTADO');
+          } catch (e) {
+            // Ignorar erro de log
+          }
         },
         onTypingStop: () => {
-          smartLogs.info('MESSAGE', '✋ TYPING STOP DETECTADO');
+          console.log('✋ [DEBUG-BLOCO] TYPING STOP DETECTADO');
+          try {
+            smartLogs.info('MESSAGE', '✋ TYPING STOP DETECTADO');
+          } catch (e) {
+            // Ignorar erro de log
+          }
         }
       });
 
@@ -119,20 +154,30 @@ Esta é uma funcionalidade crítica para o CRM Yumer e deve funcionar perfeitame
       }
 
     } catch (error: any) {
-      smartLogs.error('MESSAGE', '❌ ERRO NO TESTE DE BLOCOS', { error: error.message });
+      console.error('❌ [DEBUG-BLOCO] ERRO NO TESTE DE BLOCOS:', error);
       
-      // Salvar erro também
-      await ticketsService.addTicketMessage({
-        ticket_id: ticketId,
-        message_id: `debug_error_${Date.now()}`,
-        from_me: true,
-        sender_name: '🚨 DEBUG ERRO',
-        content: `❌ ERRO NO TESTE: ${error.message}`,
-        message_type: 'text',
-        is_internal_note: true,
-        is_ai_response: false,
-        timestamp: new Date().toISOString()
-      });
+      try {
+        smartLogs.error('MESSAGE', '❌ ERRO NO TESTE DE BLOCOS', { error: error.message });
+      } catch (logError) {
+        console.warn('⚠️ smartLogs erro:', logError);
+      }
+      
+      // Salvar erro também - com try/catch
+      try {
+        await ticketsService.addTicketMessage({
+          ticket_id: ticketId,
+          message_id: `debug_error_${Date.now()}`,
+          from_me: true,
+          sender_name: '🚨 DEBUG ERRO',
+          content: `❌ ERRO NO TESTE: ${error.message}`,
+          message_type: 'text',
+          is_internal_note: true,
+          is_ai_response: false,
+          timestamp: new Date().toISOString()
+        });
+      } catch (saveError) {
+        console.error('❌ [DEBUG-BLOCO] Erro ao salvar mensagem de erro:', saveError);
+      }
     }
   },
 

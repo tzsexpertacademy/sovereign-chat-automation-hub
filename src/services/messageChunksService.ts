@@ -136,9 +136,21 @@ class MessageChunksService {
       // 🎯 TYPING CONTÍNUO: Iniciar uma única vez no primeiro bloco
       let typingStarted = false;
       if (config.typingEnabled && options.onTypingStart) {
+        console.log('🔄 [TYPING-CONTINUO] INICIANDO typing para toda a sequência');
         smartLogs.info('MESSAGE', '🔄 INICIANDO TYPING CONTÍNUO para toda a sequência');
-        options.onTypingStart();
-        typingStarted = true;
+        try {
+          options.onTypingStart();
+          typingStarted = true;
+          console.log('✅ [TYPING-CONTINUO] Callback onTypingStart executado com sucesso');
+        } catch (callbackError) {
+          console.error('❌ [TYPING-CONTINUO] Erro no callback onTypingStart:', callbackError);
+        }
+      } else {
+        console.log('⚠️ [TYPING-CONTINUO] NÃO INICIADO:', {
+          typingEnabled: config.typingEnabled,
+          hasCallback: !!options.onTypingStart,
+          reason: !config.typingEnabled ? 'typing desabilitado' : 'callback ausente'
+        });
       }
 
       for (let i = 0; i < chunks.length; i++) {
@@ -227,8 +239,20 @@ class MessageChunksService {
 
       // 🛑 TYPING CONTÍNUO: Parar apenas no final de toda a sequência
       if (typingStarted && config.typingEnabled && options.onTypingStop) {
+        console.log('🛑 [TYPING-CONTINUO] FINALIZANDO typing - sequência completa');
         smartLogs.info('MESSAGE', '🛑 FINALIZANDO TYPING CONTÍNUO - sequência completa');
-        options.onTypingStop();
+        try {
+          options.onTypingStop();
+          console.log('✅ [TYPING-CONTINUO] Callback onTypingStop executado com sucesso');
+        } catch (callbackError) {
+          console.error('❌ [TYPING-CONTINUO] Erro no callback onTypingStop:', callbackError);
+        }
+      } else {
+        console.log('⚠️ [TYPING-CONTINUO] NÃO FINALIZADO:', {
+          typingStarted,
+          typingEnabled: config.typingEnabled,
+          hasCallback: !!options.onTypingStop
+        });
       }
 
       // 5. RESULTADO FINAL
