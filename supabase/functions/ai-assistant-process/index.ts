@@ -92,7 +92,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🤖 [AI-ASSISTANT] 🚀 PROCESSANDO REQUISIÇÃO - TIMESTAMP:', new Date().toISOString());
+    console.log('🤖 [AI-ASSISTANT] Processando requisição');
     
     const requestBody = await req.json();
     console.log('📋 [AI-ASSISTANT] Body completo recebido:', JSON.stringify(requestBody, null, 2));
@@ -593,10 +593,7 @@ INSTRUÇÕES IMPORTANTES PARA CONTINUIDADE:
 ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitação do usuário' : ''}
 - IMPORTANTE: Esta é uma conversa em andamento - não comece do zero!`;
 
-    console.log('🤖 [AI-ASSISTANT] 🧠 INICIANDO CHAMADA OPENAI - TIMESTAMP:', new Date().toISOString());
-    console.log('🤖 [AI-ASSISTANT] Modelo:', safeAssistant.model || 'gpt-4o-mini');
-    console.log('🤖 [AI-ASSISTANT] System prompt length:', systemPrompt.length);
-    console.log('🤖 [AI-ASSISTANT] Message content length:', messageContent.length);
+    console.log('🤖 [AI-ASSISTANT] Chamando OpenAI API com modelo:', safeAssistant.model || 'gpt-4o-mini');
 
     // Chamar OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -625,47 +622,17 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     const aiData = await response.json();
     const aiResponse = aiData.choices[0].message.content;
 
-    console.log('🤖 [AI-ASSISTANT] ✅ OPENAI RESPONDEU - TIMESTAMP:', new Date().toISOString());
-    console.log('🤖 [AI-ASSISTANT] Response length:', aiResponse?.length || 0);
-    console.log('🤖 [AI-ASSISTANT] Response preview:', aiResponse?.substring(0, 100) + '...');
-    console.log('🤖 [AI-ASSISTANT] Model usado:', safeAssistant.model || 'gpt-4o-mini');
+    console.log('✅ [AI-ASSISTANT] Resposta da IA gerada:', {
+      responseLength: aiResponse?.length || 0,
+      model: safeAssistant.model || 'gpt-4o-mini'
+    });
 
-    // 🔐 BUSCAR BUSINESS TOKEN PARA COMANDOS DE ÁUDIO
-    console.log('🔐 [AI-ASSISTANT] Verificando business token para cliente:', resolvedClientId);
-    
-    const { data: client, error: clientError } = await supabase
-      .from('clients')
-      .select('business_token')
-      .eq('id', resolvedClientId)
-      .single();
-    
-    if (clientError || !client?.business_token) {
-      console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', resolvedClientId);
-    }
-
-    // 🎵 DETECTAR E PROCESSAR COMANDOS DE ÁUDIO COM TIMEOUT E FALLBACK
-    console.log('🎵 [AUDIO-COMMANDS] Iniciando processamento de comandos de áudio...');
+    // 🎵 DETECTAR E PROCESSAR COMANDOS DE ÁUDIO
     let finalResponse = aiResponse;
-    
-    try {
-      // Timeout de 10 segundos para comandos de áudio
-      const audioPromise = processAudioCommands(aiResponse, ticketId, safeAssistant, resolvedInstanceId, client?.business_token || '');
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Audio processing timeout')), 10000)
-      );
-      
-      const audioCommands = await Promise.race([audioPromise, timeoutPromise]) as any;
-      
-      if (audioCommands.hasAudioCommands) {
-        console.log('🎵 [AUDIO-COMMANDS] ✅ Comandos de áudio processados:', audioCommands.processedCount);
-        finalResponse = audioCommands.remainingText;
-      } else {
-        console.log('🎵 [AUDIO-COMMANDS] ℹ️ Nenhum comando de áudio detectado');
-      }
-    } catch (audioError) {
-      console.error('⚠️ [AUDIO-COMMANDS] Erro no processamento de áudio (continuando com texto):', audioError);
-      // FALLBACK: Continuar com resposta de texto mesmo se áudio falhar
-      finalResponse = aiResponse;
+    const audioCommands = await processAudioCommands(aiResponse, ticketId, safeAssistant, resolvedInstanceId, client.business_token);
+    if (audioCommands.hasAudioCommands) {
+      console.log('🎵 [AUDIO-COMMANDS] Comandos de áudio detectados:', audioCommands.processedCount);
+      finalResponse = audioCommands.remainingText;
     }
 
     // Se não há texto restante após comandos de áudio, finalizar aqui
@@ -751,7 +718,18 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       });
     }
 
-    // Business token já foi obtido anteriormente para comandos de áudio
+    // Garantir business token válido
+    console.log('🔐 [AI-ASSISTANT] Verificando business token para cliente:', resolvedClientId);
+    
+    const { data: client, error: clientError } = await supabase
+      .from('clients')
+      .select('business_token')
+      .eq('id', resolvedClientId)
+      .single();
+    
+    if (clientError || !client?.business_token) {
+      console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', resolvedClientId);
+    }
 
     // 📱 CONFIGURAR PROFILE ONLINE SE HABILITADO
     try {
@@ -989,11 +967,6 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       messageId: messageId,
       timestamp: new Date().toISOString()
     });
-
-    console.log('🏁 [AI-ASSISTANT] ✅ RETORNANDO SUCESSO - TIMESTAMP:', new Date().toISOString());
-    console.log('🏁 [AI-ASSISTANT] Final response length:', finalResponse?.length || 0);
-    console.log('🏁 [AI-ASSISTANT] Message ID:', messageId);
-    console.log('🏁 [AI-ASSISTANT] Sent via Yumer:', sendResult.success);
 
     return new Response(
       JSON.stringify({
@@ -2113,16 +2086,6 @@ async function processAudioCommands(
   instanceId: string, 
   businessToken: string
 ): Promise<{ hasAudioCommands: boolean; processedCount: number; remainingText: string }> {
-  console.log('🎵 [PROCESS-AUDIO] 🚀 Iniciando processamento...');
-  console.log('🎵 [PROCESS-AUDIO] Business token:', businessToken ? '✅ presente' : '❌ ausente');
-  console.log('🎵 [PROCESS-AUDIO] Message length:', message.length);
-  
-  // VALIDAÇÃO CRÍTICA: Business token obrigatório
-  if (!businessToken || businessToken.trim() === '') {
-    console.warn('⚠️ [PROCESS-AUDIO] Business token vazio - PULANDO comandos de áudio');
-    return { hasAudioCommands: false, processedCount: 0, remainingText: message };
-  }
-  
   try {
     let processedCount = 0;
     let remainingText = message;
@@ -2179,19 +2142,16 @@ async function processAudioCommands(
     
     const hasAudioCommands = processedCount > 0;
     
-    console.log('🎵 [PROCESS-AUDIO] ✅ Processamento concluído:', {
+    console.log('🎵 [AUDIO-COMMANDS] Processamento concluído:', {
       hasAudioCommands,
       processedCount,
-      remainingTextLength: remainingText.length,
-      businessTokenPresent: !!businessToken
+      remainingTextLength: remainingText.length
     });
     
     return { hasAudioCommands, processedCount, remainingText };
     
   } catch (error) {
-    console.error('❌ [PROCESS-AUDIO] Erro no processamento:', error);
-    console.error('❌ [PROCESS-AUDIO] Stack trace:', error.stack);
-    // FALLBACK CRÍTICO: Sempre retornar texto original se áudio falhar
+    console.error('❌ [AUDIO-COMMANDS] Erro no processamento de comandos:', error);
     return { hasAudioCommands: false, processedCount: 0, remainingText: message };
   }
 }

@@ -21,26 +21,19 @@ serve(async (req) => {
 
     console.log('🐟 [FISH-AUDIO-MODELS] Processando:', { action });
 
-    // Validar API Key usando endpoint de modelos
+    // Validar API Key
     if (action === 'validate') {
       console.log('🔑 [FISH-AUDIO-MODELS] Validando API Key...');
       
-      const validateResponse = await fetch('https://api.fish.audio/model?page_size=1', {
+      const validateResponse = await fetch('https://api.fish.audio/v1/tts', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
       });
 
       const isValid = validateResponse.ok;
-      
-      if (!isValid) {
-        const errorText = await validateResponse.text();
-        console.log('🔑 [FISH-AUDIO-MODELS] Erro na validação:', { 
-          status: validateResponse.status, 
-          error: errorText 
-        });
-      }
       
       console.log('🔑 [FISH-AUDIO-MODELS] Validação resultado:', { isValid, status: validateResponse.status });
 
@@ -53,10 +46,11 @@ serve(async (req) => {
     if (action === 'list') {
       console.log('📋 [FISH-AUDIO-MODELS] Buscando modelos...');
       
-      const response = await fetch('https://api.fish.audio/model?page_size=50', {
+      const response = await fetch('https://api.fish.audio/model', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
       });
 
@@ -64,24 +58,13 @@ serve(async (req) => {
         const errorText = await response.text();
         console.error('🐟 [FISH-AUDIO-MODELS] Erro da API:', {
           status: response.status,
-          statusText: response.statusText,
           error: errorText
         });
         
         throw new Error(`Fish.Audio API Error (${response.status}): ${errorText}`);
       }
 
-      const data = await response.json();
-      
-      console.log('📊 [FISH-AUDIO-MODELS] Resposta da API:', {
-        hasItems: !!data.items,
-        hasTotal: !!data.total,
-        dataType: typeof data,
-        dataKeys: Object.keys(data || {})
-      });
-
-      // Fish.Audio retorna { total, items } onde items é o array de modelos
-      const models = data.items || [];
+      const models = await response.json();
       
       console.log('✅ [FISH-AUDIO-MODELS] Modelos carregados:', {
         totalModels: models.length,
