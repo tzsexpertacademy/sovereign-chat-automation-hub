@@ -2244,16 +2244,17 @@ async function processAudioCommands(
     let processedCount = 0;
     let remainingText = message;
     
-    // ✅ PADRÕES MELHORADOS PARA DETECÇÃO DE ÁUDIO - CORRIGIDO
-    const audioTextPattern = /audio:\s*"([^"]+)"|audio:\s*([^"\n\r]+?)(?=\s*\n|\s*\r|$)/gi;
+    // ✅ REGEX CORRIGIDO PARA DETECTAR audio:"texto" SIMPLES E EFICAZ
+    const audioTextPattern = /audio\s*:\s*"([^"]+)"/gi;
     const audioLibraryPattern = /audiogeono([^:]+):/gi;
     
     console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
-    console.log('🔍 [AUDIO-COMMANDS] Padrões sendo usados:', {
-      audioTextPattern: audioTextPattern.source,
-      messagePreview: message.substring(0, 100) + '...',
-      messageComplete: message
-    });
+    console.log('🔍 [AUDIO-COMMANDS] Mensagem completa:', message);
+    console.log('🔍 [AUDIO-COMMANDS] Regex pattern:', audioTextPattern.source);
+    
+    // TESTE DIRETO DO REGEX
+    const testMatch = message.match(audioTextPattern);
+    console.log('🔍 [AUDIO-COMMANDS] Teste direto do regex:', testMatch);
     
     // 1. PROCESSAR COMANDOS audio:texto (TTS)
     const audioTextMatches = Array.from(message.matchAll(audioTextPattern));
@@ -2261,11 +2262,16 @@ async function processAudioCommands(
     
     if (audioTextMatches.length === 0) {
       console.log('🎵 [AUDIO-COMMANDS] ℹ️ Nenhum comando de áudio detectado');
+      console.log('🔍 [AUDIO-COMMANDS] Debug - primeira verificação de pattern:', /audio/.test(message));
+      console.log('🔍 [AUDIO-COMMANDS] Debug - verificação de aspas:', /"/.test(message));
     }
     
     for (const match of audioTextMatches) {
-      // Capturar tanto aspas quanto sem aspas
-      const textToSpeak = (match[1] || match[2] || '').trim();
+      // Capturar texto entre aspas
+      const textToSpeak = (match[1] || '').trim();
+      console.log('🔍 [AUDIO-COMMANDS] Match encontrado:', match[0]);
+      console.log('🔍 [AUDIO-COMMANDS] Texto extraído:', textToSpeak);
+      
       if (!textToSpeak) {
         console.warn('⚠️ [AUDIO-TTS] Texto vazio encontrado no comando audio:');
         continue;
