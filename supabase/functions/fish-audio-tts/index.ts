@@ -43,12 +43,13 @@ serve(async (req) => {
       latency
     });
 
-    // Fazer requisição para Fish.Audio API
+    // Fazer requisição para Fish.Audio API usando endpoint correto
     const response = await fetch('https://api.fish.audio/v1/tts', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'model': format === 'mp3' ? 'speech-1.5' : 'speech-1.6'
       },
       body: JSON.stringify({
         text,
