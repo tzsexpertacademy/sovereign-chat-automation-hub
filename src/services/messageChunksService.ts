@@ -278,28 +278,58 @@ class MessageChunksService {
       humanizedDelays: true
     };
 
+    smartLogs.info('MESSAGE', '🔧 CARREGAR CONFIGURAÇÕES DE BLOCOS', {
+      assistantId,
+      hasAssistant: !!assistantId,
+      defaultConfig: {
+        enabled: defaultConfig.enabled,
+        maxCharsPerChunk: defaultConfig.maxCharsPerChunk,
+        delayBetweenChunks: defaultConfig.delayBetweenChunks
+      }
+    });
+
     if (!assistantId) {
+      smartLogs.warn('MESSAGE', '❌ SEM ASSISTANTID - USANDO CONFIGURAÇÃO PADRÃO', { defaultConfig });
       return defaultConfig;
     }
 
     try {
+      smartLogs.info('MESSAGE', '🔍 BUSCANDO CONFIGURAÇÕES NO BANCO', { assistantId });
+      
       const { data: assistant, error } = await supabase
         .from('assistants')
         .select('advanced_settings')
         .eq('id', assistantId)
         .single();
 
-      if (error || !assistant?.advanced_settings) {
+      if (error) {
+        smartLogs.error('MESSAGE', '❌ ERRO AO BUSCAR ASSISTENTE', { assistantId, error });
         return defaultConfig;
       }
+
+      if (!assistant?.advanced_settings) {
+        smartLogs.warn('MESSAGE', '⚠️ ASSISTENTE SEM ADVANCED_SETTINGS', { assistantId, assistant });
+        return defaultConfig;
+      }
+
+      smartLogs.info('MESSAGE', '✅ ADVANCED_SETTINGS ENCONTRADAS', {
+        assistantId,
+        advanced_settings: assistant.advanced_settings
+      });
 
       const settings = typeof assistant.advanced_settings === 'string' 
         ? JSON.parse(assistant.advanced_settings)
         : assistant.advanced_settings;
 
-      // MAPEAR CONFIGURAÇÕES ANTIGAS E NOVAS
-      const enabled = settings.messageHandling?.splitLongMessages ?? 
-                      (settings.typing_indicator_enabled !== false); // Default true se typing está ativo
+      smartLogs.info('MESSAGE', '📋 SETTINGS PARSEADOS', {
+        assistantId,
+        settings,
+        messageHandling: settings.messageHandling,
+        typing: settings.typing
+      });
+
+      // MAPEAR CONFIGURAÇÕES - VERSÃO DEFINITIVA
+      const enabled = settings.messageHandling?.splitLongMessages ?? true; // Default: SEMPRE ATIVO
       
       const maxCharsPerChunk = settings.messageHandling?.maxCharsPerChunk ?? 350;
       
@@ -309,16 +339,22 @@ class MessageChunksService {
       const typingEnabled = settings.typing?.enabled ?? 
                            (settings.typing_indicator_enabled ?? defaultConfig.typingEnabled);
 
-      smartLogs.info('MESSAGE', 'Configurações mapeadas', {
+      smartLogs.info('MESSAGE', '⚙️ CONFIGURAÇÕES FINAIS MAPEADAS', {
+        enabled: `${enabled} (fonte: ${settings.messageHandling?.splitLongMessages !== undefined ? 'messageHandling' : 'default'})`,
+        maxCharsPerChunk: `${maxCharsPerChunk} (fonte: ${settings.messageHandling?.maxCharsPerChunk !== undefined ? 'messageHandling' : 'default'})`,
+        delayBetweenChunks: `${delayBetweenChunks} (fonte: ${settings.messageHandling?.delayBetweenChunks !== undefined ? 'messageHandling' : settings.response_delay_seconds ? 'response_delay_seconds' : 'default'})`,
+        typingEnabled: `${typingEnabled} (fonte: ${settings.typing?.enabled !== undefined ? 'typing' : settings.typing_indicator_enabled !== undefined ? 'typing_indicator_enabled' : 'default'})`
+      });
+
+      smartLogs.info('MESSAGE', '🔧 CONFIGURAÇÕES DE BLOCOS MAPEADAS', {
         assistantId,
         enabled,
         maxCharsPerChunk,
         delayBetweenChunks,
         typingEnabled,
-        originalSettings: {
-          typing_indicator_enabled: settings.typing_indicator_enabled,
-          response_delay_seconds: settings.response_delay_seconds
-        }
+        messageHandling: settings.messageHandling,
+        typing: settings.typing,
+        fallbackUsed: !settings.messageHandling?.splitLongMessages
       });
 
       return {
