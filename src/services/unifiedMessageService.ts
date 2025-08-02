@@ -312,9 +312,7 @@ class UnifiedMessageService {
         clientId,
         assistantId: finalAssistantId,
         source: 'ai',
-        onProgress: callbacks?.onProgress,
-        onTypingStart: callbacks?.onTypingStart,
-        onTypingStop: callbacks?.onTypingStop
+        ...callbacks
       });
 
       smartLogs.info('MESSAGE', '✅ RESULTADO DO SISTEMA DE BLOCOS', {

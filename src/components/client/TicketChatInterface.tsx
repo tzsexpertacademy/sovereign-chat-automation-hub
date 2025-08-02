@@ -26,12 +26,10 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const [isSending, setIsSending] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const debugCommandExecutingRef = useRef(false);
-  const lastDebugExecutionRef = useRef<number>(0);
   
   const { toast } = useToast();
   const { markActivity, isOnline } = useOnlineStatus(clientId, true);
-  const { simulateHumanTyping, isTyping, isRecording, startTyping, stopTyping } = useHumanizedTyping(clientId);
+  const { simulateHumanTyping, isTyping, isRecording } = useHumanizedTyping(clientId);
   const { getMessageStatus } = useMessageStatus({ ticketId });
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
@@ -114,69 +112,24 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
     const messageToSend = newMessage.trim();
 
-    // 🚨 INTERCEPTAR COMANDO DEBUG ESPECIAL COM DEBOUNCE E TYPING INTEGRADO
+    // 🚨 INTERCEPTAR COMANDO DEBUG ESPECIAL
     if (messageToSend === '/debugbloco') {
-      const currentTime = Date.now();
-      const executionId = `debug_${currentTime}`;
+      console.log('🚨 [DEBUG] Comando /debugbloco detectado - iniciando teste isolado');
       
-      // 🔒 VERIFICAR se já está executando (simplified)
-      if (debugCommandExecutingRef.current) {
-        console.warn('🚨 [DEBUG] Comando /debugbloco BLOQUEADO - já executando');
-        toast({
-          title: "⚠️ Debug em Execução",
-          description: "Aguarde a conclusão do teste anterior.",
-          variant: "destructive"
-        });
-        return;
-      }
+      const { debugBlocoService } = await import('@/services/debugBlocoService');
+      await debugBlocoService.handleDebugCommand(
+        ticketId,
+        clientId,
+        actualInstanceId,
+        ticket.chat_id
+      );
       
-      try {
-        debugCommandExecutingRef.current = true;
-        lastDebugExecutionRef.current = currentTime;
-        
-        console.log(`🚨 [DEBUG-${executionId}] Comando /debugbloco INICIANDO`);
-        setNewMessage('');
-        
-        // IMPORTAR E EXECUTAR COM LOGGING EXTENSIVO
-        try {
-          console.log(`📦 [DEBUG-${executionId}] Importando debugBlocoService...`);
-          const serviceModule = await import('@/services/debugBlocoService');
-          console.log(`✅ [DEBUG-${executionId}] debugBlocoService importado:`, !!serviceModule.debugBlocoService);
-          
-          if (!serviceModule.debugBlocoService) {
-            throw new Error('debugBlocoService não encontrado no módulo');
-          }
-          
-          console.log(`🎯 [DEBUG-${executionId}] Executando handleDebugCommand...`);
-          await serviceModule.debugBlocoService.handleDebugCommand(
-            ticketId,
-            clientId,
-            actualInstanceId,
-            ticket.chat_id
-          );
-          
-          console.log(`✅ [DEBUG-${executionId}] handleDebugCommand CONCLUÍDO`);
-        } catch (importError) {
-          console.error(`❌ [DEBUG-${executionId}] Erro na importação/execução:`, importError);
-          throw new Error(`Falha na importação: ${importError instanceof Error ? importError.message : 'Erro desconhecido'}`);
-        }
-        
-        toast({
-          title: "✅ Debug Executado",
-          description: "Teste do sistema de blocos concluído! Verifique as mensagens do chat.",
-          variant: "default"
-        });
-      } catch (error) {
-        console.error(`❌ [DEBUG-${executionId}] Erro no comando /debugbloco:`, error);
-        toast({
-          title: "❌ Erro no Debug",
-          description: error instanceof Error ? error.message : "Falha ao executar teste do sistema de blocos.",
-          variant: "destructive"
-        });
-      } finally {
-        debugCommandExecutingRef.current = false;
-      }
-      
+      setNewMessage('');
+      toast({
+        title: "🚨 Debug Executado",
+        description: "Teste do sistema de blocos iniciado! Verifique os logs e mensagens.",
+        variant: "default"
+      });
       return;
     }
 
@@ -221,20 +174,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         ticket.chat_id,
         messageToSend,
         clientId,
-        ticket.assigned_assistant_id || undefined,
-        {
-          onProgress: (sent, total) => {
-            console.log(`📊 Progresso: ${sent}/${total} blocos`);
-          },
-          onTypingStart: () => {
-            console.log('🔄 Iniciando typing contínuo');
-            startTyping(ticket.chat_id);
-          },
-          onTypingStop: () => {
-            console.log('🛑 Finalizando typing contínuo');
-            stopTyping(ticket.chat_id);
-          }
-        }
+        ticket.assigned_assistant_id || undefined
       );
       
       if (response.success) {
