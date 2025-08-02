@@ -1793,13 +1793,82 @@ async function processDocumentExtraction(documentBase64: string, mimeType: strin
 }
 
 /**
- * Dividir mensagem em blocos respeitando pontuação
+ * Detectar se mensagem tem estrutura de tópicos
+ */
+function hasTopicStructure(message: string): boolean {
+  const topicPatterns = [
+    /^\d+\.\s+\*\*[^*]+\*\*/m, // "1. **Título:**"
+    /^\d+\.\s+[A-ZÁÊÇÕÃ]/m,     // "1. Texto"
+    /^\*\*\d+\.\s+[^*]+\*\*/m,  // "**1. Título**"
+    /^•\s+\*\*[^*]+\*\*/m,      // "• **Item:**"
+    /^\*\*[^*]+:\*\*/m          // "**Título:**"
+  ];
+  
+  return topicPatterns.some(pattern => pattern.test(message));
+}
+
+/**
+ * Dividir mensagem por tópicos numerados ou estruturados
+ */
+function splitMessageByTopics(message: string): string[] {
+  const chunks: string[] = [];
+  
+  // Dividir por tópicos numerados ou bullets
+  const topicRegex = /(?=(?:^\d+\.\s+|\*\*\d+\.\s+|^•\s+|\*\*[^*]+:\*\*))/gm;
+  const parts = message.split(topicRegex).filter(part => part.trim().length > 0);
+  
+  for (const part of parts) {
+    const trimmedPart = part.trim();
+    
+    // Se o bloco é muito pequeno (< 50 chars), tentar juntar com o anterior
+    if (trimmedPart.length < 50 && chunks.length > 0) {
+      const lastChunk = chunks.pop();
+      chunks.push(`${lastChunk}\n\n${trimmedPart}`);
+    }
+    // Se o bloco é muito grande (> 800 chars), dividir por frases
+    else if (trimmedPart.length > 800) {
+      const sentences = trimmedPart.split(/(?<=[.!?])\s+/);
+      let currentChunk = '';
+      
+      for (const sentence of sentences) {
+        if ((currentChunk + ' ' + sentence).length > 400) {
+          if (currentChunk) {
+            chunks.push(currentChunk.trim());
+          }
+          currentChunk = sentence;
+        } else {
+          currentChunk = currentChunk ? currentChunk + ' ' + sentence : sentence;
+        }
+      }
+      
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+      }
+    }
+    else {
+      chunks.push(trimmedPart);
+    }
+  }
+  
+  return chunks.filter(chunk => chunk.length > 0);
+}
+
+/**
+ * Dividir mensagem em blocos de forma inteligente (por tópicos ou caracteres)
  */
 function splitMessageIntoChunks(message: string, maxChars: number): string[] {
   if (message.length <= maxChars) {
     return [message];
   }
 
+  // Se tem estrutura de tópicos, dividir por tópicos
+  if (hasTopicStructure(message)) {
+    console.log('📝 [AI-ASSISTANT] Detectada estrutura de tópicos, dividindo por tópicos');
+    return splitMessageByTopics(message);
+  }
+
+  // Senão, dividir por caracteres (método original)
+  console.log('📝 [AI-ASSISTANT] Sem estrutura de tópicos, dividindo por caracteres');
   const sentences = message.split(/(?<=[.!?])\s+/);
   const chunks: string[] = [];
   let currentChunk = '';
