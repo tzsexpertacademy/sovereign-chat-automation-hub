@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Clock, MessageSquare, Save, RotateCcw, Eye } from 'lucide-react';
+import { Clock, MessageSquare, Save, RotateCcw, Zap, Timer } from 'lucide-react';
 
 interface SimpleBehaviorConfig {
   // Delays de digitação (funcional via batch system)
@@ -27,10 +27,8 @@ interface SimpleBehaviorConfig {
     splitLongMessages: boolean;
     maxCharsPerChunk: number;
     delayBetweenChunks: number;
-  };
-  // Indicadores visuais
-  indicators: {
-    recordingIndicatorEnabled: boolean;
+    intelligentTiming: boolean;
+    timingBaseMs: number;
   };
 }
 
@@ -49,10 +47,9 @@ const defaultConfig: SimpleBehaviorConfig = {
   messageHandling: {
     splitLongMessages: true,
     maxCharsPerChunk: 350,
-    delayBetweenChunks: 2500
-  },
-  indicators: {
-    recordingIndicatorEnabled: true
+    delayBetweenChunks: 2500,
+    intelligentTiming: true,
+    timingBaseMs: 12
   }
 };
 
@@ -96,10 +93,9 @@ export function SimpleBehaviorSettings({
             messageHandling: {
               splitLongMessages: advancedSettings.messageHandling?.splitLongMessages ?? defaultConfig.messageHandling.splitLongMessages,
               maxCharsPerChunk: advancedSettings.messageHandling?.maxCharsPerChunk ?? defaultConfig.messageHandling.maxCharsPerChunk,
-              delayBetweenChunks: advancedSettings.messageHandling?.delayBetweenChunks ?? defaultConfig.messageHandling.delayBetweenChunks
-            },
-            indicators: {
-              recordingIndicatorEnabled: advancedSettings.recording_indicator_enabled ?? defaultConfig.indicators.recordingIndicatorEnabled
+              delayBetweenChunks: advancedSettings.messageHandling?.delayBetweenChunks ?? defaultConfig.messageHandling.delayBetweenChunks,
+              intelligentTiming: advancedSettings.messageHandling?.intelligentTiming ?? defaultConfig.messageHandling.intelligentTiming,
+              timingBaseMs: advancedSettings.messageHandling?.timingBaseMs ?? defaultConfig.messageHandling.timingBaseMs
             }
           };
           
@@ -148,8 +144,7 @@ export function SimpleBehaviorSettings({
       const updatedSettings = {
         ...advancedSettings,
         typing: config.typing,
-        messageHandling: config.messageHandling,
-        recording_indicator_enabled: config.indicators.recordingIndicatorEnabled
+        messageHandling: config.messageHandling
       };
 
       const { error: updateError } = await supabase
@@ -319,49 +314,65 @@ export function SimpleBehaviorSettings({
               />
             </div>
 
+            {!config.messageHandling.intelligentTiming && (
+              <div className="space-y-2">
+                <Label className="text-sm">
+                  Delay entre blocos: {config.messageHandling.delayBetweenChunks}ms
+                </Label>
+                <Slider
+                  value={[config.messageHandling.delayBetweenChunks]}
+                  onValueChange={([value]) => 
+                    updateSection('messageHandling', { delayBetweenChunks: value })
+                  }
+                  min={1000}
+                  max={4500}
+                  step={250}
+                  disabled={!config.messageHandling.splitLongMessages}
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label className="text-sm">
-                Delay entre blocos: {config.messageHandling.delayBetweenChunks}ms
+                Timing Inteligente: {config.messageHandling.intelligentTiming ? 'Ativado' : 'Desativado'}
               </Label>
-              <Slider
-                value={[config.messageHandling.delayBetweenChunks]}
-                onValueChange={([value]) => 
-                  updateSection('messageHandling', { delayBetweenChunks: value })
-                }
-                min={1000}
-                max={5000}
-                step={250}
-                disabled={!config.messageHandling.splitLongMessages}
-              />
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">
+                  {config.messageHandling.intelligentTiming 
+                    ? 'Delays adaptativos baseados no tamanho do bloco' 
+                    : 'Delay fixo entre blocos'
+                  }
+                </span>
+                <Switch
+                  checked={config.messageHandling.intelligentTiming}
+                  onCheckedChange={(intelligentTiming) => 
+                    updateSection('messageHandling', { intelligentTiming })
+                  }
+                  disabled={!config.messageHandling.splitLongMessages}
+                />
+              </div>
             </div>
-          </div>
-        </div>
 
-        <Separator />
-
-        {/* Indicadores Visuais */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Eye className="h-4 w-4" />
-            <Label className="text-base">Indicadores Visuais</Label>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="recording-indicator">Indicador de Gravação</Label>
-                <p className="text-sm text-muted-foreground">
-                  Mostrar status de gravação de áudio
+            {config.messageHandling.intelligentTiming && (
+              <div className="space-y-2">
+                <Label className="text-sm">
+                  Base de Cálculo: {config.messageHandling.timingBaseMs}ms por caractere
+                </Label>
+                <Slider
+                  value={[config.messageHandling.timingBaseMs]}
+                  onValueChange={([value]) => 
+                    updateSection('messageHandling', { timingBaseMs: value })
+                  }
+                  min={8}
+                  max={20}
+                  step={1}
+                  disabled={!config.messageHandling.splitLongMessages || !config.messageHandling.intelligentTiming}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Delay máximo: {Math.min(config.messageHandling.timingBaseMs * 375, 4500)}ms
                 </p>
               </div>
-              <Switch
-                id="recording-indicator"
-                checked={config.indicators.recordingIndicatorEnabled}
-                onCheckedChange={(recordingIndicatorEnabled) => 
-                  updateSection('indicators', { recordingIndicatorEnabled })
-                }
-              />
-            </div>
+            )}
           </div>
         </div>
 
