@@ -269,7 +269,18 @@ class UnifiedMessageService {
       hasAssistant: !!assistantId,
       instanceId,
       chatId,
-      clientId
+      clientId,
+      shouldUseChunks: message.length > 350 || !!assistantId
+    });
+
+    console.log('🧠 [SENDSMARTMESSAGE] DADOS COMPLETOS:', {
+      'Comprimento da mensagem': message.length,
+      'Preview': message.substring(0, 100) + '...',
+      'Assistant ID fornecido': assistantId || 'NENHUM',
+      'Cliente ID': clientId || 'NENHUM',
+      'Instance ID': instanceId,
+      'Chat ID': chatId,
+      'Decisão inicial': message.length > 350 ? 'USAR BLOCOS' : 'ENVIO DIRETO'
     });
 
     // 🔧 FALLBACK: Tentar buscar assistente se não foi fornecido

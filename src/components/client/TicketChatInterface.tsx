@@ -110,9 +110,31 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       return;
     }
 
+    const messageToSend = newMessage.trim();
+
+    // 🚨 INTERCEPTAR COMANDO DEBUG ESPECIAL
+    if (messageToSend === '/debugbloco') {
+      console.log('🚨 [DEBUG] Comando /debugbloco detectado - iniciando teste isolado');
+      
+      const { debugBlocoService } = await import('@/services/debugBlocoService');
+      await debugBlocoService.handleDebugCommand(
+        ticketId,
+        clientId,
+        actualInstanceId,
+        ticket.chat_id
+      );
+      
+      setNewMessage('');
+      toast({
+        title: "🚨 Debug Executado",
+        description: "Teste do sistema de blocos iniciado! Verifique os logs e mensagens.",
+        variant: "default"
+      });
+      return;
+    }
+
     try {
       setIsSending(true);
-      const messageToSend = newMessage.trim();
       const messageId = `rest_msg_${Date.now()}`;
       const timestamp = new Date().toISOString();
       
@@ -140,21 +162,33 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
       markActivity();
 
-      // Enviar mensagem via API
-      const response = await unifiedMessageService.sendManualMessage(
+      // 🧠 ENVIAR VIA SISTEMA INTELIGENTE (suporta blocos automaticamente)
+      console.log('📤 [CHAT] Enviando mensagem via sendSmartMessage:', {
+        messageLength: messageToSend.length,
+        assistantId: ticket.assigned_assistant_id || 'none',
+        willUseChunks: messageToSend.length > 350 && !!ticket.assigned_assistant_id
+      });
+
+      const response = await unifiedMessageService.sendSmartMessage(
         actualInstanceId,
         ticket.chat_id,
         messageToSend,
-        clientId
+        clientId,
+        ticket.assigned_assistant_id || undefined
       );
       
       if (response.success) {
         console.log('⚡ [ULTRA-FAST] Enviado com SUCESSO, salvando no banco IMEDIATAMENTE...');
 
-        // 🚀 SALVAR INSTANTANEAMENTE no banco
+        // 🚀 SALVAR MENSAGEM CORRETAMENTE
+        // Para blocos múltiplos, salvar apenas a mensagem original
+        const finalMessageId = Array.isArray(response.messageIds) && response.messageIds.length > 0 
+          ? response.messageIds[0] 
+          : messageId;
+          
         const savePromise = ticketsService.addTicketMessage({
           ticket_id: ticketId,
-          message_id: response.messageId || messageId,
+          message_id: finalMessageId,
           from_me: true,
           sender_name: 'Atendente',
           content: messageToSend,
@@ -162,7 +196,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           is_internal_note: false,
           is_ai_response: false,
           processing_status: 'completed',
-          timestamp: typeof response.timestamp === 'string' ? response.timestamp : timestamp
+          timestamp: timestamp
         });
 
         // ⚡ CONFIRMAR IMEDIATAMENTE (Supabase detectará em < 1 segundo)
@@ -177,14 +211,15 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         
         console.log('✅ [ULTRA-FAST] Fluxo COMPLETO - Instantâneo para usuário');
       } else {
-        console.error('❌ [ULTRA-FAST] FALHA no envio:', response.error);
+        const errorMessage = response.errors && response.errors.length > 0 ? response.errors[0] : "Erro desconhecido";
+        console.error('❌ [ULTRA-FAST] FALHA no envio:', errorMessage);
         
         // ❌ FALHA IMEDIATA com feedback visual
         failOptimisticMessage(optimisticMessageId);
         
         toast({
           title: "❌ Falha no Envio",
-          description: response.details || response.error || "Erro desconhecido",
+          description: errorMessage,
           variant: "destructive"
         });
       }
