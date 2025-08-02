@@ -27,6 +27,7 @@ export interface AudioLibraryItem {
   name: string;
   trigger: string;
   url: string;
+  audioBase64?: string; // ✅ Campo para armazenar áudio em base64
   duration: number;
   category: string;
   uploaded_at: string;
@@ -194,15 +195,58 @@ export const assistantsService = {
     category: string
   ): Promise<AudioLibraryItem> {
     try {
-      // Simular upload - em produção, usar Supabase Storage
-      const audioUrl = URL.createObjectURL(audioFile);
-      
+      console.log('📤 [UPLOAD-AUDIO] Iniciando upload para biblioteca:', {
+        fileName: audioFile.name,
+        trigger,
+        category,
+        size: audioFile.size
+      });
+
+      // ✅ CORREÇÃO CRÍTICA: Converter para base64 em vez de blob URL
+      const audioBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remover o prefixo data:audio/...;base64,
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(audioFile);
+      });
+
+      // Calcular duração real do áudio
+      const duration = await new Promise<number>((resolve) => {
+        const audio = new Audio();
+        const url = URL.createObjectURL(audioFile);
+        audio.onloadedmetadata = () => {
+          URL.revokeObjectURL(url);
+          resolve(Math.round(audio.duration));
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve(0);
+        };
+        audio.src = url;
+      });
+
+      console.log('✅ [UPLOAD-AUDIO] Conversão base64 concluída:', {
+        base64Length: audioBase64.length,
+        duration: duration + 's'
+      });
+
+      // ✅ Padronizar formato do trigger: audiogeono{nome}
+      const normalizedTrigger = trigger.toLowerCase().startsWith('audiogeono') 
+        ? trigger.toLowerCase()
+        : `audiogeono${trigger.toLowerCase()}`;
+
       const audioItem: AudioLibraryItem = {
         id: `audio_${Date.now()}`,
         name: audioFile.name,
-        trigger: trigger,
-        url: audioUrl,
-        duration: 0, // Seria calculado em produção
+        trigger: normalizedTrigger,
+        url: '', // Não precisamos mais de URL temporária
+        audioBase64: audioBase64, // ✅ Salvar base64 permanentemente
+        duration: duration,
         category: category,
         uploaded_at: new Date().toISOString()
       };
@@ -215,11 +259,17 @@ export const assistantsService = {
           audio_library: [...(settings.audio_library || []), audioItem]
         };
         await this.updateAdvancedSettings(assistantId, updatedSettings);
+        
+        console.log('✅ [UPLOAD-AUDIO] Áudio salvo na biblioteca:', {
+          trigger: normalizedTrigger,
+          duration: duration + 's',
+          librarySize: updatedSettings.audio_library.length
+        });
       }
 
       return audioItem;
     } catch (error) {
-      console.error('Erro ao fazer upload do áudio:', error);
+      console.error('❌ [UPLOAD-AUDIO] Erro ao fazer upload do áudio:', error);
       throw error;
     }
   },

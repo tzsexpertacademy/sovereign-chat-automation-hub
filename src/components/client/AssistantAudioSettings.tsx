@@ -29,6 +29,8 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
   const [validatingFishApi, setValidatingFishApi] = useState(false);
   const [newAudioTrigger, setNewAudioTrigger] = useState("");
   const [newAudioCategory, setNewAudioCategory] = useState("geral");
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
@@ -152,7 +154,7 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
     }
   };
 
-  const handleAudioUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAudioUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -166,7 +168,7 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
     }
 
     // Validar formato do arquivo
-    const allowedTypes = ['audio/mp3', 'audio/wav', 'audio/ogg', 'audio/m4a'];
+    const allowedTypes = ['audio/mp3', 'audio/wav', 'audio/ogg', 'audio/m4a', 'audio/mpeg'];
     if (!allowedTypes.includes(file.type)) {
       toast({
         title: "Formato Inválido",
@@ -186,25 +188,94 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
       return;
     }
 
-    // Adicionar à biblioteca
-    assistantsService.uploadAudioToLibrary(
-      assistantId,
-      file,
-      newAudioTrigger.trim(),
-      newAudioCategory
-    ).then(() => {
+    setUploadingAudio(true);
+    try {
+      // ✅ Adicionar à biblioteca com conversão base64
+      await assistantsService.uploadAudioToLibrary(
+        assistantId,
+        file,
+        newAudioTrigger.trim(),
+        newAudioCategory
+      );
+      
       toast({
-        title: "Áudio Adicionado",
-        description: `Áudio "${file.name}" foi adicionado à biblioteca`,
+        title: "✅ Áudio Adicionado",
+        description: `Áudio "${file.name}" foi convertido e salvo na biblioteca`,
       });
       setNewAudioTrigger("");
-    }).catch((error) => {
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error) {
+      console.error('Erro no upload:', error);
       toast({
         title: "Erro no Upload",
         description: "Não foi possível adicionar o áudio à biblioteca",
         variant: "destructive",
       });
-    });
+    } finally {
+      setUploadingAudio(false);
+    }
+  };
+
+  // ✅ FUNÇÃO PARA REPRODUZIR ÁUDIO DA BIBLIOTECA
+  const playAudio = (audio: AudioLibraryItem) => {
+    if (!audio.audioBase64) {
+      toast({
+        title: "Erro",
+        description: "Áudio não possui dados válidos para reprodução",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Parar áudio anterior se estiver tocando
+      if (playingAudioId) {
+        setPlayingAudioId(null);
+      }
+
+      setPlayingAudioId(audio.id);
+
+      // Converter base64 para blob e reproduzir
+      const byteCharacters = atob(audio.audioBase64);
+      const byteNumbers = Array.from(byteCharacters, char => char.charCodeAt(0));
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(blob);
+      
+      const audioElement = new Audio(audioUrl);
+      audioElement.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        setPlayingAudioId(null);
+      };
+      audioElement.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        setPlayingAudioId(null);
+        toast({
+          title: "Erro na Reprodução",
+          description: "Não foi possível reproduzir o áudio",
+          variant: "destructive",
+        });
+      };
+      
+      audioElement.play();
+      
+      toast({
+        title: "🎵 Reproduzindo",
+        description: `Tocando: ${audio.name}`,
+      });
+    } catch (error) {
+      console.error('Erro ao reproduzir áudio:', error);
+      setPlayingAudioId(null);
+      toast({
+        title: "Erro na Reprodução",
+        description: "Falha ao reproduzir o áudio",
+        variant: "destructive",
+      });
+    }
   };
 
   const removeAudio = (audioId: string) => {
@@ -581,172 +652,6 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
         </Card>
       </TabsContent>
 
-      <TabsContent value="elevenlabs" className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Volume2 className="w-5 h-5" />
-              <span>Configuração ElevenLabs</span>
-            </CardTitle>
-            <CardDescription>
-              Configure a integração com ElevenLabs para gerar áudio das respostas do assistente
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="voice_cloning_enabled">Habilitar Geração de Áudio</Label>
-              <Switch
-                id="voice_cloning_enabled"
-                checked={settings.voice_cloning_enabled}
-                onCheckedChange={(checked) =>
-                  onSettingsChange({ ...settings, voice_cloning_enabled: checked })
-                }
-              />
-            </div>
-
-            {settings.voice_cloning_enabled && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="eleven_labs_api_key">API Key do ElevenLabs</Label>
-                  <div className="flex space-x-2">
-                    <Input
-                      id="eleven_labs_api_key"
-                      type="password"
-                      value={settings.eleven_labs_api_key}
-                      onChange={(e) =>
-                        onSettingsChange({ ...settings, eleven_labs_api_key: e.target.value })
-                      }
-                      placeholder="sk_..."
-                    />
-                    <Button 
-                      variant="outline" 
-                      onClick={handleApiValidation}
-                      disabled={validatingApi}
-                    >
-                      {validatingApi ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        "Validar"
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="eleven_labs_model">Modelo de TTS</Label>
-                  <Select 
-                    value={settings.eleven_labs_model} 
-                    onValueChange={(value) => 
-                      onSettingsChange({ ...settings, eleven_labs_model: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ELEVENLABS_MODELS.map((model) => (
-                        <SelectItem key={model.id} value={model.id}>
-                          <div>
-                            <div className="font-medium">{model.name}</div>
-                            <div className="text-xs text-muted-foreground">{model.description}</div>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {settings.eleven_labs_api_key && (
-                  <ElevenLabsVoiceSelector
-                    apiKey={settings.eleven_labs_api_key}
-                    selectedVoiceId={settings.eleven_labs_voice_id}
-                    onVoiceChange={(voiceId) => 
-                      onSettingsChange({ ...settings, eleven_labs_voice_id: voiceId })
-                    }
-                    model={settings.eleven_labs_model}
-                  />
-                )}
-
-                <div className="space-y-4">
-                  <Label>Configurações de Voz</Label>
-                  
-                  <div className="space-y-3">
-                    <div>
-                      <Label htmlFor="stability">
-                        Estabilidade: {settings.voice_settings?.stability || 0.5}
-                      </Label>
-                      <Slider
-                        id="stability"
-                        value={[settings.voice_settings?.stability || 0.5]}
-                        onValueChange={(value) => 
-                          onSettingsChange({ 
-                            ...settings, 
-                            voice_settings: { 
-                              ...settings.voice_settings, 
-                              stability: value[0] 
-                            } 
-                          })
-                        }
-                        min={0}
-                        max={1}
-                        step={0.1}
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="similarity_boost">
-                        Clareza: {settings.voice_settings?.similarity_boost || 0.5}
-                      </Label>
-                      <Slider
-                        id="similarity_boost"
-                        value={[settings.voice_settings?.similarity_boost || 0.5]}
-                        onValueChange={(value) => 
-                          onSettingsChange({ 
-                            ...settings, 
-                            voice_settings: { 
-                              ...settings.voice_settings, 
-                              similarity_boost: value[0] 
-                            } 
-                          })
-                        }
-                        min={0}
-                        max={1}
-                        step={0.1}
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex space-x-2">
-                  <Button 
-                    onClick={handleVoiceTest} 
-                    disabled={testingVoice || !settings.eleven_labs_api_key || !settings.eleven_labs_voice_id}
-                  >
-                    {testingVoice ? (
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    ) : (
-                      <TestTube className="w-4 h-4 mr-2" />
-                    )}
-                    {testingVoice ? "Testando..." : "Testar Voz"}
-                  </Button>
-                </div>
-
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <h4 className="font-medium text-blue-900 mb-2">💡 Como usar no prompt:</h4>
-                  <p className="text-sm text-blue-800 mb-2">
-                    Para que o assistente responda com áudio, inclua a palavra <code className="bg-blue-100 px-1 rounded">audio:</code> antes da resposta no prompt:
-                  </p>
-                  <p className="text-sm font-mono bg-blue-100 p-2 rounded text-blue-900">
-                    "Quando o cliente perguntar sobre preços, responda: audio: Nossos preços começam em R$ 100..."
-                  </p>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </TabsContent>
 
       <TabsContent value="library" className="space-y-6">
         <Card>
@@ -804,9 +709,19 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
                   <Button 
                     onClick={() => fileInputRef.current?.click()}
                     className="w-full"
+                    disabled={uploadingAudio}
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Adicionar Áudio
+                    {uploadingAudio ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Convertendo...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Adicionar Áudio
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>
@@ -839,13 +754,24 @@ const AssistantAudioSettings = ({ assistantId, settings, onSettingsChange }: Ass
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Button size="sm" variant="outline">
-                        <Play className="w-3 h-3" />
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => playAudio(audio)}
+                        disabled={!audio.audioBase64}
+                        title={audio.audioBase64 ? "Reproduzir áudio" : "Áudio não disponível para reprodução"}
+                      >
+                        {playingAudioId === audio.id ? (
+                          <Pause className="w-3 h-3" />
+                        ) : (
+                          <Play className="w-3 h-3" />
+                        )}
                       </Button>
                       <Button 
                         size="sm" 
                         variant="outline" 
                         onClick={() => removeAudio(audio.id)}
+                        title="Remover áudio da biblioteca"
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
