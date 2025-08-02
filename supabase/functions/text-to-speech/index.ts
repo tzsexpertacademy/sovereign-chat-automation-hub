@@ -49,7 +49,17 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ ElevenLabs TTS API error:', response.status, errorText);
-      throw new Error(`ElevenLabs API error: ${errorText}`);
+      
+      // Parse error message for better user feedback
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.detail?.status === 'ivc_not_permitted') {
+          throw new Error('Esta voz clonada requer uma assinatura premium do ElevenLabs. Por favor, faça upgrade da sua conta ou selecione uma voz pré-definida.');
+        }
+        throw new Error(`Erro da API ElevenLabs: ${errorData.detail?.message || errorText}`);
+      } catch (parseError) {
+        throw new Error(`Erro da API ElevenLabs (${response.status}): ${errorText}`);
+      }
     }
 
     const audioBuffer = await response.arrayBuffer();

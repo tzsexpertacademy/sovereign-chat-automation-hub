@@ -639,8 +639,15 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       .eq('id', resolvedClientId)
       .single();
     
-    if (clientError || !client?.business_token) {
-      console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', resolvedClientId);
+    if (clientError) {
+      console.error('❌ [AI-ASSISTANT] Erro ao buscar cliente:', clientError);
+      throw new Error(`Cliente não encontrado: ${resolvedClientId}`);
+    }
+    
+    if (!client?.business_token) {
+      console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado - comandos de áudio serão ignorados');
+    } else {
+      console.log('✅ [AI-ASSISTANT] Business token encontrado para cliente');
     }
 
     // 🎵 DETECTAR E PROCESSAR COMANDOS DE ÁUDIO COM TIMEOUT E FALLBACK
@@ -2138,9 +2145,39 @@ async function processAudioCommands(
           await sendAudioMessage(instanceId, ticketId, audioResult.audioBase64, businessToken);
           processedCount++;
           console.log('✅ [AUDIO-TTS] Áudio TTS enviado com sucesso');
+        } else {
+          console.error('❌ [AUDIO-TTS] Falha no TTS:', audioResult.error);
+          // FEEDBACK AO USUÁRIO: informar sobre falha na geração de áudio
+          await supabase
+            .from('ticket_messages')
+            .insert({
+              ticket_id: ticketId,
+              message_id: `tts_error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              content: `⚠️ Falha ao gerar áudio: ${audioResult.error}`,
+              from_me: true,
+              is_ai_response: true,
+              sender_name: assistant.name || 'Assistente IA',
+              timestamp: new Date().toISOString(),
+              message_type: 'text',
+              processing_status: 'processed'
+            });
         }
       } catch (error) {
         console.error('❌ [AUDIO-TTS] Erro ao gerar TTS:', error);
+        // FEEDBACK AO USUÁRIO: informar sobre erro crítico
+        await supabase
+          .from('ticket_messages')
+          .insert({
+            ticket_id: ticketId,
+            message_id: `tts_critical_error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            content: `❌ Erro crítico no sistema de áudio: ${error.message}`,
+            from_me: true,
+            is_ai_response: true,
+            sender_name: assistant.name || 'Assistente IA',
+            timestamp: new Date().toISOString(),
+            message_type: 'text',
+            processing_status: 'processed'
+          });
       }
       
       // Remover comando da mensagem
@@ -2187,30 +2224,45 @@ async function processAudioCommands(
 /**
  * 🎤 GERAR ÁUDIO TTS (ElevenLabs + Fish.Audio)
  */
-async function generateTTSAudio(text: string, assistant: any): Promise<{ success: boolean; audioBase64?: string }> {
+async function generateTTSAudio(text: string, assistant: any): Promise<{ success: boolean; audioBase64?: string; error?: string }> {
   try {
     console.log('🎤 [TTS] Gerando áudio para texto:', text.substring(0, 50) + '...');
     
-    // Buscar configurações avançadas do assistente
-    const { data: advancedSettings } = await supabase
-      .from('assistant_advanced_settings')
-      .select('*')
-      .eq('assistant_id', assistant.id)
+    // CORREÇÃO CRÍTICA: Buscar configurações em assistants.advanced_settings (campo JSONB)
+    console.log('🔍 [TTS] Buscando configurações avançadas do assistente:', assistant.id);
+    
+    const { data: assistantData, error: assistantError } = await supabase
+      .from('assistants')
+      .select('advanced_settings')
+      .eq('id', assistant.id)
       .single();
     
-    if (!advancedSettings) {
-      console.warn('⚠️ [TTS] Configurações de áudio não encontradas para o assistente');
-      return { success: false };
+    if (assistantError || !assistantData) {
+      console.error('❌ [TTS] Erro ao buscar assistente:', assistantError);
+      return { success: false, error: 'Assistente não encontrado' };
+    }
+    
+    const advancedSettings = assistantData.advanced_settings || {};
+    console.log('🔍 [TTS] Configurações encontradas:', {
+      hasElevenLabs: !!(advancedSettings.eleven_labs_api_key && advancedSettings.eleven_labs_voice_id),
+      hasFishAudio: !!(advancedSettings.fish_audio_api_key && advancedSettings.fish_audio_voice_id),
+      audioProvider: advancedSettings.audio_provider || 'não definido'
+    });
+    
+    if (!advancedSettings.eleven_labs_api_key && !advancedSettings.fish_audio_api_key) {
+      console.warn('⚠️ [TTS] Nenhuma API de TTS configurada no assistente');
+      return { success: false, error: 'TTS não configurado - adicione API key do ElevenLabs ou Fish.Audio' };
     }
     
     const provider = advancedSettings.audio_provider || 'elevenlabs';
     
     // Tentar ElevenLabs primeiro (se configurado)
-    if ((provider === 'elevenlabs' || provider === 'both') && 
-        advancedSettings.eleven_labs_api_key && 
-        advancedSettings.eleven_labs_voice_id) {
+    if (advancedSettings.eleven_labs_api_key && advancedSettings.eleven_labs_voice_id) {
       
-      console.log('🎭 [TTS] Tentando ElevenLabs...');
+      console.log('🎭 [TTS] Tentando ElevenLabs...', {
+        voiceId: advancedSettings.eleven_labs_voice_id,
+        model: advancedSettings.eleven_labs_model || 'eleven_multilingual_v2'
+      });
       
       try {
         const elevenLabsResult = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/text-to-speech`, {
@@ -2232,18 +2284,24 @@ async function generateTTSAudio(text: string, assistant: any): Promise<{ success
           const data = await elevenLabsResult.json();
           console.log('✅ [TTS] ElevenLabs TTS gerado com sucesso');
           return { success: true, audioBase64: data.audioBase64 };
+        } else {
+          const errorData = await elevenLabsResult.json().catch(() => ({}));
+          console.error('❌ [TTS] ElevenLabs falhou:', errorData);
+          return { success: false, error: `ElevenLabs: ${errorData.error || 'Erro desconhecido'}` };
         }
       } catch (error) {
         console.error('❌ [TTS] Erro no ElevenLabs:', error);
+        return { success: false, error: `ElevenLabs: ${error.message}` };
       }
     }
     
-    // Tentar Fish.Audio como fallback ou se for o provedor principal
-    if ((provider === 'fishaudio' || provider === 'both') && 
-        advancedSettings.fish_audio_api_key && 
-        advancedSettings.fish_audio_voice_id) {
+    // Tentar Fish.Audio como fallback
+    if (advancedSettings.fish_audio_api_key && advancedSettings.fish_audio_voice_id) {
       
-      console.log('🐟 [TTS] Tentando Fish.Audio...');
+      console.log('🐟 [TTS] Tentando Fish.Audio...', {
+        referenceId: advancedSettings.fish_audio_voice_id,
+        format: advancedSettings.fish_audio_format || 'mp3'
+      });
       
       try {
         const fishAudioResult = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/fish-audio-tts`, {
@@ -2265,14 +2323,19 @@ async function generateTTSAudio(text: string, assistant: any): Promise<{ success
           const data = await fishAudioResult.json();
           console.log('✅ [TTS] Fish.Audio TTS gerado com sucesso');
           return { success: true, audioBase64: data.audioBase64 };
+        } else {
+          const errorData = await fishAudioResult.json().catch(() => ({}));
+          console.error('❌ [TTS] Fish.Audio falhou:', errorData);
+          return { success: false, error: `Fish.Audio: ${errorData.error || 'Erro desconhecido'}` };
         }
       } catch (error) {
         console.error('❌ [TTS] Erro no Fish.Audio:', error);
+        return { success: false, error: `Fish.Audio: ${error.message}` };
       }
     }
     
     console.warn('⚠️ [TTS] Nenhum provedor de TTS configurado ou disponível');
-    return { success: false };
+    return { success: false, error: 'Nenhuma API de TTS configurada' };
     
   } catch (error) {
     console.error('❌ [TTS] Erro na geração de áudio:', error);
@@ -2287,18 +2350,19 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
   try {
     console.log('📚 [AUDIO-LIBRARY] Buscando áudio na biblioteca:', audioName);
     
-    const { data: audioLibrary } = await supabase
-      .from('assistant_advanced_settings')
-      .select('audio_library')
-      .eq('assistant_id', assistantId)
+    // CORREÇÃO: Buscar na tabela assistants campo advanced_settings
+    const { data: assistantData } = await supabase
+      .from('assistants')
+      .select('advanced_settings')
+      .eq('id', assistantId)
       .single();
     
-    if (!audioLibrary?.audio_library) {
+    if (!assistantData?.advanced_settings?.audio_library) {
       console.warn('📚 [AUDIO-LIBRARY] Biblioteca de áudios vazia');
       return null;
     }
     
-    const library = audioLibrary.audio_library as any[];
+    const library = assistantData.advanced_settings.audio_library as any[];
     const audio = library.find(item => 
       item.trigger.toLowerCase() === audioName.toLowerCase() ||
       item.trigger.toLowerCase() === `audiogeono${audioName.toLowerCase()}`
@@ -2334,18 +2398,32 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
       throw new Error('Ticket não encontrado');
     }
     
-    console.log('🎵 [SEND-AUDIO] Enviando áudio via Yumer API...');
+    console.log('🎵 [SEND-AUDIO] Enviando áudio via Yumer API v2...', {
+      instanceId,
+      chatId: ticket.chat_id.substring(0, 15) + '...',
+      audioSize: Math.round(audioBase64.length / 1024) + 'KB'
+    });
     
+    // CORREÇÃO CRÍTICA: Estrutura correta para Yumer API v2.2.1
     const audioData = {
       recipient: ticket.chat_id,
       audioMessage: {
-        audio: audioBase64
+        audio: audioBase64,
+        ptt: true // Para áudio de voz (Push to Talk)
       },
       options: {
-        delay: 1000,
-        presence: 'recording'
+        delay: 1200,
+        presence: 'recording',
+        externalAttributes: 'source=ai_tts;timestamp=' + Date.now()
       }
     };
+    
+    console.log('📡 [SEND-AUDIO] Dados preparados:', {
+      recipient: ticket.chat_id,
+      hasAudio: !!audioBase64,
+      audioLength: audioBase64.length,
+      ptt: true
+    });
     
     const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio`, {
       method: 'POST',
@@ -2358,10 +2436,19 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
     
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Erro ao enviar áudio: ${response.status} - ${errorText}`);
+      console.error('❌ [SEND-AUDIO] Resposta da API:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      throw new Error(`Erro na API Yumer: ${response.status} - ${errorText}`);
     }
     
-    console.log('✅ [SEND-AUDIO] Áudio enviado com sucesso');
+    const result = await response.json();
+    console.log('✅ [SEND-AUDIO] Áudio enviado com sucesso:', {
+      messageId: result.key?.id || 'N/A',
+      success: true
+    });
     
   } catch (error) {
     console.error('❌ [SEND-AUDIO] Erro ao enviar áudio:', error);
