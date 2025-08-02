@@ -2188,19 +2188,12 @@ async function processAudioCommands(
     
     return { hasAudioCommands, processedCount, remainingText };
     
-  } catch (innerError) {
-    console.error('❌ [PROCESS-AUDIO] Erro interno no processamento:', innerError);
-    console.error('❌ [PROCESS-AUDIO] Stack trace:', innerError.stack);
+  } catch (error) {
+    console.error('❌ [PROCESS-AUDIO] Erro no processamento:', error);
+    console.error('❌ [PROCESS-AUDIO] Stack trace:', error.stack);
     // FALLBACK CRÍTICO: Sempre retornar texto original se áudio falhar
     return { hasAudioCommands: false, processedCount: 0, remainingText: message };
   }
-  
-} catch (outerError) {
-  console.error('❌ [PROCESS-AUDIO] Erro externo crítico:', outerError);
-  console.error('❌ [PROCESS-AUDIO] Stack trace externo:', outerError.stack);
-  // FALLBACK FINAL: Garantir que nunca trava
-  return { hasAudioCommands: false, processedCount: 0, remainingText: message };
-}
 }
 
 /**
