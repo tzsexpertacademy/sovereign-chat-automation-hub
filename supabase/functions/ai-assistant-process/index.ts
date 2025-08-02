@@ -2630,42 +2630,49 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
     const audio = library.find(item => {
       const trigger = item.trigger.toLowerCase().trim();
       
-      console.log('🔍 [AUDIO-LIBRARY] Testando match:', { trigger, contra: normalizedSearchName });
+      console.log('🔍 [AUDIO-LIBRARY] Comparando EXATO:', { 
+        buscando: `"${normalizedSearchName}"`, 
+        trigger: `"${trigger}"`,
+        saoIguais: trigger === normalizedSearchName
+      });
       
-      // 1. Match exato do trigger
+      // 1. MATCH EXATO - PRIORIDADE MÁXIMA
       if (trigger === normalizedSearchName) {
-        console.log('✅ [AUDIO-LIBRARY] Match exato encontrado');
+        console.log('🎉 [AUDIO-LIBRARY] ✅ MATCH EXATO ENCONTRADO!');
         return true;
       }
       
-      // 2. Match ignorando prefixo "audio" - para casos como "audiogeonothaliszu" vs "geonothaliszu"
-      if (normalizedSearchName.startsWith('audio') && 
-          trigger === normalizedSearchName.substring(5)) {
-        console.log('✅ [AUDIO-LIBRARY] Match sem prefixo "audio" encontrado');
-        return true;
-      }
-      
-      // 3. Match adicionando prefixo "audio" - para casos como "geonothaliszu" vs "audiogeonothaliszu"
-      if (trigger === `audio${normalizedSearchName}`) {
-        console.log('✅ [AUDIO-LIBRARY] Match com prefixo "audio" encontrado');
-        return true;
-      }
-      
-      // 4. Match parcial (contém o termo)
-      if (trigger.includes(normalizedSearchName) || normalizedSearchName.includes(trigger)) {
-        console.log('✅ [AUDIO-LIBRARY] Match parcial encontrado');
-        return true;
-      }
-      
-      // 5. Match pelo nome do arquivo (sem extensão)
-      if (item.name) {
-        const nameWithoutExt = item.name.toLowerCase().replace(/\.[^/.]+$/, "").trim();
-        if (nameWithoutExt === normalizedSearchName) {
-          console.log('✅ [AUDIO-LIBRARY] Match por nome de arquivo encontrado');
+      // 2. Se o trigger tem prefixo "audio", testar removendo o prefixo
+      // Ex: trigger="audiogeonothaliszu" vs busca="geonothaliszu"
+      if (trigger.startsWith('audio') && trigger.length > 5) {
+        const triggerSemAudio = trigger.substring(5);
+        console.log('🔍 [AUDIO-LIBRARY] Testando sem prefixo "audio":', { 
+          triggerSemAudio: `"${triggerSemAudio}"`,
+          busca: `"${normalizedSearchName}"`,
+          match: triggerSemAudio === normalizedSearchName
+        });
+        if (triggerSemAudio === normalizedSearchName) {
+          console.log('🎉 [AUDIO-LIBRARY] ✅ MATCH SEM PREFIXO encontrado!');
           return true;
         }
       }
       
+      // 3. Se a busca NÃO tem prefixo "audio", testar adicionando
+      // Ex: busca="geonothaliszu" vs trigger="audiogeonothaliszu"
+      if (!normalizedSearchName.startsWith('audio')) {
+        const buscaComAudio = `audio${normalizedSearchName}`;
+        console.log('🔍 [AUDIO-LIBRARY] Testando com prefixo "audio":', { 
+          buscaComAudio: `"${buscaComAudio}"`,
+          trigger: `"${trigger}"`,
+          match: trigger === buscaComAudio
+        });
+        if (trigger === buscaComAudio) {
+          console.log('🎉 [AUDIO-LIBRARY] ✅ MATCH COM PREFIXO encontrado!');
+          return true;
+        }
+      }
+      
+      console.log('❌ [AUDIO-LIBRARY] Nenhum match exato para este trigger');
       return false;
     });
     
