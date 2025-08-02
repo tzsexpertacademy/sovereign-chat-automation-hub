@@ -26,6 +26,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const [isSending, setIsSending] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const debugCommandExecutingRef = useRef(false);
+  const lastDebugExecutionRef = useRef<number>(0);
   
   const { toast } = useToast();
   const { markActivity, isOnline } = useOnlineStatus(clientId, true);
@@ -112,24 +114,66 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
     const messageToSend = newMessage.trim();
 
-    // 🚨 INTERCEPTAR COMANDO DEBUG ESPECIAL
+    // 🚨 INTERCEPTAR COMANDO DEBUG ESPECIAL COM DEBOUNCE
     if (messageToSend === '/debugbloco') {
-      console.log('🚨 [DEBUG] Comando /debugbloco detectado - iniciando teste isolado');
+      const currentTime = Date.now();
+      const timeSinceLastExecution = currentTime - lastDebugExecutionRef.current;
+      const executionId = `debug_${currentTime}`;
       
-      const { debugBlocoService } = await import('@/services/debugBlocoService');
-      await debugBlocoService.handleDebugCommand(
-        ticketId,
-        clientId,
-        actualInstanceId,
-        ticket.chat_id
-      );
+      // 🛡️ DEBOUNCE: Prevenir execuções múltiplas em 2 segundos
+      if (timeSinceLastExecution < 2000) {
+        console.warn(`🚨 [DEBUG] Comando /debugbloco BLOQUEADO - muito rápido (${timeSinceLastExecution}ms). Aguarde ${2000 - timeSinceLastExecution}ms`);
+        toast({
+          title: "⚠️ Comando Bloqueado",
+          description: `Aguarde ${Math.ceil((2000 - timeSinceLastExecution) / 1000)}s antes de executar novamente.`,
+          variant: "destructive"
+        });
+        return;
+      }
       
-      setNewMessage('');
-      toast({
-        title: "🚨 Debug Executado",
-        description: "Teste do sistema de blocos iniciado! Verifique os logs e mensagens.",
-        variant: "default"
-      });
+      // 🔒 VERIFICAR se já está executando
+      if (debugCommandExecutingRef.current) {
+        console.warn('🚨 [DEBUG] Comando /debugbloco BLOQUEADO - já executando');
+        toast({
+          title: "⚠️ Debug em Execução",
+          description: "Aguarde a conclusão do teste anterior.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      try {
+        debugCommandExecutingRef.current = true;
+        lastDebugExecutionRef.current = currentTime;
+        
+        console.log(`🚨 [DEBUG-${executionId}] Comando /debugbloco INICIANDO - teste isolado`);
+        setNewMessage('');
+        
+        const { debugBlocoService } = await import('@/services/debugBlocoService');
+        await debugBlocoService.handleDebugCommand(
+          ticketId,
+          clientId,
+          actualInstanceId,
+          ticket.chat_id
+        );
+        
+        console.log(`✅ [DEBUG-${executionId}] Comando /debugbloco CONCLUÍDO com sucesso`);
+        toast({
+          title: "✅ Debug Executado",
+          description: "Teste do sistema de blocos concluído! Verifique os logs.",
+          variant: "default"
+        });
+      } catch (error) {
+        console.error(`❌ [DEBUG-${executionId}] Erro no comando /debugbloco:`, error);
+        toast({
+          title: "❌ Erro no Debug",
+          description: "Falha ao executar teste do sistema de blocos.",
+          variant: "destructive"
+        });
+      } finally {
+        debugCommandExecutingRef.current = false;
+      }
+      
       return;
     }
 
