@@ -840,10 +840,18 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
           
           console.log(`✅ [AI-ASSISTANT] Bloco ${chunkIndex}/${chunks.length} enviado com sucesso`);
 
-          // Aguardar delay entre chunks (exceto no último)
+          // Aguardar delay entre chunks (exceto no último) - timing inteligente
           if (chunkIndex < chunks.length) {
-            console.log(`⏱️ [AI-ASSISTANT] Aguardando ${humanizedConfig.behavior.messageHandling.delayBetweenChunks}ms antes do próximo bloco`);
-            await new Promise(resolve => setTimeout(resolve, humanizedConfig.behavior.messageHandling.delayBetweenChunks));
+            // Delay baseado no tamanho do próximo bloco
+            const nextChunk = chunks[chunkIndex]; // próximo bloco (array é 0-indexed)
+            const baseDelay = humanizedConfig.behavior.messageHandling.delayBetweenChunks;
+            const intelligentDelay = Math.min(
+              Math.max(baseDelay, nextChunk.length * 12), // 12ms por caractere
+              4500 // máximo 4.5 segundos
+            );
+            
+            console.log(`⏱️ [AI-ASSISTANT] Aguardando ${intelligentDelay}ms antes do próximo bloco (baseado em ${nextChunk.length} chars)`);
+            await new Promise(resolve => setTimeout(resolve, intelligentDelay));
           }
         }
 
@@ -1797,14 +1805,23 @@ async function processDocumentExtraction(documentBase64: string, mimeType: strin
  */
 function hasTopicStructure(message: string): boolean {
   const topicPatterns = [
-    /^\d+\.\s+\*\*[^*]+\*\*/m, // "1. **Título:**"
-    /^\d+\.\s+[A-ZÁÊÇÕÃ]/m,     // "1. Texto"
-    /^\*\*\d+\.\s+[^*]+\*\*/m,  // "**1. Título**"
-    /^•\s+\*\*[^*]+\*\*/m,      // "• **Item:**"
-    /^\*\*[^*]+:\*\*/m          // "**Título:**"
+    /^\d+\.\s*\*\*[^*]+\*\*/m,     // "1. **Título:**"
+    /^\*\*\d+\.\s*[^*]+\*\*/m,     // "**1. Título**"
+    /^\d+\.\s*[A-ZÁÊÇÕÃÍÚÂÔÀÜ]/m,  // "1. Texto"
+    /^•\s*\*\*[^*]+\*\*/m,         // "• **Item:**"
+    /^\*\*[^*]+:\*\*\s*$/m,        // "**Título:**"
+    /^\s*[-•]\s*\*\*[^*]+\*\*/m,   // "- **Item:**" ou "• **Item:**"
+    /^\d+\)\s*[A-ZÁÊÇÕÃÍÚÂÔÀÜ]/m,  // "1) Texto"
   ];
   
-  return topicPatterns.some(pattern => pattern.test(message));
+  // Contar quantos padrões de tópicos encontramos
+  const matches = topicPatterns.reduce((count, pattern) => {
+    const found = message.match(new RegExp(pattern.source, 'gm'));
+    return count + (found ? found.length : 0);
+  }, 0);
+  
+  console.log(`🔍 [TOPIC-DETECT] Padrões encontrados: ${matches}`);
+  return matches >= 2; // Pelo menos 2 tópicos para considerar estruturada
 }
 
 /**
@@ -1813,44 +1830,103 @@ function hasTopicStructure(message: string): boolean {
 function splitMessageByTopics(message: string): string[] {
   const chunks: string[] = [];
   
-  // Dividir por tópicos numerados ou bullets
-  const topicRegex = /(?=(?:^\d+\.\s+|\*\*\d+\.\s+|^•\s+|\*\*[^*]+:\*\*))/gm;
-  const parts = message.split(topicRegex).filter(part => part.trim().length > 0);
+  // Padrões mais robustos para detectar início de tópicos
+  const topicSeparators = [
+    /(?=\n\s*\d+\.\s*\*\*[^*]+\*\*)/g,      // "\n1. **Título:**"
+    /(?=\n\s*\*\*\d+\.\s*[^*]+\*\*)/g,      // "\n**1. Título**"
+    /(?=\n\s*\d+\.\s*[A-ZÁÊÇÕÃÍÚÂÔÀÜ])/g,   // "\n1. Texto"
+    /(?=\n\s*\*\*[^*]+:\*\*\s*\n)/g,        // "\n**Título:**\n"
+    /(?=\n\s*[-•]\s*\*\*[^*]+\*\*)/g,       // "\n• **Item:**"
+  ];
   
-  for (const part of parts) {
-    const trimmedPart = part.trim();
-    
-    // Se o bloco é muito pequeno (< 50 chars), tentar juntar com o anterior
-    if (trimmedPart.length < 50 && chunks.length > 0) {
-      const lastChunk = chunks.pop();
-      chunks.push(`${lastChunk}\n\n${trimmedPart}`);
-    }
-    // Se o bloco é muito grande (> 800 chars), dividir por frases
-    else if (trimmedPart.length > 800) {
-      const sentences = trimmedPart.split(/(?<=[.!?])\s+/);
-      let currentChunk = '';
-      
-      for (const sentence of sentences) {
-        if ((currentChunk + ' ' + sentence).length > 400) {
-          if (currentChunk) {
-            chunks.push(currentChunk.trim());
-          }
-          currentChunk = sentence;
-        } else {
-          currentChunk = currentChunk ? currentChunk + ' ' + sentence : sentence;
-        }
-      }
-      
-      if (currentChunk) {
-        chunks.push(currentChunk.trim());
-      }
-    }
-    else {
-      chunks.push(trimmedPart);
+  let splitMessage = message;
+  
+  // Aplicar todos os separadores
+  for (const separator of topicSeparators) {
+    const parts = splitMessage.split(separator);
+    if (parts.length > 1) {
+      splitMessage = parts.join('|||TOPIC_SPLIT|||');
     }
   }
   
-  return chunks.filter(chunk => chunk.length > 0);
+  const rawParts = splitMessage.split('|||TOPIC_SPLIT|||')
+    .map(part => part.trim())
+    .filter(part => part.length > 0);
+  
+  console.log(`📋 [TOPIC-SPLIT] Partes encontradas: ${rawParts.length}`);
+  
+  for (let i = 0; i < rawParts.length; i++) {
+    let part = rawParts[i];
+    
+    // Primeira parte: pode incluir introdução
+    if (i === 0 && part.length < 150 && rawParts.length > 1) {
+      // Se muito pequena, juntar com próxima parte
+      const nextPart = rawParts[i + 1];
+      if (nextPart && (part + '\n\n' + nextPart).length <= 500) {
+        part = part + '\n\n' + nextPart;
+        rawParts.splice(i + 1, 1); // Remove próxima parte
+        console.log(`🔗 [TOPIC-SPLIT] Introdução juntada com primeiro tópico`);
+      }
+    }
+    
+    // Se bloco muito grande (> 600 chars), dividir de forma inteligente
+    if (part.length > 600) {
+      console.log(`✂️ [TOPIC-SPLIT] Dividindo bloco grande: ${part.length} chars`);
+      
+      // Tentar dividir por subtópicos primeiro
+      const subTopics = part.split(/(?=\n\s*[-•]\s)/g);
+      
+      if (subTopics.length > 1) {
+        // Agrupar subtópicos em blocos menores
+        let currentSubChunk = '';
+        for (const subTopic of subTopics) {
+          if ((currentSubChunk + '\n' + subTopic).length > 400) {
+            if (currentSubChunk) chunks.push(currentSubChunk.trim());
+            currentSubChunk = subTopic;
+          } else {
+            currentSubChunk = currentSubChunk ? currentSubChunk + '\n' + subTopic : subTopic;
+          }
+        }
+        if (currentSubChunk) chunks.push(currentSubChunk.trim());
+      } else {
+        // Dividir por frases se não há subtópicos
+        const sentences = part.split(/(?<=[.!?])\s+/);
+        let currentChunk = '';
+        
+        for (const sentence of sentences) {
+          if ((currentChunk + ' ' + sentence).length > 350) {
+            if (currentChunk) chunks.push(currentChunk.trim());
+            currentChunk = sentence;
+          } else {
+            currentChunk = currentChunk ? currentChunk + ' ' + sentence : sentence;
+          }
+        }
+        if (currentChunk) chunks.push(currentChunk.trim());
+      }
+    }
+    // Se bloco muito pequeno (< 80 chars) e não é o primeiro, tentar juntar
+    else if (part.length < 80 && chunks.length > 0 && i > 0) {
+      const lastChunk = chunks.pop();
+      if (lastChunk && (lastChunk + '\n\n' + part).length <= 500) {
+        chunks.push(lastChunk + '\n\n' + part);
+        console.log(`🔗 [TOPIC-SPLIT] Bloco pequeno juntado com anterior`);
+      } else {
+        if (lastChunk) chunks.push(lastChunk);
+        chunks.push(part);
+      }
+    }
+    else {
+      chunks.push(part);
+    }
+  }
+  
+  const finalChunks = chunks.filter(chunk => chunk.length > 0);
+  console.log(`✅ [TOPIC-SPLIT] Resultado final: ${finalChunks.length} blocos`);
+  finalChunks.forEach((chunk, idx) => {
+    console.log(`📦 [TOPIC-SPLIT] Bloco ${idx + 1}: ${chunk.length} chars - "${chunk.substring(0, 60)}..."`);
+  });
+  
+  return finalChunks;
 }
 
 /**
@@ -1864,7 +1940,9 @@ function splitMessageIntoChunks(message: string, maxChars: number): string[] {
   // Se tem estrutura de tópicos, dividir por tópicos
   if (hasTopicStructure(message)) {
     console.log('📝 [AI-ASSISTANT] Detectada estrutura de tópicos, dividindo por tópicos');
-    return splitMessageByTopics(message);
+    const topicChunks = splitMessageByTopics(message);
+    console.log(`🎯 [AI-ASSISTANT] Divisão por tópicos resultou em ${topicChunks.length} blocos`);
+    return topicChunks;
   }
 
   // Senão, dividir por caracteres (método original)
