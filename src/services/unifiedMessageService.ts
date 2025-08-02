@@ -123,6 +123,66 @@ class UnifiedMessageService {
   }
 
   /**
+   * BUSCAR ASSISTENTE AUTOMATICAMENTE (fallback para casos sem assistentId)
+   */
+  private async getAssistantIdFromTicket(chatId: string, clientId?: string): Promise<string | null> {
+    if (!clientId) return null;
+
+    try {
+      // Buscar ticket ativo para o chat
+      const { data: ticket, error } = await supabase
+        .from('conversation_tickets')
+        .select('assigned_assistant_id, assigned_queue_id')
+        .eq('client_id', clientId)
+        .eq('chat_id', chatId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error || !ticket) {
+        smartLogs.warn('MESSAGE', 'Ticket não encontrado para fallback', { chatId, clientId, error });
+        return null;
+      }
+
+      // Se tem assistente direto, usar
+      if (ticket.assigned_assistant_id) {
+        smartLogs.info('MESSAGE', 'Assistente encontrado no ticket', { 
+          assistantId: ticket.assigned_assistant_id 
+        });
+        return ticket.assigned_assistant_id;
+      }
+
+      // Se não tem assistente mas tem fila, buscar assistente da fila
+      if (ticket.assigned_queue_id) {
+        const { data: queue, error: queueError } = await supabase
+          .from('queues')
+          .select('assistant_id')
+          .eq('id', ticket.assigned_queue_id)
+          .eq('is_active', true)
+          .single();
+
+        if (!queueError && queue?.assistant_id) {
+          smartLogs.info('MESSAGE', 'Assistente encontrado na fila', { 
+            assistantId: queue.assistant_id,
+            queueId: ticket.assigned_queue_id
+          });
+          return queue.assistant_id;
+        }
+      }
+
+      smartLogs.warn('MESSAGE', 'Nenhum assistente encontrado para fallback', { 
+        ticketId: ticket.assigned_assistant_id,
+        queueId: ticket.assigned_queue_id
+      });
+      return null;
+
+    } catch (error) {
+      smartLogs.error('MESSAGE', 'Erro ao buscar assistente para fallback', { error });
+      return null;
+    }
+  }
+
+  /**
    * GARANTIR BUSINESS TOKEN VÁLIDO
    */
   private async ensureValidBusinessToken(clientId: string): Promise<void> {
@@ -212,11 +272,24 @@ class UnifiedMessageService {
       clientId
     });
 
-    // SEMPRE usar sistema de blocos se tiver assistantId, independente do tamanho
+    // 🔧 FALLBACK: Tentar buscar assistente se não foi fornecido
+    let finalAssistantId = assistantId;
+    if (!finalAssistantId && clientId) {
+      finalAssistantId = await this.getAssistantIdFromTicket(chatId, clientId);
+      
+      if (finalAssistantId) {
+        smartLogs.info('MESSAGE', '🎯 ASSISTENTE ENCONTRADO VIA FALLBACK', { 
+          assistantId: finalAssistantId 
+        });
+      }
+    }
+
+    // SEMPRE usar sistema de blocos se tiver assistantId (original ou fallback), independente do tamanho
     // O messageChunksService decidirá internamente se precisa dividir
-    if (assistantId) {
+    if (finalAssistantId) {
       smartLogs.info('MESSAGE', '🤖 USANDO SISTEMA DE BLOCOS (assistente configurado)', {
-        assistantId,
+        assistantId: finalAssistantId,
+        source: assistantId ? 'direto' : 'fallback',
         messageLength: message.length,
         will_call: 'messageChunksService.sendMessageInChunks'
       });
@@ -226,7 +299,7 @@ class UnifiedMessageService {
         chatId,
         message,
         clientId,
-        assistantId,
+        assistantId: finalAssistantId,
         source: 'ai',
         ...callbacks
       });
