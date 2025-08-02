@@ -19,6 +19,8 @@ export interface ChunkConfig {
   typingEnabled: boolean;
   minTypingDuration: number;
   maxTypingDuration: number;
+  typingSpeed: number;
+  humanizedDelays: boolean;
 }
 
 export interface ChunkedMessageOptions {
@@ -120,33 +122,63 @@ class MessageChunksService {
         }))
       });
 
-      // 4. ENVIAR CADA BLOCO COM DELAYS E TYPING
+      // 4. ENVIAR CADA BLOCO COM DELAYS E TYPING - VERSÃO CORRIGIDA
       const results: UnifiedMessageResult[] = [];
       const messageIds: string[] = [];
       const errors: string[] = [];
 
+      smartLogs.info('MESSAGE', '🚀 INICIANDO envio sequencial dos blocos', {
+        totalChunks: chunks.length,
+        delayBetweenChunks: config.delayBetweenChunks,
+        typingEnabled: config.typingEnabled
+      });
+
       for (let i = 0; i < chunks.length; i++) {
         if (!this.activeProcesses.get(processKey)) {
-          smartLogs.warn('MESSAGE', 'Processo cancelado');
+          smartLogs.warn('MESSAGE', '❌ Processo cancelado pelo usuário');
           break;
         }
 
         const chunk = chunks[i];
-        smartLogs.info('MESSAGE', `Enviando bloco ${i + 1}/${chunks.length}`, {
+        const chunkNumber = i + 1;
+        const isLastChunk = i === chunks.length - 1;
+
+        smartLogs.info('MESSAGE', `📤 ENVIANDO BLOCO ${chunkNumber}/${chunks.length}`, {
           chunkLength: chunk.length,
-          chunkPreview: chunk.substring(0, 50)
+          chunkPreview: chunk.substring(0, 100) + '...',
+          isLastChunk
         });
 
-        // SIMULAR TYPING
-        if (config.typingEnabled && i < chunks.length - 1) {
-          options.onTypingStart?.();
+        // CALLBACK: Typing Start
+        if (config.typingEnabled && options.onTypingStart) {
+          smartLogs.info('MESSAGE', `⌨️ CALLBACK: Typing Start para bloco ${chunkNumber}`);
+          options.onTypingStart();
+        }
+
+        // SIMULAR DIGITAÇÃO
+        if (config.typingEnabled) {
           const typingDuration = this.calculateTypingDuration(chunk, config);
-          smartLogs.info('MESSAGE', `Simulando digitação por ${typingDuration}ms`);
+          smartLogs.info('MESSAGE', `⌨️ SIMULANDO digitação por ${typingDuration}ms`, {
+            chunkNumber,
+            chunkLength: chunk.length,
+            typingSpeed: config.typingSpeed
+          });
           await this.delay(typingDuration);
-          options.onTypingStop?.();
+        }
+
+        // CALLBACK: Typing Stop
+        if (config.typingEnabled && options.onTypingStop) {
+          smartLogs.info('MESSAGE', `✋ CALLBACK: Typing Stop para bloco ${chunkNumber}`);
+          options.onTypingStop();
         }
 
         // ENVIAR BLOCO
+        smartLogs.info('MESSAGE', `🎯 DISPARANDO envio do bloco ${chunkNumber}`, {
+          instanceId: options.instanceId,
+          chatId: options.chatId,
+          messageLength: chunk.length
+        });
+
         const result = await unifiedMessageService.sendMessage({
           instanceId: options.instanceId,
           chatId: options.chatId,
@@ -161,19 +193,37 @@ class MessageChunksService {
 
         if (result.success && result.messageId) {
           messageIds.push(result.messageId);
+          smartLogs.info('MESSAGE', `✅ BLOCO ${chunkNumber} ENVIADO COM SUCESSO`, {
+            messageId: result.messageId,
+            timestamp: result.timestamp
+          });
         } else if (result.error) {
           errors.push(result.error);
+          smartLogs.error('MESSAGE', `❌ FALHA NO BLOCO ${chunkNumber}`, {
+            error: result.error,
+            chunkContent: chunk.substring(0, 100)
+          });
         }
 
         // CALLBACK DE PROGRESSO
-        options.onProgress?.(i + 1, chunks.length);
+        if (options.onProgress) {
+          smartLogs.info('MESSAGE', `📊 CALLBACK: Progress ${chunkNumber}/${chunks.length}`);
+          options.onProgress(chunkNumber, chunks.length);
+        }
 
         // DELAY ENTRE BLOCOS (exceto no último)
-        if (i < chunks.length - 1 && this.activeProcesses.get(processKey)) {
-          const delayVariation = Math.random() * 500 - 250; // ±250ms de variação
-          const finalDelay = Math.max(500, config.delayBetweenChunks + delayVariation);
+        if (!isLastChunk && this.activeProcesses.get(processKey)) {
+          const baseDelay = config.delayBetweenChunks;
+          const randomDelay = config.humanizedDelays ? Math.floor(Math.random() * 1000) : 0;
+          const finalDelay = Math.max(500, baseDelay + randomDelay);
           
-          smartLogs.info('MESSAGE', `Aguardando ${finalDelay}ms antes do próximo bloco`);
+          smartLogs.info('MESSAGE', `⏱️ AGUARDANDO ${finalDelay}ms antes do bloco ${chunkNumber + 1}`, {
+            baseDelay,
+            randomDelay,
+            finalDelay,
+            nextChunk: chunkNumber + 1
+          });
+          
           await this.delay(finalDelay);
         }
       }
@@ -223,7 +273,9 @@ class MessageChunksService {
       delayBetweenChunks: 2500,
       typingEnabled: true,
       minTypingDuration: 1000,
-      maxTypingDuration: 3000
+      maxTypingDuration: 3000,
+      typingSpeed: 50,
+      humanizedDelays: true
     };
 
     if (!assistantId) {
@@ -275,7 +327,9 @@ class MessageChunksService {
         delayBetweenChunks,
         typingEnabled,
         minTypingDuration: settings.typing?.minDuration ?? defaultConfig.minTypingDuration,
-        maxTypingDuration: settings.typing?.maxDuration ?? defaultConfig.maxTypingDuration
+        maxTypingDuration: settings.typing?.maxDuration ?? defaultConfig.maxTypingDuration,
+        typingSpeed: settings.typing?.speed ?? defaultConfig.typingSpeed,
+        humanizedDelays: settings.humanizedDelays ?? defaultConfig.humanizedDelays
       };
 
     } catch (error) {

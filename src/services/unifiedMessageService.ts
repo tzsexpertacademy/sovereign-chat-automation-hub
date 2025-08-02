@@ -202,21 +202,26 @@ class UnifiedMessageService {
     }
   ): Promise<ChunkedMessageResult> {
     
-    smartLogs.info('MESSAGE', 'SendSmartMessage: avaliando se deve usar blocos', {
+    smartLogs.info('MESSAGE', '🧠 SENDSMARTMESSAGE INICIADO', {
       messageLength: message.length,
+      messagePreview: message.substring(0, 150) + '...',
       assistantId,
-      hasAssistant: !!assistantId
+      hasAssistant: !!assistantId,
+      instanceId,
+      chatId,
+      clientId
     });
 
     // SEMPRE usar sistema de blocos se tiver assistantId, independente do tamanho
     // O messageChunksService decidirá internamente se precisa dividir
     if (assistantId) {
-      smartLogs.info('MESSAGE', 'Usando sistema de blocos (assistente configurado)', {
+      smartLogs.info('MESSAGE', '🤖 USANDO SISTEMA DE BLOCOS (assistente configurado)', {
         assistantId,
-        messageLength: message.length
+        messageLength: message.length,
+        will_call: 'messageChunksService.sendMessageInChunks'
       });
       
-      return this.sendMessageInChunks({
+      const result = await this.sendMessageInChunks({
         instanceId,
         chatId,
         message,
@@ -225,11 +230,21 @@ class UnifiedMessageService {
         source: 'ai',
         ...callbacks
       });
+
+      smartLogs.info('MESSAGE', '✅ RESULTADO DO SISTEMA DE BLOCOS', {
+        success: result.success,
+        totalChunks: result.totalChunks,
+        sentChunks: result.sentChunks,
+        errors: result.errors
+      });
+
+      return result;
     }
 
     // Para mensagens sem assistente, usar envio direto
-    smartLogs.info('MESSAGE', 'Usando envio direto (sem assistente)', {
-      messageLength: message.length
+    smartLogs.info('MESSAGE', '📝 USANDO ENVIO DIRETO (sem assistente)', {
+      messageLength: message.length,
+      will_call: 'sendMessage_direct'
     });
     
     const result = await this.sendMessage({
