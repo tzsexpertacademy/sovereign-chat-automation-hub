@@ -114,8 +114,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
     const messageToSend = newMessage.trim();
 
-    // 🚨 INTERCEPTAR COMANDO DEBUG ESPECIAL COM DEBOUNCE E TYPING INTEGRADO
-    if (messageToSend === '/debugbloco') {
+    // 🚨 INTERCEPTAR COMANDOS DEBUG ESPECIAIS COM DEBOUNCE E TYPING INTEGRADO
+    if (messageToSend === '/debugbloco' || messageToSend === '/debugaudio') {
       const currentTime = Date.now();
       const executionId = `debug_${currentTime}`;
       
@@ -134,26 +134,46 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         debugCommandExecutingRef.current = true;
         lastDebugExecutionRef.current = currentTime;
         
-        console.log(`🚨 [DEBUG-${executionId}] Comando /debugbloco INICIANDO`);
+        const isDebugAudio = messageToSend === '/debugaudio';
+        const commandType = isDebugAudio ? 'AUDIO' : 'BLOCO';
+        console.log(`🚨 [DEBUG-${executionId}] Comando /debug${commandType.toLowerCase()} INICIANDO`);
         setNewMessage('');
         
         // IMPORTAR E EXECUTAR COM LOGGING EXTENSIVO
         try {
-          console.log(`📦 [DEBUG-${executionId}] Importando debugBlocoService...`);
-          const serviceModule = await import('@/services/debugBlocoService');
-          console.log(`✅ [DEBUG-${executionId}] debugBlocoService importado:`, !!serviceModule.debugBlocoService);
-          
-          if (!serviceModule.debugBlocoService) {
-            throw new Error('debugBlocoService não encontrado no módulo');
+          if (isDebugAudio) {
+            console.log(`📦 [DEBUG-${executionId}] Importando debugAudioService...`);
+            const serviceModule = await import('@/services/debugAudioService');
+            console.log(`✅ [DEBUG-${executionId}] debugAudioService importado:`, !!serviceModule.debugAudioService);
+            
+            if (!serviceModule.debugAudioService) {
+              throw new Error('debugAudioService não encontrado no módulo');
+            }
+            
+            console.log(`🎯 [DEBUG-${executionId}] Executando handleDebugCommand...`);
+            await serviceModule.debugAudioService.handleDebugCommand(
+              ticketId,
+              clientId,
+              actualInstanceId,
+              ticket.chat_id
+            );
+          } else {
+            console.log(`📦 [DEBUG-${executionId}] Importando debugBlocoService...`);
+            const serviceModule = await import('@/services/debugBlocoService');
+            console.log(`✅ [DEBUG-${executionId}] debugBlocoService importado:`, !!serviceModule.debugBlocoService);
+            
+            if (!serviceModule.debugBlocoService) {
+              throw new Error('debugBlocoService não encontrado no módulo');
+            }
+            
+            console.log(`🎯 [DEBUG-${executionId}] Executando handleDebugCommand...`);
+            await serviceModule.debugBlocoService.handleDebugCommand(
+              ticketId,
+              clientId,
+              actualInstanceId,
+              ticket.chat_id
+            );
           }
-          
-          console.log(`🎯 [DEBUG-${executionId}] Executando handleDebugCommand...`);
-          await serviceModule.debugBlocoService.handleDebugCommand(
-            ticketId,
-            clientId,
-            actualInstanceId,
-            ticket.chat_id
-          );
           
           console.log(`✅ [DEBUG-${executionId}] handleDebugCommand CONCLUÍDO`);
         } catch (importError) {
@@ -161,9 +181,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           throw new Error(`Falha na importação: ${importError instanceof Error ? importError.message : 'Erro desconhecido'}`);
         }
         
+        const successMessage = isDebugAudio 
+          ? "Teste de comandos de áudio concluído! Verifique as mensagens do chat."
+          : "Teste do sistema de blocos concluído! Verifique as mensagens do chat.";
+          
         toast({
           title: "✅ Debug Executado",
-          description: "Teste do sistema de blocos concluído! Verifique as mensagens do chat.",
+          description: successMessage,
           variant: "default"
         });
       } catch (error) {
