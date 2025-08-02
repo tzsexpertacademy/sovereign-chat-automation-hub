@@ -627,9 +627,22 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       model: safeAssistant.model || 'gpt-4o-mini'
     });
 
+    // 🔐 BUSCAR BUSINESS TOKEN PARA COMANDOS DE ÁUDIO
+    console.log('🔐 [AI-ASSISTANT] Verificando business token para cliente:', resolvedClientId);
+    
+    const { data: client, error: clientError } = await supabase
+      .from('clients')
+      .select('business_token')
+      .eq('id', resolvedClientId)
+      .single();
+    
+    if (clientError || !client?.business_token) {
+      console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', resolvedClientId);
+    }
+
     // 🎵 DETECTAR E PROCESSAR COMANDOS DE ÁUDIO
     let finalResponse = aiResponse;
-    const audioCommands = await processAudioCommands(aiResponse, ticketId, safeAssistant, resolvedInstanceId, client.business_token);
+    const audioCommands = await processAudioCommands(aiResponse, ticketId, safeAssistant, resolvedInstanceId, client?.business_token || '');
     if (audioCommands.hasAudioCommands) {
       console.log('🎵 [AUDIO-COMMANDS] Comandos de áudio detectados:', audioCommands.processedCount);
       finalResponse = audioCommands.remainingText;
@@ -718,18 +731,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       });
     }
 
-    // Garantir business token válido
-    console.log('🔐 [AI-ASSISTANT] Verificando business token para cliente:', resolvedClientId);
-    
-    const { data: client, error: clientError } = await supabase
-      .from('clients')
-      .select('business_token')
-      .eq('id', resolvedClientId)
-      .single();
-    
-    if (clientError || !client?.business_token) {
-      console.warn('⚠️ [AI-ASSISTANT] Business token não encontrado para cliente:', resolvedClientId);
-    }
+    // Business token já foi obtido anteriormente para comandos de áudio
 
     // 📱 CONFIGURAR PROFILE ONLINE SE HABILITADO
     try {
