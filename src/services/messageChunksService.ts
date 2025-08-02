@@ -66,16 +66,27 @@ class MessageChunksService {
       // 1. CARREGAR CONFIGURAÇÕES DO ASSISTENTE
       const config = await this.loadChunkConfig(options.assistantId);
       
-      smartLogs.info('MESSAGE', 'Configurações de blocos carregadas', {
-        config,
-        messageLength: options.message.length,
-        shouldSplit: config.enabled && options.message.length > config.maxCharsPerChunk,
-        assistantId: options.assistantId
-      });
+      // 🚨 DEBUG CRÍTICO - VERIFICAR VALORES EXATOS
+      console.log('🔍 [MESSAGE-CHUNKS] === DEBUG CRÍTICO ===');
+      console.log('📏 Comprimento da mensagem:', options.message.length);
+      console.log('📐 Max chars por chunk (config):', config.maxCharsPerChunk);
+      console.log('⚙️ Config completa:', JSON.stringify(config, null, 2));
+      console.log('📝 Mensagem (primeiros 100 chars):', options.message.substring(0, 100) + '...');
 
       // 2. VERIFICAR SE DEVE DIVIDIR MENSAGEM
       // CRITÉRIO: mensagem > maxCharsPerChunk (sempre ativo quando tem assistente)
       const shouldSplit = options.message.length > config.maxCharsPerChunk;
+      
+      console.log('🎯 DECISÃO shouldSplit:', shouldSplit);
+      console.log('🔢 Comparação:', options.message.length, '>', config.maxCharsPerChunk, '=', shouldSplit);
+      
+      smartLogs.info('MESSAGE', 'DECISÃO DE DIVISÃO', {
+        messageLength: options.message.length,
+        maxCharsPerChunk: config.maxCharsPerChunk,
+        shouldSplit: shouldSplit,
+        configEnabled: config.enabled,
+        assistantId: options.assistantId
+      });
       
       if (!shouldSplit) {
         smartLogs.info('MESSAGE', 'ENVIO DIRETO (não precisa dividir)', {
