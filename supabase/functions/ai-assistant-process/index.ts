@@ -2383,7 +2383,7 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
 }
 
 /**
- * 🎵 ENVIAR MENSAGEM DE ÁUDIO VIA YUMER API
+ * 🎵 ENVIAR MENSAGEM DE ÁUDIO VIA YUMER API (CORRIGIDO - USA URL)
  */
 async function sendAudioMessage(instanceId: string, ticketId: string, audioBase64: string, businessToken: string): Promise<void> {
   try {
@@ -2398,30 +2398,83 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
       throw new Error('Ticket não encontrado');
     }
     
-    console.log('🎵 [SEND-AUDIO] Enviando áudio via Yumer API v2...', {
+    console.log('🎵 [SEND-AUDIO] Processando áudio TTS...', {
       instanceId,
       chatId: ticket.chat_id.substring(0, 15) + '...',
       audioSize: Math.round(audioBase64.length / 1024) + 'KB'
     });
+
+    // 🔄 CONVERTER BASE64 PARA BLOB E FAZER UPLOAD
+    console.log('🔄 [SEND-AUDIO] Convertendo base64 para blob...');
     
-    // CORREÇÃO CRÍTICA: Estrutura correta para Yumer API v2.2.1
+    // Converter base64 para Uint8Array
+    const binaryString = atob(audioBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Criar blob com tipo correto (OGG para WhatsApp)
+    const audioBlob = new Blob([bytes], { type: 'audio/ogg' });
+    console.log('📊 [SEND-AUDIO] Blob criado:', {
+      size: audioBlob.size,
+      type: audioBlob.type
+    });
+
+    // Fazer upload para Supabase Storage
+    const timestamp = Date.now();
+    const fileName = `temp_audio_${timestamp}.ogg`;
+    const filePath = `temp-audio/${fileName}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('client-assets')
+      .upload(filePath, audioBlob, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('❌ [SEND-AUDIO] Erro no upload:', uploadError);
+      throw new Error(`Upload falhou: ${uploadError.message}`);
+    }
+
+    // Obter URL pública
+    const { data: publicUrlData } = supabase.storage
+      .from('client-assets')
+      .getPublicUrl(filePath);
+
+    if (!publicUrlData?.publicUrl) {
+      console.error('❌ [SEND-AUDIO] Não foi possível obter URL pública');
+      throw new Error('Falha ao obter URL pública');
+    }
+
+    const audioUrl = publicUrlData.publicUrl;
+    console.log('✅ [SEND-AUDIO] Upload concluído - URL:', audioUrl);
+
+    // 📤 ENVIAR ÁUDIO VIA URL (ENDPOINT CORRETO)
+    console.log('📤 [SEND-AUDIO] Enviando áudio via URL...');
+    
+    // CORREÇÃO CRÍTICA: Usar URL ao invés de base64
     const audioData = {
       recipient: ticket.chat_id,
       audioMessage: {
-        audio: audioBase64,
-        ptt: true // Para áudio de voz (Push to Talk)
+        url: audioUrl  // ✅ USAR URL AO INVÉS DE BASE64
       },
       options: {
         delay: 1200,
         presence: 'recording',
-        externalAttributes: 'source=ai_tts;timestamp=' + Date.now()
+        ptt: true,  // ✅ MARCAR COMO PTT
+        externalAttributes: JSON.stringify({
+          source: 'ai_tts',
+          timestamp: Date.now(),
+          method: 'url'
+        })
       }
     };
     
     console.log('📡 [SEND-AUDIO] Dados preparados:', {
       recipient: ticket.chat_id,
-      hasAudio: !!audioBase64,
-      audioLength: audioBase64.length,
+      audioUrl: audioUrl.substring(0, 50) + '...',
       ptt: true
     });
     
@@ -2436,19 +2489,61 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ [SEND-AUDIO] Resposta da API:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText
+      console.error('❌ [SEND-AUDIO] Erro no endpoint URL:', errorText);
+      
+      // 🔄 TENTAR FALLBACK COM /send/audio-file
+      console.log('🔄 [SEND-AUDIO] Tentando fallback com /send/audio-file...');
+      
+      const formData = new FormData();
+      formData.append('recipient', ticket.chat_id);
+      formData.append('attachment', audioBlob, fileName);
+      formData.append('delay', '1200');
+      
+      const fallbackResponse = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio-file`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${businessToken}`
+        },
+        body: formData
       });
-      throw new Error(`Erro na API Yumer: ${response.status} - ${errorText}`);
+
+      if (!fallbackResponse.ok) {
+        const fallbackError = await fallbackResponse.text();
+        console.error('❌ [SEND-AUDIO] Fallback também falhou:', fallbackError);
+        throw new Error(`Ambos endpoints falharam. URL: ${errorText}, File: ${fallbackError}`);
+      }
+
+      const fallbackResult = await fallbackResponse.json();
+      console.log('✅ [SEND-AUDIO] Áudio enviado via fallback:', fallbackResult.key?.id || 'sem-id');
+
+      // Limpar arquivo temporário
+      setTimeout(async () => {
+        try {
+          await supabase.storage.from('client-assets').remove([filePath]);
+          console.log('🧹 [SEND-AUDIO] Arquivo temporário removido');
+        } catch (cleanError) {
+          console.warn('⚠️ [SEND-AUDIO] Erro na limpeza:', cleanError);
+        }
+      }, 60000);
+
+      return;
     }
     
     const result = await response.json();
-    console.log('✅ [SEND-AUDIO] Áudio enviado com sucesso:', {
+    console.log('✅ [SEND-AUDIO] Áudio enviado com sucesso via URL:', {
       messageId: result.key?.id || 'N/A',
       success: true
     });
+
+    // Limpar arquivo temporário após sucesso
+    setTimeout(async () => {
+      try {
+        await supabase.storage.from('client-assets').remove([filePath]);
+        console.log('🧹 [SEND-AUDIO] Arquivo temporário removido');
+      } catch (cleanError) {
+        console.warn('⚠️ [SEND-AUDIO] Erro na limpeza:', cleanError);
+      }
+    }, 60000);
     
   } catch (error) {
     console.error('❌ [SEND-AUDIO] Erro ao enviar áudio:', error);
