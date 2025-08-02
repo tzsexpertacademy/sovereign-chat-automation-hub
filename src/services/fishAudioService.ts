@@ -7,6 +7,7 @@ export interface FishAudioModel {
   description: string;
   state: string;
   languages: string[];
+  visibility?: string; // 'public' | 'private' | outros
   samples?: any[];
   voices?: Array<{
     _id: string;
@@ -42,8 +43,20 @@ class FishAudioService {
    * Valida a API key do Fish.Audio
    */
   async validateApiKey(apiKey: string): Promise<boolean> {
-    if (!apiKey || !apiKey.startsWith('fsk_')) {
-      console.log('🔑 API Key Fish.Audio inválida (formato incorreto)');
+    if (!apiKey) {
+      console.log('🔑 API Key Fish.Audio não fornecida');
+      return false;
+    }
+    
+    // Verificar se não é uma URL de documentação
+    if (apiKey.startsWith('http')) {
+      console.log('🔑 API Key Fish.Audio inválida (URL detectada em vez de chave)');
+      return false;
+    }
+    
+    // Verificar formato esperado (FSK_xxx)
+    if (!apiKey.startsWith('fsk_')) {
+      console.log('🔑 API Key Fish.Audio inválida (formato incorreto - deve começar com fsk_)');
       return false;
     }
     
@@ -115,22 +128,39 @@ class FishAudioService {
     const voices: FishAudioVoice[] = [];
     
     for (const model of models) {
+      // Determinar categoria baseada na visibilidade
+      let category = 'custom';
+      let namePrefix = '';
+      
+      if (model.visibility === 'public') {
+        category = 'public';
+        namePrefix = '🌐 ';
+      } else {
+        category = 'personal';
+        namePrefix = '👤 ';
+      }
+      
       // Para Fish.Audio, cada modelo treinado representa uma voz utilizável
       const voice: FishAudioVoice = {
         id: model._id,
-        name: model.title,
-        description: model.description || `Voz criada com modelo ${model.title}`,
+        name: namePrefix + model.title,
+        description: model.description || `Voz ${category === 'personal' ? 'pessoal' : 'pública'} - ${model.title}`,
         language: model.languages?.[0] || 'pt',
-        category: 'custom',
+        category,
         modelId: model._id
       };
       
       voices.push(voice);
     }
     
+    const personalVoices = voices.filter(v => v.category === 'personal');
+    const publicVoices = voices.filter(v => v.category === 'public');
+    
     console.log('🎤 Vozes Fish.Audio processadas:', {
-      modelos: models.length,
-      vozes: voices.length
+      totalModelos: models.length,
+      totalVozes: voices.length,
+      vozesPersonais: personalVoices.length,
+      vozesPublicas: publicVoices.length
     });
     
     return voices;

@@ -53,42 +53,84 @@ serve(async (req) => {
     if (action === 'list') {
       console.log('📋 [FISH-AUDIO-MODELS] Buscando modelos...');
       
-      const response = await fetch('https://api.fish.audio/model?page_size=50', {
+      // Primeiro, buscar modelos públicos
+      const publicResponse = await fetch('https://api.fish.audio/model?page_size=50', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
         },
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('🐟 [FISH-AUDIO-MODELS] Erro da API:', {
-          status: response.status,
-          statusText: response.statusText,
+      if (!publicResponse.ok) {
+        const errorText = await publicResponse.text();
+        console.error('🐟 [FISH-AUDIO-MODELS] Erro da API pública:', {
+          status: publicResponse.status,
+          statusText: publicResponse.statusText,
           error: errorText
         });
         
-        throw new Error(`Fish.Audio API Error (${response.status}): ${errorText}`);
+        throw new Error(`Fish.Audio API Error (${publicResponse.status}): ${errorText}`);
       }
 
-      const data = await response.json();
+      const publicData = await publicResponse.json();
+      const publicModels = publicData.items || [];
       
-      console.log('📊 [FISH-AUDIO-MODELS] Resposta da API:', {
-        hasItems: !!data.items,
-        hasTotal: !!data.total,
-        dataType: typeof data,
-        dataKeys: Object.keys(data || {})
+      // Buscar modelos pessoais do usuário
+      let userModels = [];
+      try {
+        console.log('👤 [FISH-AUDIO-MODELS] Buscando modelos pessoais...');
+        
+        const userResponse = await fetch('https://api.fish.audio/model?created_by=me&page_size=50', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+          },
+        });
+
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          userModels = userData.items || [];
+          
+          console.log('👤 [FISH-AUDIO-MODELS] Modelos pessoais encontrados:', {
+            personalCount: userModels.length,
+            personalTitles: userModels.map((m: any) => m.title).slice(0, 5)
+          });
+        } else {
+          console.log('⚠️ [FISH-AUDIO-MODELS] Não foi possível buscar modelos pessoais:', userResponse.status);
+        }
+      } catch (error) {
+        console.log('⚠️ [FISH-AUDIO-MODELS] Erro ao buscar modelos pessoais:', error);
+      }
+
+      // Filtrar apenas modelos TTS treinados
+      const publicTTSModels = publicModels.filter((model: any) => 
+        model.type === 'tts' && 
+        model.state === 'trained' && 
+        model.visibility === 'public'
+      );
+
+      const personalTTSModels = userModels.filter((model: any) => 
+        model.type === 'tts' && 
+        model.state === 'trained'
+      );
+
+      // Dar prioridade aos modelos pessoais
+      const combinedModels = [...personalTTSModels, ...publicTTSModels];
+
+      console.log('📊 [FISH-AUDIO-MODELS] Análise completa:', {
+        publicTotal: publicModels.length,
+        publicTTS: publicTTSModels.length,
+        personalTotal: userModels.length,
+        personalTTS: personalTTSModels.length,
+        finalCombined: combinedModels.length
       });
 
-      // Fish.Audio retorna { total, items } onde items é o array de modelos
-      const models = data.items || [];
-      
-      console.log('✅ [FISH-AUDIO-MODELS] Modelos carregados:', {
-        totalModels: models.length,
-        modelIds: models.map((m: any) => m._id).slice(0, 5)
+      console.log('✅ [FISH-AUDIO-MODELS] Modelos finais:', {
+        personalVoices: personalTTSModels.map((m: any) => ({ id: m._id, title: m.title })),
+        topPublicVoices: publicTTSModels.slice(0, 3).map((m: any) => ({ id: m._id, title: m.title }))
       });
 
-      return new Response(JSON.stringify({ models }), {
+      return new Response(JSON.stringify({ models: combinedModels }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

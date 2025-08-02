@@ -167,14 +167,24 @@ const FishAudioVoiceSelector = ({
                   <SelectValue placeholder="Selecione uma voz..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {voices.map((voice) => (
+                  {voices
+                    .sort((a, b) => {
+                      // Priorizar vozes pessoais
+                      if (a.category === 'personal' && b.category !== 'personal') return -1;
+                      if (b.category === 'personal' && a.category !== 'personal') return 1;
+                      return a.name.localeCompare(b.name);
+                    })
+                    .map((voice) => (
                     <SelectItem key={voice.id} value={voice.id}>
                       <div className="flex items-center space-x-2">
                         <div>
                           <div className="font-medium">{voice.name}</div>
                           <div className="text-xs text-muted-foreground flex items-center space-x-1">
-                            <Badge variant="outline" className="text-xs">
-                              {voice.category}
+                            <Badge 
+                              variant={voice.category === 'personal' ? 'default' : 'outline'} 
+                              className="text-xs"
+                            >
+                              {voice.category === 'personal' ? 'Sua Voz' : voice.category}
                             </Badge>
                             <Badge variant="secondary" className="text-xs">
                               {voice.language}
