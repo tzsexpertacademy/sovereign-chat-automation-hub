@@ -2396,15 +2396,29 @@ async function generateTTSAudio(text: string, assistant: any): Promise<{ success
       'Buscar configurações do assistente'
     );
     
-    const advancedSettings = assistantData.advanced_settings || {};
-    console.log('🔍 [TTS] Configurações encontradas:', {
+    // ✅ CORRIGIR PARSE DO ADVANCED_SETTINGS (aplicar mesma lógica da getHumanizedConfig)
+    console.log('🔍 [TTS] Valor bruto recebido:', {
+      type: typeof assistantData.advanced_settings,
+      value: assistantData.advanced_settings
+    });
+    
+    const advancedSettings = assistantData.advanced_settings
+      ? (typeof assistantData.advanced_settings === 'string' 
+          ? JSON.parse(assistantData.advanced_settings) 
+          : assistantData.advanced_settings)
+      : {};
+      
+    console.log('🔍 [TTS] Configurações após parse:', {
       hasElevenLabs: !!(advancedSettings.eleven_labs_api_key && advancedSettings.eleven_labs_voice_id),
       hasFishAudio: !!(advancedSettings.fish_audio_api_key && advancedSettings.fish_audio_voice_id),
-      audioProvider: advancedSettings.audio_provider || 'não definido'
+      audioProvider: advancedSettings.audio_provider || 'não definido',
+      elevenLabsKey: advancedSettings.eleven_labs_api_key ? 'sk_...' + advancedSettings.eleven_labs_api_key.slice(-8) : 'AUSENTE',
+      elevenLabsVoice: advancedSettings.eleven_labs_voice_id || 'AUSENTE'
     });
     
     if (!advancedSettings.eleven_labs_api_key && !advancedSettings.fish_audio_api_key) {
-      console.error('⚠️ [TTS] Nenhuma API de TTS configurada no assistente');
+      console.error('❌ [TTS] Nenhuma API de TTS configurada no assistente');
+      console.log('🔍 [TTS] Debug detalhado - Configurações completas:', JSON.stringify(advancedSettings, null, 2));
       console.log('📝 [TTS] Fallback: Retornando falha para enviar como texto');
       return { success: false, error: 'TTS não configurado - adicione API key do ElevenLabs ou Fish.Audio' };
     }
@@ -2526,12 +2540,19 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
       .eq('id', assistantId)
       .single();
     
-    if (!assistantData?.advanced_settings?.audio_library) {
+    // ✅ APLICAR PARSE CORRETO DO ADVANCED_SETTINGS
+    const advancedSettings = assistantData?.advanced_settings
+      ? (typeof assistantData.advanced_settings === 'string' 
+          ? JSON.parse(assistantData.advanced_settings) 
+          : assistantData.advanced_settings)
+      : {};
+    
+    if (!advancedSettings?.audio_library) {
       console.warn('📚 [AUDIO-LIBRARY] Biblioteca de áudios vazia');
       return null;
     }
     
-    const library = assistantData.advanced_settings.audio_library as any[];
+    const library = advancedSettings.audio_library as any[];
     const audio = library.find(item => 
       item.trigger.toLowerCase() === audioName.toLowerCase() ||
       item.trigger.toLowerCase() === `audiogeono${audioName.toLowerCase()}`
