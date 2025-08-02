@@ -12,6 +12,60 @@ interface HumanizedPersonality {
   reactionProbability: number; // 0-1
 }
 
+// ===== INTERFACE PARA RETRY LOGIC =====
+interface RetryOptions {
+  maxAttempts: number;
+  initialDelay: number;
+  maxDelay: number;
+  backoffMultiplier: number;
+}
+
+// ===== FUNÇÃO DE RETRY COM BACKOFF =====
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  options: RetryOptions = {
+    maxAttempts: 3,
+    initialDelay: 1000,
+    maxDelay: 10000,
+    backoffMultiplier: 2
+  },
+  operationName: string = 'Operation'
+): Promise<T> {
+  let lastError: Error;
+  
+  for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
+    try {
+      console.log(`🔄 [RETRY] ${operationName} - Tentativa ${attempt}/${options.maxAttempts}`);
+      const result = await operation();
+      
+      if (attempt > 1) {
+        console.log(`✅ [RETRY] ${operationName} sucedeu na tentativa ${attempt}`);
+      }
+      
+      return result;
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`⚠️ [RETRY] ${operationName} falhou na tentativa ${attempt}:`, error.message);
+      
+      if (attempt === options.maxAttempts) {
+        console.error(`❌ [RETRY] ${operationName} falhou após ${options.maxAttempts} tentativas`);
+        break;
+      }
+      
+      // Calcular delay com backoff exponencial
+      const delay = Math.min(
+        options.initialDelay * Math.pow(options.backoffMultiplier, attempt - 1),
+        options.maxDelay
+      );
+      
+      console.log(`⏳ [RETRY] Aguardando ${delay}ms antes da próxima tentativa...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError;
+}
+
 interface HumanizedConfig {
   enabled: boolean;
   personality: HumanizedPersonality;
@@ -318,44 +372,107 @@ serve(async (req) => {
       throw new Error('Nenhum conteúdo de mensagem fornecido');
     }
 
-    // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
+      // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
     let openAIApiKey = globalOpenAIApiKey;
     let keySource = 'global';
 
-    // Buscar em paralelo: config do cliente, memória conversacional e histórico
+    // ✅ BUSCAR CONFIGURAÇÕES COM RETRY LOGIC
+    console.log('🔍 [CONFIG] Buscando configurações do cliente com retry...');
+    
     const [clientConfigResult, memoryResult, messagesResult] = await Promise.allSettled([
-      // Buscar API Key específica do cliente
-      supabase
-        .from('client_ai_configs')
-        .select('openai_api_key, default_model')
-        .eq('client_id', resolvedClientId)
-        .single(),
+      // Buscar API Key específica do cliente com retry
+      retryWithBackoff(
+        () => supabase
+          .from('client_ai_configs')
+          .select('openai_api_key, default_model')
+          .eq('client_id', resolvedClientId)
+          .single(),
+        { maxAttempts: 3, initialDelay: 500, maxDelay: 2000, backoffMultiplier: 2 },
+        'Buscar config do cliente'
+      ),
       
-      // Buscar memória conversacional
-      supabase
-        .from('conversation_context')
-        .select('*')
-        .eq('client_id', resolvedClientId)
-        .eq('chat_id', resolvedContext.chatId)
-        .eq('instance_id', resolvedInstanceId)
-        .single(),
+      // Buscar memória conversacional com retry
+      retryWithBackoff(
+        () => supabase
+          .from('conversation_context')
+          .select('*')
+          .eq('client_id', resolvedClientId)
+          .eq('chat_id', resolvedContext.chatId)
+          .eq('instance_id', resolvedInstanceId)
+          .single(),
+        { maxAttempts: 2, initialDelay: 300, maxDelay: 1000, backoffMultiplier: 2 },
+        'Buscar memória conversacional'
+      ),
       
-      // Buscar histórico de mensagens
-      supabase
-        .from('ticket_messages')
-        .select('content, from_me, sender_name, timestamp, message_id')
-        .eq('ticket_id', ticketId)
-        .order('timestamp', { ascending: false })
-        .limit(50)
+      // Buscar histórico de mensagens com retry
+      retryWithBackoff(
+        () => supabase
+          .from('ticket_messages')
+          .select('content, from_me, sender_name, timestamp, message_id')
+          .eq('ticket_id', ticketId)
+          .order('timestamp', { ascending: false })
+          .limit(50),
+        { maxAttempts: 2, initialDelay: 300, maxDelay: 1000, backoffMultiplier: 2 },
+        'Buscar histórico de mensagens'
+      )
     ]);
 
-    // Processar API Key do cliente
-    if (clientConfigResult.status === 'fulfilled' && clientConfigResult.value.data?.openai_api_key) {
+    // ✅ PROCESSAR API KEY DO CLIENTE COM RETRY
+    if (clientConfigResult.status === 'fulfilled' && clientConfigResult.value?.data?.openai_api_key) {
       openAIApiKey = clientConfigResult.value.data.openai_api_key;
       keySource = 'client';
-      console.log('🔑 [AI-ASSISTANT] Usando API Key específica do cliente');
+      console.log('🔑 [AI-ASSISTANT] ✅ API Key específica do cliente encontrada');
     } else {
-      console.log('🔑 [AI-ASSISTANT] Cliente não tem API Key própria, usando global');
+      console.log('🔑 [AI-ASSISTANT] ⚠️ Cliente sem API Key - usando global:', 
+        clientConfigResult.status === 'rejected' ? clientConfigResult.reason?.message : 'sem config');
+    }
+
+    // ✅ VALIDAÇÃO CRÍTICA: Business Token ANTES de qualquer operação
+    console.log('🔐 [AI-ASSISTANT] Verificando business token para cliente:', resolvedClientId);
+    
+    let businessToken: string | null = null;
+    try {
+      const businessTokenResult = await retryWithBackoff(
+        async () => {
+          const { data: instanceData, error } = await supabase
+            .from('whatsapp_instances')
+            .select(`
+              instance_id,
+              client_id,
+              yumer_instance_name,
+              clients:client_id (
+                business_token
+              )
+            `)
+            .eq('instance_id', resolvedInstanceId)
+            .single();
+          
+          if (error) throw error;
+          if (!instanceData?.clients?.business_token) {
+            throw new Error('Business token não encontrado');
+          }
+          
+          return instanceData.clients.business_token;
+        },
+        { maxAttempts: 3, initialDelay: 500, maxDelay: 2000, backoffMultiplier: 2 },
+        'Buscar business token'
+      );
+      
+      businessToken = businessTokenResult;
+      console.log('✅ [AI-ASSISTANT] Business token encontrado para cliente');
+      
+    } catch (error) {
+      console.error('❌ [AI-ASSISTANT] ERRO CRÍTICO - Business token não encontrado:', error);
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Business token não configurado para este cliente',
+        reason: 'MISSING_BUSINESS_TOKEN',
+        clientId: resolvedClientId,
+        timestamp: new Date().toISOString()
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     console.log('🤖 [AI-ASSISTANT] Dados recebidos:', {
@@ -2127,17 +2244,33 @@ async function processAudioCommands(
     let processedCount = 0;
     let remainingText = message;
     
-    // Regex para detectar comandos de áudio
-    const audioTextPattern = /audio:([^|\n]+?)(?:\||$)/gi;
+    // ✅ PADRÕES MELHORADOS PARA DETECÇÃO DE ÁUDIO
+    const audioTextPattern = /audio:\s*"([^"]+)"|audio:\s*([^"\n\r]+?)(?=\n|\r|$|audio:|áudio:)/gi;
     const audioLibraryPattern = /audiogeono([^:]+):/gi;
     
     console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
+    console.log('🔍 [AUDIO-COMMANDS] Padrões sendo usados:', {
+      audioTextPattern: audioTextPattern.source,
+      messagePreview: message.substring(0, 100) + '...'
+    });
     
     // 1. PROCESSAR COMANDOS audio:texto (TTS)
     const audioTextMatches = Array.from(message.matchAll(audioTextPattern));
+    console.log('🎵 [AUDIO-COMMANDS] ℹ️ Encontrados', audioTextMatches.length, 'comandos de áudio');
+    
+    if (audioTextMatches.length === 0) {
+      console.log('🎵 [AUDIO-COMMANDS] ℹ️ Nenhum comando de áudio detectado');
+    }
+    
     for (const match of audioTextMatches) {
-      const textToSpeak = match[1].trim();
-      console.log('🎵 [AUDIO-TTS] Processando comando audio:', textToSpeak.substring(0, 50) + '...');
+      // Capturar tanto aspas quanto sem aspas
+      const textToSpeak = (match[1] || match[2] || '').trim();
+      if (!textToSpeak) {
+        console.warn('⚠️ [AUDIO-TTS] Texto vazio encontrado no comando audio:');
+        continue;
+      }
+      
+      console.log('🎤 [TTS] Gerando áudio para texto:', textToSpeak.substring(0, 50) + '...');
       
       try {
         const audioResult = await generateTTSAudio(textToSpeak, assistant);
@@ -2222,25 +2355,31 @@ async function processAudioCommands(
 }
 
 /**
- * 🎤 GERAR ÁUDIO TTS (ElevenLabs + Fish.Audio)
+ * 🎤 GERAR ÁUDIO TTS (ElevenLabs + Fish.Audio) - COM RETRY LOGIC
  */
 async function generateTTSAudio(text: string, assistant: any): Promise<{ success: boolean; audioBase64?: string; error?: string }> {
   try {
     console.log('🎤 [TTS] Gerando áudio para texto:', text.substring(0, 50) + '...');
     
-    // CORREÇÃO CRÍTICA: Buscar configurações em assistants.advanced_settings (campo JSONB)
+    // ✅ BUSCAR CONFIGURAÇÕES COM RETRY LOGIC
     console.log('🔍 [TTS] Buscando configurações avançadas do assistente:', assistant.id);
     
-    const { data: assistantData, error: assistantError } = await supabase
-      .from('assistants')
-      .select('advanced_settings')
-      .eq('id', assistant.id)
-      .single();
-    
-    if (assistantError || !assistantData) {
-      console.error('❌ [TTS] Erro ao buscar assistente:', assistantError);
-      return { success: false, error: 'Assistente não encontrado' };
-    }
+    const assistantData = await retryWithBackoff(
+      async () => {
+        const { data, error } = await supabase
+          .from('assistants')
+          .select('advanced_settings')
+          .eq('id', assistant.id)
+          .single();
+        
+        if (error) throw error;
+        if (!data) throw new Error('Assistente não encontrado');
+        
+        return data;
+      },
+      { maxAttempts: 3, initialDelay: 500, maxDelay: 2000, backoffMultiplier: 2 },
+      'Buscar configurações do assistente'
+    );
     
     const advancedSettings = assistantData.advanced_settings || {};
     console.log('🔍 [TTS] Configurações encontradas:', {
@@ -2250,13 +2389,13 @@ async function generateTTSAudio(text: string, assistant: any): Promise<{ success
     });
     
     if (!advancedSettings.eleven_labs_api_key && !advancedSettings.fish_audio_api_key) {
-      console.warn('⚠️ [TTS] Nenhuma API de TTS configurada no assistente');
+      console.error('⚠️ [TTS] Nenhuma API de TTS configurada no assistente');
       return { success: false, error: 'TTS não configurado - adicione API key do ElevenLabs ou Fish.Audio' };
     }
     
     const provider = advancedSettings.audio_provider || 'elevenlabs';
     
-    // Tentar ElevenLabs primeiro (se configurado)
+    // ✅ TENTAR ELEVENLABS COM RETRY LOGIC
     if (advancedSettings.eleven_labs_api_key && advancedSettings.eleven_labs_voice_id) {
       
       console.log('🎭 [TTS] Tentando ElevenLabs...', {
@@ -2265,32 +2404,39 @@ async function generateTTSAudio(text: string, assistant: any): Promise<{ success
       });
       
       try {
-        const elevenLabsResult = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/text-to-speech`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-            'Content-Type': 'application/json',
+        const elevenLabsResult = await retryWithBackoff(
+          async () => {
+            const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/text-to-speech`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                text,
+                voiceId: advancedSettings.eleven_labs_voice_id,
+                apiKey: advancedSettings.eleven_labs_api_key,
+                model: advancedSettings.eleven_labs_model || 'eleven_multilingual_v2',
+                voiceSettings: advancedSettings.voice_settings || { stability: 0.5, similarity_boost: 0.5 }
+              })
+            });
+            
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(`ElevenLabs API error: ${errorData.error || response.statusText}`);
+            }
+            
+            return response.json();
           },
-          body: JSON.stringify({
-            text,
-            voiceId: advancedSettings.eleven_labs_voice_id,
-            apiKey: advancedSettings.eleven_labs_api_key,
-            model: advancedSettings.eleven_labs_model || 'eleven_multilingual_v2',
-            voiceSettings: advancedSettings.voice_settings || { stability: 0.5, similarity_boost: 0.5 }
-          })
-        });
+          { maxAttempts: 2, initialDelay: 1000, maxDelay: 3000, backoffMultiplier: 2 },
+          'ElevenLabs TTS'
+        );
         
-        if (elevenLabsResult.ok) {
-          const data = await elevenLabsResult.json();
-          console.log('✅ [TTS] ElevenLabs TTS gerado com sucesso');
-          return { success: true, audioBase64: data.audioBase64 };
-        } else {
-          const errorData = await elevenLabsResult.json().catch(() => ({}));
-          console.error('❌ [TTS] ElevenLabs falhou:', errorData);
-          return { success: false, error: `ElevenLabs: ${errorData.error || 'Erro desconhecido'}` };
-        }
+        console.log('✅ [TTS] ElevenLabs TTS gerado com sucesso');
+        return { success: true, audioBase64: elevenLabsResult.audioBase64 };
+        
       } catch (error) {
-        console.error('❌ [TTS] Erro no ElevenLabs:', error);
+        console.error('❌ [TTS] ElevenLabs falhou após retries:', error);
         return { success: false, error: `ElevenLabs: ${error.message}` };
       }
     }
