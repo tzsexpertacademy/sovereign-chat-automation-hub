@@ -34,7 +34,7 @@ const FishAudioVoiceSelector = ({
       
       console.log('🐟 Vozes carregadas:', {
         total: voicesList.length,
-        samples: voicesList.slice(0, 3).map(v => ({ id: v._id, title: v.title }))
+        samples: voicesList.slice(0, 3).map(v => ({ id: v.id, name: v.name }))
       });
       
       setVoices(voicesList);
@@ -118,7 +118,7 @@ const FishAudioVoiceSelector = ({
   };
 
   const getSelectedVoice = () => {
-    return voices.find(voice => voice._id === selectedVoiceId);
+    return voices.find(voice => voice.id === selectedVoiceId);
   };
 
   useEffect(() => {
@@ -168,13 +168,13 @@ const FishAudioVoiceSelector = ({
                 </SelectTrigger>
                 <SelectContent>
                   {voices.map((voice) => (
-                    <SelectItem key={voice._id} value={voice._id}>
+                    <SelectItem key={voice.id} value={voice.id}>
                       <div className="flex items-center space-x-2">
                         <div>
-                          <div className="font-medium">{voice.title}</div>
+                          <div className="font-medium">{voice.name}</div>
                           <div className="text-xs text-muted-foreground flex items-center space-x-1">
                             <Badge variant="outline" className="text-xs">
-                              {voice.gender}
+                              {voice.category}
                             </Badge>
                             <Badge variant="secondary" className="text-xs">
                               {voice.language}
@@ -193,13 +193,13 @@ const FishAudioVoiceSelector = ({
                 <div className="flex items-center space-x-3">
                   <Volume2 className="w-4 h-4 text-muted-foreground" />
                   <div>
-                    <p className="font-medium">{getSelectedVoice()?.title}</p>
+                    <p className="font-medium">{getSelectedVoice()?.name}</p>
                     <p className="text-sm text-muted-foreground">
                       {getSelectedVoice()?.description}
                     </p>
                     <div className="flex items-center space-x-1 mt-1">
                       <Badge variant="outline" className="text-xs">
-                        {getSelectedVoice()?.gender}
+                        {getSelectedVoice()?.category}
                       </Badge>
                       <Badge variant="secondary" className="text-xs">
                         {getSelectedVoice()?.language}

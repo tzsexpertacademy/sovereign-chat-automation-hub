@@ -2,9 +2,13 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface FishAudioModel {
   _id: string;
+  type: string;
   title: string;
   description: string;
-  voices: Array<{
+  state: string;
+  languages: string[];
+  samples?: any[];
+  voices?: Array<{
     _id: string;
     title: string;
     description: string;
@@ -15,12 +19,12 @@ export interface FishAudioModel {
 }
 
 export interface FishAudioVoice {
-  _id: string;
-  title: string;
+  id: string;
+  name: string;
   description: string;
-  gender: string;
   language: string;
-  preview_url?: string;
+  category: string;
+  modelId: string;
 }
 
 export interface FishAudioTTSOptions {
@@ -38,19 +42,29 @@ class FishAudioService {
    * Valida a API key do Fish.Audio
    */
   async validateApiKey(apiKey: string): Promise<boolean> {
+    if (!apiKey || !apiKey.startsWith('fsk_')) {
+      console.log('🔑 API Key Fish.Audio inválida (formato incorreto)');
+      return false;
+    }
+    
     try {
+      console.log('🔑 Validando API Key Fish.Audio...');
+      
       const { data, error } = await supabase.functions.invoke('fish-audio-models', {
         body: { apiKey, action: 'validate' }
       });
 
       if (error) {
-        console.warn('🐟 Fish.Audio: Erro na validação da API key:', error);
+        console.error('❌ Erro na validação:', error);
         return false;
       }
 
-      return data?.valid === true;
+      const isValid = data?.valid || false;
+      console.log('✅ Validação Fish.Audio:', { isValid });
+      
+      return isValid;
     } catch (error) {
-      console.error('🐟 Fish.Audio: Erro na validação:', error);
+      console.error('💥 Erro crítico na validação Fish.Audio:', error);
       return false;
     }
   }
@@ -59,19 +73,35 @@ class FishAudioService {
    * Lista todos os modelos e vozes disponíveis
    */
   async listModels(apiKey: string): Promise<FishAudioModel[]> {
+    if (!apiKey) return [];
+    
     try {
+      console.log('📋 Buscando modelos Fish.Audio...');
+      
       const { data, error } = await supabase.functions.invoke('fish-audio-models', {
         body: { apiKey, action: 'list' }
       });
 
       if (error) {
-        console.error('🐟 Fish.Audio: Erro ao listar modelos:', error);
+        console.error('❌ Erro ao buscar modelos:', error);
         return [];
       }
 
-      return data?.models || [];
+      const models = data?.models || [];
+      
+      // Filtrar apenas modelos tipo 'tts' que estão treinados
+      const ttsModels = models.filter((model: any) => 
+        model.type === 'tts' && model.state === 'trained'
+      );
+      
+      console.log('✅ Modelos Fish.Audio TTS carregados:', {
+        total: models.length,
+        ttsOnly: ttsModels.length
+      });
+      
+      return ttsModels;
     } catch (error) {
-      console.error('🐟 Fish.Audio: Erro ao buscar modelos:', error);
+      console.error('💥 Erro crítico ao buscar modelos Fish.Audio:', error);
       return [];
     }
   }
@@ -80,25 +110,30 @@ class FishAudioService {
    * Lista todas as vozes de forma plana
    */
   async listVoices(apiKey: string): Promise<FishAudioVoice[]> {
-    try {
-      const models = await this.listModels(apiKey);
-      const voices: FishAudioVoice[] = [];
-
-      models.forEach(model => {
-        model.voices.forEach(voice => {
-          voices.push({
-            ...voice,
-            title: `${model.title} - ${voice.title}`,
-            description: voice.description || model.description
-          });
-        });
-      });
-
-      return voices;
-    } catch (error) {
-      console.error('🐟 Fish.Audio: Erro ao listar vozes:', error);
-      return [];
+    const models = await this.listModels(apiKey);
+    
+    const voices: FishAudioVoice[] = [];
+    
+    for (const model of models) {
+      // Para Fish.Audio, cada modelo treinado representa uma voz utilizável
+      const voice: FishAudioVoice = {
+        id: model._id,
+        name: model.title,
+        description: model.description || `Voz criada com modelo ${model.title}`,
+        language: model.languages?.[0] || 'pt',
+        category: 'custom',
+        modelId: model._id
+      };
+      
+      voices.push(voice);
     }
+    
+    console.log('🎤 Vozes Fish.Audio processadas:', {
+      modelos: models.length,
+      vozes: voices.length
+    });
+    
+    return voices;
   }
 
   /**
@@ -171,7 +206,7 @@ class FishAudioService {
   async getVoiceInfo(apiKey: string, referenceId: string): Promise<FishAudioVoice | null> {
     try {
       const voices = await this.listVoices(apiKey);
-      return voices.find(voice => voice._id === referenceId) || null;
+      return voices.find(voice => voice.id === referenceId) || null;
     } catch (error) {
       console.error('🐟 Fish.Audio: Erro ao buscar info da voz:', error);
       return null;
