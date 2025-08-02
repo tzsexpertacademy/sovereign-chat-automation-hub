@@ -74,8 +74,8 @@ class MessageChunksService {
       });
 
       // 2. VERIFICAR SE DEVE DIVIDIR MENSAGEM
-      // CRITÉRIO: enabled=true E mensagem > maxCharsPerChunk
-      const shouldSplit = config.enabled && options.message.length > config.maxCharsPerChunk;
+      // CRITÉRIO: mensagem > maxCharsPerChunk (sempre ativo quando tem assistente)
+      const shouldSplit = options.message.length > config.maxCharsPerChunk;
       
       if (!shouldSplit) {
         smartLogs.info('MESSAGE', 'ENVIO DIRETO (não precisa dividir)', {
@@ -195,7 +195,7 @@ class MessageChunksService {
           clientId: options.clientId,
           source: options.source || 'ai',
           humanized: true,
-          delay: 0 // Delay já controlado aqui
+          delay: config.delayBetweenChunks || 1200 // Usar delay configurado para cada bloco
         });
 
         results.push(result);

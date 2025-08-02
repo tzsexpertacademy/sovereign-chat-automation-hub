@@ -295,9 +295,9 @@ class UnifiedMessageService {
       }
     }
 
-    // SEMPRE usar sistema de blocos se tiver assistantId (original ou fallback), independente do tamanho
+    // SEMPRE usar sistema de blocos se tiver assistantId OU mensagem longa
     // O messageChunksService decidirá internamente se precisa dividir
-    if (finalAssistantId) {
+    if (finalAssistantId || message.length > 350) {
       smartLogs.info('MESSAGE', '🤖 USANDO SISTEMA DE BLOCOS (assistente configurado)', {
         assistantId: finalAssistantId,
         source: assistantId ? 'direto' : 'fallback',
