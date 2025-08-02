@@ -2250,8 +2250,8 @@ async function processAudioCommands(
     // ✅ REGEX UNIVERSAL PARA DETECTAR audio: COM E SEM ASPAS
     const audioTextPattern = /audio\s*:\s*(?:"([^"]+)"|([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$))/gi;
     
-    // ✅ REGEX MELHORADO PARA BIBLIOTECA: aceita audiogeono[nome]: e audio[nome]:
-    const audioLibraryPattern = /(?:audiogeono|audio)([^:\s]+)\s*:/gi;
+    // ✅ REGEX MELHORADO PARA BIBLIOTECA: aceita audiogeono[nome]: e audio[nome]: COM OU SEM DOIS PONTOS
+    const audioLibraryPattern = /(?:audiogeono\s*([^:\s\n]+)|audio\s*([^:\s\n]+))\s*:?/gi;
     
     console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
     console.log('🔍 [AUDIO-COMMANDS] Mensagem completa:', message);
@@ -2351,11 +2351,12 @@ async function processAudioCommands(
     
     // 2. PROCESSAR COMANDOS DA BIBLIOTECA PRIMEIRO (audiogeono[nome]: ou audio[nome]:)
     for (const match of audioLibraryMatches) {
-      const audioName = match[1].trim();
+      const audioName = (match[1] || match[2]).trim(); // Captura grupo 1 ou 2
       console.log('🎵 [AUDIO-LIBRARY] Processando comando biblioteca:', {
         matchCompleto: match[0],
         audioName: audioName,
-        assistantId: assistant.id
+        assistantId: assistant.id,
+        grupos: { grupo1: match[1], grupo2: match[2] }
       });
       
       try {
@@ -2617,26 +2618,52 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
       }))
     });
     
-    // ✅ MELHORAR MATCHING DE TRIGGERS: busca flexível
-    const normalizedSearchName = audioName.toLowerCase();
+    // ✅ MELHORAR MATCHING DE TRIGGERS: busca flexível e case-insensitive
+    const normalizedSearchName = audioName.toLowerCase().trim();
+    
+    console.log('🔍 [AUDIO-LIBRARY] Debug matching:', {
+      buscandoPor: normalizedSearchName,
+      originalInput: audioName,
+      triggersDisponiveis: library.map(item => ({ trigger: item.trigger, name: item.name }))
+    });
     
     const audio = library.find(item => {
-      const trigger = item.trigger.toLowerCase();
+      const trigger = item.trigger.toLowerCase().trim();
+      
+      console.log('🔍 [AUDIO-LIBRARY] Testando match:', { trigger, contra: normalizedSearchName });
       
       // 1. Match exato
-      if (trigger === normalizedSearchName) return true;
+      if (trigger === normalizedSearchName) {
+        console.log('✅ [AUDIO-LIBRARY] Match exato encontrado');
+        return true;
+      }
       
       // 2. Buscar por trigger sem prefixo "audiogeono"
       if (trigger.startsWith('audiogeono') && 
-          trigger.substring(10) === normalizedSearchName) return true;
+          trigger.substring(10) === normalizedSearchName) {
+        console.log('✅ [AUDIO-LIBRARY] Match sem prefixo encontrado');
+        return true;
+      }
       
       // 3. Buscar adicionando prefixo "audiogeono"
-      if (trigger === `audiogeono${normalizedSearchName}`) return true;
+      if (trigger === `audiogeono${normalizedSearchName}`) {
+        console.log('✅ [AUDIO-LIBRARY] Match com prefixo encontrado');
+        return true;
+      }
       
-      // 4. Match pelo nome do arquivo (sem extensão)
+      // 4. Match parcial (contém o termo)
+      if (trigger.includes(normalizedSearchName) || normalizedSearchName.includes(trigger)) {
+        console.log('✅ [AUDIO-LIBRARY] Match parcial encontrado');
+        return true;
+      }
+      
+      // 5. Match pelo nome do arquivo (sem extensão)
       if (item.name) {
-        const nameWithoutExt = item.name.toLowerCase().replace(/\.[^/.]+$/, "");
-        if (nameWithoutExt === normalizedSearchName) return true;
+        const nameWithoutExt = item.name.toLowerCase().replace(/\.[^/.]+$/, "").trim();
+        if (nameWithoutExt === normalizedSearchName) {
+          console.log('✅ [AUDIO-LIBRARY] Match por nome de arquivo encontrado');
+          return true;
+        }
       }
       
       return false;
