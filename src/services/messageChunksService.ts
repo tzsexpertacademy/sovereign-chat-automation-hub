@@ -216,11 +216,35 @@ class MessageChunksService {
         ? JSON.parse(assistant.advanced_settings)
         : assistant.advanced_settings;
 
+      // MAPEAR CONFIGURAÇÕES ANTIGAS E NOVAS
+      const enabled = settings.messageHandling?.splitLongMessages ?? 
+                      (settings.typing_indicator_enabled !== false); // Default true se typing está ativo
+      
+      const maxCharsPerChunk = settings.messageHandling?.maxCharsPerChunk ?? 350;
+      
+      const delayBetweenChunks = settings.messageHandling?.delayBetweenChunks ?? 
+                                (settings.response_delay_seconds ? settings.response_delay_seconds * 1000 : defaultConfig.delayBetweenChunks);
+      
+      const typingEnabled = settings.typing?.enabled ?? 
+                           (settings.typing_indicator_enabled ?? defaultConfig.typingEnabled);
+
+      smartLogs.info('MESSAGE', 'Configurações mapeadas', {
+        assistantId,
+        enabled,
+        maxCharsPerChunk,
+        delayBetweenChunks,
+        typingEnabled,
+        originalSettings: {
+          typing_indicator_enabled: settings.typing_indicator_enabled,
+          response_delay_seconds: settings.response_delay_seconds
+        }
+      });
+
       return {
-        enabled: settings.messageHandling?.splitLongMessages ?? defaultConfig.enabled,
-        maxCharsPerChunk: settings.messageHandling?.maxCharsPerChunk ?? defaultConfig.maxCharsPerChunk,
-        delayBetweenChunks: settings.messageHandling?.delayBetweenChunks ?? defaultConfig.delayBetweenChunks,
-        typingEnabled: settings.typing?.enabled ?? defaultConfig.typingEnabled,
+        enabled,
+        maxCharsPerChunk,
+        delayBetweenChunks,
+        typingEnabled,
         minTypingDuration: settings.typing?.minDuration ?? defaultConfig.minTypingDuration,
         maxTypingDuration: settings.typing?.maxDuration ?? defaultConfig.maxTypingDuration
       };
