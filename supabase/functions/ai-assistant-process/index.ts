@@ -2244,17 +2244,23 @@ async function processAudioCommands(
     let processedCount = 0;
     let remainingText = message;
     
-    // ✅ REGEX CORRIGIDO PARA DETECTAR audio:"texto" SIMPLES E EFICAZ
-    const audioTextPattern = /audio\s*:\s*"([^"]+)"/gi;
+    // ✅ REGEX UNIVERSAL PARA DETECTAR audio: COM E SEM ASPAS
+    const audioTextPattern = /audio\s*:\s*(?:"([^"]+)"|([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$))/gi;
     const audioLibraryPattern = /audiogeono([^:]+):/gi;
     
     console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
     console.log('🔍 [AUDIO-COMMANDS] Mensagem completa:', message);
     console.log('🔍 [AUDIO-COMMANDS] Regex pattern:', audioTextPattern.source);
     
-    // TESTE DIRETO DO REGEX
+    // TESTE DIRETO DO REGEX UNIVERSAL
     const testMatch = message.match(audioTextPattern);
-    console.log('🔍 [AUDIO-COMMANDS] Teste direto do regex:', testMatch);
+    console.log('🔍 [AUDIO-COMMANDS] Teste direto do regex universal:', testMatch);
+    
+    // TESTE ESPECÍFICO PARA FORMATOS
+    const testQuoted = /audio\s*:\s*"([^"]+)"/gi.exec(message);
+    const testUnquoted = /audio\s*:\s*([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$)/gi.exec(message);
+    console.log('🔍 [AUDIO-COMMANDS] Teste formato com aspas:', testQuoted);
+    console.log('🔍 [AUDIO-COMMANDS] Teste formato sem aspas:', testUnquoted);
     
     // 1. PROCESSAR COMANDOS audio:texto (TTS)
     const audioTextMatches = Array.from(message.matchAll(audioTextPattern));
@@ -2262,15 +2268,17 @@ async function processAudioCommands(
     
     if (audioTextMatches.length === 0) {
       console.log('🎵 [AUDIO-COMMANDS] ℹ️ Nenhum comando de áudio detectado');
-      console.log('🔍 [AUDIO-COMMANDS] Debug - primeira verificação de pattern:', /audio/.test(message));
-      console.log('🔍 [AUDIO-COMMANDS] Debug - verificação de aspas:', /"/.test(message));
+      console.log('🔍 [AUDIO-COMMANDS] Debug - contém palavra audio:', /audio/.test(message));
+      console.log('🔍 [AUDIO-COMMANDS] Debug - contém dois pontos:', /:/.test(message));
     }
     
     for (const match of audioTextMatches) {
-      // Capturar texto entre aspas
-      const textToSpeak = (match[1] || '').trim();
-      console.log('🔍 [AUDIO-COMMANDS] Match encontrado:', match[0]);
-      console.log('🔍 [AUDIO-COMMANDS] Texto extraído:', textToSpeak);
+      // Capturar texto COM aspas (grupo 1) ou SEM aspas (grupo 2)
+      const textToSpeak = (match[1] || match[2] || '').trim();
+      console.log('🔍 [AUDIO-COMMANDS] Match completo encontrado:', match[0]);
+      console.log('🔍 [AUDIO-COMMANDS] Grupo 1 (com aspas):', match[1]);
+      console.log('🔍 [AUDIO-COMMANDS] Grupo 2 (sem aspas):', match[2]);
+      console.log('🔍 [AUDIO-COMMANDS] Texto final extraído:', textToSpeak);
       
       if (!textToSpeak) {
         console.warn('⚠️ [AUDIO-TTS] Texto vazio encontrado no comando audio:');
