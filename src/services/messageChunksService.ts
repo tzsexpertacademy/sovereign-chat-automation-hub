@@ -63,11 +63,25 @@ class MessageChunksService {
 
       // 1. CARREGAR CONFIGURAÇÕES DO ASSISTENTE
       const config = await this.loadChunkConfig(options.assistantId);
-      smartLogs.info('MESSAGE', 'Configurações carregadas', config);
+      
+      smartLogs.info('MESSAGE', 'Configurações de blocos carregadas', {
+        config,
+        messageLength: options.message.length,
+        shouldSplit: config.enabled && options.message.length > config.maxCharsPerChunk,
+        assistantId: options.assistantId
+      });
 
       // 2. VERIFICAR SE DEVE DIVIDIR MENSAGEM
-      if (!config.enabled || options.message.length <= config.maxCharsPerChunk) {
-        smartLogs.info('MESSAGE', 'Mensagem curta - enviando direto');
+      // CRITÉRIO: enabled=true E mensagem > maxCharsPerChunk
+      const shouldSplit = config.enabled && options.message.length > config.maxCharsPerChunk;
+      
+      if (!shouldSplit) {
+        smartLogs.info('MESSAGE', 'ENVIO DIRETO (não precisa dividir)', {
+          enabled: config.enabled,
+          messageLength: options.message.length,
+          maxChars: config.maxCharsPerChunk,
+          shouldSplit: false
+        });
         
         const result = await unifiedMessageService.sendMessage({
           instanceId: options.instanceId,
@@ -87,9 +101,24 @@ class MessageChunksService {
         };
       }
 
-      // 3. DIVIDIR MENSAGEM EM BLOCOS
+      // 3. APLICAR SISTEMA DE BLOCOS - MENSAGEM LONGA DETECTADA
+      smartLogs.info('MESSAGE', '🔥 SISTEMA DE BLOCOS ATIVADO', {
+        messageLength: options.message.length,
+        maxCharsPerChunk: config.maxCharsPerChunk,
+        assistantId: options.assistantId,
+        messagePreview: options.message.substring(0, 100) + '...'
+      });
+
+      // 4. DIVIDIR MENSAGEM EM BLOCOS
       const chunks = this.splitMessage(options.message, config.maxCharsPerChunk);
-      smartLogs.info('MESSAGE', `Mensagem dividida em ${chunks.length} blocos`);
+      
+      smartLogs.info('MESSAGE', `🧩 MENSAGEM DIVIDIDA EM ${chunks.length} BLOCOS`, {
+        chunks: chunks.map((chunk, i) => ({
+          index: i + 1,
+          length: chunk.length,
+          preview: chunk.substring(0, 50) + '...'
+        }))
+      });
 
       // 4. ENVIAR CADA BLOCO COM DELAYS E TYPING
       const results: UnifiedMessageResult[] = [];

@@ -202,37 +202,53 @@ class UnifiedMessageService {
     }
   ): Promise<ChunkedMessageResult> {
     
-    // Para mensagens curtas ou sem assistente, usar envio direto
-    if (!assistantId || message.length <= 200) {
-      const result = await this.sendMessage({
+    smartLogs.info('MESSAGE', 'SendSmartMessage: avaliando se deve usar blocos', {
+      messageLength: message.length,
+      assistantId,
+      hasAssistant: !!assistantId
+    });
+
+    // SEMPRE usar sistema de blocos se tiver assistantId, independente do tamanho
+    // O messageChunksService decidirá internamente se precisa dividir
+    if (assistantId) {
+      smartLogs.info('MESSAGE', 'Usando sistema de blocos (assistente configurado)', {
+        assistantId,
+        messageLength: message.length
+      });
+      
+      return this.sendMessageInChunks({
         instanceId,
         chatId,
         message,
         clientId,
-        source: assistantId ? 'ai' : 'manual',
-        humanized: !!assistantId
+        assistantId,
+        source: 'ai',
+        ...callbacks
       });
-
-      return {
-        success: result.success,
-        totalChunks: 1,
-        sentChunks: result.success ? 1 : 0,
-        messageIds: result.messageId ? [result.messageId] : [],
-        errors: result.error ? [result.error] : [],
-        timestamp: Date.now()
-      };
     }
 
-    // Para mensagens longas com assistente, usar sistema de blocos
-    return this.sendMessageInChunks({
+    // Para mensagens sem assistente, usar envio direto
+    smartLogs.info('MESSAGE', 'Usando envio direto (sem assistente)', {
+      messageLength: message.length
+    });
+    
+    const result = await this.sendMessage({
       instanceId,
       chatId,
       message,
       clientId,
-      assistantId,
-      source: 'ai',
-      ...callbacks
+      source: 'manual',
+      humanized: false
     });
+
+    return {
+      success: result.success,
+      totalChunks: 1,
+      sentChunks: result.success ? 1 : 0,
+      messageIds: result.messageId ? [result.messageId] : [],
+      errors: result.error ? [result.error] : [],
+      timestamp: Date.now()
+    };
   }
 }
 
