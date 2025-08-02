@@ -771,9 +771,12 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     console.log('🎵 [AUDIO-COMMANDS] Iniciando processamento de comandos de áudio...');
     let finalResponse = aiResponse;
     
+    // ✅ CORRIGIR ESCOPO: Declarar audioCommands fora do try-catch
+    let audioCommands = { hasAudioCommands: false, processedCount: 0, remainingText: aiResponse };
+    
     try {
       // Processar comandos de áudio sem timeout agressivo
-      const audioCommands = await processAudioCommands(aiResponse, ticketId, safeAssistant, resolvedInstanceId, client?.business_token || '');
+      audioCommands = await processAudioCommands(aiResponse, ticketId, safeAssistant, resolvedInstanceId, client?.business_token || '');
       
       if (audioCommands.hasAudioCommands) {
         console.log('🎵 [AUDIO-COMMANDS] ✅ Comandos de áudio processados:', audioCommands.processedCount);
