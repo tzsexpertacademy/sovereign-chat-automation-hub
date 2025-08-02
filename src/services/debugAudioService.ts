@@ -9,6 +9,163 @@ import { ticketsService } from "./ticketsService";
 
 export const debugAudioService = {
   /**
+   * COMANDO ESPECIAL: /debugaudiolib
+   * Testa especificamente comandos da biblioteca de áudio
+   */
+  async handleDebugAudioLibraryCommand(
+    ticketId: string,
+    clientId: string,
+    instanceId: string,
+    chatId: string
+  ): Promise<void> {
+    try {
+      smartLogs.info('MESSAGE', '🎵 COMANDO /debugaudiolib EXECUTADO', {
+        ticketId,
+        clientId,
+        instanceId,
+        chatId
+      });
+
+      console.log('🎵 [DEBUG-AUDIOLIB] COMANDO EXECUTADO', {
+        ticketId,
+        clientId,
+        instanceId,
+        chatId,
+        timestamp: new Date().toISOString()
+      });
+
+      // 1. BUSCAR ASSISTENTE E CONFIGURAÇÕES
+      const ticket = await ticketsService.getTicketById(ticketId);
+      if (!ticket) {
+        throw new Error('Ticket não encontrado');
+      }
+
+      const assistantId = ticket.assigned_assistant_id;
+      
+      if (!assistantId) {
+        throw new Error('Ticket não possui assistente atribuído');
+      }
+
+      // 2. CARREGAR BIBLIOTECA DE ÁUDIOS
+      const { data: assistant, error } = await supabase
+        .from('assistants')
+        .select('name, advanced_settings')
+        .eq('id', assistantId)
+        .single();
+
+      if (error || !assistant) {
+        throw new Error('Assistente não encontrado');
+      }
+
+      const assistantConfig = typeof assistant.advanced_settings === 'string' 
+        ? JSON.parse(assistant.advanced_settings)
+        : assistant.advanced_settings;
+
+      const audioLibrary = assistantConfig?.audio_library || [];
+
+      console.log('🎵 [DEBUG-AUDIOLIB] Biblioteca encontrada:', {
+        assistantName: assistant.name,
+        totalAudios: audioLibrary.length,
+        audios: audioLibrary.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          trigger: item.trigger,
+          hasAudioBase64: !!item.audioBase64
+        }))
+      });
+
+      // 3. TESTAR COMANDOS ESPECÍFICOS DA BIBLIOTECA
+      const testCommands = audioLibrary.map((item: any) => [
+        `audiogeono${item.trigger}:`,
+        `audiogeono ${item.trigger}:`,
+        `audio${item.trigger}:`,
+        `audio ${item.trigger}:`,
+        `${item.trigger}:`,
+        `${item.trigger}`,
+        `AUDIOGEONO${item.trigger.toUpperCase()}:`,
+        `audiogeonothaliszu:`
+      ]).flat();
+
+      console.log('🎵 [DEBUG-AUDIOLIB] Testando comandos:', testCommands);
+
+      // 4. EXECUTAR TESTES
+      for (let i = 0; i < Math.min(testCommands.length, 5); i++) {
+        const testCommand = testCommands[i];
+        
+        console.log(`🎵 [DEBUG-AUDIOLIB] Testando: "${testCommand}"`);
+        
+        try {
+          const response = await supabase.functions.invoke('ai-assistant-process', {
+            body: {
+              ticketId,
+              messages: [{
+                content: testCommand,
+                messageId: `debug_audiolib_${Date.now()}_${i}`,
+                timestamp: new Date().toISOString(),
+                phoneNumber: '554796451886',
+                customerName: 'Debug AudioLib Test'
+              }],
+              context: {
+                chatId,
+                customerName: 'Debug AudioLib Test',
+                phoneNumber: '554796451886',
+                batchInfo: `Teste de biblioteca ${i + 1}`
+              }
+            }
+          });
+
+          console.log(`✅ [DEBUG-AUDIOLIB] Teste ${i + 1} executado:`, testCommand);
+          await new Promise(resolve => setTimeout(resolve, 1500));
+
+        } catch (error: any) {
+          console.error(`❌ [DEBUG-AUDIOLIB] Erro no teste ${i + 1}:`, error);
+        }
+      }
+
+      // 5. SALVAR RESULTADO NO TICKET
+      await ticketsService.addTicketMessage({
+        ticket_id: ticketId,
+        message_id: `debug_audiolib_${Date.now()}`,
+        from_me: true,
+        sender_name: '🎵 DEBUG BIBLIOTECA',
+        content: `✅ TESTE DA BIBLIOTECA DE ÁUDIO CONCLUÍDO
+
+📋 BIBLIOTECA ENCONTRADA:
+${audioLibrary.map((item: any, index: number) => 
+  `${index + 1}. ${item.name || 'Sem nome'} (trigger: "${item.trigger}")`
+).join('\n')}
+
+🧪 COMANDOS TESTADOS:
+${testCommands.slice(0, 5).map((cmd, index) => `${index + 1}. "${cmd}"`).join('\n')}
+
+🔍 CONFIGURAÇÃO:
+- Assistente: ${assistant.name}
+- Total de áudios: ${audioLibrary.length}
+- Biblioteca ativa: ${audioLibrary.length > 0 ? '✅' : '❌'}`,
+        message_type: 'text',
+        is_internal_note: true,
+        is_ai_response: false,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error: any) {
+      console.error('❌ [DEBUG-AUDIOLIB] ERRO:', error);
+      
+      await ticketsService.addTicketMessage({
+        ticket_id: ticketId,
+        message_id: `debug_audiolib_error_${Date.now()}`,
+        from_me: true,
+        sender_name: '🎵 DEBUG BIBLIOTECA ERRO',
+        content: `❌ ERRO NO TESTE DA BIBLIOTECA: ${error.message}`,
+        message_type: 'text',
+        is_internal_note: true,
+        is_ai_response: false,
+        timestamp: new Date().toISOString()
+      });
+    }
+  },
+
+  /**
    * COMANDO ESPECIAL: /debugaudio
    * Testa diferentes formatos de comando audio: sem afetar conversas reais
    */

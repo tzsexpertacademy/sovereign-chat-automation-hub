@@ -115,7 +115,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     const messageToSend = newMessage.trim();
 
     // 🚨 INTERCEPTAR COMANDOS DEBUG ESPECIAIS COM DEBOUNCE E TYPING INTEGRADO
-    if (messageToSend === '/debugbloco' || messageToSend === '/debugaudio') {
+    if (messageToSend === '/debugbloco' || messageToSend === '/debugaudio' || messageToSend === '/debugaudiolib') {
       const currentTime = Date.now();
       const executionId = `debug_${currentTime}`;
       
@@ -135,7 +135,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         lastDebugExecutionRef.current = currentTime;
         
         const isDebugAudio = messageToSend === '/debugaudio';
-        const commandType = isDebugAudio ? 'AUDIO' : 'BLOCO';
+        const isDebugAudioLib = messageToSend === '/debugaudiolib';
+        const commandType = isDebugAudio ? 'AUDIO' : (isDebugAudioLib ? 'AUDIOLIB' : 'BLOCO');
         console.log(`🚨 [DEBUG-${executionId}] Comando /debug${commandType.toLowerCase()} INICIANDO`);
         setNewMessage('');
         
@@ -152,6 +153,22 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             
             console.log(`🎯 [DEBUG-${executionId}] Executando handleDebugCommand...`);
             await serviceModule.debugAudioService.handleDebugCommand(
+              ticketId,
+              clientId,
+              actualInstanceId,
+              ticket.chat_id
+            );
+          } else if (isDebugAudioLib) {
+            console.log(`📦 [DEBUG-${executionId}] Importando debugAudioService para biblioteca...`);
+            const serviceModule = await import('@/services/debugAudioService');
+            console.log(`✅ [DEBUG-${executionId}] debugAudioService importado:`, !!serviceModule.debugAudioService);
+            
+            if (!serviceModule.debugAudioService) {
+              throw new Error('debugAudioService não encontrado no módulo');
+            }
+            
+            console.log(`🎯 [DEBUG-${executionId}] Executando handleDebugAudioLibraryCommand...`);
+            await serviceModule.debugAudioService.handleDebugAudioLibraryCommand(
               ticketId,
               clientId,
               actualInstanceId,
@@ -183,7 +200,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         
         const successMessage = isDebugAudio 
           ? "Teste de comandos de áudio concluído! Verifique as mensagens do chat."
-          : "Teste do sistema de blocos concluído! Verifique as mensagens do chat.";
+          : isDebugAudioLib 
+            ? "Teste da biblioteca de áudio concluído! Verifique as mensagens do chat."
+            : "Teste do sistema de blocos concluído! Verifique as mensagens do chat.";
           
         toast({
           title: "✅ Debug Executado",
