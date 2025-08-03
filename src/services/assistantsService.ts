@@ -175,28 +175,31 @@ export const assistantsService = {
   async getAssistantAdvancedSettings(id: string): Promise<AdvancedSettings | null> {
     console.log('🔍 [GET-SETTINGS] Buscando configurações para assistente:', id);
     
-    const { data, error } = await supabase
+    // Primeiro verificar se é o assistente Yumer
+    const { data: assistantData, error: assistantError } = await supabase
       .from("assistants")
-      .select("advanced_settings")
+      .select("name, advanced_settings")
       .eq("id", id)
       .single();
 
-    if (error) {
-      console.error('❌ [GET-SETTINGS] Erro ao buscar configurações:', error);
-      throw error;
+    if (assistantError) {
+      console.error('❌ [GET-SETTINGS] Erro ao buscar assistente:', assistantError);
+      throw assistantError;
     }
     
-    console.log('📊 [GET-SETTINGS] Raw data:', data?.advanced_settings);
+    const isYumerAssistant = assistantData?.name?.toLowerCase().includes('yumer') || false;
+    console.log('🎯 [GET-SETTINGS] É assistente Yumer?', isYumerAssistant);
+    console.log('📊 [GET-SETTINGS] Raw data:', assistantData?.advanced_settings);
     
     // Se não tem configurações, criar configurações padrão
-    if (!data?.advanced_settings) {
+    if (!assistantData?.advanced_settings) {
       console.log('🔧 [GET-SETTINGS] Criando configurações padrão para assistente:', id);
       
       const defaultSettings: AdvancedSettings = {
-        audio_processing_enabled: false,
+        audio_processing_enabled: isYumerAssistant, // ✅ Ativar automaticamente para Yumer
         voice_cloning_enabled: false,
-        eleven_labs_voice_id: "",
-        eleven_labs_api_key: "",
+        eleven_labs_voice_id: isYumerAssistant ? "qyyrdbONJUI3wBhef3EW" : "",
+        eleven_labs_api_key: isYumerAssistant ? "sk_af614e2309cd80a10fad0d33b8057869f7c7e06c2d46fdda" : "",
         eleven_labs_model: "eleven_multilingual_v2",
         voice_settings: {
           stability: 0.5,
@@ -227,7 +230,7 @@ export const assistantsService = {
     }
     
     try {
-      let rawSettings = data.advanced_settings;
+      let rawSettings = assistantData.advanced_settings;
       
       // 🔧 CORREÇÃO CRÍTICA: Verificar se está "wrapeado" em array com índice "0"
       if (rawSettings && typeof rawSettings === 'object' && rawSettings["0"]) {
@@ -261,9 +264,27 @@ export const assistantsService = {
         await this.updateAdvancedSettings(id, settings);
       }
       
+      // ✅ CORREÇÃO ESPECÍFICA PARA YUMER: Ativar processamento de áudio se não estiver ativo
+      if (isYumerAssistant && !settings.audio_processing_enabled) {
+        console.log('🎯 [GET-SETTINGS] Ativando processamento de áudio para Yumer');
+        settings.audio_processing_enabled = true;
+        
+        // Garantir que tem API key e voz configurados
+        if (!settings.eleven_labs_api_key) {
+          settings.eleven_labs_api_key = "sk_af614e2309cd80a10fad0d33b8057869f7c7e06c2d46fdda";
+        }
+        if (!settings.eleven_labs_voice_id) {
+          settings.eleven_labs_voice_id = "qyyrdbONJUI3wBhef3EW";
+        }
+        
+        await this.updateAdvancedSettings(id, settings);
+        console.log('✅ [GET-SETTINGS] Processamento de áudio ativado para Yumer');
+      }
+      
       console.log('✅ [GET-SETTINGS] Configurações carregadas e corrigidas:', {
         audioLibrarySize: settings.audio_library?.length || 0,
-        imageLibrarySize: settings.image_library?.length || 0
+        imageLibrarySize: settings.image_library?.length || 0,
+        audioProcessingEnabled: settings.audio_processing_enabled
       });
       
       return settings;
