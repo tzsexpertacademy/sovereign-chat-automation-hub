@@ -27,9 +27,9 @@ export const AudioLibraryDebugger = () => {
       console.log('📚 [AUDIO-LIB-DEBUG] Buscando biblioteca de áudio...');
       const { data: assistants, error: assistantsError } = await supabase
         .from('assistants')
-        .select('*')
+        .select('id, name, advanced_settings')
         .eq('client_id', clientId)
-        .not('audio_library', 'is', null);
+        .not('advanced_settings->audio_library', 'is', null);
 
       if (assistantsError) {
         throw new Error(`Erro ao buscar assistentes: ${assistantsError.message}`);
@@ -41,13 +41,13 @@ export const AudioLibraryDebugger = () => {
 
       // Pegar o primeiro assistente que tem biblioteca
       const assistant = assistants[0];
-      const audioLibrary = (assistant as any).audio_library || {};
+      const audioLibrary = (assistant.advanced_settings as any)?.audio_library || [];
 
       console.log('✅ [AUDIO-LIB-DEBUG] Biblioteca encontrada:', {
         assistantId: assistant.id,
         assistantName: assistant.name,
-        triggersCount: audioLibrary ? Object.keys(audioLibrary).length : 0,
-        triggers: Object.keys(audioLibrary || {})
+        triggersCount: Array.isArray(audioLibrary) ? audioLibrary.length : 0,
+        triggers: Array.isArray(audioLibrary) ? audioLibrary.map((item: any) => item.trigger) : []
       });
 
       setLibraryData({
@@ -60,8 +60,8 @@ export const AudioLibraryDebugger = () => {
       console.log('🎯 [AUDIO-LIB-DEBUG] Testando comando:', commandToTest);
 
       // 3. Simular a lógica de matching
-      const triggers = audioLibrary || {};
-      const availableTriggers = Object.keys(triggers);
+      const triggers = Array.isArray(audioLibrary) ? audioLibrary : [];
+      const availableTriggers = triggers.map((item: any) => item.trigger);
       
       console.log('🔍 [AUDIO-LIB-DEBUG] Triggers disponíveis:', availableTriggers);
 
@@ -141,13 +141,16 @@ export const AudioLibraryDebugger = () => {
 
       // 4. Testar se o áudio existe
       let audioData = null;
-      if (bestMatch && triggers[bestMatch]) {
-        audioData = triggers[bestMatch];
-        console.log('🎵 [AUDIO-LIB-DEBUG] Áudio encontrado:', {
-          trigger: bestMatch,
-          hasBase64: !!audioData?.base64_audio,
-          base64Size: audioData?.base64_audio?.length || 0
-        });
+      if (bestMatch) {
+        const audioItem = triggers.find((item: any) => item.trigger === bestMatch);
+        if (audioItem) {
+          audioData = audioItem;
+          console.log('🎵 [AUDIO-LIB-DEBUG] Áudio encontrado:', {
+            trigger: bestMatch,
+            hasBase64: !!audioData?.audioBase64,
+            base64Size: audioData?.audioBase64?.length || 0
+          });
+        }
       }
 
       // 5. Testar a edge function AI Assistant
@@ -185,8 +188,8 @@ export const AudioLibraryDebugger = () => {
         audio: {
           found: !!audioData,
           trigger: bestMatch,
-          hasBase64: !!audioData?.base64_audio,
-          base64Size: audioData?.base64_audio?.length || 0
+          hasBase64: !!audioData?.audioBase64,
+          base64Size: audioData?.audioBase64?.length || 0
         },
         edgeFunction: {
           success: !aiError,
@@ -257,13 +260,13 @@ export const AudioLibraryDebugger = () => {
             <CardContent>
               <div className="space-y-2">
                 <p><strong>Nome:</strong> {libraryData.name}</p>
-                <p><strong>Triggers:</strong> {Object.keys(libraryData.audio_triggers || {}).length}</p>
+                <p><strong>Triggers:</strong> {Array.isArray(libraryData.audio_triggers) ? libraryData.audio_triggers.length : 0}</p>
                 <div className="flex flex-wrap gap-1">
-                  {Object.keys(libraryData.audio_triggers || {}).map(trigger => (
-                    <Badge key={trigger} variant="secondary" className="text-xs">
-                      {trigger}
+                  {Array.isArray(libraryData.audio_triggers) ? libraryData.audio_triggers.map((item: any) => (
+                    <Badge key={item.trigger} variant="secondary" className="text-xs">
+                      {item.trigger}
                     </Badge>
-                  ))}
+                  )) : null}
                 </div>
               </div>
             </CardContent>
