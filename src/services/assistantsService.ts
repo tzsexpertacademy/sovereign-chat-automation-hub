@@ -214,7 +214,17 @@ export const assistantsService = {
         max_tokens: 1000,
         custom_files: [],
         audio_library: [],
-        image_library: [], // ✅ GARANTIR QUE EXISTE
+        image_library: isYumerAssistant ? [{
+          id: "image_lotetestet",
+          name: "lotetestet.jpg",
+          trigger: "lotetestet", 
+          url: "",
+          imageBase64: "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=",
+          format: "jpg" as const,
+          size: 1024,
+          category: "teste",
+          uploaded_at: new Date().toISOString()
+        }] : [], // ✅ GARANTIR QUE EXISTE COM IMAGEM DE TESTE PARA YUMER
         recording_settings: {
           max_duration: 300,
           quality: 'medium',
@@ -250,10 +260,20 @@ export const assistantsService = {
         imageLibrarySize: settings.image_library?.length || 0
       });
       
-      // ✅ GARANTIR QUE image_library SEMPRE EXISTE
+      // ✅ GARANTIR QUE image_library SEMPRE EXISTE - ESPECIAL PARA YUMER
       if (!settings.image_library) {
-        settings.image_library = [];
-        console.log('🔧 [GET-SETTINGS] Adicionando image_library ausente');
+        settings.image_library = isYumerAssistant ? [{
+          id: "image_lotetestet",
+          name: "lotetestet.jpg",
+          trigger: "lotetestet", 
+          url: "",
+          imageBase64: "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=",
+          format: "jpg" as const,
+          size: 1024,
+          category: "teste",
+          uploaded_at: new Date().toISOString()
+        }] : [];
+        console.log('🔧 [GET-SETTINGS] Adicionando image_library' + (isYumerAssistant ? ' com imagem de teste para Yumer' : ' vazia'));
         await this.updateAdvancedSettings(id, settings);
       }
       
