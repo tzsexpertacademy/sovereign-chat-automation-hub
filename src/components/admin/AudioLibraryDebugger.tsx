@@ -179,28 +179,16 @@ export const AudioLibraryDebugger: React.FC = () => {
         debugLog += `\n❌ [ETAPA 4] Pulada - nenhum trigger matched\n`;
       }
 
-      // === ETAPA 5: TESTAR EDGE FUNCTION ===
-      debugLog += `\n🤖 [ETAPA 5] Testando edge function ai-assistant-process...\n`;
+      // === ETAPA 5: TESTAR EDGE FUNCTION ESPECÍFICA ===
+      debugLog += `\n🤖 [ETAPA 5] Testando edge function test-audio-library...\n`;
       let aiTestResult = null;
       let aiError = null;
 
       try {
-        const { data: aiData, error: aiErrorResult } = await supabase.functions.invoke('ai-assistant-process', {
+        const { data: aiData, error: aiErrorResult } = await supabase.functions.invoke('test-audio-library', {
           body: {
-            ticketId: '00000000-0000-0000-0000-000000000000',
-            messages: [{
-              content: testCommand,
-              messageId: 'test_audio_lib_' + Date.now(),
-              timestamp: new Date().toISOString(),
-              phoneNumber: '5511999999999',
-              customerName: 'Teste Audio Library'
-            }],
-            context: {
-              chatId: '5511999999999@s.whatsapp.net',
-              customerName: 'Teste Audio Library',
-              phoneNumber: '5511999999999',
-              batchInfo: 'Teste biblioteca de áudio'
-            }
+            clientId: clientId,
+            command: testCommand
           }
         });
 
@@ -210,7 +198,8 @@ export const AudioLibraryDebugger: React.FC = () => {
         } else {
           aiTestResult = aiData;
           debugLog += `✅ Edge function executada com sucesso!\n`;
-          debugLog += `📋 Resultado: ${JSON.stringify(aiData, null, 2)}\n`;
+          debugLog += `🎵 Resultado: ${aiData.message}\n`;
+          debugLog += `📋 Detalhes: Nome="${aiData.audioName}", Trigger="${aiData.trigger}", Tamanho=${aiData.audioSize} chars\n`;
         }
       } catch (error: any) {
         aiError = error;
