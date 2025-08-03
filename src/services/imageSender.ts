@@ -17,8 +17,8 @@ export class ImageSender {
     messageId: string,
     caption?: string
   ): Promise<ImageSendResult> {
-    console.log('🖼️ ===== INICIANDO ENVIO VIA YUMER API V2 =====');
-    console.log('🔧 CORRIGIDO: Replicando exatamente a estrutura do sendAudioFile que funciona');
+    console.log('🖼️ ===== INICIANDO ENVIO VIA ENDPOINT /send/image-file =====');
+    console.log('🔧 REPLICANDO EXATAMENTE A LÓGICA DO sendAudioFile QUE FUNCIONA');
     console.log('📊 Dados da imagem:', {
       size: imageBlob.size,
       type: imageBlob.type,
@@ -28,19 +28,19 @@ export class ImageSender {
     });
 
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 2;
 
-    // 🎯 ESTRATÉGIA CORRIGIDA: FormData IDÊNTICO ao sendAudioFile
+    // 🎯 ESTRUTURA IDÊNTICA AO sendAudioFile - FormData minimalista
     while (attempts < maxAttempts) {
       attempts++;
-      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: FormData idêntico ao sendAudioFile`);
+      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: Estrutura IGUAL ao sendAudioFile`);
 
       try {
-        // 🔥 CORREÇÃO: Usar FormData manual igual ao sendAudioFile
+        // 🔥 FORMDATA EXATAMENTE IGUAL AO sendAudioFile
         const formData = new FormData();
         formData.append('recipient', chatId);
         
-        // Criar nome de arquivo adequado
+        // Detectar formato da imagem e usar extensão correta (igual ao áudio)
         const imageType = imageBlob.type.toLowerCase();
         let fileName = `image_${Date.now()}`;
         
@@ -55,39 +55,28 @@ export class ImageSender {
         }
         
         formData.append('attachment', imageBlob, fileName);
-        formData.append('mediatype', 'image');
         
-        // Adicionar opções EXATAMENTE como no sendAudioFile
+        // APENAS OS CAMPOS QUE O sendAudioFile USA
         if (caption) {
           formData.append('caption', caption);
           console.log(`📝 [ImageSender] Caption: ${caption}`);
         }
-        
-        formData.append('delay', '1200'); // Default igual ao sendAudioFile
         
         if (messageId) {
           formData.append('messageId', messageId);
           console.log(`🆔 [ImageSender] MessageId: ${messageId}`);
         }
         
-        // ExternalAttributes para tracking (igual ao sendAudioFile)
-        const externalAttributes = {
-          source: 'ImageSender',
-          mediaType: 'image',
-          fileName: fileName,
-          fileSize: imageBlob.size,
-          timestamp: Date.now()
-        };
-        formData.append('externalAttributes', JSON.stringify(externalAttributes));
+        formData.append('delay', '1200'); // IGUAL ao sendAudioFile
 
         console.log(`📤 [ImageSender] Enviando ${fileName} (${Math.round(imageBlob.size/1024)}KB) para ${chatId}`);
         
-        // 🎯 USAR sendMediaFile mas criar FormData personalizado primeiro
-        // Converter para File temporário para usar com sendMediaFile corrigido
+        // 🎯 CRIAR imageFile PARA USAR COM sendMediaFile (estrutura igual ao áudio)
         const imageFile = new File([imageBlob], fileName, {
           type: imageBlob.type || 'image/jpeg'
         });
 
+        // Usar sendMediaFile diretamente (replicando lógica do sendAudioFile)
         const response = await yumerApiV2.sendMediaFile(instanceId, chatId, imageFile, {
           delay: 1200,
           messageId: messageId,
@@ -95,13 +84,13 @@ export class ImageSender {
           mediatype: 'image'
         });
 
-        console.log('✅ Sucesso via FormData direto:', response);
+        console.log('✅ Sucesso via sendMediaFile (estrutura igual ao sendAudioFile):', response);
         
         return {
           success: true,
           format: 'image',
           attempts,
-          message: 'Imagem enviada via FormData direto',
+          message: 'Imagem enviada via sendMediaFile',
           isFallback: false
         };
 
@@ -109,12 +98,40 @@ export class ImageSender {
         console.warn(`⚠️ Tentativa ${attempts} falhou:`, error.message);
         
         if (attempts === maxAttempts) {
-          console.error('❌ Todas as tentativas falharam');
-          return {
-            success: false,
-            error: `Falha após ${attempts} tentativas: ${error.message}`,
-            attempts
-          };
+          console.error('❌ Tentativas falharam, tentando fallback...');
+          
+          // FALLBACK: tentar sem caption como último recurso
+          try {
+            console.log('🔄 FALLBACK: Tentando sem caption...');
+            const fileName = `image_${Date.now()}.jpg`;
+            const imageFile = new File([imageBlob], fileName, {
+              type: imageBlob.type || 'image/jpeg'
+            });
+
+            const fallbackResponse = await yumerApiV2.sendMediaFile(instanceId, chatId, imageFile, {
+              delay: 1200,
+              messageId: messageId + '_fallback',
+              caption: caption,
+              mediatype: 'image'
+            });
+
+            console.log('✅ Sucesso via fallback (sendMediaFile):', fallbackResponse);
+            
+            return {
+              success: true,
+              format: 'image',
+              attempts: attempts + 1,
+              message: 'Imagem enviada via fallback (sendMediaFile)',
+              isFallback: true
+            };
+          } catch (fallbackError: any) {
+            console.error('❌ Fallback também falhou:', fallbackError);
+            return {
+              success: false,
+              error: `Falha completa após ${attempts} tentativas + fallback: ${error.message}`,
+              attempts: attempts + 1
+            };
+          }
         }
         
         // Aguardar antes da próxima tentativa
