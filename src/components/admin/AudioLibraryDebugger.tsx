@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, AlertCircle, Play, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -14,222 +14,90 @@ interface LibraryData {
   audio_triggers: any[];
 }
 
+interface DiagnosticStep {
+  step: number;
+  name: string;
+  status: 'running' | 'success' | 'failed';
+  result?: string;
+  error?: string;
+  availableTriggers?: string;
+  sendData?: any;
+}
+
+interface DiagnosticResults {
+  success: boolean;
+  steps: DiagnosticStep[];
+  finalResult: string;
+  errors: string[];
+  recommendations: string[];
+}
+
 export const AudioLibraryDebugger: React.FC = () => {
   const [testing, setTesting] = useState(false);
   const [clientId, setClientId] = useState('');
-  const [testCommand, setTestCommand] = useState('audiogeo:');
-  const [debugResults, setDebugResults] = useState('');
+  const [testCommand, setTestCommand] = useState('audio audiogeonothaliszu');
+  const [diagnosticResults, setDiagnosticResults] = useState<DiagnosticResults | null>(null);
   const [libraryData, setLibraryData] = useState<LibraryData | null>(null);
 
-  const testAudioLibraryMatching = async () => {
-    if (!clientId || !testCommand) {
-      toast.error('Client ID e comando são obrigatórios');
+  const runCompleteAudioDiagnostic = async () => {
+    if (!clientId.trim() || !testCommand.trim()) {
+      toast.error('Por favor, preencha o ID do cliente e o comando de teste');
       return;
     }
 
     setTesting(true);
-    setDebugResults('');
+    setDiagnosticResults(null);
     setLibraryData(null);
 
-    let debugLog = '🔥 [AUDIO-LIB-DEBUG] === TESTE COMPLETO DE BIBLIOTECA DE ÁUDIO ===\n\n';
-
     try {
-      // === ETAPA 1: BUSCAR TODOS OS ASSISTENTES ===
-      debugLog += '📋 [ETAPA 1] Buscando assistentes do cliente...\n';
-      const { data: allAssistants, error: assistantsError } = await supabase
-        .from('assistants')
-        .select('*')
-        .eq('client_id', clientId);
-
-      if (assistantsError) {
-        throw new Error(`Erro ao buscar assistentes: ${assistantsError.message}`);
-      }
-
-      debugLog += `✅ Encontrados ${allAssistants?.length || 0} assistentes\n`;
-      debugLog += `📝 Assistentes: ${allAssistants?.map(a => a.name).join(', ') || 'nenhum'}\n\n`;
-
-      if (!allAssistants || allAssistants.length === 0) {
-        throw new Error('❌ Nenhum assistente encontrado para este cliente');
-      }
-
-      // === ETAPA 2: VERIFICAR QUAIS TÊM BIBLIOTECA DE ÁUDIO ===
-      debugLog += '📚 [ETAPA 2] Verificando bibliotecas de áudio...\n';
-      const assistantsWithAudio = [];
+      console.log('🧪 [AUDIO-DIAGNOSTIC] Iniciando diagnóstico completo...');
       
-      for (const assistant of allAssistants) {
-        // 🔧 [CORREÇÃO] Melhor verificação dos advanced_settings
-        let advancedSettings = assistant.advanced_settings;
-        
-        // Se for string, fazer parse
-        if (typeof advancedSettings === 'string') {
-          try {
-            advancedSettings = JSON.parse(advancedSettings);
-          } catch (error) {
-            debugLog += `❌ Erro ao fazer parse de advanced_settings: ${error}\n`;
-            continue;
-          }
-        }
-        
-        debugLog += `🔍 Assistente "${assistant.name}":\n`;
-        debugLog += `   - advanced_settings type: ${typeof assistant.advanced_settings}\n`;
-        debugLog += `   - advanced_settings raw: ${JSON.stringify(assistant.advanced_settings).substring(0, 100)}...\n`;
-        debugLog += `   - Tem advanced_settings: ${!!advancedSettings}\n`;
-        
-        // 🎯 [CORREÇÃO] Verificar todas as possíveis propriedades de áudio
-        const audioLibrary = (advancedSettings as any)?.audio_library || (advancedSettings as any)?.audioLibrary;
-        
-        debugLog += `   - Tem audio_library: ${!!audioLibrary}\n`;
-        debugLog += `   - audio_library type: ${typeof audioLibrary}\n`;
-        debugLog += `   - É array: ${Array.isArray(audioLibrary)}\n`;
-        debugLog += `   - Tamanho: ${Array.isArray(audioLibrary) ? audioLibrary.length : 0}\n`;
-        
-        if (audioLibrary && !Array.isArray(audioLibrary)) {
-          debugLog += `   - audio_library content: ${JSON.stringify(audioLibrary).substring(0, 200)}...\n`;
-        }
-        
-        if (Array.isArray(audioLibrary) && audioLibrary.length > 0) {
-          assistantsWithAudio.push({
-            assistant,
-            audioLibrary
-          });
-          debugLog += `   ✅ BIBLIOTECA VÁLIDA!\n`;
-          debugLog += `   📝 Triggers: ${audioLibrary.map((item: any) => item.trigger).join(', ')}\n`;
-        } else {
-          debugLog += `   ❌ Sem biblioteca válida\n`;
-        }
-        debugLog += '\n';
-      }
-
-      if (assistantsWithAudio.length === 0) {
-        throw new Error('❌ Nenhum assistente com biblioteca de áudio encontrado');
-      }
-
-      debugLog += `🎯 [RESULTADO] Encontrados ${assistantsWithAudio.length} assistentes com biblioteca\n\n`;
-
-      // === ETAPA 3: TESTAR MATCHING ===
-      const { assistant, audioLibrary } = assistantsWithAudio[0];
-      debugLog += `🎵 [ETAPA 3] Testando matching com assistente "${assistant.name}"...\n`;
-      debugLog += `📝 Comando para testar: "${testCommand}"\n`;
-
-      setLibraryData({
-        name: assistant.name,
-        audio_triggers: audioLibrary
+      const { data: results, error } = await supabase.functions.invoke('test-audio-library-complete', {
+        body: { clientId, testCommand }
       });
 
-      // Extrair apenas o comando sem o ":"
-      const commandToTest = testCommand.replace(':', '').trim();
-      debugLog += `🧹 Comando limpo: "${commandToTest}"\n`;
-
-      // Testar diferentes estratégias de matching
-      const triggers = audioLibrary.map((item: any) => item.trigger);
-      debugLog += `🔍 Triggers disponíveis: [${triggers.join(', ')}]\n\n`;
-
-      let bestMatch = null;
-      let matchMethod = '';
-
-      // Estratégia 1: Match exato
-      bestMatch = triggers.find((trigger: string) => trigger === commandToTest);
-      if (bestMatch) {
-        matchMethod = 'Exato';
-        debugLog += `✅ MATCH EXATO encontrado: "${bestMatch}"\n`;
-      } else {
-        debugLog += `❌ Nenhum match exato para "${commandToTest}"\n`;
-
-        // Estratégia 2: Contém o comando
-        bestMatch = triggers.find((trigger: string) => trigger.includes(commandToTest));
-        if (bestMatch) {
-          matchMethod = 'Contém';
-          debugLog += `✅ MATCH POR CONTEÚDO encontrado: "${bestMatch}"\n`;
-        } else {
-          debugLog += `❌ Nenhum match por conteúdo para "${commandToTest}"\n`;
-
-          // Estratégia 3: Comando contém o trigger
-          bestMatch = triggers.find((trigger: string) => commandToTest.includes(trigger));
-          if (bestMatch) {
-            matchMethod = 'Comando contém trigger';
-            debugLog += `✅ MATCH REVERSO encontrado: "${bestMatch}"\n`;
-          } else {
-            debugLog += `❌ Nenhum match reverso para "${commandToTest}"\n`;
-          }
-        }
+      if (error) {
+        throw new Error(`Erro na função de diagnóstico: ${error.message}`);
       }
 
-      // === ETAPA 4: BUSCAR ÁUDIO ===
-      let audioData = null;
-      if (bestMatch) {
-        debugLog += `\n🎵 [ETAPA 4] Buscando áudio para trigger "${bestMatch}"...\n`;
-        const audioItem = audioLibrary.find((item: any) => item.trigger === bestMatch);
-        
-        if (audioItem) {
-          audioData = audioItem;
-          debugLog += `✅ ÁUDIO ENCONTRADO!\n`;
-          debugLog += `   - ID: ${audioData.id}\n`;
-          debugLog += `   - Nome: ${audioData.name}\n`;
-          debugLog += `   - Trigger: ${audioData.trigger}\n`;
-          debugLog += `   - Tem Base64: ${!!audioData.audioBase64}\n`;
-          debugLog += `   - Tamanho Base64: ${audioData.audioBase64?.length || 0} chars\n`;
-          
-          if (audioData.audioBase64) {
-            debugLog += `   - Preview Base64: ${audioData.audioBase64.substring(0, 50)}...\n`;
-          }
-        } else {
-          debugLog += `❌ Áudio não encontrado para trigger "${bestMatch}"\n`;
-        }
+      setDiagnosticResults(results);
+      
+      if (results.success) {
+        toast.success('✅ Diagnóstico concluído - Sistema funcionando!');
       } else {
-        debugLog += `\n❌ [ETAPA 4] Pulada - nenhum trigger matched\n`;
-      }
-
-      // === ETAPA 5: TESTAR EDGE FUNCTION ESPECÍFICA ===
-      debugLog += `\n🤖 [ETAPA 5] Testando edge function test-audio-library...\n`;
-      let aiTestResult = null;
-      let aiError = null;
-
-      try {
-        const { data: aiData, error: aiErrorResult } = await supabase.functions.invoke('test-audio-library', {
-          body: {
-            clientId: clientId,
-            command: testCommand
-          }
-        });
-
-        if (aiErrorResult) {
-          aiError = aiErrorResult;
-          debugLog += `❌ Erro na edge function: ${aiErrorResult.message}\n`;
-        } else {
-          aiTestResult = aiData;
-          debugLog += `✅ Edge function executada com sucesso!\n`;
-          debugLog += `🎵 Resultado: ${aiData.message}\n`;
-          debugLog += `📋 Detalhes: Nome="${aiData.audioName}", Trigger="${aiData.trigger}", Tamanho=${aiData.audioSize} chars\n`;
-        }
-      } catch (error: any) {
-        aiError = error;
-        debugLog += `❌ Erro ao chamar edge function: ${error.message}\n`;
-      }
-
-      // === RESULTADO FINAL ===
-      debugLog += `\n🏁 [RESULTADO FINAL] ===========================\n`;
-      debugLog += `✅ Assistente encontrado: ${assistant.name}\n`;
-      debugLog += `✅ Biblioteca carregada: ${audioLibrary.length} itens\n`;
-      debugLog += `${bestMatch ? '✅' : '❌'} Match encontrado: ${bestMatch || 'NENHUM'}\n`;
-      debugLog += `${bestMatch ? `📝 Método de match: ${matchMethod}\n` : ''}`;
-      debugLog += `${audioData ? '✅' : '❌'} Áudio encontrado: ${audioData ? 'SIM' : 'NÃO'}\n`;
-      debugLog += `${aiTestResult ? '✅' : '❌'} Edge function: ${aiTestResult ? 'SUCESSO' : 'ERRO'}\n`;
-
-      setDebugResults(debugLog);
-
-      // Toast de resultado
-      if (bestMatch && audioData) {
-        toast.success(`🎵 Áudio "${audioData.name}" encontrado para comando "${testCommand}"!`);
-      } else {
-        toast.warning('❌ Comando não encontrou áudio correspondente na biblioteca');
+        toast.error('❌ Problemas encontrados no diagnóstico');
       }
 
     } catch (error: any) {
-      debugLog += `\n💥 [ERRO FATAL] ${error.message}\n`;
-      setDebugResults(debugLog);
-      toast.error(`Erro no teste: ${error.message}`);
+      console.error('❌ [AUDIO-DIAGNOSTIC] Erro:', error);
+      toast.error(`Erro no diagnóstico: ${error.message}`);
+      setDiagnosticResults({
+        success: false,
+        steps: [],
+        finalResult: '',
+        errors: [error.message],
+        recommendations: ['Verificar conectividade', 'Tentar novamente']
+      });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const getStepIcon = (status: string) => {
+    switch (status) {
+      case 'success': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'failed': return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'running': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+      default: return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
+    }
+  };
+
+  const getStepBadgeVariant = (status: string) => {
+    switch (status) {
+      case 'success': return 'default';
+      case 'failed': return 'destructive';
+      case 'running': return 'secondary';
+      default: return 'outline';
     }
   };
 
@@ -237,9 +105,12 @@ export const AudioLibraryDebugger: React.FC = () => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>🎵 Debug de Biblioteca de Áudio</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            🎵 Diagnóstico Completo de Biblioteca de Áudio
+            <RefreshCw className="h-5 w-5" />
+          </CardTitle>
           <CardDescription>
-            Testa o matching de comandos de áudio com a biblioteca de triggers do assistente
+            Sistema avançado para diagnosticar e corrigir problemas com comandos de áudio da biblioteca
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -257,7 +128,7 @@ export const AudioLibraryDebugger: React.FC = () => {
               <Label htmlFor="testCommand">Comando para Testar</Label>
               <Input
                 id="testCommand"
-                placeholder="audiogeo:"
+                placeholder="audio audiogeonothaliszu"
                 value={testCommand}
                 onChange={(e) => setTestCommand(e.target.value)}
               />
@@ -265,21 +136,135 @@ export const AudioLibraryDebugger: React.FC = () => {
           </div>
 
           <Button 
-            onClick={testAudioLibraryMatching} 
+            onClick={runCompleteAudioDiagnostic} 
             disabled={testing || !clientId || !testCommand}
             className="w-full"
           >
             {testing ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Executando Teste Completo...
+                Executando Diagnóstico Completo...
               </>
             ) : (
-              '🔥 Execute Full Test'
+              <>
+                <Play className="mr-2 h-4 w-4" />
+                🔥 Executar Diagnóstico Definitivo
+              </>
             )}
           </Button>
         </CardContent>
       </Card>
+
+      {diagnosticResults && (
+        <>
+          {/* Status Geral */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {diagnosticResults.success ? (
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-500" />
+                )}
+                Status do Diagnóstico
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Badge 
+                  variant={diagnosticResults.success ? "default" : "destructive"}
+                  className="text-sm"
+                >
+                  {diagnosticResults.success ? '✅ FUNCIONANDO' : '❌ PROBLEMAS ENCONTRADOS'}
+                </Badge>
+                {diagnosticResults.finalResult && (
+                  <p className="text-sm text-muted-foreground">{diagnosticResults.finalResult}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Etapas do Diagnóstico */}
+          <Card>
+            <CardHeader>
+              <CardTitle>📋 Etapas do Diagnóstico</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {diagnosticResults.steps.map((step) => (
+                  <div key={step.step} className="flex items-start gap-3 p-3 border rounded-lg">
+                    <div className="flex-shrink-0 mt-1">
+                      {getStepIcon(step.status)}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{step.step}. {step.name}</span>
+                        <Badge variant={getStepBadgeVariant(step.status)} className="text-xs">
+                          {step.status.toUpperCase()}
+                        </Badge>
+                      </div>
+                      {step.result && (
+                        <p className="text-sm text-green-600">{step.result}</p>
+                      )}
+                      {step.error && (
+                        <p className="text-sm text-red-600">{step.error}</p>
+                      )}
+                      {step.availableTriggers && (
+                        <p className="text-xs text-muted-foreground">
+                          <strong>Triggers disponíveis:</strong> {step.availableTriggers}
+                        </p>
+                      )}
+                      {step.sendData && (
+                        <div className="text-xs text-muted-foreground">
+                          <strong>Dados prontos:</strong> {step.sendData.audioName} ({step.sendData.trigger})
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Erros e Recomendações */}
+          {(diagnosticResults.errors.length > 0 || diagnosticResults.recommendations.length > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>🔧 Análise e Recomendações</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {diagnosticResults.errors.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-red-600 mb-2">❌ Erros Encontrados:</h4>
+                    <ul className="space-y-1">
+                      {diagnosticResults.errors.map((error, index) => (
+                        <li key={index} className="text-sm text-red-500 flex items-start gap-2">
+                          <XCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                          {error}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {diagnosticResults.recommendations.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-blue-600 mb-2">💡 Recomendações:</h4>
+                    <ul className="space-y-1">
+                      {diagnosticResults.recommendations.map((rec, index) => (
+                        <li key={index} className="text-sm text-blue-600 flex items-start gap-2">
+                          <CheckCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                          {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
 
       {libraryData && (
         <Card>
@@ -298,22 +283,6 @@ export const AudioLibraryDebugger: React.FC = () => {
                 )) : null}
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {debugResults && (
-        <Card>
-          <CardHeader>
-            <CardTitle>🔍 Resultado Detalhado</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={debugResults}
-              readOnly
-              className="min-h-[400px] font-mono text-sm"
-              placeholder="Os resultados do debug aparecerão aqui..."
-            />
           </CardContent>
         </Card>
       )}
