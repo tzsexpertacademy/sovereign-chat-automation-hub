@@ -2362,7 +2362,7 @@ async function processAudioCommands(
       try {
         const libraryAudio = await getAudioFromLibrary(assistant.id, audioName);
         if (libraryAudio) {
-          await sendLibraryAudioMessage(instanceId, ticketId, libraryAudio.audioBase64, businessToken);
+          await sendAudioMessage(instanceId, ticketId, libraryAudio.audioBase64, businessToken);
           processedCount++;
           console.log('✅ [AUDIO-LIBRARY] Áudio da biblioteca enviado:', audioName);
         } else {
@@ -2922,110 +2922,6 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
     
   } catch (error) {
     console.error('❌ [SEND-AUDIO] Erro ao enviar áudio:', error);
-    throw error;
-  }
-}
-
-/**
- * 🎵 ENVIAR ÁUDIO DA BIBLIOTECA (ESPECIALIZADA PARA BASE64 DA BIBLIOTECA)
- */
-async function sendLibraryAudioMessage(instanceId: string, ticketId: string, audioBase64: string, businessToken: string): Promise<void> {
-  try {
-    // Buscar informações do ticket para obter chatId
-    const { data: ticket } = await supabase
-      .from('conversation_tickets')
-      .select('chat_id')
-      .eq('id', ticketId)
-      .single();
-    
-    if (!ticket) {
-      throw new Error('Ticket não encontrado');
-    }
-    
-    console.log('🎵 [SEND-LIBRARY-AUDIO] Processando áudio da biblioteca...', {
-      instanceId,
-      chatId: ticket.chat_id.substring(0, 15) + '...',
-      audioSize: Math.round(audioBase64.length / 1024) + 'KB'
-    });
-
-    // 🔍 DETECTAR FORMATO DO ÁUDIO via headers Base64
-    let audioFormat = 'ogg'; // default
-    let mimeType = 'audio/ogg';
-    
-    try {
-      // Primeiros bytes do Base64 para detectar formato
-      const headerBytes = audioBase64.substring(0, 20);
-      
-      if (headerBytes.startsWith('T2dnUw')) {
-        audioFormat = 'ogg';
-        mimeType = 'audio/ogg';
-      } else if (headerBytes.startsWith('SUQz') || headerBytes.startsWith('//')) {
-        audioFormat = 'mp3';
-        mimeType = 'audio/mpeg';
-      } else if (headerBytes.startsWith('UklGRg')) {
-        audioFormat = 'wav';
-        mimeType = 'audio/wav';
-      }
-      
-      console.log('🔍 [SEND-LIBRARY-AUDIO] Formato detectado:', { audioFormat, mimeType });
-    } catch (e) {
-      console.warn('⚠️ [SEND-LIBRARY-AUDIO] Erro na detecção de formato, usando OGG padrão');
-    }
-
-    // 🔄 CONVERTER BASE64 PARA BLOB
-    console.log('🔄 [SEND-LIBRARY-AUDIO] Convertendo base64 para blob...');
-    
-    const binaryString = atob(audioBase64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    
-    const audioBlob = new Blob([bytes], { type: mimeType });
-    console.log('📊 [SEND-LIBRARY-AUDIO] Blob criado:', {
-      size: audioBlob.size,
-      type: audioBlob.type,
-      format: audioFormat
-    });
-
-    // 📤 ENVIAR DIRETAMENTE VIA /send/audio-file (MAIS COMPATÍVEL PARA BIBLIOTECA)
-    console.log('📤 [SEND-LIBRARY-AUDIO] Enviando via /send/audio-file...');
-    
-    const timestamp = Date.now();
-    const fileName = `library_audio_${timestamp}.${audioFormat}`;
-    
-    const formData = new FormData();
-    formData.append('recipient', ticket.chat_id);
-    formData.append('attachment', audioBlob, fileName);
-    formData.append('delay', '800');
-    formData.append('options', JSON.stringify({
-      presence: 'recording',
-      ptt: true
-    }));
-    
-    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio-file`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${businessToken}`
-      },
-      body: formData
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ [SEND-LIBRARY-AUDIO] Erro no endpoint audio-file:', errorText);
-      throw new Error(`Falha no envio: ${errorText}`);
-    }
-
-    const result = await response.json();
-    console.log('✅ [SEND-LIBRARY-AUDIO] Áudio da biblioteca enviado com sucesso:', {
-      messageId: result.key?.id || 'N/A',
-      format: audioFormat,
-      success: true
-    });
-    
-  } catch (error) {
-    console.error('❌ [SEND-LIBRARY-AUDIO] Erro ao enviar áudio da biblioteca:', error);
     throw error;
   }
 }
