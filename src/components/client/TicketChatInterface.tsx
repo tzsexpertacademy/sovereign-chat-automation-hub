@@ -233,22 +233,31 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       setNewMessage('');
 
       // 🎵 BYPASS DIRETO PARA COMANDOS DE ÁUDIO DA BIBLIOTECA
-      console.log('🔍 [AUDIO-LIBRARY] Verificando comando:', messageToSend);
+      console.log('🔍 [AUDIO-LIBRARY] Verificando comando de áudio:', messageToSend);
       
       const audioLibraryPattern = /audio\s+([^:\s\n]+)/i;
       const audioMatch = messageToSend.match(audioLibraryPattern);
 
+      // 🖼️ BYPASS DIRETO PARA COMANDOS DE IMAGEM DA BIBLIOTECA
+      console.log('🔍 [IMAGE-LIBRARY] Verificando comando de imagem:', messageToSend);
+      
+      const imageLibraryPattern = /image\s+([^:\s\n]+)/i;
+      const imageMatch = messageToSend.match(imageLibraryPattern);
+
       const assistantId = ticket.assigned_assistant_id || queueInfo?.assistant_id;
       
-      console.log('🔍 [AUDIO-LIBRARY] Resultado da regex:', {
-        pattern: audioLibraryPattern.toString(),
+      console.log('🔍 [LIBRARY-COMMANDS] Resultado das regex:', {
+        audioPattern: audioLibraryPattern.toString(),
+        imagePattern: imageLibraryPattern.toString(),
         message: messageToSend,
-        match: audioMatch,
+        audioMatch: audioMatch,
+        imageMatch: imageMatch,
         hasTicketAssistant: !!ticket.assigned_assistant_id,
         hasQueueAssistant: !!queueInfo?.assistant_id,
         finalAssistantId: assistantId
       });
 
+      // 🎵 PROCESSAR COMANDO DE ÁUDIO
       if (audioMatch && assistantId) {
         console.log('🎵 [AUDIO-LIBRARY] Comando detectado - BYPASS DIRETO:', {
           fullCommand: messageToSend,
@@ -307,6 +316,74 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           toast({
             title: "❌ Erro no Comando",
             description: "Falha ao processar comando de áudio",
+            variant: "destructive"
+          });
+        }
+        
+        setIsSending(false);
+        markActivity();
+        return;
+      }
+
+      // 🖼️ PROCESSAR COMANDO DE IMAGEM
+      if (imageMatch && assistantId) {
+        console.log('🖼️ [IMAGE-LIBRARY] Comando detectado - BYPASS DIRETO:', {
+          fullCommand: messageToSend,
+          trigger: imageMatch[1],
+          assistantId: assistantId,
+          source: ticket.assigned_assistant_id ? 'ticket' : 'queue',
+          ticketId,
+          clientId,
+          instanceId: actualInstanceId
+        });
+
+        // ⚡ BYPASS DIRETO - Chamar edge function ai-assistant-process diretamente
+        try {
+          console.log('🚀 [IMAGE-LIBRARY] Chamando ai-assistant-process diretamente...');
+          
+          // Estrutura de dados igual ao batch processor
+          const messageData = {
+            content: messageToSend,
+            messageId: `MANUAL_${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            phoneNumber: ticket.customer_phone || '0000000000',
+            customerName: ticket.customer_name || 'Cliente'
+          };
+
+          const requestBody = {
+            ticketId,
+            messages: [messageData],
+            context: {
+              chatId: ticket.chat_id,
+              customerName: ticket.customer_name || 'Cliente',
+              phoneNumber: ticket.customer_phone || '0000000000',
+              batchInfo: `Comando de imagem manual`
+            }
+          };
+
+          console.log('📦 [IMAGE-LIBRARY] Payload para edge function:', requestBody);
+
+          const { data: response, error } = await supabase.functions.invoke('ai-assistant-process', {
+            body: requestBody
+          });
+
+          if (error) {
+            throw error;
+          }
+
+          console.log('✅ [IMAGE-LIBRARY] Edge function executada com sucesso:', response);
+          
+          toast({
+            title: "🖼️ Comando de Imagem",
+            description: "Comando processado com sucesso!",
+            variant: "default"
+          });
+
+        } catch (error) {
+          console.error('❌ [IMAGE-LIBRARY] Erro no bypass direto:', error);
+          toast({
+            title: "❌ Erro no Comando",
+            description: "Falha ao processar comando de imagem",
             variant: "destructive"
           });
         }
