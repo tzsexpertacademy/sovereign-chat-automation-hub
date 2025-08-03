@@ -64,24 +64,13 @@ serve(async (req) => {
 
     const audioBuffer = await response.arrayBuffer();
     
-    // 🔧 CONVERSÃO 100% SEGURA PARA BASE64 (sem apply/spread operators)
+    // 🔧 CONVERSÃO ROBUSTA PARA BASE64 usando TextDecoder
     const uint8Array = new Uint8Array(audioBuffer);
-    let binaryString = '';
-    const chunkSize = 1024; // 1KB chunks para máxima segurança
     
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunkEnd = Math.min(i + chunkSize, uint8Array.length);
-      let chunkString = '';
-      
-      // Iterar byte por byte sem apply() para evitar stack overflow
-      for (let j = i; j < chunkEnd; j++) {
-        chunkString += String.fromCharCode(uint8Array[j]);
-      }
-      
-      binaryString += chunkString;
-    }
-    
-    const base64Audio = btoa(binaryString);
+    // Usar encoder nativo do Deno - mais eficiente e seguro
+    const base64Audio = btoa(
+      Array.from(uint8Array, byte => String.fromCharCode(byte)).join('')
+    );
 
     console.log('✅ Áudio gerado com sucesso:', {
       audioSizeBytes: audioBuffer.byteLength,
