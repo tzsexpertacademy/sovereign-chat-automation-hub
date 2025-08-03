@@ -33,6 +33,18 @@ export interface AudioLibraryItem {
   uploaded_at: string;
 }
 
+export interface ImageLibraryItem {
+  id: string;
+  name: string;
+  trigger: string;
+  url: string;
+  imageBase64?: string; // Base64 da imagem
+  format: 'jpg' | 'png' | 'gif' | 'webp';
+  size: number; // tamanho em bytes
+  category: string;
+  uploaded_at: string;
+}
+
 export interface RecordingSettings {
   max_duration: number;
   quality: 'low' | 'medium' | 'high';
@@ -93,6 +105,7 @@ export interface AdvancedSettings {
     description?: string;
   }>;
   audio_library: AudioLibraryItem[];
+  image_library: ImageLibraryItem[];
   recording_settings: RecordingSettings;
   
   // Advanced Features
@@ -286,6 +299,113 @@ export const assistantsService = {
       }
     } catch (error) {
       console.error('Erro ao remover áudio da biblioteca:', error);
+      throw error;
+    }
+  },
+
+  async uploadImageToLibrary(
+    assistantId: string, 
+    imageFile: File, 
+    trigger: string, 
+    category: string
+  ): Promise<ImageLibraryItem> {
+    try {
+      console.log('📤 [UPLOAD-IMAGE] Iniciando upload para biblioteca:', {
+        fileName: imageFile.name,
+        trigger,
+        category,
+        size: imageFile.size
+      });
+
+      // Validar formato
+      const validFormats = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validFormats.includes(imageFile.type)) {
+        throw new Error('Formato não suportado. Use JPG, PNG, GIF ou WebP.');
+      }
+
+      // Validar tamanho (10MB máximo)
+      if (imageFile.size > 10 * 1024 * 1024) {
+        throw new Error('Imagem muito grande. Máximo 10MB.');
+      }
+
+      // Converter para base64
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(imageFile);
+      });
+
+      console.log('✅ [UPLOAD-IMAGE] Conversão base64 concluída:', {
+        base64Length: imageBase64.length,
+        format: imageFile.type
+      });
+
+      // Determinar formato
+      let format: 'jpg' | 'png' | 'gif' | 'webp' = 'jpg';
+      if (imageFile.type.includes('png')) format = 'png';
+      else if (imageFile.type.includes('gif')) format = 'gif';
+      else if (imageFile.type.includes('webp')) format = 'webp';
+
+      const imageItem: ImageLibraryItem = {
+        id: `image_${Date.now()}`,
+        name: imageFile.name,
+        trigger: trigger.toLowerCase(),
+        url: '',
+        imageBase64: imageBase64,
+        format: format,
+        size: imageFile.size,
+        category: category,
+        uploaded_at: new Date().toISOString()
+      };
+
+      // Verificar se trigger já existe
+      const settings = await this.getAssistantAdvancedSettings(assistantId);
+      if (settings?.image_library) {
+        const existingTrigger = settings.image_library.find(img => img.trigger === trigger.toLowerCase());
+        if (existingTrigger) {
+          throw new Error(`Trigger "${trigger}" já existe na biblioteca.`);
+        }
+      }
+
+      // Adicionar à biblioteca do assistente
+      if (settings) {
+        const updatedSettings = {
+          ...settings,
+          image_library: [...(settings.image_library || []), imageItem]
+        };
+        await this.updateAdvancedSettings(assistantId, updatedSettings);
+        
+        console.log('✅ [UPLOAD-IMAGE] Imagem salva na biblioteca:', {
+          trigger: trigger.toLowerCase(),
+          format,
+          librarySize: updatedSettings.image_library.length
+        });
+      }
+
+      return imageItem;
+    } catch (error) {
+      console.error('❌ [UPLOAD-IMAGE] Erro ao fazer upload da imagem:', error);
+      throw error;
+    }
+  },
+
+  async removeImageFromLibrary(assistantId: string, imageId: string): Promise<void> {
+    try {
+      const settings = await this.getAssistantAdvancedSettings(assistantId);
+      if (settings) {
+        const updatedSettings = {
+          ...settings,
+          image_library: (settings.image_library || []).filter(image => image.id !== imageId)
+        };
+        await this.updateAdvancedSettings(assistantId, updatedSettings);
+      }
+    } catch (error) {
+      console.error('Erro ao remover imagem da biblioteca:', error);
       throw error;
     }
   }

@@ -374,6 +374,8 @@ serve(async (req) => {
 
     // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos de biblioteca ANTES da IA
     const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
+    const imageCommandMatch = messageContent.match(/^image\s*:\s*([^\s]+)$/i);
+    
     if (libraryCommandMatch) {
       console.log('🎵 [EARLY-INTERCEPT] ⚡ COMANDO DE BIBLIOTECA DETECTADO - PROCESSANDO IMEDIATAMENTE');
       console.log('🎵 [EARLY-INTERCEPT] Comando:', libraryCommandMatch[0]);
@@ -407,6 +409,49 @@ serve(async (req) => {
         }
       } else {
         console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de biblioteca será ignorado');
+      }
+    }
+    
+    // 🖼️ INTERCEPTAÇÃO PRECOCE: Detectar comandos de imagem ANTES da IA
+    if (imageCommandMatch) {
+      console.log('🖼️ [EARLY-INTERCEPT] ⚡ COMANDO DE IMAGEM DETECTADO - PROCESSANDO IMEDIATAMENTE');
+      console.log('🖼️ [EARLY-INTERCEPT] Comando:', imageCommandMatch[0]);
+      console.log('🖼️ [EARLY-INTERCEPT] Trigger da imagem:', imageCommandMatch[1]);
+      
+      // Buscar business token ANTES do processamento
+      const { data: client } = await supabase
+        .from('clients')
+        .select('business_token')
+        .eq('id', resolvedClientId)
+        .single();
+      
+      if (client?.business_token) {
+        console.log('✅ [EARLY-INTERCEPT] Business token encontrado para processamento de imagem');
+        
+        try {
+          // Processar comando de imagem diretamente
+          await processImageCommands(imageCommandMatch[0], {
+            assistantId: resolvedAssistantId,
+            instanceId: resolvedInstanceId,
+            chatId: resolvedContext.chatId,
+            businessToken: client.business_token
+          });
+          
+          console.log('✅ [EARLY-INTERCEPT] Comando de imagem processado com sucesso - retornando');
+          
+          return new Response(JSON.stringify({
+            success: true,
+            type: 'image_command',
+            processed: true,
+            timestamp: new Date().toISOString()
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        } catch (error) {
+          console.error('❌ [EARLY-INTERCEPT] Erro ao processar comando de imagem:', error);
+        }
+      } else {
+        console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de imagem será ignorado');
       }
     }
     
@@ -821,6 +866,19 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         finalResponse = audioCommands.remainingText;
       } else {
         console.log('🎵 [AUDIO-COMMANDS] ℹ️ Nenhum comando de áudio detectado');
+      }
+      
+      // 🖼️ PROCESSAR COMANDOS DE IMAGEM
+      const imageCount = await processImageCommands(finalResponse, {
+        assistantId: safeAssistant.id,
+        instanceId: resolvedInstanceId,
+        chatId: resolvedContext.chatId,
+        businessToken: client?.business_token || ''
+      });
+      
+      if (imageCount > 0) {
+        console.log(`🖼️ [IMAGE-COMMANDS] ✅ ${imageCount} comandos de imagem processados`);
+        finalResponse = finalResponse.replace(/image\s*:\s*[^\s]+/gi, '').trim();
       }
     } catch (audioError) {
       console.error('⚠️ [AUDIO-COMMANDS] Erro no processamento de áudio (continuando com texto):', audioError);
@@ -3031,6 +3089,254 @@ async function sendLibraryAudioMessage(instanceId: string, ticketId: string, aud
     
   } catch (error) {
     console.error('❌ [SEND-LIBRARY-AUDIO] Erro ao enviar áudio da biblioteca:', error);
+    throw error;
+  }
+}
+
+/**
+ * 🖼️ PROCESSAR COMANDOS DE IMAGEM
+ */
+async function processImageCommands(
+  message: string, 
+  context: { assistantId: string, instanceId: string, chatId: string, businessToken: string }
+): Promise<number> {
+  try {
+    console.log('🖼️ [IMAGE-COMMANDS] ========== INICIANDO PROCESSAMENTO DE IMAGENS ==========');
+    console.log('🖼️ [IMAGE-COMMANDS] Assistant ID:', context.assistantId);
+    console.log('🖼️ [IMAGE-COMMANDS] Instance ID:', context.instanceId);
+    console.log('🖼️ [IMAGE-COMMANDS] Business Token presente:', !!context.businessToken);
+    console.log('🖼️ [IMAGE-COMMANDS] Mensagem recebida:', `"${message}"`);
+    
+    let processedCount = 0;
+    
+    // ✅ LIMPAR E NORMALIZAR MENSAGEM PARA TESTES MAIS PRECISOS
+    const cleanMessage = message.trim();
+    console.log('🖼️ [IMAGE-COMMANDS] Analisando mensagem para comandos de imagem...');
+    console.log('🔍 [IMAGE-COMMANDS] Mensagem limpa:', cleanMessage);
+    
+    // ✅ REGEX PARA COMANDO DE IMAGEM: "image: trigger"
+    const imageCommandPattern = /^image\s*:\s*([^\s]+)$/i;
+    
+    console.log('🎯 [IMAGE-COMMANDS] Regex imagem:', imageCommandPattern.source);
+    
+    // ✅ TESTE DIRETO DO REGEX COM MENSAGEM LIMPA
+    const testImageMatch = cleanMessage.match(imageCommandPattern);
+    console.log('🔍 [IMAGE-COMMANDS] Teste Image regex:', testImageMatch);
+    
+    if (testImageMatch) {
+      console.log('🖼️ [IMAGE-LIBRARY] ✅ COMANDO DE IMAGEM DETECTADO!');
+      console.log('🖼️ [IMAGE-LIBRARY] Comando completo:', testImageMatch[0]);
+      console.log('🖼️ [IMAGE-LIBRARY] Trigger da imagem:', testImageMatch[1]);
+      
+      const imageTrigger = testImageMatch[1].trim();
+      
+      try {
+        const libraryImage = await getImageFromLibrary(context.assistantId, imageTrigger);
+        
+        if (libraryImage) {
+          console.log('🖼️ [IMAGE-LIBRARY] ✅ Imagem encontrada na biblioteca, enviando...');
+          await sendLibraryImageMessage(context.instanceId, context.chatId, libraryImage, context.businessToken);
+          processedCount++;
+          console.log('✅ [IMAGE-LIBRARY] Imagem da biblioteca enviada com sucesso:', imageTrigger);
+        } else {
+          console.warn('⚠️ [IMAGE-LIBRARY] Imagem não encontrada na biblioteca:', imageTrigger);
+        }
+        
+      } catch (error) {
+        console.error('❌ [IMAGE-LIBRARY] Erro ao processar imagem da biblioteca:', error);
+      }
+    }
+    
+    console.log('🖼️ [PROCESS-IMAGE] Processamento concluído - comandos:', processedCount);
+    console.log('🖼️ [IMAGE-COMMANDS] ✅ Comandos de imagem processados:', processedCount);
+    
+    return processedCount;
+    
+  } catch (error) {
+    console.error('❌ [PROCESS-IMAGE] Erro geral no processamento de imagens:', error);
+    return 0;
+  }
+}
+
+/**
+ * 📚 BUSCAR IMAGEM DA BIBLIOTECA
+ */
+async function getImageFromLibrary(assistantId: string, imageTrigger: string): Promise<{ imageBase64: string, format: string } | null> {
+  try {
+    console.log('📚 [IMAGE-LIBRARY] Buscando imagem na biblioteca:', {
+      assistantId,
+      imageTrigger,
+      requestedTrigger: imageTrigger
+    });
+    
+    // Buscar na tabela assistants campo advanced_settings
+    const { data: assistantData } = await supabase
+      .from('assistants')
+      .select('advanced_settings')
+      .eq('id', assistantId)
+      .single();
+    
+    // Aplicar parse correto do advanced_settings
+    const advancedSettings = assistantData?.advanced_settings
+      ? (typeof assistantData.advanced_settings === 'string' 
+          ? JSON.parse(assistantData.advanced_settings) 
+          : assistantData.advanced_settings)
+      : {};
+    
+    if (!advancedSettings?.image_library) {
+      console.warn('📚 [IMAGE-LIBRARY] Biblioteca de imagens vazia ou inexistente');
+      return null;
+    }
+    
+    const library = advancedSettings.image_library as any[];
+    console.log('📚 [IMAGE-LIBRARY] Biblioteca carregada:', {
+      totalImages: library.length,
+      imagensDisponiveis: library.map(item => ({ 
+        trigger: item.trigger, 
+        name: item.name,
+        format: item.format,
+        hasImageBase64: !!item.imageBase64 
+      }))
+    });
+    
+    // Busca por trigger exato (case-insensitive)
+    const normalizedSearchTrigger = imageTrigger.toLowerCase().trim();
+    
+    console.log('🔍 [IMAGE-LIBRARY] Debug matching:', {
+      buscandoPor: normalizedSearchTrigger,
+      originalInput: imageTrigger,
+      triggersDisponiveis: library.map(item => ({ trigger: item.trigger, name: item.name }))
+    });
+    
+    const image = library.find(item => 
+      item.trigger && item.trigger.toLowerCase() === normalizedSearchTrigger
+    );
+    
+    if (!image) {
+      console.warn('📚 [IMAGE-LIBRARY] Imagem não encontrada:', {
+        procurandoPor: normalizedSearchTrigger,
+        triggersDisponiveis: library.map(item => item.trigger)
+      });
+      
+      // Sugerir triggers similares
+      const similarTriggers = library
+        .filter(item => item.trigger.toLowerCase().includes(normalizedSearchTrigger.substring(0, 3)))
+        .map(item => item.trigger)
+        .slice(0, 3);
+      
+      if (similarTriggers.length > 0) {
+        console.log('💡 [IMAGE-LIBRARY] Triggers similares encontrados:', similarTriggers);
+      }
+      
+      return null;
+    }
+    
+    // Verificar se existe imageBase64
+    if (!image.imageBase64) {
+      console.error('❌ [IMAGE-LIBRARY] Imagem encontrada mas sem imageBase64:', {
+        trigger: image.trigger,
+        temUrl: !!image.url,
+        temImageBase64: !!image.imageBase64
+      });
+      return null;
+    }
+    
+    console.log('✅ [IMAGE-LIBRARY] Imagem encontrada com sucesso:', {
+      trigger: image.trigger,
+      name: image.name,
+      format: image.format,
+      size: image.size,
+      category: image.category,
+      imageBase64Length: image.imageBase64.length
+    });
+    
+    return { 
+      imageBase64: image.imageBase64,
+      format: image.format || 'jpg'
+    };
+    
+  } catch (error) {
+    console.error('❌ [IMAGE-LIBRARY] Erro ao buscar imagem:', error);
+    return null;
+  }
+}
+
+/**
+ * 🖼️ ENVIAR MENSAGEM DE IMAGEM VIA YUMER API
+ */
+async function sendLibraryImageMessage(
+  instanceId: string, 
+  chatId: string, 
+  imageData: { imageBase64: string, format: string }, 
+  businessToken: string
+): Promise<void> {
+  try {
+    console.log('🖼️ [SEND-LIBRARY-IMAGE] Iniciando envio de imagem da biblioteca...', {
+      instanceId: instanceId,
+      chatId: chatId ? `${chatId.substring(0, 15)}...` : 'undefined',
+      format: imageData.format,
+      imageSize: Math.round(imageData.imageBase64.length * 0.75 / 1024) + 'KB'
+    });
+    
+    // Converter base64 para Blob
+    const binaryString = atob(imageData.imageBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const imageBlob = new Blob([bytes], { type: `image/${imageData.format}` });
+    
+    console.log('🔍 [SEND-LIBRARY-IMAGE] Blob criado:', {
+      size: imageBlob.size,
+      type: imageBlob.type
+    });
+    
+    // Preparar FormData
+    const formData = new FormData();
+    const fileName = `image_${Date.now()}.${imageData.format}`;
+    
+    formData.append('recipient', chatId);
+    formData.append('attachment', imageBlob, fileName);
+    formData.append('mediatype', 'image');
+    formData.append('delay', '800');
+    
+    console.log('🔍 [SEND-LIBRARY-IMAGE] FormData preparado:', {
+      recipient: chatId,
+      fileName: fileName,
+      imageSize: Math.round(imageBlob.size / 1024) + 'KB',
+      delay: '800'
+    });
+    
+    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/image-file`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${businessToken}`
+      },
+      body: formData
+    });
+
+    console.log('🔍 [SEND-LIBRARY-IMAGE] Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [SEND-LIBRARY-IMAGE] Erro no endpoint image-file:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      throw new Error(`Falha no envio: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log('🔍 [SEND-LIBRARY-IMAGE] Response completo:', result);
+    console.log('✅ [SEND-LIBRARY-IMAGE] Imagem da biblioteca enviada com sucesso:', {
+      messageId: result.key?.id || 'N/A',
+      format: imageData.format,
+      success: true
+    });
+    
+  } catch (error) {
+    console.error('❌ [SEND-LIBRARY-IMAGE] Erro ao enviar imagem da biblioteca:', error);
     throw error;
   }
 }

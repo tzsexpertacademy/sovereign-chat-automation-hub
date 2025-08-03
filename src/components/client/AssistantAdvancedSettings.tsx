@@ -13,6 +13,7 @@ import { Upload, FileText, Image, Video, Trash2, Download, Eye, Settings, Mic, C
 import { useToast } from "@/hooks/use-toast";
 import { assistantsService, AdvancedSettings, MultimediaConfig } from "@/services/assistantsService";
 import AssistantAudioSettings from "./AssistantAudioSettings";
+import AssistantImageSettings from "./AssistantImageSettings";
 import { multimediaAnalysisService } from "@/services/multimediaAnalysisService";
 
 import { SimpleBehaviorSettings } from "./SimpleBehaviorSettings";
@@ -43,6 +44,7 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
     max_tokens: 1000,
     custom_files: [],
     audio_library: [],
+    image_library: [],
     recording_settings: {
       max_duration: 60,
       quality: 'medium',
@@ -194,7 +196,7 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
       </div>
 
       <Tabs defaultValue="ai" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="ai">IA & Criatividade</TabsTrigger>
           <TabsTrigger value="multimedia">
             <Image className="w-4 h-4 mr-1" />
@@ -203,6 +205,10 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
           <TabsTrigger value="audio">
             <Volume2 className="w-4 h-4 mr-1" />
             Sistema de Áudio
+          </TabsTrigger>
+          <TabsTrigger value="images">
+            <Image className="w-4 h-4 mr-1" />
+            Imagens
           </TabsTrigger>
           <TabsTrigger value="behavior">
             <Clock className="w-4 h-4 mr-1" />
@@ -574,6 +580,14 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
 
         <TabsContent value="audio" className="space-y-6">
           <AssistantAudioSettings
+            assistantId={assistantId}
+            settings={settings}
+            onSettingsChange={setSettings}
+          />
+        </TabsContent>
+
+        <TabsContent value="images" className="space-y-6">
+          <AssistantImageSettings
             assistantId={assistantId}
             settings={settings}
             onSettingsChange={setSettings}
