@@ -2307,7 +2307,7 @@ async function processAudioCommands(
       try {
         const audioResult = await generateTTSAudio(textToSpeak, assistant);
         if (audioResult.success) {
-          await sendAudioMessage(instanceId, ticketId, audioResult.audioBase64, businessToken);
+          await sendTTSAudio(instanceId, ticketId, audioResult.audioBase64, businessToken);
           processedCount++;
           console.log('✅ [AUDIO-TTS] Áudio TTS enviado com sucesso');
         } else {
@@ -2758,9 +2758,132 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
 }
 
 /**
- * 🎵 ENVIAR MENSAGEM DE ÁUDIO VIA YUMER API (CORRIGIDO - USA URL)
+ * 🎵 ENVIAR ÁUDIO DA BIBLIOTECA (DIRETO, SEM TTS)
  */
-async function sendAudioMessage(instanceId: string, ticketId: string, audioBase64: string, businessToken: string): Promise<void> {
+async function sendLibraryAudio(instanceId: string, ticketId: string, audioBase64: string, businessToken: string): Promise<void> {
+  try {
+    // Buscar informações do ticket para obter chatId
+    const { data: ticket } = await supabase
+      .from('conversation_tickets')
+      .select('chat_id')
+      .eq('id', ticketId)
+      .single();
+    
+    if (!ticket) {
+      throw new Error('Ticket não encontrado');
+    }
+    
+    console.log('🎵 [LIBRARY-AUDIO] Enviando áudio da biblioteca...', {
+      instanceId,
+      chatId: ticket.chat_id.substring(0, 15) + '...',
+      audioSize: Math.round(audioBase64.length / 1024) + 'KB'
+    });
+
+    // 🔄 CONVERTER BASE64 PARA BLOB E FAZER UPLOAD
+    console.log('🔄 [LIBRARY-AUDIO] Convertendo base64 para blob...');
+    
+    // Converter base64 para Uint8Array
+    const binaryString = atob(audioBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Criar blob com tipo correto (OGG para WhatsApp)
+    const audioBlob = new Blob([bytes], { type: 'audio/ogg' });
+    console.log('📊 [LIBRARY-AUDIO] Blob criado:', {
+      size: audioBlob.size,
+      type: audioBlob.type
+    });
+
+    // Fazer upload para Supabase Storage
+    const timestamp = Date.now();
+    const fileName = `library_audio_${timestamp}.ogg`;
+    const filePath = `temp-audio/${fileName}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('client-assets')
+      .upload(filePath, audioBlob, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('❌ [LIBRARY-AUDIO] Erro no upload:', uploadError);
+      throw new Error(`Upload falhou: ${uploadError.message}`);
+    }
+
+    // Obter URL pública
+    const { data: publicUrlData } = supabase.storage
+      .from('client-assets')
+      .getPublicUrl(filePath);
+
+    if (!publicUrlData?.publicUrl) {
+      console.error('❌ [LIBRARY-AUDIO] Não foi possível obter URL pública');
+      throw new Error('Falha ao obter URL pública');
+    }
+
+    const audioUrl = publicUrlData.publicUrl;
+    console.log('✅ [LIBRARY-AUDIO] Upload concluído - URL:', audioUrl);
+
+    // 📤 ENVIAR ÁUDIO VIA URL
+    console.log('📤 [LIBRARY-AUDIO] Enviando áudio da biblioteca...');
+    
+    const audioData = {
+      recipient: ticket.chat_id,
+      audioMessage: {
+        url: audioUrl
+      },
+      options: {
+        delay: 1200,
+        presence: 'recording',
+        ptt: true,
+        externalAttributes: JSON.stringify({
+          source: 'audio_library',
+          timestamp: Date.now(),
+          method: 'library_direct'
+        })
+      }
+    };
+    
+    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${businessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(audioData)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [LIBRARY-AUDIO] Erro no endpoint:', errorText);
+      throw new Error(`Falha no envio: ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ [LIBRARY-AUDIO] Áudio da biblioteca enviado:', result.key?.id || 'sem-id');
+
+    // Limpar arquivo temporário após 30 segundos
+    setTimeout(async () => {
+      try {
+        await supabase.storage.from('client-assets').remove([filePath]);
+        console.log('🧹 [LIBRARY-AUDIO] Arquivo temporário removido');
+      } catch (cleanError) {
+        console.warn('⚠️ [LIBRARY-AUDIO] Erro na limpeza:', cleanError);
+      }
+    }, 30000);
+
+  } catch (error) {
+    console.error('❌ [LIBRARY-AUDIO] Erro ao enviar áudio da biblioteca:', error);
+    throw error;
+  }
+}
+
+/**
+ * 🎵 ENVIAR ÁUDIO TTS (COM PROCESSAMENTO VIA ELEVENLABS)
+ */
+async function sendTTSAudio(instanceId: string, ticketId: string, audioBase64: string, businessToken: string): Promise<void> {
   try {
     // Buscar informações do ticket para obter chatId
     const { data: ticket } = await supabase
