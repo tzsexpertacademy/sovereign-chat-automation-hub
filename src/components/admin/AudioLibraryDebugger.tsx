@@ -1,309 +1,312 @@
 import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import { TestTube, Play, Database, Volume2 } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
-export const AudioLibraryDebugger = () => {
+interface LibraryData {
+  name: string;
+  audio_triggers: any[];
+}
+
+export const AudioLibraryDebugger: React.FC = () => {
   const [testing, setTesting] = useState(false);
-  const [clientId, setClientId] = useState('35f36a03-39b2-412c-bba6-01fdd45c2dd3');
+  const [clientId, setClientId] = useState('');
   const [testCommand, setTestCommand] = useState('audiogeo:');
-  const [debugResults, setDebugResults] = useState<any>(null);
-  const [libraryData, setLibraryData] = useState<any>(null);
+  const [debugResults, setDebugResults] = useState('');
+  const [libraryData, setLibraryData] = useState<LibraryData | null>(null);
 
   const testAudioLibraryMatching = async () => {
+    if (!clientId || !testCommand) {
+      toast.error('Client ID e comando são obrigatórios');
+      return;
+    }
+
     setTesting(true);
-    setDebugResults(null);
+    setDebugResults('');
     setLibraryData(null);
 
+    let debugLog = '🔥 [AUDIO-LIB-DEBUG] === TESTE COMPLETO DE BIBLIOTECA DE ÁUDIO ===\n\n';
+
     try {
-      console.log('🧪 [AUDIO-LIB-DEBUG] Iniciando teste completo da biblioteca de áudio...');
-      
-      // 1. Buscar assistentes com biblioteca de áudio
-      console.log('📚 [AUDIO-LIB-DEBUG] Buscando assistentes...');
+      // === ETAPA 1: BUSCAR TODOS OS ASSISTENTES ===
+      debugLog += '📋 [ETAPA 1] Buscando assistentes do cliente...\n';
       const { data: allAssistants, error: assistantsError } = await supabase
         .from('assistants')
-        .select('id, name, advanced_settings')
+        .select('*')
         .eq('client_id', clientId);
 
       if (assistantsError) {
         throw new Error(`Erro ao buscar assistentes: ${assistantsError.message}`);
       }
 
+      debugLog += `✅ Encontrados ${allAssistants?.length || 0} assistentes\n`;
+      debugLog += `📝 Assistentes: ${allAssistants?.map(a => a.name).join(', ') || 'nenhum'}\n\n`;
+
       if (!allAssistants || allAssistants.length === 0) {
-        throw new Error('Nenhum assistente encontrado para este cliente');
+        throw new Error('❌ Nenhum assistente encontrado para este cliente');
       }
 
-      // Filtrar assistentes que têm biblioteca de áudio no JavaScript
-      const assistants = allAssistants.filter(assistant => {
+      // === ETAPA 2: VERIFICAR QUAIS TÊM BIBLIOTECA DE ÁUDIO ===
+      debugLog += '📚 [ETAPA 2] Verificando bibliotecas de áudio...\n';
+      const assistantsWithAudio = [];
+      
+      for (const assistant of allAssistants) {
         const advancedSettings = assistant.advanced_settings as any;
         const audioLibrary = advancedSettings?.audio_library;
-        return Array.isArray(audioLibrary) && audioLibrary.length > 0;
-      });
-
-      console.log('🔍 [AUDIO-LIB-DEBUG] Resultado da busca:', {
-        totalAssistants: allAssistants.length,
-        withAudioLibrary: assistants.length,
-        assistantNames: assistants.map(a => a.name)
-      });
-
-      if (assistants.length === 0) {
-        throw new Error('Nenhum assistente com biblioteca de áudio encontrado');
+        
+        debugLog += `🔍 Assistente "${assistant.name}":\n`;
+        debugLog += `   - Tem advanced_settings: ${!!advancedSettings}\n`;
+        debugLog += `   - Tem audio_library: ${!!audioLibrary}\n`;
+        debugLog += `   - É array: ${Array.isArray(audioLibrary)}\n`;
+        debugLog += `   - Tamanho: ${Array.isArray(audioLibrary) ? audioLibrary.length : 0}\n`;
+        
+        if (Array.isArray(audioLibrary) && audioLibrary.length > 0) {
+          assistantsWithAudio.push({
+            assistant,
+            audioLibrary
+          });
+          debugLog += `   ✅ BIBLIOTECA VÁLIDA!\n`;
+          debugLog += `   📝 Triggers: ${audioLibrary.map((item: any) => item.trigger).join(', ')}\n`;
+        } else {
+          debugLog += `   ❌ Sem biblioteca válida\n`;
+        }
+        debugLog += '\n';
       }
 
-      // Pegar o primeiro assistente que tem biblioteca
-      const assistant = assistants[0];
-      const audioLibrary = (assistant.advanced_settings as any)?.audio_library || [];
+      if (assistantsWithAudio.length === 0) {
+        throw new Error('❌ Nenhum assistente com biblioteca de áudio encontrado');
+      }
 
-      console.log('✅ [AUDIO-LIB-DEBUG] Biblioteca encontrada:', {
-        assistantId: assistant.id,
-        assistantName: assistant.name,
-        triggersCount: Array.isArray(audioLibrary) ? audioLibrary.length : 0,
-        triggers: Array.isArray(audioLibrary) ? audioLibrary.map((item: any) => item.trigger) : []
-      });
+      debugLog += `🎯 [RESULTADO] Encontrados ${assistantsWithAudio.length} assistentes com biblioteca\n\n`;
+
+      // === ETAPA 3: TESTAR MATCHING ===
+      const { assistant, audioLibrary } = assistantsWithAudio[0];
+      debugLog += `🎵 [ETAPA 3] Testando matching com assistente "${assistant.name}"...\n`;
+      debugLog += `📝 Comando para testar: "${testCommand}"\n`;
 
       setLibraryData({
         name: assistant.name,
         audio_triggers: audioLibrary
       });
 
-      // 2. Extrair comando de teste (remover dois pontos)
+      // Extrair apenas o comando sem o ":"
       const commandToTest = testCommand.replace(':', '').trim();
-      console.log('🎯 [AUDIO-LIB-DEBUG] Testando comando:', commandToTest);
+      debugLog += `🧹 Comando limpo: "${commandToTest}"\n`;
 
-      // 3. Simular a lógica de matching
-      const triggers = Array.isArray(audioLibrary) ? audioLibrary : [];
-      const availableTriggers = triggers.map((item: any) => item.trigger);
-      
-      console.log('🔍 [AUDIO-LIB-DEBUG] Triggers disponíveis:', availableTriggers);
+      // Testar diferentes estratégias de matching
+      const triggers = audioLibrary.map((item: any) => item.trigger);
+      debugLog += `🔍 Triggers disponíveis: [${triggers.join(', ')}]\n\n`;
 
-      // Testar diferentes tipos de match
-      const matchResults = {
-        exactMatch: null as string | null,
-        triggerContainsSearch: [] as string[],
-        searchContainsTrigger: [] as string[],
-        withoutAudioPrefix: [] as string[],
-        withAudioPrefix: [] as string[]
-      };
+      let bestMatch = null;
+      let matchMethod = '';
 
-      // 1. Match exato
-      if (availableTriggers.includes(commandToTest)) {
-        matchResults.exactMatch = commandToTest;
-        console.log('✅ [AUDIO-LIB-DEBUG] Match exato encontrado:', commandToTest);
-      }
+      // Estratégia 1: Match exato
+      bestMatch = triggers.find((trigger: string) => trigger === commandToTest);
+      if (bestMatch) {
+        matchMethod = 'Exato';
+        debugLog += `✅ MATCH EXATO encontrado: "${bestMatch}"\n`;
+      } else {
+        debugLog += `❌ Nenhum match exato para "${commandToTest}"\n`;
 
-      // 2. Trigger contém a busca
-      for (const trigger of availableTriggers) {
-        if (trigger.includes(commandToTest) && commandToTest.length >= 4) {
-          matchResults.triggerContainsSearch.push(trigger);
-          console.log('🎯 [AUDIO-LIB-DEBUG] Trigger contém busca:', trigger);
-        }
-      }
+        // Estratégia 2: Contém o comando
+        bestMatch = triggers.find((trigger: string) => trigger.includes(commandToTest));
+        if (bestMatch) {
+          matchMethod = 'Contém';
+          debugLog += `✅ MATCH POR CONTEÚDO encontrado: "${bestMatch}"\n`;
+        } else {
+          debugLog += `❌ Nenhum match por conteúdo para "${commandToTest}"\n`;
 
-      // 3. Busca contém trigger
-      for (const trigger of availableTriggers) {
-        if (commandToTest.includes(trigger) && trigger.length >= 4) {
-          matchResults.searchContainsTrigger.push(trigger);
-          console.log('🎯 [AUDIO-LIB-DEBUG] Busca contém trigger:', trigger);
-        }
-      }
-
-      // 4. Sem prefixo "audio"
-      const withoutAudio = commandToTest.replace(/^audio/i, '');
-      if (withoutAudio !== commandToTest && withoutAudio.length >= 3) {
-        for (const trigger of availableTriggers) {
-          if (trigger.includes(withoutAudio)) {
-            matchResults.withoutAudioPrefix.push(trigger);
-            console.log('🎯 [AUDIO-LIB-DEBUG] Match sem prefixo audio:', trigger);
+          // Estratégia 3: Comando contém o trigger
+          bestMatch = triggers.find((trigger: string) => commandToTest.includes(trigger));
+          if (bestMatch) {
+            matchMethod = 'Comando contém trigger';
+            debugLog += `✅ MATCH REVERSO encontrado: "${bestMatch}"\n`;
+          } else {
+            debugLog += `❌ Nenhum match reverso para "${commandToTest}"\n`;
           }
         }
       }
 
-      // 5. Com prefixo "audio"
-      const withAudio = `audio${commandToTest}`;
-      for (const trigger of availableTriggers) {
-        if (trigger.includes(withAudio)) {
-          matchResults.withAudioPrefix.push(trigger);
-          console.log('🎯 [AUDIO-LIB-DEBUG] Match com prefixo audio:', trigger);
-        }
-      }
-
-      // Determinar melhor match
-      let bestMatch = null;
-      let matchType = '';
-
-      if (matchResults.exactMatch) {
-        bestMatch = matchResults.exactMatch;
-        matchType = 'Exact Match';
-      } else if (matchResults.triggerContainsSearch.length > 0) {
-        bestMatch = matchResults.triggerContainsSearch[0];
-        matchType = 'Trigger Contains Search';
-      } else if (matchResults.searchContainsTrigger.length > 0) {
-        bestMatch = matchResults.searchContainsTrigger[0];
-        matchType = 'Search Contains Trigger';
-      } else if (matchResults.withoutAudioPrefix.length > 0) {
-        bestMatch = matchResults.withoutAudioPrefix[0];
-        matchType = 'Without Audio Prefix';
-      } else if (matchResults.withAudioPrefix.length > 0) {
-        bestMatch = matchResults.withAudioPrefix[0];
-        matchType = 'With Audio Prefix';
-      }
-
-      console.log('🎯 [AUDIO-LIB-DEBUG] Melhor match:', { bestMatch, matchType });
-
-      // 4. Testar se o áudio existe
+      // === ETAPA 4: BUSCAR ÁUDIO ===
       let audioData = null;
       if (bestMatch) {
-        const audioItem = triggers.find((item: any) => item.trigger === bestMatch);
+        debugLog += `\n🎵 [ETAPA 4] Buscando áudio para trigger "${bestMatch}"...\n`;
+        const audioItem = audioLibrary.find((item: any) => item.trigger === bestMatch);
+        
         if (audioItem) {
           audioData = audioItem;
-          console.log('🎵 [AUDIO-LIB-DEBUG] Áudio encontrado:', {
-            trigger: bestMatch,
-            hasBase64: !!audioData?.audioBase64,
-            base64Size: audioData?.audioBase64?.length || 0
-          });
+          debugLog += `✅ ÁUDIO ENCONTRADO!\n`;
+          debugLog += `   - ID: ${audioData.id}\n`;
+          debugLog += `   - Nome: ${audioData.name}\n`;
+          debugLog += `   - Trigger: ${audioData.trigger}\n`;
+          debugLog += `   - Tem Base64: ${!!audioData.audioBase64}\n`;
+          debugLog += `   - Tamanho Base64: ${audioData.audioBase64?.length || 0} chars\n`;
+          
+          if (audioData.audioBase64) {
+            debugLog += `   - Preview Base64: ${audioData.audioBase64.substring(0, 50)}...\n`;
+          }
+        } else {
+          debugLog += `❌ Áudio não encontrado para trigger "${bestMatch}"\n`;
         }
+      } else {
+        debugLog += `\n❌ [ETAPA 4] Pulada - nenhum trigger matched\n`;
       }
 
-      // 5. Testar a edge function AI Assistant
-      console.log('🚀 [AUDIO-LIB-DEBUG] Testando edge function...');
-      const { data: aiResult, error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
-        body: {
-          message: testCommand,
-          chat_id: '554796451886@s.whatsapp.net',
-          instance_id: '01K11NBE1QB0GVFMME8NA4YPCB',
-          client_id: clientId,
-          debug: true
-        }
-      });
+      // === ETAPA 5: TESTAR EDGE FUNCTION ===
+      debugLog += `\n🤖 [ETAPA 5] Testando edge function ai-assistant-process...\n`;
+      let aiTestResult = null;
+      let aiError = null;
 
-      if (aiError) {
-        console.error('❌ [AUDIO-LIB-DEBUG] Erro na edge function:', aiError);
+      try {
+        const { data: aiData, error: aiErrorResult } = await supabase.functions.invoke('ai-assistant-process', {
+          body: {
+            ticketId: '00000000-0000-0000-0000-000000000000',
+            messages: [{
+              content: testCommand,
+              messageId: 'test_audio_lib_' + Date.now(),
+              timestamp: new Date().toISOString(),
+              phoneNumber: '5511999999999',
+              customerName: 'Teste Audio Library'
+            }],
+            context: {
+              chatId: '5511999999999@s.whatsapp.net',
+              customerName: 'Teste Audio Library',
+              phoneNumber: '5511999999999',
+              batchInfo: 'Teste biblioteca de áudio'
+            }
+          }
+        });
+
+        if (aiErrorResult) {
+          aiError = aiErrorResult;
+          debugLog += `❌ Erro na edge function: ${aiErrorResult.message}\n`;
+        } else {
+          aiTestResult = aiData;
+          debugLog += `✅ Edge function executada com sucesso!\n`;
+          debugLog += `📋 Resultado: ${JSON.stringify(aiData, null, 2)}\n`;
+        }
+      } catch (error: any) {
+        aiError = error;
+        debugLog += `❌ Erro ao chamar edge function: ${error.message}\n`;
       }
 
-      console.log('📊 [AUDIO-LIB-DEBUG] Resultado da edge function:', aiResult);
+      // === RESULTADO FINAL ===
+      debugLog += `\n🏁 [RESULTADO FINAL] ===========================\n`;
+      debugLog += `✅ Assistente encontrado: ${assistant.name}\n`;
+      debugLog += `✅ Biblioteca carregada: ${audioLibrary.length} itens\n`;
+      debugLog += `${bestMatch ? '✅' : '❌'} Match encontrado: ${bestMatch || 'NENHUM'}\n`;
+      debugLog += `${bestMatch ? `📝 Método de match: ${matchMethod}\n` : ''}`;
+      debugLog += `${audioData ? '✅' : '❌'} Áudio encontrado: ${audioData ? 'SIM' : 'NÃO'}\n`;
+      debugLog += `${aiTestResult ? '✅' : '❌'} Edge function: ${aiTestResult ? 'SUCESSO' : 'ERRO'}\n`;
 
-      // Compilar resultados
-      const results = {
-        library: {
-          found: !!assistant,
-          name: assistant?.name,
-          triggersCount: availableTriggers.length,
-          triggers: availableTriggers
-        },
-        matching: {
-          command: commandToTest,
-          bestMatch,
-          matchType,
-          allMatches: matchResults
-        },
-        audio: {
-          found: !!audioData,
-          trigger: bestMatch,
-          hasBase64: !!audioData?.audioBase64,
-          base64Size: audioData?.audioBase64?.length || 0
-        },
-        edgeFunction: {
-          success: !aiError,
-          result: aiResult,
-          error: aiError?.message
-        }
-      };
+      setDebugResults(debugLog);
 
-      setDebugResults(results);
-
-      toast.success('Teste da biblioteca de áudio concluído!');
+      // Toast de resultado
+      if (bestMatch && audioData) {
+        toast.success(`🎵 Áudio "${audioData.name}" encontrado para comando "${testCommand}"!`);
+      } else {
+        toast.warning('❌ Comando não encontrou áudio correspondente na biblioteca');
+      }
 
     } catch (error: any) {
-      console.error('💥 [AUDIO-LIB-DEBUG] Erro no teste:', error);
+      debugLog += `\n💥 [ERRO FATAL] ${error.message}\n`;
+      setDebugResults(debugLog);
       toast.error(`Erro no teste: ${error.message}`);
-      setDebugResults({ error: error.message });
     } finally {
       setTesting(false);
     }
   };
 
   return (
-    <Card className="w-full max-w-4xl">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Volume2 className="h-5 w-5" />
-          Debug da Biblioteca de Áudio
-        </CardTitle>
-        <CardDescription>
-          Teste completo para diagnosticar problemas com áudios da biblioteca
-        </CardDescription>
-      </CardHeader>
-      
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium">Client ID</label>
-            <Input 
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="Client ID para teste"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium">Comando de Teste</label>
-            <Input 
-              value={testCommand}
-              onChange={(e) => setTestCommand(e.target.value)}
-              placeholder="Ex: audiogeo:"
-            />
-          </div>
-        </div>
-
-        <Button 
-          onClick={testAudioLibraryMatching}
-          disabled={testing}
-          className="w-full"
-        >
-          <TestTube className="h-4 w-4 mr-2" />
-          {testing ? 'Testando...' : 'Executar Teste Completo'}
-        </Button>
-
-        {libraryData && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">📚 Biblioteca Encontrada</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <p><strong>Nome:</strong> {libraryData.name}</p>
-                <p><strong>Triggers:</strong> {Array.isArray(libraryData.audio_triggers) ? libraryData.audio_triggers.length : 0}</p>
-                <div className="flex flex-wrap gap-1">
-                  {Array.isArray(libraryData.audio_triggers) ? libraryData.audio_triggers.map((item: any) => (
-                    <Badge key={item.trigger} variant="secondary" className="text-xs">
-                      {item.trigger}
-                    </Badge>
-                  )) : null}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {debugResults && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">🧪 Resultados do Teste</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea 
-                value={JSON.stringify(debugResults, null, 2)}
-                readOnly
-                className="min-h-[400px] font-mono text-xs"
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>🎵 Debug de Biblioteca de Áudio</CardTitle>
+          <CardDescription>
+            Testa o matching de comandos de áudio com a biblioteca de triggers do assistente
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="clientId">Client ID</Label>
+              <Input
+                id="clientId"
+                placeholder="UUID do cliente"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
               />
-            </CardContent>
-          </Card>
-        )}
-      </CardContent>
-    </Card>
+            </div>
+            <div>
+              <Label htmlFor="testCommand">Comando para Testar</Label>
+              <Input
+                id="testCommand"
+                placeholder="audiogeo:"
+                value={testCommand}
+                onChange={(e) => setTestCommand(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <Button 
+            onClick={testAudioLibraryMatching} 
+            disabled={testing || !clientId || !testCommand}
+            className="w-full"
+          >
+            {testing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Executando Teste Completo...
+              </>
+            ) : (
+              '🔥 Execute Full Test'
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {libraryData && (
+        <Card>
+          <CardHeader>
+            <CardTitle>📚 Biblioteca Encontrada</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <p><strong>Nome:</strong> {libraryData.name}</p>
+              <p><strong>Triggers:</strong> {Array.isArray(libraryData.audio_triggers) ? libraryData.audio_triggers.length : 0}</p>
+              <div className="flex flex-wrap gap-1">
+                {Array.isArray(libraryData.audio_triggers) ? libraryData.audio_triggers.map((item: any) => (
+                  <Badge key={item.trigger} variant="secondary" className="text-xs">
+                    {item.trigger}
+                  </Badge>
+                )) : null}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {debugResults && (
+        <Card>
+          <CardHeader>
+            <CardTitle>🔍 Resultado Detalhado</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={debugResults}
+              readOnly
+              className="min-h-[400px] font-mono text-sm"
+              placeholder="Os resultados do debug aparecerão aqui..."
+            />
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 };
