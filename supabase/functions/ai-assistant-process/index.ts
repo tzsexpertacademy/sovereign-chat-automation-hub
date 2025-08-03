@@ -2247,45 +2247,69 @@ async function processAudioCommands(
     let processedCount = 0;
     let remainingText = message;
     
-    // ✅ REGEX UNIVERSAL PARA DETECTAR audio: COM E SEM ASPAS
-    const audioTextPattern = /audio\s*:\s*(?:"([^"]+)"|([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$))/gi;
+    // ✅ REGEX PARA BIBLIOTECA: comando como "audio audiogeonothaliszu" (sem dois pontos)
+    const audioLibraryPattern = /^audio\s+([a-zA-Z0-9]+)$/i;
     
-    // ✅ REGEX MELHORADO PARA BIBLIOTECA: aceita tanto com quanto sem dois pontos
-    const audioLibraryPattern = /audio\s*([^:\s\n]+)(?:\s*:|$)/gi;
+    // ✅ REGEX PARA TTS: comando como "audio: texto" (com dois pontos obrigatórios)
+    const audioTextPattern = /audio\s*:\s*(?:"([^"]+)"|([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$))/gi;
     
     console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
     console.log('🔍 [AUDIO-COMMANDS] Mensagem completa:', message);
     console.log('🎯 [AUDIO-COMMANDS] Regex biblioteca:', audioLibraryPattern.source);
     console.log('🎯 [AUDIO-COMMANDS] Regex TTS:', audioTextPattern.source);
-    console.log('🔍 [AUDIO-COMMANDS] Regex TTS pattern:', audioTextPattern.source);
-    console.log('🔍 [AUDIO-COMMANDS] Regex Library pattern:', audioLibraryPattern.source);
     
     // ✅ RESET REGEX FLAGS PARA REUTILIZAÇÃO
     audioTextPattern.lastIndex = 0;
-    audioLibraryPattern.lastIndex = 0;
     
     // TESTE DIRETO DOS REGEX
-    const testTTSMatch = message.match(audioTextPattern);
     const testLibraryMatch = message.match(audioLibraryPattern);
-    console.log('🔍 [AUDIO-COMMANDS] Teste TTS regex:', testTTSMatch);
+    const testTTSMatch = message.match(audioTextPattern);
     console.log('🔍 [AUDIO-COMMANDS] Teste Library regex:', testLibraryMatch);
+    console.log('🔍 [AUDIO-COMMANDS] Teste TTS regex:', testTTSMatch);
     
-    // TESTE ESPECÍFICO PARA FORMATOS
-    const testQuoted = /audio\s*:\s*"([^"]+)"/gi.exec(message);
-    const testUnquoted = /audio\s*:\s*([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$)/gi.exec(message);
-    console.log('🔍 [AUDIO-COMMANDS] Teste formato com aspas:', testQuoted);
-    console.log('🔍 [AUDIO-COMMANDS] Teste formato sem aspas:', testUnquoted);
+    // ✅ PROCESSAR COMANDOS DE BIBLIOTECA PRIMEIRO
+    if (testLibraryMatch) {
+      console.log('🎵 [AUDIO-COMMANDS] ℹ️ Encontrado 1 comando de biblioteca');
+      const audioLibraryMatches = [testLibraryMatch];
+      
+      // PROCESSAR COMANDOS DA BIBLIOTECA PRIMEIRO
+      for (const match of audioLibraryMatches) {
+        const audioName = match[1].trim();
+        console.log('🎵 [AUDIO-LIBRARY] Processando comando biblioteca:', {
+          matchCompleto: match[0],
+          audioName: audioName,
+          assistantId: assistant.id
+        });
+        
+        try {
+          const libraryAudio = await getAudioFromLibrary(assistant.id, audioName);
+          if (libraryAudio) {
+            await sendLibraryAudioMessage(instanceId, ticketId, libraryAudio.audioBase64, businessToken);
+            processedCount++;
+            console.log('✅ [AUDIO-LIBRARY] Áudio da biblioteca enviado:', audioName);
+            
+            // Remove comando da mensagem
+            remainingText = remainingText.replace(match[0], '').trim();
+          } else {
+            console.warn('⚠️ [AUDIO-LIBRARY] Áudio não encontrado na biblioteca:', {
+              audioName,
+              assistantId: assistant.id
+            });
+          }
+        } catch (error) {
+          console.error('❌ [AUDIO-LIBRARY] Erro ao enviar áudio da biblioteca:', error);
+        }
+      }
+      
+      console.log('🎵 [PROCESS-AUDIO] Processamento concluído - comandos:', processedCount);
+      return { hasAudioCommands: true, processedCount, remainingText };
+    }
     
-    // 1. PROCESSAR COMANDOS audio:texto (TTS)
+    // ✅ SE NÃO FOR COMANDO DE BIBLIOTECA, PROCESSAR COMO TTS
     const audioTextMatches = Array.from(message.matchAll(audioTextPattern));
     console.log('🎵 [AUDIO-COMMANDS] ℹ️ Encontrados', audioTextMatches.length, 'comandos TTS');
     
-    // 2. PROCESSAR COMANDOS audiogeono[nome]: (Biblioteca) - ANTES do TTS
-    audioLibraryPattern.lastIndex = 0; // Reset regex
-    const audioLibraryMatches = Array.from(message.matchAll(audioLibraryPattern));
-    console.log('🎵 [AUDIO-COMMANDS] ℹ️ Encontrados', audioLibraryMatches.length, 'comandos de biblioteca');
-    
-    if (audioTextMatches.length === 0 && audioLibraryMatches.length === 0) {
+    if (audioTextMatches.length === 0) {
       console.log('🎵 [AUDIO-COMMANDS] ℹ️ Nenhum comando de áudio detectado');
       console.log('🔍 [AUDIO-COMMANDS] Debug - contém palavra audio:', /audio/.test(message));
       console.log('🔍 [AUDIO-COMMANDS] Debug - contém dois pontos:', /:/.test(message));
@@ -2357,63 +2381,6 @@ async function processAudioCommands(
       remainingText = remainingText.replace(match[0], '').trim();
     }
     
-    // 2. PROCESSAR COMANDOS DA BIBLIOTECA PRIMEIRO (audiogeono[nome]: ou audio[nome]:)
-    for (const match of audioLibraryMatches) {
-      const audioName = (match[1] || match[2]).trim(); // Captura grupo 1 ou 2
-      console.log('🎵 [AUDIO-LIBRARY] Processando comando biblioteca:', {
-        matchCompleto: match[0],
-        audioName: audioName,
-        assistantId: assistant.id,
-        grupos: { grupo1: match[1], grupo2: match[2] }
-      });
-      
-      try {
-        const libraryAudio = await getAudioFromLibrary(assistant.id, audioName);
-        if (libraryAudio) {
-          await sendLibraryAudioMessage(instanceId, ticketId, libraryAudio.audioBase64, businessToken);
-          processedCount++;
-          console.log('✅ [AUDIO-LIBRARY] Áudio da biblioteca enviado:', audioName);
-        } else {
-          console.warn('⚠️ [AUDIO-LIBRARY] Áudio não encontrado na biblioteca:', {
-            audioName,
-            assistantId: assistant.id
-          });
-          // FEEDBACK AO USUÁRIO: informar sobre áudio não encontrado
-          await supabase
-            .from('ticket_messages')
-            .insert({
-              ticket_id: ticketId,
-              message_id: `audio_not_found_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              content: `⚠️ Áudio "${audioName}" não encontrado na biblioteca`,
-              from_me: true,
-              is_ai_response: true,
-              sender_name: assistant.name || 'Assistente IA',
-              timestamp: new Date().toISOString(),
-              message_type: 'text',
-              processing_status: 'processed'
-            });
-        }
-      } catch (error) {
-        console.error('❌ [AUDIO-LIBRARY] Erro ao buscar áudio da biblioteca:', error);
-        // FEEDBACK AO USUÁRIO: informar sobre erro na biblioteca
-        await supabase
-          .from('ticket_messages')
-          .insert({
-            ticket_id: ticketId,
-            message_id: `audio_library_error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            content: `❌ Erro ao acessar biblioteca de áudios: ${error.message}`,
-            from_me: true,
-            is_ai_response: true,
-            sender_name: assistant.name || 'Assistente IA',
-            timestamp: new Date().toISOString(),
-            message_type: 'text',
-            processing_status: 'processed'
-          });
-      }
-      
-      // Remover comando da mensagem
-      remainingText = remainingText.replace(match[0], '').trim();
-    }
     
     const hasAudioCommands = processedCount > 0;
     
