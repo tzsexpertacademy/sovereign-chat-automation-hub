@@ -238,7 +238,7 @@ export const assistantsService = {
           category: "teste",
           uploaded_at: new Date().toISOString()
         }] : [], // ✅ GARANTIR QUE EXISTE COM IMAGEM DE TESTE PARA YUMER
-        video_library: [],
+        video_library: [], // ✅ GARANTIR QUE EXISTE POR PADRÃO
         recording_settings: {
           max_duration: 300,
           quality: 'medium',
