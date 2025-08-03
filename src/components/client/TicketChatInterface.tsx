@@ -230,6 +230,60 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       
       // Limpar input imediatamente
       setNewMessage('');
+
+      // 🎵 INTERCEPTAR COMANDOS DE ÁUDIO DA BIBLIOTECA ANTES DO ENVIO
+      const audioLibraryPattern = /audio\s*([^:\s\n]+)(?:\s*:|$)/gi;
+      const audioMatch = audioLibraryPattern.exec(messageToSend);
+      audioLibraryPattern.lastIndex = 0;
+
+      if (audioMatch && ticket.assigned_assistant_id) {
+        console.log('🎵 [AUDIO-LIBRARY] Comando detectado:', {
+          fullCommand: messageToSend,
+          trigger: audioMatch[1],
+          assistantId: ticket.assigned_assistant_id
+        });
+
+        // Processar diretamente via AI assistant process
+        try {
+          console.log('🤖 [AUDIO-LIBRARY] Processando via AI assistant...');
+          
+          const { aiQueueIntegrationService } = await import('@/services/aiQueueIntegrationService');
+          
+          const aiResult = await aiQueueIntegrationService.processIncomingMessage(
+            ticketId,
+            messageToSend,
+            clientId,
+            actualInstanceId
+          );
+
+          if (aiResult.success) {
+            console.log('✅ [AUDIO-LIBRARY] Comando processado com sucesso!');
+            toast({
+              title: "🎵 Comando de Áudio",
+              description: "Comando processado com sucesso!",
+              variant: "default"
+            });
+          } else {
+            console.error('❌ [AUDIO-LIBRARY] Falha no processamento:', aiResult.error);
+            toast({
+              title: "❌ Erro no Comando",
+              description: aiResult.error || "Falha ao processar comando de áudio",
+              variant: "destructive"
+            });
+          }
+        } catch (error) {
+          console.error('❌ [AUDIO-LIBRARY] Erro na interceptação:', error);
+          toast({
+            title: "❌ Erro no Sistema",
+            description: "Falha ao processar comando de áudio",
+            variant: "destructive"
+          });
+        }
+        
+        setIsSending(false);
+        markActivity();
+        return;
+      }
       
       // ⚡ OPTIMISTIC UPDATE ULTRA-RÁPIDO - ZERO delay visual
       const optimisticMessageId = addOptimisticMessage({
