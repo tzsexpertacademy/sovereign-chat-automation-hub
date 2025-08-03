@@ -3212,8 +3212,10 @@ async function getImageFromLibrary(assistantId: string, imageTrigger: string): P
       rawAdvancedSettings: JSON.stringify(assistantData?.advanced_settings, null, 2)
     });
     
-    // IMPLEMENTAR PARSING ROBUSTO PARA ESTRUTURAS COMPLEXAS
+    // 🎯 PARSER REFORÇADO PARA ESTRUTURA COMPLEX ANINHADA
     let advancedSettings = assistantData?.advanced_settings || {};
+    
+    console.log('🔧 [IMAGE-LIBRARY] ETAPA 1: Tipo inicial:', typeof advancedSettings);
     
     // STEP 1: Parse inicial se for string
     if (typeof advancedSettings === 'string') {
@@ -3226,39 +3228,70 @@ async function getImageFromLibrary(assistantId: string, imageTrigger: string): P
       }
     }
     
-    // STEP 2: Verificar estrutura nested complexa com múltiplas chaves
+    console.log('🔧 [IMAGE-LIBRARY] ETAPA 2: Após primeiro parse, tipo:', typeof advancedSettings);
+    console.log('🔧 [IMAGE-LIBRARY] ETAPA 2: Chaves disponíveis:', Object.keys(advancedSettings));
+    
+    // STEP 2: NOVO ALGORITMO PARA ESTRUTURA ANINHADA COMPLEXA
     if (advancedSettings && typeof advancedSettings === 'object') {
-      // Primeiro tentar chave "0"
-      if (advancedSettings["0"] && typeof advancedSettings["0"] === 'string') {
-        console.log('🔧 [IMAGE-LIBRARY] ETAPA 2A: Estrutura nested detectada com chave "0"');
-        try {
-          const nestedData = JSON.parse(advancedSettings["0"]);
-          advancedSettings = nestedData;
-          console.log('✅ [IMAGE-LIBRARY] JSON nested (chave "0") parsed com sucesso');
-        } catch (nestedParseError) {
-          console.error('❌ [IMAGE-LIBRARY] Erro ao fazer parse do JSON nested (chave "0"):', nestedParseError);
-        }
-      } else if (advancedSettings["0"] && typeof advancedSettings["0"] === 'object') {
-        // Se já é object, extrair diretamente
-        advancedSettings = advancedSettings["0"];
-        console.log('✅ [IMAGE-LIBRARY] Object nested extraído da chave "0"');
-      }
-      
-      // Se ainda não tem image_library, verificar outras chaves numéricas
-      if (!advancedSettings.image_library) {
-        console.log('🔍 [IMAGE-LIBRARY] ETAPA 2B: Procurando image_library em outras chaves...');
+      // 🎯 TENTATIVA 1: Verificar se já tem image_library diretamente
+      if (advancedSettings.image_library && Array.isArray(advancedSettings.image_library)) {
+        console.log('✅ [IMAGE-LIBRARY] image_library encontrada diretamente!');
+      } else {
+        console.log('🔍 [IMAGE-LIBRARY] image_library não encontrada diretamente, procurando em estrutura aninhada...');
+        
+        // 🎯 TENTATIVA 2: Procurar em chaves numéricas (estrutura aninhada típica)
+        let found = false;
         for (const key of Object.keys(advancedSettings)) {
-          if (/^\d+$/.test(key) && typeof advancedSettings[key] === 'string') {
-            console.log(`🔧 [IMAGE-LIBRARY] Tentando chave "${key}" para estrutura nested`);
+          console.log(`🔍 [IMAGE-LIBRARY] Verificando chave "${key}"...`);
+          
+          if (typeof advancedSettings[key] === 'string') {
+            console.log(`🔧 [IMAGE-LIBRARY] Chave "${key}" é string, tentando parse...`);
             try {
               const nestedData = JSON.parse(advancedSettings[key]);
-              if (nestedData.image_library) {
+              console.log(`🔍 [IMAGE-LIBRARY] Parse da chave "${key}" - chaves:`, Object.keys(nestedData));
+              
+              if (nestedData.image_library && Array.isArray(nestedData.image_library)) {
                 advancedSettings = nestedData;
-                console.log(`✅ [IMAGE-LIBRARY] JSON nested (chave "${key}") parsed com sucesso - image_library encontrada!`);
+                console.log(`✅ [IMAGE-LIBRARY] image_library encontrada na chave "${key}"!`);
+                found = true;
                 break;
               }
             } catch (nestedParseError) {
               console.log(`⚠️ [IMAGE-LIBRARY] Erro ao fazer parse da chave "${key}":`, nestedParseError.message);
+            }
+          } else if (typeof advancedSettings[key] === 'object' && advancedSettings[key] !== null) {
+            console.log(`🔍 [IMAGE-LIBRARY] Chave "${key}" é object, verificando image_library...`);
+            if (advancedSettings[key].image_library && Array.isArray(advancedSettings[key].image_library)) {
+              advancedSettings = advancedSettings[key];
+              console.log(`✅ [IMAGE-LIBRARY] image_library encontrada no object da chave "${key}"!`);
+              found = true;
+              break;
+            }
+          }
+        }
+        
+        if (!found) {
+          console.log('🔍 [IMAGE-LIBRARY] Tentando busca recursiva mais profunda...');
+          // 🎯 TENTATIVA 3: Busca recursiva mais profunda
+          for (const key of Object.keys(advancedSettings)) {
+            const value = advancedSettings[key];
+            if (typeof value === 'object' && value !== null) {
+              for (const subKey of Object.keys(value)) {
+                if (typeof value[subKey] === 'string') {
+                  try {
+                    const deepNestedData = JSON.parse(value[subKey]);
+                    if (deepNestedData.image_library && Array.isArray(deepNestedData.image_library)) {
+                      advancedSettings = deepNestedData;
+                      console.log(`✅ [IMAGE-LIBRARY] image_library encontrada em ${key}.${subKey}!`);
+                      found = true;
+                      break;
+                    }
+                  } catch (error) {
+                    // Silencioso para não poluir logs
+                  }
+                }
+              }
+              if (found) break;
             }
           }
         }
