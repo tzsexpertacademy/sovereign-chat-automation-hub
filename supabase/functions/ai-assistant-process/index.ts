@@ -444,13 +444,27 @@ serve(async (req) => {
         });
         
         if (imageResult.hasImageCommands && imageResult.processedCount > 0) {
-          console.log('✅ [EARLY-INTERCEPT] Comando de imagem processado com sucesso - RETORNANDO IMEDIATAMENTE');
+          console.log('✅ [EARLY-INTERCEPT] Comando de imagem processado com sucesso - PARANDO EXECUÇÃO');
+          console.log('🛑 [EARLY-INTERCEPT] RETORNO IMEDIATO EXECUTADO - Edge function finalizará aqui');
+          
+          // Salvar informação de que a mensagem foi processada para evitar duplicação
+          try {
+            await supabase
+              .from('ticket_messages')
+              .update({ ai_processed: true, ai_response_timestamp: new Date().toISOString() })
+              .eq('ticket_id', ticketId)
+              .eq('content', messageContent);
+            console.log('✅ [EARLY-INTERCEPT] Mensagem marcada como processada');
+          } catch (error) {
+            console.log('⚠️ [EARLY-INTERCEPT] Erro ao marcar mensagem como processada:', error);
+          }
           
           return new Response(JSON.stringify({
             success: true,
             message: 'Comando de imagem da biblioteca processado',
             imageCommandsProcessed: imageResult.processedCount,
             onlyImageCommands: true,
+            earlyIntercept: true,
             timestamp: new Date().toISOString()
           }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -460,6 +474,10 @@ serve(async (req) => {
         console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de imagem será ignorado');
       }
     }
+
+    // 🔒 VERIFICAÇÃO ANTI-DUPLICAÇÃO APÓS EARLY INTERCEPT
+    console.log('🔄 [FLOW-CHECK] Continuando para processamento normal da IA...');
+    console.log('🔄 [FLOW-CHECK] Se chegou aqui, early intercept NÃO foi executado ou falhou');
     
     // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
     let openAIApiKey = globalOpenAIApiKey;
