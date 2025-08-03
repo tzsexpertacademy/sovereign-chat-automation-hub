@@ -372,7 +372,45 @@ serve(async (req) => {
       throw new Error('Nenhum conteúdo de mensagem fornecido');
     }
 
-      // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
+    // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos de biblioteca ANTES da IA
+    const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
+    if (libraryCommandMatch) {
+      console.log('🎵 [EARLY-INTERCEPT] ⚡ COMANDO DE BIBLIOTECA DETECTADO - PROCESSANDO IMEDIATAMENTE');
+      console.log('🎵 [EARLY-INTERCEPT] Comando:', libraryCommandMatch[0]);
+      console.log('🎵 [EARLY-INTERCEPT] Nome do áudio:', libraryCommandMatch[1]);
+      
+      // Buscar business token ANTES do processamento
+      const { data: client } = await supabase
+        .from('clients')
+        .select('business_token')
+        .eq('id', resolvedClientId)
+        .single();
+      
+      if (client?.business_token) {
+        console.log('✅ [EARLY-INTERCEPT] Business token encontrado para processamento imediato');
+        
+        // Processar comando de biblioteca imediatamente sem passar pela IA
+        const audioResult = await processAudioCommands(messageContent, ticketId, resolvedAssistant, resolvedInstanceId, client.business_token);
+        
+        if (audioResult.hasAudioCommands && audioResult.processedCount > 0) {
+          console.log('✅ [EARLY-INTERCEPT] Comando de biblioteca processado com sucesso - RETORNANDO IMEDIATAMENTE');
+          
+          return new Response(JSON.stringify({
+            success: true,
+            message: 'Comando de áudio da biblioteca processado',
+            audioCommandsProcessed: audioResult.processedCount,
+            onlyAudioCommands: true,
+            timestamp: new Date().toISOString()
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+      } else {
+        console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de biblioteca será ignorado');
+      }
+    }
+    
+    // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
     let openAIApiKey = globalOpenAIApiKey;
     let keySource = 'global';
 
@@ -2235,7 +2273,11 @@ async function processAudioCommands(
   instanceId: string, 
   businessToken: string
 ): Promise<{ hasAudioCommands: boolean; processedCount: number; remainingText: string }> {
-  console.log('🎵 [PROCESS-AUDIO] Iniciando processamento de comandos de áudio');
+  console.log('🎵 [PROCESS-AUDIO] ========== INICIANDO PROCESSAMENTO DE ÁUDIO ==========');
+  console.log('🎵 [PROCESS-AUDIO] Mensagem recebida:', JSON.stringify(message));
+  console.log('🎵 [PROCESS-AUDIO] Assistant ID:', assistant?.id);
+  console.log('🎵 [PROCESS-AUDIO] Instance ID:', instanceId);
+  console.log('🎵 [PROCESS-AUDIO] Business Token presente:', !!businessToken);
   
   // VALIDAÇÃO CRÍTICA: Business token obrigatório
   if (!businessToken || businessToken.trim() === '') {
@@ -2247,63 +2289,66 @@ async function processAudioCommands(
     let processedCount = 0;
     let remainingText = message;
     
+    // ✅ LIMPAR E NORMALIZAR MENSAGEM PARA TESTES MAIS PRECISOS
+    const cleanMessage = message.trim();
+    console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
+    console.log('🔍 [AUDIO-COMMANDS] Mensagem limpa:', cleanMessage);
+    
     // ✅ REGEX PARA BIBLIOTECA: comando como "audio audiogeonothaliszu" (sem dois pontos)
+    // CRÍTICO: Deve coincidir exatamente com toda a mensagem para evitar conflitos
     const audioLibraryPattern = /^audio\s+([a-zA-Z0-9]+)$/i;
     
     // ✅ REGEX PARA TTS: comando como "audio: texto" (com dois pontos obrigatórios)
     const audioTextPattern = /audio\s*:\s*(?:"([^"]+)"|([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$))/gi;
     
-    console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
-    console.log('🔍 [AUDIO-COMMANDS] Mensagem completa:', message);
     console.log('🎯 [AUDIO-COMMANDS] Regex biblioteca:', audioLibraryPattern.source);
     console.log('🎯 [AUDIO-COMMANDS] Regex TTS:', audioTextPattern.source);
+    
+    // ✅ TESTE DIRETO DOS REGEX COM MENSAGEM LIMPA
+    const testLibraryMatch = cleanMessage.match(audioLibraryPattern);
+    console.log('🔍 [AUDIO-COMMANDS] Teste Library regex:', testLibraryMatch);
+    
+    // ✅ PRIORIDADE ABSOLUTA: BIBLIOTECA PRIMEIRO
+    if (testLibraryMatch) {
+      console.log('🎵 [AUDIO-LIBRARY] ✅ COMANDO DE BIBLIOTECA DETECTADO!');
+      console.log('🎵 [AUDIO-LIBRARY] Comando completo:', testLibraryMatch[0]);
+      console.log('🎵 [AUDIO-LIBRARY] Nome do áudio:', testLibraryMatch[1]);
+      
+      const audioName = testLibraryMatch[1].trim();
+      
+      try {
+        const libraryAudio = await getAudioFromLibrary(assistant.id, audioName);
+        if (libraryAudio) {
+          console.log('🎵 [AUDIO-LIBRARY] ✅ Áudio encontrado na biblioteca, enviando...');
+          await sendLibraryAudioMessage(instanceId, ticketId, libraryAudio.audioBase64, businessToken);
+          processedCount++;
+          console.log('✅ [AUDIO-LIBRARY] Áudio da biblioteca enviado com sucesso:', audioName);
+          
+          // Remove comando completo da mensagem
+          remainingText = cleanMessage.replace(testLibraryMatch[0], '').trim();
+          
+          return { hasAudioCommands: true, processedCount, remainingText };
+        } else {
+          console.warn('⚠️ [AUDIO-LIBRARY] Áudio não encontrado na biblioteca:', {
+            audioName,
+            assistantId: assistant.id
+          });
+          
+          // Se não encontrar na biblioteca, NÃO processa como TTS
+          return { hasAudioCommands: false, processedCount: 0, remainingText: cleanMessage };
+        }
+      } catch (error) {
+        console.error('❌ [AUDIO-LIBRARY] Erro ao processar áudio da biblioteca:', error);
+        return { hasAudioCommands: false, processedCount: 0, remainingText: cleanMessage };
+      }
+    }
     
     // ✅ RESET REGEX FLAGS PARA REUTILIZAÇÃO
     audioTextPattern.lastIndex = 0;
     
-    // TESTE DIRETO DOS REGEX
-    const testLibraryMatch = message.match(audioLibraryPattern);
-    const testTTSMatch = message.match(audioTextPattern);
-    console.log('🔍 [AUDIO-COMMANDS] Teste Library regex:', testLibraryMatch);
+    // ✅ TESTE TTS APENAS SE NÃO FOR COMANDO DE BIBLIOTECA
+    const testTTSMatch = cleanMessage.match(audioTextPattern);
     console.log('🔍 [AUDIO-COMMANDS] Teste TTS regex:', testTTSMatch);
-    
-    // ✅ PROCESSAR COMANDOS DE BIBLIOTECA PRIMEIRO
-    if (testLibraryMatch) {
-      console.log('🎵 [AUDIO-COMMANDS] ℹ️ Encontrado 1 comando de biblioteca');
-      const audioLibraryMatches = [testLibraryMatch];
-      
-      // PROCESSAR COMANDOS DA BIBLIOTECA PRIMEIRO
-      for (const match of audioLibraryMatches) {
-        const audioName = match[1].trim();
-        console.log('🎵 [AUDIO-LIBRARY] Processando comando biblioteca:', {
-          matchCompleto: match[0],
-          audioName: audioName,
-          assistantId: assistant.id
-        });
-        
-        try {
-          const libraryAudio = await getAudioFromLibrary(assistant.id, audioName);
-          if (libraryAudio) {
-            await sendLibraryAudioMessage(instanceId, ticketId, libraryAudio.audioBase64, businessToken);
-            processedCount++;
-            console.log('✅ [AUDIO-LIBRARY] Áudio da biblioteca enviado:', audioName);
-            
-            // Remove comando da mensagem
-            remainingText = remainingText.replace(match[0], '').trim();
-          } else {
-            console.warn('⚠️ [AUDIO-LIBRARY] Áudio não encontrado na biblioteca:', {
-              audioName,
-              assistantId: assistant.id
-            });
-          }
-        } catch (error) {
-          console.error('❌ [AUDIO-LIBRARY] Erro ao enviar áudio da biblioteca:', error);
-        }
-      }
-      
-      console.log('🎵 [PROCESS-AUDIO] Processamento concluído - comandos:', processedCount);
-      return { hasAudioCommands: true, processedCount, remainingText };
-    }
     
     // ✅ SE NÃO FOR COMANDO DE BIBLIOTECA, PROCESSAR COMO TTS
     const audioTextMatches = Array.from(message.matchAll(audioTextPattern));
