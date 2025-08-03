@@ -24,18 +24,34 @@ export const AudioLibraryDebugger = () => {
       console.log('🧪 [AUDIO-LIB-DEBUG] Iniciando teste completo da biblioteca de áudio...');
       
       // 1. Buscar assistentes com biblioteca de áudio
-      console.log('📚 [AUDIO-LIB-DEBUG] Buscando biblioteca de áudio...');
-      const { data: assistants, error: assistantsError } = await supabase
+      console.log('📚 [AUDIO-LIB-DEBUG] Buscando assistentes...');
+      const { data: allAssistants, error: assistantsError } = await supabase
         .from('assistants')
         .select('id, name, advanced_settings')
-        .eq('client_id', clientId)
-        .not('advanced_settings->audio_library', 'is', null);
+        .eq('client_id', clientId);
 
       if (assistantsError) {
         throw new Error(`Erro ao buscar assistentes: ${assistantsError.message}`);
       }
 
-      if (!assistants || assistants.length === 0) {
+      if (!allAssistants || allAssistants.length === 0) {
+        throw new Error('Nenhum assistente encontrado para este cliente');
+      }
+
+      // Filtrar assistentes que têm biblioteca de áudio no JavaScript
+      const assistants = allAssistants.filter(assistant => {
+        const advancedSettings = assistant.advanced_settings as any;
+        const audioLibrary = advancedSettings?.audio_library;
+        return Array.isArray(audioLibrary) && audioLibrary.length > 0;
+      });
+
+      console.log('🔍 [AUDIO-LIB-DEBUG] Resultado da busca:', {
+        totalAssistants: allAssistants.length,
+        withAudioLibrary: assistants.length,
+        assistantNames: assistants.map(a => a.name)
+      });
+
+      if (assistants.length === 0) {
         throw new Error('Nenhum assistente com biblioteca de áudio encontrado');
       }
 
