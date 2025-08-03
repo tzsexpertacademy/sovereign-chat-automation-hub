@@ -227,9 +227,25 @@ export const assistantsService = {
     }
     
     try {
-      const settings = typeof data.advanced_settings === 'string' 
-        ? JSON.parse(data.advanced_settings)
-        : data.advanced_settings;
+      let rawSettings = data.advanced_settings;
+      
+      // 🔧 CORREÇÃO CRÍTICA: Verificar se está "wrapeado" em array com índice "0"
+      if (rawSettings && typeof rawSettings === 'object' && rawSettings["0"]) {
+        console.log('🔧 [GET-SETTINGS] Detectado wrapper array com índice "0", extraindo...');
+        rawSettings = rawSettings["0"];
+      }
+      
+      const settings = typeof rawSettings === 'string' 
+        ? JSON.parse(rawSettings)
+        : rawSettings;
+      
+      console.log('🔍 [GET-SETTINGS] Settings após correção:', {
+        rawType: typeof rawSettings,
+        hasImageLibrary: !!settings.image_library,
+        hasAudioLibrary: !!settings.audio_library,
+        audioLibrarySize: settings.audio_library?.length || 0,
+        imageLibrarySize: settings.image_library?.length || 0
+      });
       
       // ✅ GARANTIR QUE image_library SEMPRE EXISTE
       if (!settings.image_library) {
@@ -245,7 +261,7 @@ export const assistantsService = {
         await this.updateAdvancedSettings(id, settings);
       }
       
-      console.log('✅ [GET-SETTINGS] Configurações carregadas:', {
+      console.log('✅ [GET-SETTINGS] Configurações carregadas e corrigidas:', {
         audioLibrarySize: settings.audio_library?.length || 0,
         imageLibrarySize: settings.image_library?.length || 0
       });
