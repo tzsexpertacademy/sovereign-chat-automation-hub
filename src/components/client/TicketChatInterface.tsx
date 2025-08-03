@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { unifiedMessageService } from '@/services/unifiedMessageService';
 import { ticketsService } from '@/services/ticketsService';
 import { useToast } from '@/hooks/use-toast';
@@ -231,50 +232,67 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       // Limpar input imediatamente
       setNewMessage('');
 
-      // 🎵 INTERCEPTAR COMANDOS DE ÁUDIO DA BIBLIOTECA ANTES DO ENVIO
+      // 🎵 BYPASS DIRETO PARA COMANDOS DE ÁUDIO DA BIBLIOTECA
       const audioLibraryPattern = /audio\s*([^:\s\n]+)(?:\s*:|$)/gi;
       const audioMatch = audioLibraryPattern.exec(messageToSend);
       audioLibraryPattern.lastIndex = 0;
 
       if (audioMatch && ticket.assigned_assistant_id) {
-        console.log('🎵 [AUDIO-LIBRARY] Comando detectado:', {
+        console.log('🎵 [AUDIO-LIBRARY] Comando detectado - BYPASS DIRETO:', {
           fullCommand: messageToSend,
           trigger: audioMatch[1],
-          assistantId: ticket.assigned_assistant_id
+          assistantId: ticket.assigned_assistant_id,
+          ticketId,
+          clientId,
+          instanceId: actualInstanceId
         });
 
-        // Processar diretamente via AI assistant process
+        // ⚡ BYPASS DIRETO - Chamar edge function ai-assistant-process diretamente
         try {
-          console.log('🤖 [AUDIO-LIBRARY] Processando via AI assistant...');
+          console.log('🚀 [AUDIO-LIBRARY] Chamando ai-assistant-process diretamente...');
           
-          const { aiQueueIntegrationService } = await import('@/services/aiQueueIntegrationService');
-          
-          const aiResult = await aiQueueIntegrationService.processIncomingMessage(
-            ticketId,
-            messageToSend,
-            clientId,
-            actualInstanceId
-          );
+          // Estrutura de dados igual ao batch processor
+          const messageData = {
+            content: messageToSend,
+            messageId: `MANUAL_${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            phoneNumber: ticket.customer_phone || '0000000000',
+            customerName: ticket.customer_name || 'Cliente'
+          };
 
-          if (aiResult.success) {
-            console.log('✅ [AUDIO-LIBRARY] Comando processado com sucesso!');
-            toast({
-              title: "🎵 Comando de Áudio",
-              description: "Comando processado com sucesso!",
-              variant: "default"
-            });
-          } else {
-            console.error('❌ [AUDIO-LIBRARY] Falha no processamento:', aiResult.error);
-            toast({
-              title: "❌ Erro no Comando",
-              description: aiResult.error || "Falha ao processar comando de áudio",
-              variant: "destructive"
-            });
+          const requestBody = {
+            ticketId,
+            messages: [messageData],
+            context: {
+              chatId: ticket.chat_id,
+              customerName: ticket.customer_name || 'Cliente',
+              phoneNumber: ticket.customer_phone || '0000000000',
+              batchInfo: `Comando de áudio manual`
+            }
+          };
+
+          console.log('📦 [AUDIO-LIBRARY] Payload para edge function:', requestBody);
+
+          const { data: response, error } = await supabase.functions.invoke('ai-assistant-process', {
+            body: requestBody
+          });
+
+          if (error) {
+            throw error;
           }
-        } catch (error) {
-          console.error('❌ [AUDIO-LIBRARY] Erro na interceptação:', error);
+
+          console.log('✅ [AUDIO-LIBRARY] Edge function executada com sucesso:', response);
+          
           toast({
-            title: "❌ Erro no Sistema",
+            title: "🎵 Comando de Áudio",
+            description: "Comando processado com sucesso!",
+            variant: "default"
+          });
+
+        } catch (error) {
+          console.error('❌ [AUDIO-LIBRARY] Erro no bypass direto:', error);
+          toast({
+            title: "❌ Erro no Comando",
             description: "Falha ao processar comando de áudio",
             variant: "destructive"
           });
