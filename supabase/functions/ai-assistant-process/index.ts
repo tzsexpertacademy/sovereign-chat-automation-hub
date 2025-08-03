@@ -3878,64 +3878,6 @@ async function sendLibraryVideoMessage(
     throw error;
   }
 }
-    const formData = new FormData();
-    formData.append('recipient', chatId);
-    formData.append('attachment', imageBlob, fileName);
-    formData.append('mediatype', 'image');
-    formData.append('delay', '1200');
-    
-    // ExternalAttributes para tracking
-    const externalAttributes = {
-      source: 'image_library',
-      mediaType: 'image',
-      fileName: fileName,
-      fileSize: imageBlob.size,
-      timestamp: timestamp
-    };
-    formData.append('externalAttributes', JSON.stringify(externalAttributes));
-    
-    console.log('📦 [SEND-LIBRARY-IMAGE] FormData criado:', {
-      recipient: chatId,
-      fileName: fileName,
-      mediatype: 'image',
-      delay: '1200',
-      fileSize: imageBlob.size
-    });
-    
-    // 3. ENVIAR VIA /send/media-file (ENDPOINT CORRETO QUE FUNCIONA)
-    console.log('📡 [SEND-LIBRARY-IMAGE] Enviando via /send/media-file...');
-    
-    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/media-file`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${businessToken}`
-        // Não incluir Content-Type - FormData define automaticamente
-      },
-      body: formData
-    });
-    
-    console.log('🔍 [SEND-LIBRARY-IMAGE] Response status:', response.status);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ [SEND-LIBRARY-IMAGE] Erro na API Yumer:', errorText);
-      throw new Error(`Falha no envio de imagem: ${errorText}`);
-    }
-    
-    const result = await response.json();
-    console.log('✅ [SEND-LIBRARY-IMAGE] Imagem da biblioteca enviada com sucesso via /send/media-file:', {
-      messageId: result.messageId || result.key?.id || 'N/A',
-      fileName: fileName,
-      format: imageData.format,
-      fileSize: imageBlob.size,
-      success: true
-    });
-    
-  } catch (error) {
-    console.error('❌ [SEND-LIBRARY-IMAGE] Erro ao enviar imagem da biblioteca:', error);
-    throw error;
-  }
-}
 
 /**
  * 🎬 PROCESSAR COMANDOS DE VÍDEO
