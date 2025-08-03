@@ -2843,16 +2843,28 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
     const audioUrl = publicUrlData.publicUrl;
     console.log('✅ [SEND-AUDIO] Upload concluído. URL:', audioUrl.substring(0, 50) + '...');
     
-    // 3. ENVIAR URL PARA API YUMER
+    // 3. ENVIAR URL PARA API YUMER (FORMATO CORRETO DA DOCUMENTAÇÃO)
     console.log('📡 [SEND-AUDIO] Enviando URL para API Yumer...');
     
     const audioData = {
-      number: ticket.chat_id,
+      recipient: ticket.chat_id,
       audioMessage: {
-        url: audioUrl  // Usar URL em vez de Base64
+        url: audioUrl
       },
-      ptt: true
+      options: {
+        externalAttributes: JSON.stringify({
+          source: 'ai_tts',
+          timestamp: Date.now(),
+          method: 'storage_url'
+        })
+      }
     };
+    
+    console.log('🔍 [SEND-AUDIO] Payload final:', {
+      recipient: ticket.chat_id,
+      audioUrl: audioUrl.substring(0, 50) + '...',
+      hasOptions: true
+    });
     
     const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio`, {
       method: 'POST',
