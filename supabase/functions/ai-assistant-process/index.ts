@@ -375,12 +375,15 @@ serve(async (req) => {
     // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos de biblioteca ANTES da IA
     const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
     const imageCommandMatch = messageContent.match(/^image\s+([a-zA-Z0-9_-]+)$/i);
+    const videoCommandMatch = messageContent.match(/^video\s+([a-zA-Z0-9_-]+)$/i);
     
     console.log('🔍 [EARLY-INTERCEPT] Detectando comandos:', {
       messageContent: messageContent,
       libraryCommandMatch: !!libraryCommandMatch,
       imageCommandMatch: !!imageCommandMatch,
-      imageCommandValue: imageCommandMatch ? imageCommandMatch[1] : null
+      videoCommandMatch: !!videoCommandMatch,
+      imageCommandValue: imageCommandMatch ? imageCommandMatch[1] : null,
+      videoCommandValue: videoCommandMatch ? videoCommandMatch[1] : null
     });
     
     if (libraryCommandMatch) {
@@ -472,6 +475,62 @@ serve(async (req) => {
         }
       } else {
         console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de imagem será ignorado');
+      }
+    }
+    
+    // 🎥 INTERCEPTAÇÃO PRECOCE: Detectar comandos de vídeo ANTES da IA
+    if (videoCommandMatch) {
+      console.log('🎥 [EARLY-INTERCEPT] ⚡ COMANDO DE VÍDEO DETECTADO - PROCESSANDO IMEDIATAMENTE');
+      console.log('🎥 [EARLY-INTERCEPT] Comando:', videoCommandMatch[0]);
+      console.log('🎥 [EARLY-INTERCEPT] Trigger do vídeo:', videoCommandMatch[1]);
+      
+      // Buscar business token ANTES do processamento
+      const { data: client } = await supabase
+        .from('clients')
+        .select('business_token')
+        .eq('id', resolvedClientId)
+        .single();
+      
+      if (client?.business_token) {
+        console.log('✅ [EARLY-INTERCEPT] Business token encontrado para processamento de vídeo');
+        
+        // Processar comando de vídeo SEGUINDO A MESMA LÓGICA DO ÁUDIO E IMAGEM
+        const videoResult = await processVideoCommands(messageContent, {
+          assistantId: resolvedAssistant.id,
+          instanceId: resolvedInstanceId,
+          chatId: resolvedContext.chatId,
+          businessToken: client.business_token
+        });
+        
+        if (videoResult.hasVideoCommands && videoResult.processedCount > 0) {
+          console.log('✅ [EARLY-INTERCEPT] Comando de vídeo processado com sucesso - PARANDO EXECUÇÃO');
+          console.log('🛑 [EARLY-INTERCEPT] RETORNO IMEDIATO EXECUTADO - Edge function finalizará aqui');
+          
+          // Salvar informação de que a mensagem foi processada para evitar duplicação
+          try {
+            await supabase
+              .from('ticket_messages')
+              .update({ ai_processed: true, ai_response_timestamp: new Date().toISOString() })
+              .eq('ticket_id', ticketId)
+              .eq('content', messageContent);
+            console.log('✅ [EARLY-INTERCEPT] Mensagem marcada como processada');
+          } catch (error) {
+            console.log('⚠️ [EARLY-INTERCEPT] Erro ao marcar mensagem como processada:', error);
+          }
+          
+          return new Response(JSON.stringify({
+            success: true,
+            message: 'Comando de vídeo da biblioteca processado',
+            videoCommandsProcessed: videoResult.processedCount,
+            onlyVideoCommands: true,
+            earlyIntercept: true,
+            timestamp: new Date().toISOString()
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+      } else {
+        console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de vídeo será ignorado');
       }
     }
 
@@ -3502,6 +3561,399 @@ async function sendLibraryImageMessage(
     
   } catch (error) {
     console.error('❌ [SEND-LIBRARY-IMAGE] Erro ao enviar imagem da biblioteca:', error);
+    throw error;
+  }
+}
+
+/**
+ * 🎥 PROCESSAR COMANDOS DE VÍDEO
+ */
+async function processVideoCommands(
+  message: string, 
+  context: { assistantId: string, instanceId: string, chatId: string, businessToken: string }
+): Promise<{ hasVideoCommands: boolean; processedCount: number }> {
+  try {
+    console.log('🎥 [VIDEO-COMMANDS] ========== INICIANDO PROCESSAMENTO DE VÍDEOS ==========');
+    console.log('🎥 [VIDEO-COMMANDS] Assistant ID:', context.assistantId);
+    console.log('🎥 [VIDEO-COMMANDS] Instance ID:', context.instanceId);
+    console.log('🎥 [VIDEO-COMMANDS] Business Token presente:', !!context.businessToken);
+    console.log('🎥 [VIDEO-COMMANDS] Mensagem recebida:', `"${message}"`);
+    
+    let processedCount = 0;
+    
+    // ✅ LIMPAR E NORMALIZAR MENSAGEM PARA TESTES MAIS PRECISOS
+    const cleanMessage = message.trim();
+    console.log('🎥 [VIDEO-COMMANDS] Analisando mensagem para comandos de vídeo...');
+    console.log('🔍 [VIDEO-COMMANDS] Mensagem limpa:', cleanMessage);
+    
+    // ✅ REGEX PARA COMANDO DE VÍDEO: "video trigger" (igual ao áudio que funciona)
+    const videoCommandPattern = /^video\s+([a-zA-Z0-9_-]+)$/i;
+    
+    console.log('🎯 [VIDEO-COMMANDS] Regex vídeo:', videoCommandPattern.source);
+    
+    // ✅ TESTE DIRETO DO REGEX COM MENSAGEM LIMPA
+    const testVideoMatch = cleanMessage.match(videoCommandPattern);
+    console.log('🔍 [VIDEO-COMMANDS] Teste Video regex:', testVideoMatch);
+    
+    if (testVideoMatch) {
+      console.log('🎥 [VIDEO-LIBRARY] ✅ COMANDO DE VÍDEO DETECTADO!');
+      console.log('🎥 [VIDEO-LIBRARY] Comando completo:', testVideoMatch[0]);
+      console.log('🎥 [VIDEO-LIBRARY] Trigger do vídeo:', testVideoMatch[1]);
+      
+      const videoTrigger = testVideoMatch[1].trim();
+      
+      try {
+        const libraryVideo = await getVideoFromLibrary(context.assistantId, videoTrigger);
+        
+        if (libraryVideo) {
+          console.log('🎥 [VIDEO-LIBRARY] ✅ Vídeo encontrado na biblioteca, enviando...');
+          await sendLibraryVideoMessage(context.instanceId, context.chatId, libraryVideo, context.businessToken);
+          processedCount++;
+          console.log('✅ [VIDEO-LIBRARY] Vídeo da biblioteca enviado com sucesso:', videoTrigger);
+        } else {
+          console.warn('⚠️ [VIDEO-LIBRARY] Vídeo não encontrado na biblioteca:', videoTrigger);
+        }
+        
+      } catch (error) {
+        console.error('❌ [VIDEO-LIBRARY] Erro ao processar vídeo da biblioteca:', error);
+      }
+    }
+    
+    console.log('🎥 [PROCESS-VIDEO] Processamento concluído - comandos:', processedCount);
+    console.log('🎥 [VIDEO-COMMANDS] ✅ Comandos de vídeo processados:', processedCount);
+    
+    return {
+      hasVideoCommands: processedCount > 0,
+      processedCount: processedCount
+    };
+    
+  } catch (error) {
+    console.error('❌ [PROCESS-VIDEO] Erro geral no processamento de vídeos:', error);
+    return {
+      hasVideoCommands: false,
+      processedCount: 0
+    };
+  }
+}
+
+/**
+ * 📚 BUSCAR VÍDEO DA BIBLIOTECA
+ */
+async function getVideoFromLibrary(assistantId: string, videoTrigger: string): Promise<{ videoBase64: string, format: string } | null> {
+  try {
+    console.log('📚 [VIDEO-LIBRARY] 🔍 BUSCANDO VÍDEO NA BIBLIOTECA - DEBUG DETALHADO:');
+    console.log('📚 [VIDEO-LIBRARY] Assistant ID:', assistantId);
+    console.log('📚 [VIDEO-LIBRARY] Trigger buscado:', videoTrigger);
+    console.log('📚 [VIDEO-LIBRARY] Tipo do trigger:', typeof videoTrigger);
+    console.log('📚 [VIDEO-LIBRARY] Trigger limpo:', videoTrigger.trim());
+    
+    // Buscar na tabela assistants campo advanced_settings
+    const { data: assistantData } = await supabase
+      .from('assistants')
+      .select('advanced_settings')
+      .eq('id', assistantId)
+      .single();
+    
+    console.log('🔍 [VIDEO-LIBRARY] Dados do assistente raw:', {
+      hasAdvancedSettings: !!assistantData?.advanced_settings,
+      typeOfAdvancedSettings: typeof assistantData?.advanced_settings,
+      rawAdvancedSettings: JSON.stringify(assistantData?.advanced_settings, null, 2)
+    });
+    
+    // 🎯 PARSER REFORÇADO PARA ESTRUTURA COMPLEX ANINHADA
+    let advancedSettings = assistantData?.advanced_settings || {};
+    
+    console.log('🔧 [VIDEO-LIBRARY] ETAPA 1: Tipo inicial:', typeof advancedSettings);
+    
+    // STEP 1: Parse inicial se for string
+    if (typeof advancedSettings === 'string') {
+      try {
+        advancedSettings = JSON.parse(advancedSettings);
+        console.log('✅ [VIDEO-LIBRARY] String parsed para object');
+      } catch (parseError) {
+        console.error('❌ [VIDEO-LIBRARY] Erro ao fazer parse da string:', parseError);
+        return null;
+      }
+    }
+    
+    console.log('🔧 [VIDEO-LIBRARY] ETAPA 2: Após primeiro parse, tipo:', typeof advancedSettings);
+    console.log('🔧 [VIDEO-LIBRARY] ETAPA 2: Chaves disponíveis:', Object.keys(advancedSettings));
+    
+    // STEP 2: NOVO ALGORITMO PARA ESTRUTURA ANINHADA COMPLEXA
+    if (advancedSettings && typeof advancedSettings === 'object') {
+      // 🎯 TENTATIVA 1: Verificar se já tem video_library diretamente
+      if (advancedSettings.video_library && Array.isArray(advancedSettings.video_library)) {
+        console.log('✅ [VIDEO-LIBRARY] video_library encontrada diretamente!');
+      } else {
+        console.log('🔍 [VIDEO-LIBRARY] video_library não encontrada diretamente, procurando em estrutura aninhada...');
+        
+        // 🎯 TENTATIVA 2: Procurar em chaves numéricas (estrutura aninhada típica)
+        let found = false;
+        for (const key of Object.keys(advancedSettings)) {
+          console.log(`🔍 [VIDEO-LIBRARY] Verificando chave "${key}"...`);
+          
+          if (typeof advancedSettings[key] === 'string') {
+            console.log(`🔧 [VIDEO-LIBRARY] Chave "${key}" é string, tentando parse...`);
+            try {
+              const nestedData = JSON.parse(advancedSettings[key]);
+              console.log(`🔍 [VIDEO-LIBRARY] Parse da chave "${key}" - chaves:`, Object.keys(nestedData));
+              
+              if (nestedData.video_library && Array.isArray(nestedData.video_library)) {
+                advancedSettings = nestedData;
+                console.log(`✅ [VIDEO-LIBRARY] video_library encontrada na chave "${key}"!`);
+                found = true;
+                break;
+              }
+            } catch (nestedParseError) {
+              console.log(`⚠️ [VIDEO-LIBRARY] Erro ao fazer parse da chave "${key}":`, nestedParseError.message);
+            }
+          } else if (typeof advancedSettings[key] === 'object' && advancedSettings[key] !== null) {
+            console.log(`🔍 [VIDEO-LIBRARY] Chave "${key}" é object, verificando video_library...`);
+            if (advancedSettings[key].video_library && Array.isArray(advancedSettings[key].video_library)) {
+              advancedSettings = advancedSettings[key];
+              console.log(`✅ [VIDEO-LIBRARY] video_library encontrada no object da chave "${key}"!`);
+              found = true;
+              break;
+            }
+          }
+        }
+        
+        if (!found) {
+          console.log('🔍 [VIDEO-LIBRARY] Tentando busca recursiva mais profunda...');
+          // 🎯 TENTATIVA 3: Busca recursiva mais profunda
+          for (const key of Object.keys(advancedSettings)) {
+            const value = advancedSettings[key];
+            if (typeof value === 'object' && value !== null) {
+              for (const subKey of Object.keys(value)) {
+                if (typeof value[subKey] === 'string') {
+                  try {
+                    const deepNestedData = JSON.parse(value[subKey]);
+                    if (deepNestedData.video_library && Array.isArray(deepNestedData.video_library)) {
+                      advancedSettings = deepNestedData;
+                      console.log(`✅ [VIDEO-LIBRARY] video_library encontrada em ${key}.${subKey}!`);
+                      found = true;
+                      break;
+                    }
+                  } catch (error) {
+                    // Silencioso para não poluir logs
+                  }
+                }
+              }
+              if (found) break;
+            }
+          }
+        }
+      }
+    }
+    
+    console.log('🔍 [VIDEO-LIBRARY] Advanced settings FINAL após todos os parses:', {
+      keys: Object.keys(advancedSettings),
+      hasVideoLibrary: !!advancedSettings?.video_library,
+      hasAudioLibrary: !!advancedSettings?.audio_library,
+      hasImageLibrary: !!advancedSettings?.image_library,
+      videoLibraryLength: advancedSettings?.video_library?.length || 0,
+      audioLibraryLength: advancedSettings?.audio_library?.length || 0,
+      imageLibraryLength: advancedSettings?.image_library?.length || 0
+    });
+    
+    if (!advancedSettings?.video_library) {
+      console.error('❌ [VIDEO-LIBRARY] ⚠️ BIBLIOTECA DE VÍDEOS NÃO ENCONTRADA!', {
+        assistantId,
+        availableKeys: Object.keys(advancedSettings),
+        hasAudioLibrary: !!advancedSettings?.audio_library,
+        hasImageLibrary: !!advancedSettings?.image_library,
+        totalAudioLibraryItems: advancedSettings?.audio_library?.length || 0,
+        totalImageLibraryItems: advancedSettings?.image_library?.length || 0,
+        message: 'Você precisa primeiro SALVAR um vídeo na interface do assistente!',
+        instructions: [
+          '1. Vá para Configurações do Assistente',
+          '2. Acesse a aba "Configurações de Vídeo"', 
+          '3. Faça upload de um vídeo com trigger "teste"',
+          '4. Salve as configurações',
+          '5. Teste novamente com "video teste"'
+        ]
+      });
+      
+      // TODO: Futuramente podemos auto-inicializar video_library vazia aqui
+      // Por enquanto, retornamos null para forçar o usuário a configurar
+      return null;
+    }
+    
+    const library = advancedSettings.video_library as any[];
+    console.log('📚 [VIDEO-LIBRARY] Biblioteca carregada:', {
+      totalVideos: library.length,
+      videosDisponiveis: library.map(item => ({ 
+        trigger: item.trigger, 
+        name: item.name,
+        format: item.format,
+        hasVideoBase64: !!item.videoBase64 
+      }))
+    });
+    
+    // Busca por trigger exato (case-insensitive)
+    const normalizedSearchTrigger = videoTrigger.toLowerCase().trim();
+    
+    console.log('🔍 [VIDEO-LIBRARY] Debug matching DETALHADO:', {
+      buscandoPor: normalizedSearchTrigger,
+      originalInput: videoTrigger,
+      triggersDisponiveis: library.map(item => ({ 
+        trigger: item.trigger, 
+        name: item.name,
+        triggerLower: item.trigger?.toLowerCase(),
+        match: item.trigger?.toLowerCase() === normalizedSearchTrigger
+      }))
+    });
+    
+    console.log('🎯 [VIDEO-LIBRARY] Fazendo busca exata...');
+    const video = library.find(item => {
+      const itemTrigger = item.trigger?.toLowerCase();
+      const match = itemTrigger === normalizedSearchTrigger;
+      console.log(`🔍 [VIDEO-LIBRARY] Comparando "${itemTrigger}" === "${normalizedSearchTrigger}" = ${match}`);
+      return item.trigger && match;
+    });
+    
+    if (!video) {
+      console.warn('📚 [VIDEO-LIBRARY] Vídeo não encontrado:', {
+        procurandoPor: normalizedSearchTrigger,
+        triggersDisponiveis: library.map(item => item.trigger)
+      });
+      
+      // Sugerir triggers similares
+      const similarTriggers = library
+        .filter(item => item.trigger.toLowerCase().includes(normalizedSearchTrigger.substring(0, 3)))
+        .map(item => item.trigger)
+        .slice(0, 3);
+      
+      if (similarTriggers.length > 0) {
+        console.log('💡 [VIDEO-LIBRARY] Triggers similares encontrados:', similarTriggers);
+      }
+      
+      return null;
+    }
+    
+    // Verificar se existe videoBase64
+    if (!video.videoBase64) {
+      console.error('❌ [VIDEO-LIBRARY] Vídeo encontrado mas sem videoBase64:', {
+        trigger: video.trigger,
+        temUrl: !!video.url,
+        temVideoBase64: !!video.videoBase64
+      });
+      return null;
+    }
+    
+    console.log('✅ [VIDEO-LIBRARY] Vídeo encontrado com sucesso:', {
+      trigger: video.trigger,
+      name: video.name,
+      format: video.format,
+      size: video.size,
+      category: video.category,
+      videoBase64Length: video.videoBase64.length
+    });
+    
+    return { 
+      videoBase64: video.videoBase64,
+      format: video.format || 'mp4'
+    };
+    
+  } catch (error) {
+    console.error('❌ [VIDEO-LIBRARY] Erro ao buscar vídeo:', error);
+    return null;
+  }
+}
+
+/**
+ * 🎥 ENVIAR VÍDEO DA BIBLIOTECA VIA /send/media-file (CORRIGIDO)
+ * Usa FormData direto sem upload intermediário para storage
+ */
+async function sendLibraryVideoMessage(
+  instanceId: string, 
+  chatId: string, 
+  videoData: { videoBase64: string, format: string }, 
+  businessToken: string
+): Promise<void> {
+  try {
+    console.log('🎥 [SEND-LIBRARY-VIDEO] ===== USANDO /send/media-file COM FORMDATA =====');
+    console.log('🎥 [SEND-LIBRARY-VIDEO] Iniciando envio direto via FormData...', {
+      instanceId: instanceId,
+      chatId: chatId ? `${chatId.substring(0, 15)}...` : 'undefined',
+      format: videoData.format,
+      videoSize: Math.round(videoData.videoBase64.length * 0.75 / 1024) + 'KB'
+    });
+    
+    // 1. CONVERTER BASE64 PARA BLOB (SEM UPLOAD PARA STORAGE)
+    console.log('🔄 [SEND-LIBRARY-VIDEO] Convertendo base64 para Blob...');
+    
+    const binaryString = atob(videoData.videoBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const videoBlob = new Blob([bytes], { type: `video/${videoData.format}` });
+    
+    console.log('✅ [SEND-LIBRARY-VIDEO] Blob criado:', {
+      size: videoBlob.size,
+      type: videoBlob.type
+    });
+    
+    // 2. CRIAR FORMDATA IGUAL AO VIDEOSENDER QUE FUNCIONA
+    const timestamp = Date.now();
+    const fileName = `library_${timestamp}.${videoData.format}`;
+    
+    const formData = new FormData();
+    formData.append('recipient', chatId);
+    formData.append('attachment', videoBlob, fileName);
+    formData.append('mediatype', 'video');
+    formData.append('delay', '1200');
+    
+    // ExternalAttributes para tracking
+    const externalAttributes = {
+      source: 'video_library',
+      mediaType: 'video',
+      fileName: fileName,
+      fileSize: videoBlob.size,
+      timestamp: timestamp
+    };
+    formData.append('externalAttributes', JSON.stringify(externalAttributes));
+    
+    console.log('📦 [SEND-LIBRARY-VIDEO] FormData criado:', {
+      recipient: chatId,
+      fileName: fileName,
+      mediatype: 'video',
+      delay: '1200',
+      fileSize: videoBlob.size
+    });
+    
+    // 3. ENVIAR VIA /send/media-file (ENDPOINT CORRETO QUE FUNCIONA)
+    console.log('📡 [SEND-LIBRARY-VIDEO] Enviando via /send/media-file...');
+    
+    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/media-file`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${businessToken}`
+        // Não incluir Content-Type - FormData define automaticamente
+      },
+      body: formData
+    });
+    
+    console.log('🔍 [SEND-LIBRARY-VIDEO] Response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [SEND-LIBRARY-VIDEO] Erro na API Yumer:', errorText);
+      throw new Error(`Falha no envio de vídeo: ${errorText}`);
+    }
+    
+    const result = await response.json();
+    console.log('✅ [SEND-LIBRARY-VIDEO] Vídeo da biblioteca enviado com sucesso via /send/media-file:', {
+      messageId: result.messageId || result.key?.id || 'N/A',
+      fileName: fileName,
+      format: videoData.format,
+      fileSize: videoBlob.size,
+      success: true
+    });
+    
+  } catch (error) {
+    console.error('❌ [SEND-LIBRARY-VIDEO] Erro ao enviar vídeo da biblioteca:', error);
     throw error;
   }
 }
