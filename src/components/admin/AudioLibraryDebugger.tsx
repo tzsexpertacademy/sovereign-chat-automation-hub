@@ -57,14 +57,35 @@ export const AudioLibraryDebugger: React.FC = () => {
       const assistantsWithAudio = [];
       
       for (const assistant of allAssistants) {
-        const advancedSettings = assistant.advanced_settings as any;
-        const audioLibrary = advancedSettings?.audio_library;
+        // 🔧 [CORREÇÃO] Melhor verificação dos advanced_settings
+        let advancedSettings = assistant.advanced_settings;
+        
+        // Se for string, fazer parse
+        if (typeof advancedSettings === 'string') {
+          try {
+            advancedSettings = JSON.parse(advancedSettings);
+          } catch (error) {
+            debugLog += `❌ Erro ao fazer parse de advanced_settings: ${error}\n`;
+            continue;
+          }
+        }
         
         debugLog += `🔍 Assistente "${assistant.name}":\n`;
+        debugLog += `   - advanced_settings type: ${typeof assistant.advanced_settings}\n`;
+        debugLog += `   - advanced_settings raw: ${JSON.stringify(assistant.advanced_settings).substring(0, 100)}...\n`;
         debugLog += `   - Tem advanced_settings: ${!!advancedSettings}\n`;
+        
+        // 🎯 [CORREÇÃO] Verificar todas as possíveis propriedades de áudio
+        const audioLibrary = (advancedSettings as any)?.audio_library || (advancedSettings as any)?.audioLibrary;
+        
         debugLog += `   - Tem audio_library: ${!!audioLibrary}\n`;
+        debugLog += `   - audio_library type: ${typeof audioLibrary}\n`;
         debugLog += `   - É array: ${Array.isArray(audioLibrary)}\n`;
         debugLog += `   - Tamanho: ${Array.isArray(audioLibrary) ? audioLibrary.length : 0}\n`;
+        
+        if (audioLibrary && !Array.isArray(audioLibrary)) {
+          debugLog += `   - audio_library content: ${JSON.stringify(audioLibrary).substring(0, 200)}...\n`;
+        }
         
         if (Array.isArray(audioLibrary) && audioLibrary.length > 0) {
           assistantsWithAudio.push({
@@ -158,28 +179,16 @@ export const AudioLibraryDebugger: React.FC = () => {
         debugLog += `\n❌ [ETAPA 4] Pulada - nenhum trigger matched\n`;
       }
 
-      // === ETAPA 5: TESTAR EDGE FUNCTION ===
-      debugLog += `\n🤖 [ETAPA 5] Testando edge function ai-assistant-process...\n`;
+      // === ETAPA 5: TESTAR EDGE FUNCTION ESPECÍFICA ===
+      debugLog += `\n🤖 [ETAPA 5] Testando edge function test-audio-library...\n`;
       let aiTestResult = null;
       let aiError = null;
 
       try {
-        const { data: aiData, error: aiErrorResult } = await supabase.functions.invoke('ai-assistant-process', {
+        const { data: aiData, error: aiErrorResult } = await supabase.functions.invoke('test-audio-library', {
           body: {
-            ticketId: '00000000-0000-0000-0000-000000000000',
-            messages: [{
-              content: testCommand,
-              messageId: 'test_audio_lib_' + Date.now(),
-              timestamp: new Date().toISOString(),
-              phoneNumber: '5511999999999',
-              customerName: 'Teste Audio Library'
-            }],
-            context: {
-              chatId: '5511999999999@s.whatsapp.net',
-              customerName: 'Teste Audio Library',
-              phoneNumber: '5511999999999',
-              batchInfo: 'Teste biblioteca de áudio'
-            }
+            clientId: clientId,
+            command: testCommand
           }
         });
 
@@ -189,7 +198,8 @@ export const AudioLibraryDebugger: React.FC = () => {
         } else {
           aiTestResult = aiData;
           debugLog += `✅ Edge function executada com sucesso!\n`;
-          debugLog += `📋 Resultado: ${JSON.stringify(aiData, null, 2)}\n`;
+          debugLog += `🎵 Resultado: ${aiData.message}\n`;
+          debugLog += `📋 Detalhes: Nome="${aiData.audioName}", Trigger="${aiData.trigger}", Tamanho=${aiData.audioSize} chars\n`;
         }
       } catch (error: any) {
         aiError = error;
