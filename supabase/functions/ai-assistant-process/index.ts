@@ -374,7 +374,7 @@ serve(async (req) => {
 
     // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos de biblioteca ANTES da IA
     const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
-    const imageCommandMatch = messageContent.match(/^image\s*:\s*([a-zA-Z0-9_-]+)/i);
+    const imageCommandMatch = messageContent.match(/^image\s*:?\s*([a-zA-Z0-9_-]+)/i);
     
     console.log('🔍 [EARLY-INTERCEPT] Detectando comandos:', {
       messageContent: messageContent,
@@ -435,27 +435,26 @@ serve(async (req) => {
       if (client?.business_token) {
         console.log('✅ [EARLY-INTERCEPT] Business token encontrado para processamento de imagem');
         
-        try {
-          // Processar comando de imagem diretamente
-          await processImageCommands(imageCommandMatch[0], {
-            assistantId: resolvedAssistant.id,
-            instanceId: resolvedInstanceId,
-            chatId: resolvedContext.chatId,
-            businessToken: client.business_token
-          });
-          
-          console.log('✅ [EARLY-INTERCEPT] Comando de imagem processado com sucesso - retornando');
+        // Processar comando de imagem SEGUINDO A MESMA LÓGICA DO ÁUDIO
+        const imageResult = await processImageCommands(messageContent, {
+          assistantId: resolvedAssistant.id,
+          instanceId: resolvedInstanceId,
+          chatId: resolvedContext.chatId,
+          businessToken: client.business_token
+        });
+        
+        if (imageResult.hasImageCommands && imageResult.processedCount > 0) {
+          console.log('✅ [EARLY-INTERCEPT] Comando de imagem processado com sucesso - RETORNANDO IMEDIATAMENTE');
           
           return new Response(JSON.stringify({
             success: true,
-            type: 'image_command',
-            processed: true,
+            message: 'Comando de imagem da biblioteca processado',
+            imageCommandsProcessed: imageResult.processedCount,
+            onlyImageCommands: true,
             timestamp: new Date().toISOString()
           }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
-        } catch (error) {
-          console.error('❌ [EARLY-INTERCEPT] Erro ao processar comando de imagem:', error);
         }
       } else {
         console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de imagem será ignorado');
@@ -3106,7 +3105,7 @@ async function sendLibraryAudioMessage(instanceId: string, ticketId: string, aud
 async function processImageCommands(
   message: string, 
   context: { assistantId: string, instanceId: string, chatId: string, businessToken: string }
-): Promise<number> {
+): Promise<{ hasImageCommands: boolean; processedCount: number }> {
   try {
     console.log('🖼️ [IMAGE-COMMANDS] ========== INICIANDO PROCESSAMENTO DE IMAGENS ==========');
     console.log('🖼️ [IMAGE-COMMANDS] Assistant ID:', context.assistantId);
@@ -3157,11 +3156,17 @@ async function processImageCommands(
     console.log('🖼️ [PROCESS-IMAGE] Processamento concluído - comandos:', processedCount);
     console.log('🖼️ [IMAGE-COMMANDS] ✅ Comandos de imagem processados:', processedCount);
     
-    return processedCount;
+    return {
+      hasImageCommands: processedCount > 0,
+      processedCount: processedCount
+    };
     
   } catch (error) {
     console.error('❌ [PROCESS-IMAGE] Erro geral no processamento de imagens:', error);
-    return 0;
+    return {
+      hasImageCommands: false,
+      processedCount: 0
+    };
   }
 }
 
