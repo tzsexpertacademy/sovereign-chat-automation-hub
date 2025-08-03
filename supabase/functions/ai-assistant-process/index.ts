@@ -431,7 +431,7 @@ serve(async (req) => {
         try {
           // Processar comando de imagem diretamente
           await processImageCommands(imageCommandMatch[0], {
-            assistantId: resolvedAssistantId,
+            assistantId: resolvedAssistant.id,
             instanceId: resolvedInstanceId,
             chatId: resolvedContext.chatId,
             businessToken: client.business_token
@@ -3262,7 +3262,8 @@ async function getImageFromLibrary(assistantId: string, imageTrigger: string): P
 }
 
 /**
- * 🖼️ ENVIAR MENSAGEM DE IMAGEM VIA YUMER API
+ * 🖼️ ENVIAR MENSAGEM DE IMAGEM VIA API /send/media (CORRIGIDA)
+ * Usa endpoint correto conforme documentação da API
  */
 async function sendLibraryImageMessage(
   instanceId: string, 
@@ -3271,14 +3272,18 @@ async function sendLibraryImageMessage(
   businessToken: string
 ): Promise<void> {
   try {
-    console.log('🖼️ [SEND-LIBRARY-IMAGE] Iniciando envio de imagem da biblioteca...', {
+    console.log('🖼️ [SEND-LIBRARY-IMAGE] ===== CORREÇÃO: USANDO /send/media =====');
+    console.log('🖼️ [SEND-LIBRARY-IMAGE] Iniciando envio via endpoint correto...', {
       instanceId: instanceId,
       chatId: chatId ? `${chatId.substring(0, 15)}...` : 'undefined',
       format: imageData.format,
       imageSize: Math.round(imageData.imageBase64.length * 0.75 / 1024) + 'KB'
     });
     
-    // Converter base64 para Blob
+    // 1. UPLOAD DA IMAGEM PARA STORAGE PRIMEIRO
+    console.log('📤 [SEND-LIBRARY-IMAGE] Fazendo upload da imagem para Storage...');
+    
+    // Converter Base64 para Blob
     const binaryString = atob(imageData.imageBase64);
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
@@ -3291,49 +3296,98 @@ async function sendLibraryImageMessage(
       type: imageBlob.type
     });
     
-    // Preparar FormData
-    const formData = new FormData();
-    const fileName = `image_${Date.now()}.${imageData.format}`;
+    // Gerar nome único para o arquivo
+    const timestamp = Date.now();
+    const fileName = `library_image_${instanceId}_${timestamp}.${imageData.format}`;
+    const filePath = `temp-images/${fileName}`;
     
-    formData.append('recipient', chatId);
-    formData.append('attachment', imageBlob, fileName);
-    formData.append('mediatype', 'image');
-    formData.append('delay', '800');
+    // Upload para storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('client-assets')
+      .upload(filePath, imageBlob, {
+        cacheControl: '3600',
+        upsert: false
+      });
     
-    console.log('🔍 [SEND-LIBRARY-IMAGE] FormData preparado:', {
+    if (uploadError) {
+      console.error('❌ [SEND-LIBRARY-IMAGE] Erro no upload:', uploadError);
+      throw new Error(`Erro no upload da imagem: ${uploadError.message}`);
+    }
+    
+    // 2. OBTER URL PÚBLICA
+    const { data: publicUrlData } = supabase.storage
+      .from('client-assets')
+      .getPublicUrl(filePath);
+    
+    if (!publicUrlData?.publicUrl) {
+      throw new Error('Não foi possível obter URL pública da imagem');
+    }
+    
+    const imageUrl = publicUrlData.publicUrl;
+    console.log('✅ [SEND-LIBRARY-IMAGE] Upload concluído. URL:', imageUrl.substring(0, 50) + '...');
+    
+    // 3. ENVIAR VIA /send/media (ENDPOINT CORRETO CONFORME DOCUMENTAÇÃO)
+    console.log('📡 [SEND-LIBRARY-IMAGE] Enviando via /send/media...');
+    
+    const mediaData = {
       recipient: chatId,
-      fileName: fileName,
-      imageSize: Math.round(imageBlob.size / 1024) + 'KB',
-      delay: '800'
+      mediaMessage: {
+        mediatype: 'image',
+        url: imageUrl,
+        fileName: fileName
+      },
+      options: {
+        delay: 800,
+        externalAttributes: JSON.stringify({
+          source: 'image_library',
+          timestamp: Date.now(),
+          method: 'storage_url',
+          format: imageData.format
+        })
+      }
+    };
+    
+    console.log('🔍 [SEND-LIBRARY-IMAGE] Payload final:', {
+      recipient: chatId,
+      mediatype: 'image',
+      imageUrl: imageUrl.substring(0, 50) + '...',
+      fileName: fileName
     });
     
-    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/image-file`, {
+    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/media`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${businessToken}`
+        'Authorization': `Bearer ${businessToken}`,
+        'Content-Type': 'application/json'
       },
-      body: formData
+      body: JSON.stringify(mediaData)
     });
-
+    
     console.log('🔍 [SEND-LIBRARY-IMAGE] Response status:', response.status);
-
+    
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ [SEND-LIBRARY-IMAGE] Erro no endpoint image-file:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText
-      });
-      throw new Error(`Falha no envio: ${response.status} - ${errorText}`);
+      console.error('❌ [SEND-LIBRARY-IMAGE] Erro na API Yumer:', errorText);
+      throw new Error(`Falha no envio de imagem: ${errorText}`);
     }
-
+    
     const result = await response.json();
-    console.log('🔍 [SEND-LIBRARY-IMAGE] Response completo:', result);
-    console.log('✅ [SEND-LIBRARY-IMAGE] Imagem da biblioteca enviada com sucesso:', {
-      messageId: result.key?.id || 'N/A',
+    console.log('✅ [SEND-LIBRARY-IMAGE] Imagem da biblioteca enviada com sucesso via /send/media:', {
+      messageId: result.messageId || result.key?.id || 'N/A',
+      imageUrl: imageUrl.substring(0, 50) + '...',
       format: imageData.format,
       success: true
     });
+    
+    // 4. AGENDAR LIMPEZA DO ARQUIVO TEMPORÁRIO
+    setTimeout(async () => {
+      try {
+        await supabase.storage.from('client-assets').remove([filePath]);
+        console.log('🧹 [SEND-LIBRARY-IMAGE] Arquivo temporário removido:', fileName);
+      } catch (error) {
+        console.warn('⚠️ [SEND-LIBRARY-IMAGE] Erro na limpeza (não crítico):', error);
+      }
+    }, 300000); // Limpar após 5 minutos
     
   } catch (error) {
     console.error('❌ [SEND-LIBRARY-IMAGE] Erro ao enviar imagem da biblioteca:', error);
