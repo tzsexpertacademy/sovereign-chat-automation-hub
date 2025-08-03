@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { assistantsService, AdvancedSettings, MultimediaConfig } from "@/services/assistantsService";
 import AssistantAudioSettings from "./AssistantAudioSettings";
 import AssistantImageSettings from "./AssistantImageSettings";
+import AssistantVideoSettings from "./AssistantVideoSettings";
 
 interface AssistantSettingsProps {
   assistantId: string;
@@ -41,6 +42,7 @@ const AssistantSettings = ({ assistantId, onClose }: AssistantSettingsProps) => 
     custom_files: [],
     audio_library: [],
     image_library: [],
+    video_library: [],
     recording_settings: {
       max_duration: 60,
       quality: 'medium',
@@ -192,7 +194,7 @@ const AssistantSettings = ({ assistantId, onClose }: AssistantSettingsProps) => 
       </div>
 
       <Tabs defaultValue="ai" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="ai">IA & Criatividade</TabsTrigger>
           <TabsTrigger value="multimedia">
             <Image className="w-4 h-4 mr-1" />
@@ -205,6 +207,10 @@ const AssistantSettings = ({ assistantId, onClose }: AssistantSettingsProps) => 
           <TabsTrigger value="images">
             <Image className="w-4 h-4 mr-1" />
             Imagens
+          </TabsTrigger>
+          <TabsTrigger value="videos">
+            <Video className="w-4 h-4 mr-1" />
+            Vídeos
           </TabsTrigger>
           <TabsTrigger value="behavior">
             <Clock className="w-4 h-4 mr-1" />
@@ -572,6 +578,14 @@ const AssistantSettings = ({ assistantId, onClose }: AssistantSettingsProps) => 
 
         <TabsContent value="images" className="space-y-6">
           <AssistantImageSettings
+            assistantId={assistantId}
+            settings={settings}
+            onSettingsChange={setSettings}
+          />
+        </TabsContent>
+
+        <TabsContent value="videos" className="space-y-6">
+          <AssistantVideoSettings
             assistantId={assistantId}
             settings={settings}
             onSettingsChange={setSettings}

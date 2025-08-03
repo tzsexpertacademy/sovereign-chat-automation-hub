@@ -45,6 +45,18 @@ export interface ImageLibraryItem {
   uploaded_at: string;
 }
 
+export interface VideoLibraryItem {
+  id: string;
+  name: string;
+  trigger: string;
+  url: string;
+  videoBase64?: string; // Base64 do vídeo
+  format: 'mp4' | 'avi' | 'mov' | 'webm';
+  size: number; // tamanho em bytes
+  category: string;
+  uploaded_at: string;
+}
+
 export interface RecordingSettings {
   max_duration: number;
   quality: 'low' | 'medium' | 'high';
@@ -106,6 +118,7 @@ export interface AdvancedSettings {
   }>;
   audio_library: AudioLibraryItem[];
   image_library: ImageLibraryItem[];
+  video_library: VideoLibraryItem[];
   recording_settings: RecordingSettings;
   
   // Advanced Features
@@ -225,6 +238,7 @@ export const assistantsService = {
           category: "teste",
           uploaded_at: new Date().toISOString()
         }] : [], // ✅ GARANTIR QUE EXISTE COM IMAGEM DE TESTE PARA YUMER
+        video_library: [],
         recording_settings: {
           max_duration: 300,
           quality: 'medium',
@@ -281,6 +295,13 @@ export const assistantsService = {
       if (!settings.audio_library) {
         settings.audio_library = [];
         console.log('🔧 [GET-SETTINGS] Adicionando audio_library ausente');
+        await this.updateAdvancedSettings(id, settings);
+      }
+      
+      // ✅ GARANTIR QUE video_library SEMPRE EXISTE
+      if (!settings.video_library) {
+        settings.video_library = [];
+        console.log('🔧 [GET-SETTINGS] Adicionando video_library ausente');
         await this.updateAdvancedSettings(id, settings);
       }
       
@@ -541,6 +562,115 @@ export const assistantsService = {
       }
     } catch (error) {
       console.error('Erro ao remover imagem da biblioteca:', error);
+      throw error;
+    }
+  },
+
+  async uploadVideoToLibrary(
+    assistantId: string, 
+    videoFile: File, 
+    trigger: string, 
+    category: string
+  ): Promise<VideoLibraryItem> {
+    try {
+      console.log('📤 [UPLOAD-VIDEO] Iniciando upload para biblioteca:', {
+        fileName: videoFile.name,
+        trigger,
+        category,
+        size: videoFile.size
+      });
+
+      // Validar formato
+      const validFormats = ['video/mp4', 'video/avi', 'video/mov', 'video/webm'];
+      if (!validFormats.includes(videoFile.type)) {
+        throw new Error('Formato não suportado. Use MP4, AVI, MOV ou WebM.');
+      }
+
+      // Validar tamanho (100MB máximo)
+      if (videoFile.size > 100 * 1024 * 1024) {
+        throw new Error('Vídeo muito grande. Máximo 100MB.');
+      }
+
+      // Converter para base64
+      const videoBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(videoFile);
+      });
+
+      console.log('✅ [UPLOAD-VIDEO] Conversão base64 concluída:', {
+        base64Length: videoBase64.length,
+        format: videoFile.type
+      });
+
+      // Determinar formato
+      let format: 'mp4' | 'avi' | 'mov' | 'webm' = 'mp4';
+      if (videoFile.type.includes('avi')) format = 'avi';
+      else if (videoFile.type.includes('mov')) format = 'mov';
+      else if (videoFile.type.includes('webm')) format = 'webm';
+
+      const videoItem: VideoLibraryItem = {
+        id: `video_${Date.now()}`,
+        name: videoFile.name,
+        trigger: trigger.toLowerCase(),
+        url: '',
+        videoBase64: videoBase64,
+        format: format,
+        size: videoFile.size,
+        category: category,
+        uploaded_at: new Date().toISOString()
+      };
+
+      // ✅ BUSCAR OU CRIAR CONFIGURAÇÕES
+      const settings = await this.getAssistantAdvancedSettings(assistantId);
+      if (!settings) {
+        throw new Error('Não foi possível carregar ou criar configurações do assistente');
+      }
+      
+      // Verificar se trigger já existe (usando || [] como fallback)
+      const existingTrigger = (settings.video_library || []).find(vid => vid.trigger === trigger.toLowerCase());
+      if (existingTrigger) {
+        throw new Error(`Trigger "${trigger}" já existe na biblioteca.`);
+      }
+
+      // ✅ GARANTIR QUE video_library EXISTE
+      const updatedSettings = {
+        ...settings,
+        video_library: [...(settings.video_library || []), videoItem]
+      };
+      
+      await this.updateAdvancedSettings(assistantId, updatedSettings);
+      
+      console.log('✅ [UPLOAD-VIDEO] Vídeo salvo na biblioteca:', {
+        trigger: trigger.toLowerCase(),
+        format,
+        librarySize: updatedSettings.video_library.length
+      });
+
+      return videoItem;
+    } catch (error) {
+      console.error('❌ [UPLOAD-VIDEO] Erro ao fazer upload do vídeo:', error);
+      throw error;
+    }
+  },
+
+  async removeVideoFromLibrary(assistantId: string, videoId: string): Promise<void> {
+    try {
+      const settings = await this.getAssistantAdvancedSettings(assistantId);
+      if (settings) {
+        const updatedSettings = {
+          ...settings,
+          video_library: (settings.video_library || []).filter(video => video.id !== videoId)
+        };
+        await this.updateAdvancedSettings(assistantId, updatedSettings);
+      }
+    } catch (error) {
+      console.error('Erro ao remover vídeo da biblioteca:', error);
       throw error;
     }
   }
