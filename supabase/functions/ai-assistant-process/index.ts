@@ -2303,10 +2303,16 @@ async function processAudioCommands(
       }
       
       console.log('🎤 [TTS] Gerando áudio para texto:', textToSpeak.substring(0, 50) + '...');
+      console.log('🔍 [TTS] Debug - assistente:', assistant.id, assistant.name);
+      console.log('🔍 [TTS] Debug - instanceId:', instanceId);
+      console.log('🔍 [TTS] Debug - businessToken presente:', !!businessToken);
       
       try {
         const audioResult = await generateTTSAudio(textToSpeak, assistant);
+        console.log('🔍 [TTS] Resultado da geração:', audioResult.success ? 'SUCESSO' : 'FALHA', audioResult.error || '');
+        
         if (audioResult.success) {
+          console.log('🔍 [TTS] Tentando enviar áudio via sendAudioMessage...');
           await sendAudioMessage(instanceId, ticketId, audioResult.audioBase64, businessToken);
           processedCount++;
           console.log('✅ [AUDIO-TTS] Áudio TTS enviado com sucesso');
@@ -2486,6 +2492,15 @@ async function generateTTSAudio(text: string, assistant: any): Promise<{ success
       });
       
       try {
+        console.log('🔍 [TTS] Iniciando chamada para ElevenLabs edge function...');
+        console.log('🔍 [TTS] URL:', `${Deno.env.get('SUPABASE_URL')}/functions/v1/text-to-speech`);
+        console.log('🔍 [TTS] Parâmetros:', {
+          textLength: text.length,
+          voiceId: advancedSettings.eleven_labs_voice_id.substring(0, 8) + '...',
+          hasApiKey: !!advancedSettings.eleven_labs_api_key,
+          model: advancedSettings.eleven_labs_model || 'eleven_multilingual_v2'
+        });
+        
         const elevenLabsResult = await retryWithBackoff(
           async () => {
             const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/text-to-speech`, {
@@ -2503,12 +2518,24 @@ async function generateTTSAudio(text: string, assistant: any): Promise<{ success
               })
             });
             
+            console.log('🔍 [TTS] Response status:', response.status);
+            console.log('🔍 [TTS] Response ok:', response.ok);
+            
             if (!response.ok) {
+              const errorText = await response.text();
+              console.error('❌ [TTS] Response error text:', errorText);
               const errorData = await response.json().catch(() => ({}));
               throw new Error(`ElevenLabs API error: ${errorData.error || response.statusText}`);
             }
             
-            return response.json();
+            const responseData = await response.json();
+            console.log('🔍 [TTS] Response data:', { 
+              success: responseData.success, 
+              hasAudio: !!responseData.audioBase64,
+              audioSize: responseData.audioBase64 ? Math.round(responseData.audioBase64.length / 1024) + 'KB' : 'N/A'
+            });
+            
+            return responseData;
           },
           { maxAttempts: 2, initialDelay: 1000, maxDelay: 3000, backoffMultiplier: 2 },
           'ElevenLabs TTS'
@@ -2805,6 +2832,12 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
       ptt: true
     });
     
+    console.log('🔍 [SEND-AUDIO] Endpoint URL:', `https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio`);
+    console.log('🔍 [SEND-AUDIO] Headers preparados:', {
+      hasAuth: !!businessToken,
+      contentType: 'application/json'
+    });
+    
     const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio`, {
       method: 'POST',
       headers: {
@@ -2814,9 +2847,13 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
       body: JSON.stringify(audioData)
     });
     
+    console.log('🔍 [SEND-AUDIO] Response status:', response.status);
+    console.log('🔍 [SEND-AUDIO] Response ok:', response.ok);
+    
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ [SEND-AUDIO] Erro no envio direto:', errorText);
+      console.error('❌ [SEND-AUDIO] Status code:', response.status);
       throw new Error(`Falha no envio de áudio TTS: ${errorText}`);
     }
     
