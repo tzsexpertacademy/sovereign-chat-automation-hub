@@ -2968,20 +2968,24 @@ async function sendLibraryAudioMessage(instanceId: string, ticketId: string, aud
       format: audioFormat
     });
 
-    // 📤 ENVIAR DIRETAMENTE VIA /send/audio-file (MAIS COMPATÍVEL PARA BIBLIOTECA)
+    // 📤 ENVIAR VIA /send/audio-file (SEGUINDO DOCUMENTAÇÃO EXATA)
     console.log('📤 [SEND-LIBRARY-AUDIO] Enviando via /send/audio-file...');
     
     const timestamp = Date.now();
     const fileName = `library_audio_${timestamp}.${audioFormat}`;
     
+    // FormData seguindo EXATAMENTE a documentação da API
     const formData = new FormData();
     formData.append('recipient', ticket.chat_id);
     formData.append('attachment', audioBlob, fileName);
     formData.append('delay', '800');
-    formData.append('options', JSON.stringify({
-      presence: 'recording',
-      ptt: true
-    }));
+    
+    console.log('🔍 [SEND-LIBRARY-AUDIO] FormData preparado:', {
+      recipient: ticket.chat_id,
+      fileName: fileName,
+      audioSize: Math.round(audioBlob.size / 1024) + 'KB',
+      delay: '800'
+    });
     
     const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio-file`, {
       method: 'POST',
@@ -2991,13 +2995,20 @@ async function sendLibraryAudioMessage(instanceId: string, ticketId: string, aud
       body: formData
     });
 
+    console.log('🔍 [SEND-LIBRARY-AUDIO] Response status:', response.status);
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ [SEND-LIBRARY-AUDIO] Erro no endpoint audio-file:', errorText);
-      throw new Error(`Falha no envio: ${errorText}`);
+      console.error('❌ [SEND-LIBRARY-AUDIO] Erro no endpoint audio-file:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      throw new Error(`Falha no envio: ${response.status} - ${errorText}`);
     }
 
     const result = await response.json();
+    console.log('🔍 [SEND-LIBRARY-AUDIO] Response completo:', result);
     console.log('✅ [SEND-LIBRARY-AUDIO] Áudio da biblioteca enviado com sucesso:', {
       messageId: result.key?.id || 'N/A',
       format: audioFormat,
