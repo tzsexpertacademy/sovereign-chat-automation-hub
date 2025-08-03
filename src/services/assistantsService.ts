@@ -173,32 +173,108 @@ export const assistantsService = {
   },
 
   async getAssistantAdvancedSettings(id: string): Promise<AdvancedSettings | null> {
+    console.log('🔍 [GET-SETTINGS] Buscando configurações para assistente:', id);
+    
     const { data, error } = await supabase
       .from("assistants")
       .select("advanced_settings")
       .eq("id", id)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ [GET-SETTINGS] Erro ao buscar configurações:', error);
+      throw error;
+    }
     
-    if (!data?.advanced_settings) return null;
+    console.log('📊 [GET-SETTINGS] Raw data:', data?.advanced_settings);
+    
+    // Se não tem configurações, criar configurações padrão
+    if (!data?.advanced_settings) {
+      console.log('🔧 [GET-SETTINGS] Criando configurações padrão para assistente:', id);
+      
+      const defaultSettings: AdvancedSettings = {
+        audio_processing_enabled: false,
+        voice_cloning_enabled: false,
+        eleven_labs_voice_id: "",
+        eleven_labs_api_key: "",
+        eleven_labs_model: "eleven_multilingual_v2",
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.6,
+          style: 0.5
+        },
+        response_delay_seconds: 3,
+        typing_indicator_enabled: true,
+        recording_indicator_enabled: true,
+        humanization_level: "advanced",
+        temperature: 0.8,
+        max_tokens: 1000,
+        custom_files: [],
+        audio_library: [],
+        image_library: [], // ✅ GARANTIR QUE EXISTE
+        recording_settings: {
+          max_duration: 300,
+          quality: 'medium',
+          auto_transcribe: true
+        }
+      };
+      
+      // Salvar configurações padrão no banco
+      await this.updateAdvancedSettings(id, defaultSettings);
+      console.log('✅ [GET-SETTINGS] Configurações padrão criadas e salvas');
+      
+      return defaultSettings;
+    }
     
     try {
-      return typeof data.advanced_settings === 'string' 
+      const settings = typeof data.advanced_settings === 'string' 
         ? JSON.parse(data.advanced_settings)
         : data.advanced_settings;
-    } catch {
+      
+      // ✅ GARANTIR QUE image_library SEMPRE EXISTE
+      if (!settings.image_library) {
+        settings.image_library = [];
+        console.log('🔧 [GET-SETTINGS] Adicionando image_library ausente');
+        await this.updateAdvancedSettings(id, settings);
+      }
+      
+      // ✅ GARANTIR QUE audio_library SEMPRE EXISTE
+      if (!settings.audio_library) {
+        settings.audio_library = [];
+        console.log('🔧 [GET-SETTINGS] Adicionando audio_library ausente');
+        await this.updateAdvancedSettings(id, settings);
+      }
+      
+      console.log('✅ [GET-SETTINGS] Configurações carregadas:', {
+        audioLibrarySize: settings.audio_library?.length || 0,
+        imageLibrarySize: settings.image_library?.length || 0
+      });
+      
+      return settings;
+    } catch (parseError) {
+      console.error('❌ [GET-SETTINGS] Erro ao fazer parse das configurações:', parseError);
       return null;
     }
   },
 
   async updateAdvancedSettings(id: string, settings: AdvancedSettings): Promise<void> {
+    console.log('💾 [UPDATE-SETTINGS] Salvando configurações:', {
+      assistantId: id,
+      audioLibrarySize: settings.audio_library?.length || 0,
+      imageLibrarySize: settings.image_library?.length || 0
+    });
+    
     const { error } = await supabase
       .from("assistants")
       .update({ advanced_settings: JSON.stringify(settings) })
       .eq("id", id);
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ [UPDATE-SETTINGS] Erro ao salvar configurações:', error);
+      throw error;
+    }
+    
+    console.log('✅ [UPDATE-SETTINGS] Configurações salvas com sucesso');
   },
 
   async uploadAudioToLibrary(
@@ -363,29 +439,31 @@ export const assistantsService = {
         uploaded_at: new Date().toISOString()
       };
 
-      // Verificar se trigger já existe
+      // ✅ BUSCAR OU CRIAR CONFIGURAÇÕES
       const settings = await this.getAssistantAdvancedSettings(assistantId);
-      if (settings?.image_library) {
-        const existingTrigger = settings.image_library.find(img => img.trigger === trigger.toLowerCase());
-        if (existingTrigger) {
-          throw new Error(`Trigger "${trigger}" já existe na biblioteca.`);
-        }
+      if (!settings) {
+        throw new Error('Não foi possível carregar ou criar configurações do assistente');
+      }
+      
+      // Verificar se trigger já existe (usando || [] como fallback)
+      const existingTrigger = (settings.image_library || []).find(img => img.trigger === trigger.toLowerCase());
+      if (existingTrigger) {
+        throw new Error(`Trigger "${trigger}" já existe na biblioteca.`);
       }
 
-      // Adicionar à biblioteca do assistente
-      if (settings) {
-        const updatedSettings = {
-          ...settings,
-          image_library: [...(settings.image_library || []), imageItem]
-        };
-        await this.updateAdvancedSettings(assistantId, updatedSettings);
-        
-        console.log('✅ [UPLOAD-IMAGE] Imagem salva na biblioteca:', {
-          trigger: trigger.toLowerCase(),
-          format,
-          librarySize: updatedSettings.image_library.length
-        });
-      }
+      // ✅ GARANTIR QUE image_library EXISTE
+      const updatedSettings = {
+        ...settings,
+        image_library: [...(settings.image_library || []), imageItem]
+      };
+      
+      await this.updateAdvancedSettings(assistantId, updatedSettings);
+      
+      console.log('✅ [UPLOAD-IMAGE] Imagem salva na biblioteca:', {
+        trigger: trigger.toLowerCase(),
+        format,
+        librarySize: updatedSettings.image_library.length
+      });
 
       return imageItem;
     } catch (error) {

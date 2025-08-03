@@ -38,12 +38,21 @@ const AssistantImageSettings = ({ assistantId, settings, onSettingsChange }: Ass
 
     try {
       setIsUploading(true);
+      console.log('🚀 [COMPONENT] Iniciando upload de imagem:', {
+        assistantId,
+        trigger: newImageTrigger.trim(),
+        category: newImageCategory,
+        fileName: file.name
+      });
+
       const imageItem = await assistantsService.uploadImageToLibrary(
         assistantId,
         file,
         newImageTrigger.trim(),
         newImageCategory
       );
+
+      console.log('✅ [COMPONENT] Upload concluído:', imageItem);
 
       // Atualizar configurações locais
       const updatedSettings = {
@@ -58,13 +67,14 @@ const AssistantImageSettings = ({ assistantId, settings, onSettingsChange }: Ass
       event.target.value = "";
 
       toast({
-        title: "Imagem Adicionada",
+        title: "✅ Imagem Adicionada",
         description: `Imagem "${imageItem.name}" foi adicionada à biblioteca com trigger "${imageItem.trigger}"`,
       });
 
     } catch (error: any) {
+      console.error('❌ [COMPONENT] Erro no upload:', error);
       toast({
-        title: "Erro no Upload",
+        title: "❌ Erro no Upload",
         description: error.message || "Falha ao fazer upload da imagem",
         variant: "destructive",
       });
