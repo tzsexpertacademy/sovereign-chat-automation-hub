@@ -373,12 +373,11 @@ serve(async (req) => {
     }
 
     // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos de biblioteca ANTES da IA
-    const libraryCommandMatch = messageContent.match(/^play\s*:\s*([^\s]+)$/i);
+    const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
     if (libraryCommandMatch) {
       console.log('🎵 [EARLY-INTERCEPT] ⚡ COMANDO DE BIBLIOTECA DETECTADO - PROCESSANDO IMEDIATAMENTE');
-      console.log('🎵 [EARLY-INTERCEPT] Comando completo:', libraryCommandMatch[0]);
-      console.log('🎵 [EARLY-INTERCEPT] Nome do áudio capturado:', libraryCommandMatch[1]);
-      console.log('🎵 [EARLY-INTERCEPT] Testando com:', `audiogeonothaliszu`);
+      console.log('🎵 [EARLY-INTERCEPT] Comando:', libraryCommandMatch[0]);
+      console.log('🎵 [EARLY-INTERCEPT] Nome do áudio:', libraryCommandMatch[1]);
       
       // Buscar business token ANTES do processamento
       const { data: client } = await supabase
@@ -2295,26 +2294,19 @@ async function processAudioCommands(
     console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
     console.log('🔍 [AUDIO-COMMANDS] Mensagem limpa:', cleanMessage);
     
-    // ✅ REGEX PARA BIBLIOTECA: comando como "play: audiogeonothaliszu" 
+    // ✅ REGEX PARA BIBLIOTECA: comando como "audio audiogeonothaliszu" (sem dois pontos)
     // CRÍTICO: Deve coincidir exatamente com toda a mensagem para evitar conflitos
-    // NOVO: [^\s]+ captura qualquer caractere que não seja espaço (mais flexível)
-    const audioLibraryPattern = /^play\s*:\s*([^\s]+)$/i;
+    const audioLibraryPattern = /^audio\s+([a-zA-Z0-9]+)$/i;
     
     // ✅ REGEX PARA TTS: comando como "audio: texto" (com dois pontos obrigatórios)
     const audioTextPattern = /audio\s*:\s*(?:"([^"]+)"|([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$))/gi;
     
-    console.log('🎯 [AUDIO-COMMANDS] Mensagem para análise:', `"${cleanMessage}"`);
     console.log('🎯 [AUDIO-COMMANDS] Regex biblioteca:', audioLibraryPattern.source);
     console.log('🎯 [AUDIO-COMMANDS] Regex TTS:', audioTextPattern.source);
     
     // ✅ TESTE DIRETO DOS REGEX COM MENSAGEM LIMPA
     const testLibraryMatch = cleanMessage.match(audioLibraryPattern);
-    console.log('🔍 [AUDIO-COMMANDS] Teste Library regex resultado:', testLibraryMatch);
-    if (testLibraryMatch) {
-      console.log('✅ [AUDIO-COMMANDS] MATCH ENCONTRADO! Nome capturado:', testLibraryMatch[1]);
-    } else {
-      console.log('❌ [AUDIO-COMMANDS] NENHUM MATCH - Verificar sintaxe: deve ser "play: nomeaudio"');
-    }
+    console.log('🔍 [AUDIO-COMMANDS] Teste Library regex:', testLibraryMatch);
     
     // ✅ PRIORIDADE ABSOLUTA: BIBLIOTECA PRIMEIRO
     if (testLibraryMatch) {
