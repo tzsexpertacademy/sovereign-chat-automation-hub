@@ -238,18 +238,23 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       const audioLibraryPattern = /audio\s+([^:\s\n]+)/i;
       const audioMatch = messageToSend.match(audioLibraryPattern);
 
+      const assistantId = ticket.assigned_assistant_id || queueInfo?.assistant_id;
+      
       console.log('🔍 [AUDIO-LIBRARY] Resultado da regex:', {
         pattern: audioLibraryPattern.toString(),
         message: messageToSend,
         match: audioMatch,
-        hasAssistant: !!ticket.assigned_assistant_id
+        hasTicketAssistant: !!ticket.assigned_assistant_id,
+        hasQueueAssistant: !!queueInfo?.assistant_id,
+        finalAssistantId: assistantId
       });
 
-      if (audioMatch && ticket.assigned_assistant_id) {
+      if (audioMatch && assistantId) {
         console.log('🎵 [AUDIO-LIBRARY] Comando detectado - BYPASS DIRETO:', {
           fullCommand: messageToSend,
           trigger: audioMatch[1],
-          assistantId: ticket.assigned_assistant_id,
+          assistantId: assistantId,
+          source: ticket.assigned_assistant_id ? 'ticket' : 'queue',
           ticketId,
           clientId,
           instanceId: actualInstanceId
