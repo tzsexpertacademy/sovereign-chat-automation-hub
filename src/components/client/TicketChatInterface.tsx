@@ -233,9 +233,17 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       setNewMessage('');
 
       // 🎵 BYPASS DIRETO PARA COMANDOS DE ÁUDIO DA BIBLIOTECA
-      const audioLibraryPattern = /audio\s*([^:\s\n]+)(?:\s*:|$)/gi;
-      const audioMatch = audioLibraryPattern.exec(messageToSend);
-      audioLibraryPattern.lastIndex = 0;
+      console.log('🔍 [AUDIO-LIBRARY] Verificando comando:', messageToSend);
+      
+      const audioLibraryPattern = /audio\s+([^:\s\n]+)/i;
+      const audioMatch = messageToSend.match(audioLibraryPattern);
+
+      console.log('🔍 [AUDIO-LIBRARY] Resultado da regex:', {
+        pattern: audioLibraryPattern.toString(),
+        message: messageToSend,
+        match: audioMatch,
+        hasAssistant: !!ticket.assigned_assistant_id
+      });
 
       if (audioMatch && ticket.assigned_assistant_id) {
         console.log('🎵 [AUDIO-LIBRARY] Comando detectado - BYPASS DIRETO:', {
