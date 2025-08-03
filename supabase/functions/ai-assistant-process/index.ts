@@ -2627,54 +2627,90 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
       triggersDisponiveis: library.map(item => ({ trigger: item.trigger, name: item.name }))
     });
     
-    const audio = library.find(item => {
+    // Primeiro tentar matches exatos, depois parciais ordenados por especificidade
+    let bestMatch = null;
+    let bestMatchScore = 0;
+    let bestMatchType = '';
+    
+    console.log(`🔍 [AUDIO-LIBRARY] Buscando por: "${normalizedSearchName}" em ${library.length} áudios`);
+    
+    for (const item of library) {
       const trigger = item.trigger.toLowerCase().trim();
+      let matchScore = 0;
+      let matchType = '';
       
-      console.log('🔍 [AUDIO-LIBRARY] Comparando EXATO:', { 
-        buscando: `"${normalizedSearchName}"`, 
-        trigger: `"${trigger}"`,
-        saoIguais: trigger === normalizedSearchName
-      });
+      console.log(`🔍 [AUDIO-LIBRARY] Testando trigger: "${trigger}"`);
       
-      // 1. MATCH EXATO - PRIORIDADE MÁXIMA
+      // 1. MATCH EXATO - PRIORIDADE MÁXIMA (score 1000)
       if (trigger === normalizedSearchName) {
-        console.log('🎉 [AUDIO-LIBRARY] ✅ MATCH EXATO ENCONTRADO!');
-        return true;
+        console.log('🎉 [AUDIO-LIBRARY] ✅ MATCH EXATO!');
+        return item;
       }
       
-      // 2. Se o trigger tem prefixo "audio", testar removendo o prefixo
-      // Ex: trigger="audiogeonothaliszu" vs busca="geonothaliszu"
+      // 2. Match sem prefixo "audio" (score 900)
       if (trigger.startsWith('audio') && trigger.length > 5) {
         const triggerSemAudio = trigger.substring(5);
-        console.log('🔍 [AUDIO-LIBRARY] Testando sem prefixo "audio":', { 
-          triggerSemAudio: `"${triggerSemAudio}"`,
-          busca: `"${normalizedSearchName}"`,
-          match: triggerSemAudio === normalizedSearchName
-        });
         if (triggerSemAudio === normalizedSearchName) {
-          console.log('🎉 [AUDIO-LIBRARY] ✅ MATCH SEM PREFIXO encontrado!');
-          return true;
+          console.log('🎉 [AUDIO-LIBRARY] ✅ MATCH SEM PREFIXO "audio"!');
+          return item;
         }
       }
       
-      // 3. Se a busca NÃO tem prefixo "audio", testar adicionando
-      // Ex: busca="geonothaliszu" vs trigger="audiogeonothaliszu"
+      // 3. Match com prefixo "audio" (score 800)
       if (!normalizedSearchName.startsWith('audio')) {
         const buscaComAudio = `audio${normalizedSearchName}`;
-        console.log('🔍 [AUDIO-LIBRARY] Testando com prefixo "audio":', { 
-          buscaComAudio: `"${buscaComAudio}"`,
-          trigger: `"${trigger}"`,
-          match: trigger === buscaComAudio
-        });
         if (trigger === buscaComAudio) {
-          console.log('🎉 [AUDIO-LIBRARY] ✅ MATCH COM PREFIXO encontrado!');
-          return true;
+          console.log('🎉 [AUDIO-LIBRARY] ✅ MATCH COM PREFIXO "audio"!');
+          return item;
         }
       }
       
-      console.log('❌ [AUDIO-LIBRARY] Nenhum match exato para este trigger');
-      return false;
-    });
+      // 4. MATCH PARCIAL INTELIGENTE - apenas se busca tem pelo menos 4 caracteres
+      if (normalizedSearchName.length >= 4) {
+        
+        // 4a. Trigger CONTÉM a busca (ex: "audiogeonothaliszu" contém "audiogeo")
+        if (trigger.includes(normalizedSearchName)) {
+          matchScore = 700 + (normalizedSearchName.length / trigger.length * 100); // Prioriza matches mais específicos
+          matchType = `PARCIAL: trigger "${trigger}" contém busca "${normalizedSearchName}"`;
+          console.log(`🔍 [AUDIO-LIBRARY] ${matchType} (score: ${Math.round(matchScore)})`);
+        }
+        
+        // 4b. Busca CONTÉM o trigger (ex: "audiogeonothaliszu" contém "geo") 
+        else if (normalizedSearchName.includes(trigger)) {
+          matchScore = 600 + (trigger.length / normalizedSearchName.length * 100);
+          matchType = `PARCIAL: busca "${normalizedSearchName}" contém trigger "${trigger}"`;
+          console.log(`🔍 [AUDIO-LIBRARY] ${matchType} (score: ${Math.round(matchScore)})`);
+        }
+        
+        // 4c. Match com prefixo removido
+        else if (trigger.startsWith('audio') && trigger.length > 5) {
+          const triggerLimpo = trigger.substring(5);
+          if (triggerLimpo.includes(normalizedSearchName) || normalizedSearchName.includes(triggerLimpo)) {
+            matchScore = 500 + (Math.min(triggerLimpo.length, normalizedSearchName.length) / Math.max(triggerLimpo.length, normalizedSearchName.length) * 100);
+            matchType = `PARCIAL SEM PREFIXO: "${triggerLimpo}" vs "${normalizedSearchName}"`;
+            console.log(`🔍 [AUDIO-LIBRARY] ${matchType} (score: ${Math.round(matchScore)})`);
+          }
+        }
+        
+        // Registrar o melhor match até agora
+        if (matchScore > bestMatchScore) {
+          bestMatch = item;
+          bestMatchScore = matchScore;
+          bestMatchType = matchType;
+          console.log(`🎯 [AUDIO-LIBRARY] Novo melhor match: score ${Math.round(bestMatchScore)} - ${bestMatchType}`);
+        }
+      }
+    }
+    
+    // Retornar melhor match se passou do threshold mínimo
+    const minThreshold = 500; // Threshold mínimo para aceitar matches parciais
+    if (bestMatch && bestMatchScore >= minThreshold) {
+      console.log(`🎉 [AUDIO-LIBRARY] ✅ MELHOR MATCH ENCONTRADO! Score: ${Math.round(bestMatchScore)} - ${bestMatchType}`);
+      return bestMatch;
+    }
+    
+    console.log(`❌ [AUDIO-LIBRARY] Nenhum match encontrado para "${normalizedSearchName}" (melhor score: ${Math.round(bestMatchScore)})`);
+    const audio = null;
     
     if (!audio) {
       console.warn('📚 [AUDIO-LIBRARY] Áudio não encontrado:', {
