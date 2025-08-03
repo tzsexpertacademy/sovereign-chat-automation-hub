@@ -2250,8 +2250,8 @@ async function processAudioCommands(
     // ✅ REGEX UNIVERSAL PARA DETECTAR audio: COM E SEM ASPAS
     const audioTextPattern = /audio\s*:\s*(?:"([^"]+)"|([^"\n\r]+?)(?=\s*$|\s*\n|\s*\r|$))/gi;
     
-    // ✅ REGEX CORRIGIDO PARA BIBLIOTECA: captura qualquer comando que comece com audio seguido de palavra e dois pontos
-    const audioLibraryPattern = /audio\s*([^:\s\n]+)\s*:/gi;
+    // ✅ REGEX CORRIGIDO PARA BIBLIOTECA: aceita tanto com quanto sem dois pontos
+    const audioLibraryPattern = /audio\s*([^:\s\n]+)(?:\s*:|$)/gi;
     
     console.log('🎵 [AUDIO-COMMANDS] Analisando mensagem para comandos de áudio...');
     console.log('🔍 [AUDIO-COMMANDS] Mensagem completa:', message);
