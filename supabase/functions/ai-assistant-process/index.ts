@@ -3182,9 +3182,10 @@ async function getImageFromLibrary(assistantId: string, imageTrigger: string): P
       rawAdvancedSettings: JSON.stringify(assistantData?.advanced_settings, null, 2)
     });
     
-    // Aplicar parse MAIS ROBUSTO do advanced_settings 
+    // IMPLEMENTAR PARSING ROBUSTO PARA ESTRUTURAS COMPLEXAS
     let advancedSettings = assistantData?.advanced_settings || {};
     
+    // STEP 1: Parse inicial se for string
     if (typeof advancedSettings === 'string') {
       try {
         advancedSettings = JSON.parse(advancedSettings);
@@ -3195,23 +3196,33 @@ async function getImageFromLibrary(assistantId: string, imageTrigger: string): P
       }
     }
     
-    console.log('🔍 [IMAGE-LIBRARY] Advanced settings after parse:', {
+    // STEP 2: Verificar se tem estrutura nested com chave numérica
+    if (advancedSettings["0"]) {
+      console.log('🔧 [IMAGE-LIBRARY] Estrutura nested detectada com chave "0"');
+      
+      // Se a chave "0" contém uma string JSON, fazer parse novamente
+      if (typeof advancedSettings["0"] === 'string') {
+        try {
+          advancedSettings = JSON.parse(advancedSettings["0"]);
+          console.log('✅ [IMAGE-LIBRARY] JSON nested string parsed com sucesso');
+        } catch (nestedParseError) {
+          console.error('❌ [IMAGE-LIBRARY] Erro ao fazer parse do JSON nested:', nestedParseError);
+          return null;
+        }
+      } else if (typeof advancedSettings["0"] === 'object') {
+        // Se já é object, extrair diretamente
+        advancedSettings = advancedSettings["0"];
+        console.log('✅ [IMAGE-LIBRARY] Object nested extraído da chave "0"');
+      }
+    }
+    
+    console.log('🔍 [IMAGE-LIBRARY] Advanced settings FINAL após todos os parses:', {
       keys: Object.keys(advancedSettings),
       hasImageLibrary: !!advancedSettings?.image_library,
       hasAudioLibrary: !!advancedSettings?.audio_library,
-      structure: JSON.stringify(advancedSettings, null, 2)
+      imageLibraryLength: advancedSettings?.image_library?.length || 0,
+      audioLibraryLength: advancedSettings?.audio_library?.length || 0
     });
-    
-    // VERIFICAR SE TEM ESTRUTURA NESTED (com chave "0")
-    if (advancedSettings["0"] && typeof advancedSettings["0"] === 'object') {
-      console.log('🔧 [IMAGE-LIBRARY] Estrutura nested detectada - extraindo da chave "0"');
-      advancedSettings = advancedSettings["0"];
-      console.log('🔧 [IMAGE-LIBRARY] Settings extraído da nested structure:', {
-        keys: Object.keys(advancedSettings),
-        hasImageLibrary: !!advancedSettings?.image_library,
-        hasAudioLibrary: !!advancedSettings?.audio_library
-      });
-    }
     
     if (!advancedSettings?.image_library) {
       console.error('❌ [IMAGE-LIBRARY] ⚠️ BIBLIOTECA DE IMAGENS NÃO ENCONTRADA!', {
