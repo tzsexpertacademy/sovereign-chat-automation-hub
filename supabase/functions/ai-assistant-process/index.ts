@@ -3175,11 +3175,11 @@ async function processImageCommands(
  */
 async function getImageFromLibrary(assistantId: string, imageTrigger: string): Promise<{ imageBase64: string, format: string } | null> {
   try {
-    console.log('📚 [IMAGE-LIBRARY] Buscando imagem na biblioteca:', {
-      assistantId,
-      imageTrigger,
-      requestedTrigger: imageTrigger
-    });
+    console.log('📚 [IMAGE-LIBRARY] 🔍 BUSCANDO IMAGEM NA BIBLIOTECA - DEBUG DETALHADO:');
+    console.log('📚 [IMAGE-LIBRARY] Assistant ID:', assistantId);
+    console.log('📚 [IMAGE-LIBRARY] Trigger buscado:', imageTrigger);
+    console.log('📚 [IMAGE-LIBRARY] Tipo do trigger:', typeof imageTrigger);
+    console.log('📚 [IMAGE-LIBRARY] Trigger limpo:', imageTrigger.trim());
     
     // Buscar na tabela assistants campo advanced_settings
     const { data: assistantData } = await supabase
@@ -3271,15 +3271,24 @@ async function getImageFromLibrary(assistantId: string, imageTrigger: string): P
     // Busca por trigger exato (case-insensitive)
     const normalizedSearchTrigger = imageTrigger.toLowerCase().trim();
     
-    console.log('🔍 [IMAGE-LIBRARY] Debug matching:', {
+    console.log('🔍 [IMAGE-LIBRARY] Debug matching DETALHADO:', {
       buscandoPor: normalizedSearchTrigger,
       originalInput: imageTrigger,
-      triggersDisponiveis: library.map(item => ({ trigger: item.trigger, name: item.name }))
+      triggersDisponiveis: library.map(item => ({ 
+        trigger: item.trigger, 
+        name: item.name,
+        triggerLower: item.trigger?.toLowerCase(),
+        match: item.trigger?.toLowerCase() === normalizedSearchTrigger
+      }))
     });
     
-    const image = library.find(item => 
-      item.trigger && item.trigger.toLowerCase() === normalizedSearchTrigger
-    );
+    console.log('🎯 [IMAGE-LIBRARY] Fazendo busca exata...');
+    const image = library.find(item => {
+      const itemTrigger = item.trigger?.toLowerCase();
+      const match = itemTrigger === normalizedSearchTrigger;
+      console.log(`🔍 [IMAGE-LIBRARY] Comparando "${itemTrigger}" === "${normalizedSearchTrigger}" = ${match}`);
+      return item.trigger && match;
+    });
     
     if (!image) {
       console.warn('📚 [IMAGE-LIBRARY] Imagem não encontrada:', {
