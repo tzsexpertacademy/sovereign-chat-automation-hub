@@ -3176,15 +3176,61 @@ async function getImageFromLibrary(assistantId: string, imageTrigger: string): P
       .eq('id', assistantId)
       .single();
     
-    // Aplicar parse correto do advanced_settings
-    const advancedSettings = assistantData?.advanced_settings
-      ? (typeof assistantData.advanced_settings === 'string' 
-          ? JSON.parse(assistantData.advanced_settings) 
-          : assistantData.advanced_settings)
-      : {};
+    console.log('🔍 [IMAGE-LIBRARY] Dados do assistente raw:', {
+      hasAdvancedSettings: !!assistantData?.advanced_settings,
+      typeOfAdvancedSettings: typeof assistantData?.advanced_settings,
+      rawAdvancedSettings: JSON.stringify(assistantData?.advanced_settings, null, 2)
+    });
+    
+    // Aplicar parse MAIS ROBUSTO do advanced_settings 
+    let advancedSettings = assistantData?.advanced_settings || {};
+    
+    if (typeof advancedSettings === 'string') {
+      try {
+        advancedSettings = JSON.parse(advancedSettings);
+        console.log('✅ [IMAGE-LIBRARY] String parsed para object');
+      } catch (parseError) {
+        console.error('❌ [IMAGE-LIBRARY] Erro ao fazer parse da string:', parseError);
+        return null;
+      }
+    }
+    
+    console.log('🔍 [IMAGE-LIBRARY] Advanced settings after parse:', {
+      keys: Object.keys(advancedSettings),
+      hasImageLibrary: !!advancedSettings?.image_library,
+      hasAudioLibrary: !!advancedSettings?.audio_library,
+      structure: JSON.stringify(advancedSettings, null, 2)
+    });
+    
+    // VERIFICAR SE TEM ESTRUTURA NESTED (com chave "0")
+    if (advancedSettings["0"] && typeof advancedSettings["0"] === 'object') {
+      console.log('🔧 [IMAGE-LIBRARY] Estrutura nested detectada - extraindo da chave "0"');
+      advancedSettings = advancedSettings["0"];
+      console.log('🔧 [IMAGE-LIBRARY] Settings extraído da nested structure:', {
+        keys: Object.keys(advancedSettings),
+        hasImageLibrary: !!advancedSettings?.image_library,
+        hasAudioLibrary: !!advancedSettings?.audio_library
+      });
+    }
     
     if (!advancedSettings?.image_library) {
-      console.warn('📚 [IMAGE-LIBRARY] Biblioteca de imagens vazia ou inexistente');
+      console.error('❌ [IMAGE-LIBRARY] ⚠️ BIBLIOTECA DE IMAGENS NÃO ENCONTRADA!', {
+        assistantId,
+        availableKeys: Object.keys(advancedSettings),
+        hasAudioLibrary: !!advancedSettings?.audio_library,
+        totalAudioLibraryItems: advancedSettings?.audio_library?.length || 0,
+        message: 'Você precisa primeiro SALVAR uma imagem na interface do assistente!',
+        instructions: [
+          '1. Vá para Configurações do Assistente',
+          '2. Acesse a aba "Configurações de Imagem"', 
+          '3. Faça upload de uma imagem com trigger "logo"',
+          '4. Salve as configurações',
+          '5. Teste novamente com "image: logo"'
+        ]
+      });
+      
+      // TODO: Futuramente podemos auto-inicializar image_library vazia aqui
+      // Por enquanto, retornamos null para forçar o usuário a configurar
       return null;
     }
     
