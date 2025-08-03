@@ -2362,7 +2362,7 @@ async function processAudioCommands(
       try {
         const libraryAudio = await getAudioFromLibrary(assistant.id, audioName);
         if (libraryAudio) {
-          await sendAudioMessage(instanceId, ticketId, libraryAudio.audioBase64, businessToken);
+          await sendLibraryAudio(instanceId, ticketId, libraryAudio.audioBase64, businessToken);
           processedCount++;
           console.log('✅ [AUDIO-LIBRARY] Áudio da biblioteca enviado:', audioName);
         } else {
