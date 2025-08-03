@@ -2785,7 +2785,7 @@ async function getAudioFromLibrary(assistantId: string, audioName: string): Prom
 }
 
 /**
- * 🎵 ENVIAR MENSAGEM DE ÁUDIO VIA YUMER API (CORRIGIDO - USA URL)
+ * 🎵 ENVIAR MENSAGEM DE ÁUDIO VIA YUMER API (CORRIGIDO - USA URL DO STORAGE)
  */
 async function sendAudioMessage(instanceId: string, ticketId: string, audioBase64: string, businessToken: string): Promise<void> {
   try {
@@ -2800,43 +2800,59 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
       throw new Error('Ticket não encontrado');
     }
     
-    console.log('🎵 [SEND-AUDIO] Enviando áudio TTS direto...', {
+    console.log('🎵 [SEND-AUDIO] Iniciando processo de envio de áudio TTS...', {
       instanceId,
       chatId: ticket.chat_id.substring(0, 15) + '...',
       audioSize: Math.round(audioBase64.length / 1024) + 'KB'
     });
 
-    // 📤 ENVIO DIRETO VIA BASE64 (método simplificado)
-    console.log('📤 [SEND-AUDIO] Enviando base64 diretamente...');
+    // 1. UPLOAD DO BASE64 PARA SUPABASE STORAGE
+    console.log('📤 [SEND-AUDIO] Fazendo upload do áudio para Storage...');
+    
+    // Converter Base64 para Blob
+    const audioBuffer = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+    const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+    
+    // Gerar nome único para o arquivo
+    const timestamp = Date.now();
+    const fileName = `tts_audio_${instanceId}_${timestamp}.mp3`;
+    const filePath = `temp-audio/${fileName}`;
+    
+    // Upload para storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('client-assets')
+      .upload(filePath, audioBlob, {
+        cacheControl: '3600',
+        upsert: false
+      });
+    
+    if (uploadError) {
+      console.error('❌ [SEND-AUDIO] Erro no upload:', uploadError);
+      throw new Error(`Erro no upload do áudio: ${uploadError.message}`);
+    }
+    
+    // 2. OBTER URL PÚBLICA
+    const { data: publicUrlData } = supabase.storage
+      .from('client-assets')
+      .getPublicUrl(filePath);
+    
+    if (!publicUrlData?.publicUrl) {
+      throw new Error('Não foi possível obter URL pública do áudio');
+    }
+    
+    const audioUrl = publicUrlData.publicUrl;
+    console.log('✅ [SEND-AUDIO] Upload concluído. URL:', audioUrl.substring(0, 50) + '...');
+    
+    // 3. ENVIAR URL PARA API YUMER
+    console.log('📡 [SEND-AUDIO] Enviando URL para API Yumer...');
     
     const audioData = {
-      recipient: ticket.chat_id,
+      number: ticket.chat_id,
       audioMessage: {
-        base64: audioBase64
+        url: audioUrl  // Usar URL em vez de Base64
       },
-      options: {
-        delay: 1200,
-        presence: 'recording',
-        ptt: true,
-        externalAttributes: JSON.stringify({
-          source: 'ai_tts',
-          timestamp: Date.now(),
-          method: 'base64_direct'
-        })
-      }
-    };
-    
-    console.log('📡 [SEND-AUDIO] Dados preparados:', {
-      recipient: ticket.chat_id,
-      audioSize: Math.round(audioBase64.length / 1024) + 'KB',
       ptt: true
-    });
-    
-    console.log('🔍 [SEND-AUDIO] Endpoint URL:', `https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio`);
-    console.log('🔍 [SEND-AUDIO] Headers preparados:', {
-      hasAuth: !!businessToken,
-      contentType: 'application/json'
-    });
+    };
     
     const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/send/audio`, {
       method: 'POST',
@@ -2848,20 +2864,29 @@ async function sendAudioMessage(instanceId: string, ticketId: string, audioBase6
     });
     
     console.log('🔍 [SEND-AUDIO] Response status:', response.status);
-    console.log('🔍 [SEND-AUDIO] Response ok:', response.ok);
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ [SEND-AUDIO] Erro no envio direto:', errorText);
-      console.error('❌ [SEND-AUDIO] Status code:', response.status);
+      console.error('❌ [SEND-AUDIO] Erro na API Yumer:', errorText);
       throw new Error(`Falha no envio de áudio TTS: ${errorText}`);
     }
     
     const result = await response.json();
-    console.log('✅ [SEND-AUDIO] Áudio TTS enviado com sucesso:', {
+    console.log('✅ [SEND-AUDIO] Áudio TTS enviado com sucesso via URL:', {
       messageId: result.key?.id || 'N/A',
+      audioUrl: audioUrl.substring(0, 50) + '...',
       success: true
     });
+    
+    // 4. AGENDAR LIMPEZA DO ARQUIVO TEMPORÁRIO
+    setTimeout(async () => {
+      try {
+        await supabase.storage.from('client-assets').remove([filePath]);
+        console.log('🧹 [SEND-AUDIO] Arquivo temporário removido:', fileName);
+      } catch (error) {
+        console.warn('⚠️ [SEND-AUDIO] Erro na limpeza (não crítico):', error);
+      }
+    }, 300000); // Limpar após 5 minutos
     
   } catch (error) {
     console.error('❌ [SEND-AUDIO] Erro ao enviar áudio:', error);
