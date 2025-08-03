@@ -20,8 +20,8 @@ export class AudioSender {
     messageId: string,
     duration?: number
   ): Promise<AudioSendResult> {
-    console.log('🎵 ===== INICIANDO ENVIO VIA ENDPOINT ESPECÍFICO /send/audio =====');
-    console.log('🔧 Sistema otimizado: upload → URL → endpoint WhatsApp específico');
+    console.log('🎵 ===== INICIANDO ENVIO VIA sendAudioFile =====');
+    console.log('🔧 Sistema direto: sendAudioFile (método comprovado)');
     console.log('📊 Dados do áudio:', {
       size: audioBlob.size,
       type: audioBlob.type,
@@ -32,77 +32,50 @@ export class AudioSender {
 
     let attempts = 0;
     const maxAttempts = 2;
-    let uploadFileName: string | undefined;
 
-    // ESTRATÉGIA OTIMIZADA: Upload para obter URL → Usar endpoint específico
     while (attempts < maxAttempts) {
       attempts++;
-      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: Upload + /send/audio`);
+      console.log(`📤 Tentativa ${attempts}/${maxAttempts}: sendAudioFile direto`);
 
       try {
-        // ETAPA 1: Upload do áudio para obter URL pública
-        console.log('📤 ETAPA 1: Fazendo upload do áudio...');
-        const uploadResult = await AudioUploadService.uploadAudioBlob(audioBlob, messageId);
-        
-        if (!uploadResult.success || !uploadResult.url) {
-          throw new Error(`Falha no upload: ${uploadResult.error}`);
-        }
-
-        uploadFileName = uploadResult.fileName;
-        console.log(`✅ Upload realizado: ${uploadResult.url}`);
-
-        // ETAPA 2: Enviar via endpoint específico /send/audio
-        console.log('🎵 ETAPA 2: Enviando via /send/audio (endpoint específico do WhatsApp)...');
-        const response = await yumerApiV2.sendWhatsAppAudio(instanceId, chatId, uploadResult.url, {
-          delay: 800, // Delay menor pois não há processamento de arquivo
+        console.log('🎵 Enviando via sendAudioFile...');
+        const response = await yumerApiV2.sendAudioFile(instanceId, chatId, audioBlob, {
+          delay: 1200,
           messageId: messageId,
-          presence: 'recording' // Aparece como gravação no WhatsApp
+          duration: duration
         });
 
-        console.log('✅ Sucesso via endpoint específico /send/audio:', response);
-        
-        // ETAPA 3: Limpeza do arquivo temporário (não crítico)
-        if (uploadFileName) {
-          AudioUploadService.cleanupTempAudio(uploadFileName).catch(err => {
-            console.warn('⚠️ Erro na limpeza (não crítico):', err);
-          });
-        }
+        console.log('✅ Sucesso via sendAudioFile:', response);
         
         return {
           success: true,
           format: 'ogg',
           attempts,
-          message: 'Áudio enviado via endpoint específico /send/audio',
+          message: 'Áudio enviado via sendAudioFile',
           isFallback: false
         };
 
       } catch (error: any) {
         console.warn(`⚠️ Tentativa ${attempts} falhou:`, error.message);
         
-        // Limpar arquivo em caso de erro
-        if (uploadFileName) {
-          AudioUploadService.cleanupTempAudio(uploadFileName).catch(() => {});
-        }
-        
         if (attempts === maxAttempts) {
-          console.error('❌ Todas as tentativas falharam, tentando fallback...');
+          console.error('❌ Todas as tentativas falharam, tentando fallback sem duration...');
           
-          // FALLBACK: Tentar método anterior como último recurso
+          // FALLBACK: Tentar sem duration
           try {
-            console.log('🔄 FALLBACK: Tentando sendAudioFile...');
+            console.log('🔄 FALLBACK: Tentando sendAudioFile sem duration...');
             const fallbackResponse = await yumerApiV2.sendAudioFile(instanceId, chatId, audioBlob, {
               delay: 1200,
-              messageId: messageId + '_fallback',
-              duration: duration
+              messageId: messageId + '_fallback'
             });
 
-            console.log('✅ Sucesso via fallback (sendAudioFile):', fallbackResponse);
+            console.log('✅ Sucesso via fallback (sem duration):', fallbackResponse);
             
             return {
               success: true,
               format: 'ogg',
               attempts: attempts + 1,
-              message: 'Áudio enviado via fallback (sendAudioFile)',
+              message: 'Áudio enviado via fallback (sem duration)',
               isFallback: true
             };
           } catch (fallbackError: any) {
