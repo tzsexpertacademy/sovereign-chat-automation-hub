@@ -14,17 +14,13 @@ import { useToast } from "@/hooks/use-toast";
 import { assistantsService, AdvancedSettings, MultimediaConfig } from "@/services/assistantsService";
 import AssistantAudioSettings from "./AssistantAudioSettings";
 import AssistantImageSettings from "./AssistantImageSettings";
-import { multimediaAnalysisService } from "@/services/multimediaAnalysisService";
 
-import { SimpleBehaviorSettings } from "./SimpleBehaviorSettings";
-import MultimediaAnalysisDashboard from "./MultimediaAnalysisDashboard";
-
-interface AssistantAdvancedSettingsProps {
+interface AssistantSettingsProps {
   assistantId: string;
   onClose: () => void;
 }
 
-const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSettingsProps) => {
+const AssistantSettings = ({ assistantId, onClose }: AssistantSettingsProps) => {
   const [settings, setSettings] = useState<AdvancedSettings>({
     audio_processing_enabled: false,
     voice_cloning_enabled: false,
@@ -78,7 +74,7 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
         setSettings(data);
       }
     } catch (error) {
-      console.error('Erro ao carregar configurações avançadas:', error);
+      console.error('Erro ao carregar configurações:', error);
     }
   };
 
@@ -88,7 +84,7 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
       await assistantsService.updateAdvancedSettings(assistantId, settings);
       toast({
         title: "Configurações Salvas",
-        description: "As configurações avançadas foram atualizadas com sucesso.",
+        description: "As configurações foram atualizadas com sucesso.",
       });
       onClose();
     } catch (error: any) {
@@ -189,7 +185,7 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Configurações Avançadas</h2>
+        <h2 className="text-2xl font-bold">Configurações do Assistente</h2>
         <Button variant="outline" onClick={onClose}>
           Fechar
         </Button>
@@ -448,7 +444,7 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
                         </div>
 
                         <div>
-                          <Label htmlFor="audio_model">Modelo para Áudio</Label>
+                          <Label htmlFor="audio_model">Modelo para Transcrição</Label>
                           <Select 
                             value={settings.multimedia_config?.audio_model || 'whisper-1'} 
                             onValueChange={(value) => 
@@ -465,7 +461,7 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="whisper-1">Whisper (OpenAI)</SelectItem>
+                              <SelectItem value="whisper-1">Whisper-1 (Padrão)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -473,110 +469,98 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
                     </div>
                   </div>
 
-                  {/* Dashboard de análises */}
-                  <div className="mt-6">
-                    <MultimediaAnalysisDashboard clientId={assistantId} />
+                  {/* Dashboard de métricas */}
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600">Dashboard de análise multimídia será implementado aqui</p>
                   </div>
-                </>
-              )}
-              
-            </CardContent>
-          </Card>
 
-          {/* Arquivos de Referência - Movido para a tab de multimídia */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Upload className="w-5 h-5" />
-                <span>Arquivos de Referência</span>
-              </CardTitle>
-              <CardDescription>
-                Adicione imagens, PDFs e vídeos que o assistente pode referenciar nas conversas.
-                <br />
-                <strong>Como usar:</strong> No prompt do assistente, mencione que ele tem acesso a estes arquivos e como deve usá-los.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              
-              {/* Upload Section */}
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <input
-                  type="file"
-                  accept="image/*,application/pdf,video/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="file-upload"
-                  disabled={uploading}
-                />
-                <label htmlFor="file-upload" className="cursor-pointer">
-                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-lg font-medium text-gray-900">
-                    {uploading ? "Enviando..." : "Clique para adicionar arquivo"}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Imagens, PDFs e vídeos até 100MB
-                  </p>
-                </label>
-              </div>
+                  {/* Seção Arquivos de Referência */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center space-x-2">
+                        <Upload className="w-5 h-5" />
+                        <span>Arquivos de Referência</span>
+                      </CardTitle>
+                      <CardDescription>
+                        Adicione imagens, PDFs e vídeos que o assistente pode usar como referência
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Upload Zone */}
+                      <div 
+                        className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 transition-colors"
+                        onClick={() => document.getElementById('file-upload')?.click()}
+                      >
+                        <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                        <p className="text-sm text-gray-600">
+                          Clique para selecionar arquivos ou arraste aqui
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Suporte: Imagens, PDFs, Vídeos (máx. 100MB)
+                        </p>
+                        <input
+                          id="file-upload"
+                          type="file"
+                          className="hidden"
+                          accept="image/*,application/pdf,video/*"
+                          onChange={handleFileUpload}
+                          disabled={uploading}
+                        />
+                      </div>
 
-              {/* Example Usage */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-2">💡 Exemplo de uso no prompt:</h4>
-                <div className="text-sm text-blue-800 space-y-2">
-                  <p><strong>Para catálogo de produtos:</strong></p>
-                  <p className="font-mono bg-blue-100 p-2 rounded">
-                    "Você tem acesso a um catálogo com imagens dos produtos. Quando o cliente perguntar sobre produtos, descreva-os baseado nas imagens disponíveis..."
-                  </p>
-                  <p><strong>Para manual de instruções:</strong></p>
-                  <p className="font-mono bg-blue-100 p-2 rounded">
-                    "Use o manual em PDF para responder dúvidas técnicas. Sempre cite as informações do manual quando relevante..."
-                  </p>
-                </div>
-              </div>
-
-              {/* Files List */}
-              {settings.custom_files.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="font-medium">Arquivos Carregados ({settings.custom_files.length})</h4>
-                  {settings.custom_files.map((file) => (
-                    <div key={file.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        {getFileIcon(file.type)}
-                        <div>
-                          <p className="font-medium">{file.name}</p>
-                          <p className="text-sm text-gray-500">{file.description}</p>
+                      {/* Lista de arquivos */}
+                      {settings.custom_files.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Arquivos Carregados ({settings.custom_files.length})</h4>
+                          <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {settings.custom_files.map((file) => (
+                              <div key={file.id} className="flex items-center justify-between p-3 border rounded-lg">
+                                <div className="flex items-center space-x-3">
+                                  {getFileIcon(file.type)}
+                                  <div>
+                                    <p className="text-sm font-medium">{file.name}</p>
+                                    <p className="text-xs text-gray-500">{file.type.toUpperCase()}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(file.url, '_blank')}
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => removeFile(file.id)}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        <Badge variant="outline">{file.type.toUpperCase()}</Badge>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Button size="sm" variant="outline">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => removeFile(file.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                      )}
 
-              {settings.custom_files.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <FileText className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                  <p>Nenhum arquivo carregado</p>
-                  <p className="text-sm">Adicione arquivos de referência para o assistente</p>
-                </div>
+                      {/* Instruções */}
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <h4 className="font-medium text-blue-900 mb-2">💡 Como usar:</h4>
+                        <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                          <li>O assistente analisará automaticamente mídias enviadas pelos usuários</li>
+                          <li>Arquivos de referência ajudam o assistente a entender o contexto do seu negócio</li>
+                          <li>Adicione catálogos de produtos, manuais, apresentações, etc.</li>
+                          <li>O assistente usará essas referências para dar respostas mais precisas</li>
+                        </ul>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
               )}
             </CardContent>
           </Card>
         </TabsContent>
-
-
 
         <TabsContent value="audio" className="space-y-6">
           <AssistantAudioSettings
@@ -595,22 +579,37 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
         </TabsContent>
 
         <TabsContent value="behavior" className="space-y-6">
-          <SimpleBehaviorSettings
-            assistantId={assistantId}
-            assistantName="Assistente"
-            onConfigUpdate={(config) => {
-              console.log('🔧 Configuração de comportamento atualizada:', config);
-              toast({
-                title: "Comportamento Atualizado",
-                description: "Configurações de comportamento salvas com sucesso!"
-              });
-            }}
-          />
+          <Card>
+            <CardHeader>
+              <CardTitle>Configurações de Comportamento</CardTitle>
+              <CardDescription>
+                Configure o comportamento humanizado do assistente
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <Label htmlFor="response_delay">
+                  Delay na Resposta (segundos): {settings.response_delay_seconds}
+                </Label>
+                <Slider
+                  id="response_delay"
+                  value={[settings.response_delay_seconds]}
+                  onValueChange={(value) => setSettings(prev => ({ ...prev, response_delay_seconds: value[0] }))}
+                  min={0}
+                  max={10}
+                  step={1}
+                  className="w-full"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Tempo de espera antes de enviar a resposta para parecer mais humano
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
-      {/* Save Button */}
-      <div className="flex justify-end space-x-4">
+      <div className="flex justify-end space-x-3 pt-6 border-t">
         <Button variant="outline" onClick={onClose}>
           Cancelar
         </Button>
@@ -622,4 +621,4 @@ const AssistantAdvancedSettings = ({ assistantId, onClose }: AssistantAdvancedSe
   );
 };
 
-export default AssistantAdvancedSettings;
+export default AssistantSettings;

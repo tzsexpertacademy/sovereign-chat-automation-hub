@@ -12,7 +12,7 @@ import AIConfigForm from "./AIConfigForm";
 import AssistantForm from "./AssistantForm";
 import AssistantsList from "./AssistantsList";
 import AssistantChat from "./AssistantChat";
-import AssistantAdvancedSettings from "./AssistantAdvancedSettings";
+import AssistantSettings from "./AssistantSettings";
 
 
 const AssistantsManager = () => {
@@ -130,11 +130,11 @@ const AssistantsManager = () => {
     );
   }
 
-  // Se estiver mostrando configurações avançadas, renderizar apenas esse componente
+  // Se estiver mostrando configurações, renderizar apenas esse componente
   if (showAdvancedSettings && selectedAssistantForSettings) {
     return (
       <div className="max-w-6xl mx-auto space-y-6">
-        <AssistantAdvancedSettings
+        <AssistantSettings
           assistantId={selectedAssistantForSettings.id}
           onClose={handleCloseAdvancedSettings}
         />

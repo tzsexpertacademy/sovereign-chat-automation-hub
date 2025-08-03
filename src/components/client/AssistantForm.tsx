@@ -104,7 +104,7 @@ const SimpleAdvancedSettings = ({
           </p>
           <ol className="text-sm text-green-800 space-y-1 list-decimal list-inside">
             <li>Salve este assistente primeiro</li>
-            <li>Vá para "Configurações Avançadas"</li>
+            <li>Vá para "Configurações"</li>
             <li>Configure o ElevenLabs na aba "Sistema de Áudio"</li>
             <li>Use os padrões no prompt:</li>
           </ol>
@@ -115,19 +115,20 @@ const SimpleAdvancedSettings = ({
         </div>
 
         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <h4 className="font-medium text-blue-900 mb-2">💡 Arquivos de Referência</h4>
+          <h4 className="font-medium text-blue-900 mb-2">🖼️ Sistema de Imagens</h4>
           <p className="text-sm text-blue-800 mb-2">
-            Para adicionar imagens, PDFs e vídeos que o assistente pode usar:
+            Para enviar imagens automáticas do assistente:
           </p>
           <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
             <li>Salve este assistente primeiro</li>
-            <li>Vá para a lista de assistentes</li>
-            <li>Clique em "Configurações Avançadas"</li>
-            <li>Use a aba "Arquivos de Referência"</li>
+            <li>Vá para "Configurações" na lista de assistentes</li>
+            <li>Use a aba "Imagens" para enviar imagens</li>
+            <li>Configure triggers únicos para cada imagem</li>
           </ol>
-          <p className="text-sm text-blue-800 mt-2">
-            <strong>Exemplo no prompt:</strong> "Você tem acesso a um catálogo com imagens dos produtos. Use essas imagens para descrever os produtos quando perguntado..."
-          </p>
+          <div className="mt-2 space-y-1 text-sm">
+            <p><code className="bg-blue-100 px-1 rounded">image: logo</code> - Para enviar o logo</p>
+            <p><code className="bg-blue-100 px-1 rounded">image: catalogo</code> - Para enviar catálogo</p>
+          </div>
         </div>
       </CardContent>
     </Card>
