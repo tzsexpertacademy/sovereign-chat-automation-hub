@@ -57,14 +57,35 @@ export const AudioLibraryDebugger: React.FC = () => {
       const assistantsWithAudio = [];
       
       for (const assistant of allAssistants) {
-        const advancedSettings = assistant.advanced_settings as any;
-        const audioLibrary = advancedSettings?.audio_library;
+        // 🔧 [CORREÇÃO] Melhor verificação dos advanced_settings
+        let advancedSettings = assistant.advanced_settings;
+        
+        // Se for string, fazer parse
+        if (typeof advancedSettings === 'string') {
+          try {
+            advancedSettings = JSON.parse(advancedSettings);
+          } catch (error) {
+            debugLog += `❌ Erro ao fazer parse de advanced_settings: ${error}\n`;
+            continue;
+          }
+        }
         
         debugLog += `🔍 Assistente "${assistant.name}":\n`;
+        debugLog += `   - advanced_settings type: ${typeof assistant.advanced_settings}\n`;
+        debugLog += `   - advanced_settings raw: ${JSON.stringify(assistant.advanced_settings).substring(0, 100)}...\n`;
         debugLog += `   - Tem advanced_settings: ${!!advancedSettings}\n`;
+        
+        // 🎯 [CORREÇÃO] Verificar todas as possíveis propriedades de áudio
+        const audioLibrary = (advancedSettings as any)?.audio_library || (advancedSettings as any)?.audioLibrary;
+        
         debugLog += `   - Tem audio_library: ${!!audioLibrary}\n`;
+        debugLog += `   - audio_library type: ${typeof audioLibrary}\n`;
         debugLog += `   - É array: ${Array.isArray(audioLibrary)}\n`;
         debugLog += `   - Tamanho: ${Array.isArray(audioLibrary) ? audioLibrary.length : 0}\n`;
+        
+        if (audioLibrary && !Array.isArray(audioLibrary)) {
+          debugLog += `   - audio_library content: ${JSON.stringify(audioLibrary).substring(0, 200)}...\n`;
+        }
         
         if (Array.isArray(audioLibrary) && audioLibrary.length > 0) {
           assistantsWithAudio.push({
