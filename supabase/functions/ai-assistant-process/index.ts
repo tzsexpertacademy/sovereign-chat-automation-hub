@@ -374,7 +374,7 @@ serve(async (req) => {
 
     // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos de biblioteca ANTES da IA
     const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
-    const imageCommandMatch = messageContent.match(/^image\s*:?\s*([a-zA-Z0-9_-]+)/i);
+    const imageCommandMatch = messageContent.match(/^image\s+([a-zA-Z0-9_-]+)$/i);
     
     console.log('🔍 [EARLY-INTERCEPT] Detectando comandos:', {
       messageContent: messageContent,
@@ -3120,8 +3120,8 @@ async function processImageCommands(
     console.log('🖼️ [IMAGE-COMMANDS] Analisando mensagem para comandos de imagem...');
     console.log('🔍 [IMAGE-COMMANDS] Mensagem limpa:', cleanMessage);
     
-    // ✅ REGEX PARA COMANDO DE IMAGEM: "image: trigger" (consistente com early intercept)
-    const imageCommandPattern = /^image\s*:\s*([a-zA-Z0-9_-]+)/i;
+    // ✅ REGEX PARA COMANDO DE IMAGEM: "image trigger" (igual ao áudio que funciona)
+    const imageCommandPattern = /^image\s+([a-zA-Z0-9_-]+)$/i;
     
     console.log('🎯 [IMAGE-COMMANDS] Regex imagem:', imageCommandPattern.source);
     
