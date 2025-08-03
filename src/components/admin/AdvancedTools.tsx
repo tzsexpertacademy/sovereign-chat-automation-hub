@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Settings, Database, Shield, Wrench } from "lucide-react";
 import OrphanBusinessCleaner from "./OrphanBusinessCleaner";
+import { AudioLibraryDebugger } from "./AudioLibraryDebugger";
 
 const AdvancedTools = () => {
   return (
@@ -123,6 +124,9 @@ const AdvancedTools = () => {
       
       {/* Limpeza de Businesses Órfãos */}
       <OrphanBusinessCleaner />
+      
+      {/* Debug da Biblioteca de Áudio */}
+      <AudioLibraryDebugger />
     </div>
   );
 };
