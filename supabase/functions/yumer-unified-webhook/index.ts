@@ -128,64 +128,80 @@ async function processMessageEmergency(yumerData: any) {
       });
     }
 
-    // ✅ BUSCAR INSTÂNCIA PRIMEIRO - MÚLTIPLAS TENTATIVAS
+    // ✅ BUSCAR INSTÂNCIA PRIMEIRO - CORREÇÃO DEFINITIVA
     let instanceData = null;
     
-    // Tentar diferentes campos para encontrar a instância
-    const instanceSearchFields = [
-      yumerData.instance?.instanceId,
-      yumerData.instance,
-      messageData.instanceInstanceId,
-      messageData.instanceId
-    ].filter(Boolean);
+    // Extrair instanceId da estrutura do Yumer
+    let targetInstanceId = null;
+    
+    if (typeof yumerData.instance === 'string') {
+      targetInstanceId = yumerData.instance;
+    } else if (yumerData.instance?.instanceId) {
+      targetInstanceId = yumerData.instance.instanceId;
+    } else if (messageData.instanceInstanceId) {
+      targetInstanceId = messageData.instanceInstanceId;
+    }
 
-    console.log('🚨 [EMERGENCY-PROCESS] Campos de busca da instância:', instanceSearchFields);
-    console.log('🚨 [EMERGENCY-PROCESS] Estrutura yumerData.instance:', JSON.stringify(yumerData.instance, null, 2));
+    console.log('🚨 [EMERGENCY-PROCESS] 🔍 Instance ID extraído:', targetInstanceId);
+    console.log('🚨 [EMERGENCY-PROCESS] 📋 Estrutura completa do yumerData.instance:', JSON.stringify(yumerData.instance, null, 2));
 
-    for (const searchId of instanceSearchFields) {
-      console.log('🚨 [EMERGENCY-PROCESS] Tentando buscar instância com ID:', searchId);
-      
-      const { data: foundInstances, error: instanceError } = await supabase
-        .from('whatsapp_instances')
-        .select('id, instance_id, client_id, status')
-        .eq('instance_id', searchId);
+    if (!targetInstanceId) {
+      console.error('🚨 [EMERGENCY-PROCESS] ❌ Nenhum Instance ID encontrado nos dados');
+      return new Response(JSON.stringify({ 
+        error: 'No instance ID found',
+        debug: {
+          instanceType: typeof yumerData.instance,
+          instanceValue: yumerData.instance,
+          messageInstanceId: messageData.instanceInstanceId
+        }
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
-      if (foundInstances && foundInstances.length > 0) {
-        instanceData = foundInstances[0];
-        console.log('🚨 [EMERGENCY-PROCESS] ✅ Instância encontrada:', {
-          instanceId: instanceData.instance_id,
-          clientId: instanceData.client_id,
-          status: instanceData.status,
-          searchedWith: searchId
-        });
-        break;
-      } else {
-        console.log('🚨 [EMERGENCY-PROCESS] ❌ Instância não encontrada com ID:', searchId, 'Erro:', instanceError);
-      }
+    // Buscar instância no banco
+    console.log('🚨 [EMERGENCY-PROCESS] 🔎 Buscando instância no banco:', targetInstanceId);
+    
+    const { data: foundInstances, error: instanceError } = await supabase
+      .from('whatsapp_instances')
+      .select('id, instance_id, client_id, status')
+      .eq('instance_id', targetInstanceId);
+
+    if (instanceError) {
+      console.error('🚨 [EMERGENCY-PROCESS] ❌ Erro ao buscar instância:', instanceError);
+    }
+
+    if (foundInstances && foundInstances.length > 0) {
+      instanceData = foundInstances[0];
+      console.log('🚨 [EMERGENCY-PROCESS] ✅ Instância encontrada:', {
+        instanceId: instanceData.instance_id,
+        clientId: instanceData.client_id,
+        status: instanceData.status
+      });
     }
 
     if (!instanceData) {
-      console.error('🚨 [EMERGENCY-PROCESS] ❌ Instância não encontrada em nenhuma tentativa:', {
-        instanceSearchFields,
-        yumerInstanceType: typeof yumerData.instance,
-        yumerInstanceValue: yumerData.instance,
-        messageInstanceId: messageData.instanceInstanceId
-      });
+      console.error('🚨 [EMERGENCY-PROCESS] ❌ Instância não encontrada:', targetInstanceId);
       
       // 🔧 BUSCAR TODAS AS INSTÂNCIAS PARA DEBUG
       const { data: allInstances } = await supabase
         .from('whatsapp_instances')
         .select('instance_id, client_id, status')
-        .limit(5);
+        .limit(10);
       
       console.log('🚨 [EMERGENCY-PROCESS] 📋 Instâncias disponíveis no banco:', allInstances);
       
       return new Response(JSON.stringify({ 
         success: false, 
         error: 'Instance not found',
-        searchedIds: instanceSearchFields,
+        searchedId: targetInstanceId,
         availableInstances: allInstances?.map(i => i.instance_id),
-        suggestion: 'Check instance configuration in database'
+        debug: {
+          instanceType: typeof yumerData.instance,
+          instanceValue: yumerData.instance,
+          messageInstanceId: messageData.instanceInstanceId
+        }
       }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
