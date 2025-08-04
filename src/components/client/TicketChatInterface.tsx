@@ -16,6 +16,7 @@ import PresenceKeepAlive from './chat/PresenceKeepAlive';
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
 import FinalSimpleStatus from './FinalSimpleStatus';
+import { VideoTestPanel } from './VideoTestPanel';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -578,6 +579,20 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         chatId={ticket?.chat_id || ''}
         ticketId={ticketId}
       />
+      
+      {/* Debug Panel - apenas em desenvolvimento */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="border-t p-2 bg-muted/10">
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted-foreground hover:text-foreground py-1">
+              🧪 Painel de Teste de Vídeo (Debug)
+            </summary>
+            <div className="mt-2">
+              <VideoTestPanel />
+            </div>
+          </details>
+        </div>
+      )}
     </div>
   );
 };
