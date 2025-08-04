@@ -372,53 +372,20 @@ serve(async (req) => {
       throw new Error('Nenhum conteúdo de mensagem fornecido');
     }
 
-    // 🎵 INTERCEPTAÇÃO PRECOCE SUPER AGRESSIVA: Detectar comandos ANTES da IA
+    // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos ANTES da IA (USANDO PADRÃO EXATO DO ÁUDIO QUE FUNCIONA)
     const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
     const imageCommandMatch = messageContent.match(/^image\s+([a-zA-Z0-9_-]+)$/i);
+    const videoCommandMatch = messageContent.match(/^video\s+([a-zA-Z0-9_-]+)$/i);
     
-    // 🎥 MÚLTIPLAS VERIFICAÇÕES PARA VÍDEO - CAPTURA SUPER AGRESSIVA
-    const videoRegexStrict = /^video\s+([a-zA-Z0-9_-]+)$/i;
-    const videoRegexLoose = /video\s+([a-zA-Z0-9_-]+)/i;
-    const messageClean = messageContent.trim().toLowerCase();
-    
-    // Múltiplas formas de capturar comando de vídeo
-    let videoCommandMatch = messageContent.trim().match(videoRegexStrict);
-    if (!videoCommandMatch) {
-      videoCommandMatch = messageContent.trim().match(videoRegexLoose);
-    }
-    
-    // 🚨 FALLBACK SUPER AGRESSIVO: Se contém "video" E "teste2", forçar captura
-    const containsVideo = messageClean.includes('video');
-    const containsTeste2 = messageClean.includes('teste2');
-    const forceVideoCapture = containsVideo && containsTeste2;
-    
-    if (forceVideoCapture && !videoCommandMatch) {
-      console.log('🚨 [EARLY-INTERCEPT] FALLBACK ATIVADO: Forçando captura de comando video teste2');
-      videoCommandMatch = ['video teste2', 'teste2']; // Simular match
-    }
-    
-    console.log('🔍 [EARLY-INTERCEPT] ===== DIAGNÓSTICO ULTRA-DETALHADO DE COMANDOS =====');
-    console.log('🔍 [EARLY-INTERCEPT] MessageContent RAW:', JSON.stringify(messageContent));
-    console.log('🔍 [EARLY-INTERCEPT] MessageContent chars:', messageContent.split('').map(c => `"${c}" (${c.charCodeAt(0)})`));
-    console.log('🔍 [EARLY-INTERCEPT] MessageClean:', JSON.stringify(messageClean));
-    console.log('🔍 [EARLY-INTERCEPT] Verificações de vídeo:', {
-      regexStrict: videoRegexStrict.test(messageContent.trim()),
-      regexLoose: videoRegexLoose.test(messageContent.trim()),
-      containsVideo: containsVideo,
-      containsTeste2: containsTeste2,
-      forceVideoCapture: forceVideoCapture,
-      finalVideoMatch: !!videoCommandMatch
-    });
-    console.log('🔍 [EARLY-INTERCEPT] Detectando comandos FINAIS:', {
+    console.log('🔍 [EARLY-INTERCEPT] Detectando comandos:', {
       messageContent: messageContent,
       libraryCommandMatch: !!libraryCommandMatch,
       imageCommandMatch: !!imageCommandMatch,
       videoCommandMatch: !!videoCommandMatch,
-      imageCommandValue: imageCommandMatch ? imageCommandMatch[1] : null,
-      videoCommandValue: videoCommandMatch ? videoCommandMatch[1] : null,
-      forceVideoCapture: forceVideoCapture
+      audioTrigger: libraryCommandMatch ? libraryCommandMatch[1] : null,
+      imageTrigger: imageCommandMatch ? imageCommandMatch[1] : null,
+      videoTrigger: videoCommandMatch ? videoCommandMatch[1] : null
     });
-    console.log('🔍 [EARLY-INTERCEPT] ===== FIM DO DIAGNÓSTICO =====');
     
     if (libraryCommandMatch) {
       console.log('🎵 [EARLY-INTERCEPT] ⚡ COMANDO DE BIBLIOTECA DETECTADO - PROCESSANDO IMEDIATAMENTE');
@@ -3680,7 +3647,7 @@ async function processVideoCommands(
     console.log('🎥 [VIDEO-COMMANDS] Analisando mensagem para comandos de vídeo...');
     console.log('🔍 [VIDEO-COMMANDS] Mensagem limpa:', cleanMessage);
     
-    // ✅ REGEX PARA COMANDO DE VÍDEO: "video trigger" (igual ao áudio que funciona)
+    // ✅ REGEX PARA COMANDO DE VÍDEO: "video trigger" (USANDO MESMA REGEX DO EARLY-INTERCEPT)
     const videoCommandPattern = /^video\s+([a-zA-Z0-9_-]+)$/i;
     
     console.log('🎯 [VIDEO-COMMANDS] Regex vídeo:', videoCommandPattern.source);
