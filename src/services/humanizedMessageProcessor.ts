@@ -97,8 +97,22 @@ export class HumanizedMessageProcessor {
         console.log('📋 [HUMANIZED] Verificando se mensagem precisa ser processada:', {
           messageId: messageData.message_id,
           isProcessed: messageData.is_processed,
-          fromMe: messageData.from_me
+          fromMe: messageData.from_me,
+          chatId: messageData.chat_id
         });
+        
+        // NOVA VERIFICAÇÃO: Verificar controle duplo antes de buscar ticket
+        const { messageProcessingController } = await import('./messageProcessingController');
+        
+        if (messageProcessingController.isChatLocked(messageData.chat_id)) {
+          console.log('🔒 [HUMANIZED] Chat com lock ativo - IGNORANDO mensagem:', messageData.chat_id);
+          return;
+        }
+        
+        if (messageProcessingController.isMessageProcessed(messageData.message_id)) {
+          console.log('✅ [HUMANIZED] Mensagem já processada pelo controlador - IGNORANDO:', messageData.message_id);
+          return;
+        }
         
         // Buscar o ticket real para usar o ID correto
         const { data: ticket } = await supabase
@@ -109,13 +123,8 @@ export class HumanizedMessageProcessor {
           .single();
         
         if (ticket) {
-          // Verificar se chat já está sendo processado antes de adicionar ao batch
-          const { messageProcessingController } = await import('./messageProcessingController');
-          if (messageProcessingController.isChatLocked(messageData.chat_id)) {
-            console.log('🔒 [HUMANIZED] Chat já está sendo processado - IGNORANDO mensagem:', messageData.chat_id);
-            return;
-          }
-
+          console.log('🎯 [HUMANIZED] Adicionando mensagem ao BATCH ÚNICO para processamento conjunto');
+          
           aiQueueIntegrationService.addMessageToBatch(
             ticket.id, // usar ID real do ticket
             messageData.content || '',
@@ -125,7 +134,9 @@ export class HumanizedMessageProcessor {
             new Date(messageData.timestamp).getTime()
           );
           
-          console.log('📦 [HUMANIZED] Mensagem NÃO processada adicionada ao batch (SEM PROCESSAMENTO INDIVIDUAL)');
+          console.log('📦 [HUMANIZED] ✅ Mensagem adicionada ao BATCH - aguardando mais mensagens (timeout: 6s)');
+        } else {
+          console.log('❌ [HUMANIZED] Ticket não encontrado para chat:', messageData.chat_id);
         }
       } else if (messageData.from_me) {
         console.log('📤 [HUMANIZED] Mensagem nossa ignorada (from_me=true)');

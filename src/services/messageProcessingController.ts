@@ -18,24 +18,25 @@ export class MessageProcessingController {
   }
 
   /**
-   * Verificar se uma mensagem pode ser processada
+   * Verificar se uma mensagem pode ser processada com controle rigoroso por chat_id
    */
   canProcessMessage(messageId: string, chatId: string): boolean {
     const chatLockKey = `chat_${chatId}`;
     const messageLockKey = `msg_${messageId}`;
 
-    // Verificar se chat está com lock
-    if (this.globalLocks.get(chatLockKey)) {
-      console.log('🔒 [CONTROLLER] Chat com lock ativo:', chatId);
+    // PRIORITÁRIO: Verificar se chat está com lock (bloqueia TODO o chat)
+    if (this.isChatLocked(chatId)) {
+      console.log('🔒 [CONTROLLER] Chat com lock ativo - BLOQUEANDO:', chatId);
       return false;
     }
 
-    // Verificar se mensagem já foi processada
+    // SECUNDÁRIO: Verificar se mensagem específica já foi processada
     if (this.processedMessages.has(messageLockKey)) {
-      console.log('✅ [CONTROLLER] Mensagem já processada:', messageId);
+      console.log('✅ [CONTROLLER] Mensagem específica já processada:', messageId);
       return false;
     }
 
+    console.log('✅ [CONTROLLER] Mensagem PODE ser processada:', { messageId, chatId });
     return true;
   }
 

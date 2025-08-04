@@ -134,9 +134,10 @@ class AIQueueIntegrationService {
   private initializeBatcher() {
     // Criar uma instância manual do message batcher para usar fora do React
     this.messageBatcher = {
-      config: { timeout: 4000, enabled: true }, // REMOVER maxBatchSize - sem limite
+      config: { timeout: 6000, enabled: true }, // AUMENTAR para 6 segundos
       batches: new Map(),
       processedMessages: new Set(),
+      coolingPeriods: new Map(), // NOVO: períodos de resfriamento
       
       addMessage: (message: any) => this.handleBatchMessage(message),
       processBatch: (chatId: string) => this.processBatchedMessages(chatId)
@@ -188,6 +189,14 @@ class AIQueueIntegrationService {
     const messageId = message.id;
     const now = Date.now();
     
+    // NOVO: Verificar período de resfriamento - se acabou de processar, aguardar 3 segundos
+    const coolingEnd = this.messageBatcher.coolingPeriods?.get(chatId);
+    if (coolingEnd && now < coolingEnd) {
+      const remainingCooling = coolingEnd - now;
+      console.log(`❄️ [AI-QUEUE] Chat em período de resfriamento: ${remainingCooling}ms restantes`);
+      return;
+    }
+    
     // Anti-duplicação
     if (this.messageBatcher.processedMessages.has(messageId)) {
       console.log(`🚫 [AI-QUEUE] Mensagem duplicada ignorada: ${messageId}`);
@@ -199,16 +208,23 @@ class AIQueueIntegrationService {
     const existingBatch = this.messageBatcher.batches.get(chatId);
     
     if (existingBatch) {
+      // VERIFICAR SE JÁ ESTÁ SENDO PROCESSADO
+      if (existingBatch.isProcessing) {
+        console.log(`⏳ [AI-QUEUE] Batch já sendo processado - IGNORANDO nova mensagem: ${chatId}`);
+        return;
+      }
+      
       // NOVA LÓGICA: Sempre cancelar timeout anterior e resetar
       if (existingBatch.timeoutId) {
         clearTimeout(existingBatch.timeoutId);
+        console.log(`⏰ [AI-QUEUE] Timeout anterior cancelado para: ${chatId}`);
       }
       
       const updatedMessages = [...existingBatch.messages, message];
       
-      // NOVO: Criar timeout de 4 segundos a partir da última mensagem
+      // NOVO: Criar timeout de 6 segundos a partir da última mensagem
       const timeoutId = setTimeout(() => {
-        console.log(`⏰ [AI-QUEUE] 4 segundos de inatividade - processando batch`);
+        console.log(`⏰ [AI-QUEUE] 6 segundos de inatividade - processando batch: ${chatId}`);
         this.processBatchedMessages(chatId, updatedMessages);
       }, this.messageBatcher.config.timeout);
       
@@ -219,13 +235,19 @@ class AIQueueIntegrationService {
         lastMessageTime: now
       });
       
-      console.log(`📦 [AI-QUEUE] Batch atualizado: ${updatedMessages.length} mensagens (timeout resetado)`);
+      console.log(`📦 [AI-QUEUE] Batch atualizado: ${updatedMessages.length} mensagens (timeout de 6s resetado)`);
     } else {
+      // VERIFICAR SE HÁ PROCESSAMENTO ATIVO ANTES DE CRIAR NOVO BATCH
+      if (messageProcessingController.isChatLocked(chatId)) {
+        console.log(`🔒 [AI-QUEUE] Chat com lock ativo - IGNORANDO nova mensagem: ${chatId}`);
+        return;
+      }
+      
       // Criar novo batch
       const timeoutId = setTimeout(() => {
-        console.log(`⏰ [AI-QUEUE] Timeout inicial atingido, processando batch`);
+        console.log(`⏰ [AI-QUEUE] Timeout inicial (6s) atingido, processando batch: ${chatId}`);
         const batch = this.messageBatcher.batches.get(chatId);
-        if (batch) {
+        if (batch && !batch.isProcessing) {
           this.processBatchedMessages(chatId, batch.messages);
         }
       }, this.messageBatcher.config.timeout);
@@ -238,7 +260,7 @@ class AIQueueIntegrationService {
         isProcessing: false
       });
       
-      console.log(`📦 [AI-QUEUE] Novo batch criado com 1 mensagem`);
+      console.log(`📦 [AI-QUEUE] Novo batch criado com 1 mensagem (timeout: 6s)`);
     }
   }
 
@@ -320,11 +342,20 @@ class AIQueueIntegrationService {
         await this.markMessagesAsProcessed(unprocessedMessages);
         messageProcessingController.markMessagesProcessed(unprocessedMessages.map(m => m.id));
         
+        // NOVO: Definir período de resfriamento de 3 segundos
+        const coolingEndTime = Date.now() + 3000;
+        if (this.messageBatcher.coolingPeriods) {
+          this.messageBatcher.coolingPeriods.set(chatId, coolingEndTime);
+          console.log(`❄️ [AI-QUEUE] Período de resfriamento definido para: ${chatId} (3s)`);
+        }
+        
       } finally {
         // NOVO: Liberar lock centralizado sempre
         messageProcessingController.unlockChat(ticketId);
+        messageProcessingController.unlockChat(chatId); // Liberar também por chatId
         this.processingQueue.delete(ticketId);
-        console.log('🔓 [AI-QUEUE] Lock centralizado liberado para:', ticketId);
+        this.processingQueue.delete(chatId);
+        console.log('🔓 [AI-QUEUE] Locks centralizados liberados para:', { ticketId, chatId });
       }
       
     } catch (error) {
