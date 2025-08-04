@@ -2279,6 +2279,15 @@ export type Database = {
           | { plan_slug: string }
         Returns: number
       }
+      manage_message_batch: {
+        Args: {
+          p_chat_id: string
+          p_client_id: string
+          p_instance_id: string
+          p_message: Json
+        }
+        Returns: Json
+      }
       save_ticket_message: {
         Args: {
           p_ticket_id: string
