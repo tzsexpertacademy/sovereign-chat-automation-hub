@@ -9,6 +9,7 @@ import { useHumanizedTyping } from './useHumanizedTyping';
 import { useAutoReactions } from './useAutoReactions';
 import { useOnlineStatus } from './useOnlineStatus';
 import { useMessageStatus } from './useMessageStatus';
+import { useAudioAutoProcessor } from './useAudioAutoProcessor';
 import { unifiedMessageService } from '@/services/unifiedMessageService';
 
 export const useTicketRealtime = (clientId: string) => {
@@ -29,6 +30,9 @@ export const useTicketRealtime = (clientId: string) => {
   const { markAsRead, isTyping, isRecording } = useHumanizedTyping(clientId);
   const { processMessage: processReaction } = useAutoReactions(clientId, true);
   const { isOnline, markActivity } = useOnlineStatus(clientId, true);
+  
+  // Hook para processamento automático de áudios
+  useAudioAutoProcessor(clientId);
   
 
   // Função para normalizar dados da mensagem do WhatsApp

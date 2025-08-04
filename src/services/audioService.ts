@@ -196,81 +196,81 @@ export const audioService = {
     return { audioBase64, audioUrl };
   },
 
-  // Processar mensagem de áudio do WhatsApp - VERSÃO SUPER ROBUSTA COM LOGS
+  // Processar mensagem de áudio do WhatsApp - INTEGRAÇÃO COM WHATSAPPAUDIOSERVICE
   async processWhatsAppAudio(message: any, clientId: string): Promise<{
     transcription: string;
     audioUrl?: string;
     audioBase64?: string;
   }> {
     try {
-      console.log('🎵 ===== PROCESSANDO ÁUDIO WHATSAPP (DEBUG COMPLETO) =====');
-      console.log('📱 MENSAGEM RECEBIDA PARA PROCESSAMENTO:', JSON.stringify(message, null, 2));
+      console.log('🎵 ===== PROCESSANDO ÁUDIO WHATSAPP (INTEGRADO) =====');
+      console.log('📱 MENSAGEM RECEBIDA:', {
+        id: message.id,
+        type: message.type,
+        fromMe: message.fromMe,
+        hasMedia: message.hasMedia
+      });
       
       // VALIDAÇÃO CRÍTICA
       if (!message) {
-        console.error('❌ ERRO CRÍTICO: Mensagem é undefined');
         throw new Error('Mensagem não fornecida para processamento de áudio');
       }
 
-      console.log('📊 INFORMAÇÕES BÁSICAS DA MENSAGEM:', {
-        messageId: message.id,
-        messageType: message.type,
-        fromMe: message.fromMe,
-        hasMedia: message.hasMedia,
-        body: message.body?.substring(0, 50),
-        allKeys: Object.keys(message)
-      });
+      // 1. VERIFICAR SE PRECISA DE DESCRIPTOGRAFIA usando whatsappAudioService
+      const { whatsappAudioService } = await import('@/services/whatsappAudioService');
+      
+      let audioBase64: string | undefined;
+      let audioUrl: string | undefined;
 
-      // EXTRAIR DADOS DE ÁUDIO usando nova função robusta
-      console.log('🔄 INICIANDO EXTRAÇÃO DE DADOS DE ÁUDIO...');
-      const { audioBase64: extractedBase64, audioUrl: extractedUrl } = this.extractAudioDataFromMessage(message);
+      if (whatsappAudioService.hasEncryptedAudio(message) && whatsappAudioService.needsDecryption(message)) {
+        console.log('🔐 ÁUDIO CRIPTOGRAFADO DETECTADO - INICIANDO DESCRIPTOGRAFIA...');
+        
+        // Extrair dados de áudio criptografado
+        const audioData = whatsappAudioService.extractAudioData(message);
+        if (!audioData) {
+          throw new Error('Não foi possível extrair dados de áudio criptografado');
+        }
 
-      let audioBase64 = extractedBase64;
-      let audioUrl = extractedUrl;
+        // Descriptografar áudio
+        const decryptedResult = await whatsappAudioService.decryptAudio(audioData);
+        if (!decryptedResult) {
+          throw new Error('Falha na descriptografia do áudio');
+        }
 
-      console.log('📊 RESULTADO DA EXTRAÇÃO:', {
-        foundBase64: !!audioBase64,
-        base64Length: audioBase64.length,
-        foundUrl: !!audioUrl,
-        urlValue: audioUrl
-      });
+        audioBase64 = decryptedResult.decryptedData;
+        console.log('✅ ÁUDIO DESCRIPTOGRAFADO COM SUCESSO');
+        
+      } else {
+        console.log('📱 ÁUDIO NÃO CRIPTOGRAFADO - EXTRAINDO DADOS DIRETOS...');
+        
+        // Usar função de extração padrão para áudios não criptografados
+        const extracted = this.extractAudioDataFromMessage(message);
+        audioBase64 = extracted.audioBase64;
+        audioUrl = extracted.audioUrl;
 
-      // Se não encontrou base64 mas tem URL, tentar baixar
-      if (!audioBase64 && audioUrl) {
-        console.log('🔄 BAIXANDO áudio da URL:', audioUrl);
-        try {
-          const response = await fetch(audioUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        // Se não encontrou base64 mas tem URL, tentar baixar
+        if (!audioBase64 && audioUrl) {
+          console.log('🔄 BAIXANDO áudio da URL:', audioUrl);
+          try {
+            const response = await fetch(audioUrl);
+            if (response.ok) {
+              const arrayBuffer = await response.arrayBuffer();
+              audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+              console.log('✅ Áudio baixado da URL com sucesso');
             }
-          });
-          
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          } catch (error) {
+            console.error('❌ Erro ao baixar áudio da URL:', error);
           }
-          
-          const arrayBuffer = await response.arrayBuffer();
-          audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-          
-          console.log('✅ Áudio baixado da URL:', {
-            originalUrl: audioUrl,
-            downloadedSize: arrayBuffer.byteLength,
-            base64Length: audioBase64.length
-          });
-        } catch (error) {
-          console.error('❌ Erro ao baixar áudio da URL:', error);
         }
       }
 
-      // VALIDAÇÃO FINAL ANTES DO PROCESSAMENTO
+      // VALIDAÇÃO FINAL
       if (!audioBase64) {
-        console.error('❌ ===== FALHA TOTAL NA EXTRAÇÃO DE ÁUDIO =====');
-        console.error('📱 DADOS COMPLETOS DA MENSAGEM PARA DEBUG:');
-        console.error(JSON.stringify(message, null, 2));
-        throw new Error('Dados de áudio não encontrados na mensagem - verifique a estrutura da mensagem WhatsApp');
+        console.error('❌ NENHUM DADO DE ÁUDIO ENCONTRADO');
+        throw new Error('Dados de áudio não encontrados - verifique se a mensagem contém áudio válido');
       }
 
-      console.log('✅ DADOS DE ÁUDIO ENCONTRADOS - PROSSEGUINDO COM TRANSCRIÇÃO');
+      console.log('✅ DADOS DE ÁUDIO PRONTOS - PROSSEGUINDO COM TRANSCRIÇÃO');
 
       // Buscar configuração de IA do cliente
       const { data: aiConfig, error: configError } = await supabase
