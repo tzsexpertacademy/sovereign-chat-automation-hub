@@ -3593,9 +3593,9 @@ async function processVideoCommands(
       console.log('🔧 [VIDEO-COMMANDS] TESTE FORÇADO: BusinessToken presente:', !!context.businessToken);
       
       try {
-        // 🚨 PRIMEIRA TENTATIVA: Buscar na biblioteca normal
-        let libraryVideo = await getVideoFromLibrary(context.assistantId, 'teste2');
-        console.log('🔧 [VIDEO-COMMANDS] TESTE FORÇADO: Resultado da busca biblioteca:', !!libraryVideo);
+        // 🚨 PRIMEIRA TENTATIVA: Buscar com o trigger correto "testeoficial"
+        let libraryVideo = await getVideoFromLibrary(context.assistantId, 'testeoficial');
+        console.log('🔧 [VIDEO-COMMANDS] TESTE COM TRIGGER CORRETO: Resultado da busca biblioteca:', !!libraryVideo);
         
         // 🚨 FALLBACK HARDCODED: Se não encontrou na biblioteca, criar vídeo de teste
         if (!libraryVideo) {
@@ -3711,9 +3711,10 @@ async function processVideoCommands(
  */
 async function getVideoFromLibrary(assistantId: string, videoTrigger: string): Promise<{ videoBase64: string, format: string } | null> {
   try {
-    console.log('📚 [VIDEO-LIBRARY] 🔍 BUSCANDO VÍDEO NA NOVA BIBLIOTECA (SUPABASE STORAGE):');
+    console.log('📚 [VIDEO-LIBRARY] ========== INÍCIO DA BUSCA DE VÍDEO ==========');
     console.log('📚 [VIDEO-LIBRARY] 🆔 Assistant ID:', assistantId);
-    console.log('📚 [VIDEO-LIBRARY] 🎯 Trigger buscado:', JSON.stringify(videoTrigger));
+    console.log('📚 [VIDEO-LIBRARY] 🎯 Trigger original:', JSON.stringify(videoTrigger));
+    console.log('📚 [VIDEO-LIBRARY] 🎯 Trigger trimmed:', JSON.stringify(videoTrigger.trim()));
     console.log('📚 [VIDEO-LIBRARY] 📊 Tipo do trigger:', typeof videoTrigger);
     console.log('📚 [VIDEO-LIBRARY] 🧹 Trigger limpo:', JSON.stringify(videoTrigger.trim()));
     
