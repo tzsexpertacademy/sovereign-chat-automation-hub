@@ -390,43 +390,44 @@ serve(async (req) => {
 
     // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos ANTES da IA (EXCLUINDO ÁUDIO REAL)
     
-    // ====== DETECÇÃO ROBUSTA DE ÁUDIO REAL ======
+    // ============= DETECÇÃO DEFINITIVA DE ÁUDIO REAL =============
     
-    // 🔍 Primeira verificação: dados de mídia nas mensagens
-    let hasRealAudio = isBatch && messages && messages.some(msg => 
-      msg.messageType === 'audio' || 
-      msg.message_type === 'audio' ||
-      msg.mediaUrl ||
-      msg.media_url ||
-      msg.mediaKey ||
-      msg.media_key
-    );
-    
-    // 🔍 Segunda verificação: conteúdo específico de áudio
-    const hasAudioContent = messageContent && (
+    // 🎯 CORREÇÃO DEFINITIVA: Detectar transcrições de áudio PRIMEIRO
+    const hasTranscriptionContent = messageContent && (
+      messageContent.includes('🎵 Áudio - Transcrição:') ||
       messageContent.includes('🎵 Áudio') ||
-      messageContent.trim() === '🎵 Áudio' ||
-      messageContent.includes('audio message')
+      messageContent.includes('audio message') ||
+      messageContent.trim().startsWith('🎵')
     );
     
-    // 🔍 Terceira verificação: buscar no banco de dados se necessário
-    if (!hasRealAudio && hasAudioContent && messages && messages.length > 0) {
-      console.log('🔍 [AUDIO-DETECTION] Verificando dados de mídia no banco...');
+    // 🔥 CORREÇÃO DEFINITIVA: Se é transcrição de áudio, SEMPRE é áudio real
+    let hasRealAudio = hasTranscriptionContent;
+    
+    if (hasTranscriptionContent) {
+      console.log('🎵 [AUDIO-DETECTION-DEFINITIVA] ✅ TRANSCRIÇÃO DETECTADA - FORÇANDO hasRealAudio=true');
+      console.log('🎯 [AUDIO-DETECTION-DEFINITIVA] Padrão detectado no conteúdo:', messageContent?.substring(0, 100));
+      hasRealAudio = true;
+    } else {
+      // 🔍 FALLBACK: Verificar dados de mídia nas mensagens apenas se não é transcrição
+      hasRealAudio = isBatch && messages && messages.some(msg => 
+        msg.messageType === 'audio' || 
+        msg.message_type === 'audio' ||
+        msg.mediaUrl ||
+        msg.media_url ||
+        msg.mediaKey ||
+        msg.media_key ||
+        msg.fileEncSha256 ||
+        msg.file_enc_sha256
+      );
       
-      const messageIds = messages.map(m => m.messageId).filter(Boolean);
-      if (messageIds.length > 0) {
-        // Tentar até 3 vezes com delay crescente (race condition fix)
-        let attempts = 0;
-        const maxAttempts = 3;
+      console.log('🔍 [AUDIO-DETECTION-FALLBACK] Verificação de dados de mídia:', hasRealAudio);
+      
+      // 🔍 ÚLTIMO FALLBACK: Buscar no banco apenas se absolutamente necessário
+      if (!hasRealAudio && messageContent?.includes('🎵') && messages && messages.length > 0) {
+        console.log('🔍 [AUDIO-DETECTION-DB] Verificação final no banco para conteúdo suspeito de áudio...');
         
-        while (!hasRealAudio && attempts < maxAttempts) {
-          attempts++;
-          
-          if (attempts > 1) {
-            console.log(`🔍 [AUDIO-DETECTION] Tentativa ${attempts}/${maxAttempts} - aguardando dados de mídia...`);
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempts)); // 1s, 2s, 3s
-          }
-          
+        const messageIds = messages.map(m => m.messageId).filter(Boolean);
+        if (messageIds.length > 0) {
           const { data: dbMessages } = await supabase
             .from('whatsapp_messages')
             .select('message_id, media_url, media_key, file_enc_sha256, message_type')
@@ -438,61 +439,35 @@ serve(async (req) => {
               (msg.media_url || msg.media_key || msg.file_enc_sha256)
             );
             
-            console.log(`🔍 [AUDIO-DETECTION] Tentativa ${attempts} - Dados do banco:`, {
+            console.log('🔍 [AUDIO-DETECTION-DB] Resultado:', {
               foundMessages: dbMessages.length,
-              hasRealAudioFromDB: hasRealAudio,
-              mediaDetails: dbMessages.map(m => ({
-                messageId: m.message_id,
-                messageType: m.message_type,
-                hasMediaUrl: !!m.media_url,
-                hasMediaKey: !!m.media_key,
-                hasFileEncSha256: !!m.file_enc_sha256
-              }))
+              hasRealAudioFromDB: hasRealAudio
             });
             
-            // Se encontrou áudio real, sair do loop
-            if (hasRealAudio) {
-              console.log('✅ [AUDIO-DETECTION] Áudio real confirmado na tentativa', attempts);
-              break;
+            // 🎯 CORREÇÃO DEFINITIVA: Se tem emoji de áudio mas não encontrou dados, assumir que é áudio
+            if (!hasRealAudio && messageContent?.includes('🎵')) {
+              console.log('🎵 [AUDIO-DETECTION-FORCE] Forçando hasRealAudio=true por indicação de áudio no conteúdo');
+              hasRealAudio = true;
             }
-          }
-        }
-        
-        // Se ainda não encontrou após todas as tentativas, fazer uma verificação final
-        if (!hasRealAudio && attempts === maxAttempts) {
-          console.log('⚠️ [AUDIO-DETECTION] Não foi possível confirmar dados de áudio após', maxAttempts, 'tentativas');
-          console.log('🔄 [AUDIO-DETECTION] Assumindo áudio real baseado no conteúdo para evitar processamento incorreto');
-          
-          // Se tem indicação de áudio no conteúdo, assumir que é áudio real
-          if (hasAudioContent) {
-            hasRealAudio = true;
-            console.log('🎵 [AUDIO-DETECTION] Forçando hasRealAudio=true baseado no conteúdo');
           }
         }
       }
     }
     
-    console.log(`🔍 [AUDIO-DETECTION-COMPLETE] Análise completa de tipo de mensagem: {
-  messageContent: "${messageContent}",
-  messageContentTrimmed: "${messageContent?.trim()}",
-  isBatch: ${isBatch},
+    console.log(`🔍 [AUDIO-DETECTION-DEFINITIVA-COMPLETE] ✅ ANÁLISE DEFINITIVA CONCLUÍDA: {
+  messageContent: "${messageContent?.substring(0, 50)}...",
+  hasTranscriptionContent: ${hasTranscriptionContent},
   hasRealAudio: ${hasRealAudio},
-  hasAudioContent: ${hasAudioContent},
   messagesCount: ${messages ? messages.length : 0},
-  audioDetectionDetails: ${JSON.stringify(messages?.map(msg => ({
-    messageId: msg.messageId,
-    messageType: msg.messageType,
-    message_type: msg.message_type,
-    hasMediaUrl: !!(msg.mediaUrl || msg.media_url),
-    hasMediaKey: !!(msg.mediaKey || msg.media_key)
-  })) || [])}
+  detectionMethod: "${hasTranscriptionContent ? 'TRANSCRIÇÃO_DETECTADA' : 'FALLBACK_MEDIA_DATA'}",
+  willSkipEarlyIntercept: ${hasRealAudio}
 }`);
     
-    // 🚫 SE É ÁUDIO REAL: Pular EARLY-INTERCEPT, forçar batching/transcrição
+    // 🚫 SE É ÁUDIO REAL: Pular EARLY-INTERCEPT, forçar processamento contextual pela IA
     if (hasRealAudio) {
-      console.log('🎵 [AUDIO-DETECTION] ❌ ÁUDIO REAL CONFIRMADO - PULANDO EARLY-INTERCEPT');
-      console.log('🔄 [FLOW-CHECK] Forçando processamento via transcrição e batching...');
-      console.log('🔄 [FLOW-CHECK] Continuando para processamento normal da IA...');
+      console.log('🎵 [AUDIO-DETECTION-DEFINITIVA] ❌ ÁUDIO REAL CONFIRMADO - PULANDO EARLY-INTERCEPT');
+      console.log('🔄 [FLOW-CHECK-DEFINITIVO] Forçando processamento pela IA para resposta contextual...');
+      console.log('🔄 [FLOW-CHECK-DEFINITIVO] Garantindo que a IA responda baseada na transcrição real...');
     } else {
       console.log('💬 [EARLY-INTERCEPT] ✅ COMANDO DE TEXTO - VERIFICANDO BIBLIOTECAS...');
       
