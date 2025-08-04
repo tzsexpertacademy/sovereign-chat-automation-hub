@@ -8,6 +8,7 @@ import { useOptimizedTicketMessages } from '@/hooks/useOptimizedTicketMessages';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
+import { useAudioAutoProcessor } from '@/hooks/useAudioAutoProcessor';
 import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
@@ -37,6 +38,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   const { getMessageStatus } = useMessageStatus({ ticketId });
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
+  
+  // 🎵 PROCESSAMENTO AUTOMÁTICO DE ÁUDIO: Transcrição em tempo real
+  useAudioAutoProcessor(clientId);
 
   // Sistema 100% Real-Time - Supabase + Optimistic Updates
   const { 
