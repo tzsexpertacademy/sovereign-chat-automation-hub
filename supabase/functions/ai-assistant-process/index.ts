@@ -1078,43 +1078,6 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
     console.log('🤖 [AI-ASSISTANT] Response preview:', aiResponse?.substring(0, 100) + '...');
     console.log('🤖 [AI-ASSISTANT] Model usado:', safeAssistant.model || 'gpt-4o-mini');
 
-    // 🔄 VERIFICAÇÃO ANTI-DUPLICAÇÃO: Verificar se uma resposta similar já foi enviada recentemente
-    const responseCheckKey = `${resolvedContext.chatId}_${aiResponse.substring(0, 50)}`;
-    const recentResponseCheck = await supabase
-      .from('ticket_messages')
-      .select('id, content, timestamp')
-      .eq('ticket_id', ticketId)
-      .eq('from_me', true)
-      .gte('timestamp', new Date(Date.now() - 60000).toISOString()) // Últimos 60 segundos
-      .order('timestamp', { ascending: false })
-      .limit(3);
-
-    if (recentResponseCheck.data && recentResponseCheck.data.length > 0) {
-      const similarResponse = recentResponseCheck.data.find(msg => {
-        const similarity = msg.content.substring(0, 50);
-        return aiResponse.substring(0, 50) === similarity;
-      });
-
-      if (similarResponse) {
-        console.log('🔄 [ANTI-DUPLICAÇÃO] ❌ Resposta similar detectada - CANCELANDO envio:', {
-          responseId: similarResponse.id,
-          timestamp: similarResponse.timestamp,
-          preview: similarResponse.content.substring(0, 50)
-        });
-        
-        return new Response(JSON.stringify({
-          success: true,
-          message: 'Duplicação evitada - resposta similar já enviada',
-          preventedDuplication: true,
-          timestamp: new Date().toISOString()
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
-    }
-
-    console.log('✅ [ANTI-DUPLICAÇÃO] Nenhuma duplicação detectada - prosseguindo com envio');
-
     // 🔐 BUSCAR BUSINESS TOKEN PARA COMANDOS DE ÁUDIO
     console.log('🔐 [AI-ASSISTANT] Verificando business token para cliente:', resolvedClientId);
     

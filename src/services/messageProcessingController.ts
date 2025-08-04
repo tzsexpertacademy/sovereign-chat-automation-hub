@@ -7,8 +7,6 @@ export class MessageProcessingController {
   private static instance: MessageProcessingController;
   private globalLocks: Map<string, number | boolean> = new Map();
   private processedMessages: Set<string> = new Set();
-  private recentResponses: Map<string, { timestamp: number; content: string }> = new Map();
-  private activeBatches: Set<string> = new Set();
 
   private constructor() {}
 
@@ -148,62 +146,10 @@ export class MessageProcessingController {
   }
 
   /**
-   * Verificar se uma resposta recente já foi enviada para evitar duplicação
-   */
-  hasRecentResponse(chatId: string, content: string): boolean {
-    const responseKey = `${chatId}_${content.substring(0, 50)}`;
-    const recent = this.recentResponses.get(responseKey);
-    
-    if (recent && (Date.now() - recent.timestamp) < 30000) { // 30 segundos
-      console.log('🔄 [CONTROLLER] Resposta recente detectada - EVITANDO DUPLICAÇÃO:', responseKey);
-      return true;
-    }
-    
-    return false;
-  }
-
-  /**
-   * Registrar resposta enviada para evitar duplicações futuras
-   */
-  registerResponse(chatId: string, content: string): void {
-    const responseKey = `${chatId}_${content.substring(0, 50)}`;
-    this.recentResponses.set(responseKey, {
-      timestamp: Date.now(),
-      content: content
-    });
-    
-    console.log('📝 [CONTROLLER] Resposta registrada:', responseKey);
-  }
-
-  /**
-   * Verificar e bloquear batch para processamento
-   */
-  canProcessBatch(batchId: string): boolean {
-    if (this.activeBatches.has(batchId)) {
-      console.log('🔒 [CONTROLLER] Batch já está sendo processado:', batchId);
-      return false;
-    }
-    
-    this.activeBatches.add(batchId);
-    console.log('✅ [CONTROLLER] Batch bloqueado para processamento:', batchId);
-    return true;
-  }
-
-  /**
-   * Liberar batch após processamento
-   */
-  releaseBatch(batchId: string): void {
-    this.activeBatches.delete(batchId);
-    console.log('🔓 [CONTROLLER] Batch liberado:', batchId);
-  }
-
-  /**
    * Limpar processados antigos (executar periodicamente)
    */
   cleanupOldProcessed(): void {
-    const currentTime = Date.now();
-    
-    // Limpar mensagens processadas antigas
+    // Manter apenas os últimos 1000 processados para não consumir muita memória
     if (this.processedMessages.size > 1000) {
       const entries = Array.from(this.processedMessages);
       const toKeep = entries.slice(-500); // Manter últimos 500
@@ -211,15 +157,6 @@ export class MessageProcessingController {
       toKeep.forEach(entry => this.processedMessages.add(entry));
       console.log('🧹 [CONTROLLER] Limpeza de mensagens processadas executada');
     }
-    
-    // Limpar respostas antigas (mais de 1 hora)
-    for (const [key, response] of this.recentResponses.entries()) {
-      if ((currentTime - response.timestamp) > 3600000) { // 1 hora
-        this.recentResponses.delete(key);
-      }
-    }
-    
-    console.log('🧹 [CONTROLLER] Limpeza completa executada');
   }
 
   /**
@@ -228,14 +165,10 @@ export class MessageProcessingController {
   getStatus(): {
     activeLocks: number;
     processedMessages: number;
-    recentResponses: number;
-    activeBatches: number;
   } {
     return {
       activeLocks: this.globalLocks.size,
-      processedMessages: this.processedMessages.size,
-      recentResponses: this.recentResponses.size,
-      activeBatches: this.activeBatches.size
+      processedMessages: this.processedMessages.size
     };
   }
 }
