@@ -372,38 +372,62 @@ serve(async (req) => {
       throw new Error('Nenhum conteúdo de mensagem fornecido');
     }
 
-    // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos ANTES da IA (USANDO PADRÃO EXATO DO ÁUDIO QUE FUNCIONA)
-    const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
-    const imageCommandMatch = messageContent.match(/^image\s+([a-zA-Z0-9_-]+)$/i);
-    const videoCommandMatch = messageContent.match(/^video\s+([a-zA-Z0-9_-]+)$/i);
+    // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos ANTES da IA (EXCLUINDO ÁUDIO REAL)
     
-    console.log('🔍 [EARLY-INTERCEPT] Detectando comandos:', {
+    // 🚨 IMPORTANTE: Verificar se é áudio REAL (mídia) vs comando de texto
+    const hasRealAudio = isBatch && messages && messages.some(msg => 
+      msg.messageType === 'audio' || 
+      msg.message_type === 'audio' ||
+      msg.mediaUrl ||
+      msg.media_url ||
+      msg.mediaKey ||
+      msg.media_key
+    );
+    
+    console.log('🔍 [EARLY-INTERCEPT] Verificando tipo de mensagem:', {
       messageContent: messageContent,
-      libraryCommandMatch: !!libraryCommandMatch,
-      imageCommandMatch: !!imageCommandMatch,
-      videoCommandMatch: !!videoCommandMatch,
-      audioTrigger: libraryCommandMatch ? libraryCommandMatch[1] : null,
-      imageTrigger: imageCommandMatch ? imageCommandMatch[1] : null,
-      videoTrigger: videoCommandMatch ? videoCommandMatch[1] : null
+      isBatch: isBatch,
+      hasRealAudio: hasRealAudio,
+      messagesCount: messages ? messages.length : 0
     });
     
-    if (libraryCommandMatch) {
-      console.log('🎵 [EARLY-INTERCEPT] ⚡ COMANDO DE BIBLIOTECA DETECTADO - PROCESSANDO IMEDIATAMENTE');
-      console.log('🎵 [EARLY-INTERCEPT] Comando:', libraryCommandMatch[0]);
-      console.log('🎵 [EARLY-INTERCEPT] Nome do áudio:', libraryCommandMatch[1]);
+    // 🚫 SE É ÁUDIO REAL: Pular EARLY-INTERCEPT, forçar batching/transcrição
+    if (hasRealAudio) {
+      console.log('🎵 [EARLY-INTERCEPT] ⏭️ ÁUDIO REAL DETECTADO - PULANDO EARLY-INTERCEPT');
+      console.log('🔄 [FLOW-CHECK] Continuando para processamento normal da IA...');
+    } else {
+      // 📝 APENAS para comandos de TEXTO: Detectar comandos de biblioteca
+      const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
+      const imageCommandMatch = messageContent.match(/^image\s+([a-zA-Z0-9_-]+)$/i);
+      const videoCommandMatch = messageContent.match(/^video\s+([a-zA-Z0-9_-]+)$/i);
       
-      // Buscar business token ANTES do processamento
-      const { data: client } = await supabase
-        .from('clients')
-        .select('business_token')
-        .eq('id', resolvedClientId)
-        .single();
+      console.log('🔍 [EARLY-INTERCEPT] Detectando comandos:', {
+        messageContent: messageContent,
+        libraryCommandMatch: !!libraryCommandMatch,
+        imageCommandMatch: !!imageCommandMatch,
+        videoCommandMatch: !!videoCommandMatch,
+        audioTrigger: libraryCommandMatch ? libraryCommandMatch[1] : null,
+        imageTrigger: imageCommandMatch ? imageCommandMatch[1] : null,
+        videoTrigger: videoCommandMatch ? videoCommandMatch[1] : null
+      });
       
-      if (client?.business_token) {
-        console.log('✅ [EARLY-INTERCEPT] Business token encontrado para processamento imediato');
+      if (libraryCommandMatch) {
+        console.log('🎵 [EARLY-INTERCEPT] ⚡ COMANDO DE BIBLIOTECA DETECTADO - PROCESSANDO IMEDIATAMENTE');
+        console.log('🎵 [EARLY-INTERCEPT] Comando:', libraryCommandMatch[0]);
+        console.log('🎵 [EARLY-INTERCEPT] Nome do áudio:', libraryCommandMatch[1]);
         
-        // Processar comando de biblioteca imediatamente sem passar pela IA
-        const audioResult = await processAudioCommands(messageContent, ticketId, resolvedAssistant, resolvedInstanceId, client.business_token);
+        // Buscar business token ANTES do processamento
+        const { data: client } = await supabase
+          .from('clients')
+          .select('business_token')
+          .eq('id', resolvedClientId)
+          .single();
+        
+        if (client?.business_token) {
+          console.log('✅ [EARLY-INTERCEPT] Business token encontrado para processamento imediato');
+          
+          // Processar comando de biblioteca imediatamente sem passar pela IA
+          const audioResult = await processAudioCommands(messageContent, ticketId, resolvedAssistant, resolvedInstanceId, client.business_token);
         
         if (audioResult.hasAudioCommands && audioResult.processedCount > 0) {
           console.log('✅ [EARLY-INTERCEPT] Comando de biblioteca processado com sucesso - RETORNANDO IMEDIATAMENTE');
@@ -536,6 +560,8 @@ serve(async (req) => {
         console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de vídeo será ignorado');
       }
     }
+    
+    } // 🔚 Fim do bloco: Apenas para comandos de TEXTO (não áudio real)
 
     // 🔒 VERIFICAÇÃO ANTI-DUPLICAÇÃO APÓS EARLY INTERCEPT
     console.log('🔄 [FLOW-CHECK] Continuando para processamento normal da IA...');
