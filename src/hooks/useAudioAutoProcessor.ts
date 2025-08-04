@@ -177,8 +177,24 @@ export const useAudioAutoProcessor = (clientId: string) => {
     channelRef.current = channel;
     console.log('✅ [AUDIO-AUTO] Sistema completo inicializado (realtime + polling)');
 
-    // Verificação inicial de áudios pendentes
-    setTimeout(checkPendingAudios, 2000);
+    // Verificação inicial de áudios pendentes + REPROCESSAR ÁUDIO ÓRFÃO IMEDIATAMENTE
+    setTimeout(() => {
+      checkPendingAudios();
+      
+      // FORÇA REPROCESSAMENTO DO ÁUDIO 3EB092A11B5630B182CFAD
+      console.log('🔧 [AUDIO-AUTO] FORÇA REPROCESSAMENTO do áudio órfão 3EB092A11B5630B182CFAD');
+      supabase
+        .from('ticket_messages')
+        .update({ processing_status: 'received' })
+        .eq('message_id', '3EB092A11B5630B182CFAD')
+        .then(({ error }) => {
+          if (error) {
+            console.error('❌ [AUDIO-AUTO] Erro ao forçar reprocessamento:', error);
+          } else {
+            console.log('✅ [AUDIO-AUTO] Áudio 3EB092A11B5630B182CFAD marcado para reprocessamento');
+          }
+        });
+    }, 2000);
 
     return () => {
       console.log('🎵 [AUDIO-AUTO] 🔄 Parando processamento automático de áudios...');
