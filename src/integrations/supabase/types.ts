@@ -2117,6 +2117,7 @@ export type Database = {
         Row: {
           body: string | null
           chat_id: string
+          client_id: string | null
           contact_name: string | null
           created_at: string
           direct_path: string | null
@@ -2145,6 +2146,7 @@ export type Database = {
         Insert: {
           body?: string | null
           chat_id: string
+          client_id?: string | null
           contact_name?: string | null
           created_at?: string
           direct_path?: string | null
@@ -2173,6 +2175,7 @@ export type Database = {
         Update: {
           body?: string | null
           chat_id?: string
+          client_id?: string | null
           contact_name?: string | null
           created_at?: string
           direct_path?: string | null
@@ -2198,7 +2201,15 @@ export type Database = {
           source?: string | null
           timestamp?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
