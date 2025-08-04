@@ -129,23 +129,50 @@ serve(async (req) => {
   }
 
   try {
-    const { audio, audioUrl, openaiApiKey, messageId } = await req.json();
-    
     console.log('🎵 ===== INICIANDO TRANSCRIÇÃO DE ÁUDIO =====');
-    console.log('📊 Dados recebidos:', {
+    console.log('🔍 Request method:', req.method);
+    console.log('🔍 Content-Type:', req.headers.get('content-type'));
+    
+    const body = await req.json();
+    const { audio, audioUrl, openaiApiKey, messageId } = body;
+    
+    console.log('📊 Dados recebidos na edge function:', {
       hasAudio: !!audio,
       hasAudioUrl: !!audioUrl,
       hasApiKey: !!openaiApiKey,
       audioLength: audio?.length || 0,
       audioPrefixPreview: audio?.substring(0, 50) || 'N/A',
       audioUrl: audioUrl?.substring(0, 100) || 'N/A',
-      messageId: messageId || 'N/A'
+      messageId: messageId || 'N/A',
+      bodyKeys: Object.keys(body)
+    });
+    
+    console.log('🔑 API Key validation:', {
+      hasApiKey: !!openaiApiKey,
+      keyLength: openaiApiKey?.length || 0,
+      keyPrefix: openaiApiKey?.substring(0, 10) || 'N/A'
     });
     
     if ((!audio && !audioUrl) || !openaiApiKey) {
       const errorMsg = 'Áudio (base64 ou URL) e chave da API OpenAI são obrigatórios';
-      console.error('❌', errorMsg);
-      throw new Error(errorMsg);
+      console.error('❌ VALIDAÇÃO FALHOU:', {
+        hasAudio: !!audio,
+        hasAudioUrl: !!audioUrl,
+        hasApiKey: !!openaiApiKey,
+        errorMsg
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          error: errorMsg,
+          details: 'Parâmetros obrigatórios em falta',
+          success: false
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     let audioBytes: Uint8Array;
@@ -265,7 +292,7 @@ serve(async (req) => {
         if (response.ok) {
           const result = await response.json();
           
-          console.log('✅ TRANSCRIÇÃO BEM-SUCEDIDA:', {
+        console.log('✅ TRANSCRIÇÃO BEM-SUCEDIDA:', {
             hasText: !!result.text,
             textLength: result.text?.length || 0,
             language: result.language,
@@ -276,20 +303,33 @@ serve(async (req) => {
           });
 
           if (!result.text || result.text.trim() === '') {
-            console.warn('⚠️ Transcrição vazia recebida da OpenAI');
-            return new Response(
-              JSON.stringify({ 
-                text: '[Áudio não pôde ser transcrito - conteúdo vazio]',
-                language: 'pt',
-                duration: null,
-                error: 'Transcrição vazia',
-                audioFormat: format,
-                details: 'OpenAI retornou resposta vazia'
-              }),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
+            console.warn('⚠️ Transcrição vazia recebida da OpenAI - continuando...');
+            
+            // Se não é a última tentativa, continuar
+            if (i < formatsToTry.length - 1) {
+              console.log(`🔄 Transcrição vazia - tentando próximo formato...`);
+              continue;
+            } else {
+              return new Response(
+                JSON.stringify({ 
+                  text: '[Áudio não pôde ser transcrito - conteúdo vazio]',
+                  language: 'pt',
+                  duration: null,
+                  error: 'Transcrição vazia após todas as tentativas',
+                  audioFormat: format,
+                  details: 'OpenAI retornou resposta vazia em todos os formatos',
+                  success: false
+                }),
+                { 
+                  status: 422,
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+                }
+              );
+            }
           }
 
+          // Transcrição bem-sucedida
+          console.log('🎉 SUCESSO COMPLETO - retornando transcrição');
           return new Response(
             JSON.stringify({ 
               text: result.text.trim(),
@@ -297,7 +337,9 @@ serve(async (req) => {
               duration: result.duration || null,
               segments: result.segments || [],
               audioFormat: format,
-              success: true
+              success: true,
+              messageId: messageId,
+              timestamp: new Date().toISOString()
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );

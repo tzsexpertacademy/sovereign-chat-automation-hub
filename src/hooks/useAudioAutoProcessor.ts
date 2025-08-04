@@ -10,9 +10,13 @@ export const useAudioAutoProcessor = (clientId: string) => {
   const processingRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!clientId) return;
+    if (!clientId) {
+      console.log('🎵 [AUDIO-AUTO] ❌ ClientId não fornecido - hook não ativo');
+      return;
+    }
 
-    console.log('🎵 [AUDIO-AUTO] Iniciando processamento automático de áudios para cliente:', clientId);
+    console.log('🎵 [AUDIO-AUTO] ✅ INICIANDO processamento automático de áudios para cliente:', clientId);
+    console.log('🎵 [AUDIO-AUTO] 🔧 Hook ativo e configurado corretamente');
 
     // Listener para novas mensagens de áudio
     const channel = supabase
@@ -28,9 +32,18 @@ export const useAudioAutoProcessor = (clientId: string) => {
         async (payload) => {
           const newMessage = payload.new as any;
           
-          // Verificar se é uma mensagem do cliente (não do assistente)
-          if (newMessage.from_me || newMessage.is_ai_response) {
-            console.log('🎵 [AUDIO-AUTO] Ignorando áudio do assistente');
+          console.log('🎵 [AUDIO-AUTO] 📨 NOVA MENSAGEM DETECTADA:', {
+            messageId: newMessage.message_id,
+            messageType: newMessage.message_type,
+            fromMe: newMessage.from_me,
+            isAiResponse: newMessage.is_ai_response,
+            hasMediaKey: !!newMessage.media_key,
+            processingStatus: newMessage.processing_status
+          });
+          
+          // Verificar se é uma mensagem do cliente (NÃO from_me e NÃO is_ai_response)
+          if (newMessage.from_me === true || newMessage.is_ai_response === true) {
+            console.log('🎵 [AUDIO-AUTO] ⏭️ Ignorando áudio do assistente ou enviado pelo sistema');
             return;
           }
 
@@ -48,13 +61,24 @@ export const useAudioAutoProcessor = (clientId: string) => {
             .single();
 
           if (!ticket || ticket.client_id !== clientId) {
+            console.log('🎵 [AUDIO-AUTO] ⚠️ Ticket não pertence ao cliente atual:', {
+              ticketClientId: ticket?.client_id,
+              currentClientId: clientId
+            });
             return;
           }
 
-          console.log('🎵 [AUDIO-AUTO] NOVO ÁUDIO DETECTADO:', {
+          // Verificar se já foi processado
+          if (newMessage.processing_status === 'completed' || newMessage.processing_status === 'failed') {
+            console.log('🎵 [AUDIO-AUTO] ⏭️ Áudio já processado:', newMessage.processing_status);
+            return;
+          }
+
+          console.log('🎵 [AUDIO-AUTO] 🎯 NOVO ÁUDIO VÁLIDO PARA PROCESSAMENTO:', {
             messageId: newMessage.message_id,
             ticketId: newMessage.ticket_id,
-            chatId: ticket.chat_id
+            chatId: ticket.chat_id,
+            processingStatus: newMessage.processing_status
           });
 
           // Marcar como em processamento
@@ -82,45 +106,84 @@ export const useAudioAutoProcessor = (clientId: string) => {
   const processAudioMessage = async (message: any, ticket: any, clientId: string) => {
     try {
       console.log('🎵 [AUDIO-AUTO] ===== PROCESSANDO ÁUDIO AUTOMATICAMENTE =====');
-      console.log('🎵 [AUDIO-AUTO] Dados da mensagem:', {
+      console.log('🎵 [AUDIO-AUTO] 📋 Dados completos da mensagem:', {
         messageId: message.message_id,
         hasMediaKey: !!message.media_key,
         hasMediaUrl: !!message.media_url,
-        hasAudioBase64: !!message.audio_base64
+        hasAudioBase64: !!message.audio_base64,
+        mediaKeyType: typeof message.media_key,
+        mediaUrlPreview: message.media_url?.substring(0, 100),
+        mimetype: message.media_mime_type,
+        directPath: message.direct_path,
+        processingStatus: message.processing_status
       });
+
+      // Marcar como "processing" imediatamente
+      await supabase
+        .from('ticket_messages')
+        .update({ processing_status: 'processing' })
+        .eq('message_id', message.message_id);
+
+      console.log('🔄 [AUDIO-AUTO] Status atualizado para "processing"');
 
       let audioBase64 = '';
 
-      // 1. Se tem mediaKey, usar directMediaDownloadService para descriptografar
-      if (message.media_key) {
-        console.log('🔐 [AUDIO-AUTO] Áudio criptografado - usando directMediaDownloadService');
+      // 1. ESTRATÉGIA SIMPLIFICADA: Priorizar media_key para descriptografia
+      if (message.media_key && message.media_url) {
+        console.log('🔐 [AUDIO-AUTO] 🔑 Áudio criptografado detectado - iniciando descriptografia');
+        console.log('🔐 [AUDIO-AUTO] 📊 Parâmetros de descriptografia:', {
+          instanceId: ticket.instance_id,
+          mediaKeyLength: typeof message.media_key === 'string' ? message.media_key.length : 'object',
+          mediaUrlDomain: new URL(message.media_url).hostname,
+          directPath: message.direct_path,
+          mimetype: message.media_mime_type || 'audio/ogg'
+        });
         
         const downloadResult = await directMediaDownloadService.downloadMedia(
           ticket.instance_id,
           message.media_url,
           message.media_key,
           message.direct_path,
-          message.mimetype || 'audio/ogg',
+          message.media_mime_type || 'audio/ogg',
           'audio'
         );
 
         if (downloadResult.success && downloadResult.mediaUrl) {
-          console.log('✅ [AUDIO-AUTO] Áudio descriptografado pelo servidor');
+          console.log('✅ [AUDIO-AUTO] 🎉 Áudio descriptografado com sucesso pelo servidor');
+          console.log('✅ [AUDIO-AUTO] 📁 URL descriptografada:', downloadResult.mediaUrl.substring(0, 50) + '...');
           
-          // Converter blob URL para base64
+          // Converter blob URL para base64 com tratamento robusto
           try {
+            console.log('🔄 [AUDIO-AUTO] Convertendo blob URL para base64...');
             const response = await fetch(downloadResult.mediaUrl);
+            
+            if (!response.ok) {
+              throw new Error(`Falha ao fetch blob: ${response.status}`);
+            }
+            
             const blob = await response.blob();
+            console.log('📦 [AUDIO-AUTO] Blob obtido:', {
+              size: blob.size,
+              type: blob.type
+            });
+            
+            if (blob.size === 0) {
+              throw new Error('Blob vazio recebido');
+            }
+            
             const arrayBuffer = await blob.arrayBuffer();
             audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-            console.log('✅ [AUDIO-AUTO] Convertido para base64:', audioBase64.length, 'chars');
+            console.log('✅ [AUDIO-AUTO] 🎯 Base64 gerado:', {
+              length: audioBase64.length,
+              preview: audioBase64.substring(0, 50) + '...'
+            });
           } catch (convertError) {
-            console.error('❌ [AUDIO-AUTO] Erro ao converter blob para base64:', convertError);
-            throw new Error('Falha na conversão do áudio descriptografado');
+            console.error('❌ [AUDIO-AUTO] Erro na conversão blob->base64:', convertError);
+            throw new Error(`Falha na conversão: ${convertError.message}`);
           }
         } else {
-          console.error('❌ [AUDIO-AUTO] Falha na descriptografia:', downloadResult.error);
-          throw new Error(downloadResult.error || 'Falha na descriptografia');
+          console.error('❌ [AUDIO-AUTO] 💥 Falha na descriptografia:', downloadResult.error);
+          throw new Error(downloadResult.error || 'Serviço de descriptografia falhou');
         }
       } else if (message.audio_base64) {
         console.log('📁 [AUDIO-AUTO] Usando áudio base64 da mensagem');
@@ -130,17 +193,36 @@ export const useAudioAutoProcessor = (clientId: string) => {
         throw new Error('Nenhum dado de áudio disponível para transcrição');
       }
 
-      // 2. Buscar OpenAI API key do cliente
-      console.log('🔑 [AUDIO-AUTO] Buscando API key do cliente...');
+      // 2. Validar se temos áudio para processar
+      if (!audioBase64 || audioBase64.length < 100) {
+        console.error('❌ [AUDIO-AUTO] Dados de áudio inválidos:', {
+          hasAudioBase64: !!audioBase64,
+          length: audioBase64?.length || 0
+        });
+        throw new Error('Dados de áudio inválidos ou muito pequenos');
+      }
+
+      // 3. Buscar OpenAI API key do cliente
+      console.log('🔑 [AUDIO-AUTO] Buscando configuração IA do cliente...');
       const aiConfig = await aiConfigService.getClientConfig(clientId);
 
       if (!aiConfig?.openai_api_key) {
-        console.error('❌ [AUDIO-AUTO] API key da OpenAI não encontrada');
-        throw new Error('API key da OpenAI não configurada');
+        console.error('❌ [AUDIO-AUTO] API key da OpenAI não encontrada para cliente:', clientId);
+        throw new Error('API key da OpenAI não configurada para este cliente');
       }
 
-      // 3. Chamar edge function speech-to-text diretamente
-      console.log('🎤 [AUDIO-AUTO] Chamando speech-to-text...');
+      console.log('✅ [AUDIO-AUTO] API key encontrada, length:', aiConfig.openai_api_key.length);
+
+      // 4. Chamar edge function speech-to-text com logs detalhados
+      console.log('🎤 [AUDIO-AUTO] 🚀 Invocando speech-to-text edge function...');
+      console.log('🎤 [AUDIO-AUTO] 📋 Parâmetros da chamada:', {
+        hasAudio: !!audioBase64,
+        audioLength: audioBase64.length,
+        hasApiKey: !!aiConfig.openai_api_key,
+        messageId: message.message_id,
+        audioPreview: audioBase64.substring(0, 50) + '...'
+      });
+
       const { data: transcriptionResult, error: transcriptionError } = await supabase.functions.invoke('speech-to-text', {
         body: {
           audio: audioBase64,
@@ -149,72 +231,118 @@ export const useAudioAutoProcessor = (clientId: string) => {
         }
       });
 
+      console.log('🎤 [AUDIO-AUTO] 📥 Resposta da edge function:', {
+        hasData: !!transcriptionResult,
+        hasError: !!transcriptionError,
+        dataPreview: transcriptionResult ? Object.keys(transcriptionResult) : 'N/A'
+      });
+
       if (transcriptionError) {
-        console.error('❌ [AUDIO-AUTO] Erro na transcrição:', transcriptionError);
-        throw new Error(`Erro na transcrição: ${transcriptionError.message}`);
+        console.error('❌ [AUDIO-AUTO] 💥 Erro na edge function speech-to-text:', transcriptionError);
+        throw new Error(`Edge function falhou: ${transcriptionError.message || 'Erro desconhecido'}`);
+      }
+
+      if (!transcriptionResult) {
+        console.error('❌ [AUDIO-AUTO] Edge function retornou dados vazios');
+        throw new Error('Edge function speech-to-text retornou resposta vazia');
       }
 
       const transcription = transcriptionResult?.text || '';
-      console.log('✅ [AUDIO-AUTO] Transcrição recebida:', transcription.substring(0, 100) + '...');
+      console.log('✅ [AUDIO-AUTO] 🎯 Transcrição recebida:', {
+        hasText: !!transcription,
+        length: transcription.length,
+        preview: transcription.substring(0, 100) + (transcription.length > 100 ? '...' : ''),
+        language: transcriptionResult?.language,
+        success: transcriptionResult?.success
+      });
 
-      // 4. Salvar transcrição no banco
-      if (transcription && transcription.trim()) {
-        await supabase
+      // 5. Salvar transcrição no banco com validação
+      if (transcription && transcription.trim().length > 0) {
+        console.log('💾 [AUDIO-AUTO] Salvando transcrição no banco...');
+        
+        const { error: updateError } = await supabase
           .from('ticket_messages')
           .update({
-            media_transcription: transcription,
+            media_transcription: transcription.trim(),
             processing_status: 'completed',
-            content: `${message.content} - Transcrição: ${transcription}`
+            content: `🎵 Áudio - Transcrição: ${transcription.trim()}`
           })
           .eq('message_id', message.message_id);
 
-        console.log('✅ [AUDIO-AUTO] Transcrição salva no banco');
+        if (updateError) {
+          console.error('❌ [AUDIO-AUTO] Erro ao salvar transcrição:', updateError);
+          throw new Error(`Falha ao salvar transcrição: ${updateError.message}`);
+        }
 
-        // 5. Processar com assistente IA automaticamente
-        console.log('🤖 [AUDIO-AUTO] Enviando para IA processar...');
+        console.log('✅ [AUDIO-AUTO] 💾 Transcrição salva com sucesso no banco');
+
+        // 6. Processar com assistente IA automaticamente
+        console.log('🤖 [AUDIO-AUTO] 🚀 Enviando transcrição para processamento IA...');
+        
         const { error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
           body: {
             ticketId: message.ticket_id,
-            message: `[Áudio transcrito]: "${transcription}"`,
-            clientId: clientId,
-            instanceId: ticket.instance_id,
+            messages: [{
+              content: transcription.trim(),
+              messageId: message.message_id,
+              timestamp: new Date().toISOString(),
+              customerName: message.sender_name || 'Cliente',
+              phoneNumber: ticket.chat_id.split('@')[0]
+            }],
             context: {
               chatId: ticket.chat_id,
-              customerName: 'Cliente',
-              phoneNumber: ticket.chat_id.split('@')[0]
+              customerName: message.sender_name || 'Cliente',
+              phoneNumber: ticket.chat_id.split('@')[0],
+              clientMessage: true
             }
           }
         });
 
         if (aiError) {
           console.error('❌ [AUDIO-AUTO] Erro ao processar com IA:', aiError);
+          // Não falhar o processo por erro na IA - transcrição já foi salva
         } else {
-          console.log('🤖 [AUDIO-AUTO] Áudio enviado para IA processar automaticamente');
+          console.log('✅ [AUDIO-AUTO] 🤖 Transcrição enviada para IA com sucesso');
         }
       } else {
-        console.log('⚠️ [AUDIO-AUTO] Transcrição vazia');
+        console.log('⚠️ [AUDIO-AUTO] ❌ Transcrição vazia ou inválida');
         
-        // Marcar como falha
-        await supabase
+        const { error: updateError } = await supabase
           .from('ticket_messages')
           .update({
             processing_status: 'failed',
-            content: `${message.content} - Falha na transcrição`
+            media_transcription: '[Transcrição vazia - áudio não pôde ser processado]',
+            content: `🎵 Áudio - [Falha na transcrição]`
           })
           .eq('message_id', message.message_id);
+
+        if (updateError) {
+          console.error('❌ [AUDIO-AUTO] Erro ao marcar falha:', updateError);
+        }
+        
+        throw new Error('Transcrição resultou em texto vazio');
       }
 
     } catch (error) {
-      console.error('❌ [AUDIO-AUTO] Erro no processamento automático:', error);
+      console.error('❌ [AUDIO-AUTO] 💥 ERRO CRÍTICO no processamento automático:', error);
+      console.error('❌ [AUDIO-AUTO] Stack trace:', error.stack);
       
-      // Marcar como erro no banco
-      await supabase
+      // Marcar como erro no banco com detalhes
+      const { error: updateError } = await supabase
         .from('ticket_messages')
         .update({
           processing_status: 'failed',
-          media_transcription: `[Erro]: ${error.message}`
+          media_transcription: `[Erro no processamento]: ${error.message}`,
+          content: `🎵 Áudio - [Erro: ${error.message}]`
         })
         .eq('message_id', message.message_id);
+
+      if (updateError) {
+        console.error('❌ [AUDIO-AUTO] Erro ao salvar status de falha:', updateError);
+      }
+      
+      // Re-throw para debugging se necessário
+      console.error('❌ [AUDIO-AUTO] Processamento falhou para mensagem:', message.message_id);
     }
   };
 

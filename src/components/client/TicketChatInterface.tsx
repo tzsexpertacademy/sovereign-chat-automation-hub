@@ -9,6 +9,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
 import { useAudioAutoProcessor } from '@/hooks/useAudioAutoProcessor';
+import { ManualAudioTestPanel } from './ManualAudioTestPanel';
 import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
