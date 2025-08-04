@@ -3857,11 +3857,7 @@ async function getVideoFromLibrary(assistantId: string, videoTrigger: string): P
     return {
       videoBase64: video.videoBase64,
       format: video.format || 'mp4'
-    
-    console.log('✅ [VIDEO-LIBRARY] VÍDEO ENCONTRADO E VÁLIDO!');
-    return {
-      videoBase64: video.videoBase64,
-      format: video.format || 'mp4'
+    };
       
   } catch (error) {
     console.error('❌ [VIDEO-LIBRARY] Erro ao buscar vídeo:', error);
