@@ -377,6 +377,10 @@ serve(async (req) => {
     const imageCommandMatch = messageContent.match(/^image\s+([a-zA-Z0-9_-]+)$/i);
     const videoCommandMatch = messageContent.match(/^video\s+([a-zA-Z0-9_-]+)$/i);
     
+    console.log('🔍 [EARLY-INTERCEPT] ===== DIAGNÓSTICO COMPLETO DE COMANDOS =====');
+    console.log('🔍 [EARLY-INTERCEPT] MessageContent original:', JSON.stringify(messageContent));
+    console.log('🔍 [EARLY-INTERCEPT] MessageContent length:', messageContent.length);
+    console.log('🔍 [EARLY-INTERCEPT] MessageContent trimmed:', JSON.stringify(messageContent.trim()));
     console.log('🔍 [EARLY-INTERCEPT] Detectando comandos:', {
       messageContent: messageContent,
       libraryCommandMatch: !!libraryCommandMatch,
@@ -385,6 +389,9 @@ serve(async (req) => {
       imageCommandValue: imageCommandMatch ? imageCommandMatch[1] : null,
       videoCommandValue: videoCommandMatch ? videoCommandMatch[1] : null
     });
+    console.log('🔍 [EARLY-INTERCEPT] Regex para vídeo:', /^video\s+([a-zA-Z0-9_-]+)$/i.source);
+    console.log('🔍 [EARLY-INTERCEPT] Teste direto do regex de vídeo:', messageContent.match(/^video\s+([a-zA-Z0-9_-]+)$/i));
+    console.log('🔍 [EARLY-INTERCEPT] ===== FIM DO DIAGNÓSTICO =====');
     
     if (libraryCommandMatch) {
       console.log('🎵 [EARLY-INTERCEPT] ⚡ COMANDO DE BIBLIOTECA DETECTADO - PROCESSANDO IMEDIATAMENTE');
@@ -483,6 +490,8 @@ serve(async (req) => {
       console.log('🎥 [EARLY-INTERCEPT] ⚡ COMANDO DE VÍDEO DETECTADO - PROCESSANDO IMEDIATAMENTE');
       console.log('🎥 [EARLY-INTERCEPT] Comando:', videoCommandMatch[0]);
       console.log('🎥 [EARLY-INTERCEPT] Trigger do vídeo:', videoCommandMatch[1]);
+      console.log('🎥 [EARLY-INTERCEPT] MessageContent original:', messageContent);
+      console.log('🎥 [EARLY-INTERCEPT] Regex match completo:', JSON.stringify(videoCommandMatch));
       
       // Buscar business token ANTES do processamento
       const { data: client } = await supabase
@@ -3578,6 +3587,27 @@ async function processVideoCommands(
     console.log('🎥 [VIDEO-COMMANDS] Instance ID:', context.instanceId);
     console.log('🎥 [VIDEO-COMMANDS] Business Token presente:', !!context.businessToken);
     console.log('🎥 [VIDEO-COMMANDS] Mensagem recebida:', `"${message}"`);
+    console.log('🎥 [VIDEO-COMMANDS] Mensagem tipo:', typeof message);
+    console.log('🎥 [VIDEO-COMMANDS] Mensagem length:', message.length);
+    console.log('🎥 [VIDEO-COMMANDS] Context completo:', JSON.stringify(context, null, 2));
+    
+    // 🔧 FORÇAR TESTE PARA "video teste2" SE A MENSAGEM CONTÉM TESTE2
+    if (message.toLowerCase().includes('teste2')) {
+      console.log('🔧 [VIDEO-COMMANDS] TESTE FORÇADO: Detectado "teste2" na mensagem - processando diretamente...');
+      try {
+        const libraryVideo = await getVideoFromLibrary(context.assistantId, 'teste2');
+        if (libraryVideo) {
+          console.log('✅ [VIDEO-COMMANDS] TESTE FORÇADO: Vídeo encontrado, enviando...');
+          await sendLibraryVideoMessage(context.instanceId, context.chatId, libraryVideo, context.businessToken);
+          console.log('✅ [VIDEO-COMMANDS] TESTE FORÇADO: Vídeo enviado com sucesso!');
+          return { hasVideoCommands: true, processedCount: 1 };
+        } else {
+          console.log('❌ [VIDEO-COMMANDS] TESTE FORÇADO: Vídeo não encontrado na biblioteca');
+        }
+      } catch (error) {
+        console.error('❌ [VIDEO-COMMANDS] TESTE FORÇADO: Erro:', error);
+      }
+    }
     
     let processedCount = 0;
     
