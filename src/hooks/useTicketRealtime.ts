@@ -33,7 +33,6 @@ export const useTicketRealtime = (clientId: string) => {
   
   // Hook para processamento automático de áudios
   useAudioAutoProcessor(clientId);
-  
 
   // Função para normalizar dados da mensagem do WhatsApp
   const normalizeWhatsAppMessage = useCallback((message: any) => {
@@ -272,77 +271,10 @@ export const useTicketRealtime = (clientId: string) => {
           hasMediaData: !!msg.mediaData
         });
         
+        // REMOVIDO PROCESSAMENTO DE ÁUDIO - deixar para useAudioAutoProcessor
         if (msg.type === 'audio' || msg.type === 'ptt') {
-          console.log('🎵 ===== DETECTADO ÁUDIO - INICIANDO TRANSCRIÇÃO DETALHADA =====');
-          console.log('📱 DADOS COMPLETOS DA MENSAGEM DE ÁUDIO:', JSON.stringify(msg, null, 2));
-          
-          try {
-            // USAR A MENSAGEM COMPLETA (com todas as propriedades) + LOGS DETALHADOS
-            const fullMessage = {
-              ...msg,
-              ...msg.originalMessage,
-              // Garantir que todas as propriedades estejam disponíveis
-              mediaData: msg.mediaData || msg.originalMessage?.mediaData,
-              mediaUrl: msg.mediaUrl || msg.originalMessage?.mediaUrl,
-              hasMedia: msg.hasMedia || msg.originalMessage?.hasMedia
-            };
-            
-            console.log('🔍 ===== MENSAGEM COMPLETA PARA PROCESSAMENTO =====');
-            console.log('📊 ESTRUTURA FINAL:', JSON.stringify(fullMessage, null, 2));
-            console.log('📊 VERIFICAÇÕES FINAIS:', {
-              hasFullMessage: !!fullMessage,
-              messageId: fullMessage.id || 'N/A',
-              hasMediaData: !!fullMessage.mediaData,
-              mediaDataLength: fullMessage.mediaData?.length || 0,
-              hasMediaUrl: !!fullMessage.mediaUrl,
-              mediaUrl: fullMessage.mediaUrl,
-              messageType: fullMessage.type,
-              hasMedia: fullMessage.hasMedia,
-              allProps: Object.keys(fullMessage)
-            });
-            
-            console.log('🚀 CHAMANDO audioService.processWhatsAppAudio...');
-            const audioResult = await audioService.processWhatsAppAudio(fullMessage, clientId);
-            
-            const transcriptionText = audioResult.transcription || '[Áudio não transcrito]';
-            processedContent += `[Mensagem de áudio transcrita]: "${transcriptionText}"\n`;
-            
-            console.log('✅ TRANSCRIÇÃO DE ÁUDIO CONCLUÍDA:', {
-              originalBody: msg.body?.substring(0, 50),
-              transcription: transcriptionText.substring(0, 100),
-              transcriptionLength: transcriptionText.length,
-              success: !!audioResult.transcription && !audioResult.transcription.includes('[Áudio não')
-            });
-            
-            // Salvar transcrição no banco
-            try {
-              const updateData: any = {
-                content: `${msg.body} - Transcrição: ${transcriptionText}`,
-                media_transcription: transcriptionText,
-                processing_status: 'completed'
-              };
-
-              if (audioResult.audioBase64) {
-                updateData.audio_base64 = audioResult.audioBase64;
-                console.log('💾 SALVANDO dados de áudio base64 no banco (tamanho:', audioResult.audioBase64.length, ')');
-              }
-
-              await supabase
-                .from('ticket_messages')
-                .update(updateData)
-                .eq('message_id', msg.id);
-                
-              console.log('💾 TRANSCRIÇÃO SALVA NO BANCO DE DADOS COM SUCESSO');
-              
-            } catch (saveError) {
-              console.error('⚠️ ERRO ao salvar transcrição no banco:', saveError);
-            }
-              
-          } catch (audioError) {
-            console.error('❌ ERRO CRÍTICO ao processar áudio:', audioError);
-            console.error('💥 Stack trace:', audioError.stack);
-            processedContent += `[Áudio não processado - ${audioError.message}]: ${msg.body || 'Mensagem de áudio'}\n`;
-          }
+          console.log('🎵 [REALTIME] Áudio detectado - será processado pelo useAudioAutoProcessor');
+          processedContent += `${msg.body || '[Mensagem de áudio]'}\n`;
         } else {
           processedContent += `${msg.body || msg.caption || '[Mídia]'}\n`;
           console.log(`📝 MENSAGEM TEXTO ADICIONADA: ${(msg.body || msg.caption || '[Mídia]').substring(0, 50)}`);
