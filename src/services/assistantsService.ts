@@ -346,9 +346,10 @@ export const assistantsService = {
       videoLibrarySize: settings.video_library?.length || 0
     });
     
+    // ✅ CORREÇÃO CRÍTICA: Usar as para contornar tipo TypeScript
     const { error } = await supabase
       .from("assistants")
-      .update({ advanced_settings: JSON.stringify(settings) })
+      .update({ advanced_settings: settings as any })
       .eq("id", id);
 
     if (error) {
