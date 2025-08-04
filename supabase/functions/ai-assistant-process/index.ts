@@ -3611,7 +3611,16 @@ async function processVideoCommands(
           });
           
           console.log('🚀 [VIDEO-COMMANDS] TESTE FORÇADO: Enviando vídeo via sendLibraryVideoMessage...');
-          await sendLibraryVideoMessage(context.instanceId, context.chatId, libraryVideo, context.businessToken);
+          console.log('🔧 [VIDEO-COMMANDS] TESTE FORÇADO: Estrutura do vídeo recebida:', {
+            hasVideoBase64: !!libraryVideo.videoBase64,
+            hasFormat: !!libraryVideo.format,
+            videoBase64Length: libraryVideo.videoBase64?.length || 0,
+            format: libraryVideo.format
+          });
+          await sendLibraryVideoMessage(context.instanceId, context.chatId, { 
+            videoBase64: libraryVideo.videoBase64, 
+            format: libraryVideo.format 
+          }, context.businessToken);
           console.log('✅ [VIDEO-COMMANDS] TESTE FORÇADO: Vídeo enviado com sucesso!');
           
           return { hasVideoCommands: true, processedCount: 1 };
@@ -3662,7 +3671,16 @@ async function processVideoCommands(
         
         if (libraryVideo) {
           console.log('🎥 [VIDEO-LIBRARY] ✅ Vídeo encontrado na biblioteca, enviando...');
-          await sendLibraryVideoMessage(context.instanceId, context.chatId, libraryVideo, context.businessToken);
+          console.log('🔧 [VIDEO-LIBRARY] Estrutura do vídeo para envio:', {
+            hasVideoBase64: !!libraryVideo.videoBase64,
+            hasFormat: !!libraryVideo.format,
+            videoBase64Length: libraryVideo.videoBase64?.length || 0,
+            format: libraryVideo.format
+          });
+          await sendLibraryVideoMessage(context.instanceId, context.chatId, { 
+            videoBase64: libraryVideo.videoBase64, 
+            format: libraryVideo.format 
+          }, context.businessToken);
           processedCount++;
           console.log('✅ [VIDEO-LIBRARY] Vídeo da biblioteca enviado com sucesso:', videoTrigger);
         } else {
