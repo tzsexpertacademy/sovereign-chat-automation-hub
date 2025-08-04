@@ -3591,22 +3591,47 @@ async function processVideoCommands(
     console.log('🎥 [VIDEO-COMMANDS] Mensagem length:', message.length);
     console.log('🎥 [VIDEO-COMMANDS] Context completo:', JSON.stringify(context, null, 2));
     
-    // 🔧 FORÇAR TESTE PARA "video teste2" SE A MENSAGEM CONTÉM TESTE2
+    // 🔧 TESTE FORÇADO PARA QUALQUER MENSAGEM COM "teste2" 
     if (message.toLowerCase().includes('teste2')) {
+      console.log('🔧 [VIDEO-COMMANDS] ===== TESTE FORÇADO ATIVADO =====');
       console.log('🔧 [VIDEO-COMMANDS] TESTE FORÇADO: Detectado "teste2" na mensagem - processando diretamente...');
+      console.log('🔧 [VIDEO-COMMANDS] TESTE FORÇADO: AssistantId:', context.assistantId);
+      console.log('🔧 [VIDEO-COMMANDS] TESTE FORÇADO: BusinessToken presente:', !!context.businessToken);
+      
       try {
         const libraryVideo = await getVideoFromLibrary(context.assistantId, 'teste2');
+        console.log('🔧 [VIDEO-COMMANDS] TESTE FORÇADO: Resultado da busca:', !!libraryVideo);
+        
         if (libraryVideo) {
-          console.log('✅ [VIDEO-COMMANDS] TESTE FORÇADO: Vídeo encontrado, enviando...');
+          console.log('✅ [VIDEO-COMMANDS] TESTE FORÇADO: Vídeo encontrado, dados:', {
+            id: libraryVideo.id,
+            trigger: libraryVideo.trigger,
+            video_name: libraryVideo.video_name,
+            size: libraryVideo.video_data?.length || 0
+          });
+          
+          console.log('🚀 [VIDEO-COMMANDS] TESTE FORÇADO: Enviando vídeo via sendLibraryVideoMessage...');
           await sendLibraryVideoMessage(context.instanceId, context.chatId, libraryVideo, context.businessToken);
           console.log('✅ [VIDEO-COMMANDS] TESTE FORÇADO: Vídeo enviado com sucesso!');
+          
           return { hasVideoCommands: true, processedCount: 1 };
         } else {
-          console.log('❌ [VIDEO-COMMANDS] TESTE FORÇADO: Vídeo não encontrado na biblioteca');
+          console.log('❌ [VIDEO-COMMANDS] TESTE FORÇADO: Vídeo "teste2" não encontrado na biblioteca');
+          
+          // Verificar se existe algum vídeo na biblioteca
+          const { data: allVideos } = await supabase
+            .from('assistant_video_library')
+            .select('id, trigger, video_name')
+            .eq('assistant_id', context.assistantId);
+            
+          console.log('🔧 [VIDEO-COMMANDS] TESTE FORÇADO: Vídeos disponíveis na biblioteca:', allVideos);
         }
       } catch (error) {
         console.error('❌ [VIDEO-COMMANDS] TESTE FORÇADO: Erro:', error);
+        console.error('❌ [VIDEO-COMMANDS] TESTE FORÇADO: Stack:', error.stack);
       }
+      
+      console.log('🔧 [VIDEO-COMMANDS] ===== FIM DO TESTE FORÇADO =====');
     }
     
     let processedCount = 0;

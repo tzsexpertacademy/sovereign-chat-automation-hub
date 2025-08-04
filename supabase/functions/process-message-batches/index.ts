@@ -179,6 +179,20 @@ async function processBatch(batch: any) {
       ticket = newTicket;
     }
 
+    // 🎥 DETECTAR COMANDOS DE VÍDEO NO BATCH
+    const hasVideoCommands = batch.messages.some((msg: any) => {
+      const content = msg.content || '';
+      const isVideoCommand = /^video\s+([a-zA-Z0-9_-]+)$/i.test(content.trim());
+      console.log('🎥 [PROCESS-BATCH] Verificando comando de vídeo:', {
+        content: content,
+        isVideoCommand: isVideoCommand,
+        messageId: msg.messageId
+      });
+      return isVideoCommand;
+    });
+
+    console.log('🎥 [PROCESS-BATCH] Comandos de vídeo detectados no batch:', hasVideoCommands);
+
     // CHAMAR IA COM BATCH
     console.log('🤖 [PROCESS-BATCH] 🧠 Chamando IA para ticket:', ticket.id, 'com', batch.messages?.length || 0, 'mensagens');
     console.log('🤖 [PROCESS-BATCH] 📄 Mensagens do batch:', JSON.stringify(batch.messages, null, 2));

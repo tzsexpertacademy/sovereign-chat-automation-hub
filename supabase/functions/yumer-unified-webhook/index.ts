@@ -198,6 +198,82 @@ async function processMessageBatch(yumerData: any) {
 
     console.log('🔥 [BATCH-SIMPLES] Instância encontrada:', instance.instance_id);
 
+    // 🎥 INTERCEPTAÇÃO IMEDIATA PARA COMANDOS DE VÍDEO
+    if (!fromMe && content && typeof content === 'string') {
+      const videoCommandMatch = content.trim().match(/^video\s+([a-zA-Z0-9_-]+)$/i);
+      if (videoCommandMatch) {
+        console.log('🎥 [WEBHOOK-INTERCEPT] ⚡ COMANDO DE VÍDEO DETECTADO - PROCESSANDO IMEDIATAMENTE');
+        console.log('🎥 [WEBHOOK-INTERCEPT] Comando:', videoCommandMatch[0]);
+        console.log('🎥 [WEBHOOK-INTERCEPT] Trigger do vídeo:', videoCommandMatch[1]);
+        
+        // Processar comando de vídeo diretamente via AI
+        try {
+          // Buscar ou criar ticket primeiro
+          const { data: ticketId } = await supabase.rpc('upsert_conversation_ticket', {
+            p_client_id: instance.client_id,
+            p_chat_id: chatId,
+            p_instance_id: instance.instance_id,
+            p_customer_name: pushName,
+            p_customer_phone: phoneNumber,
+            p_last_message: content,
+            p_last_message_at: new Date().toISOString()
+          });
+
+          if (ticketId) {
+            console.log('🎥 [WEBHOOK-INTERCEPT] 🎯 Chamando AI para processar vídeo imediatamente...');
+            
+            const aiResponse = await supabase.functions.invoke('ai-assistant-process', {
+              body: {
+                ticketId: ticketId,
+                messages: [{
+                  content: content,
+                  messageId: messageId,
+                  timestamp: new Date().toISOString(),
+                  customerName: pushName,
+                  phoneNumber: phoneNumber
+                }],
+                context: {
+                  chatId: chatId,
+                  customerName: pushName,
+                  phoneNumber: phoneNumber,
+                  immediateVideoCommand: true
+                }
+              }
+            });
+
+            console.log('🎥 [WEBHOOK-INTERCEPT] 🎯 Resultado da AI para vídeo:', { 
+              success: !aiResponse.error, 
+              hasError: !!aiResponse.error,
+              errorMsg: aiResponse.error?.message 
+            });
+
+            if (!aiResponse.error) {
+              console.log('🎥 [WEBHOOK-INTERCEPT] ✅ Comando de vídeo processado com SUCESSO!');
+              
+              // Marcar mensagem como processada
+              await supabase
+                .from('whatsapp_messages')
+                .update({ 
+                  is_processed: true,
+                  processed_at: new Date().toISOString()
+                })
+                .eq('message_id', messageId);
+
+              return new Response(JSON.stringify({ 
+                success: true, 
+                message: 'Video command processed immediately',
+                processed: true
+              }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              });
+            }
+          }
+        } catch (error) {
+          console.error('🎥 [WEBHOOK-INTERCEPT] ❌ Erro ao processar comando de vídeo:', error);
+        }
+      }
+    }
+
     // SE É MENSAGEM DO SISTEMA, PROCESSAR IMEDIATAMENTE
     if (fromMe) {
       console.log('🔥 [BATCH-SIMPLES] Mensagem do sistema - processando imediatamente');
