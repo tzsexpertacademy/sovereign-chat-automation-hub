@@ -3717,23 +3717,45 @@ async function getVideoFromLibrary(assistantId: string, videoTrigger: string): P
     console.log('📚 [VIDEO-LIBRARY] 📊 Tipo do trigger:', typeof videoTrigger);
     console.log('📚 [VIDEO-LIBRARY] 🧹 Trigger limpo:', JSON.stringify(videoTrigger.trim()));
     
-    // 🆕 BUSCAR NA NOVA TABELA assistant_video_library
-    console.log('📚 [VIDEO-LIBRARY] 🔍 FAZENDO QUERY NA NOVA TABELA assistant_video_library...');
-    const { data: videoData, error: videoError } = await supabase
+    // ✅ ETAPA 1: BUSCA CASE-INSENSITIVE COM DEBUGGING AVANÇADO
+    const cleanTrigger = videoTrigger.trim();
+    console.log('📚 [VIDEO-LIBRARY] 🔍 FAZENDO QUERY CASE-INSENSITIVE NA NOVA TABELA assistant_video_library...');
+    console.log('📚 [VIDEO-LIBRARY] 🎯 Clean trigger para busca:', JSON.stringify(cleanTrigger));
+    
+    // ✅ CORREÇÃO: Usar ilike para busca case-insensitive
+    let { data: videoData, error: videoError } = await supabase
       .from('assistant_video_library')
       .select('*')
       .eq('assistant_id', assistantId)
-      .eq('trigger_phrase', videoTrigger.trim())
+      .ilike('trigger_phrase', cleanTrigger)
       .single();
     
     if (videoError) {
-      console.error('❌ [VIDEO-LIBRARY] 💥 ERRO NA QUERY DA NOVA TABELA:', JSON.stringify(videoError));
+      console.error('❌ [VIDEO-LIBRARY] 💥 ERRO NA QUERY CASE-INSENSITIVE:', JSON.stringify(videoError));
+      console.log('📚 [VIDEO-LIBRARY] 🔄 Tentando busca EXACT MATCH como fallback...');
       
-      // 🔄 FALLBACK: Tentar buscar na estrutura antiga (advanced_settings) para compatibilidade
-      console.log('🔄 [VIDEO-LIBRARY] Tentando fallback para advanced_settings...');
-      return await getVideoFromLibraryFallback(assistantId, videoTrigger);
+      // ✅ FALLBACK 1: Tentar busca exata (case-sensitive)
+      const { data: exactVideoData, error: exactError } = await supabase
+        .from('assistant_video_library')
+        .select('*')
+        .eq('assistant_id', assistantId)
+        .eq('trigger_phrase', cleanTrigger)
+        .single();
+      
+      if (!exactError && exactVideoData) {
+        console.log('✅ [VIDEO-LIBRARY] Vídeo encontrado com busca EXACT MATCH');
+        // Continuar processamento com exactVideoData
+        videoData = exactVideoData;
+        videoError = null; // Reset error
+      } else {
+        console.error('❌ [VIDEO-LIBRARY] 💥 ERRO TAMBÉM NA QUERY EXACT MATCH:', JSON.stringify(exactError));
+        // 🔄 FALLBACK 2: Tentar buscar na estrutura antiga (advanced_settings)
+        console.log('🔄 [VIDEO-LIBRARY] Tentando fallback para advanced_settings...');
+        return await getVideoFromLibraryFallback(assistantId, videoTrigger);
+      }
     }
     
+    // ✅ DEBUGGING DETALHADO DOS DADOS RECEBIDOS
     console.log('📚 [VIDEO-LIBRARY] 📊 DADOS DO VÍDEO RECEBIDOS DA NOVA TABELA:', {
       hasData: !!videoData,
       videoId: videoData?.id,
@@ -3741,71 +3763,165 @@ async function getVideoFromLibrary(assistantId: string, videoTrigger: string): P
       originalName: videoData?.original_name,
       storagePath: videoData?.storage_path,
       mimeType: videoData?.mime_type,
-      fileSize: videoData?.file_size
+      fileSize: videoData?.file_size,
+      category: videoData?.category,
+      createdAt: videoData?.created_at
     });
     
     if (!videoData) {
-      console.log('❌ [VIDEO-LIBRARY] 🚫 VÍDEO NÃO ENCONTRADO NA NOVA TABELA');
+      console.log('❌ [VIDEO-LIBRARY] 🚫 VÍDEO NÃO ENCONTRADO APÓS TODAS AS TENTATIVAS');
+      
+      // ✅ LISTAR TODOS OS VÍDEOS DISPONÍVEIS PARA DEBUG
+      console.log('🔍 [VIDEO-LIBRARY] LISTANDO TODOS OS VÍDEOS DISPONÍVEIS PARA DEBUG:');
+      const { data: allVideos } = await supabase
+        .from('assistant_video_library')
+        .select('id, trigger_phrase, original_name, category')
+        .eq('assistant_id', assistantId);
+      
+      console.log('📋 [VIDEO-LIBRARY] VÍDEOS DISPONÍVEIS:', JSON.stringify(allVideos, null, 2));
       
       // 🔄 FALLBACK: Tentar buscar na estrutura antiga
       console.log('🔄 [VIDEO-LIBRARY] Tentando fallback para advanced_settings...');
       return await getVideoFromLibraryFallback(assistantId, videoTrigger);
     }
     
-    // 🆕 BAIXAR VÍDEO DO SUPABASE STORAGE E CONVERTER PARA BASE64
-    console.log('📥 [VIDEO-LIBRARY] Baixando vídeo do Supabase Storage...');
-    console.log('📥 [VIDEO-LIBRARY] Storage path:', videoData.storage_path);
+    // ✅ ETAPA 2: BAIXAR VÍDEO DO SUPABASE STORAGE E CONVERTER PARA BASE64
+    console.log('📥 [VIDEO-LIBRARY] 🚀 INICIANDO DOWNLOAD DO SUPABASE STORAGE...');
+    console.log('📥 [VIDEO-LIBRARY] 📂 Bucket: assistant-videos');
+    console.log('📥 [VIDEO-LIBRARY] 📁 Storage path:', JSON.stringify(videoData.storage_path));
+    console.log('📥 [VIDEO-LIBRARY] 📊 Metadados do arquivo:', {
+      originalName: videoData.original_name,
+      mimeType: videoData.mime_type,
+      fileSize: videoData.file_size,
+      category: videoData.category
+    });
     
     try {
-      // Baixar arquivo do Supabase Storage
+      // ✅ DOWNLOAD COM LOGGING DETALHADO
+      console.log('📥 [VIDEO-LIBRARY] 🔄 Executando download...');
+      const downloadStart = Date.now();
+      
       const { data: fileData, error: downloadError } = await supabase.storage
         .from('assistant-videos')
         .download(videoData.storage_path);
       
+      const downloadTime = Date.now() - downloadStart;
+      
       if (downloadError) {
-        console.error('❌ [VIDEO-LIBRARY] Erro ao baixar do Storage:', downloadError);
+        console.error('❌ [VIDEO-LIBRARY] 💥 ERRO AO BAIXAR DO STORAGE:', JSON.stringify(downloadError));
+        console.error('❌ [VIDEO-LIBRARY] 📊 Detalhes do erro:', {
+          message: downloadError.message,
+          error: downloadError.error,
+          statusCode: downloadError.statusCode
+        });
         return null;
       }
       
-      console.log('✅ [VIDEO-LIBRARY] Arquivo baixado do Storage com sucesso');
-      console.log('📊 [VIDEO-LIBRARY] Dados do arquivo:', {
+      console.log('✅ [VIDEO-LIBRARY] 📦 ARQUIVO BAIXADO COM SUCESSO!');
+      console.log('📊 [VIDEO-LIBRARY] 📈 Performance do download:', {
+        downloadTimeMs: downloadTime,
+        downloadTimeSec: (downloadTime / 1000).toFixed(2)
+      });
+      console.log('📊 [VIDEO-LIBRARY] 📁 Dados do arquivo baixado:', {
         size: fileData.size,
         type: fileData.type,
-        lastModified: fileData.lastModified
+        lastModified: fileData.lastModified,
+        sizeKB: (fileData.size / 1024).toFixed(2),
+        sizeMB: (fileData.size / (1024 * 1024)).toFixed(2)
       });
       
-      // Converter Blob para ArrayBuffer e depois para Base64
+      // ✅ ETAPA 3: CONVERSÃO PARA BASE64 COM LOGS DETALHADOS
+      console.log('🔄 [VIDEO-LIBRARY] 📋 INICIANDO CONVERSÃO PARA BASE64...');
+      const conversionStart = Date.now();
+      
+      // Converter Blob para ArrayBuffer
+      console.log('🔄 [VIDEO-LIBRARY] 📊 Convertendo Blob para ArrayBuffer...');
       const arrayBuffer = await fileData.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
       
-      // Converter para Base64
-      let videoBase64 = '';
-      const chunkSize = 0x8000; // 32KB chunks
-      for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        const chunk = uint8Array.subarray(i, i + chunkSize);
-        videoBase64 += String.fromCharCode.apply(null, Array.from(chunk));
-      }
-      videoBase64 = btoa(videoBase64);
-      
-      console.log('✅ [VIDEO-LIBRARY] Conversão para Base64 concluída');
-      console.log('📊 [VIDEO-LIBRARY] Base64 gerado:', {
-        length: videoBase64.length,
-        sample: videoBase64.substring(0, 100) + '...'
+      console.log('✅ [VIDEO-LIBRARY] 📊 ArrayBuffer criado:', {
+        byteLength: arrayBuffer.byteLength,
+        uint8ArrayLength: uint8Array.length
       });
       
-      // Determinar formato do arquivo
+      // ✅ CONVERSÃO OTIMIZADA EM CHUNKS
+      console.log('🔄 [VIDEO-LIBRARY] 📦 Convertendo para Base64 em chunks...');
+      let videoBase64 = '';
+      const chunkSize = 0x8000; // 32KB chunks
+      const totalChunks = Math.ceil(uint8Array.length / chunkSize);
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunkIndex = Math.floor(i / chunkSize) + 1;
+        const chunk = uint8Array.subarray(i, i + chunkSize);
+        
+        try {
+          videoBase64 += String.fromCharCode.apply(null, Array.from(chunk));
+          
+          // Log progress a cada 10 chunks ou no último chunk
+          if (chunkIndex % 10 === 0 || chunkIndex === totalChunks) {
+            console.log(`🔄 [VIDEO-LIBRARY] 📦 Processado chunk ${chunkIndex}/${totalChunks} (${((chunkIndex/totalChunks) * 100).toFixed(1)}%)`);
+          }
+        } catch (chunkError) {
+          console.error(`❌ [VIDEO-LIBRARY] 💥 ERRO NO CHUNK ${chunkIndex}:`, chunkError);
+          throw chunkError;
+        }
+      }
+      
+      // Converter para Base64 final
+      console.log('🔄 [VIDEO-LIBRARY] 🔐 Aplicando btoa final...');
+      videoBase64 = btoa(videoBase64);
+      
+      const conversionTime = Date.now() - conversionStart;
+      
+      console.log('✅ [VIDEO-LIBRARY] 🎉 CONVERSÃO PARA BASE64 CONCLUÍDA COM SUCESSO!');
+      console.log('📊 [VIDEO-LIBRARY] 📈 Performance da conversão:', {
+        conversionTimeMs: conversionTime,
+        conversionTimeSec: (conversionTime / 1000).toFixed(2),
+        totalChunks: totalChunks,
+        chunkSize: chunkSize
+      });
+      console.log('📊 [VIDEO-LIBRARY] 📋 Base64 gerado:', {
+        length: videoBase64.length,
+        lengthKB: (videoBase64.length / 1024).toFixed(2),
+        lengthMB: (videoBase64.length / (1024 * 1024)).toFixed(2),
+        sample: videoBase64.substring(0, 100) + '...',
+        isValid: videoBase64.length > 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(videoBase64.substring(0, 100))
+      });
+      
+      // ✅ DETERMINAR FORMATO DO ARQUIVO COM LOGS
+      console.log('🔄 [VIDEO-LIBRARY] 🎯 Determinando formato do arquivo...');
+      console.log('📊 [VIDEO-LIBRARY] MIME Type original:', videoData.mime_type);
+      
       const format = videoData.mime_type.includes('mp4') ? 'mp4' :
                     videoData.mime_type.includes('avi') ? 'avi' :
                     videoData.mime_type.includes('mov') ? 'mov' :
                     videoData.mime_type.includes('webm') ? 'webm' : 'mp4';
       
-      console.log('✅ [VIDEO-LIBRARY] 📋 VÍDEO DA NOVA ARQUITETURA PRONTO PARA ENVIO:', {
+      console.log('✅ [VIDEO-LIBRARY] 🎯 Formato determinado:', format);
+      
+      // ✅ VALIDAÇÃO FINAL
+      const finalValidation = {
         trigger: videoData.trigger_phrase,
         format: format,
         videoBase64Length: videoBase64.length,
+        videoBase64Valid: videoBase64.length > 0,
         originalName: videoData.original_name,
-        mimeType: videoData.mime_type
-      });
+        mimeType: videoData.mime_type,
+        fileSize: videoData.file_size,
+        ready: true
+      };
+      
+      console.log('✅ [VIDEO-LIBRARY] 🎉 VÍDEO DA NOVA ARQUITETURA PRONTO PARA ENVIO:');
+      console.log('📋 [VIDEO-LIBRARY] 📊 DADOS FINAIS:', JSON.stringify(finalValidation, null, 2));
+      
+      // ✅ TESTE DE INTEGRIDADE DO BASE64
+      try {
+        const testDecode = atob(videoBase64.substring(0, 100));
+        console.log('✅ [VIDEO-LIBRARY] 🔐 Base64 passou no teste de integridade');
+      } catch (integrityError) {
+        console.error('❌ [VIDEO-LIBRARY] 💥 ERRO DE INTEGRIDADE DO BASE64:', integrityError);
+        throw new Error('Base64 gerado é inválido');
+      }
       
       return {
         videoBase64: videoBase64,
