@@ -37,7 +37,7 @@ export class HumanizedMessageProcessor {
 
   // Configurar listeners em tempo real
   private setupRealtimeListeners(clientId: string): void {
-    // Listener para novas mensagens
+    // Listener para novas mensagens COM DEBOUNCING
     supabase
       .channel('whatsapp_messages')
       .on(
@@ -49,12 +49,15 @@ export class HumanizedMessageProcessor {
           filter: `from_me=eq.false` // Apenas mensagens dos clientes
         },
         async (payload) => {
-          await this.handleNewMessage(payload.new as any, clientId);
+          // DEBOUNCING: Aguardar 500ms para permitir que mensagens rápidas sejam agrupadas
+          setTimeout(async () => {
+            await this.handleNewMessage(payload.new as any, clientId);
+          }, 500);
         }
       )
       .subscribe();
 
-    console.log('👂 Listeners de tempo real configurados');
+    console.log('👂 Listeners de tempo real configurados com debouncing de 500ms');
   }
 
   // Processar nova mensagem
@@ -101,11 +104,15 @@ export class HumanizedMessageProcessor {
           chatId: messageData.chat_id
         });
         
-        // NOVA VERIFICAÇÃO: Verificar controle duplo antes de buscar ticket
+        // VERIFICAÇÃO CRUCIAL: Usar chat_id corretamente para lock
         const { messageProcessingController } = await import('./messageProcessingController');
         
+        // PRIORITÁRIO: Verificar se o CHAT_ID está bloqueado (não ticket_id)
         if (messageProcessingController.isChatLocked(messageData.chat_id)) {
-          console.log('🔒 [HUMANIZED] Chat com lock ativo - IGNORANDO mensagem:', messageData.chat_id);
+          console.log('🔒 [HUMANIZED] CHAT com lock ativo - IGNORANDO mensagem:', {
+            chatId: messageData.chat_id,
+            messageId: messageData.message_id
+          });
           return;
         }
         
@@ -123,18 +130,24 @@ export class HumanizedMessageProcessor {
           .single();
         
         if (ticket) {
-          console.log('🎯 [HUMANIZED] Adicionando mensagem ao BATCH ÚNICO para processamento conjunto');
+          console.log('🎯 [HUMANIZED] Adicionando mensagem ao BATCH usando CHAT_ID:', {
+            ticketId: ticket.id,
+            chatId: messageData.chat_id,
+            messageId: messageData.message_id
+          });
           
+          // CORREÇÃO CRUCIAL: Usar chat_id real para agrupamento, não ticket.id
           aiQueueIntegrationService.addMessageToBatch(
-            ticket.id, // usar ID real do ticket
+            messageData.chat_id, // USAR CHAT_ID para agrupamento correto
             messageData.content || '',
             clientId,
             messageData.instance_id,
             messageData.message_id,
-            new Date(messageData.timestamp).getTime()
+            new Date(messageData.timestamp).getTime(),
+            ticket.id // passar ticket_id separadamente
           );
           
-          console.log('📦 [HUMANIZED] ✅ Mensagem adicionada ao BATCH - aguardando mais mensagens (timeout: 6s)');
+          console.log('📦 [HUMANIZED] ✅ Mensagem adicionada ao BATCH por CHAT_ID - aguardando mais mensagens (timeout: 6s)');
         } else {
           console.log('❌ [HUMANIZED] Ticket não encontrado para chat:', messageData.chat_id);
         }

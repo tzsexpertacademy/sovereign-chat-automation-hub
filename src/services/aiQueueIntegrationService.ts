@@ -147,32 +147,38 @@ class AIQueueIntegrationService {
   /**
    * NOVO: Adicionar mensagem ao batch com controle centralizado
    */
-  addMessageToBatch(
-    ticketId: string,
+   addMessageToBatch(
+    chatId: string, // CORREÇÃO: chat_id como parâmetro principal para agrupamento
     messageContent: string,
     clientId: string,
     instanceId: string,
     messageId: string,
-    timestamp: number
+    timestamp: number,
+    ticketId?: string // ticket_id opcional
   ) {
-    // NOVO: Usar controlador centralizado para verificar se pode processar
-    if (!messageProcessingController.canProcessMessage(messageId, ticketId)) {
-      console.log('🚫 [AI-QUEUE] Mensagem não pode ser processada (lock ou já processada):', messageId);
+    // CORREÇÃO CRUCIAL: Usar chat_id para verificar se pode processar
+    if (!messageProcessingController.canProcessMessage(messageId, chatId)) {
+      console.log('🚫 [AI-QUEUE] Mensagem não pode ser processada (chat locked ou já processada):', {
+        messageId,
+        chatId,
+        isLocked: messageProcessingController.isChatLocked(chatId),
+        isProcessed: messageProcessingController.isMessageProcessed(messageId)
+      });
       return;
     }
 
     const message = {
       id: messageId,
-      ticketId,
+      chatId, // USAR chat_id real
+      ticketId: ticketId || chatId, // fallback para compatibilidade
       content: messageContent,
       clientId,
       instanceId,
-      timestamp,
-      chatId: ticketId // usar ticketId como chatId para agrupamento
+      timestamp
     };
 
-    console.log('📦 [AI-QUEUE] Adicionando mensagem ao batch:', {
-      ticketId,
+    console.log('📦 [AI-QUEUE] Adicionando mensagem ao batch por CHAT_ID:', {
+      chatId,
       messageId,
       contentLength: messageContent.length,
       controllerStatus: messageProcessingController.getStatus()
@@ -281,15 +287,12 @@ class AIQueueIntegrationService {
       
       const ticketId = messagesToProcess[0].ticketId;
       
-      // CONTROLE RIGOROSO: Múltiplas verificações de lock
-      if (messageProcessingController.isChatLocked(chatId) || 
-          this.processingQueue.get(ticketId) ||
-          this.processingQueue.get(chatId)) {
-        console.log('🔒 [AI-QUEUE] BLOQUEADO - Chat/Ticket já sendo processado:', {
+      // CONTROLE RIGOROSO: Verificar APENAS por chat_id (identificador real da conversa)
+      if (messageProcessingController.isChatLocked(chatId) || this.processingQueue.get(chatId)) {
+        console.log('🔒 [AI-QUEUE] BLOQUEADO - Chat já sendo processado:', {
           chatId,
           ticketId,
           chatLocked: messageProcessingController.isChatLocked(chatId),
-          ticketProcessing: this.processingQueue.get(ticketId),
           chatProcessing: this.processingQueue.get(chatId)
         });
         return;
@@ -301,9 +304,8 @@ class AIQueueIntegrationService {
         messageIds: messagesToProcess.map(m => m.id)
       });
       
-      // APLICAR TODOS OS LOCKS
+      // APLICAR LOCK ÚNICO POR CHAT_ID (identificador real da conversa)
       messageProcessingController.lockChatWithTimestamp(chatId, Date.now());
-      this.processingQueue.set(ticketId, true);
       this.processingQueue.set(chatId, true);
       
       // Limpar batch e timeout
@@ -335,8 +337,9 @@ class AIQueueIntegrationService {
         
         console.log(`📋 [AI-QUEUE] ${unprocessedMessages.length}/${messagesToProcess.length} mensagens ainda não processadas`);
         
-        // Processar apenas mensagens não processadas
-        await this.processMessageBatch(unprocessedMessages);
+        // Processar apenas mensagens não processadas usando ticket_id correto
+        const ticketIdForProcessing = unprocessedMessages[0].ticketId;
+        await this.processMessageBatch(unprocessedMessages, ticketIdForProcessing);
         
         // NOVO: Marcar mensagens como processadas no DB e no controlador
         await this.markMessagesAsProcessed(unprocessedMessages);
@@ -350,22 +353,17 @@ class AIQueueIntegrationService {
         }
         
       } finally {
-        // NOVO: Liberar lock centralizado sempre
-        messageProcessingController.unlockChat(ticketId);
-        messageProcessingController.unlockChat(chatId); // Liberar também por chatId
-        this.processingQueue.delete(ticketId);
+        // LIBERAR LOCK ÚNICO POR CHAT_ID 
+        messageProcessingController.unlockChat(chatId);
         this.processingQueue.delete(chatId);
-        console.log('🔓 [AI-QUEUE] Locks centralizados liberados para:', { ticketId, chatId });
+        console.log('🔓 [AI-QUEUE] Lock de chat liberado para:', { chatId, ticketId });
       }
       
     } catch (error) {
       console.error('❌ [AI-QUEUE] Erro ao processar batch:', error);
-      // Em caso de erro, também liberar lock
-      const firstMessage = messages?.[0] || this.messageBatcher.batches.get(chatId)?.messages?.[0];
-      if (firstMessage) {
-        messageProcessingController.unlockChat(firstMessage.ticketId);
-        this.processingQueue.delete(firstMessage.ticketId);
-      }
+      // Em caso de erro, liberar lock pelo CHAT_ID
+      messageProcessingController.unlockChat(chatId);
+      this.processingQueue.delete(chatId);
     }
   }
 
@@ -448,13 +446,14 @@ class AIQueueIntegrationService {
     }
   }
 
-  /**
-   * NOVO: Processar batch completo de mensagens
-   */
-  private async processMessageBatch(messages: any[]): Promise<MessageProcessingResult> {
-    const startTime = Date.now();
-    const firstMessage = messages[0];
-    const { ticketId, clientId, instanceId } = firstMessage;
+   /**
+    * NOVO: Processar batch completo de mensagens
+    */
+   private async processMessageBatch(messages: any[], ticketIdOverride?: string): Promise<MessageProcessingResult> {
+     const startTime = Date.now();
+     const firstMessage = messages[0];
+     const { clientId, instanceId } = firstMessage;
+     const ticketId = ticketIdOverride || firstMessage.ticketId;
     
     try {
       console.log('🤖 [AI-QUEUE] Processando batch automático:', {
