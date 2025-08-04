@@ -4083,7 +4083,7 @@ async function sendLibraryVideoMessage(instanceId: string, chatId: string, video
 
       formData = new FormData();
       formData.append('recipient', chatId);
-      formData.append('attachment', videoFile);
+      formData.append('attachment', videoFile);  // ✅ CORREÇÃO: usando 'attachment' como na documentação
       formData.append('mediatype', 'video');
       formData.append('delay', '1200');
       
