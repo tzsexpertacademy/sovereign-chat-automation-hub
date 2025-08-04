@@ -451,11 +451,17 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
 
     // 🚀 AGENDAR PROCESSAMENTO APENAS PARA NOVOS BATCHES
     if (isNewBatch) {
-      console.log('🔥 [BATCH-GROUPING] ⏰ Agendando processamento em 3 segundos...');
+      // Detectar se é mensagem de áudio para timeout dinâmico
+      const isAudioMessage = message.messageType === 'audio' || 
+                             (message.content && message.content.includes('🎵'));
+      
+      const batchTimeout = isAudioMessage ? 6000 : BATCH_TIMEOUT; // 6s para áudio, 3s para texto
+      
+      console.log(`🔥 [BATCH-GROUPING] ⏰ Agendando processamento em ${batchTimeout}ms (tipo: ${isAudioMessage ? 'áudio' : 'texto'})...`);
       
       // USAR EdgeRuntime.waitUntil para background task
       const backgroundTask = async () => {
-        await new Promise(resolve => setTimeout(resolve, BATCH_TIMEOUT));
+        await new Promise(resolve => setTimeout(resolve, batchTimeout));
         
         try {
           console.log('🔥 [BATCH-GROUPING] 🚀 Executando processamento programado...');
@@ -465,7 +471,9 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
               trigger: 'batch_timeout_webhook',
               timestamp: new Date().toISOString(),
               chatId: chatId,
-              source: 'yumer-unified-webhook'
+              source: 'yumer-unified-webhook',
+              messageType: message.messageType || (isAudioMessage ? 'audio' : 'text'),
+              hasMedia: isAudioMessage
             }
           });
           

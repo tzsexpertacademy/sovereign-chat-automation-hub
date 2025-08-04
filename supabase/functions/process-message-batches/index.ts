@@ -167,21 +167,21 @@ async function processBatch(batch: any) {
       for (const audioMsg of audioMessages) {
         console.log('🎵 [AUDIO-FIX] 🔍 Verificando dados de áudio para messageId:', audioMsg.messageId);
         
-        // Verificar em whatsapp_messages
+        // Verificar dados na tabela whatsapp_messages (fonte primária)
         const { data: whatsappData } = await supabase
           .from('whatsapp_messages')
           .select('message_id, media_url, media_key, file_enc_sha256, message_type, created_at')
           .eq('message_id', audioMsg.messageId)
           .single();
         
-        // Verificar em ticket_messages
+        // Verificar dados na tabela ticket_messages
         const { data: ticketData } = await supabase
           .from('ticket_messages')
           .select('message_id, media_url, media_key, file_enc_sha256, message_type, processing_status')
           .eq('message_id', audioMsg.messageId)
           .single();
         
-        console.log('🎵 [AUDIO-FIX] 📊 COMPARAÇÃO DE DADOS:', {
+        console.log('🎵 [AUDIO-VERIFICATION] 📊 STATUS DOS DADOS:', {
           messageId: audioMsg.messageId,
           whatsappMessages: whatsappData ? {
             hasMediaUrl: !!whatsappData.media_url,
@@ -198,31 +198,37 @@ async function processBatch(batch: any) {
           } : 'NÃO ENCONTRADO'
         });
 
-        // 🎯 CORREÇÃO AUTOMÁTICA: Se dados estão em whatsapp_messages mas não em ticket_messages
-        if (whatsappData && ticketData && (!ticketData.media_url || !ticketData.media_key) && whatsappData.media_url && whatsappData.media_key) {
-          console.log('🔧 [AUDIO-FIX] 🚀 CORRIGINDO dados de mídia em ticket_messages...');
-          
-          const { error: updateError } = await supabase
-            .from('ticket_messages')
-            .update({
-              media_url: whatsappData.media_url,
-              media_key: whatsappData.media_key,
-              file_enc_sha256: whatsappData.file_enc_sha256,
-              processing_status: 'received'
-            })
-            .eq('message_id', audioMsg.messageId);
-          
-          if (updateError) {
-            console.error('❌ [AUDIO-FIX] Erro ao corrigir dados:', updateError);
+        // 🎯 SINCRONIZAÇÃO AUTOMÁTICA: Garantir dados em ticket_messages
+        if (whatsappData && whatsappData.media_url && whatsappData.media_key) {
+          if (!ticketData || !ticketData.media_url || !ticketData.media_key) {
+            console.log('🔧 [AUDIO-VERIFICATION] 🚀 SINCRONIZANDO dados para ticket_messages...');
+            
+            const { error: syncError } = await supabase
+              .from('ticket_messages')
+              .update({
+                media_url: whatsappData.media_url,
+                media_key: whatsappData.media_key,
+                file_enc_sha256: whatsappData.file_enc_sha256,
+                processing_status: 'received'
+              })
+              .eq('message_id', audioMsg.messageId);
+            
+            if (!syncError) {
+              console.log('✅ [AUDIO-VERIFICATION] 🎯 Dados sincronizados com sucesso:', audioMsg.messageId);
+            } else {
+              console.error('❌ [AUDIO-VERIFICATION] Erro ao sincronizar:', audioMsg.messageId, syncError);
+            }
           } else {
-            console.log('✅ [AUDIO-FIX] 🎯 Dados de mídia corrigidos automaticamente');
+            console.log('✅ [AUDIO-VERIFICATION] ✅ Dados já sincronizados:', audioMsg.messageId);
           }
+        } else {
+          console.log('⚠️ [AUDIO-VERIFICATION] ⚠️ Dados de áudio não encontrados:', audioMsg.messageId);
+          
+          // Aguardar mais tempo para dados de mídia
+          console.log('🎵 [AUDIO-VERIFICATION] ⏳ Aguardando mais tempo para dados de mídia...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
-      
-      // DELAY EXTRA para áudios (garante que decriptação/salvamento terminou)
-      console.log('🎵 [AUDIO-FIX] ⏳ Delay extra de 1s para processamento de áudio...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
   try {

@@ -62,7 +62,15 @@ export const useMessageBatch = (
     const chatId = message.chatId || message.from;
     const batches = batchesRef.current;
     
-    console.log(`📦 [MESSAGE-BATCH] Adicionando mensagem ao batch: ${chatId}`);
+    // Detectar se é mensagem de áudio
+    const isAudioMessage = message.messageType === 'audio' || 
+                          message.type === 'audio' || 
+                          (message.media_url && message.media_key);
+    
+    // Calcular timeout baseado no tipo de mensagem
+    const messageTimeout = isAudioMessage ? 6000 : config.timeout; // 6s para áudio, padrão para texto
+    
+    console.log(`📦 [MESSAGE-BATCH] Adicionando mensagem ao batch: ${chatId} (tipo: ${isAudioMessage ? 'áudio' : 'texto'}, timeout: ${messageTimeout}ms)`);
     
     // Se não existe batch para este chat, criar novo
     if (!batches.has(chatId)) {
@@ -91,7 +99,7 @@ export const useMessageBatch = (
       const newBatch = batches.get(chatId)!;
       newBatch.timeoutId = setTimeout(() => {
         processBatch(chatId);
-      }, config.timeout);
+      }, messageTimeout);
       
       return;
     }
@@ -114,10 +122,10 @@ export const useMessageBatch = (
       return;
     }
 
-    // Configurar novo timeout
+    // Configurar novo timeout (usar timeout específico para áudio)
     batch.timeoutId = setTimeout(() => {
       processBatch(chatId);
-    }, config.timeout);
+    }, messageTimeout);
 
   }, [config, callback]);
 
