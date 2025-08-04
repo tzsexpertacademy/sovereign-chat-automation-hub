@@ -270,8 +270,10 @@ export const assistantsService = {
         rawType: typeof rawSettings,
         hasImageLibrary: !!settings.image_library,
         hasAudioLibrary: !!settings.audio_library,
+        hasVideoLibrary: !!settings.video_library,
         audioLibrarySize: settings.audio_library?.length || 0,
-        imageLibrarySize: settings.image_library?.length || 0
+        imageLibrarySize: settings.image_library?.length || 0,
+        videoLibrarySize: settings.video_library?.length || 0
       });
       
       // ✅ GARANTIR QUE image_library SEMPRE EXISTE - ESPECIAL PARA YUMER
@@ -298,10 +300,10 @@ export const assistantsService = {
         await this.updateAdvancedSettings(id, settings);
       }
       
-      // ✅ GARANTIR QUE video_library SEMPRE EXISTE
-      if (!settings.video_library) {
+      // ✅ GARANTIR QUE video_library SEMPRE EXISTE - CRÍTICO PARA FUNCIONAR
+      if (!settings.video_library || settings.video_library === null) {
         settings.video_library = [];
-        console.log('🔧 [GET-SETTINGS] Adicionando video_library ausente');
+        console.log('🔧 [GET-SETTINGS] Corrigindo video_library null/undefined -> []');
         await this.updateAdvancedSettings(id, settings);
       }
       
@@ -325,6 +327,7 @@ export const assistantsService = {
       console.log('✅ [GET-SETTINGS] Configurações carregadas e corrigidas:', {
         audioLibrarySize: settings.audio_library?.length || 0,
         imageLibrarySize: settings.image_library?.length || 0,
+        videoLibrarySize: settings.video_library?.length || 0,
         audioProcessingEnabled: settings.audio_processing_enabled
       });
       
@@ -339,7 +342,8 @@ export const assistantsService = {
     console.log('💾 [UPDATE-SETTINGS] Salvando configurações:', {
       assistantId: id,
       audioLibrarySize: settings.audio_library?.length || 0,
-      imageLibrarySize: settings.image_library?.length || 0
+      imageLibrarySize: settings.image_library?.length || 0,
+      videoLibrarySize: settings.video_library?.length || 0
     });
     
     const { error } = await supabase
