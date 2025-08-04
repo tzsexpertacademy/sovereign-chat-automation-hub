@@ -3707,271 +3707,185 @@ async function processVideoCommands(
 }
 
 /**
- * 📚 BUSCAR VÍDEO DA BIBLIOTECA
+ * 📚 BUSCAR VÍDEO DA BIBLIOTECA (NOVA ARQUITETURA - SUPABASE STORAGE)
  */
 async function getVideoFromLibrary(assistantId: string, videoTrigger: string): Promise<{ videoBase64: string, format: string } | null> {
   try {
-    console.log('📚 [VIDEO-LIBRARY] 🔍 BUSCANDO VÍDEO NA BIBLIOTECA - DEBUG EXTREMO:');
+    console.log('📚 [VIDEO-LIBRARY] 🔍 BUSCANDO VÍDEO NA NOVA BIBLIOTECA (SUPABASE STORAGE):');
     console.log('📚 [VIDEO-LIBRARY] 🆔 Assistant ID:', assistantId);
     console.log('📚 [VIDEO-LIBRARY] 🎯 Trigger buscado:', JSON.stringify(videoTrigger));
     console.log('📚 [VIDEO-LIBRARY] 📊 Tipo do trigger:', typeof videoTrigger);
     console.log('📚 [VIDEO-LIBRARY] 🧹 Trigger limpo:', JSON.stringify(videoTrigger.trim()));
     
+    // 🆕 BUSCAR NA NOVA TABELA assistant_video_library
+    console.log('📚 [VIDEO-LIBRARY] 🔍 FAZENDO QUERY NA NOVA TABELA assistant_video_library...');
+    const { data: videoData, error: videoError } = await supabase
+      .from('assistant_video_library')
+      .select('*')
+      .eq('assistant_id', assistantId)
+      .eq('trigger_phrase', videoTrigger.trim())
+      .single();
+    
+    if (videoError) {
+      console.error('❌ [VIDEO-LIBRARY] 💥 ERRO NA QUERY DA NOVA TABELA:', JSON.stringify(videoError));
+      
+      // 🔄 FALLBACK: Tentar buscar na estrutura antiga (advanced_settings) para compatibilidade
+      console.log('🔄 [VIDEO-LIBRARY] Tentando fallback para advanced_settings...');
+      return await getVideoFromLibraryFallback(assistantId, videoTrigger);
+    }
+    
+    console.log('📚 [VIDEO-LIBRARY] 📊 DADOS DO VÍDEO RECEBIDOS DA NOVA TABELA:', {
+      hasData: !!videoData,
+      videoId: videoData?.id,
+      triggerPhrase: videoData?.trigger_phrase,
+      originalName: videoData?.original_name,
+      storagePath: videoData?.storage_path,
+      mimeType: videoData?.mime_type,
+      fileSize: videoData?.file_size
+    });
+    
+    if (!videoData) {
+      console.log('❌ [VIDEO-LIBRARY] 🚫 VÍDEO NÃO ENCONTRADO NA NOVA TABELA');
+      
+      // 🔄 FALLBACK: Tentar buscar na estrutura antiga
+      console.log('🔄 [VIDEO-LIBRARY] Tentando fallback para advanced_settings...');
+      return await getVideoFromLibraryFallback(assistantId, videoTrigger);
+    }
+    
+    // 🆕 BAIXAR VÍDEO DO SUPABASE STORAGE E CONVERTER PARA BASE64
+    console.log('📥 [VIDEO-LIBRARY] Baixando vídeo do Supabase Storage...');
+    console.log('📥 [VIDEO-LIBRARY] Storage path:', videoData.storage_path);
+    
+    try {
+      // Baixar arquivo do Supabase Storage
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('assistant-videos')
+        .download(videoData.storage_path);
+      
+      if (downloadError) {
+        console.error('❌ [VIDEO-LIBRARY] Erro ao baixar do Storage:', downloadError);
+        return null;
+      }
+      
+      console.log('✅ [VIDEO-LIBRARY] Arquivo baixado do Storage com sucesso');
+      console.log('📊 [VIDEO-LIBRARY] Dados do arquivo:', {
+        size: fileData.size,
+        type: fileData.type,
+        lastModified: fileData.lastModified
+      });
+      
+      // Converter Blob para ArrayBuffer e depois para Base64
+      const arrayBuffer = await fileData.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Converter para Base64
+      let videoBase64 = '';
+      const chunkSize = 0x8000; // 32KB chunks
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.subarray(i, i + chunkSize);
+        videoBase64 += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      videoBase64 = btoa(videoBase64);
+      
+      console.log('✅ [VIDEO-LIBRARY] Conversão para Base64 concluída');
+      console.log('📊 [VIDEO-LIBRARY] Base64 gerado:', {
+        length: videoBase64.length,
+        sample: videoBase64.substring(0, 100) + '...'
+      });
+      
+      // Determinar formato do arquivo
+      const format = videoData.mime_type.includes('mp4') ? 'mp4' :
+                    videoData.mime_type.includes('avi') ? 'avi' :
+                    videoData.mime_type.includes('mov') ? 'mov' :
+                    videoData.mime_type.includes('webm') ? 'webm' : 'mp4';
+      
+      console.log('✅ [VIDEO-LIBRARY] 📋 VÍDEO DA NOVA ARQUITETURA PRONTO PARA ENVIO:', {
+        trigger: videoData.trigger_phrase,
+        format: format,
+        videoBase64Length: videoBase64.length,
+        originalName: videoData.original_name,
+        mimeType: videoData.mime_type
+      });
+      
+      return {
+        videoBase64: videoBase64,
+        format: format
+      };
+      
+    } catch (error) {
+      console.error('❌ [VIDEO-LIBRARY] Erro na conversão para Base64:', error);
+      return null;
+    }
+    
+  } catch (error) {
+    console.error('❌ [VIDEO-LIBRARY] 💥 ERRO GERAL NA BUSCA:', error);
+    console.error('🔧 [VIDEO-LIBRARY] 📊 Stack trace:', error.stack);
+    return null;
+  }
+}
+
+/**
+ * 📚 BUSCAR VÍDEO DA BIBLIOTECA (FALLBACK - ADVANCED_SETTINGS)
+ */
+async function getVideoFromLibraryFallback(assistantId: string, videoTrigger: string): Promise<{ videoBase64: string, format: string } | null> {
+  try {
+    console.log('🔄 [VIDEO-FALLBACK] Buscando na estrutura antiga (advanced_settings)...');
+    
     // Buscar na tabela assistants campo advanced_settings
-    console.log('📚 [VIDEO-LIBRARY] 🔍 FAZENDO QUERY NO SUPABASE...');
     const { data: assistantData, error: assistantError } = await supabase
       .from('assistants')
       .select('advanced_settings')
       .eq('id', assistantId)
       .single();
     
-    if (assistantError) {
-      console.error('❌ [VIDEO-LIBRARY] 💥 ERRO NA QUERY DO ASSISTANT:', JSON.stringify(assistantError));
+    if (assistantError || !assistantData?.advanced_settings) {
+      console.log('❌ [VIDEO-FALLBACK] Assistente não encontrado ou sem advanced_settings');
       return null;
     }
     
-    console.log('📚 [VIDEO-LIBRARY] 📊 DADOS DO ASSISTENTE RECEBIDOS:', {
-      hasData: !!assistantData,
-      hasAdvancedSettings: !!assistantData?.advanced_settings,
-      typeOfAdvancedSettings: typeof assistantData?.advanced_settings,
-      advancedSettingsLength: typeof assistantData?.advanced_settings === 'string' ? assistantData.advanced_settings.length : 'not string',
-      rawAdvancedSettingsPreview: typeof assistantData?.advanced_settings === 'string' ? assistantData.advanced_settings.substring(0, 200) + '...' : 'not string'
-    });
-    
-    if (!assistantData?.advanced_settings) {
-      console.log('❌ [VIDEO-LIBRARY] 🚫 ASSISTANT SEM ADVANCED_SETTINGS');
-      return null;
-    }
-    
-    // 🎯 PARSER REFORÇADO PARA ESTRUTURA COMPLEXA ANINHADA
+    // Parse do advanced_settings
     let advancedSettings = assistantData.advanced_settings;
-    
-    console.log('🔧 [VIDEO-LIBRARY] 📊 ETAPA 1 - PARSING: Tipo inicial:', typeof advancedSettings);
-    
-    // STEP 1: Parse inicial se for string
     if (typeof advancedSettings === 'string') {
       try {
-        console.log('🔧 [VIDEO-LIBRARY] 📄 Fazendo JSON.parse da string...');
         advancedSettings = JSON.parse(advancedSettings);
-        console.log('✅ [VIDEO-LIBRARY] 🎉 String parsed para object com sucesso');
-        console.log('📊 [VIDEO-LIBRARY] 📋 Keys do objeto parseado:', Object.keys(advancedSettings));
-      } catch (parseError) {
-        console.error('❌ [VIDEO-LIBRARY] 💥 Erro ao fazer parse da string:', parseError);
-        console.error('🔧 [VIDEO-LIBRARY] 📄 String que causou erro:', assistantData.advanced_settings.substring(0, 500));
-        return null;
-      }
-    }
-    
-    console.log('🔧 [VIDEO-LIBRARY] ETAPA 2: Após primeiro parse, tipo:', typeof advancedSettings);
-    console.log('🔧 [VIDEO-LIBRARY] ETAPA 2: Chaves disponíveis:', Object.keys(advancedSettings));
-    
-    // STEP 2: NOVO ALGORITMO PARA ESTRUTURA ANINHADA COMPLEXA
-    if (advancedSettings && typeof advancedSettings === 'object') {
-      // 🎯 TENTATIVA 1: Verificar se já tem video_library diretamente
-      if (advancedSettings.video_library && Array.isArray(advancedSettings.video_library)) {
-        console.log('✅ [VIDEO-LIBRARY] video_library encontrada diretamente!');
-      } else {
-        console.log('🔍 [VIDEO-LIBRARY] video_library não encontrada diretamente, procurando em estrutura aninhada...');
-        
-        // 🎯 TENTATIVA 2: Procurar em chaves numéricas (estrutura aninhada típica)
-        let found = false;
-        for (const key of Object.keys(advancedSettings)) {
-          console.log(`🔍 [VIDEO-LIBRARY] Verificando chave "${key}"...`);
-          
-          if (typeof advancedSettings[key] === 'string') {
-            console.log(`🔧 [VIDEO-LIBRARY] Chave "${key}" é string, tentando parse...`);
-            try {
-              const nestedData = JSON.parse(advancedSettings[key]);
-              console.log(`🔍 [VIDEO-LIBRARY] Parse da chave "${key}" - chaves:`, Object.keys(nestedData));
-              
-              if (nestedData.video_library && Array.isArray(nestedData.video_library)) {
-                advancedSettings = nestedData;
-                console.log(`✅ [VIDEO-LIBRARY] video_library encontrada na chave "${key}"!`);
-                found = true;
-                break;
-              }
-            } catch (nestedParseError) {
-              console.log(`⚠️ [VIDEO-LIBRARY] Erro ao fazer parse da chave "${key}":`, nestedParseError.message);
-            }
-          } else if (typeof advancedSettings[key] === 'object' && advancedSettings[key] !== null) {
-            console.log(`🔍 [VIDEO-LIBRARY] Chave "${key}" é object, verificando video_library...`);
-            if (advancedSettings[key].video_library && Array.isArray(advancedSettings[key].video_library)) {
-              advancedSettings = advancedSettings[key];
-              console.log(`✅ [VIDEO-LIBRARY] video_library encontrada no object da chave "${key}"!`);
-              found = true;
-              break;
-            }
-          }
-        }
-        
-        if (!found) {
-          console.log('🔍 [VIDEO-LIBRARY] Tentando busca recursiva mais profunda...');
-          // 🎯 TENTATIVA 3: Busca recursiva mais profunda
-          for (const key of Object.keys(advancedSettings)) {
-            const value = advancedSettings[key];
-            if (typeof value === 'object' && value !== null) {
-              for (const subKey of Object.keys(value)) {
-                if (typeof value[subKey] === 'string') {
-                  try {
-                    const deepNestedData = JSON.parse(value[subKey]);
-                    if (deepNestedData.video_library && Array.isArray(deepNestedData.video_library)) {
-                      advancedSettings = deepNestedData;
-                      console.log(`✅ [VIDEO-LIBRARY] video_library encontrada em ${key}.${subKey}!`);
-                      found = true;
-                      break;
-                    }
-                  } catch (error) {
-                    // Silencioso para não poluir logs
-                  }
-                }
-              }
-              if (found) break;
-            }
-          }
-        }
-      }
-    }
-    
-    console.log('🔍 [VIDEO-LIBRARY] Advanced settings FINAL após todos os parses:', {
-      keys: Object.keys(advancedSettings),
-      hasVideoLibrary: !!advancedSettings?.video_library,
-      hasAudioLibrary: !!advancedSettings?.audio_library,
-      hasImageLibrary: !!advancedSettings?.image_library,
-      videoLibraryLength: advancedSettings?.video_library?.length || 0,
-      audioLibraryLength: advancedSettings?.audio_library?.length || 0,
-      imageLibraryLength: advancedSettings?.image_library?.length || 0
-    });
-    
-    if (!advancedSettings?.video_library) {
-      console.error('❌ [VIDEO-LIBRARY] ⚠️ BIBLIOTECA DE VÍDEOS NÃO ENCONTRADA! INICIALIZANDO AUTOMATICAMENTE...', {
-        assistantId,
-        availableKeys: Object.keys(advancedSettings),
-        hasAudioLibrary: !!advancedSettings?.audio_library,
-        hasImageLibrary: !!advancedSettings?.image_library,
-        totalAudioLibraryItems: advancedSettings?.audio_library?.length || 0,
-        totalImageLibraryItems: advancedSettings?.image_library?.length || 0
-      });
-      
-      // 🔧 AUTO-INICIALIZAR video_library vazia no banco de dados
-      try {
-        console.log('🔧 [VIDEO-LIBRARY] Inicializando video_library vazia no banco...');
-        
-        const updatedSettings = {
-          ...advancedSettings,
-          video_library: []
-        };
-        
-        const { error: updateError } = await supabase
-          .from('assistants')
-          .update({ advanced_settings: updatedSettings })
-          .eq('id', assistantId);
-        
-        if (updateError) {
-          console.error('❌ [VIDEO-LIBRARY] Erro ao inicializar video_library:', updateError);
-          return null;
-        }
-        
-        console.log('✅ [VIDEO-LIBRARY] video_library inicializada com sucesso!');
-        
-        // Retornar null pois a biblioteca está vazia (mas agora existe e pode receber vídeos)
-        console.log('📝 [VIDEO-LIBRARY] video_library inicializada! Usuário pode agora adicionar vídeos via interface.');
-        return null;
-        
       } catch (error) {
-        console.error('❌ [VIDEO-LIBRARY] Erro durante inicialização automática:', error);
+        console.error('❌ [VIDEO-FALLBACK] Erro no parse:', error);
         return null;
       }
     }
     
-    const library = advancedSettings.video_library as any[];
-    console.log('📚 [VIDEO-LIBRARY] Biblioteca carregada:', {
-      totalVideos: library.length,
-      videosDisponiveis: library.map(item => ({ 
-        trigger: item.trigger, 
-        name: item.name,
-        format: item.format,
-        hasVideoBase64: !!item.videoBase64 
-      }))
-    });
-    
-    // Busca por trigger exato (case-insensitive)
-    const normalizedSearchTrigger = videoTrigger.toLowerCase().trim();
-    
-    console.log('🔍 [VIDEO-LIBRARY] Debug matching DETALHADO:', {
-      buscandoPor: normalizedSearchTrigger,
-      originalInput: videoTrigger,
-      triggersDisponiveis: library.map(item => ({ 
-        trigger: item.trigger, 
-        name: item.name,
-        triggerLower: item.trigger?.toLowerCase(),
-        match: item.trigger?.toLowerCase() === normalizedSearchTrigger
-      }))
-    });
-    
-    console.log('🎯 [VIDEO-LIBRARY] Fazendo busca exata...');
-    const video = library.find(item => {
-      const itemTrigger = item.trigger?.toLowerCase();
-      const match = itemTrigger === normalizedSearchTrigger;
-      console.log(`🔍 [VIDEO-LIBRARY] Comparando "${itemTrigger}" === "${normalizedSearchTrigger}" = ${match}`);
-      return item.trigger && match;
-    });
-    
-    if (!video) {
-      console.warn('📚 [VIDEO-LIBRARY] Vídeo não encontrado:', {
-        procurandoPor: normalizedSearchTrigger,
-        triggersDisponiveis: library.map(item => item.trigger)
-      });
-      
-      // Sugerir triggers similares
-      const similarTriggers = library
-        .filter(item => item.trigger.toLowerCase().includes(normalizedSearchTrigger.substring(0, 3)))
-        .map(item => item.trigger)
-        .slice(0, 3);
-      
-      if (similarTriggers.length > 0) {
-        console.log('💡 [VIDEO-LIBRARY] Triggers similares encontrados:', similarTriggers);
-      }
-      
+    if (!advancedSettings?.video_library || !Array.isArray(advancedSettings.video_library)) {
+      console.log('❌ [VIDEO-FALLBACK] video_library não encontrada na estrutura antiga');
       return null;
     }
     
-    console.log('✅ [VIDEO-LIBRARY] 🎉 VÍDEO ENCONTRADO!');
-    console.log('📊 [VIDEO-LIBRARY] 📋 DADOS COMPLETOS DO VÍDEO:', {
-      trigger: video.trigger,
-      name: video.name,
-      format: video.format,
-      hasVideoBase64: !!video.videoBase64,
-      hasVideoData: !!video.video_data,
-      videoBase64Length: video.videoBase64?.length || 0,
-      videoDataLength: video.video_data?.length || 0,
-      allKeys: Object.keys(video)
-    });
+    // Buscar vídeo por trigger
+    const normalizedTrigger = videoTrigger.toLowerCase().trim();
+    const video = advancedSettings.video_library.find(item => 
+      item.trigger?.toLowerCase() === normalizedTrigger
+    );
     
-    // NORMALIZAR DADOS DO VÍDEO
+    if (!video) {
+      console.log('❌ [VIDEO-FALLBACK] Vídeo não encontrado na estrutura antiga');
+      return null;
+    }
+    
     const videoBase64 = video.videoBase64 || video.video_data;
     const format = video.format || 'mp4';
     
     if (!videoBase64) {
-      console.error('❌ [VIDEO-LIBRARY] 🚫 VÍDEO SEM DADOS BASE64!');
-      console.error('🔧 [VIDEO-LIBRARY] 📊 Estrutura do vídeo:', JSON.stringify(video, null, 2));
+      console.log('❌ [VIDEO-FALLBACK] Vídeo sem dados base64');
       return null;
     }
     
-    console.log('✅ [VIDEO-LIBRARY] 📋 VÍDEO NORMALIZADO E PRONTO PARA ENVIO:', {
-      trigger: video.trigger,
-      format: format,
-      videoBase64Length: videoBase64.length,
-      videoBase64Sample: videoBase64.substring(0, 100) + '...'
-    });
-    
+    console.log('✅ [VIDEO-FALLBACK] Vídeo encontrado na estrutura antiga');
     return {
       videoBase64: videoBase64,
       format: format
     };
     
   } catch (error) {
-    console.error('❌ [VIDEO-LIBRARY] 💥 ERRO GERAL NA BUSCA:', error);
-    console.error('🔧 [VIDEO-LIBRARY] 📊 Stack trace:', error.stack);
+    console.error('❌ [VIDEO-FALLBACK] Erro geral:', error);
     return null;
   }
 }
