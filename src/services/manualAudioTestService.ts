@@ -20,7 +20,7 @@ export class ManualAudioTestService {
         .select('*')
         .eq('message_type', 'audio')
         .eq('ticket_id', 'abfb4cab-9823-4c00-ab42-a1640fc3cd96')
-        .is('media_transcription', null)
+        .eq('processing_status', 'received')
         .order('timestamp', { ascending: false })
         .limit(1);
 

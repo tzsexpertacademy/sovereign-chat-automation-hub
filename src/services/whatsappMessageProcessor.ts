@@ -217,7 +217,7 @@ export const whatsappMessageProcessor = {
           from_me: message.from_me,
           timestamp: message.timestamp,
           sender_name: message.contact_name,
-          processing_status: 'processed',
+          processing_status: message.message_type === 'audio' || message.message_type === 'ptt' ? 'received' : 'processed',
           // 🔥 TRANSFERIR TODOS OS DADOS DE MÍDIA para ticket_messages
           media_url: message.media_url,
           media_key: message.media_key,

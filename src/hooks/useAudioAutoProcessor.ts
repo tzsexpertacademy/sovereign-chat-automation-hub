@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { directMediaDownloadService } from '@/services/directMediaDownloadService';
 import { aiConfigService } from '@/services/aiConfigService';
+import { audioRecoveryService } from '@/services/audioRecoveryService';
 
 /**
  * Hook para processar áudios automaticamente quando recebidos
@@ -17,6 +18,13 @@ export const useAudioAutoProcessor = (clientId: string) => {
 
     console.log('🎵 [AUDIO-AUTO] ✅ INICIANDO processamento automático de áudios para cliente:', clientId);
     console.log('🎵 [AUDIO-AUTO] 🔧 Hook ativo e configurado corretamente');
+    
+    // Verificar se há áudios órfãos para reprocessar
+    audioRecoveryService.findOrphanedAudios(clientId).then(orphaned => {
+      if (orphaned.length > 0) {
+        console.log(`🔄 [AUDIO-AUTO] Encontrados ${orphaned.length} áudios órfãos - use audioRecovery.reprocessOrphanedAudios('${clientId}') para reprocessar`);
+      }
+    }).catch(console.error);
 
     // Listener para novas mensagens de áudio
     const channel = supabase
@@ -68,9 +76,12 @@ export const useAudioAutoProcessor = (clientId: string) => {
             return;
           }
 
-          // Verificar se já foi processado
-          if (newMessage.processing_status === 'completed' || newMessage.processing_status === 'failed') {
-            console.log('🎵 [AUDIO-AUTO] ⏭️ Áudio já processado:', newMessage.processing_status);
+          // Verificar se já foi processado ou se não está pronto para processamento
+          if (newMessage.processing_status !== 'received') {
+            console.log('🎵 [AUDIO-AUTO] ⏭️ Áudio não está pronto para processamento:', {
+              status: newMessage.processing_status,
+              messageId: newMessage.message_id
+            });
             return;
           }
 

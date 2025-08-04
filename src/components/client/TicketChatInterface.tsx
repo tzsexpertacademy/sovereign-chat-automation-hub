@@ -10,6 +10,7 @@ import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
 import { useAudioAutoProcessor } from '@/hooks/useAudioAutoProcessor';
 import { ManualAudioTestPanel } from './ManualAudioTestPanel';
+import { AudioProcessingDebugPanel } from './AudioProcessingDebugPanel';
 import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
@@ -590,9 +591,10 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         <div className="border-t p-2 bg-muted/10">
           <details className="text-xs">
             <summary className="cursor-pointer text-muted-foreground hover:text-foreground py-1">
-              🧪 Painel de Teste de Vídeo (Debug)
+              🧪 Painéis de Debug
             </summary>
-            <div className="mt-2">
+            <div className="mt-2 space-y-4">
+              <AudioProcessingDebugPanel clientId={clientId} />
               <VideoTestPanel />
             </div>
           </details>

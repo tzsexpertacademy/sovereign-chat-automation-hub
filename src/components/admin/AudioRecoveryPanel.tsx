@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, FileAudio, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { AudioRecoveryService } from '@/services/audioRecoveryService';
+import { audioRecoveryService } from '@/services/audioRecoveryService';
 
 interface AudioRecoveryPanelProps {
   clientId: string;
@@ -25,8 +25,13 @@ export const AudioRecoveryPanel = ({ clientId }: AudioRecoveryPanelProps) => {
   const loadStats = async () => {
     setIsLoading(true);
     try {
-      const audioStats = await AudioRecoveryService.getAudioStatus(clientId);
-      setStats(audioStats);
+      const orphanedAudios = await audioRecoveryService.findOrphanedAudios(clientId);
+      setStats({
+        total: orphanedAudios.length,
+        withBase64: 0,
+        withoutBase64: 0,
+        needRecovery: orphanedAudios.length
+      });
     } catch (error) {
       console.error('❌ Erro ao carregar stats:', error);
       toast.error('Erro ao carregar estatísticas de áudio');
@@ -41,15 +46,15 @@ export const AudioRecoveryPanel = ({ clientId }: AudioRecoveryPanelProps) => {
     try {
       console.log('🎵 Iniciando recuperação de áudios...');
       
-      const result = await AudioRecoveryService.recoverMissingAudioData(clientId, 10);
+      const result = await audioRecoveryService.reprocessOrphanedAudios(clientId);
       setLastRecovery(result);
       
-      if (result.recovered > 0) {
-        toast.success(`✅ ${result.recovered} áudios recuperados com sucesso!`);
-      } else if (result.processed === 0) {
+      if (result.updated > 0) {
+        toast.success(`✅ ${result.updated} áudios marcados para reprocessamento!`);
+      } else if (result.errors === 0) {
         toast.info('ℹ️ Nenhum áudio precisando de recuperação');
       } else {
-        toast.warning(`⚠️ Processados ${result.processed}, mas nenhum recuperado`);
+        toast.warning(`⚠️ ${result.errors} erros durante o reprocessamento`);
       }
       
       // Recarregar estatísticas
@@ -150,29 +155,16 @@ export const AudioRecoveryPanel = ({ clientId }: AudioRecoveryPanelProps) => {
         {lastRecovery && (
           <div className="bg-muted/50 p-4 rounded-lg">
             <h4 className="font-medium mb-2">Última Recuperação:</h4>
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <div className="font-medium">Processados:</div>
-                <div className="text-muted-foreground">{lastRecovery.processed}</div>
+                <div className="font-medium text-green-600">Atualizados:</div>
+                <div className="text-green-600">{lastRecovery.updated}</div>
               </div>
               <div>
-                <div className="font-medium text-green-600">Recuperados:</div>
-                <div className="text-green-600">{lastRecovery.recovered}</div>
-              </div>
-              <div>
-                <div className="font-medium text-destructive">Falharam:</div>
-                <div className="text-destructive">{lastRecovery.failed.length}</div>
+                <div className="font-medium text-destructive">Erros:</div>
+                <div className="text-destructive">{lastRecovery.errors}</div>
               </div>
             </div>
-            
-            {lastRecovery.failed.length > 0 && (
-              <div className="mt-2">
-                <div className="text-sm font-medium text-destructive">IDs que falharam:</div>
-                <div className="text-xs text-muted-foreground mt-1 break-all">
-                  {lastRecovery.failed.join(', ')}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -182,10 +174,10 @@ export const AudioRecoveryPanel = ({ clientId }: AudioRecoveryPanelProps) => {
             ℹ️ Como funciona:
           </h4>
           <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
-            <li>• Identifica áudios com <code>audio_base64</code> nulo</li>
-            <li>• Tenta baixar via <code>directMediaDownloadService</code></li>
-            <li>• Converte para base64 e salva no banco</li>
-            <li>• Marca como <code>processing_status: completed</code></li>
+            <li>• Identifica áudios com status "processed" mas sem transcrição</li>
+            <li>• Marca como status "received" para reprocessamento</li>
+            <li>• O useAudioAutoProcessor detecta e processa automaticamente</li>
+            <li>• Áudios são transcritos e enviados para IA</li>
           </ul>
         </div>
       </CardContent>
