@@ -155,42 +155,75 @@ Deno.serve(async (req) => {
 async function processBatch(batch: any) {
   console.log('🤖 [PROCESS-BATCH] Processando batch:', batch.id);
 
-  // 🎵 VERIFICAR SE HÁ MENSAGENS DE ÁUDIO NO BATCH
-  const audioMessages = batch.messages.filter((msg: any) => 
-    msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio')
-  );
+    // 🎵 VERIFICAR SE HÁ MENSAGENS DE ÁUDIO NO BATCH
+    const audioMessages = batch.messages.filter((msg: any) => 
+      msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio')
+    );
 
-  if (audioMessages.length > 0) {
-    console.log('🎵 [AUDIO-FIX] 🔍 Detectados', audioMessages.length, 'áudios no batch');
-    
-    // Verificar se dados de áudio estão disponíveis no banco
-    for (const audioMsg of audioMessages) {
-      console.log('🎵 [AUDIO-FIX] 🔍 Verificando dados de áudio para messageId:', audioMsg.messageId);
+    if (audioMessages.length > 0) {
+      console.log('🎵 [AUDIO-FIX] 🔍 Detectados', audioMessages.length, 'áudios no batch');
       
-      const { data: audioData } = await supabase
-        .from('whatsapp_messages')
-        .select('message_id, media_url, media_key, file_enc_sha256, content_type, created_at')
-        .eq('message_id', audioMsg.messageId)
-        .single();
-      
-      if (audioData) {
-        console.log('🎵 [AUDIO-FIX] ✅ Dados encontrados:', {
-          messageId: audioData.message_id,
-          hasMediaUrl: !!audioData.media_url,
-          hasMediaKey: !!audioData.media_key,
-          hasFileEncSha256: !!audioData.file_enc_sha256,
-          contentType: audioData.content_type,
-          createdAt: audioData.created_at
+      // Verificar se dados de áudio estão disponíveis no banco E em ticket_messages
+      for (const audioMsg of audioMessages) {
+        console.log('🎵 [AUDIO-FIX] 🔍 Verificando dados de áudio para messageId:', audioMsg.messageId);
+        
+        // Verificar em whatsapp_messages
+        const { data: whatsappData } = await supabase
+          .from('whatsapp_messages')
+          .select('message_id, media_url, media_key, file_enc_sha256, message_type, created_at')
+          .eq('message_id', audioMsg.messageId)
+          .single();
+        
+        // Verificar em ticket_messages
+        const { data: ticketData } = await supabase
+          .from('ticket_messages')
+          .select('message_id, media_url, media_key, file_enc_sha256, message_type, processing_status')
+          .eq('message_id', audioMsg.messageId)
+          .single();
+        
+        console.log('🎵 [AUDIO-FIX] 📊 COMPARAÇÃO DE DADOS:', {
+          messageId: audioMsg.messageId,
+          whatsappMessages: whatsappData ? {
+            hasMediaUrl: !!whatsappData.media_url,
+            hasMediaKey: !!whatsappData.media_key,
+            hasFileEncSha256: !!whatsappData.file_enc_sha256,
+            messageType: whatsappData.message_type
+          } : 'NÃO ENCONTRADO',
+          ticketMessages: ticketData ? {
+            hasMediaUrl: !!ticketData.media_url,
+            hasMediaKey: !!ticketData.media_key,
+            hasFileEncSha256: !!ticketData.file_enc_sha256,
+            messageType: ticketData.message_type,
+            processingStatus: ticketData.processing_status
+          } : 'NÃO ENCONTRADO'
         });
-      } else {
-        console.log('🎵 [AUDIO-FIX] ❌ Dados de áudio NÃO encontrados para:', audioMsg.messageId);
+
+        // 🎯 CORREÇÃO AUTOMÁTICA: Se dados estão em whatsapp_messages mas não em ticket_messages
+        if (whatsappData && ticketData && (!ticketData.media_url || !ticketData.media_key) && whatsappData.media_url && whatsappData.media_key) {
+          console.log('🔧 [AUDIO-FIX] 🚀 CORRIGINDO dados de mídia em ticket_messages...');
+          
+          const { error: updateError } = await supabase
+            .from('ticket_messages')
+            .update({
+              media_url: whatsappData.media_url,
+              media_key: whatsappData.media_key,
+              file_enc_sha256: whatsappData.file_enc_sha256,
+              processing_status: 'received'
+            })
+            .eq('message_id', audioMsg.messageId);
+          
+          if (updateError) {
+            console.error('❌ [AUDIO-FIX] Erro ao corrigir dados:', updateError);
+          } else {
+            console.log('✅ [AUDIO-FIX] 🎯 Dados de mídia corrigidos automaticamente');
+          }
+        }
       }
+      
+      // DELAY EXTRA para áudios (garante que decriptação/salvamento terminou)
+      console.log('🎵 [AUDIO-FIX] ⏳ Delay extra de 1s para processamento de áudio...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    
-    // DELAY EXTRA para áudios (garante que decriptação/salvamento terminou)
-    console.log('🎵 [AUDIO-FIX] ⏳ Delay extra de 1s para processamento de áudio...');
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
 
   try {
     // BUSCAR TICKET

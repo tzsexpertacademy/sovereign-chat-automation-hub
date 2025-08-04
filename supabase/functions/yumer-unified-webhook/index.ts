@@ -306,7 +306,7 @@ async function processMessageBatch(yumerData: any) {
     }
 
     // SALVAR MENSAGEM NO BANCO PRIMEIRO (com dados de mídia completos)
-    await saveMessageToDatabase({
+    const saveResult = await saveMessageToDatabase({
       ...messageData,
       messageType,
       content,
@@ -318,6 +318,45 @@ async function processMessageBatch(yumerData: any) {
       mediaMimeType,
       mediaDuration
     }, instance, chatId, pushName, phoneNumber);
+    
+    // 🎵 CORREÇÃO CRÍTICA: Garantir que dados de mídia sejam transferidos para ticket_messages
+    if (messageType === 'audio' && saveResult.ticketId) {
+      console.log('🎵 [AUDIO-PRIORITY] 🚀 Transferindo dados de mídia para ticket_messages...');
+      
+      try {
+        // Atualizar a mensagem no ticket_messages com dados de mídia completos
+        const { data: ticketMessage, error: updateError } = await supabase
+          .from('ticket_messages')
+          .update({
+            media_url: mediaUrl,
+            media_key: mediaKey,
+            file_enc_sha256: fileEncSha256,
+            file_sha256: fileSha256,
+            direct_path: directPath,
+            media_mime_type: mediaMimeType,
+            media_duration: mediaDuration,
+            processing_status: 'received' // Pronto para processamento
+          })
+          .eq('message_id', messageId)
+          .eq('ticket_id', saveResult.ticketId)
+          .select('id, media_url, media_key, file_enc_sha256');
+        
+        if (updateError) {
+          console.error('❌ [AUDIO-PRIORITY] Erro ao atualizar ticket_messages:', updateError);
+        } else if (ticketMessage && ticketMessage.length > 0) {
+          console.log('✅ [AUDIO-PRIORITY] Dados de mídia transferidos com sucesso:', {
+            ticketMessageId: ticketMessage[0].id,
+            hasMediaUrl: !!ticketMessage[0].media_url,
+            hasMediaKey: !!ticketMessage[0].media_key,
+            hasFileEncSha256: !!ticketMessage[0].file_enc_sha256
+          });
+        } else {
+          console.warn('⚠️ [AUDIO-PRIORITY] Nenhuma mensagem encontrada no ticket_messages para atualizar');
+        }
+      } catch (transferError) {
+        console.error('❌ [AUDIO-PRIORITY] Erro crítico na transferência de dados:', transferError);
+      }
+    }
 
     // 🎵 VERIFICAÇÃO PÓS-SALVAMENTO PARA ÁUDIO
     if (messageType === 'audio') {
@@ -560,13 +599,69 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
         console.log('🔥 [SAVE-DB] Mensagem já existe - ignorando');
       } else {
         console.error('🔥 [SAVE-DB] Erro ao salvar:', saveError);
+        return { success: false, error: saveError };
       }
     } else {
       console.log('🔥 [SAVE-DB] ✅ Mensagem salva com sucesso');
     }
 
+    // 🎯 CRIAR OU BUSCAR TICKET PARA PERMITIR SALVAMENTO EM TICKET_MESSAGES
+    const { data: ticketId, error: ticketError } = await supabase.rpc('upsert_conversation_ticket', {
+      p_client_id: instance.client_id,
+      p_chat_id: chatId,
+      p_instance_id: instance.instance_id,
+      p_customer_name: pushName,
+      p_customer_phone: phoneNumber.replace('@s.whatsapp.net', ''),
+      p_last_message: messageData.content || '📎 Mídia',
+      p_last_message_at: new Date().toISOString()
+    });
+
+    if (ticketError) {
+      console.error('🔥 [SAVE-DB] Erro ao criar/buscar ticket:', ticketError);
+      return { success: false, error: ticketError };
+    }
+
+    console.log('🔥 [SAVE-DB] ✅ Ticket encontrado/criado:', ticketId);
+
+    // SALVAR TAMBÉM EM TICKET_MESSAGES COM DADOS DE MÍDIA
+    const ticketMessage = {
+      ticket_id: ticketId,
+      message_id: messageData.keyId,
+      content: messageData.content || '',
+      message_type: messageData.messageType || 'text',
+      from_me: messageData.keyFromMe || false,
+      timestamp: new Date(messageData.messageTimestamp * 1000),
+      sender_name: pushName,
+      // DADOS DE MÍDIA COMPLETOS
+      media_url: messageData.mediaUrl,
+      media_key: messageData.mediaKey,
+      file_enc_sha256: messageData.fileEncSha256,
+      file_sha256: messageData.fileSha256,
+      direct_path: messageData.directPath,
+      media_mime_type: messageData.mediaMimeType,
+      media_duration: messageData.mediaDuration,
+      processing_status: messageData.messageType === 'audio' ? 'received' : 'processed'
+    };
+
+    const { error: ticketMessageError } = await supabase
+      .from('ticket_messages')
+      .insert(ticketMessage);
+
+    if (ticketMessageError) {
+      if (ticketMessageError.code === '23505') {
+        console.log('🔥 [SAVE-DB] Mensagem já existe em ticket_messages - ignorando');
+      } else {
+        console.error('🔥 [SAVE-DB] Erro ao salvar em ticket_messages:', ticketMessageError);
+      }
+    } else {
+      console.log('🔥 [SAVE-DB] ✅ Mensagem salva em ticket_messages com dados de mídia');
+    }
+
+    return { success: true, ticketId };
+
   } catch (error) {
     console.error('🔥 [SAVE-DB] ERRO CRÍTICO:', error);
+    return { success: false, error };
   }
 }
 

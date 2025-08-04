@@ -318,23 +318,87 @@ export const useAudioAutoProcessor = (clientId: string) => {
 
       let audioBase64 = '';
 
-      // 1. ESTRATÉGIA SIMPLIFICADA: Priorizar media_key para descriptografia
-      if (message.media_key && message.media_url) {
+      // 🎯 CORREÇÃO DEFINITIVA: Implementar fallback para buscar dados de mídia
+      let mediaData = {
+        media_key: message.media_key,
+        media_url: message.media_url,
+        file_enc_sha256: message.file_enc_sha256,
+        direct_path: message.direct_path,
+        media_mime_type: message.media_mime_type,
+        audio_base64: message.audio_base64
+      };
+
+      // Se não temos dados completos de mídia, buscar na whatsapp_messages
+      if (!mediaData.media_key || !mediaData.media_url) {
+        console.log('🔄 [AUDIO-AUTO] 🔍 Dados de mídia incompletos - buscando fallback...');
+        console.log('🔄 [AUDIO-AUTO] 📊 Dados atuais:', {
+          hasMediaKey: !!mediaData.media_key,
+          hasMediaUrl: !!mediaData.media_url,
+          hasFileEncSha256: !!mediaData.file_enc_sha256,
+          messageId: message.message_id
+        });
+
+        const { data: whatsappMessage, error: fallbackError } = await supabase
+          .from('whatsapp_messages')
+          .select('media_url, media_key, file_enc_sha256, direct_path, media_mime_type')
+          .eq('message_id', message.message_id)
+          .single();
+
+        if (fallbackError) {
+          console.error('❌ [AUDIO-AUTO] Erro ao buscar fallback em whatsapp_messages:', fallbackError);
+        } else if (whatsappMessage) {
+          console.log('✅ [AUDIO-AUTO] 🎯 Dados de mídia encontrados via fallback:', {
+            hasMediaKey: !!whatsappMessage.media_key,
+            hasMediaUrl: !!whatsappMessage.media_url,
+            hasFileEncSha256: !!whatsappMessage.file_enc_sha256,
+            source: 'whatsapp_messages'
+          });
+
+          // Usar dados do fallback
+          mediaData = {
+            media_key: whatsappMessage.media_key || mediaData.media_key,
+            media_url: whatsappMessage.media_url || mediaData.media_url,
+            file_enc_sha256: whatsappMessage.file_enc_sha256 || mediaData.file_enc_sha256,
+            direct_path: whatsappMessage.direct_path || mediaData.direct_path,
+            media_mime_type: whatsappMessage.media_mime_type || mediaData.media_mime_type,
+            audio_base64: mediaData.audio_base64
+          };
+
+          // Atualizar ticket_messages com os dados corretos para próximas execuções
+          await supabase
+            .from('ticket_messages')
+            .update({
+              media_url: mediaData.media_url,
+              media_key: mediaData.media_key,
+              file_enc_sha256: mediaData.file_enc_sha256,
+              direct_path: mediaData.direct_path,
+              media_mime_type: mediaData.media_mime_type
+            })
+            .eq('message_id', message.message_id);
+
+          console.log('✅ [AUDIO-AUTO] 🔄 Dados de mídia sincronizados para ticket_messages');
+        } else {
+          console.warn('⚠️ [AUDIO-AUTO] Nenhum dado encontrado nem em ticket_messages nem em whatsapp_messages');
+        }
+      }
+
+      // 1. ESTRATÉGIA COM DADOS CORRIGIDOS: Priorizar media_key para descriptografia
+      if (mediaData.media_key && mediaData.media_url) {
         console.log('🔐 [AUDIO-AUTO] 🔑 Áudio criptografado detectado - iniciando descriptografia');
         console.log('🔐 [AUDIO-AUTO] 📊 Parâmetros de descriptografia:', {
           instanceId: ticket.instance_id,
-          mediaKeyLength: typeof message.media_key === 'string' ? message.media_key.length : 'object',
-          mediaUrlDomain: new URL(message.media_url).hostname,
-          directPath: message.direct_path,
-          mimetype: message.media_mime_type || 'audio/ogg'
+          mediaKeyLength: typeof mediaData.media_key === 'string' ? mediaData.media_key.length : 'object',
+          mediaUrlDomain: new URL(mediaData.media_url).hostname,
+          directPath: mediaData.direct_path,
+          mimetype: mediaData.media_mime_type || 'audio/ogg'
         });
         
         const downloadResult = await directMediaDownloadService.downloadMedia(
           ticket.instance_id,
-          message.media_url,
-          message.media_key,
-          message.direct_path,
-          message.media_mime_type || 'audio/ogg',
+          mediaData.media_url,
+          mediaData.media_key,
+          mediaData.direct_path,
+          mediaData.media_mime_type || 'audio/ogg',
           'audio'
         );
 
@@ -375,9 +439,9 @@ export const useAudioAutoProcessor = (clientId: string) => {
           console.error('❌ [AUDIO-AUTO] 💥 Falha na descriptografia:', downloadResult.error);
           throw new Error(downloadResult.error || 'Serviço de descriptografia falhou');
         }
-      } else if (message.audio_base64) {
+      } else if (mediaData.audio_base64) {
         console.log('📁 [AUDIO-AUTO] Usando áudio base64 da mensagem');
-        audioBase64 = message.audio_base64;
+        audioBase64 = mediaData.audio_base64;
       } else {
         console.error('❌ [AUDIO-AUTO] Nenhum dado de áudio disponível');
         throw new Error('Nenhum dado de áudio disponível para transcrição');
