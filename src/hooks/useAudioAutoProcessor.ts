@@ -11,6 +11,15 @@ export const useAudioAutoProcessor = (clientId: string) => {
   const processingRef = useRef<Set<string>>(new Set());
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<any>(null);
+  const processingTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const clientProcessingCount = useRef<number>(0);
+  const lastRealtimeActivity = useRef<number>(0);
+  
+  // Configurações otimizadas
+  const PROCESSING_TIMEOUT = 120000; // 2 minutos
+  const MAX_CONCURRENT_PROCESSING = 3;
+  const POLLING_COOLDOWN = 30000; // 30 segundos
+  const REALTIME_INACTIVE_THRESHOLD = 60000; // 1 minuto
 
   useEffect(() => {
     if (!clientId) {
@@ -29,11 +38,31 @@ export const useAudioAutoProcessor = (clientId: string) => {
       }
     }).catch(console.error);
 
-    // 🎯 IMPLEMENTAR FALLBACK DE POLLING PARA ÁUDIOS PERDIDOS
+    // 🎯 IMPLEMENTAR FALLBACK DE POLLING OTIMIZADO
     const checkPendingAudios = async () => {
       try {
-        console.log('🔄 [AUDIO-AUTO] Verificando áudios pendentes via polling...');
+        // Verificar se realtime está ativo recentemente
+        const realtimeInactive = Date.now() - lastRealtimeActivity.current > REALTIME_INACTIVE_THRESHOLD;
+        const shouldPoll = realtimeInactive || processingRef.current.size === 0;
         
+        if (!shouldPoll) {
+          console.log('⏭️ [AUDIO-AUTO] POLLING pausado - realtime ativo');
+          return;
+        }
+
+        // Limitar processamentos simultâneos
+        if (clientProcessingCount.current >= MAX_CONCURRENT_PROCESSING) {
+          console.log('⏭️ [AUDIO-AUTO] POLLING pausado - muitos processamentos ativos:', clientProcessingCount.current);
+          return;
+        }
+
+        console.log('🔄 [AUDIO-AUTO] Verificando áudios pendentes via polling...', {
+          realtimeInactive,
+          processingCount: clientProcessingCount.current,
+          processingIds: Array.from(processingRef.current)
+        });
+        
+        // Buscar áudios pendentes COM verificação de status no banco
         const { data: pendingAudios, error } = await supabase
           .from('ticket_messages')
           .select(`
@@ -44,7 +73,7 @@ export const useAudioAutoProcessor = (clientId: string) => {
           .eq('processing_status', 'received')
           .eq('conversation_tickets.client_id', clientId)
           .order('timestamp', { ascending: true })
-          .limit(5);
+          .limit(3); // Reduzir para 3 para evitar sobrecarga
 
         if (error) {
           console.error('❌ [AUDIO-AUTO] Erro no polling:', error);
@@ -55,21 +84,33 @@ export const useAudioAutoProcessor = (clientId: string) => {
           console.log(`🔍 [AUDIO-AUTO] POLLING encontrou ${pendingAudios.length} áudios pendentes`);
           
           for (const audio of pendingAudios) {
-            if (!processingRef.current.has(audio.message_id)) {
-              console.log(`🎯 [AUDIO-AUTO] POLLING processando áudio perdido: ${audio.message_id}`);
-              
-              processingRef.current.add(audio.message_id);
-              
-              try {
-                await processAudioMessage(
-                  audio, 
-                  audio.conversation_tickets, 
-                  clientId
-                );
-              } finally {
-                processingRef.current.delete(audio.message_id);
-              }
+            // Verificação dupla: ref local + status do banco
+            if (processingRef.current.has(audio.message_id)) {
+              console.log(`⏭️ [AUDIO-AUTO] POLLING - áudio já em processamento (ref): ${audio.message_id}`);
+              continue;
             }
+
+            // Verificar se outro processo já está processando (status no banco)
+            const { data: currentStatus } = await supabase
+              .from('ticket_messages')
+              .select('processing_status')
+              .eq('message_id', audio.message_id)
+              .single();
+
+            if (currentStatus?.processing_status === 'processing') {
+              console.log(`⏭️ [AUDIO-AUTO] POLLING - áudio já em processamento (banco): ${audio.message_id}`);
+              continue;
+            }
+
+            if (currentStatus?.processing_status !== 'received') {
+              console.log(`⏭️ [AUDIO-AUTO] POLLING - áudio mudou status: ${audio.message_id} -> ${currentStatus?.processing_status}`);
+              continue;
+            }
+
+            console.log(`🎯 [AUDIO-AUTO] POLLING processando áudio: ${audio.message_id} (origem: polling)`);
+            
+            // Usar processamento com controle melhorado
+            await processAudioWithControl(audio, audio.conversation_tickets, clientId, 'polling');
           }
         } else {
           console.log('✅ [AUDIO-AUTO] POLLING: Nenhum áudio pendente encontrado');
@@ -79,9 +120,54 @@ export const useAudioAutoProcessor = (clientId: string) => {
       }
     };
 
-    // Iniciar polling de fallback a cada 15 segundos
-    pollingIntervalRef.current = setInterval(checkPendingAudios, 15000);
-    console.log('⏰ [AUDIO-AUTO] Polling de fallback iniciado (15s)');
+    // Adicionar função de processamento com controle
+    const processAudioWithControl = async (message: any, ticket: any, clientId: string, source: string) => {
+      const messageId = message.message_id;
+      
+      // Verificar limites de processamento
+      if (clientProcessingCount.current >= MAX_CONCURRENT_PROCESSING) {
+        console.log(`⏭️ [AUDIO-AUTO] LIMITE - não processando ${messageId} (${clientProcessingCount.current}/${MAX_CONCURRENT_PROCESSING})`);
+        return;
+      }
+
+      // Marcar como processando
+      processingRef.current.add(messageId);
+      clientProcessingCount.current++;
+      
+      // Configurar timeout de limpeza
+      const timeout = setTimeout(() => {
+        console.log(`⏰ [AUDIO-AUTO] TIMEOUT - limpando processamento de ${messageId}`);
+        processingRef.current.delete(messageId);
+        clientProcessingCount.current = Math.max(0, clientProcessingCount.current - 1);
+        processingTimeouts.current.delete(messageId);
+      }, PROCESSING_TIMEOUT);
+      
+      processingTimeouts.current.set(messageId, timeout);
+
+      try {
+        console.log(`🎯 [AUDIO-AUTO] INICIANDO processamento: ${messageId} (origem: ${source}, total: ${clientProcessingCount.current})`);
+        await processAudioMessage(message, ticket, clientId);
+        console.log(`✅ [AUDIO-AUTO] CONCLUÍDO processamento: ${messageId} (origem: ${source})`);
+      } catch (error) {
+        console.error(`❌ [AUDIO-AUTO] ERRO no processamento ${messageId} (origem: ${source}):`, error);
+      } finally {
+        // Limpeza garantida
+        processingRef.current.delete(messageId);
+        clientProcessingCount.current = Math.max(0, clientProcessingCount.current - 1);
+        
+        const existingTimeout = processingTimeouts.current.get(messageId);
+        if (existingTimeout) {
+          clearTimeout(existingTimeout);
+          processingTimeouts.current.delete(messageId);
+        }
+        
+        console.log(`🧹 [AUDIO-AUTO] LIMPEZA: ${messageId} (total restante: ${clientProcessingCount.current})`);
+      }
+    };
+
+    // Iniciar polling de fallback a cada 30 segundos (otimizado)
+    pollingIntervalRef.current = setInterval(checkPendingAudios, POLLING_COOLDOWN);
+    console.log(`⏰ [AUDIO-AUTO] Polling de fallback iniciado (${POLLING_COOLDOWN/1000}s)`);
 
     // Listener para novas mensagens de áudio
     console.log('📡 [AUDIO-AUTO] Configurando listener realtime...');
@@ -96,6 +182,9 @@ export const useAudioAutoProcessor = (clientId: string) => {
           filter: `message_type=in.(audio,ptt)`
         },
         async (payload) => {
+          // Marcar atividade realtime
+          lastRealtimeActivity.current = Date.now();
+          
           console.log('📨 [AUDIO-AUTO] LISTENER ATIVO - Nova mensagem recebida via realtime');
           console.log('📨 [AUDIO-AUTO] Payload completo:', JSON.stringify(payload, null, 2));
           const newMessage = payload.new as any;
@@ -117,7 +206,7 @@ export const useAudioAutoProcessor = (clientId: string) => {
 
           // Verificar se já está sendo processado
           if (processingRef.current.has(newMessage.message_id)) {
-            console.log('🎵 [AUDIO-AUTO] Áudio já em processamento:', newMessage.message_id);
+            console.log('🎵 [AUDIO-AUTO] Áudio já em processamento (ref):', newMessage.message_id);
             return;
           }
 
@@ -152,15 +241,8 @@ export const useAudioAutoProcessor = (clientId: string) => {
             processingStatus: newMessage.processing_status
           });
 
-          // Marcar como em processamento
-          processingRef.current.add(newMessage.message_id);
-
-          try {
-            await processAudioMessage(newMessage, ticket, clientId);
-          } finally {
-            // Remover do set de processamento
-            processingRef.current.delete(newMessage.message_id);
-          }
+          // Usar processamento com controle melhorado
+          await processAudioWithControl(newMessage, ticket, clientId, 'realtime');
         }
       )
       .subscribe((status) => {
@@ -177,24 +259,8 @@ export const useAudioAutoProcessor = (clientId: string) => {
     channelRef.current = channel;
     console.log('✅ [AUDIO-AUTO] Sistema completo inicializado (realtime + polling)');
 
-    // Verificação inicial de áudios pendentes + REPROCESSAR ÁUDIO ÓRFÃO IMEDIATAMENTE
-    setTimeout(() => {
-      checkPendingAudios();
-      
-      // FORÇA REPROCESSAMENTO DO ÁUDIO 3EB092A11B5630B182CFAD
-      console.log('🔧 [AUDIO-AUTO] FORÇA REPROCESSAMENTO do áudio órfão 3EB092A11B5630B182CFAD');
-      supabase
-        .from('ticket_messages')
-        .update({ processing_status: 'received' })
-        .eq('message_id', '3EB092A11B5630B182CFAD')
-        .then(({ error }) => {
-          if (error) {
-            console.error('❌ [AUDIO-AUTO] Erro ao forçar reprocessamento:', error);
-          } else {
-            console.log('✅ [AUDIO-AUTO] Áudio 3EB092A11B5630B182CFAD marcado para reprocessamento');
-          }
-        });
-    }, 2000);
+    // Verificação inicial de áudios pendentes
+    setTimeout(checkPendingAudios, 2000);
 
     return () => {
       console.log('🎵 [AUDIO-AUTO] 🔄 Parando processamento automático de áudios...');
@@ -208,6 +274,17 @@ export const useAudioAutoProcessor = (clientId: string) => {
         supabase.removeChannel(channelRef.current);
         console.log('📡 [AUDIO-AUTO] Listener realtime removido');
       }
+      
+      // Limpar todos os timeouts de processamento
+      processingTimeouts.current.forEach((timeout, messageId) => {
+        clearTimeout(timeout);
+        console.log(`🧹 [AUDIO-AUTO] Timeout limpo para: ${messageId}`);
+      });
+      processingTimeouts.current.clear();
+      
+      // Resetar contadores
+      processingRef.current.clear();
+      clientProcessingCount.current = 0;
       
       console.log('✅ [AUDIO-AUTO] Cleanup completo realizado');
     };
