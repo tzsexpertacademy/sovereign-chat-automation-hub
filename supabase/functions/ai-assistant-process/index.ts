@@ -372,6 +372,22 @@ serve(async (req) => {
       throw new Error('Nenhum conteúdo de mensagem fornecido');
     }
 
+    // ========================= DIAGNÓSTICO COMPLETO =========================
+    console.log(`🔬 [DIAGNÓSTICO] Análise detalhada da mensagem: {
+  messageContent: "${messageContent}",
+  messageLength: ${messageContent ? messageContent.length : 0},
+  isBatch: ${isBatch},
+  messagesCount: ${messages ? messages.length : 0},
+  hasMessages: ${!!messages},
+  messagesDetails: ${messages ? JSON.stringify(messages.map(m => ({
+    messageId: m.messageId,
+    content: m.content,
+    messageType: m.messageType || m.message_type,
+    hasMediaUrl: !!(m.mediaUrl || m.media_url),
+    hasMediaKey: !!(m.mediaKey || m.media_key)
+  })), null, 2) : 'null'}
+}`);
+
     // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos ANTES da IA (EXCLUINDO ÁUDIO REAL)
     
     // 🚨 IMPORTANTE: Verificar se é áudio REAL (mídia) vs comando de texto
@@ -384,32 +400,50 @@ serve(async (req) => {
       msg.media_key
     );
     
-    console.log('🔍 [EARLY-INTERCEPT] Verificando tipo de mensagem:', {
-      messageContent: messageContent,
-      isBatch: isBatch,
-      hasRealAudio: hasRealAudio,
-      messagesCount: messages ? messages.length : 0
-    });
+    console.log(`🔍 [EARLY-INTERCEPT] Análise de tipo de mensagem: {
+  messageContent: "${messageContent}",
+  messageContentTrimmed: "${messageContent?.trim()}",
+  isBatch: ${isBatch},
+  hasRealAudio: ${hasRealAudio},
+  messagesCount: ${messages ? messages.length : 0},
+  audioDetectionDetails: ${JSON.stringify(messages?.map(msg => ({
+    messageId: msg.messageId,
+    messageType: msg.messageType,
+    message_type: msg.message_type,
+    hasMediaUrl: !!(msg.mediaUrl || msg.media_url),
+    hasMediaKey: !!(msg.mediaKey || msg.media_key)
+  })) || [])}
+}`);
     
     // 🚫 SE É ÁUDIO REAL: Pular EARLY-INTERCEPT, forçar batching/transcrição
     if (hasRealAudio) {
-      console.log('🎵 [EARLY-INTERCEPT] ⏭️ ÁUDIO REAL DETECTADO - PULANDO EARLY-INTERCEPT');
+      console.log('🎵 [EARLY-INTERCEPT] ❌ ÁUDIO REAL DETECTADO - PULANDO EARLY-INTERCEPT');
+      console.log('🔄 [FLOW-CHECK] Forçando processamento via transcrição e batching...');
       console.log('🔄 [FLOW-CHECK] Continuando para processamento normal da IA...');
     } else {
-      // 📝 APENAS para comandos de TEXTO: Detectar comandos de biblioteca
-      const libraryCommandMatch = messageContent.match(/^audio\s+([a-zA-Z0-9]+)$/i);
-      const imageCommandMatch = messageContent.match(/^image\s+([a-zA-Z0-9_-]+)$/i);
-      const videoCommandMatch = messageContent.match(/^video\s+([a-zA-Z0-9_-]+)$/i);
+      console.log('💬 [EARLY-INTERCEPT] ✅ COMANDO DE TEXTO - VERIFICANDO BIBLIOTECAS...');
       
-      console.log('🔍 [EARLY-INTERCEPT] Detectando comandos:', {
-        messageContent: messageContent,
-        libraryCommandMatch: !!libraryCommandMatch,
-        imageCommandMatch: !!imageCommandMatch,
-        videoCommandMatch: !!videoCommandMatch,
-        audioTrigger: libraryCommandMatch ? libraryCommandMatch[1] : null,
-        imageTrigger: imageCommandMatch ? imageCommandMatch[1] : null,
-        videoTrigger: videoCommandMatch ? videoCommandMatch[1] : null
-      });
+      // 📝 APENAS para comandos de TEXTO: Detectar comandos de biblioteca
+      const libraryCommandMatch = messageContent?.match(/^audio\s+([a-zA-Z0-9]+)$/i);
+      const imageCommandMatch = messageContent?.match(/^image\s+([a-zA-Z0-9_-]+)$/i);
+      const videoCommandMatch = messageContent?.match(/^video\s+([a-zA-Z0-9_-]+)$/i);
+      
+      console.log(`🔍 [EARLY-INTERCEPT] Detecção de comandos detalhada: {
+  messageContent: "${messageContent}",
+  messageContentTrimmed: "${messageContent?.trim()}",
+  messageContentLength: ${messageContent ? messageContent.length : 0},
+  libraryCommandMatch: ${!!libraryCommandMatch},
+  imageCommandMatch: ${!!imageCommandMatch},
+  videoCommandMatch: ${!!videoCommandMatch},
+  audioTrigger: ${libraryCommandMatch ? `"${libraryCommandMatch[1]}"` : 'null'},
+  imageTrigger: ${imageCommandMatch ? `"${imageCommandMatch[1]}"` : 'null'},
+  videoTrigger: ${videoCommandMatch ? `"${videoCommandMatch[1]}"` : 'null'},
+  regexResults: {
+    audio: ${JSON.stringify(libraryCommandMatch)},
+    image: ${JSON.stringify(imageCommandMatch)},
+    video: ${JSON.stringify(videoCommandMatch)}
+  }
+}`);
       
       if (libraryCommandMatch) {
         console.log('🎵 [EARLY-INTERCEPT] ⚡ COMANDO DE BIBLIOTECA DETECTADO - PROCESSANDO IMEDIATAMENTE');
@@ -503,13 +537,15 @@ serve(async (req) => {
       }
     }
     
-    // 🎥 INTERCEPTAÇÃO PRECOCE: Detectar comandos de vídeo ANTES da IA
-    if (videoCommandMatch) {
-      console.log('🎥 [EARLY-INTERCEPT] ⚡ COMANDO DE VÍDEO DETECTADO - PROCESSANDO IMEDIATAMENTE');
-      console.log('🎥 [EARLY-INTERCEPT] Comando:', videoCommandMatch[0]);
-      console.log('🎥 [EARLY-INTERCEPT] Trigger do vídeo:', videoCommandMatch[1]);
-      console.log('🎥 [EARLY-INTERCEPT] MessageContent original:', messageContent);
-      console.log('🎥 [EARLY-INTERCEPT] Regex match completo:', JSON.stringify(videoCommandMatch));
+      // =============== COMANDO DE VÍDEO ===============
+      if (videoCommandMatch) {
+        console.log('🎥 [EARLY-INTERCEPT] ✅ COMANDO DE VÍDEO DETECTADO - PROCESSANDO IMEDIATAMENTE');
+        console.log(`🎥 [EARLY-INTERCEPT] Comando completo: "${videoCommandMatch[0]}"`);
+        console.log(`🎥 [EARLY-INTERCEPT] Trigger do vídeo: "${videoCommandMatch[1]}"`);
+        console.log(`🎥 [EARLY-INTERCEPT] MessageContent original: "${messageContent}"`);
+        console.log(`🎥 [EARLY-INTERCEPT] Regex match completo: ${JSON.stringify(videoCommandMatch)}`);
+        console.log(`🎥 [EARLY-INTERCEPT] TicketId: ${ticketId}`);
+        console.log(`🎥 [EARLY-INTERCEPT] ClientId: ${resolvedClientId}`);
       
       // Buscar business token ANTES do processamento
       const { data: client } = await supabase
@@ -561,10 +597,13 @@ serve(async (req) => {
       }
     }
     
+      } else {
+        console.log('🚫 [EARLY-INTERCEPT] Nenhum comando de biblioteca detectado');
+      }
     } // 🔚 Fim do bloco: Apenas para comandos de TEXTO (não áudio real)
 
     // 🔒 VERIFICAÇÃO ANTI-DUPLICAÇÃO APÓS EARLY INTERCEPT
-    console.log('🔄 [FLOW-CHECK] Continuando para processamento normal da IA...');
+    console.log('🔄 [FLOW-CHECK] Prosseguindo para processamento de IA normal...');
     console.log('🔄 [FLOW-CHECK] Se chegou aqui, early intercept NÃO foi executado ou falhou');
     
     // 🔑 PRIORIZAÇÃO DE API KEYS: Cliente específico > Global
