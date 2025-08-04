@@ -390,8 +390,10 @@ serve(async (req) => {
 
     // 🎵 INTERCEPTAÇÃO PRECOCE: Detectar comandos ANTES da IA (EXCLUINDO ÁUDIO REAL)
     
-    // 🚨 IMPORTANTE: Verificar se é áudio REAL (mídia) vs comando de texto
-    const hasRealAudio = isBatch && messages && messages.some(msg => 
+    // ====== DETECÇÃO ROBUSTA DE ÁUDIO REAL ======
+    
+    // 🔍 Primeira verificação: dados de mídia nas mensagens
+    let hasRealAudio = isBatch && messages && messages.some(msg => 
       msg.messageType === 'audio' || 
       msg.message_type === 'audio' ||
       msg.mediaUrl ||
@@ -400,11 +402,82 @@ serve(async (req) => {
       msg.media_key
     );
     
-    console.log(`🔍 [EARLY-INTERCEPT] Análise de tipo de mensagem: {
+    // 🔍 Segunda verificação: conteúdo específico de áudio
+    const hasAudioContent = messageContent && (
+      messageContent.includes('🎵 Áudio') ||
+      messageContent.trim() === '🎵 Áudio' ||
+      messageContent.includes('audio message')
+    );
+    
+    // 🔍 Terceira verificação: buscar no banco de dados se necessário
+    if (!hasRealAudio && hasAudioContent && messages && messages.length > 0) {
+      console.log('🔍 [AUDIO-DETECTION] Verificando dados de mídia no banco...');
+      
+      const messageIds = messages.map(m => m.messageId).filter(Boolean);
+      if (messageIds.length > 0) {
+        // Tentar até 3 vezes com delay crescente (race condition fix)
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (!hasRealAudio && attempts < maxAttempts) {
+          attempts++;
+          
+          if (attempts > 1) {
+            console.log(`🔍 [AUDIO-DETECTION] Tentativa ${attempts}/${maxAttempts} - aguardando dados de mídia...`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempts)); // 1s, 2s, 3s
+          }
+          
+          const { data: dbMessages } = await supabase
+            .from('whatsapp_messages')
+            .select('message_id, media_url, media_key, file_enc_sha256, message_type')
+            .in('message_id', messageIds);
+          
+          if (dbMessages && dbMessages.length > 0) {
+            hasRealAudio = dbMessages.some(msg => 
+              msg.message_type === 'audio' &&
+              (msg.media_url || msg.media_key || msg.file_enc_sha256)
+            );
+            
+            console.log(`🔍 [AUDIO-DETECTION] Tentativa ${attempts} - Dados do banco:`, {
+              foundMessages: dbMessages.length,
+              hasRealAudioFromDB: hasRealAudio,
+              mediaDetails: dbMessages.map(m => ({
+                messageId: m.message_id,
+                messageType: m.message_type,
+                hasMediaUrl: !!m.media_url,
+                hasMediaKey: !!m.media_key,
+                hasFileEncSha256: !!m.file_enc_sha256
+              }))
+            });
+            
+            // Se encontrou áudio real, sair do loop
+            if (hasRealAudio) {
+              console.log('✅ [AUDIO-DETECTION] Áudio real confirmado na tentativa', attempts);
+              break;
+            }
+          }
+        }
+        
+        // Se ainda não encontrou após todas as tentativas, fazer uma verificação final
+        if (!hasRealAudio && attempts === maxAttempts) {
+          console.log('⚠️ [AUDIO-DETECTION] Não foi possível confirmar dados de áudio após', maxAttempts, 'tentativas');
+          console.log('🔄 [AUDIO-DETECTION] Assumindo áudio real baseado no conteúdo para evitar processamento incorreto');
+          
+          // Se tem indicação de áudio no conteúdo, assumir que é áudio real
+          if (hasAudioContent) {
+            hasRealAudio = true;
+            console.log('🎵 [AUDIO-DETECTION] Forçando hasRealAudio=true baseado no conteúdo');
+          }
+        }
+      }
+    }
+    
+    console.log(`🔍 [AUDIO-DETECTION-COMPLETE] Análise completa de tipo de mensagem: {
   messageContent: "${messageContent}",
   messageContentTrimmed: "${messageContent?.trim()}",
   isBatch: ${isBatch},
   hasRealAudio: ${hasRealAudio},
+  hasAudioContent: ${hasAudioContent},
   messagesCount: ${messages ? messages.length : 0},
   audioDetectionDetails: ${JSON.stringify(messages?.map(msg => ({
     messageId: msg.messageId,
@@ -417,7 +490,7 @@ serve(async (req) => {
     
     // 🚫 SE É ÁUDIO REAL: Pular EARLY-INTERCEPT, forçar batching/transcrição
     if (hasRealAudio) {
-      console.log('🎵 [EARLY-INTERCEPT] ❌ ÁUDIO REAL DETECTADO - PULANDO EARLY-INTERCEPT');
+      console.log('🎵 [AUDIO-DETECTION] ❌ ÁUDIO REAL CONFIRMADO - PULANDO EARLY-INTERCEPT');
       console.log('🔄 [FLOW-CHECK] Forçando processamento via transcrição e batching...');
       console.log('🔄 [FLOW-CHECK] Continuando para processamento normal da IA...');
     } else {
@@ -873,9 +946,60 @@ serve(async (req) => {
               break;
               
             case 'audio':
+              console.log('🎵 [AUDIO-PROCESSING] Tentando processar áudio:', {
+                messageId: mediaMsg.message_id,
+                hasAudioBase64: !!mediaMsg.audio_base64,
+                hasMediaUrl: !!mediaMsg.media_url,
+                hasMediaKey: !!mediaMsg.media_key,
+                hasFileEncSha256: !!mediaMsg.file_enc_sha256
+              });
+              
+              // Primeiro tentar com audio_base64 direto
               if (mediaMsg.audio_base64) {
+                console.log('🎵 [AUDIO-PROCESSING] Usando audio_base64 direto');
                 analysis = await processAudioTranscription(mediaMsg.audio_base64, openAIApiKey);
                 mediaAnalysis += `\n[ÁUDIO TRANSCRITO]: ${analysis}`;
+              } 
+              // Se não tem base64 mas tem dados de mídia, tentar descriptografar
+              else if (mediaMsg.media_url && mediaMsg.media_key && mediaMsg.file_enc_sha256) {
+                console.log('🎵 [AUDIO-PROCESSING] Tentando descriptografar áudio via Edge Function');
+                try {
+                  const { data: decryptResult } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
+                    body: {
+                      messageId: mediaMsg.message_id,
+                      mediaUrl: mediaMsg.media_url,
+                      mediaKey: mediaMsg.media_key,
+                      fileEncSha256: mediaMsg.file_enc_sha256,
+                      clientId: resolvedClientId
+                    }
+                  });
+                  
+                  if (decryptResult?.success && decryptResult?.transcription) {
+                    console.log('✅ [AUDIO-PROCESSING] Transcrição obtida via descriptografia');
+                    analysis = decryptResult.transcription;
+                    mediaAnalysis += `\n[ÁUDIO TRANSCRITO]: ${analysis}`;
+                    
+                    // Salvar o base64 para futuras consultas
+                    if (decryptResult.audioBase64) {
+                      await supabase
+                        .from('ticket_messages')
+                        .update({ audio_base64: decryptResult.audioBase64 })
+                        .eq('id', mediaMsg.id);
+                    }
+                  } else {
+                    console.warn('⚠️ [AUDIO-PROCESSING] Falha na descriptografia, usando conteúdo padrão');
+                    analysis = mediaMsg.content || '🎵 Áudio';
+                    mediaAnalysis += `\n[ÁUDIO DETECTADO]: ${analysis}`;
+                  }
+                } catch (decryptError) {
+                  console.error('❌ [AUDIO-PROCESSING] Erro na descriptografia:', decryptError);
+                  analysis = mediaMsg.content || '🎵 Áudio';
+                  mediaAnalysis += `\n[ÁUDIO DETECTADO]: ${analysis}`;
+                }
+              } else {
+                console.log('🎵 [AUDIO-PROCESSING] Usando conteúdo padrão (dados de mídia incompletos)');
+                analysis = mediaMsg.content || '🎵 Áudio';
+                mediaAnalysis += `\n[ÁUDIO DETECTADO]: ${analysis}`;
               }
               break;
               
