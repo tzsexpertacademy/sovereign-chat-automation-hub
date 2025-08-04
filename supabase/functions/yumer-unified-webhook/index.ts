@@ -13,7 +13,7 @@ const corsHeaders = {
 };
 
 // ✅ BATCH PERSISTENTE - USANDO SUPABASE
-const BATCH_TIMEOUT = 4000; // 4 segundos
+const BATCH_TIMEOUT = 6000; // 6 segundos para agrupamento
 
 serve(async (req) => {
   console.log('🔥 [WEBHOOK-SIMPLES] Requisição recebida:', req.method);
@@ -280,8 +280,8 @@ async function processMessageBatch(yumerData: any) {
       return await processSingleMessage(yumerData, false);
     }
 
-    // 🎯 MENSAGEM DO CLIENTE - DEVE PROCESSAR VIA AI
-    console.log('🔥 [CLIENT-MESSAGE] Mensagem do cliente detectada - processando via AI');
+    // 🎯 MENSAGEM DO CLIENTE - USAR SISTEMA DE BATCHING
+    console.log('🔥 [CLIENT-MESSAGE] Mensagem do cliente detectada - usando sistema de batching');
     console.log('🔥 [CLIENT-MESSAGE] Conteúdo:', content.substring(0, 100));
     
     // SALVAR MENSAGEM NO BANCO PRIMEIRO (com dados de mídia completos)
@@ -298,76 +298,7 @@ async function processMessageBatch(yumerData: any) {
       mediaDuration
     }, instance, chatId, pushName, phoneNumber);
 
-    // 🚀 PROCESSAMENTO DIRETO VIA AI (NÃO USAR BATCH PARA MENSAGENS DO CLIENTE)
-    try {
-      // Buscar ou criar ticket primeiro
-      const { data: ticketId } = await supabase.rpc('upsert_conversation_ticket', {
-        p_client_id: instance.client_id,
-        p_chat_id: chatId,
-        p_instance_id: instance.instance_id,
-        p_customer_name: pushName,
-        p_customer_phone: phoneNumber,
-        p_last_message: content,
-        p_last_message_at: new Date().toISOString()
-      });
-
-      if (ticketId) {
-        console.log('🚀 [CLIENT-MESSAGE] Chamando AI para processar mensagem do cliente...');
-        
-        const aiResponse = await supabase.functions.invoke('ai-assistant-process', {
-          body: {
-            ticketId: ticketId,
-            messages: [{
-              content: content,
-              messageId: messageId,
-              timestamp: new Date().toISOString(),
-              customerName: pushName,
-              phoneNumber: phoneNumber
-            }],
-            context: {
-              chatId: chatId,
-              customerName: pushName,
-              phoneNumber: phoneNumber,
-              clientMessage: true
-            }
-          }
-        });
-
-        console.log('🚀 [CLIENT-MESSAGE] Resultado da AI:', { 
-          success: !aiResponse.error, 
-          hasError: !!aiResponse.error,
-          errorMsg: aiResponse.error?.message 
-        });
-
-        if (!aiResponse.error) {
-          console.log('🚀 [CLIENT-MESSAGE] ✅ Mensagem processada com SUCESSO via AI!');
-          
-          // Marcar mensagem como processada
-          await supabase
-            .from('whatsapp_messages')
-            .update({ 
-              is_processed: true,
-              processed_at: new Date().toISOString()
-            })
-            .eq('message_id', messageId);
-
-          return new Response(JSON.stringify({ 
-            success: true, 
-            message: 'Client message processed via AI',
-            processed: true
-          }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-        } else {
-          console.error('🚀 [CLIENT-MESSAGE] ❌ Erro na AI, usando fallback batch');
-        }
-      }
-    } catch (error) {
-      console.error('🚀 [CLIENT-MESSAGE] ❌ Erro ao processar via AI:', error);
-      console.log('🚀 [CLIENT-MESSAGE] 🔄 Usando fallback: sistema de batch');
-    }
-
-    // ✅ FALLBACK: SISTEMA DE BATCH PERSISTENTE NO SUPABASE
+    // ✅ USAR SISTEMA DE BATCH PERSISTENTE NO SUPABASE (NÃO PROCESSAR IMEDIATAMENTE)
     await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
       content,
       messageId,
@@ -441,33 +372,32 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
       isNewBatch = true;
     }
 
-    // 🚀 PROCESSAMENTO HÍBRIDO: Agendar processamento direto após 3 segundos
+    // 🚀 PROCESSAMENTO COM TIMEOUT DE AGRUPAMENTO: 6 segundos
     if (isNewBatch) {
-      console.log('🔥 [HYBRID-PROCESSING] ⏰ Agendando processamento direto em 3 segundos...');
+      console.log('🔥 [BATCH-GROUPING] ⏰ Agendando processamento em 6 segundos para agrupamento...');
       
-      // Usar setTimeout para agendar processamento
+      // Usar setTimeout para agendar processamento com timeout de agrupamento
       setTimeout(async () => {
         try {
-          console.log('🔥 [HYBRID-PROCESSING] 🚀 Executando processamento direto...');
+          console.log('🔥 [BATCH-GROUPING] 🚀 Executando processamento após timeout de agrupamento...');
           
           const response = await supabase.functions.invoke('process-message-batches', {
             body: { 
-              trigger: 'hybrid_direct', 
+              trigger: 'batch_grouping_timeout', 
               timestamp: new Date().toISOString(),
               chatId: chatId
             }
           });
           
-          console.log('🔥 [HYBRID-PROCESSING] ✅ Resultado do processamento direto:', {
+          console.log('🔥 [BATCH-GROUPING] 🎯 Resultado do processamento após agrupamento:', {
             success: !response.error,
-            data: response.data,
-            error: response.error?.message
+            hasError: !!response.error,
+            errorMsg: response.error?.message
           });
-          
         } catch (error) {
-          console.error('🔥 [HYBRID-PROCESSING] ❌ Erro no processamento direto:', error);
+          console.error('🔥 [BATCH-GROUPING] ❌ Erro no processamento após agrupamento:', error);
         }
-      }, 3000);
+      }, BATCH_TIMEOUT); // 6 segundos para agrupamento
     }
 
     return { success: true };
