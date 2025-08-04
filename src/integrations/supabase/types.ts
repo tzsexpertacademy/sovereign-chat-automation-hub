@@ -107,6 +107,51 @@ export type Database = {
           },
         ]
       }
+      assistant_video_library: {
+        Row: {
+          assistant_id: string
+          category: string
+          created_at: string
+          duration_seconds: number | null
+          file_name: string
+          file_size: number
+          id: string
+          mime_type: string
+          original_name: string
+          storage_path: string
+          trigger_phrase: string
+          updated_at: string
+        }
+        Insert: {
+          assistant_id: string
+          category?: string
+          created_at?: string
+          duration_seconds?: number | null
+          file_name: string
+          file_size: number
+          id?: string
+          mime_type: string
+          original_name: string
+          storage_path: string
+          trigger_phrase: string
+          updated_at?: string
+        }
+        Update: {
+          assistant_id?: string
+          category?: string
+          created_at?: string
+          duration_seconds?: number | null
+          file_name?: string
+          file_size?: number
+          id?: string
+          mime_type?: string
+          original_name?: string
+          storage_path?: string
+          trigger_phrase?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       assistants: {
         Row: {
           advanced_settings: Json | null

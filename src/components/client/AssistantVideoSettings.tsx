@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Upload, Video, Trash2, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { assistantsService, AdvancedSettings, VideoLibraryItem } from "@/services/assistantsService";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AssistantVideoSettingsProps {
   assistantId: string;
@@ -20,8 +21,54 @@ const AssistantVideoSettings = ({ assistantId, settings, onSettingsChange }: Ass
   const [newVideoTrigger, setNewVideoTrigger] = useState("");
   const [newVideoCategory, setNewVideoCategory] = useState("geral");
   const [previewVideo, setPreviewVideo] = useState<string | null>(null);
+  const [videoLibrary, setVideoLibrary] = useState<VideoLibraryItem[]>([]);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   
   const { toast } = useToast();
+
+  // Carregar vídeos da nova tabela
+  useEffect(() => {
+    const loadVideoLibrary = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('assistant_video_library')
+          .select('*')
+          .eq('assistant_id', assistantId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Converter para formato esperado
+        const videos = data?.map(video => ({
+          id: video.id,
+          name: video.original_name,
+          trigger: video.trigger_phrase,
+          url: '', // Não carregamos URL aqui
+          videoBase64: '', // Não carregamos base64 mais
+          format: (video.mime_type.includes('mp4') ? 'mp4' :
+                 video.mime_type.includes('avi') ? 'avi' :
+                 video.mime_type.includes('mov') ? 'mov' :
+                 video.mime_type.includes('webm') ? 'webm' : 'mp4') as 'mp4' | 'avi' | 'mov' | 'webm',
+          size: video.file_size,
+          category: video.category,
+          uploaded_at: video.created_at,
+          storagePath: video.storage_path
+        })) || [];
+
+        setVideoLibrary(videos);
+      } catch (error) {
+        console.error('❌ Failed to load video library:', error);
+        toast({
+          variant: "destructive",
+          title: "Erro ao carregar biblioteca",
+          description: "Falha ao carregar vídeos da biblioteca"
+        });
+      }
+    };
+
+    loadVideoLibrary();
+  }, [assistantId]);
 
   const handleVideoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -54,12 +101,8 @@ const AssistantVideoSettings = ({ assistantId, settings, onSettingsChange }: Ass
 
       console.log('✅ [COMPONENT] Upload concluído:', videoItem);
 
-      // Atualizar configurações locais
-      const updatedSettings = {
-        ...settings,
-        video_library: [...(settings.video_library || []), videoItem]
-      };
-      onSettingsChange(updatedSettings);
+      // Atualizar biblioteca local
+      setVideoLibrary(prev => [videoItem, ...prev]);
 
       // Limpar formulário
       setNewVideoTrigger("");
@@ -87,12 +130,8 @@ const AssistantVideoSettings = ({ assistantId, settings, onSettingsChange }: Ass
     try {
       await assistantsService.removeVideoFromLibrary(assistantId, videoId);
       
-      // Atualizar configurações locais
-      const updatedSettings = {
-        ...settings,
-        video_library: (settings.video_library || []).filter(vid => vid.id !== videoId)
-      };
-      onSettingsChange(updatedSettings);
+      // Atualizar biblioteca local
+      setVideoLibrary(prev => prev.filter(vid => vid.id !== videoId));
 
       toast({
         title: "Vídeo Removido",
@@ -107,9 +146,32 @@ const AssistantVideoSettings = ({ assistantId, settings, onSettingsChange }: Ass
     }
   };
 
-  const showVideoPreview = (videoData: string, format: string) => {
-    const dataUrl = `data:video/${format};base64,${videoData}`;
-    setPreviewVideo(dataUrl);
+  const showVideoPreview = async (video: VideoLibraryItem) => {
+    try {
+      if (video.storagePath) {
+        // Novo sistema: obter URL do storage
+        const { data } = await supabase.storage
+          .from('assistant-videos')
+          .createSignedUrl(video.storagePath, 3600); // 1 hora
+        
+        if (data?.signedUrl) {
+          setPreviewVideoUrl(data.signedUrl);
+          setIsPreviewOpen(true);
+        }
+      } else if (video.videoBase64) {
+        // Sistema legado: usar base64
+        const dataUrl = `data:video/${video.format};base64,${video.videoBase64}`;
+        setPreviewVideoUrl(dataUrl);
+        setIsPreviewOpen(true);
+      }
+    } catch (error) {
+      console.error('❌ Failed to load video preview:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Falha ao carregar preview do vídeo"
+      });
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -207,12 +269,12 @@ const AssistantVideoSettings = ({ assistantId, settings, onSettingsChange }: Ass
           </div>
 
           {/* Videos Library */}
-          {settings.video_library && settings.video_library.length > 0 ? (
+          {videoLibrary && videoLibrary.length > 0 ? (
             <div className="space-y-3">
-              <h4 className="font-medium">Vídeos na Biblioteca ({settings.video_library.length})</h4>
+              <h4 className="font-medium">Vídeos na Biblioteca ({videoLibrary.length})</h4>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {settings.video_library.map((video) => (
+                {videoLibrary.map((video) => (
                   <div key={video.id} className="flex items-center space-x-3 p-3 border rounded-lg">
                     <div className="flex-shrink-0">
                       {video.videoBase64 ? (
@@ -240,15 +302,13 @@ const AssistantVideoSettings = ({ assistantId, settings, onSettingsChange }: Ass
                     </div>
                     
                     <div className="flex items-center space-x-1">
-                      {video.videoBase64 && (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => showVideoPreview(video.videoBase64!, video.format)}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      )}
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => showVideoPreview(video)}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
                       <Button 
                         size="sm" 
                         variant="outline" 
@@ -272,16 +332,20 @@ const AssistantVideoSettings = ({ assistantId, settings, onSettingsChange }: Ass
       </Card>
 
       {/* Preview Modal */}
-      {previewVideo && (
+      {isPreviewOpen && previewVideoUrl && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          onClick={() => setPreviewVideo(null)}
+          onClick={() => {
+            setIsPreviewOpen(false);
+            setPreviewVideoUrl(null);
+          }}
         >
           <div className="max-w-4xl max-h-4xl p-4">
             <video 
-              src={previewVideo} 
+              src={previewVideoUrl} 
               controls
               className="max-w-full max-h-full"
+              autoPlay
             />
           </div>
         </div>

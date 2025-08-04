@@ -50,11 +50,12 @@ export interface VideoLibraryItem {
   name: string;
   trigger: string;
   url: string;
-  videoBase64?: string; // Base64 do vídeo
+  videoBase64?: string; // Base64 do vídeo (legacy)
   format: 'mp4' | 'avi' | 'mov' | 'webm';
   size: number; // tamanho em bytes
   category: string;
   uploaded_at: string;
+  storagePath?: string; // Novo: caminho no storage
 }
 
 export interface RecordingSettings {
@@ -575,138 +576,123 @@ export const assistantsService = {
     assistantId: string, 
     videoFile: File, 
     trigger: string, 
-    category: string
+    category: string = "geral"
   ): Promise<VideoLibraryItem> {
     try {
-      console.log('📤 [UPLOAD-VIDEO] Iniciando upload para biblioteca:', {
+      console.log('📹 [UPLOAD-VIDEO-V2] Iniciando upload para novo sistema de storage:', {
+        assistantId,
         fileName: videoFile.name,
-        trigger,
-        category,
-        size: videoFile.size
+        trigger: trigger.toLowerCase(),
+        category
       });
 
-      // Validar formato
-      const validFormats = ['video/mp4', 'video/avi', 'video/mov', 'video/webm'];
-      if (!validFormats.includes(videoFile.type)) {
-        throw new Error('Formato não suportado. Use MP4, AVI, MOV ou WebM.');
+      // Upload para Supabase Storage
+      const fileName = `${Date.now()}-${videoFile.name}`;
+      const filePath = `${assistantId}/${fileName}`;
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('assistant-videos')
+        .upload(filePath, videoFile);
+
+      if (uploadError) {
+        console.error('❌ [UPLOAD-VIDEO-V2] Erro no upload para storage:', uploadError);
+        throw uploadError;
       }
 
-      // Validar tamanho (100MB máximo)
-      if (videoFile.size > 100 * 1024 * 1024) {
-        throw new Error('Vídeo muito grande. Máximo 100MB.');
+      console.log('✅ [UPLOAD-VIDEO-V2] Arquivo uploaded para storage:', uploadData.path);
+
+      // Inserir metadados na tabela
+      const { data: videoData, error: insertError } = await supabase
+        .from('assistant_video_library')
+        .insert({
+          assistant_id: assistantId,
+          file_name: fileName,
+          original_name: videoFile.name,
+          trigger_phrase: trigger.toLowerCase(),
+          category: category,
+          file_size: videoFile.size,
+          mime_type: videoFile.type,
+          storage_path: uploadData.path
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('❌ [UPLOAD-VIDEO-V2] Erro ao inserir metadados:', insertError);
+        // Limpar arquivo uploaded se inserção falhou
+        await supabase.storage
+          .from('assistant-videos')
+          .remove([filePath]);
+        throw insertError;
       }
 
-      // Converter para base64
-      const videoBase64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64 = result.split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(videoFile);
-      });
+      console.log('✅ [UPLOAD-VIDEO-V2] Metadados salvos na tabela:', videoData.id);
 
-      console.log('✅ [UPLOAD-VIDEO] Conversão base64 concluída:', {
-        base64Length: videoBase64.length,
-        format: videoFile.type
-      });
-
-      // Determinar formato
-      let format: 'mp4' | 'avi' | 'mov' | 'webm' = 'mp4';
-      if (videoFile.type.includes('avi')) format = 'avi';
-      else if (videoFile.type.includes('mov')) format = 'mov';
-      else if (videoFile.type.includes('webm')) format = 'webm';
-
+      // Retornar no formato esperado
       const videoItem: VideoLibraryItem = {
-        id: `video_${Date.now()}`,
-        name: videoFile.name,
-        trigger: trigger.toLowerCase(),
-        url: '',
-        videoBase64: videoBase64,
-        format: format,
-        size: videoFile.size,
-        category: category,
-        uploaded_at: new Date().toISOString()
+        id: videoData.id,
+        name: videoData.original_name,
+        trigger: videoData.trigger_phrase,
+        url: '', // Será gerado via signed URL quando necessário
+        format: videoData.mime_type.includes('mp4') ? 'mp4' :
+               videoData.mime_type.includes('avi') ? 'avi' :
+               videoData.mime_type.includes('mov') ? 'mov' :
+               videoData.mime_type.includes('webm') ? 'webm' : 'mp4',
+        size: videoData.file_size,
+        category: videoData.category,
+        uploaded_at: videoData.created_at,
+        storagePath: videoData.storage_path
       };
 
-      // ✅ BUSCAR OU CRIAR CONFIGURAÇÕES - SISTEMA UNIFICADO
-      let settings = await this.getAssistantAdvancedSettings(assistantId);
-      if (!settings) {
-        console.log('🔧 [UPLOAD-VIDEO] Configurações não encontradas, criando padrão...');
-        settings = {
-          custom_files: [],
-          humanization_level: "advanced",
-          eleven_labs_api_key: "",
-          eleven_labs_voice_id: "",
-          voice_cloning_enabled: false,
-          response_delay_seconds: 3,
-          audio_processing_enabled: false,
-          typing_indicator_enabled: true,
-          recording_indicator_enabled: true,
-          message_batch_timeout_seconds: 10,
-          message_processing_delay_seconds: 10,
-          audio_library: [],
-          image_library: [],
-          video_library: [] // CRITICAL: Inicializar video_library
-        };
-      }
-      
-      // ✅ GARANTIR QUE video_library EXISTE (inicializar se necessário)
-      if (!settings.video_library) {
-        console.log('🔧 [UPLOAD-VIDEO] video_library não existe, inicializando array vazio...');
-        settings.video_library = [];
-      }
-      
-      console.log('📊 [UPLOAD-VIDEO] Status das bibliotecas:', {
-        hasAudioLibrary: !!settings.audio_library,
-        hasImageLibrary: !!settings.image_library,
-        hasVideoLibrary: !!settings.video_library,
-        audioCount: settings.audio_library?.length || 0,
-        imageCount: settings.image_library?.length || 0,
-        videoCount: settings.video_library?.length || 0
-      });
-      
-      // Verificar se trigger já existe
-      const existingTrigger = settings.video_library.find(vid => vid.trigger === trigger.toLowerCase());
-      if (existingTrigger) {
-        throw new Error(`Trigger "${trigger}" já existe na biblioteca.`);
-      }
-
-      // ✅ ADICIONAR VÍDEO À BIBLIOTECA
-      const updatedSettings = {
-        ...settings,
-        video_library: [...settings.video_library, videoItem]
-      };
-      
-      await this.updateAdvancedSettings(assistantId, updatedSettings);
-      
-      console.log('✅ [UPLOAD-VIDEO] Vídeo salvo na biblioteca:', {
-        trigger: trigger.toLowerCase(),
-        format,
-        librarySize: updatedSettings.video_library.length
-      });
-
+      console.log('✅ [UPLOAD-VIDEO-V2] Vídeo uploaded com sucesso para novo sistema:', videoItem.id);
       return videoItem;
     } catch (error) {
-      console.error('❌ [UPLOAD-VIDEO] Erro ao fazer upload do vídeo:', error);
+      console.error('❌ [UPLOAD-VIDEO-V2] Erro no upload:', error);
       throw error;
     }
   },
 
   async removeVideoFromLibrary(assistantId: string, videoId: string): Promise<void> {
     try {
-      const settings = await this.getAssistantAdvancedSettings(assistantId);
-      if (settings) {
-        const updatedSettings = {
-          ...settings,
-          video_library: (settings.video_library || []).filter(video => video.id !== videoId)
-        };
-        await this.updateAdvancedSettings(assistantId, updatedSettings);
+      console.log('🗑️ [REMOVE-VIDEO-V2] Removendo vídeo do novo sistema:', { assistantId, videoId });
+
+      // Buscar dados do vídeo
+      const { data: videoData, error: fetchError } = await supabase
+        .from('assistant_video_library')
+        .select('storage_path')
+        .eq('id', videoId)
+        .eq('assistant_id', assistantId)
+        .single();
+
+      if (fetchError) {
+        console.error('❌ [REMOVE-VIDEO-V2] Erro ao buscar dados do vídeo:', fetchError);
+        throw fetchError;
       }
+
+      // Remover arquivo do storage
+      const { error: storageError } = await supabase.storage
+        .from('assistant-videos')
+        .remove([videoData.storage_path]);
+
+      if (storageError) {
+        console.warn('⚠️ [REMOVE-VIDEO-V2] Falha ao remover arquivo do storage:', storageError);
+      }
+
+      // Remover entrada da tabela
+      const { error: deleteError } = await supabase
+        .from('assistant_video_library')
+        .delete()
+        .eq('id', videoId)
+        .eq('assistant_id', assistantId);
+
+      if (deleteError) {
+        console.error('❌ [REMOVE-VIDEO-V2] Erro ao remover metadados:', deleteError);
+        throw deleteError;
+      }
+
+      console.log('✅ [REMOVE-VIDEO-V2] Vídeo removido com sucesso do novo sistema');
     } catch (error) {
-      console.error('Erro ao remover vídeo da biblioteca:', error);
+      console.error('❌ [REMOVE-VIDEO-V2] Erro ao remover vídeo:', error);
       throw error;
     }
   }
