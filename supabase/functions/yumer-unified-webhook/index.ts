@@ -449,15 +449,15 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
       willScheduleProcessing: isNewBatch
     });
 
-    // 🚀 AGENDAR PROCESSAMENTO APENAS PARA NOVOS BATCHES
-    if (isNewBatch) {
+    // 🚀 SEMPRE AGENDAR PROCESSAMENTO PARA MENSAGENS DO CLIENTE
+    if (isNewBatch || messageCount === 1) {
       // Detectar se é mensagem de áudio para timeout dinâmico
       const isAudioMessage = message.messageType === 'audio' || 
                              (message.content && message.content.includes('🎵'));
       
       const batchTimeout = isAudioMessage ? 6000 : BATCH_TIMEOUT; // 6s para áudio, 3s para texto
       
-      console.log(`🔥 [BATCH-GROUPING] ⏰ Agendando processamento em ${batchTimeout}ms (tipo: ${isAudioMessage ? 'áudio' : 'texto'})...`);
+      console.log(`🔥 [BATCH-GROUPING] ⏰ Agendando processamento em ${batchTimeout}ms (tipo: ${isAudioMessage ? 'áudio' : 'texto'}, count: ${messageCount})...`);
       
       // USAR EdgeRuntime.waitUntil para background task
       const backgroundTask = async () => {
@@ -473,7 +473,8 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
               chatId: chatId,
               source: 'yumer-unified-webhook',
               messageType: message.messageType || (isAudioMessage ? 'audio' : 'text'),
-              hasMedia: isAudioMessage
+              hasMedia: isAudioMessage,
+              force: true // ✅ FORÇAR PROCESSAMENTO
             }
           });
           
@@ -595,7 +596,8 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
       media_mime_type: messageData.mediaMimeType,
       media_duration: messageData.mediaDuration,
       raw_data: messageData, // Salvar payload completo para debug
-      is_processed: false // ✅ NÃO MARCAR COMO PROCESSADO AINDA
+      is_processed: false, // ✅ NÃO MARCAR COMO PROCESSADO AINDA
+      client_id: instance.client_id // ✅ ADICIONAR CLIENT_ID FALTANTE
     };
 
     const { error: saveError } = await supabase

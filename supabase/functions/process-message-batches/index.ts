@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
         processing_by: processingId
       })
       .in('id', batchIds)
-      .is('processing_started_at', null)
+      .or('processing_started_at.is.null,processing_started_at.lt.now() - interval \'5 minutes\'')
       .select('id');
 
     if (lockError) {

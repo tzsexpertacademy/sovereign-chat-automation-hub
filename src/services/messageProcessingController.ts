@@ -1,12 +1,18 @@
 /**
- * Controlador Centralizado de Processamento de Mensagens
- * CONTROLE ÚNICO: Evita processamento duplo e garante que apenas o batch system processe mensagens
+ * Controlador de processamento de mensagens
+ * Gerencia locks de chat e prevenção de duplicação
  */
 
-export class MessageProcessingController {
+class MessageProcessingController {
   private static instance: MessageProcessingController;
-  private globalLocks: Map<string, number | boolean> = new Map();
+  private chatLocks: Set<string> = new Set();
+  private chatLockTimestamps: Map<string, number> = new Map();
   private processedMessages: Set<string> = new Set();
+  private recentResponses: Map<string, { content: string; timestamp: number }> = new Map();
+  private activeBatches: Set<string> = new Set();
+  private readonly LOCK_TIMEOUT = 10000; // 10 segundos
+  private readonly RESPONSE_CACHE_TIMEOUT = 30000; // 30 segundos para evitar duplicação
+  private readonly MAX_PROCESSED_MESSAGES = 10000;
 
   private constructor() {}
 
@@ -18,160 +24,235 @@ export class MessageProcessingController {
   }
 
   /**
-   * Verificar se uma mensagem pode ser processada com controle rigoroso por chat_id
+   * Verifica se uma mensagem pode ser processada
    */
   canProcessMessage(messageId: string, chatId: string): boolean {
-    const chatLockKey = `chat_${chatId}`;
-    const messageLockKey = `msg_${messageId}`;
+    // Verificar se mensagem já foi processada
+    if (this.isMessageProcessed(messageId)) {
+      console.log('🔒 [CONTROLLER] Mensagem já processada:', messageId);
+      return false;
+    }
 
-    // PRIORITÁRIO: Verificar se chat está com lock (bloqueia TODO o chat)
+    // Verificar se chat está bloqueado
     if (this.isChatLocked(chatId)) {
-      console.log('🔒 [CONTROLLER] Chat com lock ativo - BLOQUEANDO:', chatId);
+      console.log('🔒 [CONTROLLER] Chat bloqueado:', chatId);
       return false;
     }
 
-    // SECUNDÁRIO: Verificar se mensagem específica já foi processada
-    if (this.processedMessages.has(messageLockKey)) {
-      console.log('✅ [CONTROLLER] Mensagem específica já processada:', messageId);
-      return false;
-    }
-
-    console.log('✅ [CONTROLLER] Mensagem PODE ser processada:', { messageId, chatId });
     return true;
   }
 
   /**
-   * Verificar se uma mensagem pode ser processada com timestamp
+   * Verifica se pode processar com timestamp
    */
   canProcessMessageWithTimestamp(messageId: string, chatId: string, timestamp?: number): boolean {
-    const chatLockKey = `chat_${chatId}`;
-    const messageLockKey = `msg_${messageId}`;
-    const currentTime = Date.now();
+    if (!this.canProcessMessage(messageId, chatId)) {
+      return false;
+    }
 
-    // Verificar se chat está com lock baseado em timestamp
-    const lockTime = this.globalLocks.get(chatLockKey);
-    if (lockTime) {
-      if (typeof lockTime === 'number' && (currentTime - lockTime) < 10000) { // 10s timeout
-        console.log('🔒 [CONTROLLER] Chat com lock ativo (timestamp):', chatId, `há ${currentTime - lockTime}ms`);
-        return false;
-      } else if (typeof lockTime === 'boolean' && lockTime) {
-        console.log('🔒 [CONTROLLER] Chat com lock ativo (boolean):', chatId);
+    // Verificar timestamp específico do chat se fornecido
+    if (timestamp) {
+      const chatTimestamp = this.chatLockTimestamps.get(chatId);
+      if (chatTimestamp && (Date.now() - chatTimestamp) < this.LOCK_TIMEOUT) {
+        console.log('🔒 [CONTROLLER] Chat bloqueado por timestamp:', chatId);
         return false;
       }
     }
 
-    // Verificar se mensagem já foi processada
-    if (this.processedMessages.has(messageLockKey)) {
-      console.log('✅ [CONTROLLER] Mensagem já processada:', messageId);
-      return false;
-    }
-
     return true;
   }
 
   /**
-   * Aplicar lock em um chat
+   * Bloquear chat
    */
   lockChat(chatId: string): void {
-    const chatLockKey = `chat_${chatId}`;
-    this.globalLocks.set(chatLockKey, Date.now());
-    console.log('🔒 [CONTROLLER] Lock aplicado no chat:', chatId);
+    this.chatLocks.add(chatId);
+    this.chatLockTimestamps.set(chatId, Date.now());
+    console.log('🔒 [CONTROLLER] Chat bloqueado:', chatId);
   }
 
   /**
-   * Aplicar lock com timestamp customizado
+   * Bloquear chat com timestamp específico (compatibilidade)
    */
   lockChatWithTimestamp(chatId: string, timestamp?: number): void {
-    const chatLockKey = `chat_${chatId}`;
-    this.globalLocks.set(chatLockKey, timestamp || Date.now());
-    console.log('🔒 [CONTROLLER] Lock aplicado no chat com timestamp:', chatId);
+    this.chatLocks.add(chatId);
+    this.chatLockTimestamps.set(chatId, timestamp || Date.now());
+    console.log('🔒 [CONTROLLER] Chat bloqueado com timestamp:', chatId);
   }
 
   /**
-   * Liberar lock de um chat
+   * Desbloquear chat
    */
   unlockChat(chatId: string): void {
-    const chatLockKey = `chat_${chatId}`;
-    this.globalLocks.delete(chatLockKey);
-    console.log('🔓 [CONTROLLER] Lock liberado do chat:', chatId);
+    this.chatLocks.delete(chatId);
+    this.chatLockTimestamps.delete(chatId);
+    console.log('🔓 [CONTROLLER] Chat desbloqueado:', chatId);
   }
 
   /**
    * Marcar mensagem como processada
    */
   markMessageProcessed(messageId: string): void {
-    const messageLockKey = `msg_${messageId}`;
-    this.processedMessages.add(messageLockKey);
+    this.processedMessages.add(messageId);
+    
+    // Limpar mensagens antigas se necessário
+    if (this.processedMessages.size > this.MAX_PROCESSED_MESSAGES) {
+      this.cleanupOldProcessed();
+    }
+    
     console.log('✅ [CONTROLLER] Mensagem marcada como processada:', messageId);
   }
 
   /**
-   * Marcar múltiplas mensagens como processadas
+   * Marcar múltiplas mensagens como processadas (compatibilidade)
    */
   markMessagesProcessed(messageIds: string[]): void {
     messageIds.forEach(messageId => {
       this.markMessageProcessed(messageId);
     });
+    console.log('✅ [CONTROLLER] Múltiplas mensagens marcadas como processadas:', messageIds.length);
   }
 
   /**
-   * Verificar se chat está com lock
+   * Verificar se mensagem foi processada
+   */
+  isMessageProcessed(messageId: string): boolean {
+    return this.processedMessages.has(messageId);
+  }
+
+  /**
+   * Verificar se chat está bloqueado
    */
   isChatLocked(chatId: string): boolean {
-    const chatLockKey = `chat_${chatId}`;
-    const lockTime = this.globalLocks.get(chatLockKey);
+    // Verificar timestamp para expirar locks antigos
+    const timestamp = this.chatLockTimestamps.get(chatId);
+    if (timestamp && (Date.now() - timestamp) > this.LOCK_TIMEOUT) {
+      this.unlockChat(chatId);
+      return false;
+    }
     
-    if (!lockTime) return false;
+    return this.chatLocks.has(chatId);
+  }
+
+  /**
+   * Verificar resposta duplicada
+   */
+  isDuplicateResponse(chatId: string, content: string): boolean {
+    const recent = this.recentResponses.get(chatId);
+    if (recent && (Date.now() - recent.timestamp) < this.RESPONSE_CACHE_TIMEOUT) {
+      // Verificar similaridade de conteúdo
+      const similarity = this.calculateSimilarity(content, recent.content);
+      if (similarity > 0.8) {
+        console.log('🚫 [CONTROLLER] Resposta duplicada detectada:', chatId);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Registrar resposta enviada
+   */
+  registerResponse(chatId: string, content: string): void {
+    this.recentResponses.set(chatId, {
+      content: content,
+      timestamp: Date.now()
+    });
+    console.log('📝 [CONTROLLER] Resposta registrada:', chatId);
+  }
+
+  /**
+   * Verificar se batch está ativo
+   */
+  isBatchActive(batchId: string): boolean {
+    return this.activeBatches.has(batchId);
+  }
+
+  /**
+   * Marcar batch como ativo
+   */
+  markBatchActive(batchId: string): void {
+    this.activeBatches.add(batchId);
+    console.log('🔄 [CONTROLLER] Batch marcado como ativo:', batchId);
+  }
+
+  /**
+   * Marcar batch como concluído
+   */
+  markBatchCompleted(batchId: string): void {
+    this.activeBatches.delete(batchId);
+    console.log('✅ [CONTROLLER] Batch concluído:', batchId);
+  }
+
+  /**
+   * Calcular similaridade entre dois textos
+   */
+  private calculateSimilarity(text1: string, text2: string): number {
+    if (text1 === text2) return 1.0;
     
-    // Se é timestamp, verificar se ainda é válido (10s timeout)
-    if (typeof lockTime === 'number') {
-      const currentTime = Date.now();
-      if ((currentTime - lockTime) > 10000) {
-        // Lock expirado, remover
-        this.globalLocks.delete(chatLockKey);
-        console.log('⏰ [CONTROLLER] Lock expirado removido:', chatId);
-        return false;
+    const normalize = (str: string) => str.toLowerCase().trim();
+    const norm1 = normalize(text1);
+    const norm2 = normalize(text2);
+    
+    if (norm1 === norm2) return 1.0;
+    
+    // Verificar se um texto contém o outro
+    if (norm1.includes(norm2) || norm2.includes(norm1)) {
+      return 0.9;
+    }
+    
+    // Verificar palavras em comum
+    const words1 = norm1.split(/\s+/);
+    const words2 = norm2.split(/\s+/);
+    const common = words1.filter(word => words2.includes(word));
+    
+    return common.length / Math.max(words1.length, words2.length);
+  }
+
+  /**
+   * Limpar mensagens processadas antigas
+   */
+  cleanupOldProcessed(): void {
+    const array = Array.from(this.processedMessages);
+    const keep = array.slice(-Math.floor(this.MAX_PROCESSED_MESSAGES * 0.8));
+    this.processedMessages = new Set(keep);
+    console.log('🧹 [CONTROLLER] Limpeza realizada, mantendo', keep.length, 'mensagens');
+  }
+
+  /**
+   * Limpar caches expirados
+   */
+  cleanupExpired(): void {
+    const now = Date.now();
+    
+    // Limpar respostas antigas
+    for (const [chatId, response] of this.recentResponses.entries()) {
+      if (now - response.timestamp > this.RESPONSE_CACHE_TIMEOUT) {
+        this.recentResponses.delete(chatId);
       }
     }
     
-    return true;
-  }
-
-  /**
-   * Verificar se mensagem já foi processada
-   */
-  isMessageProcessed(messageId: string): boolean {
-    const messageLockKey = `msg_${messageId}`;
-    return this.processedMessages.has(messageLockKey);
-  }
-
-  /**
-   * Limpar processados antigos (executar periodicamente)
-   */
-  cleanupOldProcessed(): void {
-    // Manter apenas os últimos 1000 processados para não consumir muita memória
-    if (this.processedMessages.size > 1000) {
-      const entries = Array.from(this.processedMessages);
-      const toKeep = entries.slice(-500); // Manter últimos 500
-      this.processedMessages.clear();
-      toKeep.forEach(entry => this.processedMessages.add(entry));
-      console.log('🧹 [CONTROLLER] Limpeza de mensagens processadas executada');
+    // Limpar locks expirados
+    for (const [chatId, timestamp] of this.chatLockTimestamps.entries()) {
+      if (now - timestamp > this.LOCK_TIMEOUT) {
+        this.unlockChat(chatId);
+      }
     }
   }
 
   /**
-   * Status do controlador
+   * Obter status do controlador
    */
-  getStatus(): {
-    activeLocks: number;
-    processedMessages: number;
-  } {
+  getStatus(): { activeLocks: number; processedMessages: number; recentResponses: number; activeBatches: number } {
+    this.cleanupExpired();
     return {
-      activeLocks: this.globalLocks.size,
-      processedMessages: this.processedMessages.size
+      activeLocks: this.chatLocks.size,
+      processedMessages: this.processedMessages.size,
+      recentResponses: this.recentResponses.size,
+      activeBatches: this.activeBatches.size
     };
   }
 }
 
-// Export singleton
+// Exportar singleton
 export const messageProcessingController = MessageProcessingController.getInstance();

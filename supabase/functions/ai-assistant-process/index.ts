@@ -624,7 +624,18 @@ serve(async (req) => {
               .update({ ai_processed: true, ai_response_timestamp: new Date().toISOString() })
               .eq('ticket_id', ticketId)
               .eq('content', messageContent);
-            console.log('✅ [EARLY-INTERCEPT] Mensagem marcada como processada');
+        console.log('✅ [EARLY-INTERCEPT] Mensagem marcada como processada');
+        
+        // 🛑 RETORNO IMEDIATO - Finalizar execução aqui
+        console.log('🛑 [EARLY-INTERCEPT] RETORNO IMEDIATO EXECUTADO - Edge function finalizará aqui');
+        return new Response(JSON.stringify({ 
+          success: true, 
+          processed: true,
+          intercepted: true,
+          type: 'early_processing'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
           } catch (error) {
             console.log('⚠️ [EARLY-INTERCEPT] Erro ao marcar mensagem como processada:', error);
           }
