@@ -95,17 +95,38 @@ serve(async (req) => {
 async function processMessageEmergency(yumerData: any) {
   try {
     console.log('🚨 [EMERGENCY-PROCESS] Iniciando processamento emergencial');
+    console.log('🚨 [EMERGENCY-PROCESS] Dados completos recebidos:', JSON.stringify(yumerData, null, 2));
 
-    const data = yumerData?.data;
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      console.log('🚨 [EMERGENCY-PROCESS] Dados inválidos - retornando OK');
-      return new Response(JSON.stringify({ success: true, message: 'No data' }), {
+    // 🔍 DETECTAR FORMATO DOS DADOS DINAMICAMENTE
+    let messageData;
+    let dataFormat = 'unknown';
+    
+    if (Array.isArray(yumerData)) {
+      messageData = yumerData[0];
+      dataFormat = 'array_direct';
+    } else if (yumerData?.data && Array.isArray(yumerData.data) && yumerData.data.length > 0) {
+      messageData = yumerData.data[0];
+      dataFormat = 'object_with_data_array';
+    } else if (yumerData?.data && !Array.isArray(yumerData.data)) {
+      messageData = yumerData.data;
+      dataFormat = 'object_with_data_object';
+    } else if (yumerData?.message || yumerData?.key || yumerData?.messageTimestamp) {
+      messageData = yumerData;
+      dataFormat = 'direct_message';
+    } else {
+      messageData = yumerData;
+      dataFormat = 'fallback_object';
+    }
+
+    console.log('🚨 [EMERGENCY-PROCESS] Formato detectado:', dataFormat);
+    console.log('🚨 [EMERGENCY-PROCESS] Dados da mensagem extraídos:', JSON.stringify(messageData, null, 2));
+
+    if (!messageData) {
+      console.log('🚨 [EMERGENCY-PROCESS] Nenhum dado de mensagem válido encontrado - retornando OK');
+      return new Response(JSON.stringify({ success: true, message: 'No valid message data', format: dataFormat }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-
-    const messageData = data[0];
-    console.log('🚨 [EMERGENCY-PROCESS] Dados brutos da mensagem:', JSON.stringify(messageData, null, 2));
 
     // ✅ BUSCAR INSTÂNCIA PRIMEIRO
     const instanceId = yumerData.instance;
