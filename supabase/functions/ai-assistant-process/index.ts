@@ -592,15 +592,13 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         }
-      } else {
-        console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de vídeo será ignorado');
-      }
-    }
-    
-      } else {
-        console.log('🚫 [EARLY-INTERCEPT] Nenhum comando de biblioteca detectado');
-      }
-    } // 🔚 Fim do bloco: Apenas para comandos de TEXTO (não áudio real)
+       } else {
+         console.warn('⚠️ [EARLY-INTERCEPT] Business token não encontrado - comando de vídeo será ignorado');
+       }
+     } else {
+       console.log('🚫 [EARLY-INTERCEPT] Nenhum comando de biblioteca detectado');
+     }
+   } // 🔚 Fim do bloco: Apenas para comandos de TEXTO (não áudio real)
 
     // 🔒 VERIFICAÇÃO ANTI-DUPLICAÇÃO APÓS EARLY INTERCEPT
     console.log('🔄 [FLOW-CHECK] Prosseguindo para processamento de IA normal...');
