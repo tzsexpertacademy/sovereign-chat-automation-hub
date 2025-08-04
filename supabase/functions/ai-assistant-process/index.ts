@@ -4011,8 +4011,7 @@ async function getVideoFromLibrary(assistantId: string, videoTrigger: string): P
     }
     
   } catch (error) {
-    console.error('❌ [VIDEO-LIBRARY] 💥 ERRO GERAL NA BUSCA:', error);
-    console.error('🔧 [VIDEO-LIBRARY] 📊 Stack trace:', error.stack);
+    console.error('❌ [VIDEO-LIBRARY] Erro ao buscar vídeo:', error);
     return null;
   }
 }
