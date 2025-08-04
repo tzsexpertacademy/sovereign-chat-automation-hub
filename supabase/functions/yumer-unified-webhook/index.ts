@@ -16,7 +16,7 @@ const corsHeaders = {
 const BATCH_TIMEOUT = 3000; // 3 segundos para agrupamento otimizado
 
 serve(async (req) => {
-  console.log('🔥 [WEBHOOK-SIMPLES] Requisição recebida:', req.method);
+  console.log('🚨 [WEBHOOK-EMERGENCIAL] Requisição recebida:', req.method);
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -24,7 +24,11 @@ serve(async (req) => {
 
   if (req.method === 'GET') {
     return new Response(
-      JSON.stringify({ status: 'active', message: 'YUMER Webhook SIMPLES' }),
+      JSON.stringify({ 
+        status: 'emergency_active', 
+        message: 'YUMER Webhook EMERGENCIAL v2.0',
+        timestamp: new Date().toISOString()
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -32,10 +36,10 @@ serve(async (req) => {
   if (req.method === 'POST') {
     try {
       const body = await req.text();
-      console.log('🔥 [WEBHOOK-SIMPLES] Body recebido, length:', body.length);
+      console.log('🚨 [WEBHOOK-EMERGENCIAL] Body recebido, length:', body.length);
       
       if (!body || body.trim() === '') {
-        console.log('🔥 [WEBHOOK-SIMPLES] Body vazio - retornando OK');
+        console.log('🚨 [WEBHOOK-EMERGENCIAL] Body vazio - OK');
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -45,7 +49,7 @@ serve(async (req) => {
       try {
         webhookData = JSON.parse(body);
       } catch (e) {
-        console.error('🔥 [WEBHOOK-SIMPLES] Erro parse JSON:', e);
+        console.error('🚨 [WEBHOOK-EMERGENCIAL] ❌ JSON inválido:', e);
         return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -53,22 +57,26 @@ serve(async (req) => {
       }
 
       const event = webhookData?.event;
-      console.log('🔥 [WEBHOOK-SIMPLES] Evento:', event);
+      console.log('🚨 [WEBHOOK-EMERGENCIAL] Evento detectado:', event);
 
-      // ✅ PROCESSAR APENAS MENSAGENS
+      // ✅ PROCESSAR APENAS MENSAGENS - VERSÃO EMERGENCIAL
       if (event === 'messages.upsert') {
-        console.log('🔥 [WEBHOOK-SIMPLES] MENSAGEM DETECTADA - PROCESSANDO BATCH');
-        return await processMessageBatch(webhookData);
+        console.log('🚨 [WEBHOOK-EMERGENCIAL] 🔥 MENSAGEM DETECTADA - PROCESSAMENTO EMERGENCIAL');
+        return await processMessageEmergency(webhookData);
       }
 
-      // ✅ RETORNAR OK PARA OUTROS EVENTOS
-      return new Response(JSON.stringify({ success: true }), {
+      // ✅ LOG OUTROS EVENTOS E RETORNAR OK
+      console.log('🚨 [WEBHOOK-EMERGENCIAL] ℹ️ Evento ignorado:', event);
+      return new Response(JSON.stringify({ success: true, ignored: event }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
 
     } catch (error) {
-      console.error('🔥 [WEBHOOK-SIMPLES] ERRO GLOBAL:', error);
-      return new Response(JSON.stringify({ error: error.message }), {
+      console.error('🚨 [WEBHOOK-EMERGENCIAL] ❌ ERRO CRÍTICO:', error);
+      return new Response(JSON.stringify({ 
+        error: error.message,
+        stack: error.stack?.substring(0, 500) 
+      }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -82,7 +90,104 @@ serve(async (req) => {
 });
 
 /**
- * 🔥 PROCESSAMENTO PRINCIPAL DE MENSAGENS EM BATCH
+ * 🚨 PROCESSAMENTO EMERGENCIAL DE MENSAGENS
+ */
+async function processMessageEmergency(yumerData: any) {
+  try {
+    console.log('🚨 [EMERGENCY-PROCESS] Iniciando processamento emergencial');
+
+    const data = yumerData?.data;
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      console.log('🚨 [EMERGENCY-PROCESS] Dados inválidos - retornando OK');
+      return new Response(JSON.stringify({ success: true, message: 'No data' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const messageData = data[0];
+    console.log('🚨 [EMERGENCY-PROCESS] Dados brutos da mensagem:', JSON.stringify(messageData, null, 2));
+
+    // ✅ BUSCAR INSTÂNCIA PRIMEIRO
+    const instanceId = yumerData.instance;
+    if (!instanceId) {
+      console.error('🚨 [EMERGENCY-PROCESS] ❌ Instance ID não encontrado');
+      return new Response(JSON.stringify({ error: 'Instance ID missing' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const { data: instances, error: instanceError } = await supabase
+      .from('whatsapp_instances')
+      .select('id, instance_id, client_id')
+      .eq('instance_id', instanceId);
+
+    if (instanceError || !instances || instances.length === 0) {
+      console.error('🚨 [EMERGENCY-PROCESS] ❌ Instância não encontrada:', instanceId);
+      return new Response(JSON.stringify({ error: 'Instance not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const instance = instances[0];
+    console.log('🚨 [EMERGENCY-PROCESS] ✅ Instância encontrada:', instance.instance_id, 'Cliente:', instance.client_id);
+
+    // ✅ EXTRAIR DADOS DA MENSAGEM COM MÉTODO ROBUSTO
+    const extractedData = extractYumerMessageDataEmergency(messageData);
+    if (!extractedData) {
+      console.log('🚨 [EMERGENCY-PROCESS] ❌ Falha na extração de dados');
+      return new Response(JSON.stringify({ success: true, message: 'Data extraction failed' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    console.log('🚨 [EMERGENCY-PROCESS] ✅ Dados extraídos:', {
+      messageId: extractedData.messageId,
+      chatId: extractedData.chatId?.substring(0, 20),
+      messageType: extractedData.messageType,
+      fromMe: extractedData.fromMe,
+      content: extractedData.content?.substring(0, 50)
+    });
+
+    // ✅ SALVAR MENSAGEM DIRETAMENTE NO BANCO
+    await saveMessageDirectlyEmergency({
+      ...extractedData,
+      clientId: instance.client_id,
+      instanceUuid: instance.id
+    });
+
+    // ✅ SE NÃO É MENSAGEM NOSSA, CRIAR BATCH PARA PROCESSAMENTO
+    if (!extractedData.fromMe) {
+      console.log('🚨 [EMERGENCY-PROCESS] 🎯 Mensagem do cliente - criando batch emergencial');
+      await createEmergencyBatch(extractedData.chatId, instance.client_id, extractedData.instanceId, messageData);
+    } else {
+      console.log('🚨 [EMERGENCY-PROCESS] ℹ️ Mensagem do sistema - processamento direto');
+    }
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: 'Emergency processing completed',
+      messageId: extractedData.messageId,
+      chatId: extractedData.chatId?.substring(0, 20)
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('🚨 [EMERGENCY-PROCESS] ❌ ERRO CRÍTICO:', error);
+    return new Response(JSON.stringify({ 
+      error: error.message,
+      stack: error.stack?.substring(0, 500)
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * 🔥 PROCESSAMENTO PRINCIPAL DE MENSAGENS EM BATCH (LEGADO)
  */
 async function processMessageBatch(yumerData: any) {
   try {
@@ -649,7 +754,288 @@ function extractMediaData(messageData: any) {
 }
 
 /**
- * 🔥 FUNÇÃO CRÍTICA: Converter Uint8Array para Base64
+ * 🚨 FUNÇÕES EMERGENCIAIS PARA PROCESSAMENTO ROBUSTO
+ */
+
+async function saveMessageDirectlyEmergency(messageData: any) {
+  try {
+    console.log('🚨 [EMERGENCY-SAVE] Salvando mensagem diretamente');
+    
+    // Inserir em whatsapp_messages SEM marcar como processada
+    const { error: whatsappError } = await supabase
+      .from('whatsapp_messages')
+      .insert({
+        message_id: messageData.messageId,
+        chat_id: messageData.chatId,
+        instance_id: messageData.instanceId,
+        client_id: messageData.clientId,
+        body: messageData.content,
+        message_type: messageData.messageType,
+        from_me: messageData.fromMe,
+        timestamp: messageData.timestamp,
+        contact_name: messageData.senderName,
+        phone_number: messageData.phoneNumber,
+        media_url: messageData.mediaUrl,
+        media_duration: messageData.mediaDuration,
+        media_key: messageData.mediaKey,
+        file_enc_sha256: messageData.fileEncSha256,
+        file_sha256: messageData.fileSha256,
+        media_mime_type: messageData.mediaMimeType,
+        direct_path: messageData.directPath,
+        raw_data: messageData.rawData,
+        source: 'yumer',
+        is_processed: false // ❗ CRÍTICO: Não marcar como processada ainda
+      })
+
+    if (whatsappError) {
+      if (whatsappError.code === '23505') {
+        console.log('🚨 [EMERGENCY-SAVE] ℹ️ Mensagem já existe - OK');
+      } else {
+        console.error('🚨 [EMERGENCY-SAVE] ❌ Erro salvando no whatsapp_messages:', whatsappError);
+        return
+      }
+    } else {
+      console.log('🚨 [EMERGENCY-SAVE] ✅ Mensagem salva no whatsapp_messages');
+    }
+
+    // Criar/atualizar ticket de conversa
+    const { data: ticketId, error: ticketError } = await supabase
+      .rpc('upsert_conversation_ticket', {
+        p_client_id: messageData.clientId,
+        p_chat_id: messageData.chatId,
+        p_instance_id: messageData.instanceId,
+        p_customer_name: messageData.senderName || 'Cliente',
+        p_customer_phone: messageData.phoneNumber || '',
+        p_last_message: messageData.content || '[Mídia]',
+        p_last_message_at: messageData.timestamp
+      })
+
+    if (ticketError) {
+      console.error('🚨 [EMERGENCY-SAVE] ❌ Erro criando ticket:', ticketError);
+      return
+    }
+
+    console.log('🚨 [EMERGENCY-SAVE] ✅ Ticket criado/atualizado:', ticketId);
+
+    // Salvar em ticket_messages também
+    const { error: ticketMsgError } = await supabase
+      .rpc('save_ticket_message', {
+        p_ticket_id: ticketId,
+        p_message_id: messageData.messageId,
+        p_content: messageData.content || '[Mídia]',
+        p_message_type: messageData.messageType,
+        p_from_me: messageData.fromMe,
+        p_timestamp: messageData.timestamp,
+        p_sender_name: messageData.senderName,
+        p_media_url: messageData.mediaUrl,
+        p_media_duration: messageData.mediaDuration,
+        p_media_key: messageData.mediaKey,
+        p_file_enc_sha256: messageData.fileEncSha256,
+        p_file_sha256: messageData.fileSha256
+      })
+
+    if (ticketMsgError) {
+      console.error('🚨 [EMERGENCY-SAVE] ⚠️ Aviso salvando ticket_message:', ticketMsgError);
+    } else {
+      console.log('🚨 [EMERGENCY-SAVE] ✅ Mensagem salva no ticket_messages');
+    }
+
+  } catch (error) {
+    console.error('🚨 [EMERGENCY-SAVE] ❌ Erro geral:', error);
+  }
+}
+
+async function createEmergencyBatch(chatId: string, clientId: string, instanceId: string, messageData: any) {
+  try {
+    console.log('🚨 [EMERGENCY-BATCH] Criando batch de emergência');
+    
+    // Tentar usar RPC primeiro
+    const { data: rpcResult, error: rpcError } = await supabase
+      .rpc('manage_message_batch', {
+        p_chat_id: chatId,
+        p_client_id: clientId,
+        p_instance_id: instanceId,
+        p_message: messageData
+      })
+
+    if (!rpcError && rpcResult?.success) {
+      console.log('🚨 [EMERGENCY-BATCH] ✅ Batch criado via RPC:', rpcResult.batch_id);
+    } else {
+      console.log('🚨 [EMERGENCY-BATCH] ⚠️ RPC falhou, criando batch direto:', rpcError);
+      
+      // Fallback: criar batch diretamente
+      const { error: directError } = await supabase
+        .from('message_batches')
+        .insert({
+          chat_id: chatId,
+          client_id: clientId,
+          instance_id: instanceId,
+          messages: [messageData]
+        })
+
+      if (directError) {
+        console.error('🚨 [EMERGENCY-BATCH] ❌ Erro criando batch direto:', directError);
+      } else {
+        console.log('🚨 [EMERGENCY-BATCH] ✅ Batch criado diretamente');
+      }
+    }
+
+    // Invocar processador de batches com delay
+    setTimeout(async () => {
+      try {
+        console.log('🚨 [EMERGENCY-BATCH] Invocando processador de batches');
+        await supabase.functions.invoke('process-message-batches', {
+          body: { trigger: 'emergency_webhook', chatId }
+        })
+      } catch (invokeError) {
+        console.error('🚨 [EMERGENCY-BATCH] ❌ Erro invocando processador:', invokeError);
+      }
+    }, 2000)
+
+  } catch (error) {
+    console.error('🚨 [EMERGENCY-BATCH] ❌ Erro geral:', error);
+  }
+}
+
+function extractYumerMessageDataEmergency(messageData: any): any | null {
+  try {
+    if (!messageData) {
+      console.log('🚨 [EXTRACT-EMERGENCY] Dados vazios');
+      return null;
+    }
+
+    const messageId = messageData.key?.id;
+    const chatId = messageData.key?.remoteJid;
+    const instanceId = messageData.instanceInstanceId;
+    const fromMe = messageData.key?.fromMe || false;
+    const timestamp = messageData.messageTimestamp ? 
+      new Date(messageData.messageTimestamp * 1000).toISOString() : 
+      new Date().toISOString();
+
+    if (!messageId || !chatId || !instanceId) {
+      console.log('🚨 [EXTRACT-EMERGENCY] ❌ Campos obrigatórios ausentes:', {
+        messageId: !!messageId,
+        chatId: !!chatId,
+        instanceId: !!instanceId
+      });
+      return null;
+    }
+
+    // Extrair conteúdo e tipo da mensagem
+    const messageType = getMessageTypeEmergency(messageData);
+    const content = extractContentEmergency(messageData);
+    const mediaData = extractMediaDataEmergency(messageData);
+
+    return {
+      messageId,
+      chatId,
+      instanceId,
+      fromMe,
+      timestamp,
+      messageType,
+      content,
+      senderName: messageData.pushName || null,
+      phoneNumber: extractPhoneFromChatId(chatId),
+      rawData: messageData,
+      ...mediaData
+    };
+
+  } catch (error) {
+    console.error('🚨 [EXTRACT-EMERGENCY] ❌ Erro na extração:', error);
+    return null;
+  }
+}
+
+function getMessageTypeEmergency(messageData: any): string {
+  if (messageData.message?.conversation) return 'text';
+  if (messageData.message?.extendedTextMessage) return 'text';
+  if (messageData.message?.imageMessage) return 'image';
+  if (messageData.message?.videoMessage) return 'video';
+  if (messageData.message?.audioMessage) return 'audio';
+  if (messageData.message?.documentMessage) return 'document';
+  if (messageData.message?.stickerMessage) return 'sticker';
+  if (messageData.contentType) return messageData.contentType;
+  return 'text';
+}
+
+function extractContentEmergency(messageData: any): string {
+  if (messageData.message?.conversation) {
+    return messageData.message.conversation;
+  }
+  if (messageData.message?.extendedTextMessage?.text) {
+    return messageData.message.extendedTextMessage.text;
+  }
+  if (messageData.content?.text) {
+    return messageData.content.text;
+  }
+  return '[Mídia]';
+}
+
+function extractMediaDataEmergency(messageData: any): any {
+  const media = messageData.message;
+  if (!media) return {};
+
+  const result: any = {};
+
+  // Processar diferentes tipos de mídia
+  const mediaTypes = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage'];
+  
+  for (const type of mediaTypes) {
+    const mediaObj = media[type];
+    if (mediaObj) {
+      result.mediaUrl = mediaObj.url || null;
+      result.mediaDuration = mediaObj.seconds || null;
+      result.mediaMimeType = mediaObj.mimetype || null;
+      result.directPath = mediaObj.directPath || null;
+      
+      // Converter chaves de mídia corretamente
+      if (mediaObj.mediaKey) {
+        result.mediaKey = convertUint8ArrayToBase64Emergency(mediaObj.mediaKey);
+      }
+      if (mediaObj.fileEncSha256) {
+        result.fileEncSha256 = convertUint8ArrayToBase64Emergency(mediaObj.fileEncSha256);
+      }
+      if (mediaObj.fileSha256) {
+        result.fileSha256 = convertUint8ArrayToBase64Emergency(mediaObj.fileSha256);
+      }
+      break;
+    }
+  }
+
+  return result;
+}
+
+function convertUint8ArrayToBase64Emergency(data: any): string | null {
+  try {
+    if (!data) return null;
+    
+    if (typeof data === 'string') {
+      return data;
+    }
+    
+    if (data instanceof Uint8Array) {
+      return btoa(String.fromCharCode(...Array.from(data)));
+    }
+    
+    if (Array.isArray(data)) {
+      return btoa(String.fromCharCode(...data));
+    }
+    
+    console.log('🚨 [CONVERT-EMERGENCY] ⚠️ Tipo não suportado:', typeof data);
+    return null;
+    
+  } catch (error) {
+    console.error('🚨 [CONVERT-EMERGENCY] ❌ Erro na conversão:', error);
+    return null;
+  }
+}
+
+function extractPhoneFromChatId(chatId: string): string {
+  return chatId.replace(/@.*$/, '');
+}
+
+/**
+ * 🔥 FUNÇÃO CRÍTICA: Converter Uint8Array para Base64 (LEGADO)
  */
 function convertUint8ArrayToBase64(data: any): string | null {
   try {
