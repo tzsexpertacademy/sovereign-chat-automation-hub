@@ -9,6 +9,8 @@ import { audioRecoveryService } from '@/services/audioRecoveryService';
  */
 export const useAudioAutoProcessor = (clientId: string) => {
   const processingRef = useRef<Set<string>>(new Set());
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const channelRef = useRef<any>(null);
 
   useEffect(() => {
     if (!clientId) {
@@ -18,6 +20,7 @@ export const useAudioAutoProcessor = (clientId: string) => {
 
     console.log('🎵 [AUDIO-AUTO] ✅ INICIANDO processamento automático de áudios para cliente:', clientId);
     console.log('🎵 [AUDIO-AUTO] 🔧 Hook ativo e configurado corretamente');
+    console.log('🎵 [AUDIO-AUTO] 🔧 Timestamp de inicialização:', new Date().toISOString());
     
     // Verificar se há áudios órfãos para reprocessar
     audioRecoveryService.findOrphanedAudios(clientId).then(orphaned => {
@@ -26,7 +29,62 @@ export const useAudioAutoProcessor = (clientId: string) => {
       }
     }).catch(console.error);
 
+    // 🎯 IMPLEMENTAR FALLBACK DE POLLING PARA ÁUDIOS PERDIDOS
+    const checkPendingAudios = async () => {
+      try {
+        console.log('🔄 [AUDIO-AUTO] Verificando áudios pendentes via polling...');
+        
+        const { data: pendingAudios, error } = await supabase
+          .from('ticket_messages')
+          .select(`
+            *,
+            conversation_tickets!inner(client_id, chat_id, instance_id)
+          `)
+          .in('message_type', ['audio', 'ptt'])
+          .eq('processing_status', 'received')
+          .eq('conversation_tickets.client_id', clientId)
+          .order('timestamp', { ascending: true })
+          .limit(5);
+
+        if (error) {
+          console.error('❌ [AUDIO-AUTO] Erro no polling:', error);
+          return;
+        }
+
+        if (pendingAudios && pendingAudios.length > 0) {
+          console.log(`🔍 [AUDIO-AUTO] POLLING encontrou ${pendingAudios.length} áudios pendentes`);
+          
+          for (const audio of pendingAudios) {
+            if (!processingRef.current.has(audio.message_id)) {
+              console.log(`🎯 [AUDIO-AUTO] POLLING processando áudio perdido: ${audio.message_id}`);
+              
+              processingRef.current.add(audio.message_id);
+              
+              try {
+                await processAudioMessage(
+                  audio, 
+                  audio.conversation_tickets, 
+                  clientId
+                );
+              } finally {
+                processingRef.current.delete(audio.message_id);
+              }
+            }
+          }
+        } else {
+          console.log('✅ [AUDIO-AUTO] POLLING: Nenhum áudio pendente encontrado');
+        }
+      } catch (error) {
+        console.error('❌ [AUDIO-AUTO] Erro crítico no polling:', error);
+      }
+    };
+
+    // Iniciar polling de fallback a cada 15 segundos
+    pollingIntervalRef.current = setInterval(checkPendingAudios, 15000);
+    console.log('⏰ [AUDIO-AUTO] Polling de fallback iniciado (15s)');
+
     // Listener para novas mensagens de áudio
+    console.log('📡 [AUDIO-AUTO] Configurando listener realtime...');
     const channel = supabase
       .channel('audio_auto_processor')
       .on(
@@ -38,6 +96,8 @@ export const useAudioAutoProcessor = (clientId: string) => {
           filter: `message_type=in.(audio,ptt)`
         },
         async (payload) => {
+          console.log('📨 [AUDIO-AUTO] LISTENER ATIVO - Nova mensagem recebida via realtime');
+          console.log('📨 [AUDIO-AUTO] Payload completo:', JSON.stringify(payload, null, 2));
           const newMessage = payload.new as any;
           
           console.log('🎵 [AUDIO-AUTO] 📨 NOVA MENSAGEM DETECTADA:', {
@@ -103,11 +163,37 @@ export const useAudioAutoProcessor = (clientId: string) => {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 [AUDIO-AUTO] Status da conexão realtime:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [AUDIO-AUTO] Listener realtime CONECTADO com sucesso');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ [AUDIO-AUTO] ERRO na conexão realtime');
+        } else if (status === 'TIMED_OUT') {
+          console.error('⏰ [AUDIO-AUTO] TIMEOUT na conexão realtime');
+        }
+      });
+
+    channelRef.current = channel;
+    console.log('✅ [AUDIO-AUTO] Sistema completo inicializado (realtime + polling)');
+
+    // Verificação inicial de áudios pendentes
+    setTimeout(checkPendingAudios, 2000);
 
     return () => {
-      console.log('🎵 [AUDIO-AUTO] Parando processamento automático de áudios');
-      supabase.removeChannel(channel);
+      console.log('🎵 [AUDIO-AUTO] 🔄 Parando processamento automático de áudios...');
+      
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        console.log('⏰ [AUDIO-AUTO] Polling de fallback parado');
+      }
+      
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        console.log('📡 [AUDIO-AUTO] Listener realtime removido');
+      }
+      
+      console.log('✅ [AUDIO-AUTO] Cleanup completo realizado');
     };
   }, [clientId]);
 

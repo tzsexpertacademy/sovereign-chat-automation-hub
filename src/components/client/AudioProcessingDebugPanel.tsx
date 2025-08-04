@@ -14,6 +14,7 @@ export const AudioProcessingDebugPanel = ({ clientId }: AudioProcessingDebugPane
   const [orphanedAudios, setOrphanedAudios] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [stats, setStats] = useState<any>(null);
 
   // Carregar áudios órfãos
   const loadOrphanedAudios = async () => {
@@ -22,6 +23,9 @@ export const AudioProcessingDebugPanel = ({ clientId }: AudioProcessingDebugPane
       console.log('🔍 [DEBUG] Buscando áudios órfãos...');
       const audios = await audioRecoveryService.findOrphanedAudios(clientId);
       setOrphanedAudios(audios);
+      
+      const statistics = await audioRecoveryService.getAudioProcessingStats(clientId);
+      setStats(statistics);
       
       if (audios.length > 0) {
         toast.info(`Encontrados ${audios.length} áudios órfãos`);
@@ -57,6 +61,30 @@ export const AudioProcessingDebugPanel = ({ clientId }: AudioProcessingDebugPane
     } catch (error) {
       console.error('❌ [DEBUG] Erro no reprocessamento:', error);
       toast.error('Erro no reprocessamento');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const forceReprocessAll = async () => {
+    setIsProcessing(true);
+    try {
+      console.log('🔄 [DEBUG] Forçando reprocessamento de todos os áudios recentes...');
+      const result = await audioRecoveryService.forceReprocessAllRecent(clientId, 24);
+      
+      if (result.updated > 0) {
+        toast.success(`✅ ${result.updated} áudios forçadamente reprocessados!`);
+        await loadOrphanedAudios();
+      } else {
+        toast.info('Nenhum áudio encontrado para reprocessamento');
+      }
+      
+      if (result.errors > 0) {
+        toast.warning(`⚠️ ${result.errors} erros durante o reprocessamento forçado`);
+      }
+    } catch (error) {
+      console.error('❌ [DEBUG] Erro no reprocessamento forçado:', error);
+      toast.error('Erro no reprocessamento forçado');
     } finally {
       setIsProcessing(false);
     }
@@ -109,12 +137,20 @@ export const AudioProcessingDebugPanel = ({ clientId }: AudioProcessingDebugPane
             variant="default"
           >
             <CheckCircle className="w-4 h-4 mr-2" />
-            Reprocessar Todos ({orphanedAudios.length})
+            Reprocessar Órfãos ({orphanedAudios.length})
+          </Button>
+          
+          <Button 
+            onClick={forceReprocessAll}
+            disabled={isProcessing}
+            variant="outline"
+          >
+            🔄 Forçar Todos (24h)
           </Button>
         </div>
 
         {/* Estatísticas */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div className="p-3 border rounded">
             <div className="text-2xl font-bold text-orange-600">
               {orphanedAudios.length}
@@ -126,6 +162,20 @@ export const AudioProcessingDebugPanel = ({ clientId }: AudioProcessingDebugPane
               {orphanedAudios.filter(a => a.media_key).length}
             </div>
             <div className="text-sm text-muted-foreground">Com Media Key</div>
+          </div>
+          <div className="p-3 border rounded">
+            <div className="text-sm text-muted-foreground">Estatísticas</div>
+            <div className="text-xs">
+              {stats ? (
+                <div>
+                  Received: {stats.stats?.received || 0}<br/>
+                  Processing: {stats.stats?.processing || 0}<br/>
+                  Completed: {stats.stats?.completed || 0}<br/>
+                  Failed: {stats.stats?.failed || 0}<br/>
+                  Processed: {stats.stats?.processed || 0}
+                </div>
+              ) : 'Carregando...'}
+            </div>
           </div>
         </div>
 
@@ -185,8 +235,10 @@ export const AudioProcessingDebugPanel = ({ clientId }: AudioProcessingDebugPane
         <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded border">
           <h4 className="font-medium mb-2">Comandos do Console:</h4>
           <div className="font-mono text-sm space-y-1">
+            <div>• <code>audioRecovery.getAudioProcessingStats('{clientId}')</code></div>
             <div>• <code>audioRecovery.findOrphanedAudios('{clientId}')</code></div>
             <div>• <code>audioRecovery.reprocessOrphanedAudios('{clientId}')</code></div>
+            <div>• <code>audioRecovery.forceReprocessAllRecent('{clientId}', 24)</code></div>
             <div>• <code>testAudio()</code> - Teste manual</div>
           </div>
         </div>

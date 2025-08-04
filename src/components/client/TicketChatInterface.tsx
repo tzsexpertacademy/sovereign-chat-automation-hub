@@ -9,6 +9,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
 import { useAudioAutoProcessor } from '@/hooks/useAudioAutoProcessor';
+import { useAudioProcessingMonitor } from '@/hooks/useAudioProcessingMonitor';
 import { ManualAudioTestPanel } from './ManualAudioTestPanel';
 import { AudioProcessingDebugPanel } from './AudioProcessingDebugPanel';
 import MessagesList from './chat/MessagesList';
@@ -43,6 +44,15 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   
   // 🎵 PROCESSAMENTO AUTOMÁTICO DE ÁUDIO: Transcrição em tempo real
   useAudioAutoProcessor(clientId);
+  
+  // 📊 MONITORAMENTO DE PROCESSAMENTO DE ÁUDIO
+  const { startMonitoring, stopMonitoring, isMonitoring } = useAudioProcessingMonitor(clientId);
+  
+  // Iniciar monitoramento automático
+  useEffect(() => {
+    startMonitoring();
+    return () => stopMonitoring();
+  }, []);
 
   // Sistema 100% Real-Time - Supabase + Optimistic Updates
   const { 
