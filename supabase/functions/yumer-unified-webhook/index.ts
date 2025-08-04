@@ -52,20 +52,22 @@ serve(async (req) => {
         });
       }
 
-      console.log('🔥 [WEBHOOK-SIMPLES] Evento:', webhookData.event);
+      const event = webhookData?.event;
+      console.log('🔥 [WEBHOOK-SIMPLES] Evento:', event);
 
-      // DETECTAR MENSAGENS YUMER
-      if (webhookData.event === 'messages.upsert' && webhookData.data && webhookData.instance?.instanceId) {
+      // ✅ PROCESSAR APENAS MENSAGENS
+      if (event === 'messages.upsert') {
         console.log('🔥 [WEBHOOK-SIMPLES] MENSAGEM DETECTADA - PROCESSANDO BATCH');
         return await processMessageBatch(webhookData);
       }
 
-      return new Response(JSON.stringify({ success: true, message: 'Event processed' }), {
+      // ✅ RETORNAR OK PARA OUTROS EVENTOS
+      return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
 
     } catch (error) {
-      console.error('🔥 [WEBHOOK-SIMPLES] ERRO CRÍTICO:', error);
+      console.error('🔥 [WEBHOOK-SIMPLES] ERRO GLOBAL:', error);
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -79,311 +81,137 @@ serve(async (req) => {
   });
 });
 
-// ✅ FUNÇÃO ULTRA SIMPLES PARA BATCH
+/**
+ * 🔥 PROCESSAMENTO PRINCIPAL DE MENSAGENS EM BATCH
+ */
 async function processMessageBatch(yumerData: any) {
   try {
     console.log('🔥 [BATCH-SIMPLES] Iniciando processamento de batch');
-    
-    const messageData = yumerData.data;
-    const instanceId = yumerData.instance?.instanceId;
-    const instanceName = yumerData.instance?.name;
-    
-    if (!messageData || !instanceId || !instanceName) {
-      console.log('🔥 [BATCH-SIMPLES] Dados insuficientes');
-      return new Response(JSON.stringify({ error: 'Insufficient data' }), {
-        status: 400,
+
+    const data = yumerData?.data;
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      console.log('🔥 [BATCH-SIMPLES] Dados inválidos ou vazios');
+      return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // EXTRAIR DADOS BÁSICOS DA MENSAGEM + MÍDIA
-    const chatId = messageData.keyRemoteJid;
-    const messageId = messageData.keyId;
-    const fromMe = messageData.keyFromMe || false;
-    const pushName = messageData.pushName || 'Cliente';
-    const phoneNumber = chatId?.replace('@s.whatsapp.net', '') || '';
+    const messageData = data[0];
     
-    // DETECTAR TIPO DE MENSAGEM E MÍDIA CORRIGIDO
-    let content = '';
-    let messageType = 'text';
-    let mediaUrl = null;
-    let mediaKey = null;
-    let fileEncSha256 = null;
-    let fileSha256 = null;
-    let directPath = null;
-    let mediaMimeType = null;
-    let mediaDuration = null;
-    
-    // 🔥 CORREÇÃO: Detectar contentType para identificar mídias corretamente
-    if (messageData.contentType === 'image' || messageData.content?.imageMessage) {
-      const img = messageData.content?.imageMessage || messageData.content;
-      content = img.caption || '📷 Imagem';
-      messageType = 'image';  // ✅ CORRIGIDO: Era 'text' antes
-      mediaUrl = img.url;
-      // 🔥 CORREÇÃO CRÍTICA: Converter mediaKey de Uint8Array para Base64
-      mediaKey = img.mediaKey ? convertUint8ArrayToBase64(img.mediaKey) : null;
-      fileEncSha256 = img.fileEncSha256 ? convertUint8ArrayToBase64(img.fileEncSha256) : null;
-      fileSha256 = img.fileSha256 ? convertUint8ArrayToBase64(img.fileSha256) : null;
-      directPath = img.directPath;
-      mediaMimeType = img.mimetype || 'image/jpeg';
-      console.log('🖼️ [DETECT] Imagem detectada:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey, mediaKeyType: typeof mediaKey });
-    } else if (messageData.contentType === 'audio' || messageData.content?.audioMessage) {
-      const audio = messageData.content?.audioMessage || messageData.content;
-      content = '🎵 Áudio';
-      messageType = 'audio';
-      mediaUrl = audio.url;
-      // 🔥 CORREÇÃO CRÍTICA: Converter mediaKey de Uint8Array para Base64
-      mediaKey = audio.mediaKey ? convertUint8ArrayToBase64(audio.mediaKey) : null;
-      fileEncSha256 = audio.fileEncSha256 ? convertUint8ArrayToBase64(audio.fileEncSha256) : null;
-      fileSha256 = audio.fileSha256 ? convertUint8ArrayToBase64(audio.fileSha256) : null;
-      directPath = audio.directPath;
-      mediaMimeType = audio.mimetype || 'audio/ogg';
-      mediaDuration = audio.seconds;
-      console.log('🎵 [AUDIO-DETECT] 🎯 Áudio detectado:', { 
-        messageId,
-        mediaUrl: !!mediaUrl, 
-        mediaKey: !!mediaKey, 
-        mediaKeyType: typeof mediaKey,
-        mediaKeyLength: mediaKey?.length,
-        fileEncSha256: !!fileEncSha256,
-        directPath: !!directPath,
-        mimetype: mediaMimeType,
-        duration: mediaDuration
-      });
-    } else if (messageData.contentType === 'video' || messageData.content?.videoMessage) {
-      const video = messageData.content?.videoMessage || messageData.content;
-      content = video.caption || '🎥 Vídeo';
-      messageType = 'video';
-      mediaUrl = video.url;
-      // 🔥 CORREÇÃO CRÍTICA: Converter mediaKey de Uint8Array para Base64
-      mediaKey = video.mediaKey ? convertUint8ArrayToBase64(video.mediaKey) : null;
-      fileEncSha256 = video.fileEncSha256 ? convertUint8ArrayToBase64(video.fileEncSha256) : null;
-      fileSha256 = video.fileSha256 ? convertUint8ArrayToBase64(video.fileSha256) : null;
-      directPath = video.directPath;
-      mediaMimeType = video.mimetype || 'video/mp4';
-      mediaDuration = video.seconds;
-      console.log('🎥 [DETECT] Vídeo detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey, mediaKeyType: typeof mediaKey });
-    } else if (messageData.contentType === 'document' || messageData.content?.documentMessage) {
-      const doc = messageData.content?.documentMessage || messageData.content;
-      content = doc.fileName || '📄 Documento';
-      messageType = 'document';
-      mediaUrl = doc.url;
-      // 🔥 CORREÇÃO CRÍTICA: Converter mediaKey de Uint8Array para Base64
-      mediaKey = doc.mediaKey ? convertUint8ArrayToBase64(doc.mediaKey) : null;
-      fileEncSha256 = doc.fileEncSha256 ? convertUint8ArrayToBase64(doc.fileEncSha256) : null;
-      fileSha256 = doc.fileSha256 ? convertUint8ArrayToBase64(doc.fileSha256) : null;
-      directPath = doc.directPath;
-      mediaMimeType = doc.mimetype || 'application/pdf';
-      console.log('📄 [DETECT] Documento detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey, mediaKeyType: typeof mediaKey });
-    } else if (messageData.content?.text) {
-      content = messageData.content.text;
-      messageType = 'text';
-      console.log('📝 [DETECT] Texto detectado');
-    }
+    // ✅ DETECTAR TIPO DE MENSAGEM
+    const messageType = getMessageType(messageData);
+    console.log(`📝 [DETECT] ${messageType === 'text' ? 'Texto' : 'Mídia'} detectado`);
+
+    // ✅ EXTRAIR DADOS DA MENSAGEM
+    const {
+      chatId,
+      messageId,
+      content,
+      contentType,
+      hasMediaUrl,
+      hasMediaKey,
+      hasFileEncSha256,
+      fromMe,
+      pushName
+    } = extractYumerMessageData(messageData);
 
     console.log('🔥 [BATCH-SIMPLES] Dados extraídos:', {
       chatId: chatId?.substring(0, 20),
       messageId,
-      content: content.substring(0, 50),
+      content: content?.substring(0, 50),
       messageType,
-      contentType: messageData.contentType,
-      hasMediaUrl: !!mediaUrl,
-      hasMediaKey: !!mediaKey,
-      hasFileEncSha256: !!fileEncSha256,
+      contentType,
+      hasMediaUrl,
+      hasMediaKey,
+      hasFileEncSha256,
       fromMe,
       pushName
     });
 
-    // BUSCAR INSTÂNCIA
-    const { data: instance, error: instanceError } = await supabase
+    const phoneNumber = chatId?.replace('@s.whatsapp.net', '') || '';
+
+    // ✅ BUSCAR INSTÂNCIA CORRESPONDENTE
+    const { data: instances, error: instanceError } = await supabase
       .from('whatsapp_instances')
-      .select('instance_id, client_id, id')
-      .eq('yumer_instance_name', instanceName)
-      .single();
+      .select('id, instance_id, client_id')
+      .eq('instance_id', yumerData.instance);
 
-    if (instanceError || !instance) {
-      console.log('🔥 [BATCH-SIMPLES] Instância não encontrada, processando simples');
-      return await processSingleMessage(yumerData);
-    }
-
-    console.log('🔥 [BATCH-SIMPLES] Instância encontrada:', instance.instance_id);
-
-    // 🎥 INTERCEPTAÇÃO IMEDIATA PARA COMANDOS DE VÍDEO
-    if (!fromMe && content && typeof content === 'string') {
-      const videoCommandMatch = content.trim().match(/^video\s+([a-zA-Z0-9_-]+)$/i);
-      if (videoCommandMatch) {
-        console.log('🎥 [WEBHOOK-INTERCEPT] ⚡ COMANDO DE VÍDEO DETECTADO - PROCESSANDO IMEDIATAMENTE');
-        console.log('🎥 [WEBHOOK-INTERCEPT] Comando:', videoCommandMatch[0]);
-        console.log('🎥 [WEBHOOK-INTERCEPT] Trigger do vídeo:', videoCommandMatch[1]);
-        
-        // Processar comando de vídeo diretamente via AI
-        try {
-          // Buscar ou criar ticket primeiro
-          const { data: ticketId } = await supabase.rpc('upsert_conversation_ticket', {
-            p_client_id: instance.client_id,
-            p_chat_id: chatId,
-            p_instance_id: instance.instance_id,
-            p_customer_name: pushName,
-            p_customer_phone: phoneNumber,
-            p_last_message: content,
-            p_last_message_at: new Date().toISOString()
-          });
-
-          if (ticketId) {
-            console.log('🎥 [WEBHOOK-INTERCEPT] 🎯 Chamando AI para processar vídeo imediatamente...');
-            
-            const aiResponse = await supabase.functions.invoke('ai-assistant-process', {
-              body: {
-                ticketId: ticketId,
-                messages: [{
-                  content: content,
-                  messageId: messageId,
-                  timestamp: new Date().toISOString(),
-                  customerName: pushName,
-                  phoneNumber: phoneNumber
-                }],
-                context: {
-                  chatId: chatId,
-                  customerName: pushName,
-                  phoneNumber: phoneNumber,
-                  immediateVideoCommand: true
-                }
-              }
-            });
-
-            console.log('🎥 [WEBHOOK-INTERCEPT] 🎯 Resultado da AI para vídeo:', { 
-              success: !aiResponse.error, 
-              hasError: !!aiResponse.error,
-              errorMsg: aiResponse.error?.message 
-            });
-
-            if (!aiResponse.error) {
-              console.log('🎥 [WEBHOOK-INTERCEPT] ✅ Comando de vídeo processado com SUCESSO!');
-              
-              // Marcar mensagem como processada
-              await supabase
-                .from('whatsapp_messages')
-                .update({ 
-                  is_processed: true,
-                  processed_at: new Date().toISOString()
-                })
-                .eq('message_id', messageId);
-
-              return new Response(JSON.stringify({ 
-                success: true, 
-                message: 'Video command processed immediately',
-                processed: true
-              }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-              });
-            }
-          }
-        } catch (error) {
-          console.error('🎥 [WEBHOOK-INTERCEPT] ❌ Erro ao processar comando de vídeo:', error);
-        }
-      }
-    }
-
-    // SE É MENSAGEM DO SISTEMA, PROCESSAR IMEDIATAMENTE
-    if (fromMe) {
-      console.log('🔥 [BATCH-SIMPLES] Mensagem do sistema - processando imediatamente');
-      return await processSingleMessage(yumerData, false);
-    }
-
-    // 🎯 MENSAGEM DO CLIENTE - USAR SISTEMA DE BATCHING
-    console.log('🔥 [CLIENT-MESSAGE] Mensagem do cliente detectada - usando sistema de batching');
-    console.log('🔥 [CLIENT-MESSAGE] Conteúdo:', content.substring(0, 100));
-    
-    // 🎵 PRIORIDADE: SALVAR DADOS DE ÁUDIO IMEDIATAMENTE
-    if (messageType === 'audio') {
-      console.log('🎵 [AUDIO-SAVE] 🚀 SALVANDO dados de áudio prioritários:', {
-        messageId,
-        hasMediaUrl: !!mediaUrl,
-        hasMediaKey: !!mediaKey,
-        hasFileEncSha256: !!fileEncSha256,
-        mediaKeyLength: mediaKey?.length
+    if (instanceError || !instances || instances.length === 0) {
+      console.error('🔥 [BATCH-SIMPLES] Instância não encontrada:', yumerData.instance);
+      return new Response(JSON.stringify({ error: 'Instance not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // SALVAR MENSAGEM NO BANCO PRIMEIRO (com dados de mídia completos)
-    const saveResult = await saveMessageToDatabase({
-      ...messageData,
-      messageType,
+    const instance = instances[0];
+    console.log('🔥 [BATCH-SIMPLES] Instância encontrada:', instance.instance_id);
+
+    // ✅ EXTRAIR DADOS DE MÍDIA COMPLETOS
+    const extractedMediaData = extractMediaData(messageData);
+
+    // ✅ SALVAR MENSAGEM NO BANCO (SEM MARCAR COMO PROCESSADA AINDA)
+    const saveResponse = await saveMessageToDatabase(
+      instance.client_id,
+      instance.instance_id,
+      messageId,
+      chatId,
       content,
-      mediaUrl,
-      mediaKey,
-      fileEncSha256,
-      fileSha256,
-      directPath,
-      mediaMimeType,
-      mediaDuration
-    }, instance, chatId, pushName, phoneNumber);
-    
-    // 🎵 CORREÇÃO CRÍTICA: Garantir que dados de mídia sejam transferidos para ticket_messages
-    if (messageType === 'audio' && saveResult.ticketId) {
-      console.log('🎵 [AUDIO-PRIORITY] 🚀 Transferindo dados de mídia para ticket_messages...');
-      
-      try {
-        // Atualizar a mensagem no ticket_messages com dados de mídia completos
-        const { data: ticketMessage, error: updateError } = await supabase
-          .from('ticket_messages')
-          .update({
-            media_url: mediaUrl,
-            media_key: mediaKey,
-            file_enc_sha256: fileEncSha256,
-            file_sha256: fileSha256,
-            direct_path: directPath,
-            media_mime_type: mediaMimeType,
-            media_duration: mediaDuration,
-            processing_status: 'received' // Pronto para processamento
-          })
-          .eq('message_id', messageId)
-          .eq('ticket_id', saveResult.ticketId)
-          .select('id, media_url, media_key, file_enc_sha256');
-        
-        if (updateError) {
-          console.error('❌ [AUDIO-PRIORITY] Erro ao atualizar ticket_messages:', updateError);
-        } else if (ticketMessage && ticketMessage.length > 0) {
-          console.log('✅ [AUDIO-PRIORITY] Dados de mídia transferidos com sucesso:', {
-            ticketMessageId: ticketMessage[0].id,
-            hasMediaUrl: !!ticketMessage[0].media_url,
-            hasMediaKey: !!ticketMessage[0].media_key,
-            hasFileEncSha256: !!ticketMessage[0].file_enc_sha256
-          });
-        } else {
-          console.warn('⚠️ [AUDIO-PRIORITY] Nenhuma mensagem encontrada no ticket_messages para atualizar');
-        }
-      } catch (transferError) {
-        console.error('❌ [AUDIO-PRIORITY] Erro crítico na transferência de dados:', transferError);
-      }
+      messageType,
+      fromMe,
+      new Date(),
+      pushName,
+      phoneNumber,
+      extractedMediaData.mediaUrl,
+      extractedMediaData.mediaDuration,
+      extractedMediaData.mediaKey,
+      extractedMediaData.fileEncSha256,
+      extractedMediaData.fileSha256,
+      extractedMediaData.audioBase64,
+      extractedMediaData.imageBase64,
+      extractedMediaData.videoBase64,
+      extractedMediaData.documentBase64,
+      extractedMediaData.mimetype,
+      extractedMediaData.directPath
+    );
+
+    console.log('🔥 [SAVE-DB] Salvando mensagem no banco:', { 
+      messageType, 
+      hasMediaUrl: !!extractedMediaData.mediaUrl,
+      hasMediaKey: !!extractedMediaData.mediaKey
+    });
+
+    if (!saveResponse.success) {
+      console.error('🔥 [SAVE-DB] Erro ao salvar:', saveResponse.error);
+      // CONTINUAR mesmo com erro na gravação para não perder a mensagem
     }
 
-    // 🎵 VERIFICAÇÃO PÓS-SALVAMENTO PARA ÁUDIO
-    if (messageType === 'audio') {
-      console.log('🎵 [AUDIO-SAVE] ✅ Dados de áudio salvos - verificando...');
+    // ✅ PROCESSAMENTO DIFERENCIADO PARA MENSAGENS DO SISTEMA vs CLIENTE
+    if (fromMe) {
+      console.log('🔥 [BATCH-SIMPLES] Mensagem do sistema - processando imediatamente');
       
-      const { data: savedAudio } = await supabase
-        .from('whatsapp_messages')
-        .select('message_id, media_url, media_key, file_enc_sha256')
-        .eq('message_id', messageId)
-        .single();
+      // Processamento imediato para mensagens do sistema
+      console.log('🔥 [SINGLE-MESSAGE] Processando mensagem única');
       
-      if (savedAudio) {
-        console.log('🎵 [AUDIO-SAVE] ✅ CONFIRMAÇÃO - dados salvos:', {
-          messageId: savedAudio.message_id,
-          hasMediaUrl: !!savedAudio.media_url,
-          hasMediaKey: !!savedAudio.media_key,
-          hasFileEncSha256: !!savedAudio.file_enc_sha256
-        });
-      } else {
-        console.log('🎵 [AUDIO-SAVE] ❌ ERRO - dados não encontrados após salvamento!');
-      }
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: 'System message processed',
+        messageId: messageId,
+        chatId: chatId?.substring(0, 20)
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
+
+    // ✅ MENSAGEM DO CLIENTE - USAR SISTEMA DE BATCH PERSISTENTE
+    console.log('🔥 [CLIENT-MESSAGE] Mensagem do cliente detectada - usando sistema de batching');
+    console.log('🔥 [CLIENT-MESSAGE] Conteúdo:', content?.substring(0, 50));
 
     // ✅ USAR SISTEMA DE BATCH PERSISTENTE COM CONTROLE DE CONCORRÊNCIA
     const batchResult = await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
       content,
       messageId,
+      messageType,
       timestamp: new Date().toISOString(),
       customerName: pushName,
       phoneNumber
@@ -446,58 +274,56 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
     console.log('🔥 [BATCH-PERSISTENT] ✅ Batch gerenciado:', {
       isNewBatch,
       messageCount,
-      willScheduleProcessing: isNewBatch
+      willScheduleProcessing: true // SEMPRE AGENDAR
     });
 
     // 🚀 SEMPRE AGENDAR PROCESSAMENTO PARA MENSAGENS DO CLIENTE
-    if (isNewBatch || messageCount === 1) {
-      // Detectar se é mensagem de áudio para timeout dinâmico
-      const isAudioMessage = message.messageType === 'audio' || 
-                             (message.content && message.content.includes('🎵'));
+    // Detectar se é mensagem de áudio para timeout dinâmico
+    const isAudioMessage = message.messageType === 'audio' || 
+                           (message.content && message.content.includes('🎵'));
+    
+    const batchTimeout = isAudioMessage ? 6000 : BATCH_TIMEOUT; // 6s para áudio, 3s para texto
+    
+    console.log(`🔥 [BATCH-GROUPING] ⏰ Agendando processamento em ${batchTimeout}ms (tipo: ${isAudioMessage ? 'áudio' : 'texto'}, count: ${messageCount})...`);
+    
+    // USAR EdgeRuntime.waitUntil para background task
+    const backgroundTask = async () => {
+      await new Promise(resolve => setTimeout(resolve, batchTimeout));
       
-      const batchTimeout = isAudioMessage ? 6000 : BATCH_TIMEOUT; // 6s para áudio, 3s para texto
-      
-      console.log(`🔥 [BATCH-GROUPING] ⏰ Agendando processamento em ${batchTimeout}ms (tipo: ${isAudioMessage ? 'áudio' : 'texto'}, count: ${messageCount})...`);
-      
-      // USAR EdgeRuntime.waitUntil para background task
-      const backgroundTask = async () => {
-        await new Promise(resolve => setTimeout(resolve, batchTimeout));
+      try {
+        console.log('🔥 [BATCH-GROUPING] 🚀 Executando processamento programado...');
         
-        try {
-          console.log('🔥 [BATCH-GROUPING] 🚀 Executando processamento programado...');
-          
-          const response = await supabase.functions.invoke('process-message-batches', {
-            body: { 
-              trigger: 'batch_timeout_webhook',
-              timestamp: new Date().toISOString(),
-              chatId: chatId,
-              source: 'yumer-unified-webhook',
-              messageType: message.messageType || (isAudioMessage ? 'audio' : 'text'),
-              hasMedia: isAudioMessage,
-              force: true // ✅ FORÇAR PROCESSAMENTO
-            }
-          });
-          
-          console.log('🔥 [BATCH-GROUPING] 🎯 Processamento concluído:', {
-            success: !response.error,
-            data: response.data
-          });
-          
-          if (response.error) {
-            console.error('🔥 [BATCH-GROUPING] ❌ Erro no processamento:', response.error);
+        const response = await supabase.functions.invoke('process-message-batches', {
+          body: { 
+            trigger: 'batch_timeout_webhook',
+            timestamp: new Date().toISOString(),
+            chatId: chatId,
+            source: 'yumer-unified-webhook',
+            messageType: message.messageType || (isAudioMessage ? 'audio' : 'text'),
+            hasMedia: isAudioMessage,
+            force: true // ✅ FORÇAR PROCESSAMENTO
           }
-        } catch (error) {
-          console.error('🔥 [BATCH-GROUPING] ❌ Erro crítico no processamento:', error);
+        });
+        
+        console.log('🔥 [BATCH-GROUPING] 🎯 Processamento concluído:', {
+          success: !response.error,
+          data: response.data
+        });
+        
+        if (response.error) {
+          console.error('🔥 [BATCH-GROUPING] ❌ Erro no processamento:', response.error);
         }
-      };
-
-      // Executar background task sem bloquear resposta
-      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
-        EdgeRuntime.waitUntil(backgroundTask());
-      } else {
-        // Fallback para ambientes sem EdgeRuntime
-        backgroundTask();
+      } catch (error) {
+        console.error('🔥 [BATCH-GROUPING] ❌ Erro crítico no processamento:', error);
       }
+    };
+
+    // Executar background task sem bloquear resposta
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+      EdgeRuntime.waitUntil(backgroundTask());
+    } else {
+      // Fallback para ambientes sem EdgeRuntime
+      backgroundTask();
     }
 
     return { 
@@ -518,86 +344,123 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
 async function upsertMessageBatchDirect(chatId: string, clientId: string, instanceId: string, message: any) {
   try {
     // VERIFICAR BATCH EXISTENTE COM CONTROLE DE CONCORRÊNCIA
-    const { data: existingBatch } = await supabase
+    const { data: existingBatch, error: selectError } = await supabase
       .from('message_batches')
       .select('*')
       .eq('chat_id', chatId)
       .eq('client_id', clientId)
-      .is('processing_started_at', null) // Apenas batches não processando
+      .is('processing_started_at', null) // Apenas batches não processados
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single();
 
-    let isNewBatch = false;
+    if (selectError && selectError.code !== 'PGRST116') {
+      console.error('🔥 [BATCH-DIRECT] Erro ao buscar batch:', selectError);
+      return { success: false, error: selectError.message };
+    }
 
     if (existingBatch) {
       // ATUALIZAR BATCH EXISTENTE
-      const updatedMessages = [...(existingBatch.messages || []), message];
-      
-      const { error } = await supabase
+      const currentMessages = existingBatch.messages || [];
+      const updatedMessages = [...currentMessages, message];
+
+      const { error: updateError } = await supabase
         .from('message_batches')
         .update({
           messages: updatedMessages,
           last_updated: new Date().toISOString()
         })
-        .eq('id', existingBatch.id)
-        .is('processing_started_at', null); // Apenas se ainda não processando
+        .eq('id', existingBatch.id);
 
-      if (error) throw error;
-      
-      console.log('🔥 [BATCH-DIRECT] ♻️ Batch atualizado:', updatedMessages.length, 'mensagens');
+      if (updateError) {
+        console.error('🔥 [BATCH-DIRECT] Erro ao atualizar batch:', updateError);
+        return { success: false, error: updateError.message };
+      }
+
+      console.log('🔥 [BATCH-DIRECT] ✅ Batch atualizado:', existingBatch.id);
+      return { 
+        success: true, 
+        isNewBatch: false, 
+        messageCount: updatedMessages.length 
+      };
     } else {
       // CRIAR NOVO BATCH
-      const { error } = await supabase
+      const { data: newBatch, error: insertError } = await supabase
         .from('message_batches')
         .insert({
           chat_id: chatId,
           client_id: clientId,
           instance_id: instanceId,
           messages: [message]
-        });
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
-      
-      console.log('🔥 [BATCH-DIRECT] ✨ Novo batch criado');
-      isNewBatch = true;
+      if (insertError) {
+        console.error('🔥 [BATCH-DIRECT] Erro ao criar batch:', insertError);
+        return { success: false, error: insertError.message };
+      }
+
+      console.log('🔥 [BATCH-DIRECT] ✅ Novo batch criado:', newBatch.id);
+      return { 
+        success: true, 
+        isNewBatch: true, 
+        messageCount: 1 
+      };
     }
 
-    return { success: true, isNewBatch };
   } catch (error) {
-    console.error('🔥 [BATCH-DIRECT] ❌ Erro:', error);
+    console.error('🔥 [BATCH-DIRECT] ❌ Erro crítico:', error);
     return { success: false, error: error.message };
   }
 }
 
-// ✅ SALVAR MENSAGEM NO BANCO (com suporte a mídia)
-async function saveMessageToDatabase(messageData: any, instance: any, chatId: string, pushName: string, phoneNumber: string) {
+// ✅ FUNÇÃO DE SALVAMENTO NO BANCO (MELHORADA)
+async function saveMessageToDatabase(
+  clientId: string,
+  instanceId: string, 
+  keyId: string,
+  chatId: string,
+  content: string,
+  messageType: string,
+  keyFromMe: boolean,
+  messageTimestamp: Date,
+  pushName: string,
+  phoneNumber: string,
+  mediaUrl?: string,
+  mediaDuration?: number,
+  mediaKey?: string,
+  fileEncSha256?: string,
+  fileSha256?: string,
+  audioBase64?: string,
+  imageBase64?: string,
+  videoBase64?: string,
+  documentBase64?: string,
+  mimetype?: string,
+  directPath?: string
+) {
   try {
-    console.log('🔥 [SAVE-DB] Salvando mensagem no banco:', {
-      messageType: messageData.messageType,
-      hasMediaUrl: !!messageData.mediaUrl,
-      hasMediaKey: !!messageData.mediaKey
-    });
-
+    // ✅ PREPARAR DADOS DA MENSAGEM COM CLIENT_ID
     const messageToSave = {
-      message_id: messageData.keyId,
+      instance_id: instanceId,
       chat_id: chatId,
-      instance_id: instance.instance_id,
-      message_type: messageData.messageType || 'text',
-      body: messageData.content || '',
-      from_me: messageData.keyFromMe || false,
-      timestamp: new Date(messageData.messageTimestamp * 1000),
+      message_id: keyId,
+      sender: phoneNumber,
+      body: content,
+      message_type: messageType,
+      from_me: keyFromMe,
+      timestamp: messageTimestamp.toISOString(),
       contact_name: pushName,
       phone_number: phoneNumber,
-      // DADOS DE MÍDIA COMPLETOS
-      media_url: messageData.mediaUrl,
-      media_key: messageData.mediaKey,
-      file_enc_sha256: messageData.fileEncSha256,
-      file_sha256: messageData.fileSha256,
-      direct_path: messageData.directPath,
-      media_mime_type: messageData.mediaMimeType,
-      media_duration: messageData.mediaDuration,
-      raw_data: messageData, // Salvar payload completo para debug
-      is_processed: false, // ✅ NÃO MARCAR COMO PROCESSADO AINDA
-      client_id: instance.client_id // ✅ ADICIONAR CLIENT_ID FALTANTE
+      media_url: mediaUrl,
+      media_duration: mediaDuration,
+      media_key: mediaKey,
+      file_enc_sha256: fileEncSha256,
+      file_sha256: fileSha256,
+      media_mime_type: mimetype,
+      direct_path: directPath,
+      is_processed: false, // ✅ NÃO MARCAR COMO PROCESSADA AINDA
+      client_id: clientId // ✅ ADICIONAR CLIENT_ID FALTANTE
     };
 
     const { error: saveError } = await supabase
@@ -617,13 +480,13 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
 
     // 🎯 CRIAR OU BUSCAR TICKET PARA PERMITIR SALVAMENTO EM TICKET_MESSAGES
     const { data: ticketId, error: ticketError } = await supabase.rpc('upsert_conversation_ticket', {
-      p_client_id: instance.client_id,
+      p_client_id: clientId,
       p_chat_id: chatId,
-      p_instance_id: instance.instance_id,
+      p_instance_id: instanceId,
       p_customer_name: pushName,
       p_customer_phone: phoneNumber.replace('@s.whatsapp.net', ''),
-      p_last_message: messageData.content || '📎 Mídia',
-      p_last_message_at: new Date().toISOString()
+      p_last_message: content || '📎 Mídia',
+      p_last_message_at: messageTimestamp.toISOString()
     });
 
     if (ticketError) {
@@ -636,21 +499,21 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
     // SALVAR TAMBÉM EM TICKET_MESSAGES COM DADOS DE MÍDIA
     const ticketMessage = {
       ticket_id: ticketId,
-      message_id: messageData.keyId,
-      content: messageData.content || '',
-      message_type: messageData.messageType || 'text',
-      from_me: messageData.keyFromMe || false,
-      timestamp: new Date(messageData.messageTimestamp * 1000),
+      message_id: keyId,
+      content: content || '',
+      message_type: messageType || 'text',
+      from_me: keyFromMe || false,
+      timestamp: messageTimestamp,
       sender_name: pushName,
       // DADOS DE MÍDIA COMPLETOS
-      media_url: messageData.mediaUrl,
-      media_key: messageData.mediaKey,
-      file_enc_sha256: messageData.fileEncSha256,
-      file_sha256: messageData.fileSha256,
-      direct_path: messageData.directPath,
-      media_mime_type: messageData.mediaMimeType,
-      media_duration: messageData.mediaDuration,
-      processing_status: messageData.messageType === 'audio' ? 'received' : 'processed'
+      media_url: mediaUrl,
+      media_key: mediaKey,
+      file_enc_sha256: fileEncSha256,
+      file_sha256: fileSha256,
+      direct_path: directPath,
+      media_mime_type: mimetype,
+      media_duration: mediaDuration,
+      processing_status: messageType === 'audio' ? 'received' : 'processed'
     };
 
     const { error: ticketMessageError } = await supabase
@@ -673,6 +536,116 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
     console.error('🔥 [SAVE-DB] ERRO CRÍTICO:', error);
     return { success: false, error };
   }
+}
+
+// ✅ FUNÇÕES AUXILIARES
+
+function getMessageType(messageData: any): string {
+  if (messageData.message?.conversation || messageData.message?.extendedTextMessage) {
+    return 'text';
+  }
+  if (messageData.message?.audioMessage) return 'audio';
+  if (messageData.message?.imageMessage) return 'image';
+  if (messageData.message?.videoMessage) return 'video';
+  if (messageData.message?.documentMessage) return 'document';
+  if (messageData.message?.stickerMessage) return 'sticker';
+  return 'text';
+}
+
+function extractYumerMessageData(messageData: any) {
+  const key = messageData.key || {};
+  const message = messageData.message || {};
+  
+  let content = '';
+  let contentType = 'text';
+  
+  // Extrair conteúdo baseado no tipo de mensagem
+  if (message.conversation) {
+    content = message.conversation;
+  } else if (message.extendedTextMessage?.text) {
+    content = message.extendedTextMessage.text;
+  } else if (message.audioMessage) {
+    content = '🎵 Áudio';
+    contentType = 'audio';
+  } else if (message.imageMessage) {
+    content = message.imageMessage.caption || '🖼️ Imagem';
+    contentType = 'image';
+  } else if (message.videoMessage) {
+    content = message.videoMessage.caption || '🎥 Vídeo';
+    contentType = 'video';
+  } else if (message.documentMessage) {
+    content = `📄 ${message.documentMessage.fileName || 'Documento'}`;
+    contentType = 'document';
+  }
+
+  return {
+    chatId: key.remoteJid,
+    messageId: key.id,
+    content,
+    contentType,
+    hasMediaUrl: !!(message.audioMessage?.url || message.imageMessage?.url || message.videoMessage?.url || message.documentMessage?.url),
+    hasMediaKey: !!(message.audioMessage?.mediaKey || message.imageMessage?.mediaKey || message.videoMessage?.mediaKey || message.documentMessage?.mediaKey),
+    hasFileEncSha256: !!(message.audioMessage?.fileEncSha256 || message.imageMessage?.fileEncSha256 || message.videoMessage?.fileEncSha256 || message.documentMessage?.fileEncSha256),
+    fromMe: key.fromMe,
+    pushName: messageData.pushName || 'Usuário'
+  };
+}
+
+function extractMediaData(messageData: any) {
+  const message = messageData.message || {};
+  
+  // Extrair dados de mídia baseado no tipo
+  if (message.audioMessage) {
+    return {
+      mediaUrl: message.audioMessage.url,
+      mediaKey: convertUint8ArrayToBase64(message.audioMessage.mediaKey),
+      fileEncSha256: convertUint8ArrayToBase64(message.audioMessage.fileEncSha256),
+      fileSha256: convertUint8ArrayToBase64(message.audioMessage.fileSha256),
+      mediaDuration: message.audioMessage.seconds,
+      mimetype: message.audioMessage.mimetype || 'audio/ogg',
+      directPath: message.audioMessage.directPath,
+      audioBase64: null // Será preenchido após descriptografia
+    };
+  }
+  
+  if (message.imageMessage) {
+    return {
+      mediaUrl: message.imageMessage.url,
+      mediaKey: convertUint8ArrayToBase64(message.imageMessage.mediaKey),
+      fileEncSha256: convertUint8ArrayToBase64(message.imageMessage.fileEncSha256),
+      fileSha256: convertUint8ArrayToBase64(message.imageMessage.fileSha256),
+      mimetype: message.imageMessage.mimetype || 'image/jpeg',
+      directPath: message.imageMessage.directPath,
+      imageBase64: null // Será preenchido após descriptografia
+    };
+  }
+  
+  if (message.videoMessage) {
+    return {
+      mediaUrl: message.videoMessage.url,
+      mediaKey: convertUint8ArrayToBase64(message.videoMessage.mediaKey),
+      fileEncSha256: convertUint8ArrayToBase64(message.videoMessage.fileEncSha256),
+      fileSha256: convertUint8ArrayToBase64(message.videoMessage.fileSha256),
+      mediaDuration: message.videoMessage.seconds,
+      mimetype: message.videoMessage.mimetype || 'video/mp4',
+      directPath: message.videoMessage.directPath,
+      videoBase64: null // Será preenchido após descriptografia
+    };
+  }
+  
+  if (message.documentMessage) {
+    return {
+      mediaUrl: message.documentMessage.url,
+      mediaKey: convertUint8ArrayToBase64(message.documentMessage.mediaKey),
+      fileEncSha256: convertUint8ArrayToBase64(message.documentMessage.fileEncSha256),
+      fileSha256: convertUint8ArrayToBase64(message.documentMessage.fileSha256),
+      mimetype: message.documentMessage.mimetype || 'application/octet-stream',
+      directPath: message.documentMessage.directPath,
+      documentBase64: null // Será preenchido após descriptografia
+    };
+  }
+  
+  return {};
 }
 
 /**
@@ -708,16 +681,4 @@ function convertUint8ArrayToBase64(data: any): string | null {
     console.error('🔥 [CONVERT] Erro na conversão:', error);
     return null;
   }
-}
-
-// ✅ PROCESSAR MENSAGEM ÚNICA (FALLBACK)
-async function processSingleMessage(yumerData: any, processAI: boolean = true) {
-  console.log('🔥 [SINGLE-MESSAGE] Processando mensagem única');
-  
-  return new Response(JSON.stringify({ 
-    success: true, 
-    message: 'Single message processed' 
-  }), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-  });
 }
