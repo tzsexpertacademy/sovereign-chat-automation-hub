@@ -128,31 +128,69 @@ async function processMessageEmergency(yumerData: any) {
       });
     }
 
-    // ✅ BUSCAR INSTÂNCIA PRIMEIRO
-    const instanceId = yumerData.instance;
-    if (!instanceId) {
-      console.error('🚨 [EMERGENCY-PROCESS] ❌ Instance ID não encontrado');
-      return new Response(JSON.stringify({ error: 'Instance ID missing' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    // ✅ BUSCAR INSTÂNCIA PRIMEIRO - MÚLTIPLAS TENTATIVAS
+    let instanceData = null;
+    
+    // Tentar diferentes campos para encontrar a instância
+    const instanceSearchFields = [
+      yumerData.instance?.instanceId,
+      yumerData.instance,
+      messageData.instanceInstanceId,
+      messageData.instanceId
+    ].filter(Boolean);
+
+    console.log('🚨 [EMERGENCY-PROCESS] Campos de busca da instância:', instanceSearchFields);
+    console.log('🚨 [EMERGENCY-PROCESS] Estrutura yumerData.instance:', JSON.stringify(yumerData.instance, null, 2));
+
+    for (const searchId of instanceSearchFields) {
+      console.log('🚨 [EMERGENCY-PROCESS] Tentando buscar instância com ID:', searchId);
+      
+      const { data: foundInstances, error: instanceError } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_id, client_id, status')
+        .eq('instance_id', searchId);
+
+      if (foundInstances && foundInstances.length > 0) {
+        instanceData = foundInstances[0];
+        console.log('🚨 [EMERGENCY-PROCESS] ✅ Instância encontrada:', {
+          instanceId: instanceData.instance_id,
+          clientId: instanceData.client_id,
+          status: instanceData.status,
+          searchedWith: searchId
+        });
+        break;
+      } else {
+        console.log('🚨 [EMERGENCY-PROCESS] ❌ Instância não encontrada com ID:', searchId, 'Erro:', instanceError);
+      }
     }
 
-    const { data: instances, error: instanceError } = await supabase
-      .from('whatsapp_instances')
-      .select('id, instance_id, client_id')
-      .eq('instance_id', instanceId);
-
-    if (instanceError || !instances || instances.length === 0) {
-      console.error('🚨 [EMERGENCY-PROCESS] ❌ Instância não encontrada:', instanceId);
-      return new Response(JSON.stringify({ error: 'Instance not found' }), {
+    if (!instanceData) {
+      console.error('🚨 [EMERGENCY-PROCESS] ❌ Instância não encontrada em nenhuma tentativa:', {
+        instanceSearchFields,
+        yumerInstanceType: typeof yumerData.instance,
+        yumerInstanceValue: yumerData.instance,
+        messageInstanceId: messageData.instanceInstanceId
+      });
+      
+      // 🔧 BUSCAR TODAS AS INSTÂNCIAS PARA DEBUG
+      const { data: allInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, client_id, status')
+        .limit(5);
+      
+      console.log('🚨 [EMERGENCY-PROCESS] 📋 Instâncias disponíveis no banco:', allInstances);
+      
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Instance not found',
+        searchedIds: instanceSearchFields,
+        availableInstances: allInstances?.map(i => i.instance_id),
+        suggestion: 'Check instance configuration in database'
+      }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-
-    const instance = instances[0];
-    console.log('🚨 [EMERGENCY-PROCESS] ✅ Instância encontrada:', instance.instance_id, 'Cliente:', instance.client_id);
 
     // ✅ EXTRAIR DADOS DA MENSAGEM COM MÉTODO ROBUSTO
     const extractedData = extractYumerMessageDataEmergency(messageData);
@@ -174,14 +212,14 @@ async function processMessageEmergency(yumerData: any) {
     // ✅ SALVAR MENSAGEM DIRETAMENTE NO BANCO
     await saveMessageDirectlyEmergency({
       ...extractedData,
-      clientId: instance.client_id,
-      instanceUuid: instance.id
+      clientId: instanceData.client_id,
+      instanceUuid: instanceData.id
     });
 
     // ✅ SE NÃO É MENSAGEM NOSSA, CRIAR BATCH PARA PROCESSAMENTO
     if (!extractedData.fromMe) {
       console.log('🚨 [EMERGENCY-PROCESS] 🎯 Mensagem do cliente - criando batch emergencial');
-      await createEmergencyBatch(extractedData.chatId, instance.client_id, extractedData.instanceId, messageData);
+      await createEmergencyBatch(extractedData.chatId, instanceData.client_id, extractedData.instanceId, messageData);
     } else {
       console.log('🚨 [EMERGENCY-PROCESS] ℹ️ Mensagem do sistema - processamento direto');
     }
