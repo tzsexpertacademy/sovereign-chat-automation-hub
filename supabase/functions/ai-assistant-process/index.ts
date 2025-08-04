@@ -4001,15 +4001,10 @@ async function getVideoFromLibrary(assistantId: string, videoTrigger: string): P
       }
       
       return {
-        videoBase64: videoBase64,
-        format: format
+        videoBase64: video.videoBase64,
+        format: video.format || 'mp4'
       };
       
-    } catch (error) {
-      console.error('❌ [VIDEO-LIBRARY] Erro na conversão para Base64:', error);
-      return null;
-    }
-    
   } catch (error) {
     console.error('❌ [VIDEO-LIBRARY] Erro ao buscar vídeo:', error);
     return null;
