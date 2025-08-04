@@ -21,6 +21,7 @@ import { MetricsCharts } from "./MetricsCharts";
 import { SystemHealthCard } from "./SystemHealthCard";
 import { RecentActivityCard } from "./RecentActivityCard";
 import { AudioTestButton } from "./AudioTestButton";
+import { EmergencyRecoveryPanel } from "./EmergencyRecoveryPanel";
 
 const AdminOverview = () => {
   const { stats, recentActivity, loading, error, refreshStats } = useAdminStats();
@@ -215,6 +216,9 @@ const AdminOverview = () => {
           recentGrowth={stats.recentGrowth || []}
         />
       )}
+
+      {/* Painel de Recuperação Emergencial */}
+      <EmergencyRecoveryPanel />
 
       {/* Seção de Status e Atividade */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

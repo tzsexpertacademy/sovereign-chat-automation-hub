@@ -2248,6 +2248,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      emergency_message_recovery: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       fix_malformed_media_keys: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -2297,6 +2301,10 @@ export type Database = {
           p_instance_id: string
           p_message: Json
         }
+        Returns: Json
+      }
+      monitor_message_health: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       save_ticket_message: {
