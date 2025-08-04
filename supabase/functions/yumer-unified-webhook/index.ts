@@ -13,7 +13,7 @@ const corsHeaders = {
 };
 
 // ✅ BATCH PERSISTENTE - USANDO SUPABASE
-const BATCH_TIMEOUT = 6000; // 6 segundos para agrupamento
+const BATCH_TIMEOUT = 3000; // 3 segundos para agrupamento otimizado
 
 serve(async (req) => {
   console.log('🔥 [WEBHOOK-SIMPLES] Requisição recebida:', req.method);
@@ -298,8 +298,8 @@ async function processMessageBatch(yumerData: any) {
       mediaDuration
     }, instance, chatId, pushName, phoneNumber);
 
-    // ✅ USAR SISTEMA DE BATCH PERSISTENTE NO SUPABASE (NÃO PROCESSAR IMEDIATAMENTE)
-    await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
+    // ✅ USAR SISTEMA DE BATCH PERSISTENTE COM CONTROLE DE CONCORRÊNCIA
+    const batchResult = await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
       content,
       messageId,
       timestamp: new Date().toISOString(),
@@ -307,9 +307,17 @@ async function processMessageBatch(yumerData: any) {
       phoneNumber
     });
 
+    console.log('🔥 [CLIENT-MESSAGE] ✅ Mensagem adicionada ao batch:', {
+      chatId: chatId?.substring(0, 20),
+      messageId,
+      batchSuccess: batchResult.success
+    });
+
     return new Response(JSON.stringify({ 
       success: true, 
-      message: 'Added to batch persistente'
+      message: 'Message batched successfully',
+      messageId: messageId,
+      chatId: chatId?.substring(0, 20)
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
@@ -327,22 +335,111 @@ async function processMessageBatch(yumerData: any) {
  * ✅ UPSERT MESSAGE BATCH - ADICIONA MENSAGEM AO BATCH PERSISTENTE
  */
 async function upsertMessageBatch(chatId: string, clientId: string, instanceId: string, message: any) {
-  console.log('🔥 [BATCH-PERSISTENT] Adicionando mensagem ao batch:', { chatId, clientId });
+  console.log('🔥 [BATCH-PERSISTENT] Adicionando mensagem ao batch:', { 
+    chatId: chatId?.substring(0, 20), 
+    clientId,
+    messageId: message.messageId
+  });
 
   try {
-    // VERIFICAR SE JÁ EXISTE BATCH
+    // USAR TRANSAÇÃO PARA EVITAR RACE CONDITIONS
+    const { data: result, error } = await supabase.rpc('manage_message_batch', {
+      p_chat_id: chatId,
+      p_client_id: clientId,
+      p_instance_id: instanceId,
+      p_message: message
+    });
+
+    if (error) {
+      console.error('🔥 [BATCH-PERSISTENT] ❌ Erro na função RPC:', error);
+      
+      // FALLBACK: Tentar método direto se RPC falhar
+      console.log('🔥 [BATCH-PERSISTENT] 🔄 Tentando método direto...');
+      return await upsertMessageBatchDirect(chatId, clientId, instanceId, message);
+    }
+
+    const isNewBatch = result?.is_new_batch || false;
+    const messageCount = result?.message_count || 1;
+
+    console.log('🔥 [BATCH-PERSISTENT] ✅ Batch gerenciado:', {
+      isNewBatch,
+      messageCount,
+      willScheduleProcessing: isNewBatch
+    });
+
+    // 🚀 AGENDAR PROCESSAMENTO APENAS PARA NOVOS BATCHES
+    if (isNewBatch) {
+      console.log('🔥 [BATCH-GROUPING] ⏰ Agendando processamento em 3 segundos...');
+      
+      // USAR EdgeRuntime.waitUntil para background task
+      const backgroundTask = async () => {
+        await new Promise(resolve => setTimeout(resolve, BATCH_TIMEOUT));
+        
+        try {
+          console.log('🔥 [BATCH-GROUPING] 🚀 Executando processamento programado...');
+          
+          const response = await supabase.functions.invoke('process-message-batches', {
+            body: { 
+              trigger: 'batch_timeout_webhook',
+              timestamp: new Date().toISOString(),
+              chatId: chatId,
+              source: 'yumer-unified-webhook'
+            }
+          });
+          
+          console.log('🔥 [BATCH-GROUPING] 🎯 Processamento concluído:', {
+            success: !response.error,
+            data: response.data
+          });
+          
+          if (response.error) {
+            console.error('🔥 [BATCH-GROUPING] ❌ Erro no processamento:', response.error);
+          }
+        } catch (error) {
+          console.error('🔥 [BATCH-GROUPING] ❌ Erro crítico no processamento:', error);
+        }
+      };
+
+      // Executar background task sem bloquear resposta
+      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+        EdgeRuntime.waitUntil(backgroundTask());
+      } else {
+        // Fallback para ambientes sem EdgeRuntime
+        backgroundTask();
+      }
+    }
+
+    return { 
+      success: true, 
+      isNewBatch, 
+      messageCount 
+    };
+
+  } catch (error) {
+    console.error('🔥 [BATCH-PERSISTENT] ❌ Erro crítico:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * FALLBACK: Método direto para casos onde RPC falha
+ */
+async function upsertMessageBatchDirect(chatId: string, clientId: string, instanceId: string, message: any) {
+  try {
+    // VERIFICAR BATCH EXISTENTE COM CONTROLE DE CONCORRÊNCIA
     const { data: existingBatch } = await supabase
       .from('message_batches')
       .select('*')
       .eq('chat_id', chatId)
       .eq('client_id', clientId)
+      .is('processing_started_at', null) // Apenas batches não processando
       .single();
 
     let isNewBatch = false;
 
     if (existingBatch) {
       // ATUALIZAR BATCH EXISTENTE
-      const updatedMessages = [...existingBatch.messages, message];
+      const updatedMessages = [...(existingBatch.messages || []), message];
       
       const { error } = await supabase
         .from('message_batches')
@@ -350,11 +447,12 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
           messages: updatedMessages,
           last_updated: new Date().toISOString()
         })
-        .eq('id', existingBatch.id);
+        .eq('id', existingBatch.id)
+        .is('processing_started_at', null); // Apenas se ainda não processando
 
       if (error) throw error;
       
-      console.log('🔥 [BATCH-PERSISTENT] ♻️ Batch atualizado com', updatedMessages.length, 'mensagens');
+      console.log('🔥 [BATCH-DIRECT] ♻️ Batch atualizado:', updatedMessages.length, 'mensagens');
     } else {
       // CRIAR NOVO BATCH
       const { error } = await supabase
@@ -368,41 +466,13 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
 
       if (error) throw error;
       
-      console.log('🔥 [BATCH-PERSISTENT] ✨ Novo batch criado');
+      console.log('🔥 [BATCH-DIRECT] ✨ Novo batch criado');
       isNewBatch = true;
     }
 
-    // 🚀 PROCESSAMENTO COM TIMEOUT DE AGRUPAMENTO: 6 segundos
-    if (isNewBatch) {
-      console.log('🔥 [BATCH-GROUPING] ⏰ Agendando processamento em 6 segundos para agrupamento...');
-      
-      // Usar setTimeout para agendar processamento com timeout de agrupamento
-      setTimeout(async () => {
-        try {
-          console.log('🔥 [BATCH-GROUPING] 🚀 Executando processamento após timeout de agrupamento...');
-          
-          const response = await supabase.functions.invoke('process-message-batches', {
-            body: { 
-              trigger: 'batch_grouping_timeout', 
-              timestamp: new Date().toISOString(),
-              chatId: chatId
-            }
-          });
-          
-          console.log('🔥 [BATCH-GROUPING] 🎯 Resultado do processamento após agrupamento:', {
-            success: !response.error,
-            hasError: !!response.error,
-            errorMsg: response.error?.message
-          });
-        } catch (error) {
-          console.error('🔥 [BATCH-GROUPING] ❌ Erro no processamento após agrupamento:', error);
-        }
-      }, BATCH_TIMEOUT); // 6 segundos para agrupamento
-    }
-
-    return { success: true };
+    return { success: true, isNewBatch };
   } catch (error) {
-    console.error('🔥 [BATCH-PERSISTENT] ❌ Erro ao gerenciar batch:', error);
+    console.error('🔥 [BATCH-DIRECT] ❌ Erro:', error);
     return { success: false, error: error.message };
   }
 }
