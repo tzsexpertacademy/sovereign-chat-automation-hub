@@ -3843,26 +3843,44 @@ async function getVideoFromLibrary(assistantId: string, videoTrigger: string): P
     });
     
     if (!advancedSettings?.video_library) {
-      console.error('❌ [VIDEO-LIBRARY] ⚠️ BIBLIOTECA DE VÍDEOS NÃO ENCONTRADA!', {
+      console.error('❌ [VIDEO-LIBRARY] ⚠️ BIBLIOTECA DE VÍDEOS NÃO ENCONTRADA! INICIALIZANDO AUTOMATICAMENTE...', {
         assistantId,
         availableKeys: Object.keys(advancedSettings),
         hasAudioLibrary: !!advancedSettings?.audio_library,
         hasImageLibrary: !!advancedSettings?.image_library,
         totalAudioLibraryItems: advancedSettings?.audio_library?.length || 0,
-        totalImageLibraryItems: advancedSettings?.image_library?.length || 0,
-        message: 'Você precisa primeiro SALVAR um vídeo na interface do assistente!',
-        instructions: [
-          '1. Vá para Configurações do Assistente',
-          '2. Acesse a aba "Configurações de Vídeo"', 
-          '3. Faça upload de um vídeo com trigger "teste"',
-          '4. Salve as configurações',
-          '5. Teste novamente com "video teste"'
-        ]
+        totalImageLibraryItems: advancedSettings?.image_library?.length || 0
       });
       
-      // TODO: Futuramente podemos auto-inicializar video_library vazia aqui
-      // Por enquanto, retornamos null para forçar o usuário a configurar
-      return null;
+      // 🔧 AUTO-INICIALIZAR video_library vazia no banco de dados
+      try {
+        console.log('🔧 [VIDEO-LIBRARY] Inicializando video_library vazia no banco...');
+        
+        const updatedSettings = {
+          ...advancedSettings,
+          video_library: []
+        };
+        
+        const { error: updateError } = await supabase
+          .from('assistants')
+          .update({ advanced_settings: updatedSettings })
+          .eq('id', assistantId);
+        
+        if (updateError) {
+          console.error('❌ [VIDEO-LIBRARY] Erro ao inicializar video_library:', updateError);
+          return null;
+        }
+        
+        console.log('✅ [VIDEO-LIBRARY] video_library inicializada com sucesso!');
+        
+        // Retornar null pois a biblioteca está vazia (mas agora existe e pode receber vídeos)
+        console.log('📝 [VIDEO-LIBRARY] video_library inicializada! Usuário pode agora adicionar vídeos via interface.');
+        return null;
+        
+      } catch (error) {
+        console.error('❌ [VIDEO-LIBRARY] Erro durante inicialização automática:', error);
+        return null;
+      }
     }
     
     const library = advancedSettings.video_library as any[];

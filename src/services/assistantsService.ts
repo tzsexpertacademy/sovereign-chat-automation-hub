@@ -631,22 +631,53 @@ export const assistantsService = {
         uploaded_at: new Date().toISOString()
       };
 
-      // ✅ BUSCAR OU CRIAR CONFIGURAÇÕES
-      const settings = await this.getAssistantAdvancedSettings(assistantId);
+      // ✅ BUSCAR OU CRIAR CONFIGURAÇÕES - SISTEMA UNIFICADO
+      let settings = await this.getAssistantAdvancedSettings(assistantId);
       if (!settings) {
-        throw new Error('Não foi possível carregar ou criar configurações do assistente');
+        console.log('🔧 [UPLOAD-VIDEO] Configurações não encontradas, criando padrão...');
+        settings = {
+          custom_files: [],
+          humanization_level: "advanced",
+          eleven_labs_api_key: "",
+          eleven_labs_voice_id: "",
+          voice_cloning_enabled: false,
+          response_delay_seconds: 3,
+          audio_processing_enabled: false,
+          typing_indicator_enabled: true,
+          recording_indicator_enabled: true,
+          message_batch_timeout_seconds: 10,
+          message_processing_delay_seconds: 10,
+          audio_library: [],
+          image_library: [],
+          video_library: [] // CRITICAL: Inicializar video_library
+        };
       }
       
-      // Verificar se trigger já existe (usando || [] como fallback)
-      const existingTrigger = (settings.video_library || []).find(vid => vid.trigger === trigger.toLowerCase());
+      // ✅ GARANTIR QUE video_library EXISTE (inicializar se necessário)
+      if (!settings.video_library) {
+        console.log('🔧 [UPLOAD-VIDEO] video_library não existe, inicializando array vazio...');
+        settings.video_library = [];
+      }
+      
+      console.log('📊 [UPLOAD-VIDEO] Status das bibliotecas:', {
+        hasAudioLibrary: !!settings.audio_library,
+        hasImageLibrary: !!settings.image_library,
+        hasVideoLibrary: !!settings.video_library,
+        audioCount: settings.audio_library?.length || 0,
+        imageCount: settings.image_library?.length || 0,
+        videoCount: settings.video_library?.length || 0
+      });
+      
+      // Verificar se trigger já existe
+      const existingTrigger = settings.video_library.find(vid => vid.trigger === trigger.toLowerCase());
       if (existingTrigger) {
         throw new Error(`Trigger "${trigger}" já existe na biblioteca.`);
       }
 
-      // ✅ GARANTIR QUE video_library EXISTE
+      // ✅ ADICIONAR VÍDEO À BIBLIOTECA
       const updatedSettings = {
         ...settings,
-        video_library: [...(settings.video_library || []), videoItem]
+        video_library: [...settings.video_library, videoItem]
       };
       
       await this.updateAdvancedSettings(assistantId, updatedSettings);
