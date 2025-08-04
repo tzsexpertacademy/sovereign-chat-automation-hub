@@ -154,6 +154,22 @@ Deno.serve(async (req) => {
  */
 async function processBatch(batch: any) {
   console.log('🤖 [PROCESS-BATCH] Processando batch:', batch.id);
+  
+  // 🔒 VERIFICAR SE BATCH JÁ ESTÁ SENDO PROCESSADO
+  const lockKey = `batch_${batch.id}`;
+  const { data: lockCheck } = await supabase
+    .from('message_batches')
+    .select('processing_started_at, processing_by')
+    .eq('id', batch.id)
+    .single();
+  
+  if (lockCheck?.processing_started_at && lockCheck?.processing_by) {
+    const processingTime = Date.now() - new Date(lockCheck.processing_started_at).getTime();
+    if (processingTime < 30000) { // Menos de 30 segundos
+      console.log('🔒 [PROCESS-BATCH] ❌ Batch já está sendo processado por:', lockCheck.processing_by);
+      return;
+    }
+  }
 
     // 🎵 VERIFICAR SE HÁ MENSAGENS DE ÁUDIO NO BATCH
     const audioMessages = batch.messages.filter((msg: any) => 
@@ -272,6 +288,34 @@ async function processBatch(batch: any) {
     });
 
     console.log('🎥 [PROCESS-BATCH] Comandos de vídeo detectados no batch:', hasVideoCommands);
+
+    // 🔄 VERIFICAÇÃO FINAL ANTI-DUPLICAÇÃO
+    const recentMessages = await supabase
+      .from('ticket_messages')
+      .select('content, timestamp, from_me')
+      .eq('ticket_id', ticket.id)
+      .eq('from_me', true)
+      .gte('timestamp', new Date(Date.now() - 120000).toISOString()) // Últimos 2 minutos
+      .order('timestamp', { ascending: false })
+      .limit(5);
+
+    if (recentMessages.data && recentMessages.data.length > 0) {
+      console.log('🔄 [DUPLICATE-CHECK] Verificando respostas recentes:', recentMessages.data.length);
+      
+      // Verificar se há múltiplas respostas muito próximas (possível duplicação)
+      const recentCount = recentMessages.data.filter(msg => 
+        new Date(msg.timestamp).getTime() > (Date.now() - 30000) // Últimos 30 segundos
+      ).length;
+      
+      if (recentCount >= 2) {
+        console.log('🔄 [DUPLICATE-CHECK] ❌ MÚLTIPLAS RESPOSTAS RECENTES DETECTADAS - CANCELANDO processamento:', {
+          recentResponses: recentCount,
+          batchId: batch.id
+        });
+        await deleteBatch(batch.id);
+        return;
+      }
+    }
 
     // CHAMAR IA COM BATCH
     console.log('🤖 [PROCESS-BATCH] 🧠 Chamando IA para ticket:', ticket.id, 'com', batch.messages?.length || 0, 'mensagens');
