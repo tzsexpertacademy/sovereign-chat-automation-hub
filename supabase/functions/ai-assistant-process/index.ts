@@ -3857,16 +3857,17 @@ async function getVideoFromLibrary(assistantId: string, videoTrigger: string): P
     return {
       videoBase64: video.videoBase64,
       format: video.format || 'mp4'
-    };
-      console.log('🔄 [VIDEO-LIBRARY] Tentando fallback para advanced_settings...');
-      return await getVideoFromLibraryFallback(assistantId, videoTrigger);
-    }
     
-    // ✅ ETAPA 2: BAIXAR VÍDEO DO SUPABASE STORAGE E CONVERTER PARA BASE64
-    console.log('📥 [VIDEO-LIBRARY] 🚀 INICIANDO DOWNLOAD DO SUPABASE STORAGE...');
-    console.log('📥 [VIDEO-LIBRARY] 📂 Bucket: assistant-videos');
-    console.log('📥 [VIDEO-LIBRARY] 📁 Storage path:', JSON.stringify(videoData.storage_path));
-    console.log('📥 [VIDEO-LIBRARY] 📊 Metadados do arquivo:', {
+    console.log('✅ [VIDEO-LIBRARY] VÍDEO ENCONTRADO E VÁLIDO!');
+    return {
+      videoBase64: video.videoBase64,
+      format: video.format || 'mp4'
+      
+  } catch (error) {
+    console.error('❌ [VIDEO-LIBRARY] Erro ao buscar vídeo:', error);
+    return null;
+  }
+}
       originalName: videoData.original_name,
       mimeType: videoData.mime_type,
       fileSize: videoData.file_size,
