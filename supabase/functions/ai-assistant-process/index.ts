@@ -3714,37 +3714,53 @@ async function processVideoCommands(
  */
 async function getVideoFromLibrary(assistantId: string, videoTrigger: string): Promise<{ videoBase64: string, format: string } | null> {
   try {
-    console.log('📚 [VIDEO-LIBRARY] 🔍 BUSCANDO VÍDEO NA BIBLIOTECA - DEBUG DETALHADO:');
-    console.log('📚 [VIDEO-LIBRARY] Assistant ID:', assistantId);
-    console.log('📚 [VIDEO-LIBRARY] Trigger buscado:', videoTrigger);
-    console.log('📚 [VIDEO-LIBRARY] Tipo do trigger:', typeof videoTrigger);
-    console.log('📚 [VIDEO-LIBRARY] Trigger limpo:', videoTrigger.trim());
+    console.log('📚 [VIDEO-LIBRARY] 🔍 BUSCANDO VÍDEO NA BIBLIOTECA - DEBUG EXTREMO:');
+    console.log('📚 [VIDEO-LIBRARY] 🆔 Assistant ID:', assistantId);
+    console.log('📚 [VIDEO-LIBRARY] 🎯 Trigger buscado:', JSON.stringify(videoTrigger));
+    console.log('📚 [VIDEO-LIBRARY] 📊 Tipo do trigger:', typeof videoTrigger);
+    console.log('📚 [VIDEO-LIBRARY] 🧹 Trigger limpo:', JSON.stringify(videoTrigger.trim()));
     
     // Buscar na tabela assistants campo advanced_settings
-    const { data: assistantData } = await supabase
+    console.log('📚 [VIDEO-LIBRARY] 🔍 FAZENDO QUERY NO SUPABASE...');
+    const { data: assistantData, error: assistantError } = await supabase
       .from('assistants')
       .select('advanced_settings')
       .eq('id', assistantId)
       .single();
     
-    console.log('🔍 [VIDEO-LIBRARY] Dados do assistente raw:', {
+    if (assistantError) {
+      console.error('❌ [VIDEO-LIBRARY] 💥 ERRO NA QUERY DO ASSISTANT:', JSON.stringify(assistantError));
+      return null;
+    }
+    
+    console.log('📚 [VIDEO-LIBRARY] 📊 DADOS DO ASSISTENTE RECEBIDOS:', {
+      hasData: !!assistantData,
       hasAdvancedSettings: !!assistantData?.advanced_settings,
       typeOfAdvancedSettings: typeof assistantData?.advanced_settings,
-      rawAdvancedSettings: JSON.stringify(assistantData?.advanced_settings, null, 2)
+      advancedSettingsLength: typeof assistantData?.advanced_settings === 'string' ? assistantData.advanced_settings.length : 'not string',
+      rawAdvancedSettingsPreview: typeof assistantData?.advanced_settings === 'string' ? assistantData.advanced_settings.substring(0, 200) + '...' : 'not string'
     });
     
-    // 🎯 PARSER REFORÇADO PARA ESTRUTURA COMPLEX ANINHADA
-    let advancedSettings = assistantData?.advanced_settings || {};
+    if (!assistantData?.advanced_settings) {
+      console.log('❌ [VIDEO-LIBRARY] 🚫 ASSISTANT SEM ADVANCED_SETTINGS');
+      return null;
+    }
     
-    console.log('🔧 [VIDEO-LIBRARY] ETAPA 1: Tipo inicial:', typeof advancedSettings);
+    // 🎯 PARSER REFORÇADO PARA ESTRUTURA COMPLEXA ANINHADA
+    let advancedSettings = assistantData.advanced_settings;
+    
+    console.log('🔧 [VIDEO-LIBRARY] 📊 ETAPA 1 - PARSING: Tipo inicial:', typeof advancedSettings);
     
     // STEP 1: Parse inicial se for string
     if (typeof advancedSettings === 'string') {
       try {
+        console.log('🔧 [VIDEO-LIBRARY] 📄 Fazendo JSON.parse da string...');
         advancedSettings = JSON.parse(advancedSettings);
-        console.log('✅ [VIDEO-LIBRARY] String parsed para object');
+        console.log('✅ [VIDEO-LIBRARY] 🎉 String parsed para object com sucesso');
+        console.log('📊 [VIDEO-LIBRARY] 📋 Keys do objeto parseado:', Object.keys(advancedSettings));
       } catch (parseError) {
-        console.error('❌ [VIDEO-LIBRARY] Erro ao fazer parse da string:', parseError);
+        console.error('❌ [VIDEO-LIBRARY] 💥 Erro ao fazer parse da string:', parseError);
+        console.error('🔧 [VIDEO-LIBRARY] 📄 String que causou erro:', assistantData.advanced_settings.substring(0, 500));
         return null;
       }
     }
@@ -3898,6 +3914,268 @@ async function getVideoFromLibrary(assistantId: string, videoTrigger: string): P
         .slice(0, 3);
       
       if (similarTriggers.length > 0) {
+        console.log('💡 [VIDEO-LIBRARY] Triggers similares encontrados:', similarTriggers);
+      }
+      
+      return null;
+    }
+    
+    console.log('✅ [VIDEO-LIBRARY] 🎉 VÍDEO ENCONTRADO!');
+    console.log('📊 [VIDEO-LIBRARY] 📋 DADOS COMPLETOS DO VÍDEO:', {
+      trigger: video.trigger,
+      name: video.name,
+      format: video.format,
+      hasVideoBase64: !!video.videoBase64,
+      hasVideoData: !!video.video_data,
+      videoBase64Length: video.videoBase64?.length || 0,
+      videoDataLength: video.video_data?.length || 0,
+      allKeys: Object.keys(video)
+    });
+    
+    // NORMALIZAR DADOS DO VÍDEO
+    const videoBase64 = video.videoBase64 || video.video_data;
+    const format = video.format || 'mp4';
+    
+    if (!videoBase64) {
+      console.error('❌ [VIDEO-LIBRARY] 🚫 VÍDEO SEM DADOS BASE64!');
+      console.error('🔧 [VIDEO-LIBRARY] 📊 Estrutura do vídeo:', JSON.stringify(video, null, 2));
+      return null;
+    }
+    
+    console.log('✅ [VIDEO-LIBRARY] 📋 VÍDEO NORMALIZADO E PRONTO PARA ENVIO:', {
+      trigger: video.trigger,
+      format: format,
+      videoBase64Length: videoBase64.length,
+      videoBase64Sample: videoBase64.substring(0, 100) + '...'
+    });
+    
+    return {
+      videoBase64: videoBase64,
+      format: format
+    };
+    
+  } catch (error) {
+    console.error('❌ [VIDEO-LIBRARY] 💥 ERRO GERAL NA BUSCA:', error);
+    console.error('🔧 [VIDEO-LIBRARY] 📊 Stack trace:', error.stack);
+    return null;
+  }
+}
+
+/**
+ * 📤 ENVIAR VÍDEO DA BIBLIOTECA
+ */
+async function sendLibraryVideoMessage(instanceId: string, chatId: string, videoData: any, businessToken: string) {
+  try {
+    console.log('📤 [VIDEO-SEND] 🚀 INICIANDO ENVIO DE VÍDEO DA BIBLIOTECA');
+    console.log('📤 [VIDEO-SEND] 🆔 Instance ID:', instanceId);
+    console.log('📤 [VIDEO-SEND] 💬 Chat ID:', chatId);
+    console.log('📤 [VIDEO-SEND] 🔑 Business Token presente:', !!businessToken);
+    console.log('📤 [VIDEO-SEND] 📊 DADOS RECEBIDOS PARA ENVIO:', {
+      type: typeof videoData,
+      keys: Object.keys(videoData || {}),
+      hasVideoBase64: !!videoData?.videoBase64,
+      videoBase64Length: videoData?.videoBase64?.length || 0,
+      format: videoData?.format,
+      videoBase64Sample: videoData?.videoBase64?.substring(0, 100) + '...' || 'N/A'
+    });
+
+    // VALIDAÇÕES CRÍTICAS
+    if (!videoData) {
+      console.error('❌ [VIDEO-SEND] 🚫 VIDEO_DATA É NULL/UNDEFINED');
+      throw new Error('VideoData não fornecido');
+    }
+
+    if (!videoData.videoBase64) {
+      console.error('❌ [VIDEO-SEND] 🚫 VIDEO_BASE64 NÃO ENCONTRADO');
+      console.error('🔧 [VIDEO-SEND] 📊 Estrutura recebida:', JSON.stringify(videoData, null, 2));
+      throw new Error('Video base64 não encontrado');
+    }
+
+    if (!videoData.format) {
+      console.error('❌ [VIDEO-SEND] 🚫 FORMATO NÃO ENCONTRADO');
+      console.error('🔧 [VIDEO-SEND] 📊 Estrutura recebida:', JSON.stringify(videoData, null, 2));
+      // Usar fallback para mp4 se não tiver formato
+      videoData.format = 'mp4';
+      console.log('🔧 [VIDEO-SEND] 📋 Usando formato fallback: mp4');
+    }
+
+    console.log('✅ [VIDEO-SEND] 📋 VALIDAÇÕES INICIAIS PASSARAM');
+    console.log('📤 [VIDEO-SEND] 📊 Base64 original length:', videoData.videoBase64.length);
+
+    // PROCESSAR BASE64 
+    let cleanBase64 = videoData.videoBase64;
+    
+    // Remover prefixo data URL se existir
+    if (cleanBase64.startsWith('data:')) {
+      const commaIndex = cleanBase64.indexOf(',');
+      if (commaIndex !== -1) {
+        cleanBase64 = cleanBase64.substring(commaIndex + 1);
+        console.log('🔧 [VIDEO-SEND] 📄 Prefixo data: removido');
+      }
+    }
+    
+    console.log('📤 [VIDEO-SEND] 📊 Base64 limpo length:', cleanBase64.length);
+    
+    // CRIAR BLOB DO VÍDEO
+    let videoBlob;
+    try {
+      console.log('📤 [VIDEO-SEND] 🔄 Convertendo Base64 para Blob...');
+      const binaryString = atob(cleanBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      videoBlob = new Blob([bytes], { type: `video/${videoData.format}` });
+      console.log('✅ [VIDEO-SEND] 📦 BLOB CRIADO COM SUCESSO:', {
+        size: videoBlob.size,
+        type: videoBlob.type
+      });
+    } catch (blobError) {
+      console.error('❌ [VIDEO-SEND] 💥 ERRO AO CRIAR BLOB:', blobError);
+      console.error('🔧 [VIDEO-SEND] 📊 Base64 sample (primeiros 100 chars):', cleanBase64.substring(0, 100));
+      throw new Error(`Erro ao processar video base64: ${blobError.message}`);
+    }
+
+    // CRIAR ARQUIVO E FORMDATA
+    const fileName = `video.${videoData.format}`;
+    const mimeType = `video/${videoData.format}`;
+    console.log('📤 [VIDEO-SEND] 📁 Preparando arquivo:', { fileName, mimeType });
+
+    let videoFile, formData;
+    try {
+      videoFile = new File([videoBlob], fileName, { type: mimeType });
+      console.log('✅ [VIDEO-SEND] 📁 ARQUIVO CRIADO:', {
+        name: videoFile.name,
+        size: videoFile.size,
+        type: videoFile.type,
+        lastModified: videoFile.lastModified
+      });
+
+      formData = new FormData();
+      formData.append('file', videoFile);
+      formData.append('chatId', chatId);
+      formData.append('mediatype', 'video');
+      console.log('✅ [VIDEO-SEND] 📋 FORMDATA PREPARADO');
+      
+      // LOG DETALHADO DO FORMDATA
+      console.log('📤 [VIDEO-SEND] 📊 FORMDATA ENTRIES DETALHADO:');
+      for (const [key, value] of formData.entries()) {
+        if (key === 'file') {
+          console.log(`  🗂️ ${key}: File(name="${value.name}", size=${value.size}, type="${value.type}")`);
+        } else {
+          console.log(`  📝 ${key}: "${value}"`);
+        }
+      }
+    } catch (formError) {
+      console.error('❌ [VIDEO-SEND] 💥 ERRO AO CRIAR FORMDATA:', formError);
+      throw new Error(`Erro ao criar FormData: ${formError.message}`);
+    }
+
+    // ENVIAR VIA API YUMER
+    const apiUrl = `https://api.yumer.com.br/instances/${instanceId}/send/media-file`;
+    console.log('📤 [VIDEO-SEND] 🌐 FAZENDO REQUISIÇÃO PARA:', apiUrl);
+    console.log('📤 [VIDEO-SEND] 🔑 Authorization header presente:', !!businessToken);
+    console.log('📤 [VIDEO-SEND] 📋 Headers que serão enviados:', {
+      'Authorization': businessToken ? `Bearer ${businessToken.substring(0, 20)}...` : 'MISSING',
+      'Content-Type': 'multipart/form-data (automático)'
+    });
+
+    let response;
+    try {
+      console.log('📤 [VIDEO-SEND] 🚀 FAZENDO REQUISIÇÃO HTTP...');
+      const startTime = Date.now();
+      
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${businessToken}`,
+        },
+        body: formData
+      });
+      
+      const endTime = Date.now();
+      console.log('📤 [VIDEO-SEND] 📊 RESPOSTA RECEBIDA:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        tempo: `${endTime - startTime}ms`,
+        url: response.url,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+    } catch (fetchError) {
+      console.error('❌ [VIDEO-SEND] 💥 ERRO NA REQUISIÇÃO HTTP:', fetchError);
+      console.error('🔧 [VIDEO-SEND] 📊 Detalhes do erro:', {
+        name: fetchError.name,
+        message: fetchError.message,
+        stack: fetchError.stack
+      });
+      throw new Error(`Erro na requisição HTTP: ${fetchError.message}`);
+    }
+
+    // PROCESSAR RESPOSTA
+    if (!response.ok) {
+      console.error('❌ [VIDEO-SEND] 🚫 RESPOSTA HTTP NÃO OK');
+      let errorText = 'Erro desconhecido';
+      try {
+        errorText = await response.text();
+        console.error('📤 [VIDEO-SEND] 📄 TEXTO DO ERRO DA API:', errorText);
+        
+        // Tentar fazer parse do JSON se possível
+        try {
+          const errorJson = JSON.parse(errorText);
+          console.error('📤 [VIDEO-SEND] 📋 JSON DO ERRO:', errorJson);
+        } catch (jsonParseError) {
+          console.log('📤 [VIDEO-SEND] 📄 Erro não é JSON válido');
+        }
+      } catch (textError) {
+        console.error('📤 [VIDEO-SEND] 💥 Erro ao ler texto da resposta:', textError);
+      }
+      throw new Error(`API retornou status ${response.status}: ${errorText}`);
+    }
+
+    // PROCESSAR RESPOSTA DE SUCESSO
+    let result;
+    try {
+      result = await response.json();
+      console.log('✅ [VIDEO-SEND] 🎉 VÍDEO ENVIADO COM SUCESSO!');
+      console.log('📤 [VIDEO-SEND] 📊 RESULTADO COMPLETO:', JSON.stringify(result, null, 2));
+      console.log('📤 [VIDEO-SEND] 📋 RESUMO DO SUCESSO:', {
+        messageId: result?.messageId || result?.key?.id || result?.id || 'N/A',
+        success: result?.success !== false,
+        status: result?.status || 'success',
+        fileName: fileName,
+        fileSize: videoFile.size,
+        format: videoData.format
+      });
+    } catch (jsonError) {
+      console.error('❌ [VIDEO-SEND] 💥 ERRO AO PARSEAR JSON DA RESPOSTA:', jsonError);
+      const responseText = await response.text();
+      console.log('📤 [VIDEO-SEND] 📄 Resposta raw (não é JSON):', responseText);
+      
+      // Retornar resultado baseado no status HTTP
+      result = { 
+        success: true, 
+        rawResponse: responseText,
+        status: response.status,
+        statusText: response.statusText
+      };
+      console.log('✅ [VIDEO-SEND] 🎯 Assumindo sucesso baseado no status HTTP:', response.status);
+    }
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ [VIDEO-SEND] 💥 ERRO GERAL NO ENVIO DE VÍDEO:', error);
+    console.error('🔧 [VIDEO-SEND] 📊 Stack trace completo:', error.stack);
+    console.error('🔧 [VIDEO-SEND] 📊 Detalhes do erro:', {
+      name: error.name,
+      message: error.message,
+      cause: error.cause,
+      videoDataKeys: videoData ? Object.keys(videoData) : 'videoData is null'
+    });
+    throw error;
+  }
+}
         console.log('💡 [VIDEO-LIBRARY] Triggers similares encontrados:', similarTriggers);
       }
       
