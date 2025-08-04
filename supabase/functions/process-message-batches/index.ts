@@ -72,6 +72,10 @@ Deno.serve(async (req) => {
       });
     }
 
+    // 🎵 CORREÇÃO: Aguardar 500ms para garantir que dados de mídia/áudio estejam salvos
+    console.log('🎵 [AUDIO-FIX] ⏳ Aguardando 500ms para garantir dados de mídia salvos...');
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     // BLOQUEAR BATCHES PARA PROCESSAMENTO (evitar duplicação)
     const batchIds = pendingBatches.map(b => b.id);
     const { data: lockedBatches, error: lockError } = await supabase
@@ -150,6 +154,43 @@ Deno.serve(async (req) => {
  */
 async function processBatch(batch: any) {
   console.log('🤖 [PROCESS-BATCH] Processando batch:', batch.id);
+
+  // 🎵 VERIFICAR SE HÁ MENSAGENS DE ÁUDIO NO BATCH
+  const audioMessages = batch.messages.filter((msg: any) => 
+    msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio')
+  );
+
+  if (audioMessages.length > 0) {
+    console.log('🎵 [AUDIO-FIX] 🔍 Detectados', audioMessages.length, 'áudios no batch');
+    
+    // Verificar se dados de áudio estão disponíveis no banco
+    for (const audioMsg of audioMessages) {
+      console.log('🎵 [AUDIO-FIX] 🔍 Verificando dados de áudio para messageId:', audioMsg.messageId);
+      
+      const { data: audioData } = await supabase
+        .from('whatsapp_messages')
+        .select('message_id, media_url, media_key, file_enc_sha256, content_type, created_at')
+        .eq('message_id', audioMsg.messageId)
+        .single();
+      
+      if (audioData) {
+        console.log('🎵 [AUDIO-FIX] ✅ Dados encontrados:', {
+          messageId: audioData.message_id,
+          hasMediaUrl: !!audioData.media_url,
+          hasMediaKey: !!audioData.media_key,
+          hasFileEncSha256: !!audioData.file_enc_sha256,
+          contentType: audioData.content_type,
+          createdAt: audioData.created_at
+        });
+      } else {
+        console.log('🎵 [AUDIO-FIX] ❌ Dados de áudio NÃO encontrados para:', audioMsg.messageId);
+      }
+    }
+    
+    // DELAY EXTRA para áudios (garante que decriptação/salvamento terminou)
+    console.log('🎵 [AUDIO-FIX] ⏳ Delay extra de 1s para processamento de áudio...');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
 
   try {
     // BUSCAR TICKET

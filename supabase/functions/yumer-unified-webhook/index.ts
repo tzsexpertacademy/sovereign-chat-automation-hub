@@ -139,7 +139,17 @@ async function processMessageBatch(yumerData: any) {
       directPath = audio.directPath;
       mediaMimeType = audio.mimetype || 'audio/ogg';
       mediaDuration = audio.seconds;
-      console.log('🎵 [DETECT] Áudio detectado:', { mediaUrl: !!mediaUrl, mediaKey: !!mediaKey, mediaKeyType: typeof mediaKey });
+      console.log('🎵 [AUDIO-DETECT] 🎯 Áudio detectado:', { 
+        messageId,
+        mediaUrl: !!mediaUrl, 
+        mediaKey: !!mediaKey, 
+        mediaKeyType: typeof mediaKey,
+        mediaKeyLength: mediaKey?.length,
+        fileEncSha256: !!fileEncSha256,
+        directPath: !!directPath,
+        mimetype: mediaMimeType,
+        duration: mediaDuration
+      });
     } else if (messageData.contentType === 'video' || messageData.content?.videoMessage) {
       const video = messageData.content?.videoMessage || messageData.content;
       content = video.caption || '🎥 Vídeo';
@@ -284,6 +294,17 @@ async function processMessageBatch(yumerData: any) {
     console.log('🔥 [CLIENT-MESSAGE] Mensagem do cliente detectada - usando sistema de batching');
     console.log('🔥 [CLIENT-MESSAGE] Conteúdo:', content.substring(0, 100));
     
+    // 🎵 PRIORIDADE: SALVAR DADOS DE ÁUDIO IMEDIATAMENTE
+    if (messageType === 'audio') {
+      console.log('🎵 [AUDIO-SAVE] 🚀 SALVANDO dados de áudio prioritários:', {
+        messageId,
+        hasMediaUrl: !!mediaUrl,
+        hasMediaKey: !!mediaKey,
+        hasFileEncSha256: !!fileEncSha256,
+        mediaKeyLength: mediaKey?.length
+      });
+    }
+
     // SALVAR MENSAGEM NO BANCO PRIMEIRO (com dados de mídia completos)
     await saveMessageToDatabase({
       ...messageData,
@@ -297,6 +318,28 @@ async function processMessageBatch(yumerData: any) {
       mediaMimeType,
       mediaDuration
     }, instance, chatId, pushName, phoneNumber);
+
+    // 🎵 VERIFICAÇÃO PÓS-SALVAMENTO PARA ÁUDIO
+    if (messageType === 'audio') {
+      console.log('🎵 [AUDIO-SAVE] ✅ Dados de áudio salvos - verificando...');
+      
+      const { data: savedAudio } = await supabase
+        .from('whatsapp_messages')
+        .select('message_id, media_url, media_key, file_enc_sha256')
+        .eq('message_id', messageId)
+        .single();
+      
+      if (savedAudio) {
+        console.log('🎵 [AUDIO-SAVE] ✅ CONFIRMAÇÃO - dados salvos:', {
+          messageId: savedAudio.message_id,
+          hasMediaUrl: !!savedAudio.media_url,
+          hasMediaKey: !!savedAudio.media_key,
+          hasFileEncSha256: !!savedAudio.file_enc_sha256
+        });
+      } else {
+        console.log('🎵 [AUDIO-SAVE] ❌ ERRO - dados não encontrados após salvamento!');
+      }
+    }
 
     // ✅ USAR SISTEMA DE BATCH PERSISTENTE COM CONTROLE DE CONCORRÊNCIA
     const batchResult = await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
