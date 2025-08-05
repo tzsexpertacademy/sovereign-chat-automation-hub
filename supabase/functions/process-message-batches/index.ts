@@ -418,78 +418,69 @@ async function processBatch(batch: any) {
         return msg;
       }
       
-      // 🖼️ PROCESSAMENTO PARA IMAGEM (AGUARDAR IMAGE_BASE64)
+      // 🖼️ PROCESSAMENTO OTIMIZADO PARA IMAGEM - AGUARDAR STATUS ANALYZED
       if (isImageMessage) {
-        console.log('🖼️ [MEDIA-OPT] Aguardando processamento para imagem:', msg.messageId);
+        console.log('🖼️ [MEDIA-OPT] Aguardando processamento COMPLETO para imagem:', msg.messageId);
         
-        // TENTATIVA 1: Verificação imediata
-        let { data: ticketMessage } = await supabase
-          .from('ticket_messages')
-          .select('image_base64, media_transcription')
-          .eq('message_id', msg.messageId)
-          .single();
+        // AGUARDAR ATÉ 12s COM VERIFICAÇÕES A CADA 2s
+        let attempts = 0;
+        const maxAttempts = 6; // 6 tentativas x 2s = 12s máximo
+        let ticketMessage = null;
         
-        if (ticketMessage && ticketMessage.image_base64) {
-          console.log('✅ [MEDIA-OPT] Imagem imediata encontrada:', {
+        while (attempts < maxAttempts) {
+          attempts++;
+          
+          const { data } = await supabase
+            .from('ticket_messages')
+            .select('image_base64, processing_status, media_transcription')
+            .eq('message_id', msg.messageId)
+            .single();
+          
+          console.log(`🖼️ [MEDIA-OPT] Tentativa ${attempts}/6 - Status da imagem:`, {
             messageId: msg.messageId,
-            hasImageBase64: !!ticketMessage.image_base64,
-            hasTranscription: !!ticketMessage.media_transcription
+            hasImageBase64: !!data?.image_base64,
+            processingStatus: data?.processing_status,
+            hasTranscription: !!data?.media_transcription,
+            transcriptionLength: data?.media_transcription?.length || 0
           });
-          return {
-            ...msg,
-            isImageProcessed: true
-          };
+          
+          // CONDIÇÃO DE SUCESSO: Status "analyzed" + image_base64 + media_transcription
+          if (data && 
+              data.image_base64 && 
+              data.processing_status === 'analyzed' && 
+              data.media_transcription && 
+              data.media_transcription.length > 10) {
+            
+            console.log('✅ [MEDIA-OPT] Imagem COMPLETAMENTE processada:', {
+              messageId: msg.messageId,
+              processingStatus: data.processing_status,
+              transcriptionLength: data.media_transcription.length,
+              totalWaitTime: `${attempts * 2}s`
+            });
+            
+            return {
+              ...msg,
+              content: data.media_transcription,
+              isImageProcessed: true,
+              imageAnalyzed: true
+            };
+          }
+          
+          // Se não está pronto, aguardar 2s antes da próxima tentativa
+          if (attempts < maxAttempts) {
+            console.log(`🖼️ [MEDIA-OPT] ⏳ Aguardando 2s antes da próxima verificação...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         }
         
-        // TENTATIVA 2: Aguardar 3s para imagem
-        console.log('🖼️ [MEDIA-OPT] ⏳ Aguardando 3s para processamento de imagem...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        ({ data: ticketMessage } = await supabase
-          .from('ticket_messages')
-          .select('image_base64, media_transcription')
-          .eq('message_id', msg.messageId)
-          .single());
-        
-        if (ticketMessage && ticketMessage.image_base64) {
-          console.log('✅ [MEDIA-OPT] Imagem encontrada após 3s:', {
-            messageId: msg.messageId,
-            hasImageBase64: !!ticketMessage.image_base64,
-            hasTranscription: !!ticketMessage.media_transcription
-          });
-          return {
-            ...msg,
-            isImageProcessed: true
-          };
-        }
-        
-        // TENTATIVA 3: Aguardar mais 5s (total 8s para imagens)
-        console.log('🖼️ [MEDIA-OPT] ⏳ Aguardando mais 5s para imagem (tentativa final)...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        
-        ({ data: ticketMessage } = await supabase
-          .from('ticket_messages')
-          .select('image_base64')
-          .eq('message_id', msg.messageId)
-          .single());
-        
-        if (ticketMessage && ticketMessage.image_base64) {
-          console.log('✅ [MEDIA-OPT] Imagem encontrada após 8s total:', {
-            messageId: msg.messageId,
-            hasImageBase64: !!ticketMessage.image_base64
-          });
-          return {
-            ...msg,
-            isImageProcessed: true
-          };
-        } else {
-          console.log('❌ [MEDIA-OPT] ⚠️ Imagem não disponível após 8s - prosseguindo:', msg.messageId);
-          return {
-            ...msg,
-            isImageProcessed: false,
-            imageProcessingFailed: true
-          };
-        }
+        // TIMEOUT: Processamento não completou em 12s
+        console.log('❌ [MEDIA-OPT] ⚠️ TIMEOUT: Imagem não processada completamente em 12s:', msg.messageId);
+        return {
+          ...msg,
+          content: '📷 Imagem (análise pendente)',
+          isImageProcessed: false,
+          imageProcessingTimeout: true
+        };
       }
       
       // 🎵 PROCESSAMENTO OTIMIZADO PARA ÁUDIO (AGUARDAR TRANSCRIÇÃO)
