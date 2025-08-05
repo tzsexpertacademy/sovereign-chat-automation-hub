@@ -321,6 +321,14 @@ const TicketsInterface = () => {
                             </Badge>
                           </div>
                           
+                          {ticket.queue && (
+                            <div className="flex items-center gap-1 mb-1">
+                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                📋 {ticket.queue.name}
+                              </span>
+                            </div>
+                          )}
+                          
                           <p className="text-sm text-gray-600 truncate">
                             {ticket.last_message_preview || 'Sem mensagens'}
                           </p>

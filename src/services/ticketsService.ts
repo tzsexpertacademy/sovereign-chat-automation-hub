@@ -47,6 +47,11 @@ export interface ConversationTicket {
   };
   assigned_assistant_id?: string;
   assigned_queue_id?: string;
+  queue?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
 }
 
 class TicketsService {
@@ -79,6 +84,11 @@ class TicketsService {
             name,
             phone,
             email
+          ),
+          queue:assigned_queue_id (
+            id,
+            name,
+            description
           )
         `)
         .eq('client_id', clientId)
