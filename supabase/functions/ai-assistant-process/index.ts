@@ -1098,36 +1098,41 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
       console.log('✅ [AI-ASSISTANT] Business token encontrado para cliente');
     }
 
-    // 🚫 CORREÇÃO DEFINITIVA: NÃO processar comandos na resposta da IA
-    // Comandos só devem ser processados na mensagem ORIGINAL do usuário
-    console.log('🎵 [AUDIO-COMMANDS] ⚠️ PULANDO processamento de comandos na resposta da IA');
-    console.log('🎵 [AUDIO-COMMANDS] ✅ Resposta da IA será enviada como TEXTO puro (sem comandos)');
-    
+    // 🎵 DETECTAR E PROCESSAR COMANDOS DE ÁUDIO COM TIMEOUT E FALLBACK
+    console.log('🎵 [AUDIO-COMMANDS] Iniciando processamento de comandos de áudio...');
     let finalResponse = aiResponse;
     
-    // ✅ VERIFICAR SE MENSAGEM ORIGINAL TINHA ÁUDIO REAL
-    const originalMessageContent = messages && messages.length > 0 ? 
-      messages.map(m => m.content).join(' ') : (message || '');
+    // ✅ CORRIGIR ESCOPO: Declarar audioCommands fora do try-catch
+    let audioCommands = { hasAudioCommands: false, processedCount: 0, remainingText: aiResponse };
     
-    const wasOriginalAudio = (
-      originalMessageContent?.includes('🎵 Áudio') ||
-      originalMessageContent?.includes('Transcrição:') ||
-      originalMessageContent?.includes('[Transcrição do áudio]') ||
-      originalMessageContent?.trim().startsWith('🎵')
-    );
-    
-    console.log('🔍 [AUDIO-SOURCE-CHECK] Mensagem original era áudio real:', wasOriginalAudio);
-    console.log('🔍 [AUDIO-SOURCE-CHECK] Conteúdo original:', originalMessageContent?.substring(0, 100));
-    
-    // 📝 GARANTIR QUE RESPOSTA DA IA SEJA SEMPRE TEXTO
-    if (wasOriginalAudio) {
-      console.log('✅ [AUDIO-FLOW] Áudio → IA → TEXTO (fluxo correto, sem áudio adicional)');
-    } else {
-      console.log('✅ [TEXT-FLOW] Texto → IA → TEXTO (fluxo normal)');
+    try {
+      // Processar comandos de áudio sem timeout agressivo
+      audioCommands = await processAudioCommands(aiResponse, ticketId, safeAssistant, resolvedInstanceId, client?.business_token || '');
+      
+      if (audioCommands.hasAudioCommands) {
+        console.log('🎵 [AUDIO-COMMANDS] ✅ Comandos de áudio processados:', audioCommands.processedCount);
+        finalResponse = audioCommands.remainingText;
+      } else {
+        console.log('🎵 [AUDIO-COMMANDS] ℹ️ Nenhum comando de áudio detectado');
+      }
+      
+      // 🖼️ PROCESSAR COMANDOS DE IMAGEM
+      const imageCount = await processImageCommands(finalResponse, {
+        assistantId: safeAssistant.id,
+        instanceId: resolvedInstanceId,
+        chatId: resolvedContext.chatId,
+        businessToken: client?.business_token || ''
+      });
+      
+      if (imageCount > 0) {
+        console.log(`🖼️ [IMAGE-COMMANDS] ✅ ${imageCount} comandos de imagem processados`);
+        finalResponse = finalResponse.replace(/image\s*:\s*[^\s]+/gi, '').trim();
+      }
+    } catch (audioError) {
+      console.error('⚠️ [AUDIO-COMMANDS] Erro no processamento de áudio (continuando com texto):', audioError);
+      // FALLBACK: Continuar com resposta de texto mesmo se áudio falhar
+      finalResponse = aiResponse;
     }
-    
-    // ⚠️ NÃO PROCESSAR audioCommands ou imageCommands na resposta da IA
-    console.log('🚫 [COMMAND-SKIP] Comandos serão processados APENAS na mensagem original do usuário')
 
     // Se não há texto restante após comandos de áudio, finalizar aqui
     if (!finalResponse || finalResponse.trim() === '') {
