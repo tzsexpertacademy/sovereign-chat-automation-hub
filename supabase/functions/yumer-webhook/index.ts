@@ -83,10 +83,34 @@ function extractMediaData(messageObj: any): any {
   return Object.keys(filteredMediaData).length > 0 ? filteredMediaData : null;
 }
 
+// 🚫 CACHE DE DEDUPLICAÇÃO GLOBAL
+const MESSAGE_CACHE = new Map<string, number>();
+
 // 🔧 FUNÇÃO PRINCIPAL PARA PROCESSAR MENSAGEM YUMER
 async function processYumerMessage(yumerData: any) {
   try {
     console.log('🔧 [PROCESS-YUMER] Iniciando processamento da mensagem');
+    
+    // 🚫 VERIFICAÇÃO DE DUPLICAÇÃO
+    const messageId = yumerData.data?.keyId || yumerData.data?.messageId;
+    if (messageId) {
+      const now = Date.now();
+      const lastProcessed = MESSAGE_CACHE.get(messageId);
+      
+      if (lastProcessed && (now - lastProcessed) < 5000) { // 5 segundos
+        console.log('🚫 [DEDUP] Mensagem duplicada ignorada:', messageId);
+        return { success: true, message: 'Mensagem duplicada ignorada' };
+      }
+      
+      MESSAGE_CACHE.set(messageId, now);
+      
+      // Limpar cache antigo (>1 minuto)
+      for (const [id, timestamp] of MESSAGE_CACHE.entries()) {
+        if (now - timestamp > 60000) {
+          MESSAGE_CACHE.delete(id);
+        }
+      }
+    }
     
     const messageData = yumerData.data;
     const instanceId = yumerData.instance?.instanceId;
@@ -163,9 +187,9 @@ async function processYumerMessage(yumerData: any) {
 
     console.log('✅ [SAVE] Mensagem salva com sucesso:', savedMessage.id);
 
-    // 📦 CRIAR BATCH PARA PROCESSAMENTO IA - SÓ PARA MENSAGENS RECEBIDAS
-    if (!mappedMessage.from_me && mappedMessage.chat_id) {
-      console.log('📦 [BATCH] Criando batch para processamento IA');
+    // 📦 CRIAR BATCH PARA PROCESSAMENTO IA - SÓ PARA MENSAGENS RECEBIDAS (E NÃO DUPLICADAS)
+    if (!mappedMessage.from_me && mappedMessage.chat_id && messageId) {
+      console.log('📦 [BATCH] Criando batch para processamento IA (mensagem não duplicada)');
       
       const batchMessage = {
         messageId: mappedMessage.message_id,
