@@ -128,15 +128,21 @@ const ChatTabsInterface = ({ clientId, selectedChatId, onSelectChat }: ChatTabsI
 
   return (
     <div className="h-[calc(100vh-120px)] flex flex-col">
-      {/* Header melhorado com status e controles */}
-      <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-background to-muted/30">
-        <div className="flex items-center space-x-3">
-          <h2 className="font-semibold text-foreground">Comunicação</h2>
-          
-          {/* Status de conexão */}
-          <div className={`flex items-center space-x-1 text-xs ${statusInfo.color}`}>
-            {statusInfo.icon}
-            <span>{statusInfo.text}</span>
+      {/* Header moderno alinhado com dashboard */}
+      <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-background via-background to-muted/20">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg">
+              <MessageSquare className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">
+                Comunicação
+              </h1>
+              <p className="text-sm text-muted-foreground font-medium">
+                Conversas em tempo real
+              </p>
+            </div>
           </div>
         </div>
 

@@ -17,24 +17,18 @@ const SimpleRealtimeStatus = ({
 }: SimpleRealtimeStatusProps) => {
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      {/* Status Principal - Supabase sempre ativo */}
+      {/* Status Principal - Online sempre */}
       <Badge 
         variant="secondary" 
-        className="text-white text-xs flex items-center gap-1 bg-green-500"
+        className="text-white text-xs flex items-center gap-1 bg-emerald-500"
       >
         <Activity className="h-3 w-3" />
-        Supabase Ativo
+        Online
       </Badge>
-      
-      {/* Método de Envio - REST */}
-      <Badge variant="outline" className="text-xs text-blue-600">
-        REST • Enviando
-      </Badge>
-      
       
       {/* Contador de Mensagens */}
       {messagesCount > 0 && (
-        <Badge variant="outline" className="text-xs">
+        <Badge variant="outline" className="text-xs text-muted-foreground">
           {messagesCount} msgs
         </Badge>
       )}
@@ -43,7 +37,7 @@ const SimpleRealtimeStatus = ({
       {onReload && (
         <button
           onClick={onReload}
-          className="text-xs text-muted-foreground hover:text-foreground p-1"
+          className="text-xs text-muted-foreground hover:text-foreground p-1 transition-colors"
           title="Recarregar mensagens"
         >
           <RefreshCw className="h-3 w-3" />
