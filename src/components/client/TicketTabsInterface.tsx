@@ -191,16 +191,14 @@ const TicketTabsInterface = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col lg:grid lg:grid-cols-12 gap-4 lg:gap-6">
-      {/* Sistema Health Sidebar - Responsivo */}
-      <div className="lg:col-span-3">
-        <div className="lg:sticky lg:top-4">
-          <SystemHealthIndicator clientId={clientId || ''} />
-        </div>
+    <div className="h-[calc(100vh-8rem)] flex flex-col space-y-4">
+      {/* Status do Sistema - Horizontal no Topo */}
+      <div className="flex-shrink-0">
+        <SystemHealthIndicator clientId={clientId || ''} />
       </div>
 
-      {/* Lista de Tickets com Abas - Responsivo */}
-      <Card className="flex-1 lg:col-span-9 flex flex-col min-h-0">
+      {/* Lista de Tickets */}
+      <Card className="flex-1 flex flex-col min-h-0">
         <CardHeader className="pb-3">
           <div className="flex justify-between items-center">
             <div>
