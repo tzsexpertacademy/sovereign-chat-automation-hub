@@ -18,37 +18,44 @@ Deno.serve(async (req) => {
   console.log('⏰ [SCHEDULER-TRIGGER] Executando trigger do scheduler');
 
   try {
-    console.log('⏰ [SCHEDULER-TRIGGER] ✅ FLUXO UNIFICADO: Descriptografia → Análise → Batches');
+    console.log('⏰ [SCHEDULER-TRIGGER] 🔄 ESTRATÉGIA HÍBRIDA: Primário → Fallback → Análise');
     
-    // 1. Descriptografar mídias pendentes (API directly-download)
+    // 1️⃣ SISTEMA PRIMÁRIO: process-received-media (descriptografia + transcrição 100%)
     const mediaResponse = await supabase.functions.invoke('process-received-media', {
       body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
     });
     
-    console.log('⏰ [SCHEDULER-TRIGGER] 1️⃣ Descriptografia:', mediaResponse.data);
+    console.log('⏰ [SCHEDULER-TRIGGER] 1️⃣ Sistema Primário (descriptografia):', mediaResponse.data);
     
-    // 2. Analisar mídias descriptografadas (GPT-4 Vision)
+    // ⏳ DELAY para evitar race condition na API Yumer
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // 2️⃣ SISTEMA FALLBACK: process-message-batches (apenas áudios não processados)
+    const batchResponse = await supabase.functions.invoke('process-message-batches', {
+      body: { trigger: 'scheduler_fallback', timestamp: new Date().toISOString() }
+    });
+
+    console.log('⏰ [SCHEDULER-TRIGGER] 2️⃣ Sistema Fallback (batch):', batchResponse.data);
+    
+    // ⏳ DELAY antes da análise final
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // 3️⃣ ANÁLISE FINAL: GPT-4 Vision para todas as mídias processadas
     const analysisResponse = await supabase.functions.invoke('process-media-analysis', {
       body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
     });
     
-    console.log('⏰ [SCHEDULER-TRIGGER] 2️⃣ Análise:', analysisResponse.data);
-    
-    // 3. Processar batches com contexto completo
-    const batchResponse = await supabase.functions.invoke('process-message-batches', {
-      body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
-    });
-
-    console.log('⏰ [SCHEDULER-TRIGGER] 3️⃣ Batches:', batchResponse.data);
+    console.log('⏰ [SCHEDULER-TRIGGER] 3️⃣ Análise Final:', analysisResponse.data);
 
     return new Response(JSON.stringify({
       success: true,
-      message: 'Unified media flow executed',
+      message: 'Hybrid strategy executed - Primary + Fallback + Analysis',
       steps: {
-        decryption: mediaResponse.data,
-        analysis: analysisResponse.data,
-        batches: batchResponse.data
-      }
+        primary_decryption: mediaResponse.data,
+        fallback_batch: batchResponse.data,
+        final_analysis: analysisResponse.data
+      },
+      strategy: 'hybrid_sequential'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
