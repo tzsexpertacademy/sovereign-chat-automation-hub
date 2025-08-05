@@ -157,30 +157,36 @@ Deno.serve(async (req) => {
 
         console.log(`🔧 [MEDIA-DECRYPT] Processando mídia incompleta: ${message.message_type} - ${message.message_id}`)
         console.log(`🔍 [MEDIA-DECRYPT] Dados disponíveis: media_key=${!!message.media_key}, media_url=${!!message.media_url}`)
+        console.log(`🎯 [MEDIA-DECRYPT] Ticket ID: ${message.ticket_id}`)
 
-        // Buscar dados da instância para obter client_id
-        const { data: instanceData } = await supabase
-          .from('whatsapp_instances')
+        // ✅ CORREÇÃO DEFINITIVA: Buscar instance_id através do ticket
+        const { data: ticketData, error: ticketError } = await supabase
+          .from('conversation_tickets')
           .select('instance_id, client_id')
-          .eq('instance_id', message.instance_id)
+          .eq('id', message.ticket_id)
           .single()
 
-        if (!instanceData) {
-          console.error(`❌ Instância não encontrada: ${message.instance_id}`)
+        if (ticketError || !ticketData) {
+          console.error(`❌ Ticket não encontrado: ${message.ticket_id}`, ticketError)
           continue
         }
+
+        console.log(`🎯 [MEDIA-DECRYPT] Instance ID encontrado: ${ticketData.instance_id}`)
+        console.log(`🎯 [MEDIA-DECRYPT] Client ID encontrado: ${ticketData.client_id}`)
 
         // Buscar business_token do cliente
         const { data: clientData } = await supabase
           .from('clients')
           .select('business_token')
-          .eq('id', instanceData.client_id)
+          .eq('id', ticketData.client_id)
           .single()
 
         if (!clientData?.business_token) {
-          console.error(`❌ Business token não encontrado para cliente: ${instanceData.client_id}`)
+          console.error(`❌ Business token não encontrado para cliente: ${ticketData.client_id}`)
           continue
         }
+
+        console.log(`🔑 [MEDIA-DECRYPT] Business token encontrado para cliente`)
 
         // Preparar dados para descriptografia
         const downloadRequest = {
@@ -189,12 +195,20 @@ Deno.serve(async (req) => {
             url: message.media_url,
             mediaKey: message.media_key,
             directPath: message.direct_path || message.media_url,
-            mimetype: message.mime_type || getDefaultMimeType(message.message_type)
+            mimetype: message.media_mime_type || getDefaultMimeType(message.message_type)
           }
         }
 
+        console.log(`📡 [MEDIA-DECRYPT] Request preparado:`, {
+          contentType: downloadRequest.contentType,
+          url: downloadRequest.content.url?.substring(0, 50) + '...',
+          hasMediaKey: !!downloadRequest.content.mediaKey,
+          mimetype: downloadRequest.content.mimetype
+        })
+
         // Chamar endpoint de descriptografia
-        const downloadUrl = `https://api.yumer.com.br/api/v2/instance/${instanceData.instance_id}/media/directly-download`
+        const downloadUrl = `https://api.yumer.com.br/api/v2/instance/${ticketData.instance_id}/media/directly-download`
+        console.log(`🌐 [MEDIA-DECRYPT] Chamando endpoint: ${downloadUrl}`)
         
         const downloadResponse = await fetch(downloadUrl, {
           method: 'POST',
