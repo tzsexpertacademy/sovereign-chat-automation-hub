@@ -10,11 +10,11 @@ async function transcribeAudio(base64Audio: string, clientId: string, supabase: 
   try {
     console.log('🎙️ [AUTO-TRANSCRIBE] Iniciando transcrição automática...')
     
-    // Buscar API key do cliente
+    // Buscar API key do cliente na tabela client_ai_configs
     const { data: clientConfig } = await supabase
-      .from('clients')
+      .from('client_ai_configs')
       .select('openai_api_key')
-      .eq('id', clientId)
+      .eq('client_id', clientId)
       .single()
     
     if (!clientConfig?.openai_api_key) {
@@ -140,15 +140,27 @@ Deno.serve(async (req) => {
       try {
         console.log(`📱 Processando mídia: ${message.message_type} - ${message.message_id}`)
 
-        // Buscar dados da instância usando instance_id como string
+        // Buscar dados da instância para obter client_id
         const { data: instanceData } = await supabase
           .from('whatsapp_instances')
-          .select('instance_id, business_token')
+          .select('instance_id, client_id')
           .eq('instance_id', message.instance_id)
           .single()
 
         if (!instanceData) {
           console.error(`❌ Instância não encontrada: ${message.instance_id}`)
+          continue
+        }
+
+        // Buscar business_token do cliente
+        const { data: clientData } = await supabase
+          .from('clients')
+          .select('business_token')
+          .eq('id', instanceData.client_id)
+          .single()
+
+        if (!clientData?.business_token) {
+          console.error(`❌ Business token não encontrado para cliente: ${instanceData.client_id}`)
           continue
         }
 
@@ -170,7 +182,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${instanceData.business_token}`
+            'Authorization': `Bearer ${clientData.business_token}`
           },
           body: JSON.stringify(downloadRequest)
         })
@@ -216,6 +228,7 @@ Deno.serve(async (req) => {
             .single()
           
           if (ticketData?.client_id) {
+            console.log(`🎙️ [AUTO-TRANSCRIBE] Usando client_id: ${ticketData.client_id}`)
             const transcription = await transcribeAudio(base64Data, ticketData.client_id, supabase)
             
             if (transcription) {
