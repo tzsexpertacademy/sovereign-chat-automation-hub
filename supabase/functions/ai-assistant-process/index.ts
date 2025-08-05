@@ -895,13 +895,13 @@ serve(async (req) => {
     let mediaAnalysis = '';
     let processedContent = messageContent;
     
-    // Buscar mensagens de mídia não processadas
+    // Buscar mensagens de mídia que precisam de processamento
     const { data: unprocessedMessages } = await supabase
       .from('ticket_messages')
       .select('*')
       .eq('ticket_id', ticketId)
       .in('message_type', ['image', 'video', 'audio', 'document'])
-      .is('media_transcription', null)
+      .or('media_transcription.is.null,media_transcription.eq.🖼️ Imagem - aguardando processamento,media_transcription.eq.🎵 Áudio - aguardando transcrição')
       .order('timestamp', { ascending: false })
       .limit(5);
 
@@ -920,11 +920,30 @@ serve(async (req) => {
                 base64Length: mediaMsg.image_base64?.length
               });
               
-              // ✅ CORREÇÃO DEFINITIVA: Usar apenas imagem já processada pelo process-received-media
+              // ✅ CORREÇÃO DEFINITIVA: Processar imagem se base64 disponível
               if (mediaMsg.image_base64) {
-                console.log('✅ [IMAGE-PROCESSING] Usando imagem já processada');
-                analysis = await processImageWithVision(mediaMsg.image_base64, openAIApiKey);
-                mediaAnalysis += `\n[IMAGEM ANALISADA]: ${analysis}`;
+                console.log('✅ [IMAGE-PROCESSING] Processando imagem com GPT-4 Vision');
+                try {
+                  analysis = await processImageWithVision(mediaMsg.image_base64, openAIApiKey);
+                  console.log('✅ [IMAGE-PROCESSING] Análise gerada:', analysis.substring(0, 100));
+                  mediaAnalysis += `\n[IMAGEM ANALISADA]: ${analysis}`;
+                  
+                  // ✅ SALVAR ANÁLISE IMEDIATAMENTE
+                  const { error: updateError } = await supabase
+                    .from('ticket_messages')
+                    .update({ media_transcription: analysis })
+                    .eq('id', mediaMsg.id);
+                    
+                  if (updateError) {
+                    console.error('❌ [IMAGE-PROCESSING] Erro ao salvar análise:', updateError);
+                  } else {
+                    console.log('✅ [IMAGE-PROCESSING] Análise salva na base de dados');
+                  }
+                } catch (visionError) {
+                  console.error('❌ [IMAGE-PROCESSING] Erro no GPT-4 Vision:', visionError);
+                  analysis = '[Erro ao analisar imagem]';
+                  mediaAnalysis += `\n[IMAGEM COM ERRO]: ${analysis}`;
+                }
               } else {
                 console.log('⚠️ [IMAGE-PROCESSING] Imagem ainda não processada, aguardando...');
                 analysis = '🖼️ Imagem - aguardando processamento';
@@ -966,13 +985,7 @@ serve(async (req) => {
               break;
           }
           
-          // Salvar análise no banco
-          if (analysis) {
-            await supabase
-              .from('ticket_messages')
-              .update({ media_transcription: analysis })
-              .eq('id', mediaMsg.id);
-          }
+          // ✅ REMOVER: Análise já é salva individualmente para cada tipo de mídia
           
         } catch (error) {
           console.error('❌ [MULTIMEDIA] Erro ao processar mídia:', error);

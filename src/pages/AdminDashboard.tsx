@@ -7,6 +7,7 @@ import SafeComponent from "@/components/SafeComponent";
 import { QuickApiTest } from "@/components/admin/QuickApiTest";
 import { QuickBusinessTokenRegenerator } from "@/components/admin/QuickBusinessTokenRegenerator";
 import { ManualMessageTester } from "@/components/admin/ManualMessageTester";
+import { ImageProcessingTest } from "@/components/admin/ImageProcessingTest";
 
 const AdminDashboard = () => {
   return (
@@ -47,6 +48,16 @@ const AdminDashboard = () => {
                 fallbackMessage="Problema ao carregar o testador de mensagens."
               >
                 <ManualMessageTester />
+              </SafeComponent>
+            </div>
+
+            {/* Teste de Processamento de Imagem */}
+            <div className="mb-6">
+              <SafeComponent 
+                fallbackTitle="Erro no Teste de Imagem"
+                fallbackMessage="Problema ao carregar o teste de processamento de imagem."
+              >
+                <ImageProcessingTest />
               </SafeComponent>
             </div>
 

@@ -25,3 +25,9 @@ verify_jwt = false
 
 [functions.fix-media-keys]
 verify_jwt = false
+
+[functions.test-image-processing]
+verify_jwt = false
+
+[functions.force-image-processing]
+verify_jwt = false
