@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useTicketRealtimeImproved } from "@/hooks/useTicketRealtimeImproved";
 import { useTicketFilters } from "@/hooks/useTicketFilters";
+import { useTicketRealtimeSync } from "@/hooks/useTicketRealtimeSync";
 import { incrementalImportService } from "@/services/incrementalImportService";
 import TicketChatInterface from "./TicketChatInterface";
 import SystemHealthIndicator from "./SystemHealthIndicator";
@@ -43,6 +44,27 @@ const TicketTabsInterface = () => {
     activeFiltersCount,
     hasActiveFilters
   } = useTicketFilters(clientId || '');
+
+  // Hook de sincronização de tickets em tempo real
+  useTicketRealtimeSync({
+    clientId: clientId || '',
+    onTicketUpdate: () => {
+      console.log('🔄 [TABS] Forçando reload de tickets por mudança detectada');
+      reloadTickets();
+    },
+    onTicketReopen: (ticketId, newQueueId) => {
+      console.log('🔓 [TABS] Ticket reaberto:', { ticketId, newQueueId });
+      // Forçar mudança para aba "Abertos" se um ticket foi reaberto
+      if (activeTab === 'closed') {
+        setActiveTab('open');
+      }
+      reloadTickets();
+    },
+    onQueueTransfer: (ticketId, fromQueueId, toQueueId) => {
+      console.log('🔄 [TABS] Ticket transferido:', { ticketId, fromQueueId, toQueueId });
+      reloadTickets();
+    }
+  });
 
   // Filtrar tickets com base nos filtros aplicados
   const filteredTickets = useMemo(() => {

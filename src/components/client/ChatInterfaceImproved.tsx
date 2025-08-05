@@ -15,6 +15,7 @@ import ChatHeaderImproved from './chat/ChatHeaderImproved';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
 import { useRealtimeSidebar } from '@/hooks/useRealtimeSidebar';
 import { useWhatsAppMessageSync } from '@/hooks/useWhatsAppMessageSync';
+import { useTicketRealtimeSync } from '@/hooks/useTicketRealtimeSync';
 import TypingIndicator from './TypingIndicator';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 import { supabase } from '@/integrations/supabase/client';
@@ -114,6 +115,43 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     onMessageProcessed: (messageId) => {
       console.log('✅ [WA-SYNC] Mensagem processada:', messageId);
       // Forçar reload dos tickets para pegar novas mensagens
+      reloadTickets();
+    }
+  });
+
+  // 🎯 SINCRONIZAÇÃO ESPECÍFICA PARA DETECÇÃO DE MUDANÇAS
+  useTicketRealtimeSync({
+    clientId,
+    onTicketUpdate: () => {
+      console.log('🔄 [CHAT-INTERFACE] Forçando reload por mudança detectada');
+      reloadTickets();
+    },
+    onTicketReopen: (ticketId, newQueueId) => {
+      console.log('🔓 [CHAT-INTERFACE] Ticket reaberto:', { ticketId, newQueueId });
+      // Atualizar estado local imediatamente
+      setSidebarTickets(prev => 
+        prev.map(ticket => 
+          ticket.id === ticketId 
+            ? { 
+                ...ticket, 
+                status: 'open',
+                assigned_queue_id: newQueueId
+              }
+            : ticket
+        )
+      );
+      reloadTickets();
+    },
+    onQueueTransfer: (ticketId, fromQueueId, toQueueId) => {
+      console.log('🔄 [CHAT-INTERFACE] Transferência de fila:', { ticketId, fromQueueId, toQueueId });
+      // Atualizar estado local imediatamente
+      setSidebarTickets(prev => 
+        prev.map(ticket => 
+          ticket.id === ticketId 
+            ? { ...ticket, assigned_queue_id: toQueueId }
+            : ticket
+        )
+      );
       reloadTickets();
     }
   });

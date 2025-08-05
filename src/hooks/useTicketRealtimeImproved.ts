@@ -97,13 +97,14 @@ export const useTicketRealtimeImproved = (clientId: string) => {
     }
   }, [clientId, loadTickets, toast]);
 
-  // Debounced loadTickets para evitar múltiplas chamadas
+  // Debounced loadTickets para evitar múltiplas chamadas - REDUZIDO para reabertura rápida
   const debouncedLoadTickets = useCallback(
     debounce(() => {
       if (mountedRef.current) {
+        console.log('🚀 [REALTIME] Executando reload debounced');
         loadTickets();
       }
-    }, 1500), // 1.5 segundos de debounce
+    }, 300), // 300ms de debounce para atualizações rápidas
     [loadTickets]
   );
 
@@ -120,7 +121,7 @@ export const useTicketRealtimeImproved = (clientId: string) => {
     // Sincronizar mensagens YUMER não processadas após 3 segundos
     setTimeout(syncUnprocessedMessages, 3000);
 
-    // ✅ LISTENER UNIFICADO SEM TIMESTAMP ÚNICO
+    // ✅ LISTENER UNIFICADO MELHORADO COM LOGS ESPECÍFICOS
     const unifiedChannel = supabase
       .channel(`tickets-unified-${clientId}`)
       .on(
@@ -132,7 +133,41 @@ export const useTicketRealtimeImproved = (clientId: string) => {
           filter: `client_id=eq.${clientId}`
         },
         (payload) => {
-          console.log('🔄 [REALTIME] Mudança em ticket detectada');
+          const { eventType, new: newTicket, old: oldTicket } = payload;
+          console.log('🔄 [REALTIME] Mudança em ticket detectada:', {
+            evento: eventType,
+            ticketId: (newTicket as any)?.id || (oldTicket as any)?.id,
+            status: (newTicket as any)?.status,
+            filaId: (newTicket as any)?.assigned_queue_id,
+            oldStatus: (oldTicket as any)?.status,
+            oldFilaId: (oldTicket as any)?.assigned_queue_id
+          });
+
+          // DETECTAR REABERTURA AUTOMÁTICA
+          if (eventType === 'UPDATE' && oldTicket && newTicket) {
+            const oldT = oldTicket as any;
+            const newT = newTicket as any;
+            const statusMudou = oldT.status !== newT.status;
+            const filaMudou = oldT.assigned_queue_id !== newT.assigned_queue_id;
+            
+            if (statusMudou && ['closed', 'resolved'].includes(oldT.status) && newT.status === 'open') {
+              console.log('🔓 [REALTIME] REABERTURA AUTOMÁTICA DETECTADA!', {
+                ticketId: newT.id,
+                statusAnterior: oldT.status,
+                novoStatus: newT.status,
+                novaFila: newT.assigned_queue_id
+              });
+            }
+            
+            if (filaMudou) {
+              console.log('🔄 [REALTIME] TRANSFERÊNCIA DE FILA DETECTADA!', {
+                ticketId: newT.id,
+                filaAnterior: oldT.assigned_queue_id,
+                novaFila: newT.assigned_queue_id
+              });
+            }
+          }
+          
           debouncedLoadTickets();
         }
       )
@@ -152,7 +187,11 @@ export const useTicketRealtimeImproved = (clientId: string) => {
             .single();
 
           if (ticket?.client_id === clientId && mountedRef.current) {
-            console.log('🔄 [REALTIME] Nova mensagem detectada');
+            console.log('📨 [REALTIME] Nova mensagem detectada:', {
+              ticketId: payload.new?.ticket_id,
+              messageId: payload.new?.message_id,
+              conteudo: payload.new?.content?.substring(0, 30)
+            });
             debouncedLoadTickets();
           }
         }
