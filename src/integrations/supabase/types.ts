@@ -2275,6 +2275,10 @@ export type Database = {
         Args: { created_at: string }
         Returns: number
       }
+      check_system_health: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       cleanup_cron_conflicts: {
         Args: Record<PropertyKey, never>
         Returns: Json
