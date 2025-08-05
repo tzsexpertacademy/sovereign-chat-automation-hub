@@ -5,12 +5,14 @@ interface RealtimeSidebarConfig {
   clientId: string;
   onTicketUpdate: (ticket: any) => void;
   onNewMessage: (ticketId: string, preview: string) => void;
+  onStatusChange?: (ticketId: string, oldStatus: string, newStatus: string) => void;
 }
 
 export const useRealtimeSidebar = ({ 
   clientId, 
   onTicketUpdate, 
-  onNewMessage 
+  onNewMessage,
+  onStatusChange 
 }: RealtimeSidebarConfig) => {
   const channelRef = useRef<any>(null);
 
@@ -60,6 +62,20 @@ export const useRealtimeSidebar = ({
           if (payload.eventType === 'UPDATE' && payload.new) {
             const updatedTicket = payload.new as any;
             console.log('🎯 [SIDEBAR] Ticket atualizado via realtime:', updatedTicket.id);
+            
+            // Detectar mudança de status
+            if (payload.old && onStatusChange) {
+              const oldTicket = payload.old as any;
+              if (oldTicket.status !== updatedTicket.status) {
+                console.log('🔄 [SIDEBAR] Status alterado:', {
+                  ticketId: updatedTicket.id,
+                  from: oldTicket.status,
+                  to: updatedTicket.status
+                });
+                onStatusChange(updatedTicket.id, oldTicket.status, updatedTicket.status);
+              }
+            }
+            
             onTicketUpdate(updatedTicket);
           }
         }
@@ -115,7 +131,7 @@ export const useRealtimeSidebar = ({
         channelRef.current = null;
       }
     };
-  }, [clientId, onTicketUpdate, onNewMessage, updateTicketMetadata]);
+  }, [clientId, onTicketUpdate, onNewMessage, onStatusChange, updateTicketMetadata]);
 
   return {
     isActive: channelRef.current !== null

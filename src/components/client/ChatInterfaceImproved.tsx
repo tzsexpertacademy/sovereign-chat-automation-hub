@@ -80,10 +80,32 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     );
   }, []);
 
+  const handleStatusChange = useCallback((ticketId: string, oldStatus: string, newStatus: string) => {
+    console.log('🔄 [CHAT-INTERFACE] Status do ticket alterado:', { ticketId, oldStatus, newStatus });
+    
+    // Atualizar ticket na sidebar
+    setSidebarTickets(prev => 
+      prev.map(ticket => 
+        ticket.id === ticketId 
+          ? { ...ticket, status: newStatus }
+          : ticket
+      )
+    );
+    
+    // Se o ticket foi fechado, mostrar toast
+    if (newStatus === 'closed' && oldStatus !== 'closed') {
+      toast({
+        title: "Ticket fechado",
+        description: "O ticket foi fechado automaticamente",
+      });
+    }
+  }, [toast]);
+
   useRealtimeSidebar({
     clientId,
     onTicketUpdate: handleTicketUpdate,
-    onNewMessage: handleNewMessage
+    onNewMessage: handleNewMessage,
+    onStatusChange: handleStatusChange
   });
 
   // 🚀 SINCRONIZAÇÃO AUTOMÁTICA WhatsApp → Tickets
@@ -366,9 +388,9 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
   };
 
   return (
-    <div className="flex h-[calc(100vh-120px)] bg-white">
-      {/* Lista de Chats */}
-      <div className="w-1/3 border-r border-gray-200 flex flex-col h-full">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-120px)] bg-white">
+      {/* Lista de Chats - Responsivo */}
+      <div className="w-full lg:w-1/3 border-b lg:border-b-0 lg:border-r border-gray-200 flex flex-col h-[40vh] lg:h-full max-h-[40vh] lg:max-h-none">
         <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-2">
@@ -484,8 +506,8 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
         />
       </div>
 
-      {/* Área de Chat */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
+      {/* Área de Chat - Responsivo */}
+      <div className="flex-1 flex flex-col h-[60vh] lg:h-full min-w-0">
         {currentChatId ? (
           <>
             {/* Cabeçalho do Chat */}

@@ -191,14 +191,16 @@ const TicketTabsInterface = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] grid grid-cols-12 gap-6">
-      {/* Sistema Health Sidebar */}
-      <div className="col-span-3">
-        <SystemHealthIndicator clientId={clientId || ''} />
+    <div className="h-[calc(100vh-8rem)] flex flex-col lg:grid lg:grid-cols-12 gap-4 lg:gap-6">
+      {/* Sistema Health Sidebar - Responsivo */}
+      <div className="lg:col-span-3">
+        <div className="lg:sticky lg:top-4">
+          <SystemHealthIndicator clientId={clientId || ''} />
+        </div>
       </div>
 
-      {/* Lista de Tickets com Abas */}
-      <Card className="col-span-9 flex flex-col">
+      {/* Lista de Tickets com Abas - Responsivo */}
+      <Card className="flex-1 lg:col-span-9 flex flex-col min-h-0">
         <CardHeader className="pb-3">
           <div className="flex justify-between items-center">
             <div>
@@ -325,11 +327,11 @@ const TicketTabsInterface = () => {
                     </Button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 p-3 sm:p-4">
                     {filteredTickets.map((ticket) => (
                       <Card
                         key={ticket.id}
-                        className="cursor-pointer hover:bg-gray-50 transition-colors relative"
+                        className="cursor-pointer hover:bg-gray-50 transition-colors relative min-h-[120px]"
                       >
                         <CardContent className="p-4">
                           <div className="absolute top-2 right-2">
@@ -399,11 +401,11 @@ const TicketTabsInterface = () => {
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 p-3 sm:p-4">
                     {filteredTickets.map((ticket) => (
                       <Card
                         key={ticket.id}
-                        className="cursor-pointer hover:bg-gray-50 transition-colors relative opacity-75"
+                        className="cursor-pointer hover:bg-gray-50 transition-colors relative opacity-75 min-h-[120px]"
                       >
                         <CardContent className="p-4">
                           <div className="absolute top-2 right-2">
