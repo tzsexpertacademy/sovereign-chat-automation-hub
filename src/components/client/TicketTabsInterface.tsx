@@ -293,6 +293,18 @@ const TicketTabsInterface = () => {
               <Button 
                 variant="outline" 
                 size="sm"
+                onClick={() => {
+                  console.log('🔄 [REFRESH] Refresh manual da página');
+                  window.location.reload();
+                }}
+                title="⚡ Refresh Completo da Página"
+                className="bg-blue-50 hover:bg-blue-100 text-blue-600"
+              >
+                ⚡ Refresh
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
                 onClick={reloadTickets}
                 disabled={isLoading || isImporting}
                 title="Recarregar tickets manualmente"

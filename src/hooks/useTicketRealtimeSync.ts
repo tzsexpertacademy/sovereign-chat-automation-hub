@@ -21,7 +21,10 @@ export const useTicketRealtimeSync = ({
     
     console.log('🎯 [SYNC] Mudança detectada em ticket:', {
       evento: eventType,
-      ticketId: (newTicket as any)?.id || (oldTicket as any)?.id
+      ticketId: (newTicket as any)?.id || (oldTicket as any)?.id,
+      novoStatus: (newTicket as any)?.status,
+      antigaFila: (oldTicket as any)?.assigned_queue_id,
+      novaFila: (newTicket as any)?.assigned_queue_id
     });
 
     // REABERTURA AUTOMÁTICA
@@ -79,9 +82,17 @@ export const useTicketRealtimeSync = ({
         },
         handleTicketChange
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('🔗 [SYNC] Status da conexão realtime:', status);
+      });
 
     channelRef.current = channel;
+    
+    // Trigger imediato para casos de atraso
+    setTimeout(() => {
+      console.log('⚡ [SYNC] Trigger manual de atualização');
+      onTicketUpdate();
+    }, 100);
 
     return () => {
       if (channelRef.current) {
