@@ -778,17 +778,35 @@ async function processAudioDecryption(messageId: string, instanceId: string, bus
   try {
     console.log('🎵 [AUDIO-DECRYPT] Descriptografando:', messageId);
     
-    // Buscar dados do áudio
-    const { data: audioData } = await supabase
+    // ✅ VERIFICAÇÃO CRÍTICA: Se já está processado, não reprocessar
+    const { data: currentStatus } = await supabase
       .from('ticket_messages')
-      .select('media_url, media_key, media_mime_type')
+      .select('audio_base64, processing_status, media_url, media_key, media_mime_type')
       .eq('message_id', messageId)
       .eq('message_type', 'audio')
       .single();
     
-    if (!audioData?.media_url || !audioData?.media_key) {
+    if (currentStatus?.audio_base64) {
+      console.log('✅ [AUDIO-DECRYPT] Áudio já descriptografado - pulando:', messageId);
+      return;
+    }
+    
+    if (!currentStatus?.media_url || !currentStatus?.media_key) {
       console.log('⚠️ [AUDIO-DECRYPT] Dados incompletos para:', messageId);
       return;
+    }
+    
+    const audioData = currentStatus;
+    
+    // 🔧 CORREÇÃO CRÍTICA: Converter media_key se estiver em formato objeto
+    let mediaKey = audioData.media_key;
+    if (typeof mediaKey === 'object' && mediaKey !== null) {
+      console.log('🔄 [AUDIO-DECRYPT] Convertendo media_key de objeto para Base64');
+      mediaKey = convertToBase64Robust(mediaKey);
+      if (!mediaKey) {
+        console.error('❌ [AUDIO-DECRYPT] Falha na conversão de media_key:', messageId);
+        return;
+      }
     }
     
     // Chamar API de descriptografia
@@ -801,7 +819,7 @@ async function processAudioDecryption(messageId: string, instanceId: string, bus
       body: JSON.stringify({
         contentType: 'audio',
         url: audioData.media_url,
-        mediaKey: audioData.media_key,
+        mediaKey: mediaKey,
         mimetype: audioData.media_mime_type || 'audio/ogg'
       }),
     });
@@ -809,22 +827,87 @@ async function processAudioDecryption(messageId: string, instanceId: string, bus
     if (response.ok) {
       const result = await response.json();
       
+      // 🔧 VALIDAR FORMATO DE ÁUDIO antes de salvar
+      const audioBase64 = result.media;
+      if (!audioBase64 || typeof audioBase64 !== 'string') {
+        console.error('❌ [AUDIO-DECRYPT] Áudio descriptografado inválido:', messageId);
+        return;
+      }
+      
+      // Verificar se é Base64 válido e tem header correto
+      try {
+        const audioBytes = atob(audioBase64.substring(0, 50)); // Verificar header
+        console.log('✅ [AUDIO-DECRYPT] Áudio descriptografado validado:', {
+          messageId,
+          size: audioBase64.length,
+          headerBytes: audioBytes.slice(0, 10).split('').map(c => c.charCodeAt(0)).join(' ')
+        });
+      } catch (headerError) {
+        console.error('❌ [AUDIO-DECRYPT] Header de áudio inválido:', messageId, headerError);
+        return;
+      }
+      
       // Salvar áudio descriptografado
       await supabase
         .from('ticket_messages')
         .update({
-          audio_base64: result.media,
+          audio_base64: audioBase64,
           processing_status: 'decrypted'
         })
         .eq('message_id', messageId);
       
       console.log('✅ [AUDIO-DECRYPT] Sucesso:', messageId);
     } else {
-      console.log('❌ [AUDIO-DECRYPT] Falha API:', response.status);
+      const errorText = await response.text();
+      console.log('❌ [AUDIO-DECRYPT] Falha API:', response.status, errorText);
     }
     
   } catch (error) {
     console.error('❌ [AUDIO-DECRYPT] Erro:', messageId, error);
+    
+    // Marcar como failed para evitar loops
+    await supabase
+      .from('ticket_messages')
+      .update({ processing_status: 'failed' })
+      .eq('message_id', messageId);
+  }
+}
+
+/**
+ * 🔧 CONVERTER DADOS PARA BASE64 DE FORMA ROBUSTA
+ */
+function convertToBase64Robust(data: any): string | null {
+  try {
+    if (!data) return null;
+    
+    // Se já é string Base64, retornar como está
+    if (typeof data === 'string') {
+      return data;
+    }
+    
+    // Se é objeto {0: 165, 1: 232, ...} (Uint8Array serializado)
+    if (typeof data === 'object' && !Array.isArray(data)) {
+      const keys = Object.keys(data).map(Number).sort((a, b) => a - b);
+      if (keys.length > 0 && keys.every(k => !isNaN(k) && k >= 0)) {
+        const bytes = new Uint8Array(keys.length);
+        keys.forEach((key, index) => {
+          bytes[index] = data[key];
+        });
+        return btoa(String.fromCharCode(...bytes));
+      }
+    }
+    
+    // Se é array de bytes
+    if (Array.isArray(data)) {
+      const bytes = new Uint8Array(data);
+      return btoa(String.fromCharCode(...bytes));
+    }
+    
+    console.warn('🔧 [CONVERT-BASE64] Tipo não reconhecido:', typeof data);
+    return null;
+  } catch (error) {
+    console.error('❌ [CONVERT-BASE64] Erro:', error);
+    return null;
   }
 }
 

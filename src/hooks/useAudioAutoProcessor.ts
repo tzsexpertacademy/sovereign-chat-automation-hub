@@ -382,8 +382,13 @@ export const useAudioAutoProcessor = (clientId: string) => {
         }
       }
 
+      // ✅ VERIFICAÇÃO CRÍTICA: Se já foi processado pelo batch system, não reprocessar
+      if (mediaData.audio_base64) {
+        console.log('✅ [AUDIO-AUTO] Áudio já descriptografado pelo batch system - usando diretamente');
+        audioBase64 = mediaData.audio_base64;
+      }
       // 1. ESTRATÉGIA COM DADOS CORRIGIDOS: Priorizar media_key para descriptografia
-      if (mediaData.media_key && mediaData.media_url) {
+      else if (mediaData.media_key && mediaData.media_url) {
         console.log('🔐 [AUDIO-AUTO] 🔑 Áudio criptografado detectado - iniciando descriptografia');
         console.log('🔐 [AUDIO-AUTO] 📊 Parâmetros de descriptografia:', {
           instanceId: ticket.instance_id,
