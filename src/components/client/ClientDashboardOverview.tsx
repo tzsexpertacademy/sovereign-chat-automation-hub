@@ -3,10 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import RealTimeMetricsCard from "./RealTimeMetricsCard";
-import AIAutoProcessorStatus from "./AIAutoProcessorStatus";
-import { UnprocessedMessagesPanel } from "./UnprocessedMessagesPanel";
-import { MessageProcessingTestPanel } from "./MessageProcessingTestPanel";
-import { useMessageProcessingBackup } from "@/hooks/useMessageProcessingBackup";
+import SystemHealthIndicator from "./SystemHealthIndicator";
 import { 
   Users, 
   MessageSquare, 
@@ -17,9 +14,13 @@ import {
   Send,
   CheckCircle2,
   AlertCircle,
-  Activity
+  Activity,
+  BarChart3,
+  Zap,
+  Target,
+  Star
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { realTimeMetricsService, DashboardMetrics, HourlyActivity, QueueMetrics } from "@/services/realTimeMetricsService";
 import { useToast } from "@/hooks/use-toast";
 
@@ -36,8 +37,6 @@ const ClientDashboardOverview = ({ clientId }: ClientDashboardOverviewProps) => 
   const [isMounted, setIsMounted] = useState(true);
   const { toast } = useToast();
 
-  // Sistema de backup para mensagens perdidas
-  const { isEnabled: backupEnabled, isRunning: backupRunning } = useMessageProcessingBackup(clientId);
 
   const loadMetrics = async () => {
     if (!isMounted || !clientId) return;
@@ -172,19 +171,38 @@ const ClientDashboardOverview = ({ clientId }: ClientDashboardOverviewProps) => 
 
   const connectionStatus = getConnectionStatus();
 
+  const performanceData = [
+    { name: 'Taxa de Sucesso', value: metrics.responseRate, color: 'hsl(var(--primary))' },
+    { name: 'Pendente', value: 100 - metrics.responseRate, color: 'hsl(var(--muted))' }
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Cards de Métricas Principais */}
+    <div className="space-y-8">
+      {/* Header com Status de Conexão */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+              Dashboard
+            </h1>
+            <p className="text-muted-foreground">
+              Acompanhe suas métricas em tempo real
+            </p>
+          </div>
+          <SystemHealthIndicator clientId={clientId} />
+        </div>
+      </div>
+
+      {/* KPIs Principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Conexões */}
         <RealTimeMetricsCard
-          title="Conexões WhatsApp"
-          value={`${metrics.activeConnections}/${metrics.totalConnections}`}
-          subtitle="WhatsApp conectados"
-          icon={Phone}
-          progress={{
-            value: metrics.activeConnections,
-            max: metrics.totalConnections
+          title="Conversas Ativas"
+          value={metrics.openTickets + metrics.pendingTickets}
+          subtitle={`${metrics.openTickets} abertas, ${metrics.pendingTickets} aguardando`}
+          icon={MessageSquare}
+          trend={{
+            value: 12,
+            isPositive: true
           }}
           badge={{
             text: connectionStatus.label,
@@ -193,171 +211,301 @@ const ClientDashboardOverview = ({ clientId }: ClientDashboardOverviewProps) => 
           }}
         />
 
-        {/* Tickets */}
         <RealTimeMetricsCard
-          title="Tickets Ativos"
-          value={metrics.openTickets + metrics.pendingTickets}
-          subtitle={`${metrics.openTickets} abertos, ${metrics.pendingTickets} pendentes`}
-          icon={MessageSquare}
-          badge={metrics.openTickets > 10 ? {
-            text: "Alta demanda",
-            variant: "destructive"
-          } : undefined}
-        />
-
-        {/* Taxa de Resposta */}
-        <RealTimeMetricsCard
-          title="Taxa de Resolução"
+          title="Taxa de Sucesso"
           value={`${metrics.responseRate.toFixed(1)}%`}
-          subtitle={`${metrics.closedTickets} de ${metrics.totalTickets} tickets`}
-          icon={CheckCircle2}
+          subtitle={`${metrics.closedTickets} conversas resolvidas`}
+          icon={Target}
           progress={{
             value: metrics.responseRate
           }}
+          trend={{
+            value: 8,
+            isPositive: true
+          }}
         />
 
-        {/* Tempo Médio */}
         <RealTimeMetricsCard
-          title="Tempo Médio"
+          title="Tempo de Resposta"
           value={`${metrics.averageResponseTime}min`}
-          subtitle="Tempo médio de resposta"
-          icon={Clock}
+          subtitle="Média das últimas 24h"
+          icon={Zap}
           badge={{
-            text: metrics.averageResponseTime < 30 ? "Rápido" : "Moderado",
+            text: metrics.averageResponseTime < 30 ? "Excelente" : "Bom",
             variant: metrics.averageResponseTime < 30 ? "default" : "secondary"
+          }}
+          trend={{
+            value: 5,
+            isPositive: false
+          }}
+        />
+
+        <RealTimeMetricsCard
+          title="Atendimentos Hoje"
+          value={metrics.messagesLast24h}
+          subtitle="Mensagens processadas"
+          icon={BarChart3}
+          trend={{
+            value: 15,
+            isPositive: true
           }}
         />
       </div>
 
-      {/* Cards de Status dos Serviços */}
+      {/* Status dos Serviços */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Filas */}
-        <RealTimeMetricsCard
-          title="Filas de Atendimento"
-          value={metrics.activeQueues}
-          subtitle={`${metrics.activeQueues} de ${metrics.totalQueues} ativas`}
-          icon={Users}
-        />
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Phone className="h-5 w-5 text-primary" />
+                WhatsApp
+              </CardTitle>
+              <Badge variant={metrics.activeConnections > 0 ? "default" : "secondary"}>
+                {metrics.activeConnections > 0 ? "Conectado" : "Desconectado"}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Instâncias ativas</span>
+                <span className="font-medium">{metrics.activeConnections}/{metrics.totalConnections}</span>
+              </div>
+              <Progress value={(metrics.activeConnections / Math.max(metrics.totalConnections, 1)) * 100} className="h-2" />
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Assistentes */}
-        <RealTimeMetricsCard
-          title="Assistentes IA"
-          value={metrics.activeAssistants}
-          subtitle={`${metrics.activeAssistants} de ${metrics.totalAssistants} ativos`}
-          icon={Bot}
-        />
+        <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-transparent">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Bot className="h-5 w-5 text-emerald-600" />
+                Assistentes IA
+              </CardTitle>
+              <Badge variant={metrics.activeAssistants > 0 ? "default" : "secondary"}>
+                {metrics.activeAssistants} Ativos
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Disponíveis</span>
+                <span className="font-medium">{metrics.activeAssistants}/{metrics.totalAssistants}</span>
+              </div>
+              <Progress value={(metrics.activeAssistants / Math.max(metrics.totalAssistants, 1)) * 100} className="h-2" />
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Campanhas */}
-        <RealTimeMetricsCard
-          title="Campanhas"
-          value={metrics.activeCampaigns}
-          subtitle={`${metrics.activeCampaigns} de ${metrics.totalCampaigns} ativas`}
-          icon={Send}
-        />
+        <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-transparent">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Users className="h-5 w-5 text-blue-600" />
+                Filas de Atendimento
+              </CardTitle>
+              <Badge variant={metrics.activeQueues > 0 ? "default" : "secondary"}>
+                {metrics.activeQueues} Ativas
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Configuradas</span>
+                <span className="font-medium">{metrics.activeQueues}/{metrics.totalQueues}</span>
+              </div>
+              <Progress value={(metrics.activeQueues / Math.max(metrics.totalQueues, 1)) * 100} className="h-2" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Status do Processador de IA Automático */}
-      <AIAutoProcessorStatus clientId={clientId} />
-
-      {/* Painéis de Monitoramento e Teste */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <UnprocessedMessagesPanel clientId={clientId} />
-        <MessageProcessingTestPanel clientId={clientId} />
-      </div>
-
-      {/* Gráficos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Atividade por Hora */}
-        <Card>
+      {/* Analytics e Performance */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Atividade das Últimas 24h */}
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <Activity className="h-5 w-5" />
+              <Activity className="h-5 w-5 text-primary" />
               <span>Atividade das Últimas 24h</span>
             </CardTitle>
             <CardDescription>
-              Mensagens e tickets por hora
+              Volume de conversas e resolução por hora
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <LineChart data={hourlyActivity}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="hour" />
-                <YAxis />
-                <Tooltip />
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis 
+                  dataKey="hour" 
+                  axisLine={false}
+                  tickLine={false}
+                  fontSize={12}
+                />
+                <YAxis 
+                  axisLine={false}
+                  tickLine={false}
+                  fontSize={12}
+                />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px'
+                  }}
+                />
                 <Line 
                   type="monotone" 
                   dataKey="messages" 
                   stroke="hsl(var(--primary))" 
-                  strokeWidth={2}
-                  name="Mensagens"
+                  strokeWidth={3}
+                  dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 4 }}
+                  name="Conversas"
                 />
                 <Line 
                   type="monotone" 
-                  dataKey="tickets" 
-                  stroke="hsl(var(--secondary))" 
-                  strokeWidth={2}
-                  name="Tickets"
+                  dataKey="resolved" 
+                  stroke="#10b981" 
+                  strokeWidth={3}
+                  dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
+                  name="Resolvidas"
                 />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Performance das Filas */}
+        {/* Performance Geral */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <TrendingUp className="h-5 w-5" />
+              <Star className="h-5 w-5 text-yellow-500" />
+              <span>Performance</span>
+            </CardTitle>
+            <CardDescription>
+              Taxa de sucesso geral
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex justify-center">
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={performanceData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={70}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {performanceData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-primary"></div>
+                  <span className="text-sm">Taxa de Sucesso</span>
+                </div>
+                <span className="font-semibold">{metrics.responseRate.toFixed(1)}%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-muted"></div>
+                  <span className="text-sm">Em andamento</span>
+                </div>
+                <span className="font-semibold">{(100 - metrics.responseRate).toFixed(1)}%</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Performance das Filas */}
+      {queueMetrics.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
               <span>Performance das Filas</span>
             </CardTitle>
             <CardDescription>
-              Taxa de resolução por fila
+              Eficiência por fila de atendimento
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={queueMetrics}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="queueName" />
-                <YAxis />
-                <Tooltip />
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={queueMetrics} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis 
+                  dataKey="queueName" 
+                  axisLine={false}
+                  tickLine={false}
+                  fontSize={12}
+                />
+                <YAxis 
+                  axisLine={false}
+                  tickLine={false}
+                  fontSize={12}
+                />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px'
+                  }}
+                />
                 <Bar 
                   dataKey="resolutionRate" 
                   fill="hsl(var(--primary))"
+                  radius={[4, 4, 0, 0]}
                   name="Taxa de Resolução (%)"
                 />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
-      </div>
+      )}
 
-      {/* Resumo da Atividade */}
-      <Card>
+      {/* Resumo Executivo */}
+      <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
         <CardHeader>
-          <CardTitle>Resumo das Últimas 24 Horas</CardTitle>
+          <CardTitle className="flex items-center space-x-2">
+            <BarChart3 className="h-5 w-5 text-primary" />
+            <span>Resumo Executivo - Últimas 24h</span>
+          </CardTitle>
           <CardDescription>
-            Principais métricas de atividade
+            Principais indicadores de desempenho
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary">{metrics.messagesLast24h}</div>
-              <p className="text-sm text-muted-foreground">Mensagens Processadas</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="text-center space-y-2">
+              <div className="text-3xl font-bold text-primary">{metrics.messagesLast24h}</div>
+              <p className="text-sm text-muted-foreground font-medium">Conversas Iniciadas</p>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary">{metrics.closedTickets}</div>
-              <p className="text-sm text-muted-foreground">Tickets Resolvidos</p>
+            <div className="text-center space-y-2">
+              <div className="text-3xl font-bold text-emerald-600">{metrics.closedTickets}</div>
+              <p className="text-sm text-muted-foreground font-medium">Resoluções</p>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary">{metrics.activeConnections}</div>
-              <p className="text-sm text-muted-foreground">Conexões Ativas</p>
+            <div className="text-center space-y-2">
+              <div className="text-3xl font-bold text-blue-600">{metrics.averageResponseTime}min</div>
+              <p className="text-sm text-muted-foreground font-medium">Tempo Médio</p>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary">{metrics.activeAssistants}</div>
-              <p className="text-sm text-muted-foreground">Assistentes Trabalhando</p>
+            <div className="text-center space-y-2">
+              <div className="text-3xl font-bold text-purple-600">{metrics.responseRate.toFixed(0)}%</div>
+              <p className="text-sm text-muted-foreground font-medium">Taxa de Sucesso</p>
             </div>
           </div>
         </CardContent>
