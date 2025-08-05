@@ -424,70 +424,81 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-120px)] bg-gradient-to-br from-background to-muted/20">
-      {/* Lista de Chats - Responsivo */}
-      <div className="w-full lg:w-1/3 border-b lg:border-b-0 lg:border-r border-border/50 flex flex-col h-[40vh] lg:h-full max-h-[40vh] lg:max-h-none bg-card/50 backdrop-blur-sm">
-        <div className="p-4 border-b border-border/50 bg-gradient-to-r from-card to-muted/30 flex-shrink-0">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-120px)] bg-background">
+      {/* Lista de Chats - Design dashboard */}
+      <div className="w-full lg:w-1/3 border-b lg:border-b-0 lg:border-r border-border flex flex-col h-[40vh] lg:h-full max-h-[40vh] lg:max-h-none bg-card">
+        <div className="p-4 border-b border-border bg-gradient-to-r from-background to-muted/20 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-2">
-              <h2 className="font-semibold text-foreground">Conversas</h2>
-              {unreadTotal > 0 && (
-                <span className="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-destructive rounded-full animate-pulse">
-                  {unreadTotal}
-                </span>
-              )}
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 rounded-md bg-primary/10 border border-primary/20">
+                <MessageSquare className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-foreground">Conversas</h2>
+                {unreadTotal > 0 && (
+                  <Badge variant="destructive" className="text-xs animate-pulse">
+                    {unreadTotal} não lidas
+                  </Badge>
+                )}
+              </div>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-1">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={reloadTickets}
                 disabled={ticketsLoading}
+                className="h-8 w-8 p-0"
               >
-                <RefreshCw className={`w-4 h-4 ${ticketsLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3 h-3 ${ticketsLoading ? 'animate-spin' : ''}`} />
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={forceSyncMessages}
                 disabled={syncStatus === 'syncing'}
-                title="Forçar sincronização de mensagens"
+                title="Sincronizar mensagens"
+                className="h-8 w-8 p-0"
               >
-                <RotateCw className={`w-4 h-4 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                <RotateCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
               </Button>
             </div>
           </div>
 
-          {/* Status de sincronização */}
-          <div className="mb-3">
+          {/* Status simplificado */}
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">
+              <Wifi className="h-3 w-3 mr-1" />
+              Online
+            </Badge>
             {renderSyncStatus()}
           </div>
         </div>
 
-        {/* Lista de conversas */}
+        {/* Lista de conversas - limpa */}
         <div className="flex-1 overflow-y-auto min-h-0">
           {ticketsLoading ? (
-            <div className="p-4 text-center text-muted-foreground">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
-              Carregando conversas...
+            <div className="p-3 text-center text-muted-foreground">
+              <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2" />
+              <span className="text-xs">Carregando...</span>
             </div>
           ) : sidebarTickets.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground">
-              <MessageSquare className="w-8 h-8 mx-auto mb-2 text-muted-foreground/60" />
-              <p className="text-sm mb-2">Nenhuma conversa encontrada</p>
-              <p className="text-xs text-muted-foreground/80 mb-3">
-                Aguarde novas mensagens chegarem do WhatsApp
+              <MessageSquare className="w-6 h-6 mx-auto mb-2 opacity-50" />
+              <p className="text-sm mb-1">Nenhuma conversa</p>
+              <p className="text-xs opacity-70">
+                Aguardando mensagens...
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <div className="divide-y divide-border/50">
               {sidebarTickets.map((chat) => (
-                 <li
+                 <div
                   key={chat.id}
-                  className={`p-4 cursor-pointer hover:bg-muted/50 transition-all duration-200 relative group ${
+                  className={`p-3 cursor-pointer hover:bg-muted/50 transition-all duration-150 relative ${
                     currentChatId === chat.id 
-                      ? 'bg-primary/10 border-r-2 border-primary shadow-sm' 
-                      : 'hover:shadow-sm'
+                      ? 'bg-primary/5 border-r-2 border-primary' 
+                      : ''
                   }`}
                   onClick={() => handleSelectChat(chat.id)}
                 >
@@ -526,12 +537,12 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
                         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                       )}
                     </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                   </div>
+                 </div>
+               ))}
+             </div>
+           )}
+         </div>
 
       </div>
 

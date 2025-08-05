@@ -31,10 +31,6 @@ const SimpleRealtimeStatus = ({
         REST • Enviando
       </Badge>
       
-      {/* Última Atualização */}
-      <Badge variant="outline" className="text-xs">
-        Via: {lastUpdateSource === 'supabase' ? 'Realtime' : 'Polling'}
-      </Badge>
       
       {/* Contador de Mensagens */}
       {messagesCount > 0 && (
