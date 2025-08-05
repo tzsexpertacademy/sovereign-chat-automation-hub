@@ -18,7 +18,14 @@ Deno.serve(async (req) => {
   console.log('⏰ [SCHEDULER-TRIGGER] Executando trigger do scheduler');
 
   try {
-    console.log('⏰ [SCHEDULER-TRIGGER] Iniciando processamento de batches...');
+    console.log('⏰ [SCHEDULER-TRIGGER] Iniciando processamento de mídias e batches...');
+    
+    // Chamar primeiro a função de processamento de mídias
+    const mediaResponse = await supabase.functions.invoke('process-received-media', {
+      body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
+    });
+    
+    console.log('⏰ [SCHEDULER-TRIGGER] Mídia processada:', mediaResponse.data);
     
     // Chamar a função de processamento de batches
     const response = await supabase.functions.invoke('process-message-batches', {

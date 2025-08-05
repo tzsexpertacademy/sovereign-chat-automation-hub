@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     const { data: pendingMessages, error: queryError } = await supabase
       .from('ticket_messages')
       .select('*')
-      .eq('processing_status', 'pending')
+      .in('processing_status', ['pending', 'received'])
       .in('message_type', ['audio', 'image', 'video', 'document'])
       .not('media_key', 'is', null)
       .not('media_url', 'is', null)
