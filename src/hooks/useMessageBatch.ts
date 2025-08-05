@@ -20,7 +20,7 @@ interface MessageBatch {
 }
 
 const defaultConfig: BatchConfig = {
-  timeout: 2500, // 2.5 segundos por padrão
+  timeout: 4000, // 4 segundos por padrão
   maxBatchSize: 10,
   enabled: true
 };
@@ -37,8 +37,8 @@ export const useMessageBatch = (
     try {
       console.log(`🎭 [MESSAGE-BATCH] Aplicando config padrão para assistente: ${assistantId}`);
       
-      // Usar timeout padrão de 2.5 segundos
-      const defaultTimeout = 2500;
+      // Usar timeout padrão de 4 segundos
+      const defaultTimeout = 4000;
       
       setConfig(prev => ({
         ...prev,
@@ -120,7 +120,7 @@ export const useMessageBatch = (
       messageTimeout = 12000; // 12s quando detecta comando de mídia futura  
       console.log(`🎯 [MESSAGE-BATCH] Comando de mídia futura detectado, timeout: ${messageTimeout}ms`);
     } else {
-      messageTimeout = 3000; // 3s para texto simples
+      messageTimeout = 4000; // 4s para texto simples
       console.log(`📝 [MESSAGE-BATCH] Texto simples, timeout: ${messageTimeout}ms`);
     }
     
