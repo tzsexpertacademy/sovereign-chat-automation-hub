@@ -106,15 +106,16 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Buscar mensagens com mídia pendente de processamento
+    // ✅ CORREÇÃO: Buscar mensagens de mídia que precisam ser descriptografadas
+    // Inclui mensagens que têm media_key mas não têm os dados base64 correspondentes
     const { data: pendingMessages, error: queryError } = await supabase
       .from('ticket_messages')
       .select('*')
-      .in('processing_status', ['pending', 'received'])
       .in('message_type', ['audio', 'image', 'video', 'document'])
       .not('media_key', 'is', null)
       .not('media_url', 'is', null)
-      .limit(10)
+      .or('processing_status.in.(pending,received),and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
+      .limit(20)
 
     if (queryError) {
       console.error('❌ Erro ao buscar mensagens pendentes:', queryError)
@@ -138,7 +139,24 @@ Deno.serve(async (req) => {
 
     for (const message of pendingMessages) {
       try {
-        console.log(`📱 Processando mídia: ${message.message_type} - ${message.message_id}`)
+        // ✅ VERIFICAÇÃO DE COMPLETUDE: Verificar se a mídia já foi processada
+        const needsProcessing = (() => {
+          switch (message.message_type) {
+            case 'image': return !message.image_base64
+            case 'audio': return !message.audio_base64
+            case 'video': return !message.video_base64
+            case 'document': return !message.document_base64
+            default: return false
+          }
+        })()
+
+        if (!needsProcessing) {
+          console.log(`⏭️ Mídia já processada: ${message.message_type} - ${message.message_id}`)
+          continue
+        }
+
+        console.log(`🔧 [MEDIA-DECRYPT] Processando mídia incompleta: ${message.message_type} - ${message.message_id}`)
+        console.log(`🔍 [MEDIA-DECRYPT] Dados disponíveis: media_key=${!!message.media_key}, media_url=${!!message.media_url}`)
 
         // Buscar dados da instância para obter client_id
         const { data: instanceData } = await supabase
@@ -264,7 +282,8 @@ Deno.serve(async (req) => {
           continue
         }
 
-        console.log(`✅ Mídia processada: ${message.message_type} - ${message.message_id}`)
+        console.log(`✅ [MEDIA-DECRYPT] Mídia processada com sucesso: ${message.message_type} - ${message.message_id}`)
+        console.log(`🎯 [MEDIA-DECRYPT] Base64 salvo: ${base64Data.length} bytes`)
         processedCount++
 
       } catch (error) {
