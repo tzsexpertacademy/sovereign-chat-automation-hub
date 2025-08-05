@@ -52,16 +52,16 @@ const TicketFiltersBar: React.FC<TicketFiltersBarProps> = ({
 
         {/* Filtro por Fila */}
         <Select
-          value={filters.queues.length > 0 ? filters.queues[0] : ""}
+          value={filters.queues.length > 0 ? filters.queues[0] : "__all_queues__"}
           onValueChange={(value) => 
-            onUpdateFilter('queues', value ? [value] : [])
+            onUpdateFilter('queues', value === "__all_queues__" ? [] : [value])
           }
         >
           <SelectTrigger className="w-[180px] h-8">
             <SelectValue placeholder="Todas as filas" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todas as filas</SelectItem>
+            <SelectItem value="__all_queues__">Todas as filas</SelectItem>
             {availableQueues.map((queue) => (
               <SelectItem key={queue.value} value={queue.value}>
                 📋 {queue.label}
@@ -72,16 +72,16 @@ const TicketFiltersBar: React.FC<TicketFiltersBarProps> = ({
 
         {/* Filtro por Instância */}
         <Select
-          value={filters.instances.length > 0 ? filters.instances[0] : ""}
+          value={filters.instances.length > 0 ? filters.instances[0] : "__all_instances__"}
           onValueChange={(value) => 
-            onUpdateFilter('instances', value ? [value] : [])
+            onUpdateFilter('instances', value === "__all_instances__" ? [] : [value])
           }
         >
           <SelectTrigger className="w-[180px] h-8">
             <SelectValue placeholder="Todas instâncias" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todas as instâncias</SelectItem>
+            <SelectItem value="__all_instances__">Todas as instâncias</SelectItem>
             {availableInstances.map((instance) => (
               <SelectItem key={instance.value} value={instance.value}>
                 📱 {instance.label}
