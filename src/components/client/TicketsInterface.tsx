@@ -189,7 +189,7 @@ const TicketsInterface = () => {
               <CardDescription className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>Sistema YUMER v1.3.0 ativo</span>
+                  <span>Sistema YumerFlow V2</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Activity className={`h-4 w-4 ${getSyncStatusColor()}`} />
