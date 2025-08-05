@@ -124,9 +124,9 @@ async function processYumerMessage(yumerData: any) {
         pushName: mappedMessage.sender
       };
 
-      // Usar RPC para gestão de batches
+      // Usar RPC V2 para gestão de batches com timeouts sincronizados
       const { data: batchResult, error: batchError } = await supabase
-        .rpc('manage_message_batch', {
+        .rpc('manage_message_batch_v2', {
           p_chat_id: mappedMessage.chat_id,
           p_client_id: clientId,
           p_instance_id: instanceId,
