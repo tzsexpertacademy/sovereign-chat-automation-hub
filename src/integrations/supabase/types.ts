@@ -2275,6 +2275,10 @@ export type Database = {
         Args: { created_at: string }
         Returns: number
       }
+      cleanup_cron_conflicts: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       cleanup_expired_decrypted_audio: {
         Args: Record<PropertyKey, never>
         Returns: number
