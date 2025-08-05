@@ -102,8 +102,9 @@ export const useAudioAutoProcessor = (clientId: string) => {
               continue;
             }
 
+            // 🚫 PARAR PROCESSAMENTO DUPLICADO: Se não está no estado inicial, significa que o batch já processou
             if (currentStatus?.processing_status !== 'received') {
-              console.log(`⏭️ [AUDIO-AUTO] POLLING - áudio mudou status: ${audio.message_id} -> ${currentStatus?.processing_status}`);
+              console.log(`✅ [AUDIO-AUTO] POLLING - áudio já processado pelo batch: ${audio.message_id} -> ${currentStatus?.processing_status}`);
               continue;
             }
 

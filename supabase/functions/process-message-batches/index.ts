@@ -856,7 +856,12 @@ async function processAudioDecryption(messageId: string, instanceId: string, bus
         })
         .eq('message_id', messageId);
       
-      console.log('✅ [AUDIO-DECRYPT] Sucesso:', messageId);
+      console.log('✅ [AUDIO-DECRYPT] Sucesso, iniciando transcrição:', messageId);
+      
+      // 🎤 TRANSCREVER ÁUDIO IMEDIATAMENTE NO BATCH
+      await processAudioTranscription(messageId, audioBase64);
+      
+      console.log('✅ [AUDIO-DECRYPT] Processo completo:', messageId);
     } else {
       const errorText = await response.text();
       console.log('❌ [AUDIO-DECRYPT] Falha API:', response.status, errorText);
@@ -866,6 +871,71 @@ async function processAudioDecryption(messageId: string, instanceId: string, bus
     console.error('❌ [AUDIO-DECRYPT] Erro:', messageId, error);
     
     // Marcar como failed para evitar loops
+    await supabase
+      .from('ticket_messages')
+      .update({ processing_status: 'failed' })
+      .eq('message_id', messageId);
+  }
+}
+
+/**
+ * 🎤 TRANSCREVER ÁUDIO USANDO SPEECH-TO-TEXT EDGE FUNCTION
+ */
+async function processAudioTranscription(messageId: string, audioBase64: string) {
+  try {
+    console.log('🎤 [AUDIO-TRANSCRIBE] Iniciando transcrição:', messageId);
+    
+    // Buscar OpenAI API key
+    const { data: secretData } = await supabase
+      .from('vault')
+      .select('decrypted_secret')
+      .eq('name', 'OPENAI_API_KEY')
+      .single();
+    
+    if (!secretData?.decrypted_secret) {
+      console.log('❌ [AUDIO-TRANSCRIBE] OpenAI API key não encontrada');
+      return;
+    }
+    
+    // Chamar edge function speech-to-text
+    const { data: transcriptionResult, error } = await supabase.functions.invoke('speech-to-text', {
+      body: {
+        audio: audioBase64,
+        openaiApiKey: secretData.decrypted_secret,
+        messageId: messageId
+      }
+    });
+    
+    if (error) {
+      console.log('❌ [AUDIO-TRANSCRIBE] Erro na edge function:', error);
+      await supabase
+        .from('ticket_messages')
+        .update({ processing_status: 'failed' })
+        .eq('message_id', messageId);
+      return;
+    }
+    
+    if (transcriptionResult?.text) {
+      // Salvar transcrição no content (não em media_transcription)
+      await supabase
+        .from('ticket_messages')
+        .update({
+          content: transcriptionResult.text,
+          processing_status: 'transcribed'
+        })
+        .eq('message_id', messageId);
+      
+      console.log('✅ [AUDIO-TRANSCRIBE] Transcrição salva:', messageId, transcriptionResult.text.substring(0, 50) + '...');
+    } else {
+      console.log('❌ [AUDIO-TRANSCRIBE] Transcrição vazia:', messageId);
+      await supabase
+        .from('ticket_messages')
+        .update({ processing_status: 'failed' })
+        .eq('message_id', messageId);
+    }
+    
+  } catch (error) {
+    console.error('❌ [AUDIO-TRANSCRIBE] Erro:', messageId, error);
     await supabase
       .from('ticket_messages')
       .update({ processing_status: 'failed' })
