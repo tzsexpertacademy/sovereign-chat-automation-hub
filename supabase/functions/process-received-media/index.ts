@@ -213,44 +213,14 @@ Deno.serve(async (req) => {
 
         console.log(`🔑 [MEDIA-DECRYPT] Business token encontrado para cliente`)
 
-        // ✅ CORREÇÃO URGENTE: Validar e processar mediaKey CORRETAMENTE
-        let mediaKeyBase64: string
-        
-        console.log(`🔍 [MEDIA-KEY-DEBUG] Analisando mediaKey:`, {
-          type: typeof message.media_key,
-          isString: typeof message.media_key === 'string',
-          isArray: Array.isArray(message.media_key),
-          isObject: typeof message.media_key === 'object' && message.media_key !== null,
-          stringLength: typeof message.media_key === 'string' ? message.media_key.length : 'N/A',
-          firstChars: typeof message.media_key === 'string' ? message.media_key.substring(0, 20) : 'N/A'
-        })
-        
-        if (typeof message.media_key === 'string') {
-          // Se já é string, assumir que é Base64 válido (como está no banco)
-          mediaKeyBase64 = message.media_key
-          console.log(`🔑 [MEDIA-KEY] Usando string Base64 do banco: ${message.media_key.length} chars`)
-          
-          // Validar se é Base64 válido
-          try {
-            const testDecode = atob(message.media_key.substring(0, Math.min(100, message.media_key.length)))
-            console.log(`✅ [MEDIA-KEY] Base64 válido confirmado, primeiros bytes decodificados: ${testDecode.length}`)
-          } catch (e) {
-            console.error(`❌ [MEDIA-KEY] Base64 inválido no banco:`, e.message)
-            continue
-          }
-        } else if (Array.isArray(message.media_key)) {
-          // Se é array de bytes, converter para Base64
-          mediaKeyBase64 = btoa(String.fromCharCode(...message.media_key))
-          console.log(`🔑 [MEDIA-KEY] Convertendo array de ${message.media_key.length} bytes para Base64`)
-        } else if (typeof message.media_key === 'object' && message.media_key !== null) {
-          // Se é objeto com propriedades numéricas, extrair valores
-          const keyValues = Object.values(message.media_key) as number[]
-          mediaKeyBase64 = btoa(String.fromCharCode(...keyValues))
-          console.log(`🔑 [MEDIA-KEY] Convertendo objeto com ${keyValues.length} propriedades para Base64`)
-        } else {
-          console.error(`❌ [MEDIA-KEY] Formato não suportado:`, typeof message.media_key, message.media_key)
+        // ✅ SIMPLIFICAÇÃO TOTAL: mediaKey como string direta
+        if (!message.media_key) {
+          console.error(`❌ [MEDIA-KEY] MediaKey não encontrada`)
           continue
         }
+        
+        console.log(`🔑 [MEDIA-KEY] Usando mediaKey direta: ${typeof message.media_key}, length: ${message.media_key.length}`)
+        const mediaKeyBase64 = message.media_key
 
         const downloadRequest = {
           contentType: message.message_type,
@@ -262,25 +232,8 @@ Deno.serve(async (req) => {
           }
         }
 
-        console.log(`📡 [MEDIA-DECRYPT] Request preparado:`, {
-          contentType: downloadRequest.contentType,
-          url: downloadRequest.content.url?.substring(0, 50) + '...',
-          hasMediaKey: !!downloadRequest.content.mediaKey,
-          mediaKeyLength: downloadRequest.content.mediaKey?.length || 0,
-          mediaKeyPrefix: downloadRequest.content.mediaKey?.substring(0, 20) + '...',
-          mimetype: downloadRequest.content.mimetype,
-          directPath: downloadRequest.content.directPath?.substring(0, 50)
-        })
-
-        // ✅ VALIDAÇÃO CRÍTICA: Verificar integridade da MediaKey antes de enviar
-        console.log(`🔍 [PRE-DOWNLOAD-CHECK] Validação final da MediaKey:`, {
-          mediaKeyLength: mediaKeyBase64.length,
-          mediaKeyPrefix: mediaKeyBase64.substring(0, 30),
-          mediaKeySuffix: mediaKeyBase64.substring(mediaKeyBase64.length - 10),
-          isValidBase64: /^[A-Za-z0-9+/=]*$/.test(mediaKeyBase64),
-          expectedMinLength: mediaKeyBase64.length > 20,
-          messageType: message.message_type
-        })
+        console.log(`📡 [MEDIA-DECRYPT] Calling Yumer API...`)
+        console.log(`📡 [MEDIA-DECRYPT] Request: ${downloadRequest.contentType}, URL: ${downloadRequest.content.url?.substring(0, 30)}...`)
 
         // Chamar endpoint de descriptografia
         const downloadUrl = `https://api.yumer.com.br/api/v2/instance/${ticketData.instance_id}/media/directly-download`
@@ -314,48 +267,18 @@ Deno.serve(async (req) => {
           continue
         }
 
-        // ✅ CORREÇÃO CRÍTICA: Validar resposta antes de processar
+        // ✅ SIMPLIFICAÇÃO: Baixar e converter diretamente
         const arrayBuffer = await downloadResponse.arrayBuffer()
-        console.log(`📦 [MEDIA-DECRYPT] Buffer recebido: ${arrayBuffer.byteLength} bytes`)
+        console.log(`📦 [MEDIA-DECRYPT] Downloaded: ${arrayBuffer.byteLength} bytes`)
         
         if (arrayBuffer.byteLength === 0) {
-          console.error(`❌ Buffer vazio recebido para: ${message.message_id}`)
+          console.error(`❌ Empty response for: ${message.message_id}`)
           continue
         }
         
-        // ✅ VALIDAÇÃO CRÍTICA: Verificar tamanho mínimo para áudio WhatsApp
-        if (message.message_type === 'audio' && arrayBuffer.byteLength < 1000) {
-          console.error(`❌ [AUDIO-VALIDATION] Áudio muito pequeno: ${arrayBuffer.byteLength} bytes (mínimo esperado: 1KB)`)
-          console.error(`❌ [AUDIO-VALIDATION] Possível falha na descriptografia para: ${message.message_id}`)
-          continue
-        }
-        
-        // Conversão direta simples (como na versão que funcionava)
+        // Conversão simples para Base64
         const base64String = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
-        console.log(`✅ [MEDIA-DECRYPT] Base64 gerado: ${base64String.length} caracteres`)
-        
-        // ✅ VALIDAÇÃO ADICIONAL: Verificar integridade do Base64 para áudio
-        if (message.message_type === 'audio') {
-          const uint8Array = new Uint8Array(arrayBuffer)
-          const headerHex = Array.from(uint8Array.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
-          console.log(`🔍 [AUDIO-VALIDATION] Header do arquivo descriptografado: ${headerHex}`)
-          
-          // Verificar se header indica arquivo de áudio válido
-          const isValidAudioHeader = (
-            headerHex.startsWith('4f 67 67 53') || // OGG
-            headerHex.startsWith('52 49 46 46') || // WAV  
-            headerHex.startsWith('ff f') ||         // MP3
-            headerHex.startsWith('1a 45 df a3')    // WebM
-          )
-          
-          if (!isValidAudioHeader) {
-            console.error(`❌ [AUDIO-VALIDATION] Header inválido para áudio: ${headerHex}`)
-            console.error(`❌ [AUDIO-VALIDATION] Possível corrupção na descriptografia para: ${message.message_id}`)
-            // Continuar mesmo assim para tentar, mas com warning
-          } else {
-            console.log(`✅ [AUDIO-VALIDATION] Header de áudio válido confirmado`)
-          }
-        }
+        console.log(`✅ [MEDIA-DECRYPT] Base64 created: ${base64String.length} chars`)
 
         // Salvar dados base64 na coluna apropriada
         const updateData: any = {
