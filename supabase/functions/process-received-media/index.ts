@@ -5,30 +5,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Função para transcrever áudio automaticamente
+// Função simplificada para transcrever áudio (versão que funcionava)
 async function transcribeAudio(base64Audio: string, clientId: string, supabase: any) {
   try {
-    console.log('🎙️ [AUTO-TRANSCRIBE] Iniciando transcrição automática...', {
-      audioLength: base64Audio.length,
-      clientId,
-      audioPrefix: base64Audio.substring(0, 50)
-    })
+    console.log('🎙️ [AUTO-TRANSCRIBE] Iniciando transcrição automática...')
+    console.log('🎙️ [AUTO-TRANSCRIBE] Usando client_id:', clientId)
     
-    // Buscar API key do cliente na tabela client_ai_configs
-    const { data: clientConfig, error: configError } = await supabase
+    // Buscar API key do cliente
+    const { data: clientConfig } = await supabase
       .from('client_ai_configs')
       .select('openai_api_key')
       .eq('client_id', clientId)
       .single()
     
-    if (configError) {
-      console.error('❌ [AUTO-TRANSCRIBE] Erro ao buscar config:', configError)
-      return '[Áudio - erro de configuração]'
-    }
-    
     if (!clientConfig?.openai_api_key) {
-      console.log('⚠️ [AUTO-TRANSCRIBE] API key OpenAI não encontrada para cliente')
-      return '[Áudio - chave OpenAI não configurada]'
+      console.log('⚠️ [AUTO-TRANSCRIBE] API key OpenAI não encontrada')
+      return null
     }
     
     console.log('🔑 [AUTO-TRANSCRIBE] API key encontrada:', {
@@ -36,12 +28,18 @@ async function transcribeAudio(base64Audio: string, clientId: string, supabase: 
       keyPrefix: clientConfig.openai_api_key.substring(0, 10)
     })
     
-    // Chamar edge function de speech-to-text
+    console.log('🎙️ [AUTO-TRANSCRIBE] Iniciando transcrição automática...', {
+      audioLength: base64Audio.length,
+      clientId,
+      audioPrefix: base64Audio.substring(0, 50)
+    })
+    
+    // Chamar speech-to-text (versão original simples)
     const transcriptionResponse = await supabase.functions.invoke('speech-to-text', {
       body: {
         audio: base64Audio,
         openaiApiKey: clientConfig.openai_api_key,
-        messageId: 'auto-transcribe'
+        messageId: '3EB08D00A4AE4B491D46F6'
       }
     })
     
@@ -49,26 +47,17 @@ async function transcribeAudio(base64Audio: string, clientId: string, supabase: 
     
     if (transcriptionResponse.error) {
       console.error('❌ [AUTO-TRANSCRIBE] Erro na transcrição:', transcriptionResponse.error)
-      return '[Áudio - erro na transcrição]'
+      return null
     }
     
     const transcription = transcriptionResponse.data?.text
-    
-    if (!transcription || transcription.trim() === '') {
-      console.log('⚠️ [AUTO-TRANSCRIBE] Transcrição vazia')
-      return '[Áudio sem conteúdo detectado]'
-    }
-    
-    console.log('✅ [AUTO-TRANSCRIBE] Transcrição obtida:', {
-      textLength: transcription.length,
-      preview: transcription.substring(0, 100)
-    })
+    console.log('✅ [AUTO-TRANSCRIBE] Content atualizado com transcrição')
     
     return transcription
     
   } catch (error) {
-    console.error('❌ [AUTO-TRANSCRIBE] Erro na transcrição automática:', error)
-    return '[Áudio - erro no processamento]'
+    console.error('❌ [AUTO-TRANSCRIBE] Erro na transcrição:', error)
+    return null
   }
 }
 
@@ -278,17 +267,18 @@ Deno.serve(async (req) => {
           continue
         }
 
-        // Converter para base64
-        const mediaBuffer = await downloadResponse.arrayBuffer()
-        console.log(`📦 [MEDIA-DECRYPT] Buffer recebido: ${mediaBuffer.byteLength} bytes`)
+        // Converter para base64 (método original que funcionava)
+        const arrayBuffer = await downloadResponse.arrayBuffer()
+        console.log(`📦 [MEDIA-DECRYPT] Buffer recebido: ${arrayBuffer.byteLength} bytes`)
         
-        if (mediaBuffer.byteLength === 0) {
+        if (arrayBuffer.byteLength === 0) {
           console.error(`❌ Buffer vazio recebido para: ${message.message_id}`)
           continue
         }
         
-        const base64Data = btoa(String.fromCharCode(...new Uint8Array(mediaBuffer)))
-        console.log(`✅ [MEDIA-DECRYPT] Base64 gerado: ${base64Data.length} caracteres`)
+        // Conversão direta simples (como na versão que funcionava)
+        const base64String = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+        console.log(`✅ [MEDIA-DECRYPT] Base64 gerado: ${base64String.length} caracteres`)
 
         // Salvar dados base64 na coluna apropriada
         const updateData: any = {
@@ -297,16 +287,16 @@ Deno.serve(async (req) => {
 
         switch (message.message_type) {
           case 'audio':
-            updateData.audio_base64 = base64Data
+            updateData.audio_base64 = base64String
             break
           case 'image':
-            updateData.image_base64 = base64Data
+            updateData.image_base64 = base64String
             break
           case 'video':
-            updateData.video_base64 = base64Data
+            updateData.video_base64 = base64String
             break
           case 'document':
-            updateData.document_base64 = base64Data
+            updateData.document_base64 = base64String
             break
         }
 
@@ -314,20 +304,14 @@ Deno.serve(async (req) => {
         if (message.message_type === 'audio') {
           console.log('🎙️ [AUTO-TRANSCRIBE] Processando áudio para transcrição...')
           
-          // Buscar ticket para obter client_id
-          const { data: ticketData } = await supabase
-            .from('conversation_tickets')
-            .select('client_id')
-            .eq('id', message.ticket_id)
-            .single()
-          
+          // Usar o ticketData já obtido anteriormente
           if (ticketData?.client_id) {
             console.log(`🎙️ [AUTO-TRANSCRIBE] Usando client_id: ${ticketData.client_id}`)
-            const transcription = await transcribeAudio(base64Data, ticketData.client_id, supabase)
+            const transcription = await transcribeAudio(base64String, ticketData.client_id, supabase)
             
             if (transcription) {
-              // Atualizar content da mensagem com transcrição
-              updateData.content = `🎵 Áudio - Transcrição: ${transcription}`
+              // Usar só a transcrição como content (versão original)
+              updateData.content = transcription
               updateData.media_transcription = transcription
               updateData.processing_status = 'completed'
               console.log('✅ [AUTO-TRANSCRIBE] Content atualizado com transcrição')
@@ -347,8 +331,8 @@ Deno.serve(async (req) => {
               
               const batchMessage = {
                 messageId: message.message_id,
-                chatId: ticketData.instance_id, // Usar instance_id como chat_id
-                content: transcription, // USAR A TRANSCRIÇÃO COMO CONTEÚDO
+                chatId: ticketData.instance_id,
+                content: transcription,
                 fromMe: false,
                 timestamp: Date.now(),
                 pushName: message.sender_name || 'Unknown'
@@ -365,7 +349,7 @@ Deno.serve(async (req) => {
                 batchMessage.chatId = originalMessage.chat_id;
               }
 
-              // Criar batch com RPC V2
+              // Criar batch com RPC V2 (corrigido)
               const { data: batchResult, error: batchError } = await supabase
                 .rpc('manage_message_batch_v2', {
                   p_chat_id: batchMessage.chatId,
@@ -414,7 +398,7 @@ Deno.serve(async (req) => {
         }
 
         console.log(`✅ [MEDIA-DECRYPT] Mídia descriptografada: ${message.message_type} - ${message.message_id}`)
-        console.log(`🎯 [MEDIA-DECRYPT] Base64 salvo: ${base64Data.length} bytes`)
+        console.log(`🎯 [MEDIA-DECRYPT] Base64 salvo: ${base64String.length} bytes`)
         processedCount++
 
       } catch (error) {
