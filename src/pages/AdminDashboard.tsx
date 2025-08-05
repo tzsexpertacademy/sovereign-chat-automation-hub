@@ -9,6 +9,7 @@ import { QuickBusinessTokenRegenerator } from "@/components/admin/QuickBusinessT
 import { ManualMessageTester } from "@/components/admin/ManualMessageTester";
 import { ImageProcessingTest } from "@/components/admin/ImageProcessingTest";
 import { BatchTestingPanel } from "@/components/admin/BatchTestingPanel";
+import { EmergencyImageFix } from "@/components/admin/EmergencyImageFix";
 
 const AdminDashboard = () => {
   return (
@@ -59,7 +60,8 @@ const AdminDashboard = () => {
                 fallbackMessage="Problema ao carregar o teste de processamento de imagem."
               >
           <ImageProcessingTest />
-          <BatchTestingPanel />
+            <BatchTestingPanel />
+            <EmergencyImageFix />
               </SafeComponent>
             </div>
 
