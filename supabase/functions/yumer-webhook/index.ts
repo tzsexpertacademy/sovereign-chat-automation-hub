@@ -50,6 +50,39 @@ Deno.serve(async (req) => {
   });
 });
 
+// 🎵 FUNÇÃO PARA EXTRAIR METADADOS DE MÍDIA
+function extractMediaData(messageObj: any): any {
+  console.log('🎵 [EXTRACT-MEDIA] Processando:', messageObj.contentType);
+  
+  if (!messageObj.content || typeof messageObj.content !== 'object') {
+    console.log('⚠️ [EXTRACT-MEDIA] Sem dados de conteúdo válidos');
+    return null;
+  }
+
+  const content = messageObj.content;
+  
+  // Dados de mídia padrão do WhatsApp
+  const mediaData = {
+    url: content.url,
+    mimetype: content.mimetype || content.mimeType,
+    mediaKey: content.mediaKey,
+    directPath: content.directPath,
+    fileEncSha256: content.fileEncSha256,
+    fileSha256: content.fileSha256,
+    fileLength: content.fileLength,
+    seconds: content.seconds, // Para áudio
+    ptt: content.ptt // Push-to-talk (áudio)
+  };
+
+  // Filtrar campos nulos/undefined
+  const filteredMediaData = Object.fromEntries(
+    Object.entries(mediaData).filter(([_, value]) => value != null)
+  );
+
+  console.log('🎵 [EXTRACT-MEDIA] Metadados extraídos:', filteredMediaData);
+  return Object.keys(filteredMediaData).length > 0 ? filteredMediaData : null;
+}
+
 // 🔧 FUNÇÃO PRINCIPAL PARA PROCESSAR MENSAGEM YUMER
 async function processYumerMessage(yumerData: any) {
   try {
@@ -77,21 +110,40 @@ async function processYumerMessage(yumerData: any) {
     const clientId = instance.client_id;
     console.log('✅ [PROCESS-YUMER] Instância encontrada:', { instanceId, clientId });
 
-    // 🗺️ MAPEAMENTO DEFINITIVO DOS CAMPOS YUMER PARA BANCO
+    // 🎵 EXTRAIR METADADOS DE MÍDIA SE NECESSÁRIO
+    let mediaData = null;
+    const contentType = messageData.contentType || 'text';
+    
+    if (['audio', 'image', 'video', 'document'].includes(contentType)) {
+      mediaData = extractMediaData(messageData);
+      console.log('🎵 [PROCESS-YUMER] Mídia detectada:', { contentType, hasMediaData: !!mediaData });
+    }
+
+    // 🗺️ MAPEAMENTO DEFINITIVO DOS CAMPOS YUMER PARA BANCO COM MÍDIA
     const mappedMessage = {
       message_id: messageData.keyId || messageData.messageId,
       chat_id: messageData.keyRemoteJid || messageData.chatId,
-      body: messageData.content?.text || messageData.content || '',
-      message_type: messageData.contentType || 'text',
-      from_me: Boolean(messageData.keyFromMe), // GARANTIR BOOLEAN CORRETO
+      body: contentType === 'text' 
+        ? (messageData.content?.text || messageData.content || '') 
+        : (mediaData || messageData.content), // Para mídia, salvar objeto completo
+      message_type: contentType,
+      from_me: Boolean(messageData.keyFromMe),
       sender: messageData.pushName || 'Unknown',
       timestamp: messageData.messageTimestamp ? 
         new Date(messageData.messageTimestamp * 1000).toISOString() : 
         new Date().toISOString(),
-      instance_id: instanceId, // USAR INSTANCIA CORRETA SEMPRE
+      instance_id: instanceId,
       client_id: clientId,
       is_processed: false,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      // 🎵 METADADOS DE MÍDIA ESPECÍFICOS
+      media_url: mediaData?.url || null,
+      media_key: mediaData?.mediaKey || null,
+      file_enc_sha256: mediaData?.fileEncSha256 || null,
+      file_sha256: mediaData?.fileSha256 || null,
+      media_mime_type: mediaData?.mimetype || null,
+      direct_path: mediaData?.directPath || null,
+      media_duration: mediaData?.seconds || null
     };
 
     console.log('🗺️ [MAPEAMENTO] Dados mapeados:', JSON.stringify(mappedMessage, null, 2));
