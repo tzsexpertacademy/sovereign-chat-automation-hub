@@ -305,7 +305,30 @@ async function processMessageBatch(yumerData: any) {
       });
     }
 
-    // SALVAR MENSAGEM NO BANCO PRIMEIRO (com dados de mídia completos)
+    // ✅ CORREÇÃO CRÍTICA: SEMPRE CHAMAR UPSERT_CONVERSATION_TICKET
+    console.log('🔥 [UPSERT-TICKET] ⚡ Chamando upsert_conversation_ticket para QUALQUER mensagem');
+    
+    try {
+      const { data: ticketId, error: upsertError } = await supabase.rpc('upsert_conversation_ticket', {
+        p_client_id: instance.client_id,
+        p_chat_id: chatId,
+        p_instance_id: instance.instance_id,
+        p_customer_name: pushName,
+        p_customer_phone: phoneNumber,
+        p_last_message: content,
+        p_last_message_at: new Date().toISOString()
+      });
+
+      if (upsertError) {
+        console.error('❌ [UPSERT-TICKET] Erro na função upsert:', upsertError);
+      } else {
+        console.log('✅ [UPSERT-TICKET] Ticket processado:', ticketId);
+      }
+    } catch (upsertTicketError) {
+      console.error('❌ [UPSERT-TICKET] Erro crítico no upsert:', upsertTicketError);
+    }
+
+    // SALVAR MENSAGEM NO BANCO (com dados de mídia completos)
     const saveResult = await saveMessageToDatabase({
       ...messageData,
       messageType,

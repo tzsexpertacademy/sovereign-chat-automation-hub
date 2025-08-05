@@ -1,24 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, MessageSquare, RefreshCw, Download, CheckCircle, Activity, Settings } from "lucide-react";
+import { MessageSquare, RefreshCw, Download, CheckCircle, Activity, Settings } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useTicketRealtimeImproved } from "@/hooks/useTicketRealtimeImproved";
+import { useTicketFilters } from "@/hooks/useTicketFilters";
 import { incrementalImportService } from "@/services/incrementalImportService";
 import TicketChatInterface from "./TicketChatInterface";
 import SystemHealthIndicator from "./SystemHealthIndicator";
 import TicketActionsMenu from "./TicketActionsMenu";
+import TicketFiltersBar from "./TicketFiltersBar";
 
 const TicketTabsInterface = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const { toast } = useToast();
-  const [searchTerm, setSearchTerm] = useState("");
   const [selectedTicket, setSelectedTicket] = useState<string>("");
   const [isImporting, setIsImporting] = useState(false);
   const [activeTab, setActiveTab] = useState<"open" | "closed">("open");
@@ -33,8 +33,19 @@ const TicketTabsInterface = () => {
     forceSyncMessages 
   } = useTicketRealtimeImproved(clientId || '');
 
-  // Filtrar tickets por status conforme aba ativa
-  const getFilteredTickets = () => {
+  // Hook de filtros avançados
+  const {
+    filters,
+    availableQueues,
+    availableInstances,
+    updateFilter,
+    clearFilters,
+    activeFiltersCount,
+    hasActiveFilters
+  } = useTicketFilters(clientId || '');
+
+  // Filtrar tickets com base nos filtros aplicados
+  const filteredTickets = useMemo(() => {
     let statusFilter: string[] = [];
     
     if (activeTab === "open") {
@@ -44,17 +55,48 @@ const TicketTabsInterface = () => {
     }
 
     return tickets.filter(ticket => {
-      const matchesSearch = ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           ticket.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           ticket.last_message_preview?.toLowerCase().includes(searchTerm.toLowerCase());
-      
+      // Filtro por status (aba)
       const matchesStatus = statusFilter.includes(ticket.status);
       
-      return matchesSearch && matchesStatus;
+      // Filtro por busca de texto
+      const matchesSearch = !filters.search || (
+        ticket.title.toLowerCase().includes(filters.search.toLowerCase()) ||
+        ticket.customer?.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        ticket.last_message_preview?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        ticket.customer?.phone?.includes(filters.search)
+      );
+      
+      // Filtro por fila
+      const matchesQueue = filters.queues.length === 0 || 
+        filters.queues.includes(ticket.assigned_queue_id || '');
+      
+      // Filtro por instância
+      const matchesInstance = filters.instances.length === 0 ||
+        filters.instances.some(instanceId => {
+          // Encontrar a instância no availableInstances e comparar com ticket.instance_id
+          const instance = availableInstances.find(i => i.value === instanceId);
+          return instance && ticket.instance_id;
+        });
+      
+      // Filtro por período
+      const matchesPeriod = (() => {
+        if (filters.period === 'all') return true;
+        
+        const ticketDate = new Date(ticket.last_message_at);
+        const now = new Date();
+        const diffDays = Math.floor((now.getTime() - ticketDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        switch (filters.period) {
+          case '7d': return diffDays <= 7;
+          case '30d': return diffDays <= 30;
+          case '90d': return diffDays <= 90;
+          default: return true;
+        }
+      })();
+      
+      return matchesStatus && matchesSearch && matchesQueue && matchesInstance && matchesPeriod;
     });
-  };
-
-  const filteredTickets = getFilteredTickets();
+  }, [tickets, activeTab, filters, availableInstances]);
 
   // Contar tickets por status
   const openTicketsCount = tickets.filter(t => ['open', 'pending'].includes(t.status)).length;
@@ -262,15 +304,14 @@ const TicketTabsInterface = () => {
           </div>
           
           <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input 
-                placeholder="Buscar tickets..." 
-                className="pl-10"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+            <TicketFiltersBar
+              filters={filters}
+              availableQueues={availableQueues}
+              availableInstances={availableInstances}
+              onUpdateFilter={updateFilter}
+              onClearFilters={clearFilters}
+              activeFiltersCount={activeFiltersCount}
+            />
           </div>
         </CardHeader>
         
@@ -306,9 +347,21 @@ const TicketTabsInterface = () => {
                     <p className="text-sm">
                       {openTicketsCount === 0 
                         ? "Todos os tickets estão fechados ou resolvidos"
-                        : "Nenhum ticket corresponde aos filtros aplicados"
+                        : hasActiveFilters 
+                          ? "Nenhum ticket corresponde aos filtros aplicados"
+                          : "Nenhum ticket aberto no momento"
                       }
                     </p>
+                    {hasActiveFilters && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={clearFilters}
+                        className="mt-2"
+                      >
+                        Limpar Filtros
+                      </Button>
+                    )}
                     <Button 
                       size="sm" 
                       variant="outline" 
@@ -394,9 +447,21 @@ const TicketTabsInterface = () => {
                     <p className="text-sm">
                       {closedTicketsCount === 0 
                         ? "Nenhum ticket foi fechado ainda"
-                        : "Nenhum ticket corresponde aos filtros aplicados"
+                        : hasActiveFilters
+                          ? "Nenhum ticket corresponde aos filtros aplicados"
+                          : "Nenhum ticket fechado no período selecionado"
                       }
                     </p>
+                    {hasActiveFilters && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={clearFilters}
+                        className="mt-2"
+                      >
+                        Limpar Filtros
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 p-3 sm:p-4">

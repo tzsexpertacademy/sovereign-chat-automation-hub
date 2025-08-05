@@ -5,6 +5,19 @@ import { ticketsService, type ConversationTicket } from '@/services/ticketsServi
 import { yumerMessageSyncService } from '@/services/yumerMessageSyncService';
 import { useToast } from '@/hooks/use-toast';
 
+// Debounce para evitar múltiplas chamadas
+const debounce = (func: Function, wait: number) => {
+  let timeout: NodeJS.Timeout;
+  return function executedFunction(...args: any[]) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
+
 export const useTicketRealtimeImproved = (clientId: string) => {
   const [tickets, setTickets] = useState<ConversationTicket[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -12,46 +25,31 @@ export const useTicketRealtimeImproved = (clientId: string) => {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   
   const channelRef = useRef<any>(null);
-  const messageSyncChannelRef = useRef<any>(null);
   const mountedRef = useRef(true);
+  const lastLoadTime = useRef<number>(0);
   const { toast } = useToast();
 
-  // Carregar tickets com debug melhorado
+  // Carregar tickets com debounce para evitar loop infinito
   const loadTickets = useCallback(async () => {
     if (!clientId || !mountedRef.current) return;
+    
+    // Throttle: máximo 1 call por segundo
+    const now = Date.now();
+    if (now - lastLoadTime.current < 1000) {
+      console.log('🔄 [TICKETS] Carregamento throttled, aguardando...');
+      return;
+    }
+    lastLoadTime.current = now;
     
     try {
       setIsLoading(true);
       console.log('🔄 [TICKETS] Carregando tickets para cliente:', clientId);
       
-      // Verificar se existem tickets no banco primeiro
-      const { data: ticketCount, error: countError } = await supabase
-        .from('conversation_tickets')
-        .select('id', { count: 'exact' })
-        .eq('client_id', clientId);
-      
-
-      // Verificar mensagens não processadas
-      const { data: instances } = await supabase
-        .from('whatsapp_instances')
-        .select('instance_id')
-        .eq('client_id', clientId);
-
-      if (instances && instances.length > 0) {
-        const instanceIds = instances.map(i => i.instance_id);
-        const { data: unprocessedMessages } = await supabase
-          .from('whatsapp_messages')
-          .select('id', { count: 'exact' })
-          .in('instance_id', instanceIds)
-          .eq('is_processed', false);
-        
-        
-      }
-      
       const ticketsData = await ticketsService.getTicketsByClient(clientId);
       
       if (mountedRef.current) {
         setTickets(ticketsData);
+        console.log('✅ [TICKETS] Tickets carregados:', ticketsData.length);
       }
     } catch (error) {
       console.error('❌ [TICKETS] Erro ao carregar tickets:', error);
@@ -99,7 +97,17 @@ export const useTicketRealtimeImproved = (clientId: string) => {
     }
   }, [clientId, loadTickets, toast]);
 
-  // Configurar listeners de tempo real melhorados
+  // Debounced loadTickets para evitar múltiplas chamadas
+  const debouncedLoadTickets = useCallback(
+    debounce(() => {
+      if (mountedRef.current) {
+        loadTickets();
+      }
+    }, 1500), // 1.5 segundos de debounce
+    [loadTickets]
+  );
+
+  // Configurar listeners de tempo real otimizados
   useEffect(() => {
     if (!clientId) return;
 
@@ -109,13 +117,12 @@ export const useTicketRealtimeImproved = (clientId: string) => {
     // Carregar tickets iniciais
     loadTickets();
 
-    // Sincronizar mensagens YUMER não processadas após 2 segundos
-    setTimeout(syncUnprocessedMessages, 2000);
+    // Sincronizar mensagens YUMER não processadas após 3 segundos
+    setTimeout(syncUnprocessedMessages, 3000);
 
-    // Listener para mudanças nos tickets
-    const uniqueId = Date.now();
-    const ticketsChannel = supabase
-      .channel(`tickets-realtime-yumer-${clientId}-${uniqueId}`)
+    // ✅ LISTENER UNIFICADO SEM TIMESTAMP ÚNICO
+    const unifiedChannel = supabase
+      .channel(`tickets-unified-${clientId}`)
       .on(
         'postgres_changes',
         {
@@ -125,76 +132,53 @@ export const useTicketRealtimeImproved = (clientId: string) => {
           filter: `client_id=eq.${clientId}`
         },
         (payload) => {
-          if (mountedRef.current) {
-            setTimeout(loadTickets, 500);
-          }
+          console.log('🔄 [REALTIME] Mudança em ticket detectada');
+          debouncedLoadTickets();
         }
       )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ticket_messages'
-        },
-        (payload) => {
-          if (mountedRef.current) {
-            setTimeout(loadTickets, 500);
-          }
-        }
-      )
-      .subscribe();
-
-    channelRef.current = ticketsChannel;
-
-    // Listener para novas mensagens WhatsApp/YUMER
-    const messagesChannel = supabase
-      .channel(`whatsapp-messages-yumer-${clientId}-${uniqueId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'whatsapp_messages'
+          table: 'ticket_messages'
         },
         async (payload) => {
-          // Verificar se a mensagem pertence a uma instância do cliente
-          const { data: instance } = await supabase
-            .from('whatsapp_instances')
+          // Verificar se a mensagem pertence a um ticket do cliente
+          const { data: ticket } = await supabase
+            .from('conversation_tickets')
             .select('client_id')
-            .eq('instance_id', payload.new?.instance_id)
+            .eq('id', payload.new?.ticket_id)
             .single();
 
-          if (instance?.client_id === clientId && mountedRef.current) {
-            setTimeout(loadTickets, 1000);
+          if (ticket?.client_id === clientId && mountedRef.current) {
+            console.log('🔄 [REALTIME] Nova mensagem detectada');
+            debouncedLoadTickets();
           }
         }
       )
       .subscribe();
 
-    messageSyncChannelRef.current = messagesChannel;
+    channelRef.current = unifiedChannel;
 
-    // Sincronização automática periódica (a cada 2 minutos para reduzir carga)
+    // Sincronização automática periódica reduzida
     const syncInterval = setInterval(() => {
       if (mountedRef.current) {
         syncUnprocessedMessages();
       }
-    }, 120000);
+    }, 180000); // 3 minutos
 
     return () => {
-      console.log('🔌 [REALTIME] Limpando listeners YUMER');
+      console.log('🔌 [REALTIME] Limpando listeners');
       mountedRef.current = false;
       
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
-      if (messageSyncChannelRef.current) {
-        supabase.removeChannel(messageSyncChannelRef.current);
-      }
       
       clearInterval(syncInterval);
     };
-  }, [clientId, loadTickets, syncUnprocessedMessages, toast]);
+  }, [clientId, loadTickets, debouncedLoadTickets, syncUnprocessedMessages]);
 
   const reloadTickets = useCallback(() => {
     if (mountedRef.current) {
