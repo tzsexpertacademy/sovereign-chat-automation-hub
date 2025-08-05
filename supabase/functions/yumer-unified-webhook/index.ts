@@ -202,8 +202,31 @@ async function processMessageBatch(yumerData: any) {
       .single();
 
     if (instanceError || !instance) {
-      console.log('🔥 [BATCH-SIMPLES] Instância não encontrada, processando simples');
-      return await processSingleMessage(yumerData);
+      console.log('🔥 [BATCH-SIMPLES] ❌ Instância não encontrada:', instanceName);
+      console.log('🔥 [BATCH-SIMPLES] 🔍 Tentando buscar por instance_id:', instanceId);
+      
+      // TENTAR BUSCAR POR INSTANCE_ID COMO FALLBACK
+      const { data: instanceFallback } = await supabase
+        .from('whatsapp_instances')
+        .select('instance_id, client_id, id')
+        .eq('instance_id', instanceId)
+        .single();
+      
+      if (!instanceFallback) {
+        console.log('🔥 [BATCH-SIMPLES] ❌ Nenhuma instância encontrada - REJEITANDO');
+        return new Response(JSON.stringify({ 
+          error: 'Instance not found',
+          instanceName,
+          instanceId
+        }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Usar instância encontrada como fallback
+      instance = instanceFallback;
+      console.log('🔥 [BATCH-SIMPLES] ✅ Instância encontrada via fallback:', instance.instance_id);
     }
 
     console.log('🔥 [BATCH-SIMPLES] Instância encontrada:', instance.instance_id);
@@ -232,51 +255,45 @@ async function processMessageBatch(yumerData: any) {
           if (ticketId) {
             console.log('🎥 [WEBHOOK-INTERCEPT] 🎯 Chamando AI para processar vídeo imediatamente...');
             
-            const aiResponse = await supabase.functions.invoke('ai-assistant-process', {
-              body: {
-                ticketId: ticketId,
-                messages: [{
-                  content: content,
-                  messageId: messageId,
-                  timestamp: new Date().toISOString(),
-                  customerName: pushName,
-                  phoneNumber: phoneNumber
-                }],
-                context: {
-                  chatId: chatId,
-                  customerName: pushName,
-                  phoneNumber: phoneNumber,
-                  immediateVideoCommand: true
-                }
-              }
+            // ✅ CORREÇÃO: NÃO CHAMAR AI-ASSISTANT-PROCESS DIRETAMENTE
+            // Salvar a mensagem e deixar o sistema de batch processar
+            console.log('🎥 [WEBHOOK-INTERCEPT] 📦 Salvando comando de vídeo para processamento em batch...');
+            
+            // Salvar mensagem no banco
+            await saveMessageToDatabase({
+              ...messageData,
+              messageType: 'text',
+              content,
+              keyId: messageId,
+              keyFromMe: false,
+              messageTimestamp: Date.now() / 1000
+            }, { 
+              client_id: instance.client_id, 
+              instance_id: instance.instance_id 
+            }, chatId, pushName, phoneNumber);
+
+            // Adicionar ao batch para processamento
+            const batchResult = await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
+              content: content,
+              messageId: messageId,
+              timestamp: new Date().toISOString(),
+              customerName: pushName,
+              phoneNumber: phoneNumber,
+              isVideoCommand: true
             });
 
-            console.log('🎥 [WEBHOOK-INTERCEPT] 🎯 Resultado da AI para vídeo:', { 
-              success: !aiResponse.error, 
-              hasError: !!aiResponse.error,
-              errorMsg: aiResponse.error?.message 
+            console.log('🎥 [WEBHOOK-INTERCEPT] ✅ Comando de vídeo adicionado ao batch:', { 
+              success: batchResult.success,
+              isNewBatch: batchResult.isNewBatch
             });
 
-            if (!aiResponse.error) {
-              console.log('🎥 [WEBHOOK-INTERCEPT] ✅ Comando de vídeo processado com SUCESSO!');
-              
-              // Marcar mensagem como processada
-              await supabase
-                .from('whatsapp_messages')
-                .update({ 
-                  is_processed: true,
-                  processed_at: new Date().toISOString()
-                })
-                .eq('message_id', messageId);
-
-              return new Response(JSON.stringify({ 
-                success: true, 
-                message: 'Video command processed immediately',
-                processed: true
-              }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-              });
-            }
+            return new Response(JSON.stringify({ 
+              success: true, 
+              message: 'Video command batched for processing',
+              batched: true
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
           }
         } catch (error) {
           console.error('🎥 [WEBHOOK-INTERCEPT] ❌ Erro ao processar comando de vídeo:', error);
@@ -284,10 +301,30 @@ async function processMessageBatch(yumerData: any) {
       }
     }
 
-    // SE É MENSAGEM DO SISTEMA, PROCESSAR IMEDIATAMENTE
+    // SE É MENSAGEM DO SISTEMA, APENAS SALVAR (NÃO PROCESSAR)
     if (fromMe) {
-      console.log('🔥 [BATCH-SIMPLES] Mensagem do sistema - processando imediatamente');
-      return await processSingleMessage(yumerData, false);
+      console.log('🔥 [BATCH-SIMPLES] Mensagem do sistema - apenas salvando (sem processar)');
+      
+      // Salvar mensagem no banco
+      await saveMessageToDatabase({
+        ...messageData,
+        messageType,
+        content,
+        mediaUrl,
+        mediaKey,
+        fileEncSha256,
+        fileSha256,
+        directPath,
+        mediaMimeType,
+        mediaDuration
+      }, instance, chatId, pushName, phoneNumber);
+      
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: 'System message saved' 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     // 🎯 MENSAGEM DO CLIENTE - USAR SISTEMA DE BATCHING
