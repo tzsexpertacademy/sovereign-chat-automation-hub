@@ -311,7 +311,7 @@ async function processMessageBatch(yumerData: any) {
             }, chatId, pushName, phoneNumber);
 
             // Adicionar ao batch para processamento (V2 sincronizado)
-            const batchResult = await upsertMessageBatchV2(chatId, instance.client_id, instance.instance_id, {
+            const batchResult = await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
               content: content,
               messageId: messageId,
               timestamp: new Date().toISOString(),
@@ -479,7 +479,7 @@ async function processMessageBatch(yumerData: any) {
     }
 
     // ✅ USAR SISTEMA DE BATCH PERSISTENTE V2 COM TIMEOUTS SINCRONIZADOS
-    const batchResult = await upsertMessageBatchV2(chatId, instance.client_id, instance.instance_id, {
+    const batchResult = await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
       content,
       messageId,
       timestamp: new Date().toISOString(),
@@ -523,8 +523,8 @@ async function upsertMessageBatch(chatId: string, clientId: string, instanceId: 
   });
 
   try {
-    // USAR TRANSAÇÃO PARA EVITAR RACE CONDITIONS
-    const { data: result, error } = await supabase.rpc('manage_message_batch', {
+    // USAR TRANSAÇÃO V2 COM TIMEOUTS SINCRONIZADOS
+    const { data: result, error } = await supabase.rpc('manage_message_batch_v2', {
       p_chat_id: chatId,
       p_client_id: clientId,
       p_instance_id: instanceId,
