@@ -106,6 +106,12 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // 🛡️ PROTEÇÃO CONTRA LOOP INFINITO: Timeout global de 30 segundos
+    const processingTimeout = setTimeout(() => {
+      console.log('⏰ [TIMEOUT] Processamento cancelado por timeout (30s)')
+      throw new Error('Processing timeout exceeded')
+    }, 30000)
+
     // ✅ MÉTODO ÚNICO: Buscar mensagens que precisam descriptografia via API directly-download
     console.log('🔍 [MEDIA-DECRYPT] Buscando mensagens pendentes de descriptografia...')
     
@@ -329,6 +335,9 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 🛡️ LIMPAR TIMEOUT: Cancelar timeout se chegou até aqui
+    clearTimeout(processingTimeout)
+    
     console.log(`🎯 Descriptografia concluída: ${processedCount} sucesso, ${errorCount} erros`)
 
     // ✅ FLUXO UNIFICADO: Chamar análise de mídia se houve descriptografias
@@ -353,6 +362,12 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('❌ Erro no processamento de mídia:', error)
+    
+    // 🛡️ LIMPAR TIMEOUT: Garantir que timeout seja cancelado em caso de erro
+    try {
+      clearTimeout(processingTimeout)
+    } catch {}
+    
     return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : 'Unknown error'
     }), {
