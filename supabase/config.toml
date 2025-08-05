@@ -10,9 +10,6 @@ verify_jwt = false
 [functions.yumer-unified-webhook]
 verify_jwt = false
 
-[functions.batch-scheduler]
-verify_jwt = false
-
 [functions.process-message-batches]
 verify_jwt = false
 
