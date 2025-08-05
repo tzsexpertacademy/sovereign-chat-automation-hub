@@ -259,61 +259,99 @@ async function processBatch(batch: any) {
       ticket = newTicket;
     }
 
-    // 🎵 AGUARDAR TRANSCRIÇÃO PARA MENSAGENS DE ÁUDIO
+    // 🎵 AGUARDAR TRANSCRIÇÃO OTIMIZADA POR TIPO DE MÍDIA
     const processedMessages = await Promise.all(batch.messages.map(async (msg: any) => {
-      // Se é uma mensagem de áudio com placeholder, buscar transcrição real
-      if (msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio')) {
-        console.log('🎵 [TRANSCRIPTION-WAIT] 🔍 Aguardando transcrição para:', msg.messageId);
+      const isAudioMessage = msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio');
+      const isTextMessage = !isAudioMessage;
+      
+      // ⚡ PROCESSAMENTO IMEDIATO PARA TEXTO
+      if (isTextMessage) {
+        console.log('⚡ [MEDIA-OPT] Processamento imediato para texto:', msg.messageId);
+        return msg;
+      }
+      
+      // 🎵 PROCESSAMENTO OTIMIZADO PARA ÁUDIO (AGUARDAR TRANSCRIÇÃO)
+      if (isAudioMessage) {
+        console.log('🎵 [MEDIA-OPT] Aguardando transcrição para áudio:', msg.messageId);
         
-        // Buscar na tabela ticket_messages pela transcrição real
-        const { data: ticketMessage } = await supabase
+        // TENTATIVA 1: Verificação imediata
+        let { data: ticketMessage } = await supabase
           .from('ticket_messages')
           .select('content, audio_base64')
           .eq('message_id', msg.messageId)
           .single();
         
-        if (ticketMessage && ticketMessage.content && ticketMessage.content !== '🎵 Áudio') {
-          console.log('✅ [TRANSCRIPTION-WAIT] 📝 Transcrição encontrada:', {
+        if (ticketMessage && ticketMessage.content && 
+            ticketMessage.content !== '🎵 Áudio' && 
+            ticketMessage.content.length > 10) {
+          console.log('✅ [MEDIA-OPT] Transcrição imediata encontrada:', {
             messageId: msg.messageId,
-            originalContent: msg.content,
-            newContent: ticketMessage.content.substring(0, 50) + '...'
+            contentLength: ticketMessage.content.length
           });
-          
-          // Retornar mensagem com conteúdo transcrito
+          return {
+            ...msg,
+            content: ticketMessage.content,
+            isTranscribed: true
+          };
+        }
+        
+        // TENTATIVA 2: Aguardar 5s para áudio
+        console.log('🎵 [MEDIA-OPT] ⏳ Aguardando 5s para transcrição de áudio...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        ({ data: ticketMessage } = await supabase
+          .from('ticket_messages')
+          .select('content')
+          .eq('message_id', msg.messageId)
+          .single());
+        
+        if (ticketMessage && ticketMessage.content && 
+            ticketMessage.content !== '🎵 Áudio' && 
+            ticketMessage.content.length > 10) {
+          console.log('✅ [MEDIA-OPT] Transcrição encontrada após 5s:', {
+            messageId: msg.messageId,
+            contentLength: ticketMessage.content.length
+          });
+          return {
+            ...msg,
+            content: ticketMessage.content,
+            isTranscribed: true
+          };
+        }
+        
+        // TENTATIVA 3: Aguardar mais 8s (total 13s para áudios)
+        console.log('🎵 [MEDIA-OPT] ⏳ Aguardando mais 8s para transcrição (tentativa final)...');
+        await new Promise(resolve => setTimeout(resolve, 8000));
+        
+        ({ data: ticketMessage } = await supabase
+          .from('ticket_messages')
+          .select('content')
+          .eq('message_id', msg.messageId)
+          .single());
+        
+        if (ticketMessage && ticketMessage.content && 
+            ticketMessage.content !== '🎵 Áudio' && 
+            ticketMessage.content.length > 10) {
+          console.log('✅ [MEDIA-OPT] Transcrição encontrada após 13s total:', {
+            messageId: msg.messageId,
+            contentLength: ticketMessage.content.length
+          });
           return {
             ...msg,
             content: ticketMessage.content,
             isTranscribed: true
           };
         } else {
-          console.log('⚠️ [TRANSCRIPTION-WAIT] ⏳ Transcrição ainda não disponível:', msg.messageId);
-          
-          // Se transcrição não está disponível, aguardar mais tempo
-          console.log('🎵 [TRANSCRIPTION-WAIT] ⏳ Aguardando 3s para transcrição...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          // Tentar novamente
-          const { data: retryTicketMessage } = await supabase
-            .from('ticket_messages')
-            .select('content')
-            .eq('message_id', msg.messageId)
-            .single();
-          
-          if (retryTicketMessage && retryTicketMessage.content && retryTicketMessage.content !== '🎵 Áudio') {
-            console.log('✅ [TRANSCRIPTION-WAIT] 📝 Transcrição encontrada na segunda tentativa:', msg.messageId);
-            return {
-              ...msg,
-              content: retryTicketMessage.content,
-              isTranscribed: true
-            };
-          } else {
-            console.log('❌ [TRANSCRIPTION-WAIT] ⚠️ Transcrição não disponível - usando placeholder:', msg.messageId);
-            return msg; // Usar placeholder como fallback
-          }
+          console.log('❌ [MEDIA-OPT] ⚠️ Transcrição não disponível após 13s - usando placeholder:', msg.messageId);
+          return {
+            ...msg,
+            isTranscribed: false,
+            transcriptionFailed: true
+          };
         }
       }
       
-      // Mensagem não é áudio, retornar como está
+      // Fallback para outros tipos
       return msg;
     }));
 
