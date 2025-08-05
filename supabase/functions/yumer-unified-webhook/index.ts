@@ -639,6 +639,7 @@ async function saveMessageToDatabase(messageData: any, instance: any, chatId: st
     const messageToSave = {
       message_id: messageData.keyId,
       chat_id: chatId,
+      client_id: instance.client_id,
       instance_id: instance.instance_id,
       message_type: messageData.messageType || 'text',
       body: messageData.content || '',
