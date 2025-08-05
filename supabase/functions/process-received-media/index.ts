@@ -213,12 +213,34 @@ Deno.serve(async (req) => {
 
         console.log(`🔑 [MEDIA-DECRYPT] Business token encontrado para cliente`)
 
-        // Preparar dados para descriptografia - CORRIGIR FORMATO DA API
-        const mediaKeyBase64 = Array.isArray(message.media_key) 
-          ? btoa(String.fromCharCode(...message.media_key))
-          : (typeof message.media_key === 'object' 
-              ? btoa(String.fromCharCode(...Object.values(message.media_key)))
-              : message.media_key)
+        // ✅ CORREÇÃO DEFINITIVA: Processar mediaKey corretamente
+        let mediaKeyBase64: string
+        
+        if (typeof message.media_key === 'string') {
+          // Se já é string, verificar se é Base64 válido ou se precisa converter
+          try {
+            // Testar se é Base64 válido
+            atob(message.media_key)
+            mediaKeyBase64 = message.media_key
+            console.log(`🔑 [MEDIA-KEY] Usando string Base64 diretamente: ${message.media_key.length} chars`)
+          } catch (e) {
+            // Se não é Base64 válido, assumir que é string literal e converter
+            mediaKeyBase64 = btoa(message.media_key)
+            console.log(`🔑 [MEDIA-KEY] Convertendo string literal para Base64`)
+          }
+        } else if (Array.isArray(message.media_key)) {
+          // Se é array de bytes, converter para Base64
+          mediaKeyBase64 = btoa(String.fromCharCode(...message.media_key))
+          console.log(`🔑 [MEDIA-KEY] Convertendo array de ${message.media_key.length} bytes para Base64`)
+        } else if (typeof message.media_key === 'object' && message.media_key !== null) {
+          // Se é objeto com propriedades numéricas, extrair valores
+          const keyValues = Object.values(message.media_key) as number[]
+          mediaKeyBase64 = btoa(String.fromCharCode(...keyValues))
+          console.log(`🔑 [MEDIA-KEY] Convertendo objeto com ${keyValues.length} propriedades para Base64`)
+        } else {
+          console.error(`❌ [MEDIA-KEY] Formato não suportado:`, typeof message.media_key, message.media_key)
+          continue
+        }
 
         const downloadRequest = {
           contentType: message.message_type,
@@ -234,7 +256,8 @@ Deno.serve(async (req) => {
           contentType: downloadRequest.contentType,
           url: downloadRequest.content.url?.substring(0, 50) + '...',
           hasMediaKey: !!downloadRequest.content.mediaKey,
-          mediaKeyType: typeof downloadRequest.content.mediaKey,
+          mediaKeyLength: downloadRequest.content.mediaKey?.length || 0,
+          mediaKeyPrefix: downloadRequest.content.mediaKey?.substring(0, 20) + '...',
           mimetype: downloadRequest.content.mimetype,
           directPath: downloadRequest.content.directPath?.substring(0, 50)
         })

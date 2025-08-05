@@ -153,26 +153,40 @@ serve(async (req) => {
       keyPrefix: openaiApiKey?.substring(0, 10) || 'N/A'
     });
     
-    if ((!audio && !audioUrl) || !openaiApiKey) {
-      const errorMsg = 'Áudio (base64 ou URL) e chave da API OpenAI são obrigatórios';
-      console.error('❌ VALIDAÇÃO FALHOU:', {
-        hasAudio: !!audio,
-        hasAudioUrl: !!audioUrl,
-        hasApiKey: !!openaiApiKey,
-        errorMsg
-      });
-      
-      return new Response(
-        JSON.stringify({ 
-          error: errorMsg,
-          details: 'Parâmetros obrigatórios em falta',
-          success: false
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+    // ✅ VALIDAÇÃO MELHORADA: Verificar dados obrigatórios
+    if (!openaiApiKey) {
+      console.error('❌ API Key OpenAI obrigatória não fornecida')
+      return new Response(JSON.stringify({ 
+        error: 'API Key OpenAI obrigatória',
+        success: false
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+    
+    if (!audio && !audioUrl) {
+      console.error('❌ Nenhum dado de áudio fornecido (base64 ou URL)')
+      return new Response(JSON.stringify({ 
+        error: 'Dados de áudio obrigatórios (base64 ou URL)',
+        success: false
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+    
+    // ✅ VALIDAÇÃO ADICIONAL: Verificar se áudio base64 não está vazio
+    if (audio && audio.trim().length < 100) {
+      console.error('❌ Dados de áudio muito pequenos:', audio.length)
+      return new Response(JSON.stringify({ 
+        error: 'Dados de áudio insuficientes ou corrompidos',
+        details: `Tamanho recebido: ${audio.length} caracteres`,
+        success: false
+      }), {
+        status: 422,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
     let audioBytes: Uint8Array;
