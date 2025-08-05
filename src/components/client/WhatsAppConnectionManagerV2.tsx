@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { QRCodeDisplay } from "@/components/ui/QRCodeDisplay";
-import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Plus, 
@@ -25,7 +24,6 @@ import {
   Edit3,
   Save,
   X,
-  Zap,
   Bot,
   Link,
   Unlink
@@ -38,7 +36,6 @@ import { useUnifiedInstanceManager } from "@/hooks/useUnifiedInstanceManager";
 import { useRealTimeInstanceSync } from "@/hooks/useRealTimeInstanceSync";
 import clientYumerService from "@/services/clientYumerService";
 import { useAutoQueueConnection } from "@/hooks/useAutoQueueConnection";
-import { humanizedMessageProcessor } from "@/services/humanizedMessageProcessor";
 import { queuesService, QueueWithAssistant } from "@/services/queuesService";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -93,7 +90,7 @@ const WhatsAppConnectionManagerV2 = () => {
       ));
     },
     enableWebhookConfig: true,
-    intervalMs: 15000 // Polling mais frequente
+    intervalMs: 15000
   });
 
   useEffect(() => {
@@ -103,20 +100,15 @@ const WhatsAppConnectionManagerV2 = () => {
   }, [clientId]);
 
   useEffect(() => {
-    // Iniciar sincronização em tempo real
     startSync();
     return () => stopSync();
   }, [startSync, stopSync]);
 
   useEffect(() => {
-    // Verificar e criar conexões automáticas quando carregar dados
     if (clientId && instances.length > 0) {
       const delay = setTimeout(() => {
         checkAndCreateAutoConnections(clientId);
-        
-        // REMOVIDO: Inicialização automática para evitar duplicação
-        // O processador será controlado via AIAutoProcessorStatus
-      }, 2000); // Aguardar 2s para dar tempo das instâncias serem carregadas
+      }, 2000);
       
       return () => clearTimeout(delay);
     }
@@ -127,7 +119,6 @@ const WhatsAppConnectionManagerV2 = () => {
     
     setLoading(true);
     try {
-      // Carregar dados do cliente
       const clients = await clientsService.getAllClients();
       const client = clients.find(c => c.id === clientId);
       if (!client) {
@@ -141,10 +132,8 @@ const WhatsAppConnectionManagerV2 = () => {
       }
       setClientData(client);
 
-      // Carregar instâncias
       const instancesData = await whatsappInstancesService.getInstancesByClientId(clientId);
       
-      // Atualizar status de cada instância
       const updatedInstances = await Promise.all(
         instancesData.map(async (instance) => {
           const status = getInstanceStatus(instance.instance_id);
@@ -156,8 +145,6 @@ const WhatsAppConnectionManagerV2 = () => {
       );
       
       setInstances(updatedInstances);
-      
-      // Carregar filas disponíveis
       await loadQueuesAndConnections();
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -175,14 +162,12 @@ const WhatsAppConnectionManagerV2 = () => {
     if (!clientId) return;
     
     try {
-      // Carregar filas ativas com assistentes
       const queues = await queuesService.getClientQueues(clientId);
       const activeQueuesWithAssistants = queues.filter(q => 
         q.is_active && q.assistant_id && q.assistants?.is_active
       );
       setAvailableQueues(activeQueuesWithAssistants);
 
-      // Carregar conexões existentes
       const { data: connections } = await supabase
         .from('instance_queue_connections')
         .select(`
@@ -221,10 +206,8 @@ const WhatsAppConnectionManagerV2 = () => {
     try {
       const instanceName = `WPP_${Date.now()}`;
       
-      // Criar instância via API v2.2.1
       const newInstance = await clientYumerService.createInstance(clientId, instanceName);
       
-      // Salvar no banco local
       const savedInstance = await whatsappInstancesService.createInstance({
         client_id: clientId,
         instance_id: newInstance.instanceId,
@@ -239,7 +222,6 @@ const WhatsAppConnectionManagerV2 = () => {
         description: `${instanceName} foi criada e está pronta para conexão`,
       });
       
-      // Trigger manual sync para a nova instância
       setTimeout(() => {
         manualSync(newInstance.instanceId);
       }, 1000);
@@ -260,10 +242,7 @@ const WhatsAppConnectionManagerV2 = () => {
     if (!clientId) return;
     
     try {
-      // Excluir via API v2.2.1
       await clientYumerService.deleteInstance(clientId, instance.instance_id);
-      
-      // Remover do banco local
       await whatsappInstancesService.deleteInstance(instance.id);
       
       setInstances(prev => prev.filter(i => i.id !== instance.id));
@@ -311,7 +290,7 @@ const WhatsAppConnectionManagerV2 = () => {
           icon: <CheckCircle className="h-4 w-4" />,
           label: 'Conectado',
           variant: 'default' as const,
-          color: 'text-green-600',
+          color: 'text-emerald-600',
           description: status.phoneNumber ? `📱 ${status.phoneNumber}` : 'WhatsApp ativo'
         };
       case 'connecting':
@@ -319,7 +298,7 @@ const WhatsAppConnectionManagerV2 = () => {
           icon: <Clock className="h-4 w-4 animate-spin" />,
           label: 'Conectando',
           variant: 'secondary' as const,
-          color: 'text-yellow-600',
+          color: 'text-amber-600',
           description: 'Aguardando QR Code'
         };
       case 'qr_ready':
@@ -347,11 +326,9 @@ const WhatsAppConnectionManagerV2 = () => {
     
     setConnectingQueue(instanceId);
     try {
-      // Buscar o UUID da instância
       const instance = instances.find(i => i.instance_id === instanceId);
       if (!instance) throw new Error('Instância não encontrada');
 
-      // Verificar se já existe conexão para esta instância e fila
       const { data: existingConnection } = await supabase
         .from('instance_queue_connections')
         .select('id, is_active')
@@ -360,7 +337,6 @@ const WhatsAppConnectionManagerV2 = () => {
         .maybeSingle();
 
       if (existingConnection) {
-        // Se existe mas está inativa, reativar
         if (!existingConnection.is_active) {
           await supabase
             .from('instance_queue_connections')
@@ -368,7 +344,6 @@ const WhatsAppConnectionManagerV2 = () => {
             .eq('id', existingConnection.id);
         }
       } else {
-        // Desconectar fila anterior se existir
         const currentConnection = instanceConnections[instanceId];
         if (currentConnection?.connectionId) {
           await supabase
@@ -377,7 +352,6 @@ const WhatsAppConnectionManagerV2 = () => {
             .eq('id', currentConnection.connectionId);
         }
 
-        // Criar nova conexão
         const { error } = await supabase
           .from('instance_queue_connections')
           .insert({
@@ -389,7 +363,6 @@ const WhatsAppConnectionManagerV2 = () => {
         if (error) throw error;
       }
 
-      // Recarregar conexões
       await loadQueuesAndConnections();
       
       const selectedQueue = availableQueues.find(q => q.id === queueId);
@@ -443,7 +416,7 @@ const WhatsAppConnectionManagerV2 = () => {
   const getPlanColor = (plan: string) => {
     switch (plan) {
       case 'basic': return 'text-blue-600';
-      case 'standard': return 'text-green-600';
+      case 'standard': return 'text-emerald-600';
       case 'premium': return 'text-purple-600';
       case 'enterprise': return 'text-orange-600';
       default: return 'text-gray-600';
@@ -453,10 +426,10 @@ const WhatsAppConnectionManagerV2 = () => {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-32 bg-gray-100 rounded-lg animate-pulse" />
+        <div className="h-32 bg-muted/50 rounded-lg animate-pulse" />
         <div className="grid gap-4">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-48 bg-gray-100 rounded-lg animate-pulse" />
+            <div key={i} className="h-48 bg-muted/50 rounded-lg animate-pulse" />
           ))}
         </div>
       </div>
@@ -479,194 +452,207 @@ const WhatsAppConnectionManagerV2 = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header com informações do cliente */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Smartphone className="h-5 w-5" />
-                Conexões WhatsApp - {clientData.name}
+      {/* Header moderno com gradiente */}
+      <Card className="bg-gradient-to-br from-background to-primary/5 border-0 shadow-md">
+        <CardHeader className="pb-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-2">
+              <CardTitle className="flex items-center gap-3 text-xl">
+                <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center">
+                  <Smartphone className="h-5 w-5 text-primary-foreground" />
+                </div>
+                <div>
+                  <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Conexões WhatsApp
+                  </span>
+                  <div className="text-sm font-normal text-muted-foreground">
+                    {clientData.name}
+                  </div>
+                </div>
               </CardTitle>
-              <CardDescription className="mt-1">
-                {clientData.email} • Plano: 
-                <span className={`ml-1 font-medium ${getPlanColor(clientData.plan)}`}>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <span>{clientData.email}</span>
+                <Badge variant="outline" className={`${getPlanColor(clientData.plan)} border-current`}>
                   {clientData.plan.toUpperCase()}
-                </span>
-              </CardDescription>
+                </Badge>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               {serverOnline ? (
-                <Badge variant="default" className="bg-green-100 text-green-800">
+                <Badge variant="default" className="bg-emerald-100 text-emerald-700 border-emerald-200">
                   <Wifi className="h-3 w-3 mr-1" />
-                  Servidor Online
+                  API Online
                 </Badge>
               ) : (
-                <Badge variant="destructive">
+                <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-200">
                   <WifiOff className="h-3 w-3 mr-1" />
-                  Servidor Offline
+                  API Offline
                 </Badge>
               )}
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={loadData}
-                disabled={loading}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Atualizar
-              </Button>
+              <Badge variant="secondary" className="bg-secondary/50">
+                <Smartphone className="h-3 w-3 mr-1" />
+                {instances.length}/{clientData.max_instances}
+              </Badge>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <div className="text-sm text-gray-600">
-                Instâncias: {instances.length} / {clientData.max_instances}
-              </div>
-              <Progress 
-                value={(instances.length / clientData.max_instances) * 100} 
-                className="w-48 h-2"
-              />
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-green-500 rounded-full" />
-                <span>{instances.filter(i => getInstanceStatus(i.instance_id).status === 'connected').length} Conectadas</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-yellow-500 rounded-full" />
-                <span>{instances.filter(i => ['connecting', 'qr_ready'].includes(getInstanceStatus(i.instance_id).status)).length} Conectando</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-red-500 rounded-full" />
-                <span>{instances.filter(i => getInstanceStatus(i.instance_id).status === 'disconnected').length} Desconectadas</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
       </Card>
 
-      {/* Botão para criar nova instância */}
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Instâncias WhatsApp</h3>
-        <Button 
-          onClick={handleCreateInstance}
-          disabled={!canCreateNewInstance() || creating || !serverOnline}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          {creating ? 'Criando...' : 'Nova Instância'}
-        </Button>
-      </div>
-
-      {!canCreateNewInstance() && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
+      {/* Toolbar moderno */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <Alert className="flex-1 border-0 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-800">
+          <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription>
-            Limite de instâncias atingido ({clientData.max_instances}). 
-            Atualize seu plano para criar mais instâncias.
+            💡 Sincronização automática ativa - as instâncias são atualizadas em tempo real
           </AlertDescription>
         </Alert>
-      )}
+        
+        <div className="flex gap-3 w-full lg:w-auto">
+          <Button
+            onClick={loadData}
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            className="flex-1 lg:flex-none hover:bg-primary/5 border-primary/20"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          
+          {canCreateNewInstance() && (
+            <Button
+              onClick={handleCreateInstance}
+              disabled={creating || !serverOnline}
+              size="sm"
+              className="flex-1 lg:flex-none bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              {creating ? 'Criando...' : 'Nova Instância'}
+            </Button>
+          )}
+        </div>
+      </div>
 
-      {/* Lista de instâncias */}
-      <div className="grid gap-4">
+      {/* Grid responsivo de instâncias */}
+      <div className="grid gap-6 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
         {instances.map((instance) => {
           const statusInfo = getStatusInfo(instance);
-          const instanceStatus = getInstanceStatus(instance.instance_id);
           const isConnecting = isInstanceLoading(instance.instance_id);
-
+          const instanceStatus = getInstanceStatus(instance.instance_id);
+          const queueConnection = instanceConnections[instance.instance_id];
+          
           return (
-            <Card key={instance.id} className="relative">
-              <CardContent className="pt-6">
+            <Card key={instance.id} className="group relative overflow-hidden border-0 shadow-md bg-gradient-to-br from-card to-secondary/10 hover:shadow-lg transition-all duration-300 hover:scale-[1.02]">
+              <CardHeader className="pb-4">
                 <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="flex items-center gap-2">
-                        {statusInfo.icon}
-                        <Badge variant={statusInfo.variant} className="font-medium">
-                          {statusInfo.label}
-                        </Badge>
+                  <div className="flex-1 space-y-2">
+                    {editingName === instance.id ? (
+                      <div className="flex gap-2">
+                        <Input
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          className="h-8 bg-background/80"
+                          placeholder="Nome da instância"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => handleEditName(instance.id, newName)}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Save className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingName(null);
+                            setNewName("");
+                          }}
+                          className="h-8 w-8 p-0"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
                       </div>
-                      <span className={`text-sm ${statusInfo.color}`}>
-                        {statusInfo.description}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      {editingName === instance.id ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={newName}
-                            onChange={(e) => setNewName(e.target.value)}
-                            className="max-w-xs"
-                            placeholder="Nome da instância"
-                          />
-                          <Button 
-                            size="sm" 
-                            onClick={() => handleEditName(instance.id, newName)}
-                          >
-                            <Save className="h-3 w-3" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => setEditingName(null)}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium">
-                            {instance.custom_name || instance.instance_id}
-                          </h4>
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg cursor-pointer flex items-center gap-2 group-hover:text-primary transition-colors" 
                             onClick={() => {
                               setEditingName(instance.id);
-                              setNewName(instance.custom_name || instance.instance_id);
+                              setNewName(instance.custom_name || `Instância ${instances.indexOf(instance) + 1}`);
                             }}
                           >
-                            <Edit3 className="h-3 w-3" />
-                          </Button>
+                            <div className="w-8 h-8 bg-gradient-to-br from-primary/20 to-accent/20 rounded-lg flex items-center justify-center text-xs font-bold">
+                              {(instances.indexOf(instance) + 1)}
+                            </div>
+                            {instance.custom_name || `Instância ${instances.indexOf(instance) + 1}`}
+                          </CardTitle>
+                          <CardDescription className="text-xs font-mono mt-1 text-muted-foreground/80">
+                            {instance.instance_id}
+                          </CardDescription>
                         </div>
-                      )}
-                      <p className="text-sm text-gray-500">
-                        ID: {instance.instance_id}
-                      </p>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingName(instance.id);
+                            setNewName(instance.custom_name || `Instância ${instances.indexOf(instance) + 1}`);
+                          }}
+                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Edit3 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <Badge 
+                    variant={statusInfo.variant}
+                    className={`${statusInfo.color} flex items-center gap-1 shadow-sm`}
+                  >
+                    {statusInfo.icon}
+                    {statusInfo.label}
+                  </Badge>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-6 pt-0">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className={`font-medium ${statusInfo.color}`}>
+                        {statusInfo.description}
+                      </span>
                       {instanceStatus.phoneNumber && (
-                        <p className="text-sm text-gray-600 font-medium">
-                          📱 {instanceStatus.phoneNumber}
-                        </p>
+                        <Badge variant="outline" className="font-mono text-xs">
+                          {instanceStatus.phoneNumber}
+                        </Badge>
                       )}
                     </div>
 
                     {/* Seção de Configuração de Fila */}
                     {instanceStatus.status === 'connected' && (
-                      <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Bot className="h-4 w-4 text-blue-600" />
-                          <span className="text-sm font-medium">Configuração de Fila</span>
+                      <div className="p-4 bg-gradient-to-r from-background to-secondary/20 rounded-lg border">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Bot className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-medium">Auto-Resposta</span>
                         </div>
                         
-                        {instanceConnections[instance.instance_id] ? (
+                        {queueConnection ? (
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <Badge variant="default" className="bg-green-100 text-green-800">
+                              <Badge variant="default" className="bg-emerald-100 text-emerald-700">
                                 <Link className="h-3 w-3 mr-1" />
-                                {instanceConnections[instance.instance_id].queueName}
+                                {queueConnection.queueName}
                               </Badge>
-                              <span className="text-xs text-gray-500">Auto-resposta ativa</span>
+                              <span className="text-xs text-muted-foreground">Ativa</span>
                             </div>
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleDisconnectQueue(instance.instance_id)}
                               disabled={connectingQueue === instance.instance_id}
+                              className="h-7"
                             >
                               <Unlink className="h-3 w-3 mr-1" />
                               Desconectar
@@ -675,8 +661,8 @@ const WhatsAppConnectionManagerV2 = () => {
                         ) : (
                           <div className="space-y-2">
                             <Select onValueChange={(queueId) => handleConnectQueue(instance.instance_id, queueId)}>
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Selecionar fila para auto-resposta" />
+                              <SelectTrigger className="h-8 bg-background/80">
+                                <SelectValue placeholder="Selecionar fila..." />
                               </SelectTrigger>
                               <SelectContent>
                                 {availableQueues.map((queue) => (
@@ -685,7 +671,7 @@ const WhatsAppConnectionManagerV2 = () => {
                                       <Bot className="h-3 w-3" />
                                       <span>{queue.name}</span>
                                       {queue.assistants && (
-                                        <span className="text-xs text-gray-500">
+                                        <span className="text-xs text-muted-foreground">
                                           ({queue.assistants.name})
                                         </span>
                                       )}
@@ -695,12 +681,9 @@ const WhatsAppConnectionManagerV2 = () => {
                               </SelectContent>
                             </Select>
                             {availableQueues.length === 0 && (
-                              <p className="text-xs text-gray-500">
-                                Nenhuma fila ativa com assistente disponível
+                              <p className="text-xs text-muted-foreground">
+                                Nenhuma fila ativa disponível
                               </p>
-                            )}
-                            {connectingQueue === instance.instance_id && (
-                              <p className="text-xs text-blue-600">Conectando fila...</p>
                             )}
                           </div>
                         )}
@@ -710,20 +693,24 @@ const WhatsAppConnectionManagerV2 = () => {
 
                   {/* QR Code Display */}
                   {instanceStatus.status === 'qr_ready' && instanceStatus.qrCode && (
-                    <div className="ml-4">
-                      <QRCodeDisplay qrCode={instanceStatus.qrCode} instanceName={instance.instance_id} />
+                    <div className="ml-4 flex-shrink-0">
+                      <QRCodeDisplay 
+                        qrCode={instanceStatus.qrCode} 
+                        instanceName={instance.custom_name || instance.instance_id} 
+                      />
                     </div>
                   )}
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+                <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t">
                   {instanceStatus.status === 'connected' ? (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => disconnectInstance(instance.instance_id)}
                       disabled={isConnecting}
+                      className="hover:bg-red-50 hover:border-red-200"
                     >
                       <Pause className="h-3 w-3 mr-1" />
                       Desconectar
@@ -734,6 +721,7 @@ const WhatsAppConnectionManagerV2 = () => {
                       size="sm"
                       onClick={() => connectInstance(instance.instance_id)}
                       disabled={isConnecting || !serverOnline}
+                      className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700"
                     >
                       {isConnecting ? (
                         <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
@@ -749,6 +737,7 @@ const WhatsAppConnectionManagerV2 = () => {
                       variant="outline"
                       size="sm"
                       onClick={() => navigate(`/client/${clientId}/chat/${instance.id}`)}
+                      className="hover:bg-blue-50 hover:border-blue-200"
                     >
                       <MessageSquare className="h-3 w-3 mr-1" />
                       Chat
@@ -759,19 +748,10 @@ const WhatsAppConnectionManagerV2 = () => {
                     variant="outline"
                     size="sm"
                     onClick={() => navigate(`/client/${clientId}/queues?instance=${instance.id}`)}
+                    className="hover:bg-primary/5 hover:border-primary/20"
                   >
                     <Settings className="h-3 w-3 mr-1" />
-                    Filas
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => manualSync(instance.instance_id)}
-                    disabled={isConnecting}
-                  >
-                    <Zap className="h-3 w-3 mr-1" />
-                    Sync
+                    Configurar
                   </Button>
 
                   <Button
@@ -782,6 +762,7 @@ const WhatsAppConnectionManagerV2 = () => {
                         handleDeleteInstance(instance);
                       }
                     }}
+                    className="ml-auto"
                   >
                     <Trash2 className="h-3 w-3 mr-1" />
                     Excluir
@@ -793,21 +774,27 @@ const WhatsAppConnectionManagerV2 = () => {
         })}
 
         {instances.length === 0 && !loading && (
-          <Card>
-            <CardContent className="text-center py-12">
-              <Smartphone className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Nenhuma instância criada
-              </h3>
-              <p className="text-gray-500 mb-4">
-                Crie sua primeira instância WhatsApp para começar
-              </p>
+          <Card className="text-center py-12 bg-gradient-to-br from-card to-secondary/10 col-span-full">
+            <CardContent className="space-y-4">
+              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center">
+                <Smartphone className="h-8 w-8 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium mb-2">
+                  Nenhuma instância conectada
+                </h3>
+                <p className="text-muted-foreground mb-6">
+                  Crie sua primeira instância WhatsApp para começar a receber e enviar mensagens
+                </p>
+              </div>
               <Button 
                 onClick={handleCreateInstance}
                 disabled={!canCreateNewInstance() || creating}
+                className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
+                size="lg"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Criar Primeira Instância
+                {creating ? 'Criando...' : 'Criar Primeira Instância'}
               </Button>
             </CardContent>
           </Card>

@@ -16,6 +16,7 @@ import FunnelKanban from "@/components/client/FunnelKanban";
 import QueueManagementCenter from "@/components/client/QueueManagementCenter";
 import QueueConnectionManager from "@/components/client/QueueConnectionManager";
 import ClientDashboardOverview from "@/components/client/ClientDashboardOverview";
+import ClientSettingsPage from "@/pages/ClientSettingsPage";
 import SafeComponent from "@/components/SafeComponent";
 
 const ClientDashboard = () => {
@@ -74,7 +75,8 @@ const ClientDashboard = () => {
                 <Route path="booking" element={<BookingManager clientId={clientId} />} />
                 <Route path="automation" element={<AutomationCenter />} />
                 <Route path="analytics" element={<AnalyticsDashboard />} />
-                <Route path="settings" element={<div>Configurações em desenvolvimento</div>} />
+                <Route path="settings/*" element={<ClientSettingsPage />} />
+                <Route path="settings" element={<ClientSettingsPage />} />
               </Routes>
             </SafeComponent>
           </main>

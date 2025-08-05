@@ -69,7 +69,7 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
     { 
       title: "Conexão", 
       icon: Wifi, 
-      path: `/client/${clientId}/connect`,
+      path: `/client/${clientId}/settings`,
       description: "Conectar WhatsApp"
     },
     { 
