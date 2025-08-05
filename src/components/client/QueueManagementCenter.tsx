@@ -34,6 +34,7 @@ import { queueMetricsService, type QueueMetrics } from '@/services/queueMetricsS
 import { supabase } from '@/integrations/supabase/client';
 import QueuesKanbanView from './QueuesKanbanView';
 import QueueForm from './QueueForm';
+import QueueTriggersManager from './QueueTriggersManager';
 
 interface QueueManagementCenterProps {
   clientId?: string;
@@ -220,7 +221,7 @@ const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId:
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 h-12">
+        <TabsList className="grid w-full grid-cols-5 h-12">
           <TabsTrigger value="overview" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             Visão Geral
@@ -232,6 +233,10 @@ const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId:
           <TabsTrigger value="queues" className="gap-2">
             <Users className="h-4 w-4" />
             Filas
+          </TabsTrigger>
+          <TabsTrigger value="triggers" className="gap-2">
+            <Settings className="h-4 w-4" />
+            Gatilhos
           </TabsTrigger>
           <TabsTrigger value="metrics" className="gap-2">
             <TrendingUp className="h-4 w-4" />
@@ -494,6 +499,15 @@ const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId:
               );
             })}
           </div>
+        </TabsContent>
+
+        {/* GATILHOS AUTOMÁTICOS */}
+        <TabsContent value="triggers" className="space-y-6">
+          <QueueTriggersManager 
+            clientId={clientId!} 
+            queues={queues}
+            onTriggersUpdated={() => loadData()}
+          />
         </TabsContent>
 
         {/* MÉTRICAS DETALHADAS */}

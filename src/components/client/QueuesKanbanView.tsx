@@ -55,16 +55,9 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
   useEffect(() => {
     loadData();
     
-    // Auto-refresh a cada 30 segundos
-    let interval: NodeJS.Timeout;
-    if (autoRefresh) {
-      interval = setInterval(loadData, 30000);
-    }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [clientId, autoRefresh]);
+    // Remover auto-refresh para evitar loop infinito
+    // O refresh será feito apenas manualmente pelo usuário
+  }, [clientId]);
 
   const loadData = async () => {
     try {

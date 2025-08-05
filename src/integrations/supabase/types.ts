@@ -2263,11 +2263,18 @@ export type Database = {
     }
     Functions: {
       auto_assign_queue: {
-        Args: {
-          p_client_id: string
-          p_instance_id: string
-          p_message_content?: string
-        }
+        Args:
+          | {
+              p_client_id: string
+              p_instance_id: string
+              p_message_content?: string
+            }
+          | {
+              p_client_id: string
+              p_instance_id: string
+              p_message_content?: string
+              p_current_queue_id?: string
+            }
         Returns: string
       }
       calculate_waiting_time_minutes: {
@@ -2368,6 +2375,14 @@ export type Database = {
       monitor_message_health: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      process_handoff_triggers: {
+        Args: {
+          p_message_content: string
+          p_current_queue_id: string
+          p_client_id: string
+        }
+        Returns: string
       }
       save_ticket_message: {
         Args: {
