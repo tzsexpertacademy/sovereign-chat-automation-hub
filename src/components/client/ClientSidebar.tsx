@@ -67,12 +67,6 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
       description: "Gestão de Tickets"
     },
     { 
-      title: "Conexão", 
-      icon: Wifi, 
-      path: `/client/${clientId}/settings`,
-      description: "Conectar WhatsApp"
-    },
-    { 
       title: "Conversas", 
       icon: MessageSquare, 
       path: `/client/${clientId}/chat`,
