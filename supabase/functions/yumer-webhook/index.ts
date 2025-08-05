@@ -1,4 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
 const supabase = createClient(
@@ -77,18 +78,18 @@ async function processYumerMessage(yumerData: any) {
     const clientId = instance.client_id;
     console.log('✅ [PROCESS-YUMER] Instância encontrada:', { instanceId, clientId });
 
-    // 🗺️ MAPEAMENTO CORRETO DOS CAMPOS YUMER PARA BANCO
+    // 🗺️ MAPEAMENTO CORRETO DOS CAMPOS YUMER PARA BANCO - CORRIGIDO
     const mappedMessage = {
       message_id: messageData.keyId || messageData.messageId,
       chat_id: messageData.keyRemoteJid || messageData.chatId,
       body: messageData.content?.text || messageData.content || '',
       message_type: messageData.contentType || 'text',
-      from_me: messageData.keyFromMe || false,
+      from_me: messageData.keyFromMe || false, // CORRIGIDO: keyFromMe -> from_me
       sender: messageData.pushName || 'Unknown',
       timestamp: messageData.messageTimestamp ? 
         new Date(messageData.messageTimestamp * 1000).toISOString() : 
         new Date().toISOString(),
-      instance_id: instanceId,
+      instance_id: messageData.instanceInstanceId || instanceId, // CORRIGIDO: instanceInstanceId -> instance_id
       client_id: clientId,
       is_processed: false,
       created_at: new Date().toISOString()
@@ -110,7 +111,7 @@ async function processYumerMessage(yumerData: any) {
 
     console.log('✅ [SAVE-SUCCESS] Mensagem salva com sucesso:', savedMessage.id);
 
-    // 📦 CRIAR BATCH PARA PROCESSAMENTO IA
+    // 📦 CRIAR BATCH PARA PROCESSAMENTO IA - SÓ PARA MENSAGENS RECEBIDAS
     if (!mappedMessage.from_me && mappedMessage.chat_id) {
       console.log('📦 [BATCH] Criando batch para processamento IA');
       
