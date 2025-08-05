@@ -40,8 +40,50 @@ Deno.serve(async (req) => {
 
   try {
     const processingId = `${triggerInfo.type}_${Date.now()}`;
-    const cutoffTime = new Date(Date.now() - 3000).toISOString(); // 3 segundos atrás
+    
+    // 🧠 TIMING INTELIGENTE POR TIPO DE MÍDIA
+    let cutoffTime: string;
     const lockTimeout = new Date(Date.now() - 30000).toISOString(); // 30 segundos para timeout
+    
+    // Verificar tipo de conteúdo nos batches para determinar timeout
+    const { data: batchPreview } = await supabase
+      .from('message_batches')
+      .select('id, messages, created_at')
+      .order('created_at', { ascending: true })
+      .limit(5);
+    
+    let adaptiveTimeout = 3000; // Padrão: 3s para texto
+    
+    if (batchPreview && batchPreview.length > 0) {
+      for (const batch of batchPreview) {
+        const messages = batch.messages || [];
+        const hasAudio = messages.some((msg: any) => 
+          msg.content && (msg.content.includes('🎵 Áudio') || msg.messageType === 'audio')
+        );
+        const hasImage = messages.some((msg: any) => 
+          msg.content && (msg.content.includes('📷 Imagem') || msg.messageType === 'image')
+        );
+        const hasMixed = hasAudio && hasImage;
+        const hasText = messages.some((msg: any) => 
+          msg.content && !msg.content.includes('🎵 Áudio') && !msg.content.includes('📷 Imagem')
+        );
+        
+        if (hasMixed) {
+          adaptiveTimeout = Math.max(adaptiveTimeout, 12000); // 12s para misto
+        } else if (hasAudio || hasImage) {
+          adaptiveTimeout = Math.max(adaptiveTimeout, 10000); // 10s para mídia
+        } else if (hasText) {
+          adaptiveTimeout = Math.max(adaptiveTimeout, 3000); // 3s para texto
+        }
+      }
+    }
+    
+    cutoffTime = new Date(Date.now() - adaptiveTimeout).toISOString();
+    
+    console.log('🧠 [ADAPTIVE-TIMING] Timeout calculado:', {
+      adaptiveTimeout: `${adaptiveTimeout}ms`,
+      tipo: adaptiveTimeout === 12000 ? 'misto' : adaptiveTimeout === 10000 ? 'mídia' : 'texto'
+    });
     
     // BUSCAR BATCHES DISPONÍVEIS (não processados E não em processamento)
     const { data: pendingBatches, error } = await supabase
@@ -355,6 +397,15 @@ async function processBatch(batch: any) {
       ticket = newTicket;
     }
 
+    // 🎯 PROCESSAMENTO UNIFICADO: DESCRIPTOGRAFIA + ANÁLISE + TRANSCRIÇÃO DENTRO DO BATCH
+    console.log('🔄 [UNIFIED-PROCESSING] Iniciando processamento unificado de mídias no batch');
+    
+    // PROCESSAR DESCRIPTOGRAFIA DE MÍDIAS PRIMEIRO
+    await processMediaDecryption(batch, audioMessages, imageMessages);
+    
+    // PROCESSAR ANÁLISE E TRANSCRIÇÃO DE MÍDIAS
+    await processMediaAnalysis(batch, audioMessages, imageMessages);
+    
     // 🎵 AGUARDAR TRANSCRIÇÃO OTIMIZADA POR TIPO DE MÍDIA
     const processedMessages = await Promise.all(batch.messages.map(async (msg: any) => {
       const isAudioMessage = msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio');
@@ -710,6 +761,358 @@ async function createTicketFromBatch(batch: any) {
   } catch (error) {
     console.error('🤖 [CREATE-TICKET] ❌ Erro geral:', error);
     return null;
+  }
+}
+
+/**
+ * 🎯 PROCESSAMENTO UNIFICADO: DESCRIPTOGRAFIA DE MÍDIAS DENTRO DO BATCH
+ */
+async function processMediaDecryption(batch: any, audioMessages: any[], imageMessages: any[]) {
+  console.log('🔐 [UNIFIED-DECRYPT] Iniciando descriptografia unificada:', {
+    totalAudios: audioMessages.length,
+    totalImages: imageMessages.length
+  });
+  
+  // Buscar client_id e instance_id para obter business token
+  const { data: clientData } = await supabase
+    .from('whatsapp_instances')
+    .select(`
+      client_id,
+      instance_id,
+      clients!inner (
+        business_token
+      )
+    `)
+    .eq('instance_id', batch.instance_id)
+    .single();
+  
+  if (!clientData?.clients?.business_token) {
+    console.log('⚠️ [UNIFIED-DECRYPT] Business token não encontrado');
+    return;
+  }
+  
+  const businessToken = clientData.clients.business_token;
+  const decryptionPromises = [];
+  
+  // Processar descriptografia de imagens
+  for (const imageMsg of imageMessages) {
+    decryptionPromises.push(
+      processImageDecryption(imageMsg.messageId, batch.instance_id, businessToken)
+    );
+  }
+  
+  // Processar descriptografia de áudios
+  for (const audioMsg of audioMessages) {
+    decryptionPromises.push(
+      processAudioDecryption(audioMsg.messageId, batch.instance_id, businessToken)
+    );
+  }
+  
+  if (decryptionPromises.length > 0) {
+    console.log(`🔐 [UNIFIED-DECRYPT] Processando ${decryptionPromises.length} mídias em paralelo`);
+    await Promise.allSettled(decryptionPromises);
+    console.log('✅ [UNIFIED-DECRYPT] Descriptografia concluída');
+  }
+}
+
+/**
+ * 🧠 PROCESSAMENTO UNIFICADO: ANÁLISE DE MÍDIAS DENTRO DO BATCH
+ */
+async function processMediaAnalysis(batch: any, audioMessages: any[], imageMessages: any[]) {
+  console.log('🧠 [UNIFIED-ANALYSIS] Iniciando análise unificada:', {
+    totalAudios: audioMessages.length,
+    totalImages: imageMessages.length
+  });
+  
+  // Buscar configuração de OpenAI do cliente
+  const { data: aiConfig } = await supabase
+    .from('client_ai_configs')
+    .select('openai_api_key')
+    .eq('client_id', batch.client_id)
+    .single();
+  
+  if (!aiConfig?.openai_api_key) {
+    console.log('⚠️ [UNIFIED-ANALYSIS] OpenAI API key não encontrada');
+    return;
+  }
+  
+  const analysisPromises = [];
+  
+  // Processar análise de imagens
+  for (const imageMsg of imageMessages) {
+    analysisPromises.push(
+      processImageAnalysis(imageMsg.messageId, aiConfig.openai_api_key)
+    );
+  }
+  
+  // Processar análise de áudios  
+  for (const audioMsg of audioMessages) {
+    analysisPromises.push(
+      processAudioContextualAnalysis(audioMsg.messageId, aiConfig.openai_api_key)
+    );
+  }
+  
+  if (analysisPromises.length > 0) {
+    console.log(`🧠 [UNIFIED-ANALYSIS] Processando ${analysisPromises.length} análises em paralelo`);
+    await Promise.allSettled(analysisPromises);
+    console.log('✅ [UNIFIED-ANALYSIS] Análise concluída');
+  }
+}
+
+/**
+ * 🖼️ DESCRIPTOGRAFAR IMAGEM INDIVIDUAL
+ */
+async function processImageDecryption(messageId: string, instanceId: string, businessToken: string) {
+  try {
+    console.log('🖼️ [IMAGE-DECRYPT] Descriptografando:', messageId);
+    
+    // Buscar dados da imagem
+    const { data: imageData } = await supabase
+      .from('ticket_messages')
+      .select('media_url, media_key, media_mime_type')
+      .eq('message_id', messageId)
+      .eq('message_type', 'image')
+      .single();
+    
+    if (!imageData?.media_url || !imageData?.media_key) {
+      console.log('⚠️ [IMAGE-DECRYPT] Dados incompletos para:', messageId);
+      return;
+    }
+    
+    // Chamar API de descriptografia
+    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/media/directly-download`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${businessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contentType: 'image',
+        url: imageData.media_url,
+        mediaKey: imageData.media_key,
+        mimetype: imageData.media_mime_type || 'image/jpeg'
+      }),
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      
+      // Salvar imagem descriptografada
+      await supabase
+        .from('ticket_messages')
+        .update({
+          image_base64: result.media,
+          processing_status: 'decrypted'
+        })
+        .eq('message_id', messageId);
+      
+      console.log('✅ [IMAGE-DECRYPT] Sucesso:', messageId);
+    } else {
+      console.log('❌ [IMAGE-DECRYPT] Falha API:', response.status);
+    }
+    
+  } catch (error) {
+    console.error('❌ [IMAGE-DECRYPT] Erro:', messageId, error);
+  }
+}
+
+/**
+ * 🎵 DESCRIPTOGRAFAR ÁUDIO INDIVIDUAL
+ */
+async function processAudioDecryption(messageId: string, instanceId: string, businessToken: string) {
+  try {
+    console.log('🎵 [AUDIO-DECRYPT] Descriptografando:', messageId);
+    
+    // Buscar dados do áudio
+    const { data: audioData } = await supabase
+      .from('ticket_messages')
+      .select('media_url, media_key, media_mime_type')
+      .eq('message_id', messageId)
+      .eq('message_type', 'audio')
+      .single();
+    
+    if (!audioData?.media_url || !audioData?.media_key) {
+      console.log('⚠️ [AUDIO-DECRYPT] Dados incompletos para:', messageId);
+      return;
+    }
+    
+    // Chamar API de descriptografia
+    const response = await fetch(`https://api.yumer.com.br/api/v2/instance/${instanceId}/media/directly-download`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${businessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contentType: 'audio',
+        url: audioData.media_url,
+        mediaKey: audioData.media_key,
+        mimetype: audioData.media_mime_type || 'audio/ogg'
+      }),
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      
+      // Salvar áudio descriptografado
+      await supabase
+        .from('ticket_messages')
+        .update({
+          audio_base64: result.media,
+          processing_status: 'decrypted'
+        })
+        .eq('message_id', messageId);
+      
+      console.log('✅ [AUDIO-DECRYPT] Sucesso:', messageId);
+    } else {
+      console.log('❌ [AUDIO-DECRYPT] Falha API:', response.status);
+    }
+    
+  } catch (error) {
+    console.error('❌ [AUDIO-DECRYPT] Erro:', messageId, error);
+  }
+}
+
+/**
+ * 🖼️ ANALISAR IMAGEM COM GPT-4 VISION
+ */
+async function processImageAnalysis(messageId: string, apiKey: string) {
+  try {
+    console.log('🖼️ [IMAGE-ANALYSIS] Analisando:', messageId);
+    
+    // Buscar imagem descriptografada
+    const { data: imageData } = await supabase
+      .from('ticket_messages')
+      .select('image_base64')
+      .eq('message_id', messageId)
+      .single();
+    
+    if (!imageData?.image_base64) {
+      console.log('⚠️ [IMAGE-ANALYSIS] Imagem não disponível:', messageId);
+      return;
+    }
+    
+    // Processar com GPT-4 Vision
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Analise esta imagem de forma detalhada e descreva o que você vê. Inclua elementos visuais importantes, texto se houver, objetos, pessoas, ações, contexto e qualquer informação relevante para atendimento ao cliente.'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${imageData.image_base64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 800
+      }),
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      const analysis = result.choices[0].message.content;
+      
+      // Salvar análise
+      await supabase
+        .from('ticket_messages')
+        .update({
+          media_transcription: analysis,
+          processing_status: 'analyzed'
+        })
+        .eq('message_id', messageId);
+      
+      console.log('✅ [IMAGE-ANALYSIS] Análise salva:', messageId);
+    } else {
+      console.log('❌ [IMAGE-ANALYSIS] Falha API:', response.status);
+    }
+    
+  } catch (error) {
+    console.error('❌ [IMAGE-ANALYSIS] Erro:', messageId, error);
+  }
+}
+
+/**
+ * 🎵 ANÁLISE CONTEXTUAL DE ÁUDIO
+ */
+async function processAudioContextualAnalysis(messageId: string, apiKey: string) {
+  try {
+    console.log('🎵 [AUDIO-ANALYSIS] Analisando contexto:', messageId);
+    
+    // Buscar transcrição existente
+    const { data: audioData } = await supabase
+      .from('ticket_messages')
+      .select('content, media_transcription')
+      .eq('message_id', messageId)
+      .single();
+    
+    if (!audioData?.content || audioData.content === '🎵 Áudio') {
+      console.log('⚠️ [AUDIO-ANALYSIS] Transcrição não disponível:', messageId);
+      return;
+    }
+    
+    // Se já tem análise, pular
+    if (audioData.media_transcription) {
+      console.log('ℹ️ [AUDIO-ANALYSIS] Análise já existe:', messageId);
+      return;
+    }
+    
+    // Processar análise contextual com GPT-4
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: 'Você é um assistente especializado em análise de áudios para atendimento ao cliente. Analise a transcrição fornecida e extraia informações relevantes como: sentimento, intenção, urgência, palavras-chave importantes, e contexto da mensagem.'
+          },
+          {
+            role: 'user',
+            content: `Analise esta transcrição de áudio: "${audioData.content}"`
+          }
+        ],
+        max_tokens: 800
+      }),
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      const analysis = result.choices[0].message.content;
+      
+      // Salvar análise contextual
+      await supabase
+        .from('ticket_messages')
+        .update({
+          media_transcription: analysis,
+          processing_status: 'analyzed'
+        })
+        .eq('message_id', messageId);
+      
+      console.log('✅ [AUDIO-ANALYSIS] Análise contextual salva:', messageId);
+    } else {
+      console.log('❌ [AUDIO-ANALYSIS] Falha API:', response.status);
+    }
+    
+  } catch (error) {
+    console.error('❌ [AUDIO-ANALYSIS] Erro:', messageId, error);
   }
 }
 

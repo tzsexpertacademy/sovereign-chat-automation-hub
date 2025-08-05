@@ -93,16 +93,35 @@ export const useMessageBatch = (
     const messageContent = message.body || message.content || '';
     const hasFutureMediaCommand = detectsFutureMedia(messageContent);
     
-    // Calcular timeout inteligente
+    // 🧠 TIMING INTELIGENTE UNIFICADO
     let messageTimeout = config.timeout;
     
-    if (isAudioMessage) {
-      messageTimeout = 6000; // 6s para áudio
-    }
+    // Detectar se é mensagem de imagem
+    const isImageMessage = message.messageType === 'image' || 
+                          message.type === 'image' || 
+                          (message.content && message.content.includes('📷 Imagem'));
     
-    if (hasFutureMediaCommand) {
-      messageTimeout = 15000; // 15s quando detecta comando de mídia futura
-      console.log(`🎯 [MESSAGE-BATCH] Comando de mídia futura detectado, timeout estendido para: ${messageTimeout}ms`);
+    // Verificar se há mistura de tipos no batch atual
+    const currentBatch = batchesRef.current.get(chatId);
+    const hasMixedContent = currentBatch && currentBatch.messages.length > 0 && 
+      currentBatch.messages.some(msg => 
+        (msg.messageType === 'audio' || msg.type === 'audio') !== isAudioMessage ||
+        (msg.messageType === 'image' || msg.type === 'image') !== isImageMessage
+      );
+    
+    // APLICAR TIMING BASEADO NO TIPO DE CONTEÚDO
+    if (hasMixedContent || (isAudioMessage && isImageMessage)) {
+      messageTimeout = 12000; // 12s para conteúdo misto
+      console.log(`🔄 [MESSAGE-BATCH] Conteúdo misto detectado, timeout: ${messageTimeout}ms`);
+    } else if (isAudioMessage || isImageMessage) {
+      messageTimeout = 10000; // 10s para mídia única
+      console.log(`🎵🖼️ [MESSAGE-BATCH] Mídia detectada (${isAudioMessage ? 'áudio' : 'imagem'}), timeout: ${messageTimeout}ms`);
+    } else if (hasFutureMediaCommand) {
+      messageTimeout = 12000; // 12s quando detecta comando de mídia futura  
+      console.log(`🎯 [MESSAGE-BATCH] Comando de mídia futura detectado, timeout: ${messageTimeout}ms`);
+    } else {
+      messageTimeout = 3000; // 3s para texto simples
+      console.log(`📝 [MESSAGE-BATCH] Texto simples, timeout: ${messageTimeout}ms`);
     }
     
     console.log(`📦 [MESSAGE-BATCH] Adicionando mensagem ao batch: ${chatId}`, {

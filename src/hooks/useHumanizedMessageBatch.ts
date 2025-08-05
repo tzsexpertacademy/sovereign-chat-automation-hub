@@ -16,23 +16,23 @@ export const useHumanizedMessageBatch = (
   // Hook de processamento em lotes
   const messageBatch = useMessageBatch(callback, assistantId);
 
-  // Configuração com timeout otimizado para áudios
+  // Configuração com timing inteligente unificado
   useEffect(() => {
     if (assistantId) {
-      // Timeout otimizado: 6 segundos para permitir processamento de áudios
-      const timeout = 6000; 
+      // Timeout base: 3 segundos (será ajustado dinamicamente pelo sistema)
+      const timeout = 3000; 
       setHumanizedTimeout(timeout);
       
-      // Configuração mínima
+      // Configuração unificada
       setHumanizationConfig({
         enabled: true,
         timeout
       });
       
-      console.log('📋 [HUMANIZED-BATCH] Configuração otimizada aplicada:', {
+      console.log('📋 [HUMANIZED-BATCH] Configuração unificada aplicada:', {
         enabled: true,
-        timeout,
-        note: 'Timeout aumentado para áudios'
+        baseTimeout: timeout,
+        note: 'Sistema inteligente: 3s texto, 10s mídia, 12s misto'
       });
     }
   }, [assistantId]);
