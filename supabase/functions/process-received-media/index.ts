@@ -224,14 +224,32 @@ Deno.serve(async (req) => {
           body: JSON.stringify(downloadRequest)
         })
 
+        console.log(`📥 [MEDIA-DECRYPT] Response status: ${downloadResponse.status}`)
+        console.log(`📥 [MEDIA-DECRYPT] Response headers:`, Object.fromEntries(downloadResponse.headers.entries()))
+
         if (!downloadResponse.ok) {
+          const errorText = await downloadResponse.text()
           console.error(`❌ Erro ao baixar mídia: ${downloadResponse.status} - ${downloadResponse.statusText}`)
+          console.error(`❌ Resposta da API:`, errorText)
+          console.error(`❌ Request que falhou:`, {
+            endpoint: downloadUrl,
+            requestBody: downloadRequest,
+            businessToken: `${clientData.business_token.substring(0, 20)}...`
+          })
           continue
         }
 
         // Converter para base64
         const mediaBuffer = await downloadResponse.arrayBuffer()
+        console.log(`📦 [MEDIA-DECRYPT] Buffer recebido: ${mediaBuffer.byteLength} bytes`)
+        
+        if (mediaBuffer.byteLength === 0) {
+          console.error(`❌ Buffer vazio recebido para: ${message.message_id}`)
+          continue
+        }
+        
         const base64Data = btoa(String.fromCharCode(...new Uint8Array(mediaBuffer)))
+        console.log(`✅ [MEDIA-DECRYPT] Base64 gerado: ${base64Data.length} caracteres`)
 
         // Salvar dados base64 na coluna apropriada
         const updateData: any = {

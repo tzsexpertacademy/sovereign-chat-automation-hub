@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { realTimeWhatsAppService, type RealTimeMessage } from './realTimeWhatsAppService';
 import { aiQueueIntegrationService } from './aiQueueIntegrationService';
+import { messageProcessingController } from './messageProcessingController';
 
 export class HumanizedMessageProcessor {
   private static instance: HumanizedMessageProcessor;
@@ -136,16 +137,41 @@ export class HumanizedMessageProcessor {
             messageId: messageData.message_id
           });
           
-          // CORREÇÃO CRUCIAL: Usar chat_id real para agrupamento, não ticket.id
+          // ✅ ATIVAR CONTROLLER DE PROCESSAMENTO ANTES DO BATCH
+          const canProcess = messageProcessingController.canProcessMessage(messageData.message_id, messageData.chat_id);
+          if (!canProcess) {
+            console.log('🔒 [HUMANIZED-PROCESSOR] Mensagem bloqueada pelo controller:', messageData.message_id);
+            return;
+          }
+
+          // Aplicar lock no chat para evitar processamento paralelo
+          messageProcessingController.lockChat(messageData.chat_id);
+
+          // ✅ USAR aiQueueIntegrationService COM ASSINATURA CORRETA
+          const messageObj = {
+            messageId: messageData.message_id,
+            chatId: messageData.chat_id,
+            content: messageData.content || '',
+            fromMe: false,
+            timestamp: new Date(messageData.timestamp).toISOString(),
+            customerName: messageData.customerName || 'Cliente',
+            phoneNumber: messageData.phoneNumber || messageData.chat_id.replace('@s.whatsapp.net', ''),
+            messageType: messageData.message_type || 'text'
+          };
+          
+          // Usar método com assinatura correta
           aiQueueIntegrationService.addMessageToBatch(
-            messageData.chat_id, // USAR CHAT_ID para agrupamento correto
+            messageData.chat_id,
             messageData.content || '',
             clientId,
             messageData.instance_id,
             messageData.message_id,
             new Date(messageData.timestamp).getTime(),
-            ticket.id // passar ticket_id separadamente
+            ticket.id
           );
+
+          // Marcar mensagem como processada pelo controller
+          messageProcessingController.markMessageProcessed(messageData.message_id);
           
           console.log('📦 [HUMANIZED] ✅ Mensagem adicionada ao BATCH por CHAT_ID - aguardando mais mensagens (timeout: 6s)');
         } else {
