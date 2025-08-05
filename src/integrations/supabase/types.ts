@@ -2117,7 +2117,6 @@ export type Database = {
         Row: {
           body: string | null
           chat_id: string
-          client_id: string | null
           contact_name: string | null
           created_at: string
           direct_path: string | null
@@ -2146,7 +2145,6 @@ export type Database = {
         Insert: {
           body?: string | null
           chat_id: string
-          client_id?: string | null
           contact_name?: string | null
           created_at?: string
           direct_path?: string | null
@@ -2175,7 +2173,6 @@ export type Database = {
         Update: {
           body?: string | null
           chat_id?: string
-          client_id?: string | null
           contact_name?: string | null
           created_at?: string
           direct_path?: string | null
@@ -2201,15 +2198,7 @@ export type Database = {
           source?: string | null
           timestamp?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_messages_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Views: {
@@ -2247,10 +2236,6 @@ export type Database = {
       cleanup_expired_qr_codes: {
         Args: Record<PropertyKey, never>
         Returns: number
-      }
-      emergency_message_recovery: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
       }
       fix_malformed_media_keys: {
         Args: Record<PropertyKey, never>
@@ -2301,10 +2286,6 @@ export type Database = {
           p_instance_id: string
           p_message: Json
         }
-        Returns: Json
-      }
-      monitor_message_health: {
-        Args: Record<PropertyKey, never>
         Returns: Json
       }
       save_ticket_message: {
