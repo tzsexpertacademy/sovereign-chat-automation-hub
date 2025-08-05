@@ -12,11 +12,15 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
 };
 
+// 🔒 SISTEMA DE DEDUPLICAÇÃO GLOBAL
+const MESSAGE_CACHE = new Map<string, number>();
+const CACHE_DURATION = 5000; // 5 segundos
+
 // ✅ BATCH PERSISTENTE - USANDO SUPABASE
 const BATCH_TIMEOUT = 3000; // 3 segundos para agrupamento otimizado
 
 serve(async (req) => {
-  console.log('🔥 [WEBHOOK-SIMPLES] Requisição recebida:', req.method);
+  console.log('🔥 [YUMER-UNIFIED] Requisição recebida:', req.method);
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -24,7 +28,7 @@ serve(async (req) => {
 
   if (req.method === 'GET') {
     return new Response(
-      JSON.stringify({ status: 'active', message: 'YUMER Webhook SIMPLES' }),
+      JSON.stringify({ status: 'active', message: 'YUMER Webhook UNIFICADO - Único Endpoint' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -52,12 +56,46 @@ serve(async (req) => {
         });
       }
 
-      console.log('🔥 [WEBHOOK-SIMPLES] Evento:', webhookData.event);
+      console.log('🔥 [YUMER-UNIFIED] Evento:', webhookData.event);
 
-      // DETECTAR MENSAGENS YUMER
-      if (webhookData.event === 'messages.upsert' && webhookData.data && webhookData.instance?.instanceId) {
-        console.log('🔥 [WEBHOOK-SIMPLES] MENSAGEM DETECTADA - PROCESSANDO BATCH');
-        return await processMessageBatch(webhookData);
+      // 🔒 SISTEMA DE DEDUPLICAÇÃO POR MESSAGE_ID
+      if (webhookData.event === 'messages.upsert' && webhookData.data) {
+        const messageId = webhookData.data.keyId || webhookData.data.messageId;
+        
+        if (messageId) {
+          const now = Date.now();
+          const cachedTime = MESSAGE_CACHE.get(messageId);
+          
+          // Verificar se mensagem já foi processada recentemente
+          if (cachedTime && (now - cachedTime) < CACHE_DURATION) {
+            console.log('🔒 [DEDUP] Mensagem duplicada detectada e ignorada:', messageId);
+            return new Response(JSON.stringify({ 
+              success: true, 
+              message: 'Duplicate message ignored',
+              messageId,
+              deduped: true 
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          }
+          
+          // Marcar mensagem como processada
+          MESSAGE_CACHE.set(messageId, now);
+          
+          // Limpar cache antigo
+          for (const [id, time] of MESSAGE_CACHE.entries()) {
+            if ((now - time) > CACHE_DURATION) {
+              MESSAGE_CACHE.delete(id);
+            }
+          }
+          
+          console.log('✅ [DEDUP] Mensagem nova, processando:', messageId);
+        }
+
+        if (webhookData.instance?.instanceId) {
+          console.log('🔥 [YUMER-UNIFIED] MENSAGEM DETECTADA - PROCESSANDO BATCH');
+          return await processMessageBatch(webhookData);
+        }
       }
 
       return new Response(JSON.stringify({ success: true, message: 'Event processed' }), {
@@ -65,7 +103,7 @@ serve(async (req) => {
       });
 
     } catch (error) {
-      console.error('🔥 [WEBHOOK-SIMPLES] ERRO CRÍTICO:', error);
+      console.error('🔥 [YUMER-UNIFIED] ERRO CRÍTICO:', error);
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -82,7 +120,7 @@ serve(async (req) => {
 // ✅ FUNÇÃO ULTRA SIMPLES PARA BATCH
 async function processMessageBatch(yumerData: any) {
   try {
-    console.log('🔥 [BATCH-SIMPLES] Iniciando processamento de batch');
+    console.log('🔥 [BATCH-UNIFIED] Iniciando processamento de batch UNIFICADO');
     
     const messageData = yumerData.data;
     const instanceId = yumerData.instance?.instanceId;

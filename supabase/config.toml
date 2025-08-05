@@ -1,16 +1,10 @@
 
 project_id = "ymygyagbvbsdfkduxmgu"
 
-[functions.codechat-webhook]
-verify_jwt = false
-
-[functions.codechat-v2-webhook]
-verify_jwt = false
-
-[functions.yumer-webhook]
-verify_jwt = false
-
 [functions.yumer-unified-webhook]
+verify_jwt = false
+
+[functions.codechat-v2-unified-webhook]
 verify_jwt = false
 
 [functions.process-message-batches]
