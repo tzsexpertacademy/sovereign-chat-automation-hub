@@ -23,9 +23,10 @@ export interface DecryptedAudio {
 }
 
 export interface TranscriptionResult {
-  text: string;
+  text: string | null;
   success: boolean;
   error?: string;
+  audioBase64?: string; // Adicionado para salvar áudio mesmo quando transcrição falha
 }
 
 class WhatsAppAudioService {
@@ -169,24 +170,49 @@ class WhatsAppAudioService {
         };
       }
 
-      if (data?.error) {
-        console.error('❌ [AUDIO-SERVICE] Erro retornado pela API:', data.error);
+      // Verificar se foi uma transcrição inválida (edge function já filtrou)
+      if (data?.error || !data?.success) {
+        console.warn('⚠️ [AUDIO-SERVICE] Edge function sinalizou erro:', data?.error);
         return {
-          text: '[Erro na transcrição]',
+          text: data?.shouldSaveAudio ? null : '[Erro na transcrição]', // null para não salvar texto inválido
           success: false,
-          error: data.error
+          error: data?.error || 'Transcrição falhou',
+          audioBase64: data?.shouldSaveAudio ? decryptedAudio : undefined // Salvar áudio mesmo com transcrição falha
         };
       }
 
-      const transcriptionText = data?.text || '';
+      const resultText = data?.text || '';
+      
+      // Verificação adicional local de transcrições inválidas
+      const invalidTranscriptions = [
+        'Legendas pela comunidade Amara.org',
+        'Legendas por Amara.org', 
+        'Amara.org'
+      ];
+      
+      const isInvalidTranscription = invalidTranscriptions.some(invalid => 
+        resultText.toLowerCase().includes(invalid.toLowerCase())
+      );
+
+      if (isInvalidTranscription) {
+        console.warn('🚨 [AUDIO-SERVICE] Transcrição inválida detectada localmente:', resultText);
+        return {
+          text: null, // Não salvar transcrição inválida
+          success: false,
+          error: 'Transcrição inválida detectada (Amara.org)',
+          audioBase64: decryptedAudio // Salvar áudio mesmo com transcrição inválida
+        };
+      }
+
       console.log('✅ [AUDIO-SERVICE] Transcrição concluída:', {
-        textLength: transcriptionText.length,
-        success: !!transcriptionText
+        textLength: resultText.length,
+        success: !!resultText,
+        isValidTranscription: !isInvalidTranscription
       });
 
       return {
-        text: transcriptionText || '[Áudio não pôde ser transcrito]',
-        success: !!transcriptionText
+        text: resultText || '[Áudio não pôde ser transcrito]',
+        success: !!resultText
       };
 
     } catch (error) {

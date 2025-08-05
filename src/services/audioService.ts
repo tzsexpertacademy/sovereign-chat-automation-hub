@@ -36,13 +36,34 @@ export const audioService = {
       }
 
       const transcriptionText = data?.text || '';
+      
+      // 🚨 VALIDAÇÃO DE TRANSCRIÇÕES INVÁLIDAS
+      const invalidTranscriptions = [
+        'Legendas pela comunidade Amara.org',
+        'Legendas por Amara.org', 
+        'Amara.org',
+        'legendas pela comunidade amara',
+        'comunidade amara',
+        'amara org'
+      ];
+      
+      const isInvalidTranscription = invalidTranscriptions.some(invalid => 
+        transcriptionText.toLowerCase().includes(invalid.toLowerCase())
+      );
+      
+      if (isInvalidTranscription) {
+        console.warn('🚨 TRANSCRIÇÃO INVÁLIDA DETECTADA - "Amara.org":', transcriptionText);
+        return '[Áudio não pôde ser transcrito - formato incompatível]';
+      }
+      
       console.log('✅ TRANSCRIÇÃO CONCLUÍDA:', {
         text: transcriptionText.substring(0, 100) + (transcriptionText.length > 100 ? '...' : ''),
         length: transcriptionText.length,
         language: data?.language,
         duration: data?.duration,
         audioFormat: data?.audioFormat,
-        success: data?.success
+        success: data?.success,
+        confidence: data?.confidence
       });
       
       if (!transcriptionText || transcriptionText.trim() === '') {
