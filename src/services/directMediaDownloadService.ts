@@ -184,20 +184,14 @@ class DirectMediaDownloadService {
   }
 
   /**
-   * Download direto de mídia com SISTEMA DE LOCK GLOBAL
-   * Evita chamadas duplicadas para a mesma mídia
+   * 🔒 SISTEMA DE LOCK CENTRALIZADO
+   * Método unificado para evitar chamadas duplicadas à API
    */
-  async downloadMedia(
-    instanceId: string,
-    mediaUrl: string,
-    mediaKey?: string,
-    directPath?: string,
-    mimetype?: string,
-    contentType: 'image' | 'video' | 'audio' | 'document' = 'document'
+  private async downloadWithLock(
+    lockKey: string,
+    contentType: string,
+    downloadFn: () => Promise<MediaDownloadResult>
   ): Promise<MediaDownloadResult> {
-    // 🔒 SISTEMA DE LOCK: Gerar chave única para esta mídia
-    const lockKey = `${instanceId}:${mediaKey || mediaUrl}:${contentType}`;
-    
     // ⏳ Se já está sendo processado, aguardar resultado da operação em andamento
     if (this.processingLocks.has(lockKey)) {
       console.log(`🔒 [LOCK-${contentType.toUpperCase()}] Mídia já sendo processada, aguardando conclusão...`);
@@ -218,9 +212,7 @@ class DirectMediaDownloadService {
     console.log(`🔓 [LOCK-${contentType.toUpperCase()}] Iniciando nova operação de download`);
     console.log(`🔑 [LOCK-${contentType.toUpperCase()}] LockKey:`, lockKey.substring(0, 100) + '...');
     
-    const processingPromise = this.performMediaDownload(
-      instanceId, mediaUrl, mediaKey, directPath, mimetype, contentType
-    );
+    const processingPromise = downloadFn();
     
     // Armazenar promise no sistema de locks
     this.processingLocks.set(lockKey, processingPromise);
@@ -237,6 +229,26 @@ class DirectMediaDownloadService {
       this.processingLocks.delete(lockKey);
       console.log(`🧹 [LOCK-${contentType.toUpperCase()}] Lock removido do sistema`);
     }
+  }
+
+  /**
+   * Download direto de mídia com SISTEMA DE LOCK GLOBAL
+   * Evita chamadas duplicadas para a mesma mídia
+   */
+  async downloadMedia(
+    instanceId: string,
+    mediaUrl: string,
+    mediaKey?: string,
+    directPath?: string,
+    mimetype?: string,
+    contentType: 'image' | 'video' | 'audio' | 'document' = 'document'
+  ): Promise<MediaDownloadResult> {
+    // 🔒 SISTEMA DE LOCK: Gerar chave única para esta mídia
+    const lockKey = `${instanceId}:${mediaKey || mediaUrl}:${contentType}`;
+    
+    return this.downloadWithLock(lockKey, contentType, () =>
+      this.performMediaDownload(instanceId, mediaUrl, mediaKey, directPath, mimetype, contentType)
+    );
   }
 
   /**
@@ -441,6 +453,7 @@ class DirectMediaDownloadService {
 
   /**
    * Buscar mídia processada - SIMPLIFICADO para usar apenas directly-download
+   * Agora com SISTEMA DE LOCK aplicado também
    */
   async processMedia(
     instanceId: string,
@@ -451,37 +464,42 @@ class DirectMediaDownloadService {
     mimetype?: string,
     contentType: 'image' | 'video' | 'audio' | 'document' = 'document'
   ): Promise<MediaDownloadResult> {
-    console.log('🎯 DirectMedia: Processando', contentType, 'para', messageId);
+    // 🔒 SISTEMA DE LOCK: Usar mesma chave que downloadMedia
+    const lockKey = `${instanceId}:${mediaKey || mediaUrl}:${contentType}`;
+    
+    return this.downloadWithLock(lockKey, contentType, async () => {
+      console.log('🎯 DirectMedia: Processando', contentType, 'para', messageId);
 
-    // Verificar cache primeiro se temos mediaKey
-    if (mediaKey) {
-      const cached = unifiedMediaCache.get(instanceId, messageId, mediaKey);
-      if (cached) {
-        console.log('📦 DirectMedia: Cache HIT para processMedia');
-        return {
-          success: true,
-          mediaUrl: cached,
-          cached: true
-        };
+      // Verificar cache primeiro se temos mediaKey
+      if (mediaKey) {
+        const cached = unifiedMediaCache.get(instanceId, messageId, mediaKey);
+        if (cached) {
+          console.log('📦 DirectMedia: Cache HIT para processMedia');
+          return {
+            success: true,
+            mediaUrl: cached,
+            cached: true
+          };
+        }
       }
-    }
 
-    // Usar downloadMedia único e simplificado
-    const result = await this.downloadMedia(
-      instanceId,
-      mediaUrl,
-      mediaKey,
-      directPath,
-      mimetype,
-      contentType
-    );
+      // Fazer download direto (sem usar downloadMedia para evitar duplo lock)
+      const result = await this.performMediaDownload(
+        instanceId,
+        mediaUrl,
+        mediaKey,
+        directPath,
+        mimetype,
+        contentType
+      );
 
-    // Salvar no cache se sucesso e temos mediaKey
-    if (result.success && result.mediaUrl && mediaKey) {
-      unifiedMediaCache.set(instanceId, messageId, result.mediaUrl, 'DirectMedia', mediaKey, mimetype);
-    }
+      // Salvar no cache se sucesso e temos mediaKey
+      if (result.success && result.mediaUrl && mediaKey) {
+        unifiedMediaCache.set(instanceId, messageId, result.mediaUrl, 'DirectMedia', mediaKey, mimetype);
+      }
 
-    return result;
+      return result;
+    });
   }
 
   /**
