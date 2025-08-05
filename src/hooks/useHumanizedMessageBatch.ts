@@ -10,7 +10,7 @@ export const useHumanizedMessageBatch = (
   callback: (chatId: string, messages: any[]) => void,
   assistantId?: string
 ) => {
-  const [humanizedTimeout, setHumanizedTimeout] = useState<number>(4000);
+  const [humanizedTimeout, setHumanizedTimeout] = useState<number>(3000);
   const [humanizationConfig, setHumanizationConfig] = useState<{ enabled: boolean; timeout: number } | null>(null);
 
   // Hook de processamento em lotes
@@ -19,8 +19,8 @@ export const useHumanizedMessageBatch = (
   // Configuração com timing inteligente unificado
   useEffect(() => {
     if (assistantId) {
-      // Timeout base: 4 segundos (será ajustado dinamicamente pelo sistema)
-      const timeout = 4000;
+      // Timeout base: 3 segundos (sincronizado com backend)
+      const timeout = 3000;
       setHumanizedTimeout(timeout);
       
       // Configuração unificada
@@ -32,7 +32,7 @@ export const useHumanizedMessageBatch = (
       console.log('📋 [HUMANIZED-BATCH] Configuração unificada aplicada:', {
         enabled: true,
         baseTimeout: timeout,
-        note: 'Sistema inteligente: 4s texto, 10s mídia, 12s misto'
+        note: 'Sistema inteligente: 3s texto, 8s mídia, 10s misto'
       });
     }
   }, [assistantId]);

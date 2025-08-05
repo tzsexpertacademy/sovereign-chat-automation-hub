@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       .order('created_at', { ascending: true })
       .limit(5);
     
-    let adaptiveTimeout = 4000; // Padrão: 4s para texto
+    let adaptiveTimeout = 3000; // Padrão: 3s para texto
     
     if (batchPreview && batchPreview.length > 0) {
       for (const batch of batchPreview) {
@@ -69,11 +69,11 @@ Deno.serve(async (req) => {
         );
         
         if (hasMixed) {
-          adaptiveTimeout = Math.max(adaptiveTimeout, 12000); // 12s para misto
+          adaptiveTimeout = Math.max(adaptiveTimeout, 10000); // 10s para misto
         } else if (hasAudio || hasImage) {
-          adaptiveTimeout = Math.max(adaptiveTimeout, 10000); // 10s para mídia
+          adaptiveTimeout = Math.max(adaptiveTimeout, 8000); // 8s para mídia
         } else if (hasText) {
-          adaptiveTimeout = Math.max(adaptiveTimeout, 4000); // 4s para texto
+          adaptiveTimeout = Math.max(adaptiveTimeout, 3000); // 3s para texto
         }
       }
     }
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
     
     console.log('🧠 [ADAPTIVE-TIMING] Timeout calculado:', {
       adaptiveTimeout: `${adaptiveTimeout}ms`,
-      tipo: adaptiveTimeout === 12000 ? 'misto' : adaptiveTimeout === 10000 ? 'mídia' : 'texto (4s)'
+      tipo: adaptiveTimeout === 10000 ? 'misto (10s)' : adaptiveTimeout === 8000 ? 'mídia (8s)' : 'texto (3s)'
     });
     
     // BUSCAR BATCHES DISPONÍVEIS (não processados E não em processamento)

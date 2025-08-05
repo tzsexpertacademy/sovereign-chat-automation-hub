@@ -20,7 +20,7 @@ interface MessageBatch {
 }
 
 const defaultConfig: BatchConfig = {
-  timeout: 4000, // 4 segundos por padrão
+  timeout: 3000, // 3 segundos para sincronizar com backend
   maxBatchSize: 10,
   enabled: true
 };
@@ -37,8 +37,8 @@ export const useMessageBatch = (
     try {
       console.log(`🎭 [MESSAGE-BATCH] Aplicando config padrão para assistente: ${assistantId}`);
       
-      // Usar timeout padrão de 4 segundos
-      const defaultTimeout = 4000;
+      // Usar timeout padrão de 3 segundos (sincronizado com backend)
+      const defaultTimeout = 3000;
       
       setConfig(prev => ({
         ...prev,
@@ -109,18 +109,18 @@ export const useMessageBatch = (
         (msg.messageType === 'image' || msg.type === 'image') !== isImageMessage
       );
     
-    // APLICAR TIMING BASEADO NO TIPO DE CONTEÚDO
+    // APLICAR TIMING BASEADO NO TIPO DE CONTEÚDO (SINCRONIZADO COM BACKEND)
     if (hasMixedContent || (isAudioMessage && isImageMessage)) {
-      messageTimeout = 12000; // 12s para conteúdo misto
+      messageTimeout = 10000; // 10s para conteúdo misto
       console.log(`🔄 [MESSAGE-BATCH] Conteúdo misto detectado, timeout: ${messageTimeout}ms`);
     } else if (isAudioMessage || isImageMessage) {
-      messageTimeout = 10000; // 10s para mídia única
+      messageTimeout = 8000; // 8s para mídia única
       console.log(`🎵🖼️ [MESSAGE-BATCH] Mídia detectada (${isAudioMessage ? 'áudio' : 'imagem'}), timeout: ${messageTimeout}ms`);
     } else if (hasFutureMediaCommand) {
-      messageTimeout = 12000; // 12s quando detecta comando de mídia futura  
+      messageTimeout = 10000; // 10s quando detecta comando de mídia futura  
       console.log(`🎯 [MESSAGE-BATCH] Comando de mídia futura detectado, timeout: ${messageTimeout}ms`);
     } else {
-      messageTimeout = 4000; // 4s para texto simples
+      messageTimeout = 3000; // 3s para texto simples
       console.log(`📝 [MESSAGE-BATCH] Texto simples, timeout: ${messageTimeout}ms`);
     }
     
