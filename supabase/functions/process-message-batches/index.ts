@@ -197,9 +197,12 @@ Deno.serve(async (req) => {
 async function processBatch(batch: any) {
   console.log('🤖 [PROCESS-BATCH] Processando batch:', batch.id);
 
+  try {
+    const messages = batch.messages || [];
+    
     // 🔍 DETECTAR COMANDOS DE MÍDIA RELACIONADA NO BATCH
     const detectsFutureMedia = (content: string): boolean => {
-      if (!content) return false;
+      if (!content || typeof content !== 'string') return false;
       
       const futureMediaPatterns = [
         /vou.*enviar.*imagem/i,
@@ -219,27 +222,42 @@ async function processBatch(batch: any) {
       return futureMediaPatterns.some(pattern => pattern.test(content));
     };
 
-    // 🎵 VERIFICAR SE HÁ MENSAGENS DE ÁUDIO NO BATCH
-    const audioMessages = batch.messages.filter((msg: any) => 
-      msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio')
-    );
+    // 🎵 DETECÇÃO MELHORADA DE MENSAGENS DE ÁUDIO
+    const audioMessages = messages.filter((msg: any) => {
+      if (msg.messageType === 'audio') return true;
+      if (typeof msg.content === 'string' && msg.content.includes('🎵 Áudio')) return true;
+      if (typeof msg.content === 'object' && msg.content?.mimetype?.startsWith('audio/')) return true;
+      return false;
+    });
 
-    // 🖼️ VERIFICAR SE HÁ MENSAGENS DE IMAGEM NO BATCH
-    const imageMessages = batch.messages.filter((msg: any) => 
-      msg.content && (msg.content.includes('📷 Imagem') || msg.content === '📷 Imagem')
-    );
+    // 🖼️ DETECÇÃO MELHORADA DE MENSAGENS DE IMAGEM
+    const imageMessages = messages.filter((msg: any) => {
+      if (msg.messageType === 'image') return true;
+      if (typeof msg.content === 'string' && msg.content.includes('📷 Imagem')) return true;
+      if (typeof msg.content === 'object' && msg.content?.mimetype?.startsWith('image/')) return true;
+      return false;
+    });
+
+    // 📄 DETECÇÃO DE DOCUMENTOS
+    const documentMessages = messages.filter((msg: any) => {
+      if (msg.messageType === 'document') return true;
+      if (typeof msg.content === 'object' && (msg.content?.fileName || msg.content?.title)) return true;
+      if (typeof msg.content === 'object' && msg.content?.mimetype === 'application/pdf') return true;
+      return false;
+    });
 
     // 🔗 VERIFICAR SE HÁ COMANDOS QUE REFERENCIAM MÍDIA FUTURA
-    const mediaCommandMessages = batch.messages.filter((msg: any) => {
-      const content = msg.content || '';
+    const mediaCommandMessages = messages.filter((msg: any) => {
+      const content = typeof msg.content === 'string' ? msg.content : '';
       return detectsFutureMedia(content);
     });
 
     // 📊 LOG DO CONTEXTO DO BATCH
     console.log('🔍 [BATCH-CONTEXT] Análise do batch:', {
-      totalMessages: batch.messages.length,
+      totalMessages: messages.length,
       audioCount: audioMessages.length,
       imageCount: imageMessages.length,
+      documentCount: documentMessages.length,
       mediaCommandCount: mediaCommandMessages.length,
       hasRelatedMedia: mediaCommandMessages.length > 0 && (audioMessages.length > 0 || imageMessages.length > 0)
     });
@@ -369,7 +387,6 @@ async function processBatch(batch: any) {
       }
     }
 
-  try {
     // BUSCAR TICKET
     const { data: ticketData } = await supabase
       .from('conversation_tickets')
@@ -406,11 +423,13 @@ async function processBatch(batch: any) {
     // PROCESSAR ANÁLISE E TRANSCRIÇÃO DE MÍDIAS
     await processMediaAnalysis(batch, audioMessages, imageMessages);
     
-    // 🎵 AGUARDAR TRANSCRIÇÃO OTIMIZADA POR TIPO DE MÍDIA
-    const processedMessages = await Promise.all(batch.messages.map(async (msg: any) => {
-      const isAudioMessage = msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio');
-      const isImageMessage = msg.content && (msg.content.includes('📷 Imagem') || msg.content === '📷 Imagem');
-      const isTextMessage = !isAudioMessage && !isImageMessage;
+    // 📝 PREPARAR MENSAGENS PARA IA COM DETECÇÃO MELHORADA DE TIPOS
+    const processedMessages = await Promise.all(messages.map(async (msg: any) => {
+      // 🔍 DETECÇÃO INTELIGENTE DE TIPOS DE MENSAGEM
+      const isAudioMessage = audioMessages.some(audio => audio.messageId === msg.messageId);
+      const isImageMessage = imageMessages.some(image => image.messageId === msg.messageId);
+      const isDocumentMessage = documentMessages.some(doc => doc.messageId === msg.messageId);
+      const isTextMessage = !isAudioMessage && !isImageMessage && !isDocumentMessage;
       
       // ⚡ PROCESSAMENTO IMEDIATO PARA TEXTO
       if (isTextMessage) {
