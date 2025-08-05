@@ -17,12 +17,17 @@ Deno.serve(async (req) => {
     )
 
     // Buscar mensagens de mídia que têm base64 mas não têm análise
+    console.log('🔍 [MEDIA-ANALYSIS] Buscando mensagens para análise...')
+    
     const { data: pendingAnalysis, error: queryError } = await supabase
       .from('ticket_messages')
       .select('*')
       .in('message_type', ['image', 'video', 'audio', 'document'])
-      .or('and(message_type.eq.image,image_base64.not.is.null,media_transcription.is.null),and(message_type.eq.video,video_base64.not.is.null,media_transcription.is.null),and(message_type.eq.document,document_base64.not.is.null,media_transcription.is.null)')
+      .or('and(message_type.eq.image,image_base64.not.is.null,media_transcription.is.null),and(message_type.eq.video,video_base64.not.is.null,media_transcription.is.null),and(message_type.eq.audio,audio_base64.not.is.null,media_transcription.is.null),and(message_type.eq.document,document_base64.not.is.null,media_transcription.is.null)')
+      .order('created_at', { ascending: true })
       .limit(10)
+    
+    console.log(`🔍 [MEDIA-ANALYSIS] Encontradas ${pendingAnalysis?.length || 0} mensagens para análise`)
 
     if (queryError) {
       console.error('❌ Erro ao buscar mensagens para análise:', queryError)
@@ -81,6 +86,12 @@ Deno.serve(async (req) => {
           case 'image':
             if (message.image_base64) {
               analysis = await processImageWithVision(message.image_base64, clientConfig.openai_api_key)
+            }
+            break
+          
+          case 'audio':
+            if (message.audio_base64) {
+              analysis = await processAudioAnalysis(message.content, clientConfig.openai_api_key)
             }
             break
           
@@ -201,6 +212,55 @@ async function processImageWithVision(imageBase64: string, apiKey: string): Prom
   } catch (error) {
     console.error('❌ [IMAGE-VISION] Erro ao processar imagem:', error)
     return '[Erro ao analisar imagem]'
+  }
+}
+
+/**
+ * Processar áudio - análise contextual da transcrição
+ */
+async function processAudioAnalysis(transcription: string, apiKey: string): Promise<string> {
+  try {
+    console.log('🎵 [AUDIO-ANALYSIS] Processando contexto do áudio...')
+    
+    if (!transcription || transcription === '🎵 Áudio') {
+      return '🎵 Áudio recebido - Transcrição em processamento'
+    }
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: 'Você é um assistente especializado em análise de áudios para atendimento ao cliente. Analise a transcrição fornecida e extraia informações relevantes como: sentimento, intenção, urgência, palavras-chave importantes, e contexto da mensagem.'
+          },
+          {
+            role: 'user',
+            content: `Analise esta transcrição de áudio: "${transcription}"`
+          }
+        ],
+        max_tokens: 800
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Erro na API OpenAI: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const analysis = data.choices[0].message.content
+    
+    console.log('✅ [AUDIO-ANALYSIS] Análise contextual concluída:', analysis.substring(0, 100))
+    return `🎵 ${transcription}\n\nAnálise: ${analysis}`
+    
+  } catch (error) {
+    console.error('❌ [AUDIO-ANALYSIS] Erro ao processar áudio:', error)
+    return `🎵 ${transcription}\n\nAnálise: [Erro ao analisar contexto do áudio]`
   }
 }
 
