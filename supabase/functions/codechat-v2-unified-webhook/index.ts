@@ -215,6 +215,7 @@ async function handleMessagesUpsert(supabase: any, instanceData: any, data: any)
       .from('whatsapp_messages')
       .upsert({
         instance_id: instanceData.instance_id,
+        client_id: instanceData.client_id, // ✅ CORREÇÃO DO BATCHING: Incluir client_id
         chat_id: keyRemoteJid,
         message_id: keyId,
         key_remote_jid: keyRemoteJid,
