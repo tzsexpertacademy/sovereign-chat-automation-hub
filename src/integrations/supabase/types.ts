@@ -2299,6 +2299,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      cleanup_orphaned_batches: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       emergency_message_recovery: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -2358,6 +2362,15 @@ export type Database = {
         }[]
       }
       manage_message_batch: {
+        Args: {
+          p_chat_id: string
+          p_client_id: string
+          p_instance_id: string
+          p_message: Json
+        }
+        Returns: Json
+      }
+      manage_message_batch_v2: {
         Args: {
           p_chat_id: string
           p_client_id: string

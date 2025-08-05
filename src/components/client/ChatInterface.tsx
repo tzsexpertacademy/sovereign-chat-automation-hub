@@ -14,6 +14,8 @@ import { useTicketRealtime } from '@/hooks/useTicketRealtime';
 import TypingIndicator from './TypingIndicator';
 import DiscreteImportPanel from './DiscreteImportPanel';
 import DiscreteProgressToast from './DiscreteProgressToast';
+import { useEmergencyProcessor } from '@/hooks/useEmergencyProcessor';
+import EmergencyProcessingButton from './EmergencyProcessingButton';
 
 interface ChatInterfaceProps {
   clientId: string;
@@ -32,6 +34,9 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
   const navigate = useNavigate();
   const { toast } = useToast();
   const { chatId } = useParams();
+
+  // Hook para processador de emergência
+  const { stats: emergencyStats, forceProcessChat } = useEmergencyProcessor(clientId);
 
   // Hook para tempo real
   const {
@@ -400,7 +405,13 @@ const ChatInterface = ({ clientId, selectedChatId, onSelectChat }: ChatInterface
                   </div>
                   
                   {selectedChat && (
-                    <div className="flex-shrink-0 ml-4">
+                    <div className="flex-shrink-0 ml-4 flex items-center gap-2">
+                      {/* Botão de Processamento de Emergência */}
+                      <EmergencyProcessingButton 
+                        clientId={clientId}
+                        chatId={selectedChat.id}
+                      />
+                      
                       <TicketActionsMenu 
                         ticket={selectedChat} 
                         onTicketUpdate={reloadTickets}
