@@ -22,10 +22,18 @@ class AllProcessController {
    * Processamento inteligente - decide entre batch ou imediato
    */
   async processMessage(messageData: any, clientId: string): Promise<void> {
-    const chatId = messageData.key?.remoteJid || messageData.remoteJid;
+    const chatId = messageData.chat_id || messageData.key?.remoteJid || messageData.remoteJid;
+    
+    console.log('🚀 [ALL-PROCESS] ENTRADA - Processando mensagem:', {
+      messageId: messageData.message_id,
+      chatId: chatId,
+      clientId: clientId,
+      instanceId: messageData.instance_id,
+      messageType: messageData.message_type
+    });
     
     if (!chatId || !clientId) {
-      console.log('❌ [ALL-PROCESS] Chat ID ou Client ID ausente');
+      console.log('❌ [ALL-PROCESS] Chat ID ou Client ID ausente:', { chatId, clientId });
       return;
     }
 
@@ -36,11 +44,13 @@ class AllProcessController {
     }
 
     this.lockChat(chatId);
+    console.log('🔐 [ALL-PROCESS] Chat bloqueado para processamento:', chatId);
     
     try {
       await this.handleIntelligentProcessing(messageData, clientId, chatId);
     } finally {
       this.unlockChat(chatId);
+      console.log('🔓 [ALL-PROCESS] Chat desbloqueado:', chatId);
     }
   }
 
@@ -54,12 +64,20 @@ class AllProcessController {
     // Verifica se já tem batch ativo para este chat
     const existingBatch = await this.getActiveBatch(chatId, clientId);
     
+    console.log('🔍 [ALL-PROCESS] Verificação de batch existente:', {
+      existeBatch: !!existingBatch,
+      batchId: existingBatch?.id,
+      chatId: chatId
+    });
+    
     if (existingBatch) {
       // Adiciona à batch existente
+      console.log('➕ [ALL-PROCESS] Adicionando à batch existente:', existingBatch.id);
       await this.addToBatch(existingBatch.id, messageData);
       this.resetBatchTimeout(chatId, clientId, existingBatch.id);
     } else {
       // Cria nova batch
+      console.log('📦 [ALL-PROCESS] Criando nova batch para chat:', chatId);
       const batchId = await this.createNewBatch(chatId, clientId, messageData);
       this.setBatchTimeout(chatId, clientId, batchId, messageType);
     }
@@ -98,17 +116,33 @@ class AllProcessController {
    * Busca batch ativo para o chat
    */
   private async getActiveBatch(chatId: string, clientId: string) {
-    const { data } = await supabase
-      .from('message_batches')
-      .select('*')
-      .eq('chat_id', chatId)
-      .eq('client_id', clientId)
-      .is('processing_started_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('message_batches')
+        .select('*')
+        .eq('chat_id', chatId)
+        .eq('client_id', clientId)
+        .is('processing_started_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(); // Usar maybeSingle para evitar erro quando não há dados
 
-    return data;
+      if (error) {
+        console.error('❌ [ALL-PROCESS] Erro ao buscar batch ativa:', error);
+        return null;
+      }
+
+      console.log('🔍 [ALL-PROCESS] Resultado busca batch:', {
+        encontrada: !!data,
+        batchId: data?.id,
+        chatId: chatId
+      });
+
+      return data;
+    } catch (error) {
+      console.error('❌ [ALL-PROCESS] Erro na busca de batch ativa:', error);
+      return null;
+    }
   }
 
   /**

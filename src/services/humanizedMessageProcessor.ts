@@ -62,36 +62,49 @@ export class HumanizedMessageProcessor {
   // Processar nova mensagem
   private async handleNewMessage(messageData: any, clientId: string): Promise<void> {
     try {
+      console.log('📨 [HUMANIZED-PROCESSOR] ENTRADA - Nova mensagem recebida:', {
+        messageId: messageData.message_id,
+        chatId: messageData.chat_id,
+        instanceId: messageData.instance_id,
+        type: messageData.message_type || 'text',
+        fromMe: messageData.from_me,
+        clientIdEsperado: clientId
+      });
+
       // Verificar se a mensagem pertence ao cliente
       const { data: instance } = await supabase
         .from('whatsapp_instances')
-        .select('client_id')
+        .select('client_id, instance_id')
         .eq('instance_id', messageData.instance_id)
         .single();
 
+      console.log('🔍 [HUMANIZED-PROCESSOR] Verificação de instância:', {
+        instanceEncontrada: !!instance,
+        clientIdInstancia: instance?.client_id,
+        clientIdEsperado: clientId,
+        pertenceAoCliente: instance?.client_id === clientId
+      });
+
       if (instance?.client_id !== clientId) {
+        console.log('❌ [HUMANIZED-PROCESSOR] Mensagem ignorada - não pertence ao cliente');
         return; // Mensagem não é deste cliente
       }
-
-      console.log('📨 [HUMANIZED-PROCESSOR] Nova mensagem recebida:', {
-        messageId: messageData.message_id,
-        chatId: messageData.chat_id,
-        type: messageData.message_type || 'text',
-        fromMe: messageData.from_me
-      });
 
       if (messageData.from_me) {
         console.log('📤 [HUMANIZED-PROCESSOR] Mensagem nossa ignorada (from_me=true)');
         return;
       }
 
+      console.log('🎯 [HUMANIZED-PROCESSOR] Direcionando para controlador central...');
+      
       // Usar o controlador central
       await allProcessController.processMessage(messageData, clientId);
 
-      console.log('✅ [HUMANIZED-PROCESSOR] Mensagem direcionada ao controlador central:', messageData.message_id);
+      console.log('✅ [HUMANIZED-PROCESSOR] Mensagem processada pelo controlador central:', messageData.message_id);
 
     } catch (error) {
-      console.error('❌ [HUMANIZED-PROCESSOR] Erro ao processar mensagem:', error);
+      console.error('❌ [HUMANIZED-PROCESSOR] Erro crítico ao processar mensagem:', error);
+      console.error('❌ [HUMANIZED-PROCESSOR] Dados da mensagem:', messageData);
     }
   }
 

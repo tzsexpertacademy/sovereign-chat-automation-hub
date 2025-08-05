@@ -48,6 +48,30 @@ const AIAutoProcessorStatus = ({ clientId }: AIAutoProcessorStatusProps) => {
     return () => clearInterval(interval);
   }, [clientId]);
 
+  // FASE 1: INICIALIZAÇÃO AUTOMÁTICA quando há conexões ativas
+  useEffect(() => {
+    const autoInitializeProcessor = async () => {
+      if (status.hasActiveConnections && !status.isInitialized) {
+        console.log('🚀 [AUTO-INIT] Inicializando automaticamente por conexões ativas:', status.totalConnections);
+        try {
+          await humanizedMessageProcessor.initialize(clientId);
+          setAutoProcess(true);
+          
+          // Atualizar status após inicialização automática
+          setTimeout(loadProcessorStatus, 1000);
+          
+          console.log('✅ [AUTO-INIT] Processador inicializado automaticamente');
+        } catch (error) {
+          console.error('❌ [AUTO-INIT] Erro na inicialização automática:', error);
+        }
+      }
+    };
+
+    // Aguardar um pouco para garantir que o status foi carregado
+    const autoInitTimeout = setTimeout(autoInitializeProcessor, 2000);
+    return () => clearTimeout(autoInitTimeout);
+  }, [status.hasActiveConnections, status.isInitialized, clientId]);
+
   const loadProcessorStatus = async () => {
     try {
       // Verificar status do processador
