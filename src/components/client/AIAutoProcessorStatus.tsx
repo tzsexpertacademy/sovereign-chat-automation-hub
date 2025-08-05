@@ -377,37 +377,36 @@ const AIAutoProcessorStatus = ({ clientId }: AIAutoProcessorStatusProps) => {
             </Button>
           )}
           
-          {!status.isInitialized && !status.hasActiveConnections && (
-            <Button 
-              variant="secondary" 
-              size="sm"
-              onClick={async () => {
-                console.log('🚨 [FORCE-INIT] Inicialização manual FORÇADA ignorando conexões');
-                setLoading(true);
-                try {
-                  await humanizedMessageProcessor.initialize(clientId);
-                  setAutoProcess(true);
-                  toast({
-                    title: "IA Inicializada Manualmente",
-                    description: "Processador foi iniciado independente das conexões",
-                  });
-                  setTimeout(loadProcessorStatus, 1000);
-                } catch (error: any) {
-                  toast({
-                    title: "Erro na Inicialização",
-                    description: error.message,
-                    variant: "destructive",
-                  });
-                } finally {
-                  setLoading(false);
-                }
-              }}
-              disabled={loading}
-            >
-              <Zap className="h-3 w-3 mr-1" />
-              Inicializar Forçado
-            </Button>
-          )}
+          {/* FORÇA SEMPRE MOSTRAR O BOTÃO PARA DEBUG */}
+          <Button 
+            variant="secondary" 
+            size="sm"
+            onClick={async () => {
+              console.log('🚨 [FORCE-INIT] Inicialização manual FORÇADA ignorando conexões');
+              setLoading(true);
+              try {
+                await humanizedMessageProcessor.initialize(clientId);
+                setAutoProcess(true);
+                toast({
+                  title: "IA Inicializada Manualmente",
+                  description: "Processador foi iniciado independente das conexões",
+                });
+                setTimeout(loadProcessorStatus, 1000);
+              } catch (error: any) {
+                toast({
+                  title: "Erro na Inicialização",
+                  description: error.message,
+                  variant: "destructive",
+                });
+              } finally {
+                setLoading(false);
+              }
+            }}
+            disabled={loading}
+          >
+            <Zap className="h-3 w-3 mr-1" />
+            {loading ? "Inicializando..." : "FORÇA INICIALIZAR"}
+          </Button>
           
           {status.isInitialized && (
             <Button 
