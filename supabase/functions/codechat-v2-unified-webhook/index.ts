@@ -60,20 +60,63 @@ serve(async (req) => {
 
     const { instance, event, data } = webhookData
 
-    // Buscar instância no Supabase
-    const { data: instanceData, error: instanceError } = await supabase
+    // 🔧 BUSCA HÍBRIDA DE INSTÂNCIA: Tentar múltiplas estratégias
+    console.log('🔍 [WEBHOOK] Buscando instância:', instance)
+    
+    // ESTRATÉGIA 1: Busca direta por instance_id
+    let { data: instanceData, error: instanceError } = await supabase
       .from('whatsapp_instances')
       .select('*')
       .eq('instance_id', instance)
       .single()
 
+    // ESTRATÉGIA 2: Se não encontrou, tentar por business_business_id
     if (instanceError || !instanceData) {
-      console.error('❌ Instância não encontrada:', instance)
+      console.log('🔄 [WEBHOOK] Busca direta falhou, tentando por business_business_id...')
+      
+      const { data: businessInstances, error: businessError } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('business_business_id', instance)
+
+      if (!businessError && businessInstances && businessInstances.length > 0) {
+        instanceData = businessInstances[0]
+        console.log('✅ [WEBHOOK] Instância encontrada via business_business_id')
+      }
+    }
+
+    // ESTRATÉGIA 3: Buscar qualquer instância ativa (fallback final)
+    if (!instanceData) {
+      console.log('🔄 [WEBHOOK] Tentando fallback - buscar instância ativa...')
+      
+      const { data: activeInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('status', 'open')
+        .limit(1)
+
+      if (activeInstances && activeInstances.length > 0) {
+        instanceData = activeInstances[0]
+        console.log('⚠️ [WEBHOOK] Usando instância ativa como fallback:', instanceData.instance_id)
+      }
+    }
+
+    if (!instanceData) {
+      console.error('❌ [WEBHOOK] Instância não encontrada após todas as estratégias:', instance)
       return new Response(
-        JSON.stringify({ error: 'Instance not found' }),
+        JSON.stringify({ 
+          error: 'Instance not found after hybrid search',
+          searched_id: instance 
+        }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    console.log('✅ [WEBHOOK] Instância encontrada:', {
+      found_instance_id: instanceData.instance_id,
+      search_instance_id: instance,
+      client_id: instanceData.client_id
+    })
 
     // Processar eventos baseado no tipo
     switch (event) {

@@ -66,28 +66,77 @@ class DirectMediaDownloadService {
   private businessToken: string | null = null;
 
   /**
-   * Buscar instanceId interno e business_token do Supabase
+   * Buscar instanceId e business_token com estratégia híbrida
    */
   private async getInternalInstanceId(externalInstanceId: string): Promise<string | null> {
     try {
       console.log('🔍 [MEDIA-DOWNLOAD] Buscando dados da instância para:', externalInstanceId);
       const { supabase } = await import('@/integrations/supabase/client');
       
-      // Buscar instance_id na tabela whatsapp_instances
-      const { data: instanceData, error: instanceError } = await supabase
+      // ESTRATÉGIA 1: Busca direta por instance_id
+      let { data: instanceData, error: instanceError } = await supabase
         .from('whatsapp_instances')
-        .select('instance_id, client_id')
+        .select('instance_id, client_id, business_business_id')
         .eq('instance_id', externalInstanceId)
         .single();
 
+      // ESTRATÉGIA 2: Se não encontrou, tentar buscar por business_business_id
       if (instanceError || !instanceData) {
-        console.error('❌ [MEDIA-DOWNLOAD] Erro ao buscar instância:', instanceError);
+        console.log('🔄 [MEDIA-DOWNLOAD] Busca direta falhou, tentando por business_business_id...');
+        
+        const { data: businessInstances, error: businessError } = await supabase
+          .from('whatsapp_instances')
+          .select('instance_id, client_id, business_business_id')
+          .eq('business_business_id', externalInstanceId);
+
+        if (!businessError && businessInstances && businessInstances.length > 0) {
+          instanceData = businessInstances[0]; // Usar primeira instância encontrada
+          console.log('✅ [MEDIA-DOWNLOAD] Instância encontrada via business_business_id');
+        }
+      }
+
+      // ESTRATÉGIA 3: Se ainda não encontrou, decodificar JWT do business_token para mapear
+      if (!instanceData) {
+        console.log('🔄 [MEDIA-DOWNLOAD] Tentando mapear via JWT dos business_tokens...');
+        
+        const { data: allClients } = await supabase
+          .from('clients')
+          .select('id, business_token');
+
+        for (const client of allClients || []) {
+          if (client.business_token) {
+            try {
+              // Decodificar JWT para extrair I_ID
+              const payload = JSON.parse(atob(client.business_token.split('.')[1]));
+              if (payload.I_ID === externalInstanceId) {
+                // Encontrou! Buscar instância deste cliente
+                const { data: clientInstances } = await supabase
+                  .from('whatsapp_instances')
+                  .select('instance_id, client_id, business_business_id')
+                  .eq('client_id', client.id);
+
+                if (clientInstances && clientInstances.length > 0) {
+                  instanceData = clientInstances[0];
+                  console.log('✅ [MEDIA-DOWNLOAD] Instância encontrada via JWT mapping');
+                  break;
+                }
+              }
+            } catch (jwtError) {
+              // Ignorar erros de JWT inválido
+            }
+          }
+        }
+      }
+
+      if (!instanceData) {
+        console.error('❌ [MEDIA-DOWNLOAD] Instância não encontrada após todas as estratégias:', externalInstanceId);
         return null;
       }
 
       console.log('✅ [MEDIA-DOWNLOAD] Instância encontrada:', {
         instance_id: instanceData.instance_id,
-        client_id: instanceData.client_id
+        client_id: instanceData.client_id,
+        business_business_id: instanceData.business_business_id
       });
 
       // Buscar business_token do cliente
@@ -102,7 +151,7 @@ class DirectMediaDownloadService {
         return null;
       }
 
-      console.log('✅ [MEDIA-DOWNLOAD] Business token encontrado');
+      console.log('✅ [MEDIA-DOWNLOAD] Business token encontrado para cliente');
       
       // Armazenar business_token para uso posterior
       this.businessToken = clientData.business_token;
