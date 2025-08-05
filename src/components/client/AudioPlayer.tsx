@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, Volume2, Download, AlertCircle, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -32,18 +32,7 @@ const AudioPlayer = ({
   const [totalDuration, setTotalDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Hook unificado para gerenciar mídia
-  const { displayUrl, isLoading, error, isFromCache, retry, hasRetried } = useUnifiedMedia({
-    messageId: messageId || `audio_${Date.now()}`,
-    mediaUrl: audioUrl,
-    mediaKey,
-    fileEncSha256,
-    mimetype: 'audio/ogg',
-    contentType: 'audio',
-    audioBase64: audioData
-  });
-
-  // Detectar formato de áudio pelos headers (mantido para compatibilidade)
+  // Detectar formato de áudio pelos headers (função auxiliar)
   const detectAudioFormat = (base64Data: string): string => {
     try {
       if (!base64Data || base64Data.length < 40) return 'ogg';
@@ -67,6 +56,33 @@ const AudioPlayer = ({
       return 'ogg';
     }
   };
+
+  // PRIORIZAR audio_base64 se disponível
+  const audioDisplayUrl = useMemo(() => {
+    if (audioData) {
+      const format = detectAudioFormat(audioData);
+      const mimeType = format === 'ogg' ? 'audio/ogg; codecs=opus' : 
+                      format === 'wav' ? 'audio/wav' : 
+                      format === 'mp3' ? 'audio/mpeg' : 'audio/ogg';
+      
+      return `data:${mimeType};base64,${audioData}`;
+    }
+    return null;
+  }, [audioData, detectAudioFormat]);
+
+  // Hook unificado apenas como fallback se não tiver base64
+  const { displayUrl, isLoading, error, isFromCache, retry, hasRetried } = useUnifiedMedia({
+    messageId: messageId || `audio_${Date.now()}`,
+    mediaUrl: audioUrl,
+    mediaKey,
+    fileEncSha256,
+    mimetype: 'audio/ogg',
+    contentType: 'audio',
+    audioBase64: audioData
+  });
+
+  // URL final: priorizar base64 direto, depois fallback
+  const finalDisplayUrl = audioDisplayUrl || displayUrl;
 
   // Simplificado: usar displayUrl do hook unificado
 
@@ -93,10 +109,10 @@ const AudioPlayer = ({
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [displayUrl]);
+  }, [finalDisplayUrl]);
 
   const togglePlay = async () => {
-    if (!audioRef.current || (!displayUrl && !error)) return;
+    if (!audioRef.current || (!finalDisplayUrl && !error)) return;
 
     try {
       if (isPlaying) {
@@ -128,13 +144,13 @@ const AudioPlayer = ({
   };
 
   const downloadAudio = async () => {
-    if (!displayUrl) {
+    if (!finalDisplayUrl) {
       toast.error('Nenhum áudio disponível para download');
       return;
     }
 
     try {
-      let downloadUrl = displayUrl;
+      let downloadUrl = finalDisplayUrl;
       let downloadFileName = fileName;
 
       // Se for data URL (base64), converter para blob
@@ -155,10 +171,10 @@ const AudioPlayer = ({
       a.download = downloadFileName;
       a.click();
 
-      // Limpar URL temporária se criamos uma
-      if (downloadUrl.startsWith('blob:') && downloadUrl !== displayUrl) {
-        URL.revokeObjectURL(downloadUrl);
-      }
+        // Limpar URL temporária se criamos uma
+        if (downloadUrl.startsWith('blob:') && downloadUrl !== finalDisplayUrl) {
+          URL.revokeObjectURL(downloadUrl);
+        }
 
       toast.success('Áudio baixado com sucesso');
     } catch (error) {
@@ -171,7 +187,7 @@ const AudioPlayer = ({
     <div className="flex items-center space-x-3 bg-muted/30 p-3 rounded-lg border">
       <audio 
         ref={audioRef}
-        src={displayUrl || undefined}
+        src={finalDisplayUrl || undefined}
         preload="metadata"
       />
       
@@ -179,7 +195,7 @@ const AudioPlayer = ({
         variant="ghost"
         size="sm"
         onClick={togglePlay}
-        disabled={isLoading || (!displayUrl && !error)}
+        disabled={isLoading || (!finalDisplayUrl && !error)}
         className="h-8 w-8 p-0"
       >
         {isLoading ? (
@@ -200,7 +216,7 @@ const AudioPlayer = ({
           max={totalDuration || 100}
           value={currentTime}
           onChange={handleSeek}
-          disabled={!displayUrl || isLoading}
+          disabled={!finalDisplayUrl || isLoading}
           className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
         />
         <div className="flex justify-between text-xs text-muted-foreground mt-1">
@@ -213,7 +229,7 @@ const AudioPlayer = ({
         variant="ghost"
         size="sm"
         onClick={downloadAudio}
-        disabled={!displayUrl || isLoading}
+        disabled={!finalDisplayUrl || isLoading}
         className="h-8 w-8 p-0"
         title="Baixar áudio"
       >
@@ -257,7 +273,7 @@ const AudioPlayer = ({
           </div>
         )}
         
-        {displayUrl && !error && !isLoading && (
+        {finalDisplayUrl && !error && !isLoading && (
           <div className="text-green-600 flex items-center">
             ✓ Pronto
           </div>

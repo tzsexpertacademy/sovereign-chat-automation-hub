@@ -199,13 +199,19 @@ Deno.serve(async (req) => {
 
         console.log(`🔑 [MEDIA-DECRYPT] Business token encontrado para cliente`)
 
-        // Preparar dados para descriptografia
+        // Preparar dados para descriptografia - CORRIGIR FORMATO DA API
+        const mediaKeyBase64 = Array.isArray(message.media_key) 
+          ? btoa(String.fromCharCode(...message.media_key))
+          : (typeof message.media_key === 'object' 
+              ? btoa(String.fromCharCode(...Object.values(message.media_key)))
+              : message.media_key)
+
         const downloadRequest = {
           contentType: message.message_type,
           content: {
             url: message.media_url,
-            mediaKey: message.media_key,
-            directPath: message.direct_path || message.media_url,
+            mediaKey: mediaKeyBase64,
+            directPath: message.direct_path || message.media_url?.split('?')[0],
             mimetype: message.media_mime_type || getDefaultMimeType(message.message_type)
           }
         }
@@ -214,7 +220,9 @@ Deno.serve(async (req) => {
           contentType: downloadRequest.contentType,
           url: downloadRequest.content.url?.substring(0, 50) + '...',
           hasMediaKey: !!downloadRequest.content.mediaKey,
-          mimetype: downloadRequest.content.mimetype
+          mediaKeyType: typeof downloadRequest.content.mediaKey,
+          mimetype: downloadRequest.content.mimetype,
+          directPath: downloadRequest.content.directPath?.substring(0, 50)
         })
 
         // Chamar endpoint de descriptografia
