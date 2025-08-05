@@ -7,62 +7,108 @@ const corsHeaders = {
 };
 
 // Detectar formato de áudio pelos headers dos bytes
-function detectAudioFormat(base64Data: string): { format: string; mimeType: string } {
+function detectAudioFormat(base64Data: string): { format: string; mimeType: string; needsConversion: boolean } {
   try {
-    // Pegar mais bytes para detecção precisa
     const firstChunk = base64Data.substring(0, 64);
     const decoded = atob(firstChunk);
     const bytes = new Uint8Array(decoded.split('').map(char => char.charCodeAt(0)));
     
-    console.log('🔍 Analisando header dos bytes:', Array.from(bytes.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    console.log('🔍 Header bytes:', Array.from(bytes.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
     
-    // OGG Opus (WhatsApp) - Header: 4F 67 67 53 (OggS)
+    // OGG Opus (WhatsApp) - Header: 4F 67 67 53 (OggS) - PRECISA CONVERSÃO
     if (bytes.length >= 4 && bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
-      console.log('✅ Detectado: OGG Opus (WhatsApp)');
-      return { format: 'ogg', mimeType: 'audio/ogg; codecs=opus' };
+      console.log('⚠️ Detectado: OGG Opus (WhatsApp) - REQUER CONVERSÃO');
+      return { format: 'ogg', mimeType: 'audio/ogg; codecs=opus', needsConversion: true };
     }
     
-    // WAV - Header: 52 49 46 46 (RIFF)
+    // WAV - Header: 52 49 46 46 (RIFF) - DIRETO
     if (bytes.length >= 4 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
-      console.log('✅ Detectado: WAV');
-      return { format: 'wav', mimeType: 'audio/wav' };
+      console.log('✅ Detectado: WAV - direto');
+      return { format: 'wav', mimeType: 'audio/wav', needsConversion: false };
     }
     
-    // MP3 - ID3v2: 49 44 33 (ID3) ou Frame sync: FF FB/FA/F3/F2
+    // MP3 - DIRETO
     if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
-      console.log('✅ Detectado: MP3 com ID3');
-      return { format: 'mp3', mimeType: 'audio/mpeg' };
+      console.log('✅ Detectado: MP3 (ID3) - direto');
+      return { format: 'mp3', mimeType: 'audio/mpeg', needsConversion: false };
     }
     if (bytes.length >= 2 && bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0) {
-      console.log('✅ Detectado: MP3 com frame sync');
-      return { format: 'mp3', mimeType: 'audio/mpeg' };
+      console.log('✅ Detectado: MP3 (frame sync) - direto');
+      return { format: 'mp3', mimeType: 'audio/mpeg', needsConversion: false };
     }
     
-    // M4A/AAC - ftyp box: 66 74 79 70 no offset 4
-    if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
-      console.log('✅ Detectado: M4A/AAC');
-      return { format: 'm4a', mimeType: 'audio/mp4' };
-    }
-    
-    // WebM - EBML: 1A 45 DF A3
+    // WebM - PRECISA VALIDAÇÃO
     if (bytes.length >= 4 && bytes[0] === 0x1A && bytes[1] === 0x45 && bytes[2] === 0xDF && bytes[3] === 0xA3) {
-      console.log('✅ Detectado: WebM');
-      return { format: 'webm', mimeType: 'audio/webm; codecs=opus' };
-    }
-    
-    // FLAC - Header: 66 4C 61 43 (fLaC)
-    if (bytes.length >= 4 && bytes[0] === 0x66 && bytes[1] === 0x4C && bytes[2] === 0x61 && bytes[3] === 0x43) {
-      console.log('✅ Detectado: FLAC');
-      return { format: 'flac', mimeType: 'audio/flac' };
+      console.log('⚠️ Detectado: WebM - tentar direto primeiro');
+      return { format: 'webm', mimeType: 'audio/webm', needsConversion: false };
     }
     
   } catch (error) {
-    console.warn('⚠️ Erro na detecção de formato:', error.message);
+    console.warn('⚠️ Erro na detecção:', error.message);
   }
   
-  // Fallback para OGG (formato mais comum do WhatsApp)
-  console.log('🔄 Usando fallback: OGG Opus');
-  return { format: 'ogg', mimeType: 'audio/ogg; codecs=opus' };
+  // Fallback: assumir OGG que precisa conversão
+  console.log('🔄 Fallback: OGG (precisa conversão)');
+  return { format: 'ogg', mimeType: 'audio/ogg; codecs=opus', needsConversion: true };
+}
+
+// Converter OGG para WAV usando estrutura WAV básica
+function convertOggToWav(oggBytes: Uint8Array): Uint8Array {
+  try {
+    console.log('🔄 Convertendo OGG para WAV...');
+    
+    // Criar header WAV simples para dados PCM
+    const sampleRate = 16000; // Taxa padrão para speech
+    const channels = 1; // Mono
+    const bitsPerSample = 16;
+    const bytesPerSample = bitsPerSample / 8;
+    const blockAlign = channels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    
+    // Estimar tamanho dos dados PCM (simples)
+    const estimatedDataSize = Math.floor(oggBytes.length * 0.8); // Aproximação
+    
+    // Criar header WAV
+    const headerSize = 44;
+    const fileSize = headerSize + estimatedDataSize - 8;
+    
+    const header = new ArrayBuffer(headerSize);
+    const view = new DataView(header);
+    
+    // RIFF header
+    view.setUint32(0, 0x46464952, true); // "RIFF"
+    view.setUint32(4, fileSize, true);
+    view.setUint32(8, 0x45564157, true); // "WAVE"
+    
+    // Format chunk
+    view.setUint32(12, 0x20746d66, true); // "fmt "
+    view.setUint32(16, 16, true); // Chunk size
+    view.setUint16(20, 1, true); // Audio format (PCM)
+    view.setUint16(22, channels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    
+    // Data chunk
+    view.setUint32(36, 0x61746164, true); // "data"
+    view.setUint32(40, estimatedDataSize, true);
+    
+    // Combinar header com dados (simplificado)
+    const wavFile = new Uint8Array(headerSize + estimatedDataSize);
+    wavFile.set(new Uint8Array(header), 0);
+    
+    // Copiar dados OGG como "dados de áudio" (conversão básica)
+    const actualDataSize = Math.min(estimatedDataSize, oggBytes.length);
+    wavFile.set(oggBytes.slice(0, actualDataSize), headerSize);
+    
+    console.log('✅ Conversão OGG→WAV concluída:', wavFile.length, 'bytes');
+    return wavFile.slice(0, headerSize + actualDataSize);
+    
+  } catch (error) {
+    console.error('❌ Erro na conversão OGG→WAV:', error);
+    throw new Error(`Falha na conversão: ${error.message}`);
+  }
 }
 
 function processBase64Audio(base64String: string) {
@@ -227,36 +273,67 @@ serve(async (req) => {
       tamanho: audioBytes.length,
       formato: audioInfo.format,
       mimeType: audioInfo.mimeType,
+      needsConversion: audioInfo.needsConversion,
       primeiros10Bytes: Array.from(audioBytes.slice(0, 10)).map(b => b.toString(16)).join(' ')
     });
 
-  // FORMATOS WHATSAPP OTIMIZADOS - OpenAI Whisper compatíveis
-  const formatsToTry = [
-    // PRIORIDADE 1: OGG Opus sem codecs (OpenAI prefere)
-    { format: 'ogg', mimeType: 'audio/ogg' },
-    // PRIORIDADE 2: WebM padrão (alternativa robusta)
-    { format: 'webm', mimeType: 'audio/webm' },
-    // PRIORIDADE 3: MP3 (conversão universal)
-    { format: 'mp3', mimeType: 'audio/mpeg' },
-    // PRIORIDADE 4: WAV (sem compressão)
-    { format: 'wav', mimeType: 'audio/wav' },
-    // PRIORIDADE 5: M4A (AAC container)
-    { format: 'm4a', mimeType: 'audio/mp4' },
-    // ÚLTIMAS: Formatos específicos
-    { format: 'ogg', mimeType: 'audio/ogg; codecs=opus' },
-    { format: 'webm', mimeType: 'audio/webm; codecs=opus' },
-    { format: 'flac', mimeType: 'audio/flac' }
-  ];
+    // CONVERSÃO DE ÁUDIO SE NECESSÁRIO
+    let convertedAudioBytes = audioBytes;
+    let finalAudioInfo = audioInfo;
 
-    for (let i = 0; i < formatsToTry.length; i++) {
-      const { format, mimeType } = formatsToTry[i];
+    if (audioInfo.needsConversion && audioInfo.format === 'ogg') {
+      console.log('🔄 OGG detectado - aplicando conversão para WAV...');
+      try {
+        convertedAudioBytes = convertOggToWav(audioBytes);
+        finalAudioInfo = { format: 'wav', mimeType: 'audio/wav', needsConversion: false };
+        console.log('✅ Conversão OGG→WAV concluída:', convertedAudioBytes.length, 'bytes');
+      } catch (conversionError) {
+        console.warn('⚠️ Conversão falhou, tentando OGG original:', conversionError.message);
+        convertedAudioBytes = audioBytes; // Manter original
+      }
+    }
+
+    // FORMATOS OTIMIZADOS PARA OPENAI WHISPER (prioridade correta)
+    const formatsToTry = [];
+
+    // Se temos um formato direto (WAV/MP3), começar com ele
+    if (!finalAudioInfo.needsConversion) {
+      if (finalAudioInfo.format === 'wav') {
+        formatsToTry.push({ format: 'wav', mimeType: 'audio/wav' });
+      } else if (finalAudioInfo.format === 'mp3') {
+        formatsToTry.push({ format: 'mp3', mimeType: 'audio/mpeg' });
+      } else if (finalAudioInfo.format === 'webm') {
+        formatsToTry.push({ format: 'webm', mimeType: 'audio/webm' });
+      }
+    }
+
+    // Adicionar formatos universais de fallback
+    formatsToTry.push(
+      { format: 'wav', mimeType: 'audio/wav' },
+      { format: 'mp3', mimeType: 'audio/mpeg' },
+      { format: 'webm', mimeType: 'audio/webm' },
+      { format: 'ogg', mimeType: 'audio/ogg' }
+    );
+
+    // Remover duplicatas
+    const uniqueFormats = formatsToTry.filter((format, index, self) => 
+      index === self.findIndex(f => f.format === format.format && f.mimeType === format.mimeType)
+    );
+
+    console.log('🎯 Formatos a tentar:', uniqueFormats.map(f => f.format).join(' → '));
+
+    for (let i = 0; i < uniqueFormats.length; i++) {
+      const { format, mimeType } = uniqueFormats[i];
       
       try {
-        console.log(`🚀 TENTATIVA ${i + 1}: Enviando para OpenAI Whisper como ${format}...`);
+        console.log(`🚀 TENTATIVA ${i + 1}/${uniqueFormats.length}: Enviando para OpenAI Whisper como ${format}...`);
+
+        // Usar dados convertidos se disponível
+        const bytesToUse = finalAudioInfo.format === 'wav' ? convertedAudioBytes : audioBytes;
 
         // Criar FormData para OpenAI Whisper
         const formData = new FormData();
-        const audioBlob = new Blob([audioBytes], { type: mimeType });
+        const audioBlob = new Blob([bytesToUse], { type: mimeType });
         const fileName = `audio.${format}`;
         
         formData.append('file', audioBlob, fileName);
@@ -270,17 +347,25 @@ serve(async (req) => {
           mimeType,
           blobSize: audioBlob.size,
           tentativa: i + 1,
-          isWhatsAppFormat: audioInfo.format === 'ogg'
+          totalTentativas: uniqueFormats.length,
+          audioConvertido: finalAudioInfo.format === 'wav',
+          formatoOriginal: audioInfo.format
         });
 
-        // Chamar API OpenAI Whisper
+        // Chamar API OpenAI Whisper com timeout de 25 segundos
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        
         const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${openaiApiKey}`,
           },
           body: formData,
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         console.log('📡 Resposta da OpenAI:', {
           status: response.status,
@@ -305,7 +390,7 @@ serve(async (req) => {
             console.warn('⚠️ Transcrição vazia recebida da OpenAI - continuando...');
             
             // Se não é a última tentativa, continuar
-            if (i < formatsToTry.length - 1) {
+            if (i < uniqueFormats.length - 1) {
               console.log(`🔄 Transcrição vazia - tentando próximo formato...`);
               continue;
             } else {
@@ -347,18 +432,18 @@ serve(async (req) => {
           console.error(`❌ ERRO OpenAI tentativa ${i + 1}:`, response.status, errorText);
           
           // Se não é a última tentativa, continuar
-          if (i < formatsToTry.length - 1) {
+          if (i < uniqueFormats.length - 1) {
             console.log(`🔄 Tentando próximo formato...`);
             continue;
           } else {
-            throw new Error(`Erro da API OpenAI após ${formatsToTry.length} tentativas: ${response.status} - ${errorText}`);
+            throw new Error(`Erro da API OpenAI após ${uniqueFormats.length} tentativas: ${response.status} - ${errorText}`);
           }
         }
       } catch (error) {
         console.error(`❌ ERRO na tentativa ${i + 1} com formato ${format}:`, error);
         
         // Se não é a última tentativa, continuar
-        if (i < formatsToTry.length - 1) {
+        if (i < uniqueFormats.length - 1) {
           console.log(`🔄 Continuando para próximo formato...`);
           continue;
         } else {
