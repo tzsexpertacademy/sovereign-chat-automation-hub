@@ -49,15 +49,15 @@ export class HumanizedMessageProcessor {
           filter: `from_me=eq.false` // Apenas mensagens dos clientes
         },
         async (payload) => {
-          // DEBOUNCING: Aguardar 500ms para permitir que mensagens rápidas sejam agrupadas
+          // DEBOUNCING AUMENTADO: Aguardar 2000ms para permitir que mensagens rápidas sejam agrupadas
           setTimeout(async () => {
             await this.handleNewMessage(payload.new as any, clientId);
-          }, 500);
+          }, 2000);
         }
       )
       .subscribe();
 
-    console.log('👂 Listeners de tempo real configurados com debouncing de 500ms');
+    console.log('👂 Listeners de tempo real configurados com debouncing de 2000ms');
   }
 
   // Processar nova mensagem

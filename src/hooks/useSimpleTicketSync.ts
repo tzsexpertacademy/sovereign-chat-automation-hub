@@ -17,6 +17,7 @@ export const useSimpleTicketSync = ({
   const channelRef = useRef<any>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleChange = useCallback((payload: any) => {
     const { eventType, new: newTicket, old: oldTicket } = payload;
@@ -29,13 +30,15 @@ export const useSimpleTicketSync = ({
       timestamp: new Date().toISOString()
     });
 
-    // FORÇA UPDATE IMEDIATO - SEM DEBOUNCE
-    setLastUpdate(new Date());
+    // Debounce de 1000ms para evitar múltiplas chamadas
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
     
-    // TRIPLE UPDATE para garantir sync
-    onUpdate();
-    setTimeout(() => onUpdate(), 100);
-    setTimeout(() => onUpdate(), 500);
+    debounceRef.current = setTimeout(() => {
+      setLastUpdate(new Date());
+      onUpdate();
+    }, 1000);
 
     // DETECTAR REABERTURA E AUTO-SWITCH
     if (eventType === 'UPDATE' && oldTicket && newTicket) {
@@ -60,16 +63,11 @@ export const useSimpleTicketSync = ({
           onTicketReopen(newT.id, newT.assigned_queue_id);
         }
         
-        // FORÇA MÚLTIPLOS UPDATES PARA GARANTIR VISIBILIDADE
+        // Update adicional para reabertura
         setTimeout(() => {
-          console.log('🔄 [SIMPLE-SYNC] Update 1 pós-reabertura');
+          console.log('🔄 [SIMPLE-SYNC] Update pós-reabertura');
           onUpdate();
-        }, 200);
-        
-        setTimeout(() => {
-          console.log('🔄 [SIMPLE-SYNC] Update 2 pós-reabertura');
-          onUpdate();
-        }, 1000);
+        }, 500);
       }
     }
   }, [onUpdate, onTicketReopen, onAutoSwitchTab]);
@@ -101,12 +99,7 @@ export const useSimpleTicketSync = ({
 
     channelRef.current = channel;
 
-    // POLLING DE BACKUP a cada 2 segundos
-    console.log('⏰ [SIMPLE-SYNC] Iniciando polling de backup');
-    pollingIntervalRef.current = setInterval(() => {
-      console.log('🔄 [POLLING] Backup update a cada 2s');
-      onUpdate();
-    }, 2000);
+    // POLLING DE BACKUP removido - confiar apenas no real-time
 
     return () => {
       if (channelRef.current) {

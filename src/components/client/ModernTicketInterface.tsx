@@ -23,7 +23,7 @@ import {
   Paperclip
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useTicketMessages } from '@/hooks/useTicketMessages';
+import { useTicketMessagesUnified } from '@/hooks/useTicketMessagesUnified';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
@@ -68,7 +68,7 @@ const ModernTicketInterface: React.FC<ModernTicketInterfaceProps> = ({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const { messages, isLoading } = useTicketMessages(ticketId);
+  const { messages, isLoading } = useTicketMessagesUnified({ ticketId, clientId });
   const { toast } = useToast();
   const { markActivity, isOnline } = useOnlineStatus(clientId, true);
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);

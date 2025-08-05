@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import TicketActionsMenu from '../TicketActionsMenu';
 import { useTicketData } from './useTicketData';
-import { useTicketMessages } from '@/hooks/useTicketMessages';
+import { useTicketMessagesUnified } from '@/hooks/useTicketMessagesUnified';
 
 interface ChatHeaderImprovedProps {
   ticket: any;
@@ -18,7 +18,7 @@ interface ChatHeaderImprovedProps {
 const ChatHeaderImproved = ({ ticket, clientId, onTicketUpdate }: ChatHeaderImprovedProps) => {
   const { toast } = useToast();
   const { queueInfo, connectedInstance } = useTicketData(ticket?.id || '', clientId);
-  const { messages } = useTicketMessages(ticket?.id || '');
+  const { messages } = useTicketMessagesUnified({ ticketId: ticket?.id || '', clientId });
   const [isClearing, setIsClearing] = React.useState(false);
 
   if (!ticket) return null;

@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { unifiedMessageService } from '@/services/unifiedMessageService';
 import { ticketsService } from '@/services/ticketsService';
 import { useToast } from '@/hooks/use-toast';
-import { useOptimizedTicketMessages } from '@/hooks/useOptimizedTicketMessages';
+import { useTicketMessagesUnified } from '@/hooks/useTicketMessagesUnified';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
@@ -55,17 +55,14 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
   }, []);
 
   // Sistema 100% Real-Time - Supabase + Optimistic Updates
-  const { 
-    messages, 
-    isLoading, 
+  const {
+    messages,
+    isLoading,
     lastUpdateSource,
     reload,
-    isSupabaseActive,
-    isPollingActive,
-    addOptimisticMessage,
-    confirmOptimisticMessage,
-    failOptimisticMessage
-  } = useOptimizedTicketMessages({
+    isRealtimeActive,
+    isPollingActive
+  } = useTicketMessagesUnified({
     ticketId,
     clientId
   });
@@ -410,22 +407,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         return;
       }
       
-      // ⚡ OPTIMISTIC UPDATE ULTRA-RÁPIDO - ZERO delay visual
-      const optimisticMessageId = addOptimisticMessage({
-        message_id: messageId,
-        content: messageToSend,
-        message_type: 'text',
-        from_me: true,
-        sender_name: '⚡ Enviando...',
-        timestamp: timestamp,
-        processing_status: 'sending'
-      });
+      // ✅ Mensagem será adicionada via real-time quando salva no banco
       
       console.log('⚡ [ULTRA-FAST] Mensagem INSTANTÂNEA criada, enviando:', {
         instanceId: actualInstanceId,
         chatId: ticket.chat_id,
         messagePreview: messageToSend.substring(0, 50) + '...',
-        optimisticId: optimisticMessageId,
+        optimisticId: 'unified_hook',
         instantTime: Date.now()
       });
 
@@ -481,8 +469,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: timestamp
         });
 
-        // ⚡ CONFIRMAR IMEDIATAMENTE (Supabase detectará em < 1 segundo)
-        confirmOptimisticMessage(optimisticMessageId);
+        // ✅ Real-time do Supabase adicionará automaticamente
         
         // 🚀 AGUARDAR salvamento em paralelo (não bloqueia UI)
         savePromise.then(() => {
@@ -496,8 +483,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         const errorMessage = response.errors && response.errors.length > 0 ? response.errors[0] : "Erro desconhecido";
         console.error('❌ [ULTRA-FAST] FALHA no envio:', errorMessage);
         
-        // ❌ FALHA IMEDIATA com feedback visual
-        failOptimisticMessage(optimisticMessageId);
+        // ❌ Erro será mostrado via toast
         
         toast({
           title: "❌ Falha no Envio",
@@ -569,10 +555,10 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         ticketId={ticketId}
         instanceId={ticket?.instance_id}
         chatId={ticket?.chat_id}
-        wsConnected={isSupabaseActive}
-        isFallbackActive={!isSupabaseActive}
+        wsConnected={isRealtimeActive}
+        isFallbackActive={!isRealtimeActive}
         isCircuitBreakerBlocked={false}
-        lastUpdateSource={lastUpdateSource}
+        lastUpdateSource={lastUpdateSource as any}
       />
 
       {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (
