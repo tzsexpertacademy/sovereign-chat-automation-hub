@@ -914,20 +914,15 @@ serve(async (req) => {
           
           switch (mediaMsg.message_type) {
             case 'image':
-              console.log('🖼️ [IMAGE-PROCESSING] Processando imagem já analisada:', {
+              console.log('🖼️ [IMAGE-PROCESSING] Processando imagem já descriptografada:', {
                 messageId: mediaMsg.message_id,
                 hasImageBase64: !!mediaMsg.image_base64,
-                hasMediaTranscription: !!mediaMsg.media_transcription,
-                transcriptionPreview: mediaMsg.media_transcription?.substring(0, 50)
+                base64Length: mediaMsg.image_base64?.length
               });
               
-              // ✅ CORREÇÃO: Usar apenas a análise já processada pelo process-received-media
-              if (mediaMsg.media_transcription && !mediaMsg.media_transcription.includes('🖼️ Imagem')) {
-                console.log('✅ [IMAGE-PROCESSING] Usando análise já processada');
-                analysis = mediaMsg.media_transcription;
-                mediaAnalysis += `\n[IMAGEM ANALISADA]: ${analysis}`;
-              } else if (mediaMsg.image_base64) {
-                console.log('🔄 [IMAGE-PROCESSING] Dados prontos, processando análise');
+              // ✅ CORREÇÃO DEFINITIVA: Usar apenas imagem já processada pelo process-received-media
+              if (mediaMsg.image_base64) {
+                console.log('✅ [IMAGE-PROCESSING] Usando imagem já processada');
                 analysis = await processImageWithVision(mediaMsg.image_base64, openAIApiKey);
                 mediaAnalysis += `\n[IMAGEM ANALISADA]: ${analysis}`;
               } else {
