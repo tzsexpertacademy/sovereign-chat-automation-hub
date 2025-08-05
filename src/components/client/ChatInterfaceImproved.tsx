@@ -17,7 +17,6 @@ import { useRealtimeSidebar } from '@/hooks/useRealtimeSidebar';
 import { useWhatsAppMessageSync } from '@/hooks/useWhatsAppMessageSync';
 import { useTicketRealtimeSync } from '@/hooks/useTicketRealtimeSync';
 import TypingIndicator from './TypingIndicator';
-import AdvancedToolsPanel from './AdvancedToolsPanel';
 import { supabase } from '@/integrations/supabase/client';
 import { databaseResetService } from '@/services/databaseResetService';
 
@@ -350,12 +349,11 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     const badges = [];
 
     // Badge "Humano" - apenas se tiver atendimento humano assumido
-    // (quando status = 'pending' e tem assigned_assistant_id ou similar)
     const isHumanTakeover = ticket.status === 'pending';
     
     if (isHumanTakeover) {
       badges.push(
-        <Badge key="human" variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
+        <Badge key="human" variant="outline" className="text-xs bg-orange-500/10 text-orange-700 border-orange-500/20 hover:bg-orange-500/20 transition-colors">
           <User className="w-3 h-3 mr-1" />
           Humano
         </Badge>
@@ -368,7 +366,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
       const queueName = queueInfo?.name || 'Fila';
       
       badges.push(
-        <Badge key="queue" variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+        <Badge key="queue" variant="outline" className="text-xs bg-blue-500/10 text-blue-700 border-blue-500/20 hover:bg-blue-500/20 transition-colors">
           <Bot className="w-3 h-3 mr-1" />
           {queueName}
         </Badge>
@@ -378,7 +376,7 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
     // Badge do assistente - apenas se tiver assistente ativo na fila E não estiver em atendimento humano
     if (ticket.assigned_assistant_id && !isHumanTakeover) {
       badges.push(
-        <Badge key="assistant" variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+        <Badge key="assistant" variant="outline" className="text-xs bg-purple-500/10 text-purple-700 border-purple-500/20 hover:bg-purple-500/20 transition-colors">
           <Bot className="w-3 h-3 mr-1" />
           Assistente
         </Badge>
@@ -426,15 +424,15 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-120px)] bg-white">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-120px)] bg-gradient-to-br from-background to-muted/20">
       {/* Lista de Chats - Responsivo */}
-      <div className="w-full lg:w-1/3 border-b lg:border-b-0 lg:border-r border-gray-200 flex flex-col h-[40vh] lg:h-full max-h-[40vh] lg:max-h-none">
-        <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+      <div className="w-full lg:w-1/3 border-b lg:border-b-0 lg:border-r border-border/50 flex flex-col h-[40vh] lg:h-full max-h-[40vh] lg:max-h-none bg-card/50 backdrop-blur-sm">
+        <div className="p-4 border-b border-border/50 bg-gradient-to-r from-card to-muted/30 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-2">
-              <h2 className="font-semibold text-gray-900">Conversas</h2>
+              <h2 className="font-semibold text-foreground">Conversas</h2>
               {unreadTotal > 0 && (
-                <span className="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-500 rounded-full">
+                <span className="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-destructive rounded-full animate-pulse">
                   {unreadTotal}
                 </span>
               )}
@@ -469,42 +467,44 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
         {/* Lista de conversas */}
         <div className="flex-1 overflow-y-auto min-h-0">
           {ticketsLoading ? (
-            <div className="p-4 text-center text-gray-500">
+            <div className="p-4 text-center text-muted-foreground">
               <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
               Carregando conversas...
             </div>
           ) : sidebarTickets.length === 0 ? (
-            <div className="p-4 text-center text-gray-500">
-              <MessageSquare className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+            <div className="p-4 text-center text-muted-foreground">
+              <MessageSquare className="w-8 h-8 mx-auto mb-2 text-muted-foreground/60" />
               <p className="text-sm mb-2">Nenhuma conversa encontrada</p>
-              <p className="text-xs text-gray-400 mb-3">
-                Aguarde novas mensagens ou use as ferramentas de importação
+              <p className="text-xs text-muted-foreground/80 mb-3">
+                Aguarde novas mensagens chegarem do WhatsApp
               </p>
             </div>
           ) : (
             <ul className="divide-y divide-gray-100">
               {sidebarTickets.map((chat) => (
-                <li
+                 <li
                   key={chat.id}
-                  className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors relative ${
-                    currentChatId === chat.id ? 'bg-blue-50 border-r-2 border-blue-500' : ''
+                  className={`p-4 cursor-pointer hover:bg-muted/50 transition-all duration-200 relative group ${
+                    currentChatId === chat.id 
+                      ? 'bg-primary/10 border-r-2 border-primary shadow-sm' 
+                      : 'hover:shadow-sm'
                   }`}
                   onClick={() => handleSelectChat(chat.id)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-3">
-                        <Avatar className="w-8 h-8 flex-shrink-0">
+                        <Avatar className="w-10 h-10 flex-shrink-0 ring-2 ring-primary/20 group-hover:ring-primary/40 transition-all">
                           <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${getDisplayNameForTicket(chat)}`} />
-                          <AvatarFallback className="text-xs">
+                          <AvatarFallback className="text-xs font-medium bg-primary/10 text-primary">
                             {getDisplayNameForTicket(chat).substring(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div className="space-y-1 flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
+                          <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
                             {getDisplayNameForTicket(chat)}
                           </p>
-                          <p className="text-xs text-gray-500 truncate">
+                          <p className="text-xs text-muted-foreground truncate">
                             {chat.last_message_preview?.substring(0, 35) || 'Nenhuma mensagem'}
                             {chat.last_message_preview && chat.last_message_preview.length > 35 && '...'}
                           </p>
@@ -516,14 +516,14 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
                       </div>
                     </div>
                     <div className="flex flex-col items-end space-y-1 flex-shrink-0 ml-2">
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-muted-foreground">
                         {new Date(chat.last_message_at).toLocaleTimeString('pt-BR', { 
                           hour: '2-digit', 
                           minute: '2-digit' 
                         })}
                       </span>
                       {chat.status === 'open' && (
-                        <div className="w-2 h-2 bg-green-500 rounded-full" />
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                       )}
                     </div>
                   </div>
@@ -533,15 +533,6 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
           )}
         </div>
 
-        {/* Painel de Ferramentas Avançadas */}
-        <AdvancedToolsPanel
-          clientId={clientId}
-          isImporting={isImporting}
-          isConverting={isConverting}
-          onConvertYumerMessages={handleConvertYumerMessages}
-          onImportConversations={handleImportConversations}
-          onResetAndImport={handleResetAndImport}
-        />
       </div>
 
       {/* Área de Chat - Responsivo */}
@@ -564,11 +555,11 @@ const ChatInterfaceImproved = ({ clientId, selectedChatId, onSelectChat }: ChatI
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Selecione uma conversa</h3>
-              <p className="text-gray-600 mb-4">
+          <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-muted/20 to-background">
+            <div className="text-center p-8 rounded-lg bg-card/50 backdrop-blur-sm border border-border/50 shadow-sm">
+              <MessageSquare className="w-16 h-16 text-muted-foreground/60 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-2">Selecione uma conversa</h3>
+              <p className="text-muted-foreground mb-4">
                 Escolha uma conversa da lista para começar a responder mensagens
               </p>
               <div className="mt-4">

@@ -1,13 +1,8 @@
 import React from 'react';
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Trash2, Smartphone, Bot, Users } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { supabase } from '@/integrations/supabase/client';
+import { Smartphone, Bot, Users } from "lucide-react";
 import TicketActionsMenu from '../TicketActionsMenu';
 import { useTicketData } from './useTicketData';
-import { useTicketMessagesUnified } from '@/hooks/useTicketMessagesUnified';
 
 interface ChatHeaderImprovedProps {
   ticket: any;
@@ -16,50 +11,11 @@ interface ChatHeaderImprovedProps {
 }
 
 const ChatHeaderImproved = ({ ticket, clientId, onTicketUpdate }: ChatHeaderImprovedProps) => {
-  const { toast } = useToast();
   const { queueInfo, connectedInstance } = useTicketData(ticket?.id || '', clientId);
-  const { messages } = useTicketMessagesUnified({ ticketId: ticket?.id || '', clientId });
-  const [isClearing, setIsClearing] = React.useState(false);
 
   if (!ticket) return null;
 
   const getDisplayName = (customer: any, phone?: string) => customer?.name || phone || 'Contato';
-
-  const handleClearHistory = async () => {
-    if (!ticket?.id || isClearing) return;
-
-    try {
-      setIsClearing(true);
-      console.log('🗑️ Limpando histórico do ticket:', ticket.id);
-
-      const { error } = await supabase
-        .from('ticket_messages')
-        .delete()
-        .eq('ticket_id', ticket.id);
-
-      if (error) {
-        console.error('❌ Erro ao limpar histórico:', error);
-        throw error;
-      }
-
-      console.log('✅ Histórico do ticket limpo com sucesso');
-      
-      toast({
-        title: "Histórico Limpo",
-        description: "Todas as mensagens do ticket foram removidas com sucesso"
-      });
-
-    } catch (error) {
-      console.error('❌ Erro ao limpar histórico:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao limpar histórico do ticket",
-        variant: "destructive"
-      });
-    } finally {
-      setIsClearing(false);
-    }
-  };
 
   const renderConnectionInfo = () => {
     const infoParts = [];
@@ -98,7 +54,7 @@ const ChatHeaderImproved = ({ ticket, clientId, onTicketUpdate }: ChatHeaderImpr
   };
 
   return (
-    <div className="p-4 border-b border-border bg-background flex-shrink-0">
+    <div className="p-4 border-b border-border bg-gradient-to-r from-background to-muted/20 flex-shrink-0">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3 min-w-0 flex-1">
           <Avatar className="w-10 h-10 flex-shrink-0">
@@ -123,22 +79,6 @@ const ChatHeaderImproved = ({ ticket, clientId, onTicketUpdate }: ChatHeaderImpr
         </div>
         
         <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-          {/* Botão de limpar histórico */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClearHistory}
-            disabled={isClearing || messages.length === 0}
-            className="text-destructive hover:text-destructive"
-          >
-            {isClearing ? (
-              <div className="w-4 h-4 border-2 border-destructive border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Trash2 className="w-4 h-4" />
-            )}
-            {isClearing ? 'Limpando...' : 'Limpar'}
-          </Button>
-
           {/* Menu de ações do ticket */}
           <TicketActionsMenu 
             ticket={ticket} 

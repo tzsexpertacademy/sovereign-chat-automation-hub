@@ -10,8 +10,6 @@ import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
 import { useMessageStatus } from '@/hooks/useMessageStatus';
 import { useAudioAutoProcessor } from '@/hooks/useAudioAutoProcessor';
 import { useAudioProcessingMonitor } from '@/hooks/useAudioProcessingMonitor';
-import { ManualAudioTestPanel } from './ManualAudioTestPanel';
-import { AudioProcessingDebugPanel } from './AudioProcessingDebugPanel';
 import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
@@ -19,8 +17,6 @@ import PresenceKeepAlive from './chat/PresenceKeepAlive';
 
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
-import FinalSimpleStatus from './FinalSimpleStatus';
-import { VideoTestPanel } from './VideoTestPanel';
 
 interface TicketChatInterfaceProps {
   clientId: string;
@@ -531,22 +527,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         enabled={!!(actualInstanceId && ticket?.chat_id)}
       />
       
-      {/* Status - Chat ULTRA-FLUIDO */}
-      <div className="flex justify-between items-center p-2 border-b bg-gradient-to-r from-green-50 to-blue-50">
-        <div className="text-xs text-muted-foreground">
-          <span className="font-medium text-green-600 animate-pulse">⚡ CHAT ULTRA-FLUIDO</span>
-          <span className="ml-2 text-xs text-green-700">
-            {lastUpdateSource === 'supabase' ? '📡 Supabase Instantâneo' : '🔄 Polling Backup'}
-          </span>
-          <span className="ml-2 text-xs text-blue-600">
-            • {messages.length} msgs • {'<'} 1s delay
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-xs text-green-600 font-medium">ATIVO</span>
-        </div>
-      </div>
 
       <MessagesList
         messages={messages}
@@ -582,20 +562,6 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         ticketId={ticketId}
       />
       
-      {/* Debug Panel - apenas em desenvolvimento */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="border-t p-2 bg-muted/10">
-          <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground hover:text-foreground py-1">
-              🧪 Painéis de Debug
-            </summary>
-            <div className="mt-2 space-y-4">
-              <AudioProcessingDebugPanel clientId={clientId} />
-              <VideoTestPanel />
-            </div>
-          </details>
-        </div>
-      )}
     </div>
   );
 };
