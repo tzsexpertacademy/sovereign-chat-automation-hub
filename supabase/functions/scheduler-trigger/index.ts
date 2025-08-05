@@ -18,31 +18,37 @@ Deno.serve(async (req) => {
   console.log('⏰ [SCHEDULER-TRIGGER] Executando trigger do scheduler');
 
   try {
-    console.log('⏰ [SCHEDULER-TRIGGER] Iniciando processamento de mídias e batches...');
+    console.log('⏰ [SCHEDULER-TRIGGER] ✅ FLUXO UNIFICADO: Descriptografia → Análise → Batches');
     
-    // Chamar primeiro a função de processamento de mídias
+    // 1. Descriptografar mídias pendentes (API directly-download)
     const mediaResponse = await supabase.functions.invoke('process-received-media', {
       body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
     });
     
-    console.log('⏰ [SCHEDULER-TRIGGER] Mídia processada:', mediaResponse.data);
+    console.log('⏰ [SCHEDULER-TRIGGER] 1️⃣ Descriptografia:', mediaResponse.data);
     
-    // Chamar a função de processamento de batches
-    const response = await supabase.functions.invoke('process-message-batches', {
+    // 2. Analisar mídias descriptografadas (GPT-4 Vision)
+    const analysisResponse = await supabase.functions.invoke('process-media-analysis', {
+      body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
+    });
+    
+    console.log('⏰ [SCHEDULER-TRIGGER] 2️⃣ Análise:', analysisResponse.data);
+    
+    // 3. Processar batches com contexto completo
+    const batchResponse = await supabase.functions.invoke('process-message-batches', {
       body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
     });
 
-    console.log('⏰ [SCHEDULER-TRIGGER] Resultado:', {
-      success: !response.error,
-      data: response.data,
-      error: response.error?.message,
-      timestamp: new Date().toISOString()
-    });
+    console.log('⏰ [SCHEDULER-TRIGGER] 3️⃣ Batches:', batchResponse.data);
 
     return new Response(JSON.stringify({
       success: true,
-      message: 'Scheduler executed',
-      result: response.data
+      message: 'Unified media flow executed',
+      steps: {
+        decryption: mediaResponse.data,
+        analysis: analysisResponse.data,
+        batches: batchResponse.data
+      }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

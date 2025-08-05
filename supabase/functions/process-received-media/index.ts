@@ -106,16 +106,16 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // ✅ CORREÇÃO: Buscar mensagens de mídia que precisam ser descriptografadas
-    // Inclui mensagens que têm media_key mas não têm os dados base64 correspondentes
+    // ✅ MÉTODO ÚNICO: Buscar mensagens que precisam descriptografia via API directly-download
     const { data: pendingMessages, error: queryError } = await supabase
       .from('ticket_messages')
       .select('*')
       .in('message_type', ['audio', 'image', 'video', 'document'])
       .not('media_key', 'is', null)
       .not('media_url', 'is', null)
-      .or('processing_status.in.(pending,received),and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
-      .limit(20)
+      .eq('processing_status', 'received')
+      .or('and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
+      .limit(10)
 
     if (queryError) {
       console.error('❌ Erro ao buscar mensagens pendentes:', queryError)
@@ -296,7 +296,7 @@ Deno.serve(async (req) => {
           continue
         }
 
-        console.log(`✅ [MEDIA-DECRYPT] Mídia processada com sucesso: ${message.message_type} - ${message.message_id}`)
+        console.log(`✅ [MEDIA-DECRYPT] Mídia descriptografada: ${message.message_type} - ${message.message_id}`)
         console.log(`🎯 [MEDIA-DECRYPT] Base64 salvo: ${base64Data.length} bytes`)
         processedCount++
 
@@ -306,12 +306,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`🎯 Processamento concluído: ${processedCount} sucesso, ${errorCount} erros`)
+    console.log(`🎯 Descriptografia concluída: ${processedCount} sucesso, ${errorCount} erros`)
+
+    // ✅ FLUXO UNIFICADO: Chamar análise de mídia se houve descriptografias
+    if (processedCount > 0) {
+      console.log('🧠 [UNIFIED-FLOW] Disparando análise de mídia...')
+      try {
+        await supabase.functions.invoke('process-media-analysis')
+        console.log('✅ [UNIFIED-FLOW] Análise de mídia disparada')
+      } catch (analysisError) {
+        console.error('❌ [UNIFIED-FLOW] Erro ao disparar análise:', analysisError)
+      }
+    }
 
     return new Response(JSON.stringify({
-      processed: processedCount,
+      decrypted: processedCount,
       errors: errorCount,
-      total: pendingMessages.length
+      total: pendingMessages.length,
+      analysisTriggered: processedCount > 0
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

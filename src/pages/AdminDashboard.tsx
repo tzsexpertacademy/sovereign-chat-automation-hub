@@ -7,9 +7,6 @@ import SafeComponent from "@/components/SafeComponent";
 import { QuickApiTest } from "@/components/admin/QuickApiTest";
 import { QuickBusinessTokenRegenerator } from "@/components/admin/QuickBusinessTokenRegenerator";
 import { ManualMessageTester } from "@/components/admin/ManualMessageTester";
-import { ImageProcessingTest } from "@/components/admin/ImageProcessingTest";
-import { BatchTestingPanel } from "@/components/admin/BatchTestingPanel";
-import { EmergencyImageFix } from "@/components/admin/EmergencyImageFix";
 
 const AdminDashboard = () => {
   return (
@@ -53,16 +50,21 @@ const AdminDashboard = () => {
               </SafeComponent>
             </div>
 
-            {/* Teste de Processamento de Imagem */}
+            {/* Sistema Unificado de Mídia */}
             <div className="mb-6">
-              <SafeComponent 
-                fallbackTitle="Erro no Teste de Imagem"
-                fallbackMessage="Problema ao carregar o teste de processamento de imagem."
-              >
-          <ImageProcessingTest />
-            <BatchTestingPanel />
-            <EmergencyImageFix />
-              </SafeComponent>
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  ✅ Sistema de Mídia Unificado
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  Fluxo: <code>process-received-media</code> → <code>process-media-analysis</code> → <code>process-message-batches</code>
+                </p>
+                <div className="mt-2 text-xs text-green-600">
+                  • API directly-download para descriptografia<br/>
+                  • GPT-4 Vision para análise de imagens<br/>
+                  • Sem duplicidades ou conflitos
+                </div>
+              </div>
             </div>
 
             <SafeComponent 
