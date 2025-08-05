@@ -921,59 +921,20 @@ serve(async (req) => {
               break;
               
             case 'audio':
-              console.log('🎵 [AUDIO-PROCESSING] Tentando processar áudio:', {
+              console.log('🎵 [AUDIO-PROCESSING] Processando áudio já transcrito:', {
                 messageId: mediaMsg.message_id,
-                hasAudioBase64: !!mediaMsg.audio_base64,
-                hasMediaUrl: !!mediaMsg.media_url,
-                hasMediaKey: !!mediaMsg.media_key,
-                hasFileEncSha256: !!mediaMsg.file_enc_sha256
+                hasContent: !!mediaMsg.content,
+                contentPreview: mediaMsg.content?.substring(0, 50)
               });
               
-              // Primeiro tentar com audio_base64 direto
-              if (mediaMsg.audio_base64) {
-                console.log('🎵 [AUDIO-PROCESSING] Usando audio_base64 direto');
-                analysis = await processAudioTranscription(mediaMsg.audio_base64, openAIApiKey);
+              // ✅ CORREÇÃO: Usar apenas a transcrição já processada pelo process-received-media
+              if (mediaMsg.content && !mediaMsg.content.includes('🎵 Áudio')) {
+                console.log('✅ [AUDIO-PROCESSING] Usando transcrição já processada');
+                analysis = mediaMsg.content;
                 mediaAnalysis += `\n[ÁUDIO TRANSCRITO]: ${analysis}`;
-              } 
-              // Se não tem base64 mas tem dados de mídia, tentar descriptografar
-              else if (mediaMsg.media_url && mediaMsg.media_key && mediaMsg.file_enc_sha256) {
-                console.log('🎵 [AUDIO-PROCESSING] Tentando descriptografar áudio via Edge Function');
-                try {
-                  const { data: decryptResult } = await supabase.functions.invoke('whatsapp-decrypt-audio', {
-                    body: {
-                      messageId: mediaMsg.message_id,
-                      mediaUrl: mediaMsg.media_url,
-                      mediaKey: mediaMsg.media_key,
-                      fileEncSha256: mediaMsg.file_enc_sha256,
-                      clientId: resolvedClientId
-                    }
-                  });
-                  
-                  if (decryptResult?.success && decryptResult?.transcription) {
-                    console.log('✅ [AUDIO-PROCESSING] Transcrição obtida via descriptografia');
-                    analysis = decryptResult.transcription;
-                    mediaAnalysis += `\n[ÁUDIO TRANSCRITO]: ${analysis}`;
-                    
-                    // Salvar o base64 para futuras consultas
-                    if (decryptResult.audioBase64) {
-                      await supabase
-                        .from('ticket_messages')
-                        .update({ audio_base64: decryptResult.audioBase64 })
-                        .eq('id', mediaMsg.id);
-                    }
-                  } else {
-                    console.warn('⚠️ [AUDIO-PROCESSING] Falha na descriptografia, usando conteúdo padrão');
-                    analysis = mediaMsg.content || '🎵 Áudio';
-                    mediaAnalysis += `\n[ÁUDIO DETECTADO]: ${analysis}`;
-                  }
-                } catch (decryptError) {
-                  console.error('❌ [AUDIO-PROCESSING] Erro na descriptografia:', decryptError);
-                  analysis = mediaMsg.content || '🎵 Áudio';
-                  mediaAnalysis += `\n[ÁUDIO DETECTADO]: ${analysis}`;
-                }
               } else {
-                console.log('🎵 [AUDIO-PROCESSING] Usando conteúdo padrão (dados de mídia incompletos)');
-                analysis = mediaMsg.content || '🎵 Áudio';
+                console.log('⚠️ [AUDIO-PROCESSING] Transcrição ainda não disponível, aguardando...');
+                analysis = '🎵 Áudio - aguardando transcrição';
                 mediaAnalysis += `\n[ÁUDIO DETECTADO]: ${analysis}`;
               }
               break;
