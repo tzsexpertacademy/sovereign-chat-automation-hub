@@ -160,9 +160,68 @@ async function processBatch(batch: any) {
       msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio')
     );
 
+    // 🖼️ VERIFICAR SE HÁ MENSAGENS DE IMAGEM NO BATCH
+    const imageMessages = batch.messages.filter((msg: any) => 
+      msg.content && (msg.content.includes('📷 Imagem') || msg.content === '📷 Imagem')
+    );
+
     if (audioMessages.length > 0) {
       console.log('🎵 [AUDIO-FIX] 🔍 Detectados', audioMessages.length, 'áudios no batch');
+    }
+
+    if (imageMessages.length > 0) {
+      console.log('🖼️ [IMAGE-FIX] 🔍 Detectados', imageMessages.length, 'imagens no batch');
       
+      // Verificar se dados de imagem estão disponíveis no banco E em ticket_messages
+      for (const imageMsg of imageMessages) {
+        console.log('🖼️ [IMAGE-FIX] 🔍 Verificando dados de imagem para messageId:', imageMsg.messageId);
+        
+        // Verificar dados na tabela ticket_messages (para imagens, focamos no image_base64)
+        const { data: ticketData } = await supabase
+          .from('ticket_messages')
+          .select('message_id, image_base64, media_url, media_key, message_type, processing_status')
+          .eq('message_id', imageMsg.messageId)
+          .single();
+        
+        console.log('🖼️ [IMAGE-VERIFICATION] 📊 STATUS DOS DADOS:', {
+          messageId: imageMsg.messageId,
+          ticketMessages: ticketData ? {
+            hasImageBase64: !!ticketData.image_base64,
+            hasMediaUrl: !!ticketData.media_url,
+            hasMediaKey: !!ticketData.media_key,
+            messageType: ticketData.message_type,
+            processingStatus: ticketData.processing_status
+          } : 'NÃO ENCONTRADO'
+        });
+
+        // ✅ VERIFICAR SE IMAGE_BASE64 ESTÁ DISPONÍVEL
+        if (!ticketData || !ticketData.image_base64) {
+          console.log('⚠️ [IMAGE-VERIFICATION] ⚠️ image_base64 não encontrado, aguardando processamento:', imageMsg.messageId);
+          
+          // Aguardar tempo para processamento da imagem
+          console.log('🖼️ [IMAGE-VERIFICATION] ⏳ Aguardando processamento de imagem...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Verificar novamente após aguardar
+          const { data: updatedTicketData } = await supabase
+            .from('ticket_messages')
+            .select('message_id, image_base64')
+            .eq('message_id', imageMsg.messageId)
+            .single();
+          
+          if (updatedTicketData?.image_base64) {
+            console.log('✅ [IMAGE-VERIFICATION] ✅ image_base64 disponível após aguardar:', imageMsg.messageId);
+          } else {
+            console.log('❌ [IMAGE-VERIFICATION] ❌ image_base64 ainda não disponível:', imageMsg.messageId);
+          }
+        } else {
+          console.log('✅ [IMAGE-VERIFICATION] ✅ image_base64 já disponível:', imageMsg.messageId);
+        }
+      }
+    }
+
+    // Processar áudios se houver
+    if (audioMessages.length > 0) {
       // Verificar se dados de áudio estão disponíveis no banco E em ticket_messages
       for (const audioMsg of audioMessages) {
         console.log('🎵 [AUDIO-FIX] 🔍 Verificando dados de áudio para messageId:', audioMsg.messageId);
@@ -262,12 +321,87 @@ async function processBatch(batch: any) {
     // 🎵 AGUARDAR TRANSCRIÇÃO OTIMIZADA POR TIPO DE MÍDIA
     const processedMessages = await Promise.all(batch.messages.map(async (msg: any) => {
       const isAudioMessage = msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio');
-      const isTextMessage = !isAudioMessage;
+      const isImageMessage = msg.content && (msg.content.includes('📷 Imagem') || msg.content === '📷 Imagem');
+      const isTextMessage = !isAudioMessage && !isImageMessage;
       
       // ⚡ PROCESSAMENTO IMEDIATO PARA TEXTO
       if (isTextMessage) {
         console.log('⚡ [MEDIA-OPT] Processamento imediato para texto:', msg.messageId);
         return msg;
+      }
+      
+      // 🖼️ PROCESSAMENTO PARA IMAGEM (AGUARDAR IMAGE_BASE64)
+      if (isImageMessage) {
+        console.log('🖼️ [MEDIA-OPT] Aguardando processamento para imagem:', msg.messageId);
+        
+        // TENTATIVA 1: Verificação imediata
+        let { data: ticketMessage } = await supabase
+          .from('ticket_messages')
+          .select('image_base64, media_transcription')
+          .eq('message_id', msg.messageId)
+          .single();
+        
+        if (ticketMessage && ticketMessage.image_base64) {
+          console.log('✅ [MEDIA-OPT] Imagem imediata encontrada:', {
+            messageId: msg.messageId,
+            hasImageBase64: !!ticketMessage.image_base64,
+            hasTranscription: !!ticketMessage.media_transcription
+          });
+          return {
+            ...msg,
+            isImageProcessed: true
+          };
+        }
+        
+        // TENTATIVA 2: Aguardar 3s para imagem
+        console.log('🖼️ [MEDIA-OPT] ⏳ Aguardando 3s para processamento de imagem...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        ({ data: ticketMessage } = await supabase
+          .from('ticket_messages')
+          .select('image_base64, media_transcription')
+          .eq('message_id', msg.messageId)
+          .single());
+        
+        if (ticketMessage && ticketMessage.image_base64) {
+          console.log('✅ [MEDIA-OPT] Imagem encontrada após 3s:', {
+            messageId: msg.messageId,
+            hasImageBase64: !!ticketMessage.image_base64,
+            hasTranscription: !!ticketMessage.media_transcription
+          });
+          return {
+            ...msg,
+            isImageProcessed: true
+          };
+        }
+        
+        // TENTATIVA 3: Aguardar mais 5s (total 8s para imagens)
+        console.log('🖼️ [MEDIA-OPT] ⏳ Aguardando mais 5s para imagem (tentativa final)...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        ({ data: ticketMessage } = await supabase
+          .from('ticket_messages')
+          .select('image_base64')
+          .eq('message_id', msg.messageId)
+          .single());
+        
+        if (ticketMessage && ticketMessage.image_base64) {
+          console.log('✅ [MEDIA-OPT] Imagem encontrada após 8s total:', {
+            messageId: msg.messageId,
+            hasImageBase64: !!ticketMessage.image_base64
+          });
+          return {
+            ...msg,
+            isImageProcessed: true
+          };
+        } else {
+          console.log('❌ [MEDIA-OPT] ⚠️ Imagem não disponível após 8s - prosseguindo:', msg.messageId);
+          return {
+            ...msg,
+            isImageProcessed: false,
+            imageProcessingFailed: true
+          };
+        }
       }
       
       // 🎵 PROCESSAMENTO OTIMIZADO PARA ÁUDIO (AGUARDAR TRANSCRIÇÃO)

@@ -1030,7 +1030,7 @@ ${isBatchProcessing ? '- Considere todas as mensagens como uma única solicitaç
         model: safeAssistant.model || 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: messageContent }
+          { role: 'user', content: processedContent }
         ],
         temperature: 0.7,
         max_tokens: 500
