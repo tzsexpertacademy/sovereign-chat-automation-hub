@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useTicketRealtimeImproved } from "@/hooks/useTicketRealtimeImproved";
 import { useTicketFilters } from "@/hooks/useTicketFilters";
-import { useTicketRealtimeSync } from "@/hooks/useTicketRealtimeSync";
+import { useSimpleTicketSync } from "@/hooks/useSimpleTicketSync";
 import { incrementalImportService } from "@/services/incrementalImportService";
 import TicketChatInterface from "./TicketChatInterface";
 import SystemHealthIndicator from "./SystemHealthIndicator";
@@ -45,23 +45,16 @@ const TicketTabsInterface = () => {
     hasActiveFilters
   } = useTicketFilters(clientId || '');
 
-  // Hook de sincronização de tickets em tempo real
-  useTicketRealtimeSync({
+  // Hook SIMPLIFICADO de sincronização em tempo real  
+  useSimpleTicketSync({
     clientId: clientId || '',
-    onTicketUpdate: () => {
-      console.log('🔄 [TABS] Forçando reload de tickets por mudança detectada');
+    onUpdate: () => {
+      console.log('🔄 [TABS] Forçando reload por mudança');
       reloadTickets();
     },
     onTicketReopen: (ticketId, newQueueId) => {
-      console.log('🔓 [TABS] Ticket reaberto:', { ticketId, newQueueId });
-      // Forçar mudança para aba "Abertos" se um ticket foi reaberto
-      if (activeTab === 'closed') {
-        setActiveTab('open');
-      }
-      reloadTickets();
-    },
-    onQueueTransfer: (ticketId, fromQueueId, toQueueId) => {
-      console.log('🔄 [TABS] Ticket transferido:', { ticketId, fromQueueId, toQueueId });
+      console.log('🔓 [TABS] REABERTURA - auto-switch para Abertos');
+      setActiveTab('open'); // AUTO-SWITCH crítico
       reloadTickets();
     }
   });
