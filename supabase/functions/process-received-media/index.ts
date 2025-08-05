@@ -8,19 +8,33 @@ const corsHeaders = {
 // Função para transcrever áudio automaticamente
 async function transcribeAudio(base64Audio: string, clientId: string, supabase: any) {
   try {
-    console.log('🎙️ [AUTO-TRANSCRIBE] Iniciando transcrição automática...')
+    console.log('🎙️ [AUTO-TRANSCRIBE] Iniciando transcrição automática...', {
+      audioLength: base64Audio.length,
+      clientId,
+      audioPrefix: base64Audio.substring(0, 50)
+    })
     
     // Buscar API key do cliente na tabela client_ai_configs
-    const { data: clientConfig } = await supabase
+    const { data: clientConfig, error: configError } = await supabase
       .from('client_ai_configs')
       .select('openai_api_key')
       .eq('client_id', clientId)
       .single()
     
+    if (configError) {
+      console.error('❌ [AUTO-TRANSCRIBE] Erro ao buscar config:', configError)
+      return '[Áudio - erro de configuração]'
+    }
+    
     if (!clientConfig?.openai_api_key) {
       console.log('⚠️ [AUTO-TRANSCRIBE] API key OpenAI não encontrada para cliente')
-      return null
+      return '[Áudio - chave OpenAI não configurada]'
     }
+    
+    console.log('🔑 [AUTO-TRANSCRIBE] API key encontrada:', {
+      keyLength: clientConfig.openai_api_key.length,
+      keyPrefix: clientConfig.openai_api_key.substring(0, 10)
+    })
     
     // Chamar edge function de speech-to-text
     const transcriptionResponse = await supabase.functions.invoke('speech-to-text', {
@@ -31,19 +45,30 @@ async function transcribeAudio(base64Audio: string, clientId: string, supabase: 
       }
     })
     
+    console.log('📡 [AUTO-TRANSCRIBE] Response status:', transcriptionResponse.error ? 'ERROR' : 'SUCCESS')
+    
     if (transcriptionResponse.error) {
       console.error('❌ [AUTO-TRANSCRIBE] Erro na transcrição:', transcriptionResponse.error)
-      return null
+      return '[Áudio - erro na transcrição]'
     }
     
     const transcription = transcriptionResponse.data?.text
-    console.log('✅ [AUTO-TRANSCRIBE] Transcrição obtida:', transcription?.substring(0, 100) + '...')
+    
+    if (!transcription || transcription.trim() === '') {
+      console.log('⚠️ [AUTO-TRANSCRIBE] Transcrição vazia')
+      return '[Áudio sem conteúdo detectado]'
+    }
+    
+    console.log('✅ [AUTO-TRANSCRIBE] Transcrição obtida:', {
+      textLength: transcription.length,
+      preview: transcription.substring(0, 100)
+    })
     
     return transcription
     
   } catch (error) {
     console.error('❌ [AUTO-TRANSCRIBE] Erro na transcrição automática:', error)
-    return null
+    return '[Áudio - erro no processamento]'
   }
 }
 
