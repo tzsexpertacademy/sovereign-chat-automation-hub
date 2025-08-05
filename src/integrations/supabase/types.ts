@@ -1632,6 +1632,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "queue_transfers_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "queue_kanban_tickets"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "queue_transfers_to_queue_id_fkey"
             columns: ["to_queue_id"]
             isOneToOne: false
@@ -1878,6 +1885,13 @@ export type Database = {
             referencedRelation: "conversation_tickets"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ticket_events_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "queue_kanban_tickets"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ticket_messages: {
@@ -1968,6 +1982,13 @@ export type Database = {
             columns: ["ticket_id"]
             isOneToOne: false
             referencedRelation: "conversation_tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_messages_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "queue_kanban_tickets"
             referencedColumns: ["id"]
           },
         ]
@@ -2117,6 +2138,7 @@ export type Database = {
         Row: {
           body: string | null
           chat_id: string
+          client_id: string | null
           contact_name: string | null
           created_at: string
           direct_path: string | null
@@ -2145,6 +2167,7 @@ export type Database = {
         Insert: {
           body?: string | null
           chat_id: string
+          client_id?: string | null
           contact_name?: string | null
           created_at?: string
           direct_path?: string | null
@@ -2173,6 +2196,7 @@ export type Database = {
         Update: {
           body?: string | null
           chat_id?: string
+          client_id?: string | null
           contact_name?: string | null
           created_at?: string
           direct_path?: string | null
@@ -2198,11 +2222,44 @@ export type Database = {
           source?: string | null
           timestamp?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
-      [_ in never]: never
+      queue_kanban_tickets: {
+        Row: {
+          assigned_queue_id: string | null
+          chat_id: string | null
+          created_at: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          id: string | null
+          instance_id: string | null
+          last_activity_at: string | null
+          priority: number | null
+          queue_name: string | null
+          status: string | null
+          title: string | null
+          waiting_time_minutes: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_tickets_assigned_queue_id_fkey"
+            columns: ["assigned_queue_id"]
+            isOneToOne: false
+            referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       auto_assign_queue: {
@@ -2212,6 +2269,10 @@ export type Database = {
           p_message_content?: string
         }
         Returns: string
+      }
+      calculate_waiting_time_minutes: {
+        Args: { created_at: string }
+        Returns: number
       }
       cleanup_expired_decrypted_audio: {
         Args: Record<PropertyKey, never>
@@ -2236,6 +2297,10 @@ export type Database = {
       cleanup_expired_qr_codes: {
         Args: Record<PropertyKey, never>
         Returns: number
+      }
+      emergency_message_recovery: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       fix_malformed_media_keys: {
         Args: Record<PropertyKey, never>
@@ -2279,6 +2344,18 @@ export type Database = {
           | { plan_slug: string }
         Returns: number
       }
+      get_queue_realtime_stats: {
+        Args: { client_uuid: string }
+        Returns: {
+          queue_id: string
+          queue_name: string
+          active_tickets: number
+          pending_tickets: number
+          avg_waiting_time: number
+          oldest_ticket_minutes: number
+          workload_score: number
+        }[]
+      }
       manage_message_batch: {
         Args: {
           p_chat_id: string
@@ -2286,6 +2363,10 @@ export type Database = {
           p_instance_id: string
           p_message: Json
         }
+        Returns: Json
+      }
+      monitor_message_health: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       save_ticket_message: {
