@@ -259,8 +259,66 @@ async function processBatch(batch: any) {
       ticket = newTicket;
     }
 
+    // 🎵 AGUARDAR TRANSCRIÇÃO PARA MENSAGENS DE ÁUDIO
+    const processedMessages = await Promise.all(batch.messages.map(async (msg: any) => {
+      // Se é uma mensagem de áudio com placeholder, buscar transcrição real
+      if (msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio')) {
+        console.log('🎵 [TRANSCRIPTION-WAIT] 🔍 Aguardando transcrição para:', msg.messageId);
+        
+        // Buscar na tabela ticket_messages pela transcrição real
+        const { data: ticketMessage } = await supabase
+          .from('ticket_messages')
+          .select('content, audio_base64')
+          .eq('message_id', msg.messageId)
+          .single();
+        
+        if (ticketMessage && ticketMessage.content && ticketMessage.content !== '🎵 Áudio') {
+          console.log('✅ [TRANSCRIPTION-WAIT] 📝 Transcrição encontrada:', {
+            messageId: msg.messageId,
+            originalContent: msg.content,
+            newContent: ticketMessage.content.substring(0, 50) + '...'
+          });
+          
+          // Retornar mensagem com conteúdo transcrito
+          return {
+            ...msg,
+            content: ticketMessage.content,
+            isTranscribed: true
+          };
+        } else {
+          console.log('⚠️ [TRANSCRIPTION-WAIT] ⏳ Transcrição ainda não disponível:', msg.messageId);
+          
+          // Se transcrição não está disponível, aguardar mais tempo
+          console.log('🎵 [TRANSCRIPTION-WAIT] ⏳ Aguardando 3s para transcrição...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Tentar novamente
+          const { data: retryTicketMessage } = await supabase
+            .from('ticket_messages')
+            .select('content')
+            .eq('message_id', msg.messageId)
+            .single();
+          
+          if (retryTicketMessage && retryTicketMessage.content && retryTicketMessage.content !== '🎵 Áudio') {
+            console.log('✅ [TRANSCRIPTION-WAIT] 📝 Transcrição encontrada na segunda tentativa:', msg.messageId);
+            return {
+              ...msg,
+              content: retryTicketMessage.content,
+              isTranscribed: true
+            };
+          } else {
+            console.log('❌ [TRANSCRIPTION-WAIT] ⚠️ Transcrição não disponível - usando placeholder:', msg.messageId);
+            return msg; // Usar placeholder como fallback
+          }
+        }
+      }
+      
+      // Mensagem não é áudio, retornar como está
+      return msg;
+    }));
+
     // 🎥 DETECTAR COMANDOS DE VÍDEO NO BATCH
-    const hasVideoCommands = batch.messages.some((msg: any) => {
+    const hasVideoCommands = processedMessages.some((msg: any) => {
       const content = msg.content || '';
       const isVideoCommand = /^video\s+([a-zA-Z0-9_-]+)$/i.test(content.trim());
       console.log('🎥 [PROCESS-BATCH] Verificando comando de vídeo:', {
@@ -273,19 +331,19 @@ async function processBatch(batch: any) {
 
     console.log('🎥 [PROCESS-BATCH] Comandos de vídeo detectados no batch:', hasVideoCommands);
 
-    // CHAMAR IA COM BATCH
-    console.log('🤖 [PROCESS-BATCH] 🧠 Chamando IA para ticket:', ticket.id, 'com', batch.messages?.length || 0, 'mensagens');
-    console.log('🤖 [PROCESS-BATCH] 📄 Mensagens do batch:', JSON.stringify(batch.messages, null, 2));
+    // CHAMAR IA COM BATCH (usando mensagens com transcrição)
+    console.log('🤖 [PROCESS-BATCH] 🧠 Chamando IA para ticket:', ticket.id, 'com', processedMessages?.length || 0, 'mensagens');
+    console.log('🤖 [PROCESS-BATCH] 📄 Mensagens do batch (com transcrições):', JSON.stringify(processedMessages, null, 2));
     
     const aiResponse = await supabase.functions.invoke('ai-assistant-process', {
       body: {
         ticketId: ticket.id,
-        messages: batch.messages,
+        messages: processedMessages, // Usar mensagens com transcrição
         context: {
           chatId: batch.chat_id,
-          customerName: batch.messages[0]?.customerName || 'Cliente',
-          phoneNumber: batch.messages[0]?.phoneNumber || '',
-          batchInfo: `Batch de ${batch.messages.length} mensagens`
+          customerName: processedMessages[0]?.customerName || 'Cliente',
+          phoneNumber: processedMessages[0]?.phoneNumber || '',
+          batchInfo: `Batch de ${processedMessages.length} mensagens (${processedMessages.filter(m => m.isTranscribed).length} transcritas)`
         }
       }
     });
