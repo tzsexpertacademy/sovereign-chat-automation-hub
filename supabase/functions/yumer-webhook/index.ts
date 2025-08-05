@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -78,26 +77,26 @@ async function processYumerMessage(yumerData: any) {
     const clientId = instance.client_id;
     console.log('✅ [PROCESS-YUMER] Instância encontrada:', { instanceId, clientId });
 
-    // 🗺️ MAPEAMENTO CORRETO DOS CAMPOS YUMER PARA BANCO - CORRIGIDO
+    // 🗺️ MAPEAMENTO DEFINITIVO DOS CAMPOS YUMER PARA BANCO
     const mappedMessage = {
       message_id: messageData.keyId || messageData.messageId,
       chat_id: messageData.keyRemoteJid || messageData.chatId,
       body: messageData.content?.text || messageData.content || '',
       message_type: messageData.contentType || 'text',
-      from_me: messageData.keyFromMe || false, // CORRIGIDO: keyFromMe -> from_me
+      from_me: Boolean(messageData.keyFromMe), // GARANTIR BOOLEAN CORRETO
       sender: messageData.pushName || 'Unknown',
       timestamp: messageData.messageTimestamp ? 
         new Date(messageData.messageTimestamp * 1000).toISOString() : 
         new Date().toISOString(),
-      instance_id: messageData.instanceInstanceId || instanceId, // CORRIGIDO: instanceInstanceId -> instance_id
+      instance_id: instanceId, // USAR INSTANCIA CORRETA SEMPRE
       client_id: clientId,
       is_processed: false,
       created_at: new Date().toISOString()
     };
 
-    console.log('🗺️ [MAPEAMENTO] Dados mapeados:', mappedMessage);
+    console.log('🗺️ [MAPEAMENTO] Dados mapeados:', JSON.stringify(mappedMessage, null, 2));
 
-    // 💾 SALVAR MENSAGEM NO BANCO
+    // 💾 SALVAR MENSAGEM NO BANCO COM TRATAMENTO DE ERRO ESPECÍFICO
     const { data: savedMessage, error: saveError } = await supabase
       .from('whatsapp_messages')
       .insert(mappedMessage)
@@ -105,11 +104,12 @@ async function processYumerMessage(yumerData: any) {
       .single();
 
     if (saveError) {
-      console.error('❌ [SAVE-ERROR] Erro ao salvar mensagem:', saveError);
+      console.error('❌ [SAVE] Erro ao salvar whatsapp_messages:', saveError);
+      console.error('❌ [SAVE] Dados que causaram erro:', JSON.stringify(mappedMessage, null, 2));
       throw new Error(`Erro ao salvar mensagem: ${saveError.message}`);
     }
 
-    console.log('✅ [SAVE-SUCCESS] Mensagem salva com sucesso:', savedMessage.id);
+    console.log('✅ [SAVE] Mensagem salva com sucesso:', savedMessage.id);
 
     // 📦 CRIAR BATCH PARA PROCESSAMENTO IA - SÓ PARA MENSAGENS RECEBIDAS
     if (!mappedMessage.from_me && mappedMessage.chat_id) {
