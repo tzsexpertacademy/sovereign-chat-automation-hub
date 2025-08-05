@@ -283,14 +283,7 @@ const FunnelKanban: React.FC<FunnelKanbanProps> = ({ clientId }) => {
         />
       )}
 
-      {showTagManager && (
-        <FunnelTagManager
-          clientId={clientId}
-          tags={tags}
-          onClose={() => setShowTagManager(false)}
-          onSave={loadData}
-        />
-      )}
+      {/* Tag Manager removido para evitar conflitos com novo sistema */}
     </div>
   );
 };

@@ -58,6 +58,7 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [showTagManager, setShowTagManager] = useState(false);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const { toast } = useToast();
 

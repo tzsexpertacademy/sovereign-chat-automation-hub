@@ -39,6 +39,7 @@ export interface ConversationTicket {
   last_message_at: string;
   created_at: string;
   updated_at: string;
+  tags?: any; // Can be string[] or Json type from Supabase
   customer?: {
     id: string;
     name: string;
