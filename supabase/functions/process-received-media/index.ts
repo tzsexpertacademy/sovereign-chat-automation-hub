@@ -309,8 +309,56 @@ Deno.serve(async (req) => {
                 })
                 .eq('message_id', message.message_id)
               
-              // Atualizar batch se existir
-              await updateMessageInBatch(message.message_id, updateData.content, supabase)
+              // ✅ CRIAR BATCH APÓS TRANSCRIÇÃO BEM-SUCEDIDA
+              console.log('🎵 [POST-TRANSCRIPTION] Criando batch com transcrição para IA...')
+              
+              const batchMessage = {
+                messageId: message.message_id,
+                chatId: ticketData.instance_id, // Usar instance_id como chat_id
+                content: transcription, // USAR A TRANSCRIÇÃO COMO CONTEÚDO
+                fromMe: false,
+                timestamp: Date.now(),
+                pushName: message.sender_name || 'Unknown'
+              };
+
+              // Buscar chat_id real da mensagem original
+              const { data: originalMessage } = await supabase
+                .from('whatsapp_messages')
+                .select('chat_id')
+                .eq('message_id', message.message_id)
+                .single();
+
+              if (originalMessage?.chat_id) {
+                batchMessage.chatId = originalMessage.chat_id;
+              }
+
+              // Criar batch com RPC V2
+              const { data: batchResult, error: batchError } = await supabase
+                .rpc('manage_message_batch_v2', {
+                  p_chat_id: batchMessage.chatId,
+                  p_client_id: ticketData.client_id,
+                  p_instance_id: ticketData.instance_id,
+                  p_message: batchMessage
+                });
+
+              if (batchError) {
+                console.error('❌ [POST-TRANSCRIPTION] Erro ao criar batch:', batchError);
+              } else {
+                console.log('✅ [POST-TRANSCRIPTION] Batch criado com transcrição:', batchResult);
+                
+                // Disparar processamento se for novo batch
+                if (batchResult?.is_new_batch) {
+                  console.log('🚀 [POST-TRANSCRIPTION] Disparando processamento de batch com transcrição...');
+                  
+                  await supabase.functions.invoke('process-message-batches', {
+                    body: { 
+                      trigger: 'post_transcription',
+                      chatId: batchMessage.chatId,
+                      timestamp: new Date().toISOString()
+                    }
+                  });
+                }
+              }
               
               console.log('🔄 [AUTO-TRANSCRIBE] Mensagem sincronizada em todas as tabelas')
             } else {

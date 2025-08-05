@@ -187,53 +187,79 @@ async function processYumerMessage(yumerData: any) {
 
     console.log('✅ [SAVE] Mensagem salva com sucesso:', savedMessage.id);
 
-    // 📦 CRIAR BATCH PARA PROCESSAMENTO IA - SÓ PARA MENSAGENS RECEBIDAS (E NÃO DUPLICADAS)
+    // 📦 LÓGICA INTELIGENTE: BATCH IMEDIATO SÓ PARA TEXTO, ÁUDIOS VÃO PARA PROCESSAMENTO PRIMEIRO
     if (!mappedMessage.from_me && mappedMessage.chat_id && messageId) {
-      console.log('📦 [BATCH] Criando batch para processamento IA (mensagem não duplicada)');
       
-      const batchMessage = {
-        messageId: mappedMessage.message_id,
-        chatId: mappedMessage.chat_id,
-        content: mappedMessage.body,
-        fromMe: mappedMessage.from_me,
-        timestamp: Date.now(),
-        pushName: mappedMessage.sender
-      };
-
-      // Usar RPC V2 para gestão de batches com timeouts sincronizados
-      const { data: batchResult, error: batchError } = await supabase
-        .rpc('manage_message_batch_v2', {
-          p_chat_id: mappedMessage.chat_id,
-          p_client_id: clientId,
-          p_instance_id: instanceId,
-          p_message: batchMessage
-        });
-
-      if (batchError) {
-        console.error('❌ [BATCH-ERROR] Erro ao criar batch:', batchError);
-      } else {
-        console.log('✅ [BATCH-SUCCESS] Batch criado:', batchResult);
+      // 🎵 ÁUDIOS: Não criar batch imediatamente, processar primeiro para transcrição
+      if (contentType === 'audio') {
+        console.log('🎵 [AUDIO-FLOW] Áudio detectado - disparando processamento de mídia ANTES do batch');
         
-        // 🚀 TRIGGER PROCESSAMENTO BACKGROUND SE NOVO BATCH
-        if (batchResult?.is_new_batch) {
-          console.log('🚀 [TRIGGER] Disparando processamento background');
-          
-          // Chamar function de processamento em background
-          const { error: triggerError } = await supabase.functions.invoke(
-            'process-message-batches',
-            {
-              body: { 
-                trigger: 'new_message',
-                chatId: mappedMessage.chat_id,
-                timestamp: new Date().toISOString()
-              }
+        // Disparar processamento de mídia em background para transcrição
+        const { error: mediaError } = await supabase.functions.invoke(
+          'process-received-media',
+          {
+            body: { 
+              trigger: 'audio_processing',
+              messageId: mappedMessage.message_id,
+              timestamp: new Date().toISOString()
             }
-          );
+          }
+        );
 
-          if (triggerError) {
-            console.error('❌ [TRIGGER-ERROR] Erro ao disparar processamento:', triggerError);
-          } else {
-            console.log('✅ [TRIGGER-SUCCESS] Processamento disparado com sucesso');
+        if (mediaError) {
+          console.error('❌ [AUDIO-FLOW] Erro ao disparar processamento de mídia:', mediaError);
+        } else {
+          console.log('✅ [AUDIO-FLOW] Processamento de mídia disparado - batch será criado APÓS transcrição');
+        }
+        
+      } else {
+        // 💬 TEXTO E OUTRAS MÍDIAS: Criar batch imediatamente
+        console.log('💬 [TEXT-FLOW] Mensagem de texto - criando batch imediatamente');
+        
+        const batchMessage = {
+          messageId: mappedMessage.message_id,
+          chatId: mappedMessage.chat_id,
+          content: mappedMessage.body,
+          fromMe: mappedMessage.from_me,
+          timestamp: Date.now(),
+          pushName: mappedMessage.sender
+        };
+
+        // Usar RPC V2 para gestão de batches com timeouts sincronizados
+        const { data: batchResult, error: batchError } = await supabase
+          .rpc('manage_message_batch_v2', {
+            p_chat_id: mappedMessage.chat_id,
+            p_client_id: clientId,
+            p_instance_id: instanceId,
+            p_message: batchMessage
+          });
+
+        if (batchError) {
+          console.error('❌ [BATCH-ERROR] Erro ao criar batch:', batchError);
+        } else {
+          console.log('✅ [BATCH-SUCCESS] Batch criado:', batchResult);
+          
+          // 🚀 TRIGGER PROCESSAMENTO BACKGROUND SE NOVO BATCH
+          if (batchResult?.is_new_batch) {
+            console.log('🚀 [TRIGGER] Disparando processamento background');
+            
+            // Chamar function de processamento em background
+            const { error: triggerError } = await supabase.functions.invoke(
+              'process-message-batches',
+              {
+                body: { 
+                  trigger: 'new_message',
+                  chatId: mappedMessage.chat_id,
+                  timestamp: new Date().toISOString()
+                }
+              }
+            );
+
+            if (triggerError) {
+              console.error('❌ [TRIGGER-ERROR] Erro ao disparar processamento:', triggerError);
+            } else {
+              console.log('✅ [TRIGGER-SUCCESS] Processamento disparado com sucesso');
+            }
           }
         }
       }
