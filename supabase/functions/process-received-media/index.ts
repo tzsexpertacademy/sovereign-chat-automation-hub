@@ -5,6 +5,96 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Função para transcrever áudio automaticamente
+async function transcribeAudio(base64Audio: string, clientId: string, supabase: any) {
+  try {
+    console.log('🎙️ [AUTO-TRANSCRIBE] Iniciando transcrição automática...')
+    
+    // Buscar API key do cliente
+    const { data: clientConfig } = await supabase
+      .from('clients')
+      .select('openai_api_key')
+      .eq('id', clientId)
+      .single()
+    
+    if (!clientConfig?.openai_api_key) {
+      console.log('⚠️ [AUTO-TRANSCRIBE] API key OpenAI não encontrada para cliente')
+      return null
+    }
+    
+    // Chamar edge function de speech-to-text
+    const transcriptionResponse = await supabase.functions.invoke('speech-to-text', {
+      body: {
+        audio: base64Audio,
+        openaiApiKey: clientConfig.openai_api_key,
+        messageId: 'auto-transcribe'
+      }
+    })
+    
+    if (transcriptionResponse.error) {
+      console.error('❌ [AUTO-TRANSCRIBE] Erro na transcrição:', transcriptionResponse.error)
+      return null
+    }
+    
+    const transcription = transcriptionResponse.data?.text
+    console.log('✅ [AUTO-TRANSCRIBE] Transcrição obtida:', transcription?.substring(0, 100) + '...')
+    
+    return transcription
+    
+  } catch (error) {
+    console.error('❌ [AUTO-TRANSCRIBE] Erro na transcrição automática:', error)
+    return null
+  }
+}
+
+// Função para atualizar mensagem em batches pendentes
+async function updateMessageInBatch(messageId: string, newContent: string, supabase: any) {
+  try {
+    console.log('📦 [UPDATE-BATCH] Buscando batches pendentes com a mensagem:', messageId)
+    
+    // Buscar batches pendentes que contenham esta mensagem
+    const { data: batches } = await supabase
+      .from('message_batches')
+      .select('*')
+      .is('processing_started_at', null)
+    
+    if (!batches || batches.length === 0) {
+      console.log('📦 [UPDATE-BATCH] Nenhum batch pendente encontrado')
+      return
+    }
+    
+    for (const batch of batches) {
+      if (!batch.messages || !Array.isArray(batch.messages)) continue
+      
+      // Verificar se o batch contém a mensagem
+      const messages = batch.messages as any[]
+      let updated = false
+      
+      const updatedMessages = messages.map(msg => {
+        if (msg.messageId === messageId) {
+          console.log('📦 [UPDATE-BATCH] Atualizando mensagem no batch:', batch.id)
+          updated = true
+          return { ...msg, content: newContent }
+        }
+        return msg
+      })
+      
+      if (updated) {
+        // Atualizar o batch com a mensagem modificada
+        await supabase
+          .from('message_batches')
+          .update({ messages: updatedMessages })
+          .eq('id', batch.id)
+        
+        console.log('✅ [UPDATE-BATCH] Batch atualizado com transcrição:', batch.id)
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ [UPDATE-BATCH] Erro ao atualizar batch:', error)
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -112,6 +202,41 @@ Deno.serve(async (req) => {
           case 'document':
             updateData.document_base64 = base64Data
             break
+        }
+
+        // Para áudios, tentar transcrição automática e atualizar content
+        if (message.message_type === 'audio') {
+          console.log('🎙️ [AUTO-TRANSCRIBE] Processando áudio para transcrição...')
+          
+          // Buscar ticket para obter client_id
+          const { data: ticketData } = await supabase
+            .from('conversation_tickets')
+            .select('client_id')
+            .eq('id', message.ticket_id)
+            .single()
+          
+          if (ticketData?.client_id) {
+            const transcription = await transcribeAudio(base64Data, ticketData.client_id, supabase)
+            
+            if (transcription) {
+              // Atualizar content da mensagem com transcrição
+              updateData.content = `🎵 Áudio - Transcrição: ${transcription}`
+              console.log('✅ [AUTO-TRANSCRIBE] Content atualizado com transcrição')
+              
+              // Também atualizar na tabela whatsapp_messages se existir
+              await supabase
+                .from('whatsapp_messages')
+                .update({ body: updateData.content })
+                .eq('message_id', message.message_id)
+              
+              // Atualizar batch se existir
+              await updateMessageInBatch(message.message_id, updateData.content, supabase)
+              
+              console.log('🔄 [AUTO-TRANSCRIBE] Mensagem sincronizada em todas as tabelas')
+            } else {
+              console.log('⚠️ [AUTO-TRANSCRIBE] Transcrição falhou, mantendo placeholder')
+            }
+          }
         }
 
         // Atualizar mensagem no banco
