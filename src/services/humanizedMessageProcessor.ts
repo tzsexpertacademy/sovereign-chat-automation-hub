@@ -1,7 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import { realTimeWhatsAppService, type RealTimeMessage } from './realTimeWhatsAppService';
-import { aiQueueIntegrationService } from './aiQueueIntegrationService';
-import { messageProcessingController } from './messageProcessingController';
+import { allProcessController } from './allProcessController';
 
 export class HumanizedMessageProcessor {
   private static instance: HumanizedMessageProcessor;
@@ -75,116 +73,25 @@ export class HumanizedMessageProcessor {
         return; // Mensagem não é deste cliente
       }
 
-      console.log('📨 Nova mensagem recebida:', {
+      console.log('📨 [HUMANIZED-PROCESSOR] Nova mensagem recebida:', {
+        messageId: messageData.message_id,
         chatId: messageData.chat_id,
-        content: messageData.content?.substring(0, 50) + '...'
+        type: messageData.message_type || 'text',
+        fromMe: messageData.from_me
       });
 
-      // Cancelar processamento anterior se existir
-      realTimeWhatsAppService.cancelProcessing(messageData.chat_id);
-
-      // Criar objeto de mensagem
-      const message: RealTimeMessage = {
-        id: messageData.message_id,
-        chatId: messageData.chat_id,
-        instanceId: messageData.instance_id,
-        content: messageData.content || '',
-        messageType: messageData.message_type || 'text',
-        fromMe: messageData.from_me,
-        timestamp: new Date(messageData.timestamp),
-        mediaUrl: messageData.media_url,
-        mimeType: messageData.mime_type
-      };
-
-      // NOVO: Verificar se mensagem já foi processada ANTES de adicionar ao batch
-      if (!messageData.from_me && !messageData.is_processed) {
-        console.log('📋 [HUMANIZED] Verificando se mensagem precisa ser processada:', {
-          messageId: messageData.message_id,
-          isProcessed: messageData.is_processed,
-          fromMe: messageData.from_me,
-          chatId: messageData.chat_id
-        });
-        
-        // VERIFICAÇÃO CRUCIAL: Usar chat_id corretamente para lock
-        const { messageProcessingController } = await import('./messageProcessingController');
-        
-        // PRIORITÁRIO: Verificar se o CHAT_ID está bloqueado (não ticket_id)
-        if (messageProcessingController.isChatLocked(messageData.chat_id)) {
-          console.log('🔒 [HUMANIZED] CHAT com lock ativo - IGNORANDO mensagem:', {
-            chatId: messageData.chat_id,
-            messageId: messageData.message_id
-          });
-          return;
-        }
-        
-        if (messageProcessingController.isMessageProcessed(messageData.message_id)) {
-          console.log('✅ [HUMANIZED] Mensagem já processada pelo controlador - IGNORANDO:', messageData.message_id);
-          return;
-        }
-        
-        // Buscar o ticket real para usar o ID correto
-        const { data: ticket } = await supabase
-          .from('conversation_tickets')
-          .select('id')
-          .eq('chat_id', messageData.chat_id)
-          .eq('instance_id', messageData.instance_id)
-          .single();
-        
-        if (ticket) {
-          console.log('🎯 [HUMANIZED] Adicionando mensagem ao BATCH usando CHAT_ID:', {
-            ticketId: ticket.id,
-            chatId: messageData.chat_id,
-            messageId: messageData.message_id
-          });
-          
-          // ✅ ATIVAR CONTROLLER DE PROCESSAMENTO ANTES DO BATCH
-          const canProcess = messageProcessingController.canProcessMessage(messageData.message_id, messageData.chat_id);
-          if (!canProcess) {
-            console.log('🔒 [HUMANIZED-PROCESSOR] Mensagem bloqueada pelo controller:', messageData.message_id);
-            return;
-          }
-
-          // Aplicar lock no chat para evitar processamento paralelo
-          messageProcessingController.lockChat(messageData.chat_id);
-
-          // ✅ USAR aiQueueIntegrationService COM ASSINATURA CORRETA
-          const messageObj = {
-            messageId: messageData.message_id,
-            chatId: messageData.chat_id,
-            content: messageData.content || '',
-            fromMe: false,
-            timestamp: new Date(messageData.timestamp).toISOString(),
-            customerName: messageData.customerName || 'Cliente',
-            phoneNumber: messageData.phoneNumber || messageData.chat_id.replace('@s.whatsapp.net', ''),
-            messageType: messageData.message_type || 'text'
-          };
-          
-          // Usar método com assinatura correta
-          aiQueueIntegrationService.addMessageToBatch(
-            messageData.chat_id,
-            messageData.content || '',
-            clientId,
-            messageData.instance_id,
-            messageData.message_id,
-            new Date(messageData.timestamp).getTime(),
-            ticket.id
-          );
-
-          // Marcar mensagem como processada pelo controller
-          messageProcessingController.markMessageProcessed(messageData.message_id);
-          
-          console.log('📦 [HUMANIZED] ✅ Mensagem adicionada ao BATCH por CHAT_ID - aguardando mais mensagens (timeout: 6s)');
-        } else {
-          console.log('❌ [HUMANIZED] Ticket não encontrado para chat:', messageData.chat_id);
-        }
-      } else if (messageData.from_me) {
-        console.log('📤 [HUMANIZED] Mensagem nossa ignorada (from_me=true)');
-      } else if (messageData.is_processed) {
-        console.log('✅ [HUMANIZED] Mensagem já processada ignorada (is_processed=true)');
+      if (messageData.from_me) {
+        console.log('📤 [HUMANIZED-PROCESSOR] Mensagem nossa ignorada (from_me=true)');
+        return;
       }
 
+      // Usar o controlador central
+      await allProcessController.processMessage(messageData, clientId);
+
+      console.log('✅ [HUMANIZED-PROCESSOR] Mensagem direcionada ao controlador central:', messageData.message_id);
+
     } catch (error) {
-      console.error('❌ Erro ao processar mensagem:', error);
+      console.error('❌ [HUMANIZED-PROCESSOR] Erro ao processar mensagem:', error);
     }
   }
 
