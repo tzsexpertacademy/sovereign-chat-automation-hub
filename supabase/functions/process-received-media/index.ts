@@ -107,15 +107,20 @@ Deno.serve(async (req) => {
     )
 
     // ✅ MÉTODO ÚNICO: Buscar mensagens que precisam descriptografia via API directly-download
+    console.log('🔍 [MEDIA-DECRYPT] Buscando mensagens pendentes de descriptografia...')
+    
     const { data: pendingMessages, error: queryError } = await supabase
       .from('ticket_messages')
       .select('*')
       .in('message_type', ['audio', 'image', 'video', 'document'])
       .not('media_key', 'is', null)
       .not('media_url', 'is', null)
-      .eq('processing_status', 'received')
+      .in('processing_status', ['received', 'processed'])
       .or('and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
+      .order('created_at', { ascending: true })
       .limit(10)
+    
+    console.log(`🔍 [MEDIA-DECRYPT] Encontradas ${pendingMessages?.length || 0} mensagens para processamento`)
 
     if (queryError) {
       console.error('❌ Erro ao buscar mensagens pendentes:', queryError)
