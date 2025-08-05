@@ -115,24 +115,37 @@ class AllProcessController {
    * Cria nova batch
    */
   private async createNewBatch(chatId: string, clientId: string, messageData: any): Promise<string> {
-    const { data, error } = await supabase
-      .from('message_batches')
-      .insert({
-        chat_id: chatId,
-        client_id: clientId,
-        instance_id: messageData.instanceId || 'unknown',
-        messages: [messageData]
-      })
-      .select('id')
-      .single();
+    try {
+      console.log('🔧 [ALL-PROCESS] Criando batch para:', { chatId, clientId, messageId: messageData.message_id });
+      
+      const { data, error } = await supabase
+        .from('message_batches')
+        .insert({
+          chat_id: chatId,
+          client_id: clientId,
+          instance_id: messageData.instance_id || messageData.instanceId || 'unknown',
+          messages: [messageData]
+        })
+        .select('id')
+        .single();
 
-    if (error) {
-      console.error('❌ [ALL-PROCESS] Erro ao criar batch:', error);
+      if (error) {
+        console.error('❌ [ALL-PROCESS] Erro ao criar batch:', error);
+        console.error('❌ [ALL-PROCESS] Dados enviados:', { 
+          chat_id: chatId, 
+          client_id: clientId, 
+          instance_id: messageData.instance_id || messageData.instanceId || 'unknown',
+          messages: [messageData]
+        });
+        throw error;
+      }
+
+      console.log('📦 [ALL-PROCESS] Nova batch criada com sucesso:', data.id);
+      return data.id;
+    } catch (error) {
+      console.error('❌ [ALL-PROCESS] Falha total ao criar batch:', error);
       throw error;
     }
-
-    console.log('📦 [ALL-PROCESS] Nova batch criada:', data.id);
-    return data.id;
   }
 
   /**

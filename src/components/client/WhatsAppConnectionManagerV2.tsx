@@ -114,10 +114,8 @@ const WhatsAppConnectionManagerV2 = () => {
       const delay = setTimeout(() => {
         checkAndCreateAutoConnections(clientId);
         
-        // Inicializar processador humanizado automaticamente
-        if (!humanizedMessageProcessor.getStatus().isInitialized) {
-          humanizedMessageProcessor.initialize(clientId);
-        }
+        // REMOVIDO: Inicialização automática para evitar duplicação
+        // O processador será controlado via AIAutoProcessorStatus
       }, 2000); // Aguardar 2s para dar tempo das instâncias serem carregadas
       
       return () => clearTimeout(delay);
