@@ -19,6 +19,13 @@ interface MediaDownloadResult {
 }
 
 class DirectMediaDownloadService {
+  private businessToken: string | null = null;
+  
+  /**
+   * 🔒 SISTEMA DE LOCK GLOBAL: Evita chamadas duplicadas à API
+   * Map de locks por chave única (instanceId:mediaKey)
+   */
+  private processingLocks = new Map<string, Promise<MediaDownloadResult>>();
 
   /**
    * Converter buffer/objeto para Base64 string de forma robusta
@@ -63,7 +70,6 @@ class DirectMediaDownloadService {
     }
   }
 
-  private businessToken: string | null = null;
 
   /**
    * Buscar instanceId e business_token com estratégia híbrida
@@ -178,9 +184,65 @@ class DirectMediaDownloadService {
   }
 
   /**
-   * Download direto de mídia com lógica corrigida para URLs criptografadas
+   * Download direto de mídia com SISTEMA DE LOCK GLOBAL
+   * Evita chamadas duplicadas para a mesma mídia
    */
   async downloadMedia(
+    instanceId: string,
+    mediaUrl: string,
+    mediaKey?: string,
+    directPath?: string,
+    mimetype?: string,
+    contentType: 'image' | 'video' | 'audio' | 'document' = 'document'
+  ): Promise<MediaDownloadResult> {
+    // 🔒 SISTEMA DE LOCK: Gerar chave única para esta mídia
+    const lockKey = `${instanceId}:${mediaKey || mediaUrl}:${contentType}`;
+    
+    // ⏳ Se já está sendo processado, aguardar resultado da operação em andamento
+    if (this.processingLocks.has(lockKey)) {
+      console.log(`🔒 [LOCK-${contentType.toUpperCase()}] Mídia já sendo processada, aguardando conclusão...`);
+      console.log(`🔑 [LOCK-${contentType.toUpperCase()}] LockKey:`, lockKey.substring(0, 100) + '...');
+      
+      try {
+        const existingResult = await this.processingLocks.get(lockKey);
+        console.log(`✅ [LOCK-${contentType.toUpperCase()}] Resultado obtido da operação em andamento`);
+        return existingResult!;
+      } catch (error) {
+        console.error(`❌ [LOCK-${contentType.toUpperCase()}] Erro na operação em andamento:`, error);
+        // Remover lock problemático e tentar novamente
+        this.processingLocks.delete(lockKey);
+      }
+    }
+    
+    // 🚀 Criar nova operação e armazenar no sistema de locks
+    console.log(`🔓 [LOCK-${contentType.toUpperCase()}] Iniciando nova operação de download`);
+    console.log(`🔑 [LOCK-${contentType.toUpperCase()}] LockKey:`, lockKey.substring(0, 100) + '...');
+    
+    const processingPromise = this.performMediaDownload(
+      instanceId, mediaUrl, mediaKey, directPath, mimetype, contentType
+    );
+    
+    // Armazenar promise no sistema de locks
+    this.processingLocks.set(lockKey, processingPromise);
+    
+    try {
+      const result = await processingPromise;
+      console.log(`✅ [LOCK-${contentType.toUpperCase()}] Download concluído com sucesso`);
+      return result;
+    } catch (error) {
+      console.error(`❌ [LOCK-${contentType.toUpperCase()}] Erro no download:`, error);
+      throw error;
+    } finally {
+      // 🧹 SEMPRE limpar lock após processamento (sucesso ou erro)
+      this.processingLocks.delete(lockKey);
+      console.log(`🧹 [LOCK-${contentType.toUpperCase()}] Lock removido do sistema`);
+    }
+  }
+
+  /**
+   * Operação real de download - extraída para permitir sistema de locks
+   */
+  private async performMediaDownload(
     instanceId: string,
     mediaUrl: string,
     mediaKey?: string,
