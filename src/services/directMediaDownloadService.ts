@@ -21,28 +21,41 @@ interface MediaDownloadResult {
 class DirectMediaDownloadService {
 
   /**
-   * Converter buffer/objeto para Base64 string
+   * Converter buffer/objeto para Base64 string de forma robusta
    */
   private convertToBase64(data: any): string | null {
     try {
+      if (!data) return null;
+      
+      // Se já é string Base64, retornar como está
       if (typeof data === 'string') {
-        return data; // Já é string Base64
+        return data;
       }
       
+      // Se é Uint8Array
       if (data instanceof Uint8Array) {
         return btoa(String.fromCharCode(...data));
       }
       
-      if (typeof data === 'object' && data !== null) {
-        // Converter objeto {0: 251, 1: 128, ...} para Uint8Array
+      // Se é objeto {0: 251, 1: 128, ...} (Uint8Array serializado)
+      if (typeof data === 'object' && !Array.isArray(data)) {
         const keys = Object.keys(data).map(Number).sort((a, b) => a - b);
-        const bytes = new Uint8Array(keys.length);
-        keys.forEach((key, index) => {
-          bytes[index] = data[key];
-        });
+        if (keys.length > 0 && keys.every(k => !isNaN(k) && k >= 0)) {
+          const bytes = new Uint8Array(keys.length);
+          keys.forEach((key, index) => {
+            bytes[index] = data[key];
+          });
+          return btoa(String.fromCharCode(...bytes));
+        }
+      }
+      
+      // Se é array de bytes
+      if (Array.isArray(data)) {
+        const bytes = new Uint8Array(data);
         return btoa(String.fromCharCode(...bytes));
       }
       
+      console.warn('🔧 [CONVERT-TO-BASE64] Tipo não reconhecido:', typeof data, data);
       return null;
     } catch (error) {
       console.error('❌ DirectMedia: Erro ao converter para Base64:', error);

@@ -209,28 +209,54 @@ async function handleMessagesUpsert(supabase: any, instanceData: any, data: any)
     const messageTimestamp = message.messageTimestamp || Date.now()
     const messageContent = extractMessageContent(message.message)
     const messageType = extractMessageType(message.message)
+    const mediaData = extractMediaData(message.message)
 
-    // Inserir/atualizar mensagem
+    // Preparar dados base da mensagem
+    const messageData: any = {
+      instance_id: instanceData.instance_id,
+      client_id: instanceData.client_id,
+      chat_id: keyRemoteJid,
+      message_id: keyId,
+      key_remote_jid: keyRemoteJid,
+      key_from_me: keyFromMe,
+      key_id: keyId,
+      from_me: keyFromMe,
+      sender: pushName,
+      push_name: pushName,
+      body: messageContent,
+      message_type: messageType,
+      message_timestamp: messageTimestamp,
+      timestamp: new Date(messageTimestamp).toISOString(),
+      status: 'received',
+      created_at: new Date().toISOString()
+    }
+
+    // 🔧 CORREÇÃO CRÍTICA: Adicionar dados de mídia NORMALIZADOS se existirem
+    if (mediaData) {
+      console.log(`🔧 [WEBHOOK] Adicionando dados de mídia normalizados para ${keyId}:`, {
+        media_url: !!mediaData.media_url,
+        media_key: !!mediaData.media_key && typeof mediaData.media_key,
+        file_enc_sha256: !!mediaData.file_enc_sha256 && typeof mediaData.file_enc_sha256,
+        direct_path: !!mediaData.direct_path
+      })
+      
+      Object.assign(messageData, {
+        media_url: mediaData.media_url,
+        media_key: mediaData.media_key,
+        file_enc_sha256: mediaData.file_enc_sha256,
+        file_sha256: mediaData.file_sha256,
+        direct_path: mediaData.direct_path,
+        media_mime_type: mediaData.mime_type,
+        media_duration: mediaData.media_duration,
+        file_name: mediaData.file_name,
+        file_length: mediaData.file_length
+      })
+    }
+
+    // Inserir/atualizar mensagem com dados normalizados
     await supabase
       .from('whatsapp_messages')
-      .upsert({
-        instance_id: instanceData.instance_id,
-        client_id: instanceData.client_id, // ✅ CORREÇÃO DO BATCHING: Incluir client_id
-        chat_id: keyRemoteJid,
-        message_id: keyId,
-        key_remote_jid: keyRemoteJid,
-        key_from_me: keyFromMe,
-        key_id: keyId,
-        from_me: keyFromMe,
-        sender: pushName,
-        push_name: pushName,
-        body: messageContent,
-        message_type: messageType,
-        message_timestamp: messageTimestamp,
-        timestamp: new Date(messageTimestamp).toISOString(),
-        status: 'received',
-        created_at: new Date().toISOString()
-      }, {
+      .upsert(messageData, {
         onConflict: 'instance_id,message_id',
         ignoreDuplicates: false
       })
@@ -320,6 +346,47 @@ function extractMessageContent(messageObj: any): string {
   return '[Mensagem]'
 }
 
+/**
+ * Converter dados de chave de mídia para Base64 string robustamente
+ */
+function normalizeMediaKey(data: any): string | null {
+  try {
+    if (!data) return null;
+    
+    // Se já é string Base64, retornar como está
+    if (typeof data === 'string') return data;
+    
+    // Se é Uint8Array serializado como objeto {0: 251, 1: 128, ...}
+    if (typeof data === 'object' && !Array.isArray(data)) {
+      const keys = Object.keys(data).map(Number).sort((a, b) => a - b);
+      if (keys.length > 0 && keys.every(k => !isNaN(k) && k >= 0)) {
+        const uint8Array = new Uint8Array(keys.length);
+        keys.forEach((key, index) => {
+          uint8Array[index] = data[key];
+        });
+        return btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
+      }
+    }
+    
+    // Se é array de bytes
+    if (Array.isArray(data)) {
+      const uint8Array = new Uint8Array(data);
+      return btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
+    }
+    
+    // Se é Uint8Array
+    if (data instanceof Uint8Array) {
+      return btoa(String.fromCharCode.apply(null, Array.from(data)));
+    }
+    
+    console.warn('🔧 [NORMALIZE-KEY] Tipo não reconhecido:', typeof data);
+    return null;
+  } catch (error) {
+    console.error('❌ [NORMALIZE-KEY] Erro na conversão:', error);
+    return null;
+  }
+}
+
 function extractMediaData(messageObj: any): any {
   if (!messageObj) return null
   
@@ -327,9 +394,9 @@ function extractMediaData(messageObj: any): any {
   if (messageObj.audioMessage) {
     return {
       media_url: messageObj.audioMessage.url,
-      media_key: messageObj.audioMessage.mediaKey,
-      file_enc_sha256: messageObj.audioMessage.fileEncSha256,
-      file_sha256: messageObj.audioMessage.fileSha256,
+      media_key: normalizeMediaKey(messageObj.audioMessage.mediaKey),
+      file_enc_sha256: normalizeMediaKey(messageObj.audioMessage.fileEncSha256),
+      file_sha256: normalizeMediaKey(messageObj.audioMessage.fileSha256),
       direct_path: messageObj.audioMessage.directPath,
       mime_type: messageObj.audioMessage.mimetype,
       media_duration: messageObj.audioMessage.seconds
@@ -340,9 +407,9 @@ function extractMediaData(messageObj: any): any {
   if (messageObj.imageMessage) {
     return {
       media_url: messageObj.imageMessage.url,
-      media_key: messageObj.imageMessage.mediaKey,
-      file_enc_sha256: messageObj.imageMessage.fileEncSha256,
-      file_sha256: messageObj.imageMessage.fileSha256,
+      media_key: normalizeMediaKey(messageObj.imageMessage.mediaKey),
+      file_enc_sha256: normalizeMediaKey(messageObj.imageMessage.fileEncSha256),
+      file_sha256: normalizeMediaKey(messageObj.imageMessage.fileSha256),
       direct_path: messageObj.imageMessage.directPath,
       mime_type: messageObj.imageMessage.mimetype
     }
@@ -352,9 +419,9 @@ function extractMediaData(messageObj: any): any {
   if (messageObj.videoMessage) {
     return {
       media_url: messageObj.videoMessage.url,
-      media_key: messageObj.videoMessage.mediaKey,
-      file_enc_sha256: messageObj.videoMessage.fileEncSha256,
-      file_sha256: messageObj.videoMessage.fileSha256,
+      media_key: normalizeMediaKey(messageObj.videoMessage.mediaKey),
+      file_enc_sha256: normalizeMediaKey(messageObj.videoMessage.fileEncSha256),
+      file_sha256: normalizeMediaKey(messageObj.videoMessage.fileSha256),
       direct_path: messageObj.videoMessage.directPath,
       mime_type: messageObj.videoMessage.mimetype,
       media_duration: messageObj.videoMessage.seconds
@@ -365,9 +432,9 @@ function extractMediaData(messageObj: any): any {
   if (messageObj.documentMessage) {
     return {
       media_url: messageObj.documentMessage.url,
-      media_key: messageObj.documentMessage.mediaKey,
-      file_enc_sha256: messageObj.documentMessage.fileEncSha256,
-      file_sha256: messageObj.documentMessage.fileSha256,
+      media_key: normalizeMediaKey(messageObj.documentMessage.mediaKey),
+      file_enc_sha256: normalizeMediaKey(messageObj.documentMessage.fileEncSha256),
+      file_sha256: normalizeMediaKey(messageObj.documentMessage.fileSha256),
       direct_path: messageObj.documentMessage.directPath,
       mime_type: messageObj.documentMessage.mimetype,
       file_name: messageObj.documentMessage.fileName,
