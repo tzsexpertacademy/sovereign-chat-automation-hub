@@ -174,11 +174,11 @@ const TicketTabsInterface = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'open': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'resolved': return 'bg-blue-100 text-blue-800';
-      case 'closed': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'open': return 'bg-success/10 text-success border-success/20';
+      case 'pending': return 'bg-warning/10 text-warning border-warning/20';
+      case 'resolved': return 'bg-primary/10 text-primary border-primary/20';
+      case 'closed': return 'bg-muted text-muted-foreground border-border';
+      default: return 'bg-muted text-muted-foreground border-border';
     }
   };
 
@@ -194,10 +194,10 @@ const TicketTabsInterface = () => {
 
   const getSyncStatusColor = () => {
     switch (syncStatus) {
-      case 'success': return 'text-green-600';
-      case 'syncing': return 'text-blue-600';
-      case 'error': return 'text-red-600';
-      default: return 'text-gray-600';
+      case 'success': return 'text-success';
+      case 'syncing': return 'text-primary';
+      case 'error': return 'text-destructive';
+      default: return 'text-muted-foreground';
     }
   };
 
@@ -266,34 +266,38 @@ const TicketTabsInterface = () => {
       </div>
 
       {/* Lista de Tickets */}
-      <Card className="flex-1 flex flex-col min-h-0">
-        <CardHeader className="pb-3">
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
+      <Card className="flex-1 flex flex-col min-h-0 bg-gradient-to-br from-card to-card/50 border-0 shadow-elegant">
+        <CardHeader className="pb-3 bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
+            <div className="space-y-2">
+              <CardTitle className="text-xl flex items-center gap-3 text-foreground">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                </div>
                 Gestão de Tickets
-                {(isLoading || isImporting) && <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>}
+                {(isLoading || isImporting) && (
+                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                )}
               </CardTitle>
-              <CardDescription className="flex items-center gap-4">
+              <CardDescription className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>Sistema YumerFlow V2</span>
+                  <CheckCircle className="h-4 w-4 text-success" />
+                  <span className="text-muted-foreground">Sistema YumerFlow V2</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Activity className={`h-4 w-4 ${getSyncStatusColor()}`} />
-                  <span className={getSyncStatusColor()}>
+                  <span className={`text-sm font-medium ${getSyncStatusColor()}`}>
                     {getSyncStatusLabel()}
                   </span>
                   {lastSyncTime && (
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-muted-foreground">
                       ({formatTime(lastSyncTime.toISOString())})
                     </span>
                   )}
                 </div>
               </CardDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button 
                 variant="outline" 
                 size="sm"
@@ -302,7 +306,7 @@ const TicketTabsInterface = () => {
                   window.location.reload();
                 }}
                 title="⚡ Refresh Completo da Página"
-                className="bg-blue-50 hover:bg-blue-100 text-blue-600"
+                className="hover-scale"
               >
                 ⚡ Refresh
               </Button>
@@ -312,6 +316,7 @@ const TicketTabsInterface = () => {
                 onClick={reloadTickets}
                 disabled={isLoading || isImporting}
                 title="Recarregar tickets manualmente"
+                className="hover-scale"
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               </Button>
@@ -321,6 +326,7 @@ const TicketTabsInterface = () => {
                 onClick={forceSyncMessages}
                 disabled={isImporting}
                 title="Forçar sincronização YUMER"
+                className="hover-scale"
               >
                 <Settings className="w-4 h-4" />
               </Button>
@@ -330,6 +336,7 @@ const TicketTabsInterface = () => {
                 onClick={handleSmartImport}
                 disabled={isImporting}
                 title="Importação inteligente com retry automático"
+                className="hover-scale bg-gradient-to-r from-primary to-primary/80 text-primary-foreground border-0"
               >
                 {isImporting ? (
                   <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
@@ -356,19 +363,19 @@ const TicketTabsInterface = () => {
         <CardContent className="flex-1 p-0">
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "open" | "closed")} className="h-full">
             <div className="px-4 pb-2">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="open" className="flex items-center gap-2">
+              <TabsList className="grid w-full grid-cols-2 bg-muted/50 p-1">
+                <TabsTrigger value="open" className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-success/10 data-[state=active]:to-success/5 data-[state=active]:text-success">
                   Tickets Abertos
                   {openTicketsCount > 0 && (
-                    <Badge variant="secondary" className="ml-1 bg-green-100 text-green-700">
+                    <Badge variant="secondary" className="ml-1 bg-success/20 text-success border-success/30">
                       {openTicketsCount}
                     </Badge>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="closed" className="flex items-center gap-2">
+                <TabsTrigger value="closed" className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-muted data-[state=active]:to-muted/50">
                   Tickets Fechados
                   {closedTicketsCount > 0 && (
-                    <Badge variant="secondary" className="ml-1 bg-gray-100 text-gray-700">
+                    <Badge variant="secondary" className="ml-1 bg-muted text-muted-foreground">
                       {closedTicketsCount}
                     </Badge>
                   )}
@@ -416,14 +423,16 @@ const TicketTabsInterface = () => {
                     </Button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 p-3 sm:p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 p-4">
                     {filteredTickets.map((ticket) => (
                       <Card
                         key={ticket.id}
-                        className="cursor-pointer hover:bg-gray-50 transition-colors relative min-h-[120px]"
+                        className="group cursor-pointer hover:shadow-lg transition-all duration-300 border-0 bg-gradient-to-br from-card to-card/80 hover:from-card/80 hover:to-card/60 relative overflow-hidden hover-scale"
                       >
-                        <CardContent className="p-4">
-                          <div className="absolute top-2 right-2">
+                        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        
+                        <CardContent className="p-4 relative">
+                          <div className="absolute top-3 right-3 z-10">
                             <TicketActionsMenu 
                               ticket={ticket} 
                               onTicketUpdate={handleTicketUpdate}
@@ -431,41 +440,64 @@ const TicketTabsInterface = () => {
                           </div>
                           
                           <div 
-                            className="flex items-start space-x-3"
+                            className="space-y-3"
                             onClick={() => setSelectedTicket(ticket.id)}
                           >
-                            <Avatar className="w-10 h-10 flex-shrink-0">
-                              <AvatarFallback>
-                                {ticket.customer?.name?.charAt(0) || 'C'}
-                              </AvatarFallback>
-                            </Avatar>
-                            
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex justify-between items-start">
-                                <h3 className="font-medium text-gray-900 truncate">
-                                  {ticket.customer?.name || ticket.title}
-                                </h3>
-                                <Badge className={`text-xs ${getStatusColor(ticket.status)}`}>
-                                  {getStatusLabel(ticket.status)}
-                                </Badge>
+                            {/* Header com Avatar e Status */}
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center space-x-3">
+                                <Avatar className="w-12 h-12 border-2 border-primary/20 shadow-md">
+                                  <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-semibold">
+                                    {ticket.customer?.name?.charAt(0) || 'C'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="font-semibold text-foreground truncate text-sm">
+                                    {ticket.customer?.name || ticket.title}
+                                  </h3>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {ticket.customer?.phone || 'Sem telefone'}
+                                  </p>
+                                </div>
                               </div>
-                              
+                              <Badge className={`text-xs border ${getStatusColor(ticket.status)} font-medium`}>
+                                {getStatusLabel(ticket.status)}
+                              </Badge>
+                            </div>
+                            
+                            {/* Informações do Ticket */}
+                            <div className="space-y-2">
                               {ticket.queue && (
-                                <div className="flex items-center gap-1 mb-1">
-                                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs bg-accent/10 text-accent-foreground border-accent/30">
                                     📋 {ticket.queue.name}
-                                  </span>
+                                  </Badge>
+                                  {ticket.priority > 1 && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Alta P{ticket.priority}
+                                    </Badge>
+                                  )}
                                 </div>
                               )}
                               
-                              <p className="text-sm text-gray-600 truncate">
-                                {ticket.last_message_preview || 'Sem mensagens'}
-                              </p>
+                              {ticket.last_message_preview && (
+                                <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                                  {ticket.last_message_preview}
+                                </p>
+                              )}
                               
-                              <div className="flex items-center justify-between text-xs text-gray-500">
-                                <span>{ticket.customer?.phone}</span>
-                                <span>{formatTime(ticket.last_message_at)}</span>
-                              </div>
+                               <div className="flex justify-between items-center text-xs">
+                                 <span className="text-muted-foreground">
+                                   {formatTime(ticket.last_message_at)}
+                                 </span>
+                                 <div className="flex items-center gap-1">
+                                   {ticket.priority > 2 && (
+                                     <Badge variant="outline" className="text-xs bg-warning/10 text-warning">
+                                       Urgente
+                                     </Badge>
+                                   )}
+                                 </div>
+                               </div>
                             </div>
                           </div>
                         </CardContent>
@@ -502,14 +534,16 @@ const TicketTabsInterface = () => {
                     )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 p-3 sm:p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 p-4">
                     {filteredTickets.map((ticket) => (
                       <Card
                         key={ticket.id}
-                        className="cursor-pointer hover:bg-gray-50 transition-colors relative opacity-75 min-h-[120px]"
+                        className="group cursor-pointer hover:shadow-lg transition-all duration-300 border-0 bg-gradient-to-br from-card/60 to-card/40 hover:from-card/50 hover:to-card/30 relative overflow-hidden opacity-80 hover-scale"
                       >
-                        <CardContent className="p-4">
-                          <div className="absolute top-2 right-2">
+                        <div className="absolute inset-0 bg-gradient-to-br from-muted/10 to-transparent opacity-50" />
+                        
+                        <CardContent className="p-4 relative">
+                          <div className="absolute top-3 right-3 z-10">
                             <TicketActionsMenu 
                               ticket={ticket} 
                               onTicketUpdate={handleTicketUpdate}
@@ -517,40 +551,56 @@ const TicketTabsInterface = () => {
                           </div>
                           
                           <div 
-                            className="flex items-start space-x-3"
+                            className="space-y-3"
                             onClick={() => setSelectedTicket(ticket.id)}
                           >
-                            <Avatar className="w-10 h-10 flex-shrink-0">
-                              <AvatarFallback>
-                                {ticket.customer?.name?.charAt(0) || 'C'}
-                              </AvatarFallback>
-                            </Avatar>
-                            
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex justify-between items-start">
-                                <h3 className="font-medium text-gray-900 truncate">
-                                  {ticket.customer?.name || ticket.title}
-                                </h3>
-                                <Badge className={`text-xs ${getStatusColor(ticket.status)}`}>
-                                  {getStatusLabel(ticket.status)}
-                                </Badge>
+                            {/* Header com Avatar e Status */}
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center space-x-3">
+                                <Avatar className="w-12 h-12 border-2 border-muted/30 shadow-md">
+                                  <AvatarFallback className="bg-gradient-to-br from-muted to-muted/80 text-muted-foreground font-semibold">
+                                    {ticket.customer?.name?.charAt(0) || 'C'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="font-semibold text-foreground/80 truncate text-sm">
+                                    {ticket.customer?.name || ticket.title}
+                                  </h3>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {ticket.customer?.phone || 'Sem telefone'}
+                                  </p>
+                                </div>
                               </div>
-                              
+                              <Badge className={`text-xs border ${getStatusColor(ticket.status)} font-medium opacity-80`}>
+                                {getStatusLabel(ticket.status)}
+                              </Badge>
+                            </div>
+                            
+                            {/* Informações do Ticket */}
+                            <div className="space-y-2">
                               {ticket.queue && (
-                                <div className="flex items-center gap-1 mb-1">
-                                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs bg-muted/20 text-muted-foreground border-muted/40">
                                     📋 {ticket.queue.name}
-                                  </span>
+                                  </Badge>
+                                  {ticket.priority > 1 && (
+                                    <Badge variant="outline" className="text-xs bg-muted/20 text-muted-foreground">
+                                      P{ticket.priority}
+                                    </Badge>
+                                  )}
                                 </div>
                               )}
                               
-                              <p className="text-sm text-gray-600 truncate">
-                                {ticket.last_message_preview || 'Sem mensagens'}
-                              </p>
+                              {ticket.last_message_preview && (
+                                <p className="text-sm text-muted-foreground/80 line-clamp-2 leading-relaxed">
+                                  {ticket.last_message_preview}
+                                </p>
+                              )}
                               
-                              <div className="flex items-center justify-between text-xs text-gray-500">
-                                <span>{ticket.customer?.phone}</span>
-                                <span>{formatTime(ticket.last_message_at)}</span>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground/70">
+                                  {formatTime(ticket.last_message_at)}
+                                </span>
                               </div>
                             </div>
                           </div>
