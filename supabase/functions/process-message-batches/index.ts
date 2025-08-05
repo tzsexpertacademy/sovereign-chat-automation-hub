@@ -58,14 +58,14 @@ Deno.serve(async (req) => {
       for (const batch of batchPreview) {
         const messages = batch.messages || [];
         const hasAudio = messages.some((msg: any) => 
-          msg.content && (msg.content.includes('🎵 Áudio') || msg.messageType === 'audio')
+          (msg.content && typeof msg.content === 'string' && msg.content.includes('🎵 Áudio')) || msg.messageType === 'audio'
         );
         const hasImage = messages.some((msg: any) => 
-          msg.content && (msg.content.includes('📷 Imagem') || msg.messageType === 'image')
+          (msg.content && typeof msg.content === 'string' && msg.content.includes('📷 Imagem')) || msg.messageType === 'image'
         );
         const hasMixed = hasAudio && hasImage;
         const hasText = messages.some((msg: any) => 
-          msg.content && !msg.content.includes('🎵 Áudio') && !msg.content.includes('📷 Imagem')
+          msg.content && typeof msg.content === 'string' && !msg.content.includes('🎵 Áudio') && !msg.content.includes('📷 Imagem')
         );
         
         if (hasMixed) {
