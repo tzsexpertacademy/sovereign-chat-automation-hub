@@ -2327,6 +2327,17 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      get_audio_processing_stats: {
+        Args: { p_client_id: string }
+        Returns: {
+          total_audio_messages: number
+          processed_audio: number
+          pending_decryption: number
+          pending_transcription: number
+          orphaned_audio: number
+          processing_rate: number
+        }[]
+      }
       get_decrypted_audio: {
         Args: { p_message_id: string }
         Returns: {
@@ -2402,6 +2413,14 @@ export type Database = {
           p_client_id: string
         }
         Returns: string
+      }
+      reprocess_orphaned_audio: {
+        Args: { p_client_id: string }
+        Returns: {
+          reprocessed_count: number
+          error_count: number
+          message_ids: string[]
+        }[]
       }
       save_ticket_message: {
         Args: {

@@ -1,5 +1,5 @@
 
-import { BarChart3, Users, Activity, FileText, Settings, Shield, TestTube, Server, CreditCard, Wrench, RotateCcw, Music } from "lucide-react";
+import { BarChart3, Users, Activity, FileText, Settings, Shield, TestTube, Server, CreditCard, Wrench, RotateCcw, Music, Volume2 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
 const adminItems = [
@@ -11,8 +11,9 @@ const adminItems = [
   { title: "Sistema Logs", url: "/admin/logs", icon: FileText },
   { title: "Api Codechat", url: "/admin/diagnostics", icon: TestTube },
   { title: "Corrigir Tickets", url: "/admin/fix-tickets", icon: RotateCcw },
-  { title: "Em Desenvolvimento", url: "/admin/advanced", icon: Wrench },
+  { title: "Monitor de Áudio", url: "/admin/audio-monitor", icon: Volume2 },
   { title: "Diagnóstico Áudio", url: "/admin/audio-diagnostics", icon: Music },
+  { title: "Em Desenvolvimento", url: "/admin/advanced", icon: Wrench },
 ];
 
 const AdminSidebar = () => {

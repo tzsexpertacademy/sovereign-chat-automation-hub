@@ -11,6 +11,7 @@ import { SystemLogsClean } from "./SystemLogsClean";
 import DevelopmentPlan from "./DevelopmentPlan";
 import { FixTicketsAssignment } from "./FixTicketsAssignment";
 import AudioDiagnostics from "./AudioDiagnostics";
+import { AudioProcessingMonitor } from "./AudioProcessingMonitor";
 
 const AdminRouter = () => {
   return (
@@ -28,6 +29,7 @@ const AdminRouter = () => {
       <Route path="/advanced" element={<DevelopmentPlan />} />
       <Route path="/fix-tickets" element={<FixTicketsAssignment />} />
       <Route path="/audio-diagnostics" element={<AudioDiagnostics />} />
+      <Route path="/audio-monitor" element={<AudioProcessingMonitor />} />
     </Routes>
   );
 };
