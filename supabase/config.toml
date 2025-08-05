@@ -7,6 +7,9 @@ verify_jwt = false
 [functions.codechat-v2-webhook]
 verify_jwt = false
 
+[functions.yumer-webhook]
+verify_jwt = false
+
 [functions.yumer-unified-webhook]
 verify_jwt = false
 
