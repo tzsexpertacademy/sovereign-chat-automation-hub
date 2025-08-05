@@ -112,19 +112,19 @@ Deno.serve(async (req) => {
       throw new Error('Processing timeout exceeded')
     }, 30000)
 
-    // ✅ MÉTODO ÚNICO: Buscar mensagens que precisam descriptografia via API directly-download
-    console.log('🔍 [MEDIA-DECRYPT] Buscando mensagens pendentes de descriptografia...')
-    
-    const { data: pendingMessages, error: queryError } = await supabase
-      .from('ticket_messages')
-      .select('*')
-      .in('message_type', ['audio', 'image', 'video', 'document'])
-      .not('media_key', 'is', null)
-      .not('media_url', 'is', null)
-      .in('processing_status', ['received', 'processed'])
-      .or('and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
-      .order('created_at', { ascending: true })
-      .limit(10)
+        // ✅ MÉTODO ÚNICO: Buscar mensagens que precisam descriptografia via API directly-download
+        console.log('🔍 [MEDIA-DECRYPT] Buscando mensagens pendentes de descriptografia...')
+        
+        const { data: pendingMessages, error: queryError } = await supabase
+          .from('ticket_messages')
+          .select('*')
+          .in('message_type', ['audio', 'image', 'video', 'document'])
+          .not('media_key', 'is', null)
+          .not('media_url', 'is', null)
+          .eq('processing_status', 'received')
+          .or('and(message_type.eq.image,image_base64.is.null),and(message_type.eq.audio,audio_base64.is.null),and(message_type.eq.video,video_base64.is.null),and(message_type.eq.document,document_base64.is.null)')
+          .order('created_at', { ascending: true })
+          .limit(5)
     
     console.log(`🔍 [MEDIA-DECRYPT] Encontradas ${pendingMessages?.length || 0} mensagens para processamento`)
 
@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
 
         // Salvar dados base64 na coluna apropriada
         const updateData: any = {
-          processing_status: 'completed'
+          processing_status: 'processing'
         }
 
         switch (message.message_type) {
@@ -295,12 +295,18 @@ Deno.serve(async (req) => {
             if (transcription) {
               // Atualizar content da mensagem com transcrição
               updateData.content = `🎵 Áudio - Transcrição: ${transcription}`
+              updateData.media_transcription = transcription
+              updateData.processing_status = 'completed'
               console.log('✅ [AUTO-TRANSCRIBE] Content atualizado com transcrição')
               
               // Também atualizar na tabela whatsapp_messages se existir
               await supabase
                 .from('whatsapp_messages')
-                .update({ body: updateData.content })
+                .update({ 
+                  body: updateData.content,
+                  is_processed: true,
+                  processed_at: new Date().toISOString()
+                })
                 .eq('message_id', message.message_id)
               
               // Atualizar batch se existir
@@ -309,6 +315,7 @@ Deno.serve(async (req) => {
               console.log('🔄 [AUTO-TRANSCRIBE] Mensagem sincronizada em todas as tabelas')
             } else {
               console.log('⚠️ [AUTO-TRANSCRIBE] Transcrição falhou, mantendo placeholder')
+              updateData.processing_status = 'completed'
             }
           }
         }
