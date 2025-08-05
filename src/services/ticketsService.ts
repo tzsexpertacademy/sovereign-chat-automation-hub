@@ -863,6 +863,111 @@ class TicketsService {
     }
   }
 
+  // === FECHAMENTO E REABERTURA DE TICKETS ===
+  async closeTicket(ticketId: string, reason?: string): Promise<void> {
+    console.log('🔒 [CLOSE-TICKET] Fechando ticket:', ticketId);
+    
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      // Registrar evento de fechamento se tabela existir
+      try {
+        await supabase
+          .from('ticket_events')
+          .insert({
+            ticket_id: ticketId,
+            event_type: 'closed',
+            description: reason || 'Ticket fechado manualmente',
+            created_by: 'system'
+          });
+      } catch (eventError) {
+        console.log('ℹ️ [CLOSE-TICKET] Tabela de eventos não encontrada, continuando...');
+      }
+
+      console.log('✅ [CLOSE-TICKET] Ticket fechado com sucesso:', ticketId);
+    } catch (error) {
+      console.error('❌ [CLOSE-TICKET] Erro ao fechar ticket:', error);
+      throw error;
+    }
+  }
+
+  async reopenTicket(ticketId: string): Promise<void> {
+    console.log('🔓 [REOPEN-TICKET] Reabrindo ticket:', ticketId);
+    
+    try {
+      // Buscar dados do ticket para determinar fila padrão
+      const { data: ticket, error: ticketError } = await supabase
+        .from('conversation_tickets')
+        .select('client_id, instance_id')
+        .eq('id', ticketId)
+        .single();
+
+      if (ticketError) throw ticketError;
+
+      // Buscar fila padrão automaticamente
+      const { data: defaultQueue } = await supabase
+        .rpc('auto_assign_queue', {
+          p_client_id: ticket.client_id,
+          p_instance_id: ticket.instance_id,
+          p_message_content: '',
+          p_current_queue_id: null
+        });
+
+      // Buscar assistente da fila se existir
+      let assistantId = null;
+      if (defaultQueue) {
+        const { data: queueData } = await supabase
+          .from('queues')
+          .select('assistant_id')
+          .eq('id', defaultQueue)
+          .single();
+        
+        assistantId = queueData?.assistant_id;
+      }
+
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          status: 'open',
+          closed_at: null,
+          assigned_queue_id: defaultQueue,
+          assigned_assistant_id: assistantId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      // Registrar evento de reabertura se tabela existir
+      try {
+        await supabase
+          .from('ticket_events')
+          .insert({
+            ticket_id: ticketId,
+            event_type: 'reopened',
+            description: 'Ticket reaberto manualmente',
+            created_by: 'system'
+          });
+      } catch (eventError) {
+        console.log('ℹ️ [REOPEN-TICKET] Tabela de eventos não encontrada, continuando...');
+      }
+
+      console.log('✅ [REOPEN-TICKET] Ticket reaberto com sucesso:', ticketId, 'Fila:', defaultQueue, 'Assistente:', assistantId);
+    } catch (error) {
+      console.error('❌ [REOPEN-TICKET] Erro ao reabrir ticket:', error);
+      throw error;
+    }
+  }
+
   // === FUNÇÕES AUXILIARES ===
   private extractPhoneNumber(chatId: string): string {
     if (!chatId) return '';

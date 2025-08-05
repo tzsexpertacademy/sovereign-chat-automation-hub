@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { MoreVertical, Tag, User, ArrowRight, X, Trash2 } from 'lucide-react';
+import { MoreVertical, Tag, User, ArrowRight, X, Trash2, XCircle, RotateCcw } from 'lucide-react';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
 import { queuesService } from '@/services/queuesService';
 import { useToast } from '@/hooks/use-toast';
@@ -34,6 +34,8 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
   const { toast } = useToast();
   const [queues, setQueues] = React.useState<any[]>([]);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
+  const [showCloseDialog, setShowCloseDialog] = React.useState(false);
+  const [showReopenDialog, setShowReopenDialog] = React.useState(false);
 
   React.useEffect(() => {
     loadQueues();
@@ -160,6 +162,45 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
     }
   };
 
+  const handleCloseTicket = async () => {
+    try {
+      await ticketsService.closeTicket(ticket.id, "Fechado manualmente pelo operador");
+      toast({
+        title: "Sucesso",
+        description: "Ticket fechado com sucesso"
+      });
+      setShowCloseDialog(false);
+      onTicketUpdate();
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao fechar ticket",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleReopenTicket = async () => {
+    try {
+      await ticketsService.reopenTicket(ticket.id);
+      toast({
+        title: "Sucesso",
+        description: "Ticket reaberto com sucesso"
+      });
+      setShowReopenDialog(false);
+      onTicketUpdate();
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao reabrir ticket",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const isTicketOpen = ['open', 'pending'].includes(ticket.status);
+  const isTicketClosed = ['closed', 'resolved'].includes(ticket.status);
+
   return (
     <>
       <DropdownMenu>
@@ -172,29 +213,49 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
           <DropdownMenuLabel>Ações do Ticket</DropdownMenuLabel>
           <DropdownMenuSeparator />
           
-          <DropdownMenuItem onClick={handleAssumeManually}>
-            <User className="w-4 h-4 mr-2" />
-            Assumir Manualmente
-          </DropdownMenuItem>
+          {isTicketOpen && (
+            <DropdownMenuItem onClick={handleAssumeManually}>
+              <User className="w-4 h-4 mr-2" />
+              Assumir Manualmente
+            </DropdownMenuItem>
+          )}
 
-          {ticket.assigned_queue_id && (
+          {isTicketOpen && (
+            <DropdownMenuItem onClick={() => setShowCloseDialog(true)}>
+              <XCircle className="w-4 h-4 mr-2" />
+              Fechar Ticket
+            </DropdownMenuItem>
+          )}
+
+          {isTicketClosed && (
+            <DropdownMenuItem onClick={() => setShowReopenDialog(true)}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reabrir Ticket
+            </DropdownMenuItem>
+          )}
+
+          {isTicketOpen && ticket.assigned_queue_id && (
             <DropdownMenuItem onClick={handleRemoveFromQueue}>
               <X className="w-4 h-4 mr-2" />
               Remover da Fila
             </DropdownMenuItem>
           )}
 
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>Transferir para Fila</DropdownMenuLabel>
-          {queues.filter(q => q.is_active && q.id !== ticket.assigned_queue_id).map((queue) => (
-            <DropdownMenuItem 
-              key={queue.id} 
-              onClick={() => handleTransferToQueue(queue.id)}
-            >
-              <ArrowRight className="w-4 h-4 mr-2" />
-              {queue.name}
-            </DropdownMenuItem>
-          ))}
+          {isTicketOpen && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Transferir para Fila</DropdownMenuLabel>
+              {queues.filter(q => q.is_active && q.id !== ticket.assigned_queue_id).map((queue) => (
+                <DropdownMenuItem 
+                  key={queue.id} 
+                  onClick={() => handleTransferToQueue(queue.id)}
+                >
+                  <ArrowRight className="w-4 h-4 mr-2" />
+                  {queue.name}
+                </DropdownMenuItem>
+              ))}
+            </>
+          )}
 
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Tags</DropdownMenuLabel>
@@ -255,6 +316,55 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Excluir Permanentemente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fechar Ticket</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja fechar este ticket? 
+              <br />
+              <strong>"{ticket.title}"</strong>
+              <br />
+              O ticket será marcado como fechado e movido para a aba de tickets fechados.
+              Se uma nova mensagem for recebida, o ticket será reaberto automaticamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleCloseTicket}
+              className="bg-orange-600 text-white hover:bg-orange-700"
+            >
+              Fechar Ticket
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showReopenDialog} onOpenChange={setShowReopenDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reabrir Ticket</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja reabrir este ticket? 
+              <br />
+              <strong>"{ticket.title}"</strong>
+              <br />
+              O ticket será marcado como aberto e movido para a aba de tickets abertos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleReopenTicket}
+              className="bg-green-600 text-white hover:bg-green-700"
+            >
+              Reabrir Ticket
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
