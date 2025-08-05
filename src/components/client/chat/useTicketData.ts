@@ -131,6 +131,34 @@ export const useTicketData = (ticketId: string, clientId: string) => {
     if (ticketId && clientId) {
       loadTicketData();
     }
+
+    // Configurar listener realtime para mudanças no ticket
+    const channel = supabase
+      .channel(`ticket-${ticketId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversation_tickets',
+          filter: `id=eq.${ticketId}`
+        },
+        (payload) => {
+          console.log('🔄 [REALTIME] Ticket atualizado:', payload.new);
+          
+          // Recarregar dados quando assigned_queue_id mudar
+          if (payload.old.assigned_queue_id !== payload.new.assigned_queue_id) {
+            console.log('🔀 [REALTIME] Mudança de fila detectada, recarregando dados...');
+            loadTicketData();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('🧹 [REALTIME] Limpando listener do ticket');
+      supabase.removeChannel(channel);
+    };
   }, [ticketId, clientId, toast]);
 
   return { ticket, queueInfo, connectedInstance, actualInstanceId };
