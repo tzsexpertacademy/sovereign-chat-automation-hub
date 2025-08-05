@@ -2263,18 +2263,12 @@ export type Database = {
     }
     Functions: {
       auto_assign_queue: {
-        Args:
-          | {
-              p_client_id: string
-              p_instance_id: string
-              p_message_content?: string
-            }
-          | {
-              p_client_id: string
-              p_instance_id: string
-              p_message_content?: string
-              p_current_queue_id?: string
-            }
+        Args: {
+          p_client_id: string
+          p_instance_id: string
+          p_message_content?: string
+          p_current_queue_id?: string
+        }
         Returns: string
       }
       calculate_waiting_time_minutes: {
