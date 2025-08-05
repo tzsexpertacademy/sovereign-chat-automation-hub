@@ -310,8 +310,8 @@ async function processMessageBatch(yumerData: any) {
               instance_id: instance.instance_id 
             }, chatId, pushName, phoneNumber);
 
-            // Adicionar ao batch para processamento
-            const batchResult = await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
+            // Adicionar ao batch para processamento (V2 sincronizado)
+            const batchResult = await upsertMessageBatchV2(chatId, instance.client_id, instance.instance_id, {
               content: content,
               messageId: messageId,
               timestamp: new Date().toISOString(),
@@ -478,13 +478,14 @@ async function processMessageBatch(yumerData: any) {
       }
     }
 
-    // ✅ USAR SISTEMA DE BATCH PERSISTENTE COM CONTROLE DE CONCORRÊNCIA
-    const batchResult = await upsertMessageBatch(chatId, instance.client_id, instance.instance_id, {
+    // ✅ USAR SISTEMA DE BATCH PERSISTENTE V2 COM TIMEOUTS SINCRONIZADOS
+    const batchResult = await upsertMessageBatchV2(chatId, instance.client_id, instance.instance_id, {
       content,
       messageId,
       timestamp: new Date().toISOString(),
       customerName: pushName,
-      phoneNumber
+      phoneNumber,
+      messageType
     });
 
     console.log('🔥 [CLIENT-MESSAGE] ✅ Mensagem adicionada ao batch:', {
