@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import { 
@@ -12,19 +11,18 @@ import {
   AlertTriangle, 
   CheckCircle, 
   Activity,
-  TrendingUp,
   Bot,
-  User,
   Settings,
   Filter,
   RefreshCw,
-  BarChart3,
   MessageSquare,
   Timer,
-  Target
+  Target,
+  TrendingUp
 } from 'lucide-react';
 import { queueMetricsService, type QueueMetrics } from "@/services/queueMetricsService";
 import { queuesService, type QueueWithAssistant } from "@/services/queuesService";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TicketCard {
   id: string;
@@ -38,6 +36,8 @@ interface TicketCard {
   assigned_assistant_id?: string;
   tags: string[];
   waiting_time_minutes: number;
+  chat_id: string;
+  instance_id: string;
 }
 
 interface QueuesKanbanViewProps {
@@ -49,7 +49,6 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
   const [metrics, setMetrics] = useState<QueueMetrics[]>([]);
   const [tickets, setTickets] = useState<Record<string, TicketCard[]>>({});
   const [loading, setLoading] = useState(true);
-  const [selectedQueue, setSelectedQueue] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const { toast } = useToast();
 
@@ -79,8 +78,8 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
       setQueues(queuesData);
       setMetrics(metricsData);
       
-      // Carregar tickets para cada fila
-      await loadTicketsForQueues(queuesData);
+      // Carregar tickets reais para cada fila
+      await loadRealTicketsForQueues(queuesData);
       
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -94,44 +93,69 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
     }
   };
 
-  const loadTicketsForQueues = async (queuesList: QueueWithAssistant[]) => {
+  const loadRealTicketsForQueues = async (queuesList: QueueWithAssistant[]) => {
     const ticketsData: Record<string, TicketCard[]> = {};
     
     for (const queue of queuesList) {
-      // Simular tickets para demonstração
-      // Em produção, buscaríamos da tabela conversation_tickets
-      ticketsData[queue.id] = generateMockTickets(queue.id);
+      try {
+        // Buscar tickets reais da fila
+        const { data: realTickets, error } = await supabase
+          .from('conversation_tickets')
+          .select(`
+            id,
+            title,
+            status,
+            priority,
+            created_at,
+            last_activity_at,
+            last_message_at,
+            chat_id,
+            instance_id,
+            client_id,
+            customers (
+              name,
+              phone
+            )
+          `)
+          .eq('assigned_queue_id', queue.id)
+          .in('status', ['open', 'pending', 'in_progress'])
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (error) {
+          console.error('Erro ao buscar tickets:', error);
+          ticketsData[queue.id] = [];
+          continue;
+        }
+
+        const mappedTickets: TicketCard[] = (realTickets || []).map(ticket => {
+          const createdAt = new Date(ticket.created_at);
+          const waitingTime = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60));
+          
+          return {
+            id: ticket.id,
+            title: ticket.title,
+            customer_name: ticket.customers?.name || 'Cliente sem nome',
+            customer_phone: ticket.customers?.phone || 'Telefone não informado',
+            status: ticket.status as TicketCard['status'],
+            priority: ticket.priority || 1,
+            created_at: ticket.created_at,
+            last_activity_at: ticket.last_activity_at || ticket.created_at,
+            chat_id: ticket.chat_id,
+            instance_id: ticket.instance_id,
+            tags: [],
+            waiting_time_minutes: waitingTime
+          };
+        });
+
+        ticketsData[queue.id] = mappedTickets;
+      } catch (error) {
+        console.error(`Erro ao carregar tickets da fila ${queue.id}:`, error);
+        ticketsData[queue.id] = [];
+      }
     }
     
     setTickets(ticketsData);
-  };
-
-  const generateMockTickets = (queueId: string): TicketCard[] => {
-    const mockTickets: TicketCard[] = [];
-    const statuses: TicketCard['status'][] = ['open', 'pending', 'in_progress'];
-    const customerNames = ['João Silva', 'Maria Santos', 'Pedro Costa', 'Ana Oliveira'];
-    
-    const count = Math.floor(Math.random() * 8) + 2; // 2-10 tickets
-    
-    for (let i = 0; i < count; i++) {
-      const createdAt = new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000);
-      const waitingTime = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60));
-      
-      mockTickets.push({
-        id: `ticket_${queueId}_${i}`,
-        title: `Conversa com ${customerNames[i % customerNames.length]}`,
-        customer_name: customerNames[i % customerNames.length],
-        customer_phone: `+55 11 9${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`,
-        status: statuses[Math.floor(Math.random() * statuses.length)],
-        priority: Math.floor(Math.random() * 3) + 1,
-        created_at: createdAt.toISOString(),
-        last_activity_at: new Date(createdAt.getTime() + Math.random() * 60 * 60 * 1000).toISOString(),
-        tags: [],
-        waiting_time_minutes: waitingTime
-      });
-    }
-    
-    return mockTickets;
   };
 
   const handleDragEnd = async (result: DropResult) => {
@@ -146,6 +170,19 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
     const toQueueId = destination.droppableId;
 
     try {
+      // Atualizar no banco de dados
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({
+          assigned_queue_id: toQueueId,
+          status: 'open',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      // Registrar transferência
       await queueMetricsService.transferTicketBetweenQueues(
         ticketId,
         fromQueueId,
@@ -168,7 +205,7 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
       }
 
       toast({
-        title: "Sucesso",
+        title: "✅ Sucesso",
         description: "Ticket transferido com sucesso!",
       });
     } catch (error) {
@@ -204,10 +241,21 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
     }
   };
 
+  // Cálculos de estatísticas globais
+  const globalStats = {
+    totalActive: metrics.reduce((sum, m) => sum + m.active_tickets, 0),
+    totalPending: metrics.reduce((sum, m) => sum + m.pending_tickets, 0),
+    avgAiRate: Math.round(metrics.reduce((sum, m) => sum + m.ai_success_rate, 0) / (metrics.length || 1)),
+    avgResponseTime: Math.round(metrics.reduce((sum, m) => sum + m.avg_response_time_minutes, 0) / (metrics.length || 1))
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Carregando kanban das filas...</p>
+        </div>
       </div>
     );
   }
@@ -217,9 +265,9 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
       {/* Header com controles */}
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold mb-2">Gestão Visual de Filas</h2>
+          <h2 className="text-2xl font-bold mb-2">Kanban Visual - Filas em Tempo Real</h2>
           <p className="text-muted-foreground">
-            Visualize e gerencie tickets em tempo real
+            Visualize e gerencie tickets com dados reais do sistema
           </p>
         </div>
         
@@ -245,64 +293,60 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
 
       {/* Métricas globais */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-blue-600/5" />
+          <CardContent className="p-4 relative">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-blue-500" />
               <div>
                 <p className="text-sm text-muted-foreground">Tickets Ativos</p>
-                <p className="text-2xl font-bold">
-                  {metrics.reduce((sum, m) => sum + m.active_tickets, 0)}
-                </p>
+                <p className="text-2xl font-bold text-blue-600">{globalStats.totalActive}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 to-yellow-600/5" />
+          <CardContent className="p-4 relative">
             <div className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-yellow-500" />
               <div>
                 <p className="text-sm text-muted-foreground">Pendentes</p>
-                <p className="text-2xl font-bold">
-                  {metrics.reduce((sum, m) => sum + m.pending_tickets, 0)}
-                </p>
+                <p className="text-2xl font-bold text-yellow-600">{globalStats.totalPending}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-green-600/5" />
+          <CardContent className="p-4 relative">
             <div className="flex items-center gap-2">
               <Bot className="h-5 w-5 text-green-500" />
               <div>
                 <p className="text-sm text-muted-foreground">Taxa IA</p>
-                <p className="text-2xl font-bold">
-                  {Math.round(metrics.reduce((sum, m) => sum + m.ai_success_rate, 0) / (metrics.length || 1))}%
-                </p>
+                <p className="text-2xl font-bold text-green-600">{globalStats.avgAiRate}%</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-purple-600/5" />
+          <CardContent className="p-4 relative">
             <div className="flex items-center gap-2">
               <Timer className="h-5 w-5 text-purple-500" />
               <div>
                 <p className="text-sm text-muted-foreground">Tempo Médio</p>
-                <p className="text-2xl font-bold">
-                  {Math.round(metrics.reduce((sum, m) => sum + m.avg_response_time_minutes, 0) / (metrics.length || 1))}min
-                </p>
+                <p className="text-2xl font-bold text-purple-600">{globalStats.avgResponseTime}min</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Kanban Board */}
+      {/* Kanban Board com dados reais */}
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-6 overflow-x-auto pb-4">
           {queues.map(queue => {
@@ -312,7 +356,7 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
             
             return (
               <div key={queue.id} className="flex-shrink-0 w-80">
-                <Card className="h-full">
+                <Card className="h-full border-2 hover:border-primary/20 transition-colors">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -388,8 +432,8 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
                                   {...provided.draggableProps}
                                   {...provided.dragHandleProps}
                                   className={`mb-3 cursor-move border-l-4 ${getPriorityColor(ticket.priority)} ${
-                                    snapshot.isDragging ? 'rotate-1 shadow-lg' : ''
-                                  }`}
+                                    snapshot.isDragging ? 'rotate-1 shadow-lg z-50' : 'hover:shadow-md'
+                                  } transition-all`}
                                 >
                                   <CardContent className="p-3">
                                     <div className="space-y-2">
@@ -419,6 +463,12 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
                                           SLA em risco
                                         </div>
                                       )}
+
+                                      {/* Indicador de chat em tempo real */}
+                                      <div className="flex items-center gap-1 text-xs text-blue-600">
+                                        <Activity className="h-3 w-3" />
+                                        {ticket.chat_id.replace('@s.whats', '')}
+                                      </div>
                                     </div>
                                   </CardContent>
                                 </Card>
@@ -427,6 +477,13 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
                           ))}
                         </ScrollArea>
                         {provided.placeholder}
+                        
+                        {queueTickets.length === 0 && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">Nenhum ticket nesta fila</p>
+                          </div>
+                        )}
                       </CardContent>
                     )}
                   </Droppable>
@@ -437,55 +494,48 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
         </div>
       </DragDropContext>
 
-      {/* Regras de transferência automática */}
+      {/* Alertas e regras automáticas */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Target className="h-5 w-5" />
-            Transferências Automáticas
+            Sistema de Transferências Inteligentes
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Card className="border-dashed">
-                <CardContent className="p-4 text-center">
-                  <AlertTriangle className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
-                  <h4 className="font-medium mb-2">Sobrecarga</h4>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Transferir quando mais de 10 tickets ativos
-                  </p>
-                  <Badge variant="secondary">Ativo</Badge>
-                </CardContent>
-              </Card>
-              
-              <Card className="border-dashed">
-                <CardContent className="p-4 text-center">
-                  <Timer className="h-8 w-8 text-blue-500 mx-auto mb-2" />
-                  <h4 className="font-medium mb-2">Tempo Limite</h4>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Escalar após 2h sem resposta
-                  </p>
-                  <Badge variant="secondary">Ativo</Badge>
-                </CardContent>
-              </Card>
-              
-              <Card className="border-dashed">
-                <CardContent className="p-4 text-center">
-                  <User className="h-8 w-8 text-green-500 mx-auto mb-2" />
-                  <h4 className="font-medium mb-2">Palavras-chave</h4>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    "falar com humano" → Suporte
-                  </p>
-                  <Badge variant="secondary">Ativo</Badge>
-                </CardContent>
-              </Card>
-            </div>
-            
-            <Button variant="outline" className="w-full">
-              <Settings className="h-4 w-4 mr-2" />
-              Configurar Regras de Transferência
-            </Button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="border-dashed">
+              <CardContent className="p-4 text-center">
+                <AlertTriangle className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
+                <h4 className="font-medium mb-2">Sobrecarga Detectada</h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Transferência automática quando &gt; 10 tickets
+                </p>
+                <Badge variant="secondary">Ativo</Badge>
+              </CardContent>
+            </Card>
+
+            <Card className="border-dashed">
+              <CardContent className="p-4 text-center">
+                <Clock className="h-8 w-8 text-blue-500 mx-auto mb-2" />
+                <h4 className="font-medium mb-2">SLA em Risco</h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Escalar tickets &gt; 60min sem resposta
+                </p>
+                <Badge variant="secondary">Ativo</Badge>
+              </CardContent>
+            </Card>
+
+            <Card className="border-dashed">
+              <CardContent className="p-4 text-center">
+                <TrendingUp className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                <h4 className="font-medium mb-2">Balanceamento</h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Distribuição inteligente por carga
+                </p>
+                <Badge variant="secondary">Ativo</Badge>
+              </CardContent>
+            </Card>
           </div>
         </CardContent>
       </Card>
