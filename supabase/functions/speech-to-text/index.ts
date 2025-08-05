@@ -176,17 +176,43 @@ serve(async (req) => {
       })
     }
     
-    // ✅ VALIDAÇÃO ADICIONAL: Verificar se áudio base64 não está vazio
-    if (audio && audio.trim().length < 100) {
-      console.error('❌ Dados de áudio muito pequenos:', audio.length)
+    // ✅ VALIDAÇÃO CRÍTICA URGENTE: Verificar integridade do áudio
+    if (audio && audio.trim().length < 1000) {
+      console.error('❌ Dados de áudio muito pequenos para WhatsApp:', audio.length)
       return new Response(JSON.stringify({ 
-        error: 'Dados de áudio insuficientes ou corrompidos',
-        details: `Tamanho recebido: ${audio.length} caracteres`,
-        success: false
+        error: 'Dados de áudio insuficientes - possível corrupção na descriptografia',
+        details: `Tamanho recebido: ${audio.length} caracteres (mínimo esperado: 1000+ para WhatsApp)`,
+        success: false,
+        suggestion: 'Verificar processo de descriptografia no process-received-media'
       }), {
         status: 422,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
+    }
+    
+    // ✅ VALIDAÇÃO ADICIONAL: Verificar se Base64 tem aparência de header de áudio corrompido  
+    if (audio) {
+      try {
+        const firstBytes = atob(audio.substring(0, 20))
+        const headerBytes = Array.from(firstBytes).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ')
+        console.log(`🔍 [AUDIO-HEADER-CHECK] Primeiros bytes do Base64: ${headerBytes}`)
+        
+        // Verificar se começa com header inválido conhecido do bug anterior
+        if (headerBytes.startsWith('6d fd c0 fa')) {
+          console.error('❌ [AUDIO-HEADER-CHECK] Header corrompido detectado:', headerBytes)
+          return new Response(JSON.stringify({ 
+            error: 'Dados de áudio corrompidos - header inválido detectado',
+            details: `Header encontrado: ${headerBytes} (deveria ser OGG: 4f 67 67 53)`,
+            success: false,
+            recommendation: 'Verificar processamento da mediaKey no process-received-media'
+          }), {
+            status: 422,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          })
+        }
+      } catch (e) {
+        console.warn('⚠️ Não foi possível validar header do áudio:', e.message)
+      }
     }
 
     let audioBytes: Uint8Array;

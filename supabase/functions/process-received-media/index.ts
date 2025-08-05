@@ -213,20 +213,30 @@ Deno.serve(async (req) => {
 
         console.log(`🔑 [MEDIA-DECRYPT] Business token encontrado para cliente`)
 
-        // ✅ CORREÇÃO DEFINITIVA: Processar mediaKey corretamente
+        // ✅ CORREÇÃO URGENTE: Validar e processar mediaKey CORRETAMENTE
         let mediaKeyBase64: string
         
+        console.log(`🔍 [MEDIA-KEY-DEBUG] Analisando mediaKey:`, {
+          type: typeof message.media_key,
+          isString: typeof message.media_key === 'string',
+          isArray: Array.isArray(message.media_key),
+          isObject: typeof message.media_key === 'object' && message.media_key !== null,
+          stringLength: typeof message.media_key === 'string' ? message.media_key.length : 'N/A',
+          firstChars: typeof message.media_key === 'string' ? message.media_key.substring(0, 20) : 'N/A'
+        })
+        
         if (typeof message.media_key === 'string') {
-          // Se já é string, verificar se é Base64 válido ou se precisa converter
+          // Se já é string, assumir que é Base64 válido (como está no banco)
+          mediaKeyBase64 = message.media_key
+          console.log(`🔑 [MEDIA-KEY] Usando string Base64 do banco: ${message.media_key.length} chars`)
+          
+          // Validar se é Base64 válido
           try {
-            // Testar se é Base64 válido
-            atob(message.media_key)
-            mediaKeyBase64 = message.media_key
-            console.log(`🔑 [MEDIA-KEY] Usando string Base64 diretamente: ${message.media_key.length} chars`)
+            const testDecode = atob(message.media_key.substring(0, Math.min(100, message.media_key.length)))
+            console.log(`✅ [MEDIA-KEY] Base64 válido confirmado, primeiros bytes decodificados: ${testDecode.length}`)
           } catch (e) {
-            // Se não é Base64 válido, assumir que é string literal e converter
-            mediaKeyBase64 = btoa(message.media_key)
-            console.log(`🔑 [MEDIA-KEY] Convertendo string literal para Base64`)
+            console.error(`❌ [MEDIA-KEY] Base64 inválido no banco:`, e.message)
+            continue
           }
         } else if (Array.isArray(message.media_key)) {
           // Se é array de bytes, converter para Base64
@@ -262,6 +272,16 @@ Deno.serve(async (req) => {
           directPath: downloadRequest.content.directPath?.substring(0, 50)
         })
 
+        // ✅ VALIDAÇÃO CRÍTICA: Verificar integridade da MediaKey antes de enviar
+        console.log(`🔍 [PRE-DOWNLOAD-CHECK] Validação final da MediaKey:`, {
+          mediaKeyLength: mediaKeyBase64.length,
+          mediaKeyPrefix: mediaKeyBase64.substring(0, 30),
+          mediaKeySuffix: mediaKeyBase64.substring(mediaKeyBase64.length - 10),
+          isValidBase64: /^[A-Za-z0-9+/=]*$/.test(mediaKeyBase64),
+          expectedMinLength: mediaKeyBase64.length > 20,
+          messageType: message.message_type
+        })
+
         // Chamar endpoint de descriptografia
         const downloadUrl = `https://api.yumer.com.br/api/v2/instance/${ticketData.instance_id}/media/directly-download`
         console.log(`🌐 [MEDIA-DECRYPT] Chamando endpoint: ${downloadUrl}`)
@@ -277,6 +297,10 @@ Deno.serve(async (req) => {
 
         console.log(`📥 [MEDIA-DECRYPT] Response status: ${downloadResponse.status}`)
         console.log(`📥 [MEDIA-DECRYPT] Response headers:`, Object.fromEntries(downloadResponse.headers.entries()))
+        
+        // ✅ LOG CRÍTICO: Verificar se a resposta tem conteúdo
+        const responseSize = downloadResponse.headers.get('content-length')
+        console.log(`📏 [MEDIA-DECRYPT] Response size header: ${responseSize} bytes`)
 
         if (!downloadResponse.ok) {
           const errorText = await downloadResponse.text()
@@ -290,7 +314,7 @@ Deno.serve(async (req) => {
           continue
         }
 
-        // Converter para base64 (método original que funcionava)
+        // ✅ CORREÇÃO CRÍTICA: Validar resposta antes de processar
         const arrayBuffer = await downloadResponse.arrayBuffer()
         console.log(`📦 [MEDIA-DECRYPT] Buffer recebido: ${arrayBuffer.byteLength} bytes`)
         
@@ -299,9 +323,39 @@ Deno.serve(async (req) => {
           continue
         }
         
+        // ✅ VALIDAÇÃO CRÍTICA: Verificar tamanho mínimo para áudio WhatsApp
+        if (message.message_type === 'audio' && arrayBuffer.byteLength < 1000) {
+          console.error(`❌ [AUDIO-VALIDATION] Áudio muito pequeno: ${arrayBuffer.byteLength} bytes (mínimo esperado: 1KB)`)
+          console.error(`❌ [AUDIO-VALIDATION] Possível falha na descriptografia para: ${message.message_id}`)
+          continue
+        }
+        
         // Conversão direta simples (como na versão que funcionava)
         const base64String = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
         console.log(`✅ [MEDIA-DECRYPT] Base64 gerado: ${base64String.length} caracteres`)
+        
+        // ✅ VALIDAÇÃO ADICIONAL: Verificar integridade do Base64 para áudio
+        if (message.message_type === 'audio') {
+          const uint8Array = new Uint8Array(arrayBuffer)
+          const headerHex = Array.from(uint8Array.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ')
+          console.log(`🔍 [AUDIO-VALIDATION] Header do arquivo descriptografado: ${headerHex}`)
+          
+          // Verificar se header indica arquivo de áudio válido
+          const isValidAudioHeader = (
+            headerHex.startsWith('4f 67 67 53') || // OGG
+            headerHex.startsWith('52 49 46 46') || // WAV  
+            headerHex.startsWith('ff f') ||         // MP3
+            headerHex.startsWith('1a 45 df a3')    // WebM
+          )
+          
+          if (!isValidAudioHeader) {
+            console.error(`❌ [AUDIO-VALIDATION] Header inválido para áudio: ${headerHex}`)
+            console.error(`❌ [AUDIO-VALIDATION] Possível corrupção na descriptografia para: ${message.message_id}`)
+            // Continuar mesmo assim para tentar, mas com warning
+          } else {
+            console.log(`✅ [AUDIO-VALIDATION] Header de áudio válido confirmado`)
+          }
+        }
 
         // Salvar dados base64 na coluna apropriada
         const updateData: any = {
