@@ -32,6 +32,20 @@ const AudioPlayer = ({
   const [totalDuration, setTotalDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // 🔧 DEBUG: Log inicial dos dados recebidos
+  console.log('🎵 AudioPlayer DEBUG - Props recebidas:', {
+    hasAudioUrl: !!audioUrl,
+    hasAudioData: !!audioData,
+    audioDataLength: audioData?.length || 0,
+    audioDataPreview: audioData?.substring(0, 50) + '...',
+    duration,
+    fileName,
+    messageId,
+    hasMediaKey: !!mediaKey,
+    hasFileEncSha256: !!fileEncSha256,
+    mediaKeyPreview: mediaKey ? `${mediaKey.substring(0, 20)}...` : 'N/A'
+  });
+
   // Detectar formato de áudio pelos headers (função auxiliar)
   const detectAudioFormat = (base64Data: string): string => {
     try {
@@ -65,7 +79,17 @@ const AudioPlayer = ({
                       format === 'wav' ? 'audio/wav' : 
                       format === 'mp3' ? 'audio/mpeg' : 'audio/ogg';
       
-      return `data:${mimeType};base64,${audioData}`;
+      const dataUrl = `data:${mimeType};base64,${audioData}`;
+      
+      // 🔧 DEBUG: Log da conversão base64→data URL
+      console.log('🎵 AudioPlayer DEBUG - Conversão base64:', {
+        formatDetectado: format,
+        mimeType,
+        dataUrlLength: dataUrl.length,
+        dataUrlPreview: dataUrl.substring(0, 100) + '...'
+      });
+      
+      return dataUrl;
     }
     return null;
   }, [audioData, detectAudioFormat]);
@@ -84,7 +108,16 @@ const AudioPlayer = ({
   // URL final: priorizar base64 direto, depois fallback
   const finalDisplayUrl = audioDisplayUrl || displayUrl;
 
-  // Simplificado: usar displayUrl do hook unificado
+  // 🔧 DEBUG: Log dos estados do useUnifiedMedia e URL final
+  console.log('🎵 AudioPlayer DEBUG - Estados:', {
+    audioDisplayUrl: !!audioDisplayUrl,
+    displayUrl: !!displayUrl,
+    finalDisplayUrl: !!finalDisplayUrl,
+    isLoading,
+    error,
+    isFromCache,
+    hasRetried
+  });
 
   // Configurar event listeners do áudio
   useEffect(() => {
@@ -92,9 +125,22 @@ const AudioPlayer = ({
     if (!audio) return;
 
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const handleLoadedMetadata = () => setTotalDuration(audio.duration);
-    const handleError = () => {
-      // Silencioso - erro já tratado pelo hook unificado
+    const handleLoadedMetadata = () => {
+      setTotalDuration(audio.duration);
+      console.log('🎵 AudioPlayer DEBUG - Metadata carregada:', {
+        duration: audio.duration,
+        readyState: audio.readyState,
+        networkState: audio.networkState,
+        canPlay: audio.readyState >= 3
+      });
+    };
+    const handleError = (e: Event) => {
+      console.error('🎵 AudioPlayer DEBUG - Erro no áudio:', {
+        error: (e.target as HTMLAudioElement)?.error,
+        src: (e.target as HTMLAudioElement)?.src,
+        readyState: (e.target as HTMLAudioElement)?.readyState,
+        networkState: (e.target as HTMLAudioElement)?.networkState
+      });
     };
     const handleEnded = () => setIsPlaying(false);
 
@@ -114,18 +160,28 @@ const AudioPlayer = ({
   const togglePlay = async () => {
     if (!audioRef.current || (!finalDisplayUrl && !error)) return;
 
+    console.log('🎵 AudioPlayer DEBUG - Tentativa de play/pause:', {
+      isPlaying,
+      hasFinalDisplayUrl: !!finalDisplayUrl,
+      audioReadyState: audioRef.current.readyState,
+      audioNetworkState: audioRef.current.networkState,
+      audioSrc: audioRef.current.src?.substring(0, 50) + '...'
+    });
+
     try {
       if (isPlaying) {
         audioRef.current.pause();
         setIsPlaying(false);
         onPause?.();
+        console.log('🎵 AudioPlayer DEBUG - Áudio pausado com sucesso');
       } else {
         await audioRef.current.play();
         setIsPlaying(true);
         onPlay?.();
+        console.log('🎵 AudioPlayer DEBUG - Áudio reproduzindo com sucesso');
       }
     } catch (error) {
-      // Silencioso - UI já mostra estado de erro
+      console.error('🎵 AudioPlayer DEBUG - Erro ao reproduzir áudio:', error);
     }
   };
 
