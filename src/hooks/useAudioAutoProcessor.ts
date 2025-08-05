@@ -529,35 +529,7 @@ export const useAudioAutoProcessor = (clientId: string) => {
         }
 
         console.log('✅ [AUDIO-AUTO] 💾 Transcrição salva com sucesso no banco');
-
-        // 6. Processar com assistente IA automaticamente
-        console.log('🤖 [AUDIO-AUTO] 🚀 Enviando transcrição para processamento IA...');
-        
-        const { error: aiError } = await supabase.functions.invoke('ai-assistant-process', {
-          body: {
-            ticketId: message.ticket_id,
-            messages: [{
-              content: transcription.trim(),
-              messageId: message.message_id,
-              timestamp: new Date().toISOString(),
-              customerName: message.sender_name || 'Cliente',
-              phoneNumber: ticket.chat_id.split('@')[0]
-            }],
-            context: {
-              chatId: ticket.chat_id,
-              customerName: message.sender_name || 'Cliente',
-              phoneNumber: ticket.chat_id.split('@')[0],
-              clientMessage: true
-            }
-          }
-        });
-
-        if (aiError) {
-          console.error('❌ [AUDIO-AUTO] Erro ao processar com IA:', aiError);
-          // Não falhar o processo por erro na IA - transcrição já foi salva
-        } else {
-          console.log('✅ [AUDIO-AUTO] 🤖 Transcrição enviada para IA com sucesso');
-        }
+        console.log('🎯 [AUDIO-AUTO] ✅ PROCESSAMENTO COMPLETO - Deixando sistema de batch processar a mensagem transcrita');
       } else {
         console.log('⚠️ [AUDIO-AUTO] ❌ Transcrição vazia ou inválida');
         
