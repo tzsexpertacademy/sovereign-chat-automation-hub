@@ -74,55 +74,136 @@ const AIAutoProcessorStatus = ({ clientId }: AIAutoProcessorStatusProps) => {
 
   const loadProcessorStatus = async () => {
     try {
+      console.log('🔍 [AUTO-PROCESSOR-STATUS] Iniciando verificação de status...');
+      
       // Verificar status do processador
       const processorStatus = humanizedMessageProcessor.getStatus();
+      console.log('📊 [AUTO-PROCESSOR-STATUS] Status do processador:', processorStatus);
       
-      // Buscar conexões ativas de instância-fila
-      const { data: connections, error } = await supabase
-        .from('instance_queue_connections')
-        .select(`
-          id,
-          is_active,
-          whatsapp_instances!inner (
-            instance_id,
-            custom_name,
-            client_id
-          ),
-          queues!inner (
-            name,
-            is_active,
-            assistants!inner (
-              name,
-              is_active
-            )
-          )
-        `)
-        .eq('whatsapp_instances.client_id', clientId)
-        .eq('is_active', true)
-        .eq('queues.is_active', true)
-        .eq('queues.assistants.is_active', true);
+      // FASE 1: Buscar instâncias conectadas do cliente
+      const { data: instances, error: instanceError } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_id, custom_name, status')
+        .eq('client_id', clientId)
+        .eq('status', 'connected');
 
-      if (error) {
-        console.error('Erro ao buscar conexões:', error);
+      if (instanceError) {
+        console.error('❌ [AUTO-PROCESSOR-STATUS] Erro ao buscar instâncias:', instanceError);
         return;
       }
 
-      const activeConnections = connections || [];
+      console.log('📱 [AUTO-PROCESSOR-STATUS] Instâncias conectadas encontradas:', instances?.length || 0, instances);
+
+      if (!instances || instances.length === 0) {
+        console.log('⚠️ [AUTO-PROCESSOR-STATUS] Nenhuma instância conectada encontrada');
+        setStatus({
+          isInitialized: processorStatus.isInitialized,
+          hasActiveConnections: false,
+          totalConnections: 0,
+          connectedInstances: [],
+          lastActivity: processorStatus.timestamp
+        });
+        setAutoProcess(false);
+        return;
+      }
+
+      // FASE 2: Buscar conexões ativas para essas instâncias
+      const instanceIds = instances.map(i => i.id);
+      const { data: connections, error: connectionError } = await supabase
+        .from('instance_queue_connections')
+        .select('instance_id, queue_id, is_active')
+        .in('instance_id', instanceIds)
+        .eq('is_active', true);
+
+      if (connectionError) {
+        console.error('❌ [AUTO-PROCESSOR-STATUS] Erro ao buscar conexões:', connectionError);
+        return;
+      }
+
+      console.log('🔗 [AUTO-PROCESSOR-STATUS] Conexões ativas encontradas:', connections?.length || 0, connections);
+
+      if (!connections || connections.length === 0) {
+        console.log('⚠️ [AUTO-PROCESSOR-STATUS] Nenhuma conexão ativa encontrada');
+        setStatus({
+          isInitialized: processorStatus.isInitialized,
+          hasActiveConnections: false,
+          totalConnections: 0,
+          connectedInstances: instances.map(i => i.custom_name || i.instance_id),
+          lastActivity: processorStatus.timestamp
+        });
+        setAutoProcess(false);
+        return;
+      }
+
+      // FASE 3: Buscar filas ativas
+      const queueIds = connections.map(c => c.queue_id);
+      const { data: queues, error: queueError } = await supabase
+        .from('queues')
+        .select('id, name, assistant_id, is_active')
+        .in('id', queueIds)
+        .eq('is_active', true);
+
+      if (queueError) {
+        console.error('❌ [AUTO-PROCESSOR-STATUS] Erro ao buscar filas:', queueError);
+        return;
+      }
+
+      console.log('📋 [AUTO-PROCESSOR-STATUS] Filas ativas encontradas:', queues?.length || 0, queues);
+
+      // FASE 4: Buscar assistentes ativos
+      const assistantIds = queues?.filter(q => q.assistant_id).map(q => q.assistant_id) || [];
+      let activeAssistants = [];
+      
+      if (assistantIds.length > 0) {
+        const { data: assistants, error: assistantError } = await supabase
+          .from('assistants')
+          .select('id, name, is_active')
+          .in('id', assistantIds)
+          .eq('is_active', true);
+
+        if (assistantError) {
+          console.error('❌ [AUTO-PROCESSOR-STATUS] Erro ao buscar assistentes:', assistantError);
+        } else {
+          activeAssistants = assistants || [];
+          console.log('🤖 [AUTO-PROCESSOR-STATUS] Assistentes ativos encontrados:', activeAssistants.length, activeAssistants);
+        }
+      }
+
+      // RESULTADO FINAL
+      const hasValidConnections = connections.length > 0 && queues && queues.length > 0 && activeAssistants.length > 0;
+      
+      const connectedInstanceNames = instances
+        .filter(instance => connections.some(conn => conn.instance_id === instance.id))
+        .map(instance => {
+          const connection = connections.find(conn => conn.instance_id === instance.id);
+          const queue = queues?.find(q => q.id === connection?.queue_id);
+          const assistant = activeAssistants.find(a => a.id === queue?.assistant_id);
+          
+          return `${instance.custom_name || instance.instance_id} → ${queue?.name || 'Sem fila'} → ${assistant?.name || 'Sem assistente'}`;
+        });
+
+      console.log('✅ [AUTO-PROCESSOR-STATUS] Análise final:', {
+        hasValidConnections,
+        totalConnections: connections.length,
+        connectedInstanceNames,
+        instancesConectadas: instances.length,
+        conexoesAtivas: connections.length,
+        filasAtivas: queues?.length || 0,
+        assistentesAtivos: activeAssistants.length
+      });
       
       setStatus({
         isInitialized: processorStatus.isInitialized,
-        hasActiveConnections: activeConnections.length > 0,
-        totalConnections: activeConnections.length,
-        connectedInstances: activeConnections.map(c => 
-          c.whatsapp_instances?.custom_name || c.whatsapp_instances?.instance_id || 'Desconhecida'
-        ),
+        hasActiveConnections: hasValidConnections,
+        totalConnections: connections.length,
+        connectedInstances: connectedInstanceNames,
         lastActivity: processorStatus.timestamp
       });
 
-      setAutoProcess(processorStatus.isInitialized && activeConnections.length > 0);
+      setAutoProcess(processorStatus.isInitialized && hasValidConnections);
 
     } catch (error) {
-      console.error('Erro ao carregar status do processador:', error);
+      console.error('❌ [AUTO-PROCESSOR-STATUS] Erro crítico ao carregar status:', error);
     }
   };
 
@@ -283,6 +364,50 @@ const AIAutoProcessorStatus = ({ clientId }: AIAutoProcessorStatusProps) => {
             <Settings className="h-3 w-3 mr-1" />
             Atualizar Status
           </Button>
+          
+          {!status.isInitialized && status.hasActiveConnections && (
+            <Button 
+              variant="default" 
+              size="sm"
+              onClick={handleToggleProcessor}
+              disabled={loading}
+            >
+              <Play className="h-3 w-3 mr-1" />
+              Forçar Inicialização
+            </Button>
+          )}
+          
+          {!status.isInitialized && !status.hasActiveConnections && (
+            <Button 
+              variant="secondary" 
+              size="sm"
+              onClick={async () => {
+                console.log('🚨 [FORCE-INIT] Inicialização manual FORÇADA ignorando conexões');
+                setLoading(true);
+                try {
+                  await humanizedMessageProcessor.initialize(clientId);
+                  setAutoProcess(true);
+                  toast({
+                    title: "IA Inicializada Manualmente",
+                    description: "Processador foi iniciado independente das conexões",
+                  });
+                  setTimeout(loadProcessorStatus, 1000);
+                } catch (error: any) {
+                  toast({
+                    title: "Erro na Inicialização",
+                    description: error.message,
+                    variant: "destructive",
+                  });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+            >
+              <Zap className="h-3 w-3 mr-1" />
+              Inicializar Forçado
+            </Button>
+          )}
           
           {status.isInitialized && (
             <Button 

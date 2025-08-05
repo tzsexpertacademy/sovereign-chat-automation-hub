@@ -16,21 +16,38 @@ export class HumanizedMessageProcessor {
 
   // Inicializar processador para um cliente
   async initialize(clientId: string): Promise<void> {
-    if (this.isInitialized) return;
+    if (this.isInitialized) {
+      console.log('🔄 [HUMANIZED-PROCESSOR] Processador já inicializado, ignorando...');
+      return;
+    }
 
-    console.log('🚀 Inicializando processador humanizado para cliente:', clientId);
+    console.log('🚀 [HUMANIZED-PROCESSOR] ===============================');
+    console.log('🚀 [HUMANIZED-PROCESSOR] INICIALIZANDO PROCESSADOR HUMANIZADO');
+    console.log('🚀 [HUMANIZED-PROCESSOR] Cliente:', clientId);
+    console.log('🚀 [HUMANIZED-PROCESSOR] Timestamp:', new Date().toISOString());
+    console.log('🚀 [HUMANIZED-PROCESSOR] ===============================');
 
     try {
       // Configurar listener para mensagens em tempo real
+      console.log('👂 [HUMANIZED-PROCESSOR] Configurando listeners de tempo real...');
       this.setupRealtimeListeners(clientId);
       
       // Sincronizar instâncias existentes
+      console.log('📱 [HUMANIZED-PROCESSOR] Sincronizando instâncias existentes...');
       await this.syncExistingInstances(clientId);
       
       this.isInitialized = true;
-      console.log('✅ Processador humanizado inicializado');
+      
+      console.log('✅ [HUMANIZED-PROCESSOR] ===============================');
+      console.log('✅ [HUMANIZED-PROCESSOR] PROCESSADOR INICIALIZADO COM SUCESSO!');
+      console.log('✅ [HUMANIZED-PROCESSOR] Agora processando mensagens automaticamente');
+      console.log('✅ [HUMANIZED-PROCESSOR] ===============================');
+      
     } catch (error) {
-      console.error('❌ Erro ao inicializar processador:', error);
+      console.error('❌ [HUMANIZED-PROCESSOR] ===============================');
+      console.error('❌ [HUMANIZED-PROCESSOR] ERRO CRÍTICO NA INICIALIZAÇÃO:', error);
+      console.error('❌ [HUMANIZED-PROCESSOR] ===============================');
+      throw error;
     }
   }
 

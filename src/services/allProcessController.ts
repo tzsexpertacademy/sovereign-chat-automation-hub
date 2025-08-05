@@ -150,34 +150,56 @@ class AllProcessController {
    */
   private async createNewBatch(chatId: string, clientId: string, messageData: any): Promise<string> {
     try {
-      console.log('🔧 [ALL-PROCESS] Criando batch para:', { chatId, clientId, messageId: messageData.message_id });
+      console.log('🔧 [ALL-PROCESS] ===============================');
+      console.log('🔧 [ALL-PROCESS] CRIANDO NOVA BATCH');
+      console.log('🔧 [ALL-PROCESS] Chat ID:', chatId);
+      console.log('🔧 [ALL-PROCESS] Client ID:', clientId);
+      console.log('🔧 [ALL-PROCESS] Message ID:', messageData.message_id);
+      console.log('🔧 [ALL-PROCESS] Instance ID:', messageData.instance_id || messageData.instanceId || 'unknown');
+      console.log('🔧 [ALL-PROCESS] Message Type:', messageData.message_type || 'text');
+      console.log('🔧 [ALL-PROCESS] From Me:', messageData.from_me);
+      console.log('🔧 [ALL-PROCESS] ===============================');
+      
+      const batchData = {
+        chat_id: chatId,
+        client_id: clientId,
+        instance_id: messageData.instance_id || messageData.instanceId || 'unknown',
+        messages: [messageData]
+      };
+
+      console.log('📦 [ALL-PROCESS] Dados da batch para inserção:', JSON.stringify(batchData, null, 2));
       
       const { data, error } = await supabase
         .from('message_batches')
-        .insert({
-          chat_id: chatId,
-          client_id: clientId,
-          instance_id: messageData.instance_id || messageData.instanceId || 'unknown',
-          messages: [messageData]
-        })
+        .insert(batchData)
         .select('id')
         .single();
 
       if (error) {
-        console.error('❌ [ALL-PROCESS] Erro ao criar batch:', error);
-        console.error('❌ [ALL-PROCESS] Dados enviados:', { 
-          chat_id: chatId, 
-          client_id: clientId, 
-          instance_id: messageData.instance_id || messageData.instanceId || 'unknown',
-          messages: [messageData]
-        });
+        console.error('❌ [ALL-PROCESS] ===============================');
+        console.error('❌ [ALL-PROCESS] ERRO AO CRIAR BATCH NO SUPABASE:');
+        console.error('❌ [ALL-PROCESS] Error:', error);
+        console.error('❌ [ALL-PROCESS] Error Message:', error.message);
+        console.error('❌ [ALL-PROCESS] Error Details:', error.details);
+        console.error('❌ [ALL-PROCESS] Error Hint:', error.hint);
+        console.error('❌ [ALL-PROCESS] Dados enviados:', batchData);
+        console.error('❌ [ALL-PROCESS] ===============================');
         throw error;
       }
 
-      console.log('📦 [ALL-PROCESS] Nova batch criada com sucesso:', data.id);
+      console.log('✅ [ALL-PROCESS] ===============================');
+      console.log('✅ [ALL-PROCESS] BATCH CRIADA COM SUCESSO!');
+      console.log('✅ [ALL-PROCESS] Batch ID:', data.id);
+      console.log('✅ [ALL-PROCESS] Chat ID:', chatId);
+      console.log('✅ [ALL-PROCESS] ===============================');
+      
       return data.id;
     } catch (error) {
-      console.error('❌ [ALL-PROCESS] Falha total ao criar batch:', error);
+      console.error('💥 [ALL-PROCESS] ===============================');
+      console.error('💥 [ALL-PROCESS] FALHA TOTAL AO CRIAR BATCH!');
+      console.error('💥 [ALL-PROCESS] Error:', error);
+      console.error('💥 [ALL-PROCESS] Stack:', error.stack);
+      console.error('💥 [ALL-PROCESS] ===============================');
       throw error;
     }
   }
