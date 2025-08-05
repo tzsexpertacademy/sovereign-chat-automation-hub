@@ -32,15 +32,11 @@ class WhatsAppAudioService {
   private cache = new Map<string, DecryptedAudio>();
 
   /**
-   * Descriptografa áudio do WhatsApp usando directMediaDownloadService
+   * Descriptografa áudio do WhatsApp - DESATIVADO: useAudioAutoProcessor centraliza
    */
   async decryptAudio(audioData: WhatsAppAudioData): Promise<DecryptedAudio> {
-    console.log('🔐 [AUDIO-SERVICE] Iniciando descriptografia:', {
-      messageId: audioData.messageId,
-      hasEncryptedData: !!audioData.encryptedData,
-      hasMediaKey: !!audioData.mediaKey,
-      hasAudioUrl: !!audioData.audioUrl
-    });
+    console.log('🛑 [AUDIO-SERVICE] DESATIVADO - useAudioAutoProcessor centraliza processamento');
+    console.log('📋 [AUDIO-SERVICE] Para áudio:', audioData.messageId);
 
     // Verificar cache local primeiro
     if (this.cache.has(audioData.messageId)) {
@@ -48,71 +44,30 @@ class WhatsAppAudioService {
       return this.cache.get(audioData.messageId)!;
     }
 
+    // FALLBACK: Buscar base64 já processado na tabela
     try {
-      // Buscar instanceId da URL atual
-      const instanceId = await this.getInstanceIdFromUrl();
-      if (!instanceId) {
-        throw new Error('Instance ID não encontrado na URL');
+      const { data: message } = await supabase
+        .from('ticket_messages')
+        .select('audio_base64, media_transcription')
+        .eq('message_id', audioData.messageId)
+        .single();
+
+      if (message?.audio_base64) {
+        console.log('✅ [AUDIO-SERVICE] Base64 encontrado na tabela (já processado)');
+        const cachedResult: DecryptedAudio = {
+          decryptedData: message.audio_base64,
+          format: 'ogg',
+          cached: true
+        };
+        this.cache.set(audioData.messageId, cachedResult);
+        return cachedResult;
       }
 
-      // Usar directMediaDownloadService para descriptografar
-      console.log('🎯 [AUDIO-SERVICE] Usando directMediaDownloadService');
-      const result = await directMediaDownloadService.processMedia(
-        instanceId,
-        audioData.messageId,
-        audioData.audioUrl || '',
-        audioData.mediaKey,
-        audioData.directPath,
-        'audio/ogg',
-        'audio'
-      );
-
-      if (!result.success || !result.mediaUrl) {
-        throw new Error(`Falha no download: ${result.error || 'URL não disponível'}`);
-      }
-
-      // Converter blob URL para base64 se necessário
-      let decryptedData = result.mediaUrl;
-      if (result.mediaUrl.startsWith('blob:')) {
-        try {
-          const response = await fetch(result.mediaUrl);
-          const blob = await response.blob();
-          const reader = new FileReader();
-          const base64Promise = new Promise<string>((resolve, reject) => {
-            reader.onload = () => {
-              const result = reader.result as string;
-              const base64 = result.split(',')[1]; // Remove data:audio/ogg;base64,
-              resolve(base64);
-            };
-            reader.onerror = reject;
-          });
-          reader.readAsDataURL(blob);
-          decryptedData = await base64Promise;
-        } catch (error) {
-          console.warn('⚠️ [AUDIO-SERVICE] Falha ao converter para base64, usando blob URL');
-        }
-      }
-
-      const decryptedAudio: DecryptedAudio = {
-        decryptedData,
-        format: 'ogg',
-        cached: result.cached || false
-      };
-
-      // Salvar no cache local
-      this.cache.set(audioData.messageId, decryptedAudio);
-
-      console.log('✅ [AUDIO-SERVICE] Descriptografia concluída:', {
-        format: decryptedAudio.format,
-        cached: decryptedAudio.cached,
-        dataLength: decryptedAudio.decryptedData.length,
-        isBlob: decryptedAudio.decryptedData.startsWith('blob:')
-      });
-
-      return decryptedAudio;
+      console.log('⏳ [AUDIO-SERVICE] Aguardando useAudioAutoProcessor processar...');
+      throw new Error('Áudio ainda não foi processado pelo useAudioAutoProcessor');
 
     } catch (error) {
-      console.error('❌ [AUDIO-SERVICE] Erro crítico na descriptografia:', error);
+      console.error('❌ [AUDIO-SERVICE] Erro ao buscar base64 processado:', error);
       
       // FALLBACK: Tentar usar URL direta se disponível
       if (audioData.audioUrl && !audioData.audioUrl.includes('.enc')) {

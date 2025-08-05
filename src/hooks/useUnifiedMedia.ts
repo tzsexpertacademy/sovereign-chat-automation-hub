@@ -84,18 +84,25 @@ export const useUnifiedMedia = (mediaData: UnifiedMediaData): UnifiedMediaResult
         return;
       }
 
-      // PRIORIDADE 2: Mensagens recebidas com mediaKey - usar directMediaDownloadService
-      if (mediaData.mediaUrl && mediaData.mediaKey) {
-        console.log('🔐 useUnifiedMedia: Mídia criptografada detectada - chamando directMediaDownloadService');
-        console.log('📋 useUnifiedMedia: Parâmetros:', {
+      // PRIORIDADE 2: Mensagens recebidas com mediaKey - AGUARDAR useAudioAutoProcessor
+      if (mediaData.mediaUrl && mediaData.mediaKey && mediaData.contentType === 'audio') {
+        console.log('⏳ useUnifiedMedia: Áudio criptografado detectado - aguardando useAudioAutoProcessor processar');
+        console.log('📋 useUnifiedMedia: Params:', {
           messageId: mediaData.messageId,
-          mediaUrl: mediaData.mediaUrl?.substring(0, 100) + '...',
           hasMediaKey: !!mediaData.mediaKey,
-          mediaKeyType: typeof mediaData.mediaKey,
-          directPath: mediaData.directPath,
-          mimetype: mediaData.mimetype,
-          contentType: mediaData.contentType
+          contentType: mediaData.contentType,
+          note: 'useAudioAutoProcessor deve processar e salvar base64 na tabela'
         });
+        
+        // Para áudios criptografados, aguardar useAudioAutoProcessor salvar o base64
+        setError('Aguardando processamento automático...');
+        setIsLoading(true);
+        return;
+      }
+
+      // PRIORIDADE 2B: Mídia não-áudio com mediaKey - processar normalmente
+      if (mediaData.mediaUrl && mediaData.mediaKey) {
+        console.log('🔐 useUnifiedMedia: Mídia não-áudio criptografada - processando');
         
         const instanceId = await getInstanceId();
         console.log('🔍 useUnifiedMedia: Instance ID obtido:', instanceId);

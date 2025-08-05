@@ -11,30 +11,13 @@ export const AudioTestButton = () => {
     setTesting(true);
     
     try {
-      console.log('🧪 [TEST] Testando directMediaDownloadService...');
+      console.log('🛑 [TEST] SERVIÇO DESATIVADO - useAudioAutoProcessor centraliza processamento');
       
-      // Teste básico do serviço
-      const testResult = await directMediaDownloadService.downloadMedia(
-        'test-instance',
-        'https://example.com/test.ogg',
-        'dGVzdGU=', // "teste" em base64
-        '/test/path',
-        'audio/ogg',
-        'audio'
-      );
-
-      console.log('🧪 [TEST] Resultado do teste:', testResult);
-
-      if (testResult.success) {
-        toast.success('DirectMediaDownloadService funcionando! ✅');
-        
-        // Testar estatísticas do cache
-        const stats = directMediaDownloadService.getCacheStats();
-        console.log('📊 [TEST] Estatísticas do cache:', stats);
-        
-      } else {
-        toast.warning(`Serviço respondeu mas com erro: ${testResult.error || 'Erro desconhecido'}`);
-      }
+      // Verificar cache e estatísticas apenas
+      const stats = directMediaDownloadService.getCacheStats();
+      console.log('📊 [TEST] Estatísticas do cache:', stats);
+      
+      toast.success('Cache verificado! useAudioAutoProcessor processa automaticamente ✅');
 
     } catch (error) {
       console.error('🧪 [TEST] Erro no teste:', error);
