@@ -64,13 +64,13 @@ const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId:
     }
   }, [clientId]);
 
-  // Auto-refresh a cada 30 segundos
+  // Auto-refresh a cada 2 minutos para evitar loop infinito
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (autoRefresh && clientId) {
       interval = setInterval(() => {
         loadData(true); // refresh silencioso
-      }, 30000);
+      }, 120000); // 2 minutos
     }
     return () => {
       if (interval) clearInterval(interval);

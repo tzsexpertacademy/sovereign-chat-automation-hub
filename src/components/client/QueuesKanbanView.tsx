@@ -54,9 +54,6 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
 
   useEffect(() => {
     loadData();
-    
-    // Remover auto-refresh para evitar loop infinito
-    // O refresh será feito apenas manualmente pelo usuário
   }, [clientId]);
 
   const loadData = async () => {

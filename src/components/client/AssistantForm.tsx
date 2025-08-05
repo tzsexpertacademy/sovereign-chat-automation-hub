@@ -434,37 +434,20 @@ const AssistantForm = ({ clientId, assistant, onSave, onCancel }: AssistantFormP
                 </p>
               </div>
 
-              <div className="space-y-3">
-                <Label>Gatilhos para Transferência de Fila</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={newTrigger}
-                    onChange={(e) => setNewTrigger(e.target.value)}
-                    placeholder="Ex: falar com humano, suporte, preço"
-                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTrigger())}
-                  />
-                  <Button type="button" onClick={addTrigger} size="icon">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                
-                {triggers.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {triggers.map((trigger, index) => (
-                      <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                        {trigger}
-                        <X 
-                          className="h-3 w-3 cursor-pointer" 
-                          onClick={() => removeTrigger(trigger)}
-                        />
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                
-                <p className="text-xs text-muted-foreground">
-                  Palavras-chave que farão o assistente transferir a conversa para outra fila
+              <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                <h4 className="font-medium text-amber-900 mb-2">🎯 Gatilhos de Transferência</h4>
+                <p className="text-sm text-amber-800 mb-2">
+                  Os gatilhos de transferência agora são configurados nas filas, não mais nos assistentes:
                 </p>
+                <ol className="text-sm text-amber-800 space-y-1 list-decimal list-inside">
+                  <li>Salve este assistente primeiro</li>
+                  <li>Vá para "Sistema de Filas"</li>
+                  <li>Use a aba "Gatilhos" para configurar transferências</li>
+                  <li>Configure palavras como "atendimento humano", "falar com pessoa"</li>
+                </ol>
+                <div className="mt-2 text-sm">
+                  <p><strong>Exemplo:</strong> Na Fila 1, configure o gatilho "atendimento humano" para transferir para Fila 2</p>
+                </div>
               </div>
             </TabsContent>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
 import { 
   Plus, 
   Trash2, 
@@ -17,17 +16,8 @@ import {
   AlertTriangle,
   CheckCircle
 } from 'lucide-react';
-import { supabase } from "@/integrations/supabase/client";
 import { type QueueWithAssistant } from "@/services/queuesService";
-
-interface HandoffTrigger {
-  keywords: string[];
-  action: 'transfer_to_queue';
-  target_queue_id: string;
-  enabled: boolean;
-  priority: number;
-  [key: string]: any; // Para compatibilidade com Json
-}
+import { useQueueTriggers, type HandoffTrigger } from "@/hooks/useQueueTriggers";
 
 interface QueueTriggersManagerProps {
   clientId: string;
@@ -41,90 +31,33 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
   onTriggersUpdated 
 }) => {
   const [selectedQueue, setSelectedQueue] = useState<string>('');
-  const [triggers, setTriggers] = useState<HandoffTrigger[]>([]);
   const [newKeyword, setNewKeyword] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
-  const { toast } = useToast();
+  
+  const { triggers, setTriggers, saveTriggers, loading } = useQueueTriggers(selectedQueue || undefined);
 
-  useEffect(() => {
-    if (selectedQueue) {
-      loadQueueTriggers(selectedQueue);
-    }
-  }, [selectedQueue]);
-
-  const loadQueueTriggers = async (queueId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('queues')
-        .select('handoff_triggers')
-        .eq('id', queueId)
-        .single();
-
-      if (error) throw error;
-
-      const existingTriggers = (data?.handoff_triggers as HandoffTrigger[]) || [];
-      setTriggers(existingTriggers);
-    } catch (error) {
-      console.error('Erro ao carregar gatilhos:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao carregar gatilhos da fila",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const saveTriggers = async () => {
-    if (!selectedQueue) return;
-
-    try {
-      const { error } = await supabase
-        .from('queues')
-        .update({ handoff_triggers: triggers as any })
-        .eq('id', selectedQueue);
-
-      if (error) throw error;
-
-      toast({
-        title: "✅ Sucesso",
-        description: "Gatilhos salvos com sucesso!"
-      });
-
-      onTriggersUpdated();
-      setIsEditing(false);
-    } catch (error) {
-      console.error('Erro ao salvar gatilhos:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao salvar gatilhos",
-        variant: "destructive"
-      });
-    }
+  const handleSaveTriggers = async () => {
+    await saveTriggers(triggers);
+    onTriggersUpdated();
   };
 
   const addTrigger = () => {
     const newTrigger: HandoffTrigger = {
       keywords: [],
-      action: 'transfer_to_queue',
       target_queue_id: '',
-      enabled: true,
-      priority: triggers.length + 1
+      enabled: true
     };
 
     setTriggers([...triggers, newTrigger]);
-    setIsEditing(true);
   };
 
   const updateTrigger = (index: number, field: keyof HandoffTrigger, value: any) => {
     const updatedTriggers = [...triggers];
     updatedTriggers[index] = { ...updatedTriggers[index], [field]: value };
     setTriggers(updatedTriggers);
-    setIsEditing(true);
   };
 
   const removeTrigger = (index: number) => {
     setTriggers(triggers.filter((_, i) => i !== index));
-    setIsEditing(true);
   };
 
   const addKeywordToTrigger = (triggerIndex: number) => {
@@ -134,14 +67,12 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
     updatedTriggers[triggerIndex].keywords.push(newKeyword.trim());
     setTriggers(updatedTriggers);
     setNewKeyword('');
-    setIsEditing(true);
   };
 
   const removeKeywordFromTrigger = (triggerIndex: number, keywordIndex: number) => {
     const updatedTriggers = [...triggers];
     updatedTriggers[triggerIndex].keywords = updatedTriggers[triggerIndex].keywords.filter((_, i) => i !== keywordIndex);
     setTriggers(updatedTriggers);
-    setIsEditing(true);
   };
 
   const getQueueName = (queueId: string) => {
@@ -202,15 +133,14 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
                       <Plus className="h-4 w-4 mr-2" />
                       Novo Gatilho
                     </Button>
-                    {isEditing && (
-                      <Button 
-                        size="sm" 
-                        onClick={saveTriggers}
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Salvar
-                      </Button>
-                    )}
+                    <Button 
+                      size="sm" 
+                      onClick={handleSaveTriggers}
+                      disabled={loading}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      {loading ? "Salvando..." : "Salvar"}
+                    </Button>
                   </div>
                 </div>
 
@@ -353,25 +283,25 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-yellow-500" />
-            Gatilhos Pré-configurados
+            Exemplos de Gatilhos
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 border rounded-lg">
-              <h4 className="font-medium mb-2">✅ Atendimento Humano → Fila 2</h4>
+              <h4 className="font-medium mb-2">✅ Atendimento Humano</h4>
               <p className="text-sm text-muted-foreground mb-2">
-                Palavras: "atendimento humano", "falar com humano", "quero humano"
+                Palavras: "atendimento humano", "falar com humano", "quero pessoa"
               </p>
-              <Badge variant="default">Ativo</Badge>
+              <Badge variant="default">Para Fila de Atendimento</Badge>
             </div>
             
-            <div className="p-4 border rounded-lg border-dashed">
-              <h4 className="font-medium mb-2">💡 Sugestão: Vendas</h4>
+            <div className="p-4 border rounded-lg">
+              <h4 className="font-medium mb-2">💰 Vendas</h4>
               <p className="text-sm text-muted-foreground mb-2">
                 Palavras: "comprar", "preço", "vendas", "orçamento"
               </p>
-              <Badge variant="secondary">Configurar</Badge>
+              <Badge variant="secondary">Para Fila de Vendas</Badge>
             </div>
           </div>
         </CardContent>
