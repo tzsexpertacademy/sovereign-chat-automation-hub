@@ -10,7 +10,7 @@ import ContactsManager from '@/components/client/ContactsManager';
 import AnalyticsDashboard from '@/components/client/AnalyticsDashboard';
 import AutomationCenter from '@/components/client/AutomationCenter';
 import CampaignsManager from '@/components/client/CampaignsManager';
-import FunnelKanban from '@/components/client/FunnelKanban';
+import FunnelTicketsKanban from '@/components/client/FunnelTicketsKanban';
 import BookingManager from '@/components/booking/BookingManager';
 import MultipleInstancesManagerFixed from '@/components/client/MultipleInstancesManagerFixed';
 import { AutoWebhookConfigurator } from '@/components/client/AutoWebhookConfigurator';
@@ -81,7 +81,7 @@ const ClientDashboardImproved = () => {
       case 'campaigns':
         return <div>Campaigns Manager - {clientId}</div>;
       case 'funnel':
-        return <div>Funnel Kanban - {clientId}</div>;
+        return <FunnelTicketsKanban clientId={clientId} />;
       case 'booking':
         return <BookingManager clientId={clientId} />;
       default:
