@@ -113,8 +113,9 @@ export const useTicketRealtimeImproved = (clientId: string) => {
     setTimeout(syncUnprocessedMessages, 2000);
 
     // Listener para mudanças nos tickets
+    const uniqueId = Date.now();
     const ticketsChannel = supabase
-      .channel(`tickets-realtime-yumer-${clientId}`)
+      .channel(`tickets-realtime-yumer-${clientId}-${uniqueId}`)
       .on(
         'postgres_changes',
         {
@@ -148,7 +149,7 @@ export const useTicketRealtimeImproved = (clientId: string) => {
 
     // Listener para novas mensagens WhatsApp/YUMER
     const messagesChannel = supabase
-      .channel(`whatsapp-messages-yumer-${clientId}`)
+      .channel(`whatsapp-messages-yumer-${clientId}-${uniqueId}`)
       .on(
         'postgres_changes',
         {

@@ -61,6 +61,12 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
       description: "Visão Geral"
     },
     { 
+      title: "Tickets", 
+      icon: UserCheck, 
+      path: `/client/${clientId}/tickets`,
+      description: "Gestão de Tickets"
+    },
+    { 
       title: "Conexão", 
       icon: Wifi, 
       path: `/client/${clientId}/connect`,
@@ -70,7 +76,7 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
       title: "Conversas", 
       icon: MessageSquare, 
       path: `/client/${clientId}/chat`,
-      description: "Tickets e Chat"
+      description: "Interface de Chat"
     },
     { 
       title: "Funil", 

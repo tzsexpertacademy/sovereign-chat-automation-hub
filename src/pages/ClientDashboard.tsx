@@ -5,6 +5,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import ClientSidebar from "@/components/client/ClientSidebar";
 import ClientHeader from "@/components/client/ClientHeader";
 import ChatTabsInterface from "@/components/client/ChatTabsInterface";
+import TicketTabsInterface from "@/components/client/TicketTabsInterface";
 import CampaignsManager from "@/components/client/CampaignsManager";
 import AutomationCenter from "@/components/client/AutomationCenter";
 import AnalyticsDashboard from "@/components/client/AnalyticsDashboard";
@@ -43,6 +44,7 @@ const ClientDashboard = () => {
               <Routes>
                 <Route path="/" element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<ClientDashboardOverview clientId={clientId} />} />
+                <Route path="tickets" element={<TicketTabsInterface />} />
                 <Route path="connect" element={<WhatsAppConnectionManagerV2 />} />
                 <Route 
                   path="chat" 

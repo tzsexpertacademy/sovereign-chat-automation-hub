@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ClientHeader from '@/components/client/ClientHeader';
 import ClientSidebar from '@/components/client/ClientSidebar';
+import TicketTabsInterface from '@/components/client/TicketTabsInterface';
 import ChatInterfaceImproved from '@/components/client/ChatInterfaceImproved';
 import QueueManagementCenter from '@/components/client/QueueManagementCenter';
 import ContactsManager from '@/components/client/ContactsManager';
@@ -19,7 +20,7 @@ import AIConfigForm from '@/components/client/AIConfigForm';
 
 const ClientDashboardImproved = () => {
   const { clientId } = useParams<{ clientId: string }>();
-  const [activeTab, setActiveTab] = useState('chat');
+  const [activeTab, setActiveTab] = useState('tickets');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [showAIConfig, setShowAIConfig] = useState(false);
 
@@ -29,6 +30,8 @@ const ClientDashboardImproved = () => {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'tickets':
+        return <TicketTabsInterface />;
       case 'chat':
         return (
           <ChatInterfaceImproved
@@ -82,13 +85,7 @@ const ClientDashboardImproved = () => {
       case 'booking':
         return <BookingManager clientId={clientId} />;
       default:
-        return (
-          <ChatInterfaceImproved
-            clientId={clientId}
-            selectedChatId={selectedChatId}
-            onSelectChat={setSelectedChatId}
-          />
-        );
+        return <TicketTabsInterface />;
     }
   };
 
