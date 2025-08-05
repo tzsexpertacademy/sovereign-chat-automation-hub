@@ -155,6 +155,28 @@ Deno.serve(async (req) => {
 async function processBatch(batch: any) {
   console.log('🤖 [PROCESS-BATCH] Processando batch:', batch.id);
 
+    // 🔍 DETECTAR COMANDOS DE MÍDIA RELACIONADA NO BATCH
+    const detectsFutureMedia = (content: string): boolean => {
+      if (!content) return false;
+      
+      const futureMediaPatterns = [
+        /vou.*enviar.*imagem/i,
+        /vou.*mandar.*imagem/i,
+        /analise.*imagem.*que.*vou/i,
+        /olha.*imagem.*que.*vou/i,
+        /vê.*imagem.*que.*vou/i,
+        /mando.*imagem/i,
+        /envio.*imagem/i,
+        /te.*mando/i,
+        /te.*envio/i,
+        /próxima.*imagem/i,
+        /agora.*imagem/i,
+        /depois.*imagem/i
+      ];
+      
+      return futureMediaPatterns.some(pattern => pattern.test(content));
+    };
+
     // 🎵 VERIFICAR SE HÁ MENSAGENS DE ÁUDIO NO BATCH
     const audioMessages = batch.messages.filter((msg: any) => 
       msg.content && (msg.content.includes('🎵 Áudio') || msg.content === '🎵 Áudio')
@@ -164,6 +186,21 @@ async function processBatch(batch: any) {
     const imageMessages = batch.messages.filter((msg: any) => 
       msg.content && (msg.content.includes('📷 Imagem') || msg.content === '📷 Imagem')
     );
+
+    // 🔗 VERIFICAR SE HÁ COMANDOS QUE REFERENCIAM MÍDIA FUTURA
+    const mediaCommandMessages = batch.messages.filter((msg: any) => {
+      const content = msg.content || '';
+      return detectsFutureMedia(content);
+    });
+
+    // 📊 LOG DO CONTEXTO DO BATCH
+    console.log('🔍 [BATCH-CONTEXT] Análise do batch:', {
+      totalMessages: batch.messages.length,
+      audioCount: audioMessages.length,
+      imageCount: imageMessages.length,
+      mediaCommandCount: mediaCommandMessages.length,
+      hasRelatedMedia: mediaCommandMessages.length > 0 && (audioMessages.length > 0 || imageMessages.length > 0)
+    });
 
     if (audioMessages.length > 0) {
       console.log('🎵 [AUDIO-FIX] 🔍 Detectados', audioMessages.length, 'áudios no batch');
@@ -503,6 +540,32 @@ async function processBatch(batch: any) {
 
     console.log('🎥 [PROCESS-BATCH] Comandos de vídeo detectados no batch:', hasVideoCommands);
 
+    // 🔗 PROCESSAMENTO CONTEXTUAL INTELIGENTE
+    let contextualMessage = '';
+    
+    // Se há comandos de mídia relacionada, criar contexto combinado
+    if (mediaCommandMessages.length > 0 && (audioMessages.length > 0 || imageMessages.length > 0)) {
+      console.log('🔗 [CONTEXTUAL-PROCESSING] Criando contexto combinado para mídia relacionada');
+      
+      // Combinar comandos de áudio com imagens subsequentes
+      contextualMessage = processedMessages.map(msg => {
+        if (msg.content && detectsFutureMedia(msg.content)) {
+          return msg.content + ' [Este comando refere-se à mídia seguinte]';
+        }
+        return msg.content || (msg.messageType === 'image' ? '📷 Imagem' : '🎵 Áudio');
+      }).join(' ');
+      
+      console.log('🔗 [CONTEXTUAL-PROCESSING] Contexto combinado criado:', {
+        hasCommands: mediaCommandMessages.length > 0,
+        hasAudio: audioMessages.length > 0,
+        hasImage: imageMessages.length > 0,
+        contextLength: contextualMessage.length
+      });
+    } else {
+      // Processamento normal
+      contextualMessage = processedMessages.map(msg => msg.content || '').join(' ');
+    }
+
     // CHAMAR IA COM BATCH (usando mensagens com transcrição)
     console.log('🤖 [PROCESS-BATCH] 🧠 Chamando IA para ticket:', ticket.id, 'com', processedMessages?.length || 0, 'mensagens');
     console.log('🤖 [PROCESS-BATCH] 📄 Mensagens do batch (com transcrições):', JSON.stringify(processedMessages, null, 2));
@@ -515,7 +578,9 @@ async function processBatch(batch: any) {
           chatId: batch.chat_id,
           customerName: processedMessages[0]?.customerName || 'Cliente',
           phoneNumber: processedMessages[0]?.phoneNumber || '',
-          batchInfo: `Batch de ${processedMessages.length} mensagens (${processedMessages.filter(m => m.isTranscribed).length} transcritas)`
+          batchInfo: `Batch de ${processedMessages.length} mensagens (${processedMessages.filter(m => m.isTranscribed).length} transcritas)`,
+          hasRelatedMedia: mediaCommandMessages.length > 0 && (audioMessages.length > 0 || imageMessages.length > 0),
+          contextualMessage: contextualMessage
         }
       }
     });

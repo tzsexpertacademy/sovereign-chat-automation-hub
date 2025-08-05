@@ -52,6 +52,28 @@ export const useMessageBatch = (
     }
   }, []);
 
+  // Detectar comandos que referenciam mídia futura
+  const detectsFutureMedia = useCallback((content: string): boolean => {
+    if (!content) return false;
+    
+    const futureMediaPatterns = [
+      /vou.*enviar.*imagem/i,
+      /vou.*mandar.*imagem/i,
+      /analise.*imagem.*que.*vou/i,
+      /olha.*imagem.*que.*vou/i,
+      /vê.*imagem.*que.*vou/i,
+      /mando.*imagem/i,
+      /envio.*imagem/i,
+      /te.*mando/i,
+      /te.*envio/i,
+      /próxima.*imagem/i,
+      /agora.*imagem/i,
+      /depois.*imagem/i
+    ];
+    
+    return futureMediaPatterns.some(pattern => pattern.test(content));
+  }, []);
+
   // Adicionar mensagem ao batch
   const addMessage = useCallback((message: any) => {
     if (!config.enabled) {
@@ -67,10 +89,27 @@ export const useMessageBatch = (
                           message.type === 'audio' || 
                           (message.media_url && message.media_key);
     
-    // Calcular timeout baseado no tipo de mensagem
-    const messageTimeout = isAudioMessage ? 6000 : config.timeout; // 6s para áudio, padrão para texto
+    // Detectar se mensagem referencia mídia futura
+    const messageContent = message.body || message.content || '';
+    const hasFutureMediaCommand = detectsFutureMedia(messageContent);
     
-    console.log(`📦 [MESSAGE-BATCH] Adicionando mensagem ao batch: ${chatId} (tipo: ${isAudioMessage ? 'áudio' : 'texto'}, timeout: ${messageTimeout}ms)`);
+    // Calcular timeout inteligente
+    let messageTimeout = config.timeout;
+    
+    if (isAudioMessage) {
+      messageTimeout = 6000; // 6s para áudio
+    }
+    
+    if (hasFutureMediaCommand) {
+      messageTimeout = 15000; // 15s quando detecta comando de mídia futura
+      console.log(`🎯 [MESSAGE-BATCH] Comando de mídia futura detectado, timeout estendido para: ${messageTimeout}ms`);
+    }
+    
+    console.log(`📦 [MESSAGE-BATCH] Adicionando mensagem ao batch: ${chatId}`, {
+      tipo: isAudioMessage ? 'áudio' : (hasFutureMediaCommand ? 'comando-mídia-futura' : 'texto'),
+      timeout: messageTimeout,
+      conteudo: messageContent.substring(0, 50) + '...'
+    });
     
     // Se não existe batch para este chat, criar novo
     if (!batches.has(chatId)) {
@@ -83,6 +122,23 @@ export const useMessageBatch = (
     }
 
     const batch = batches.get(chatId)!;
+    
+    // Verificar se há mensagens recentes que podem estar relacionadas
+    const timeSinceLastMessage = Date.now() - batch.lastMessageTime;
+    const isQuickSequence = timeSinceLastMessage < 30000; // 30 segundos
+    
+    // Se há uma sequência rápida e contexto relacionado, usar timeout estendido
+    if (isQuickSequence && batch.messages.length > 0) {
+      const hasContextualConnection = batch.messages.some(msg => {
+        const prevContent = msg.body || msg.content || '';
+        return detectsFutureMedia(prevContent) || hasFutureMediaCommand;
+      });
+      
+      if (hasContextualConnection && messageTimeout < 15000) {
+        messageTimeout = 15000;
+        console.log(`🔗 [MESSAGE-BATCH] Contexto relacionado detectado, timeout estendido para: ${messageTimeout}ms`);
+      }
+    }
     
     // Se o batch está sendo processado, criar um novo
     if (batch.isProcessing) {
@@ -127,7 +183,7 @@ export const useMessageBatch = (
       processBatch(chatId);
     }, messageTimeout);
 
-  }, [config, callback]);
+  }, [config, callback, detectsFutureMedia]);
 
   // Processar um batch específico
   const processBatch = useCallback((chatId: string) => {
