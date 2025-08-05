@@ -2319,6 +2319,10 @@ export type Database = {
           error_messages: string[]
         }[]
       }
+      force_cleanup_cron_jobs: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       get_decrypted_audio: {
         Args: { p_message_id: string }
         Returns: {
