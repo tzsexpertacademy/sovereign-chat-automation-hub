@@ -45,17 +45,28 @@ const TicketTabsInterface = () => {
     hasActiveFilters
   } = useTicketFilters(clientId || '');
 
-  // Hook SIMPLIFICADO de sincronização em tempo real  
+  // Hook SIMPLIFICADO de sincronização FORÇA BRUTA  
   useSimpleTicketSync({
     clientId: clientId || '',
     onUpdate: () => {
-      console.log('🔄 [TABS] Forçando reload por mudança');
+      console.log('🔄 [TABS] FORÇA BRUTA - reload imediato por mudança');
       reloadTickets();
     },
     onTicketReopen: (ticketId, newQueueId) => {
-      console.log('🔓 [TABS] REABERTURA - auto-switch para Abertos');
+      console.log('🔓 [TABS] REABERTURA DETECTADA - auto-switch para Abertos');
       setActiveTab('open'); // AUTO-SWITCH crítico
       reloadTickets();
+      
+      // FEEDBACK VISUAL DE REABERTURA
+      toast({
+        title: "🔓 Ticket Reaberto",
+        description: `Ticket foi reaberto automaticamente por nova mensagem`,
+        duration: 4000,
+      });
+    },
+    onAutoSwitchTab: (targetTab) => {
+      console.log('🔄 [TABS] AUTO-SWITCH para aba:', targetTab);
+      setActiveTab(targetTab);
     }
   });
 
