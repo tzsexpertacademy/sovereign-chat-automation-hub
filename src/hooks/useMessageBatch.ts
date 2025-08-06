@@ -20,7 +20,7 @@ interface MessageBatch {
 }
 
 const defaultConfig: BatchConfig = {
-  timeout: 3000, // 3 segundos para sincronizar com backend
+  timeout: 30000, // 30 segundos para batch travado
   maxBatchSize: 10,
   enabled: true
 };
