@@ -263,6 +263,23 @@ class TicketsService {
     }
   }
 
+  async updateTicketFunnelStage(ticketId: string, stageId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('conversation_tickets')
+        .update({ 
+          current_stage_id: stageId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('❌ Erro ao atualizar estágio do funil do ticket:', error);
+      throw error;
+    }
+  }
+
   async deleteTicketCompletely(ticketId: string): Promise<void> {
     let deletionCounts = {
       ticket_events: 0,

@@ -20,9 +20,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { MoreVertical, Tag, User, ArrowRight, X, Trash2, XCircle, RotateCcw } from 'lucide-react';
+import { MoreVertical, Tag, User, ArrowRight, X, Trash2, XCircle, RotateCcw, Filter } from 'lucide-react';
 import { ticketsService, type ConversationTicket } from '@/services/ticketsService';
 import { queuesService } from '@/services/queuesService';
+import { funnelService } from '@/services/funnelService';
 import { useToast } from '@/hooks/use-toast';
 
 interface TicketActionsMenuProps {
@@ -33,12 +34,14 @@ interface TicketActionsMenuProps {
 const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) => {
   const { toast } = useToast();
   const [queues, setQueues] = React.useState<any[]>([]);
+  const [funnelStages, setFunnelStages] = React.useState<any[]>([]);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const [showCloseDialog, setShowCloseDialog] = React.useState(false);
   const [showReopenDialog, setShowReopenDialog] = React.useState(false);
 
   React.useEffect(() => {
     loadQueues();
+    loadFunnelStages();
   }, [ticket.client_id]);
 
   const loadQueues = async () => {
@@ -47,6 +50,15 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
       setQueues(clientQueues);
     } catch (error) {
       console.error('Erro ao carregar filas:', error);
+    }
+  };
+
+  const loadFunnelStages = async () => {
+    try {
+      const stages = await funnelService.getStages(ticket.client_id);
+      setFunnelStages(stages);
+    } catch (error) {
+      console.error('Erro ao carregar estágios do funil:', error);
     }
   };
 
@@ -137,6 +149,23 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
       toast({
         title: "Erro",
         description: "Erro ao remover tag",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleUpdateFunnelStage = async (stageId: string) => {
+    try {
+      await ticketsService.updateTicketFunnelStage(ticket.id, stageId);
+      toast({
+        title: "Sucesso",
+        description: "Estágio do funil atualizado"
+      });
+      onTicketUpdate();
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar estágio do funil",
         variant: "destructive"
       });
     }
@@ -254,6 +283,25 @@ const TicketActionsMenu = ({ ticket, onTicketUpdate }: TicketActionsMenuProps) =
               ))}
             </>
           )}
+
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Estágio do Funil</DropdownMenuLabel>
+          
+          {funnelStages.map((stage) => (
+            <DropdownMenuItem 
+              key={stage.id} 
+              onClick={() => handleUpdateFunnelStage(stage.id)}
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-3 h-3 rounded-full" 
+                  style={{ backgroundColor: stage.color }}
+                />
+                {stage.name}
+              </div>
+            </DropdownMenuItem>
+          ))}
 
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Tags</DropdownMenuLabel>

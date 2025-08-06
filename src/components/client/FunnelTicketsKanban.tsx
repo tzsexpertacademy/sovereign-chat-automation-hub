@@ -37,6 +37,7 @@ interface TicketForFunnel {
   status: string;
   priority: number;
   tags: string[];
+  current_stage_id?: string;
   created_at: string;
   last_activity_at: string;
   chat_id: string;
@@ -139,6 +140,7 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
           status,
           priority,
           tags,
+          current_stage_id,
           created_at,
           last_activity_at,
           first_response_at,
@@ -176,6 +178,7 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
           status: ticket.status,
           priority: ticket.priority || 1,
           tags: Array.isArray(ticket.tags) ? ticket.tags.map(tag => String(tag)) : [],
+          current_stage_id: ticket.current_stage_id,
           created_at: ticket.created_at,
           last_activity_at: ticket.last_activity_at || ticket.created_at,
           chat_id: ticket.chat_id,
@@ -200,16 +203,19 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
 
   const getTicketsByStage = (stage: RealFunnelStage): TicketForFunnel[] => {
     return tickets.filter(ticket => {
-      // Verificar se o ticket tem tag correspondente ao nome do estágio
-      const stageNameLower = stage.name.toLowerCase();
-      const hasStageTag = ticket.tags.some(tag => 
-        tag.toLowerCase().includes(stageNameLower) ||
-        stageNameLower.includes(tag.toLowerCase())
-      );
-
-      // Se não tem tag específica, colocar no primeiro estágio (menor position)
-      const isFirstStage = stages.length > 0 && stage.position === Math.min(...stages.map(s => s.position));
-      const isInStage = hasStageTag || (isFirstStage && ticket.tags.length === 0);
+      // Priorizar current_stage_id, fallback para tags
+      const isInStage = ticket.current_stage_id === stage.id || 
+        (() => {
+          const stageNameLower = stage.name.toLowerCase();
+          const hasStageTag = ticket.tags.some(tag => 
+            tag.toLowerCase().includes(stageNameLower) ||
+            stageNameLower.includes(tag.toLowerCase())
+          );
+          
+          // Se não tem tag específica e não tem stage_id, colocar no primeiro estágio
+          const isFirstStage = stages.length > 0 && stage.position === Math.min(...stages.map(s => s.position));
+          return hasStageTag || (isFirstStage && ticket.tags.length === 0 && !ticket.current_stage_id);
+        })();
 
       // Aplicar filtros de busca
       const matchesSearch = !searchTerm || 
@@ -236,7 +242,7 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
     if (!targetStage) return;
 
     try {
-      // Atualizar tags do ticket baseado no novo estágio
+      // Atualizar estágio do funil e tags do ticket
       const ticket = tickets.find(t => t.id === draggableId);
       if (!ticket) return;
 
@@ -252,6 +258,7 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
       const { error } = await supabase
         .from('conversation_tickets')
         .update({
+          current_stage_id: targetStage.id,
           tags: newTags,
           updated_at: new Date().toISOString()
         })
@@ -262,7 +269,7 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
       // Atualizar estado local
       setTickets(prev => prev.map(t => 
         t.id === draggableId 
-          ? { ...t, tags: newTags }
+          ? { ...t, current_stage_id: targetStage.id, tags: newTags }
           : t
       ));
 
@@ -530,14 +537,28 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
                                 >
                                   <CardContent className="p-3">
                                     <div className="space-y-2">
-                                      <div className="flex items-center justify-between">
-                                        <h4 className="text-sm font-medium truncate">
-                                          {ticket.customer_name}
-                                        </h4>
-                                        <Badge variant="outline" className="text-xs">
-                                          P{ticket.priority}
-                                        </Badge>
-                                      </div>
+                                       <div className="flex items-center justify-between">
+                                         <h4 className="text-sm font-medium truncate">
+                                           {ticket.customer_name}
+                                         </h4>
+                                         <div className="flex gap-1">
+                                           {ticket.current_stage_id && (
+                                             <Badge 
+                                               variant="outline" 
+                                               className="text-xs"
+                                               style={{ 
+                                                 borderColor: stages.find(s => s.id === ticket.current_stage_id)?.color || '#gray',
+                                                 color: stages.find(s => s.id === ticket.current_stage_id)?.color || '#gray'
+                                               }}
+                                             >
+                                               {stages.find(s => s.id === ticket.current_stage_id)?.name || 'Estágio'}
+                                             </Badge>
+                                           )}
+                                           <Badge variant="outline" className="text-xs">
+                                             P{ticket.priority}
+                                           </Badge>
+                                         </div>
+                                       </div>
                                       
                                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                         <Phone className="h-3 w-3" />
