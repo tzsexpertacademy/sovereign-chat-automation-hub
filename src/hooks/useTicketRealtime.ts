@@ -587,13 +587,18 @@ export const useTicketRealtime = (clientId: string) => {
         }
       }, 1000);
 
-  // PROCESSAMENTO DIRETO EMERGENCIAL
+  // PROCESSAMENTO DIRETO EMERGENCIAL COM DELAY HUMANIZADO
       console.log(`🔍 PROCESSAMENTO DIRETO EMERGENCIAL para ticket: ${ticketId}`);
       if (!processingRef.current.has(ticketId)) {
-        console.log(`🤖 EXECUTANDO processamento IA DIRETO`);
+        console.log(`🤖 AGENDANDO processamento IA com delay humanizado (4s)`);
         
-        // Executar imediatamente sem timeout
-        processWithAssistant(normalizedMessage, ticketId, clientMessages);
+        // Delay humanizado de 4 segundos para simular digitação
+        setTimeout(() => {
+          if (mountedRef.current && !processingRef.current.has(ticketId)) {
+            console.log(`🤖 EXECUTANDO processamento IA após delay humanizado`);
+            processWithAssistant(normalizedMessage, ticketId, clientMessages);
+          }
+        }, 4000);
       } else {
         console.log(`⚠️ TICKET já sendo processado`);
       }
