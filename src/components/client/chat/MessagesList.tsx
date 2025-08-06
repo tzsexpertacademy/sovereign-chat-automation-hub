@@ -238,9 +238,8 @@ const MessagesList = memo(({
   }
 
   return (
-    <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
-      
-      <div className="space-y-4">
+    <ScrollArea ref={scrollAreaRef} className="flex-1 p-4 h-full">
+      <div className="space-y-4 min-h-full">
         {/* 🎭 INDICADORES DE PRESENÇA IMEDIATOS */}
         {(isTyping || isRecording) && (
           <div className="flex gap-3 justify-start">
