@@ -64,6 +64,12 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
       description: "Visão Geral"
     },
     { 
+      title: "Comece por Aqui", 
+      icon: Circle, 
+      path: `/client/${clientId}/getting-started`,
+      description: "Tour Guiado"
+    },
+    { 
       title: "Tickets", 
       icon: UserCheck, 
       path: `/client/${clientId}/tickets`,

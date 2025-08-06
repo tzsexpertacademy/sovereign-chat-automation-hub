@@ -18,6 +18,7 @@ import QueueConnectionManager from "@/components/client/QueueConnectionManager";
 import ClientDashboardOverview from "@/components/client/ClientDashboardOverview";
 import ClientSettingsPage from "@/pages/ClientSettingsPage";
 import SafeComponent from "@/components/SafeComponent";
+import { OnboardingGuide } from "@/components/client/onboarding/OnboardingGuide";
 
 const ClientDashboard = () => {
   const { clientId } = useParams();
@@ -45,6 +46,7 @@ const ClientDashboard = () => {
               <Routes>
                 <Route path="/" element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<ClientDashboardOverview clientId={clientId} />} />
+                <Route path="getting-started" element={<OnboardingGuide clientId={clientId} />} />
                 <Route path="tickets" element={<TicketTabsInterface />} />
                 <Route path="connect" element={<WhatsAppConnectionManagerV2 />} />
                 <Route 
