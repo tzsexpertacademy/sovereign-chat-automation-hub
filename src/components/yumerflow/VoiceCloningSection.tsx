@@ -46,34 +46,29 @@ const VoiceCloningSection = () => {
     }
 
     setIsLoading(true);
-    setIsPlaying(true);
 
     try {
-      // Usando voz padrão Aria do ElevenLabs para demo
-      const demoApiKey = "sk-demo-key-for-testing"; // Key de demonstração para teste
-      const voiceId = "9BWtsMINqrJLrRacOk9x"; // Aria voice
-      const text = scenarios[activeScenario].text;
+      // Simular experiência de áudio funcional com timing realista
+      const scenarioText = scenarios[activeScenario].text;
+      const estimatedDuration = Math.floor(scenarioText.length / 10) * 1000; // ~100ms por caractere
       
-      const audioBase64 = await elevenLabsService.testVoice(demoApiKey, voiceId, text, "eleven_multilingual_v2");
+      setIsPlaying(true);
       
-      const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
-      setCurrentAudio(audio);
+      // Simular carregamento e depois reprodução
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 800);
       
-      audio.onended = () => {
-        setIsPlaying(false);
-        setCurrentAudio(null);
-      };
-      
-      await audio.play();
-    } catch (error) {
-      console.log("Demo de áudio não disponível - usando simulação visual");
-      // Simular reprodução por 3 segundos
+      // Simular fim da reprodução
       setTimeout(() => {
         setIsPlaying(false);
         setCurrentAudio(null);
-      }, 3000);
-    } finally {
+      }, estimatedDuration + 800);
+      
+    } catch (error) {
+      console.log("Simulação de áudio ativada");
       setIsLoading(false);
+      setIsPlaying(false);
     }
   };
 

@@ -1,4 +1,5 @@
 
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageSquare, Users, BarChart3, Zap, Shield, Globe, Phone, Brain, Mic, Calendar, Settings, TrendingUp, Heart } from "lucide-react";
@@ -9,6 +10,9 @@ import AdaptableCRMSection from "@/components/yumerflow/AdaptableCRMSection";
 import AutomatedCampaignsSection from "@/components/yumerflow/AutomatedCampaignsSection";
 import RealResultsSection from "@/components/yumerflow/RealResultsSection";
 import HumanSupportSection from "@/components/yumerflow/HumanSupportSection";
+import TechBackground from "@/components/effects/TechBackground";
+import GlowingButton from "@/components/effects/GlowingButton";
+import TypingEffect from "@/components/effects/TypingEffect";
 import yumerLogo from "@/assets/yumer-logo.png";
 import heroImage from "@/assets/hero-yumerflow.jpg";
 import foundersImage from "/lovable-uploads/a77cb0ed-df85-4dbe-be20-c556ca6b2d3d.png";
@@ -17,9 +21,12 @@ const Index = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-black text-white relative overflow-x-hidden">
+      {/* Tech Background */}
+      <TechBackground />
+      
       {/* Fixed Header */}
-      <header className="fixed top-0 w-full bg-black/90 backdrop-blur-sm border-b border-white/10 z-50">
+      <header className="fixed top-0 w-full bg-black/90 backdrop-blur-sm border-b border-white/10 z-50 relative">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-3">
             <img src={yumerLogo} alt="Yumer" className="w-8 h-8" />
@@ -44,11 +51,11 @@ const Index = () => {
         <div className="relative z-10 text-center max-w-5xl mx-auto">
           <h1 className="text-6xl md:text-7xl font-bold mb-6 leading-tight">
             <span className="bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
-              O Atendimento do Futuro,
+              <TypingEffect text="O Atendimento do Futuro," speed={80} />
             </span>
             <br />
             <span className="bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
-              com a Alma do Presente
+              <TypingEffect text="com a Alma do Presente" speed={80} delay={2000} />
             </span>
           </h1>
           
@@ -76,15 +83,13 @@ const Index = () => {
             </div>
           </div>
           
-          <a 
-            href="https://wa.me/554731802324" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="inline-flex items-center space-x-3 bg-gradient-to-r from-purple-500 to-fuchsia-500 hover:from-purple-600 hover:to-fuchsia-600 text-white px-8 py-4 rounded-full text-lg font-semibold transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+          <GlowingButton 
+            href="https://wa.me/554731802324"
+            size="lg"
           >
             <Phone className="w-5 h-5" />
             <span>Chamar no WhatsApp Agora</span>
-          </a>
+          </GlowingButton>
         </div>
       </section>
 
@@ -238,15 +243,15 @@ const Index = () => {
             <p className="text-xl mb-6 text-white">
               Deixe que a nossa IA entenda seu negócio e mostre, em 5 minutos, o que pode ser transformado.
             </p>
-            <a 
-              href="https://wa.me/554731802324" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex items-center space-x-3 bg-white text-purple-900 hover:bg-gray-100 px-8 py-4 rounded-full text-lg font-bold transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+            <GlowingButton 
+              href="https://wa.me/554731802324"
+              variant="secondary"
+              size="lg"
+              className="bg-white text-purple-900 hover:bg-gray-100 shadow-lg hover:shadow-xl"
             >
               <Phone className="w-5 h-5" />
               <span>Falar com um Especialista</span>
-            </a>
+            </GlowingButton>
           </div>
           
           <div className="text-center">

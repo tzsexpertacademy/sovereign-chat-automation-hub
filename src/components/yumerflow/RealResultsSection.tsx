@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { TrendingUp, Clock, Users, Zap, DollarSign, Target, BarChart3, ArrowUp } from "lucide-react";
+import HolographicCard from "@/components/effects/HolographicCard";
 
 const RealResultsSection = () => {
   const [animatedValues, setAnimatedValues] = useState({
@@ -148,71 +149,42 @@ const RealResultsSection = () => {
           <p className="text-xl text-purple-200">Métricas que transformam negócios</p>
         </div>
 
-        {/* Animated Metrics Grid */}
+        {/* Animated Metrics Grid with Holographic Effects */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
           {metrics.map((metric, index) => (
-            <Card key={index} className={`bg-black/40 backdrop-blur-sm border ${metric.bgColor} hover:scale-105 transition-all duration-300`}>
-              <CardContent className="p-6 text-center">
-                <div className="flex justify-center mb-4">
-                  <div className="bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full p-3">
-                    <metric.icon className="w-8 h-8 text-white" />
+            <HolographicCard key={index} className="rounded-xl">
+              <Card className={`bg-black/40 backdrop-blur-sm border ${metric.bgColor} transition-all duration-300 relative overflow-hidden`}>
+                <CardContent className="p-6 text-center relative z-10">
+                  <div className="flex justify-center mb-4">
+                    <div className="bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full p-3 shadow-lg shadow-purple-500/25">
+                      <metric.icon className="w-8 h-8 text-white" />
+                    </div>
                   </div>
-                </div>
+                  
+                  <div className="mb-3 relative">
+                    <span className={`text-5xl font-bold ${metric.color} drop-shadow-lg`}>
+                      {metric.prefix}{Math.floor(metric.value)}{metric.suffix}
+                    </span>
+                    {metric.value < finalValues[Object.keys(finalValues)[index] as keyof typeof finalValues] && (
+                      <ArrowUp className="inline-block w-6 h-6 text-green-400 ml-2 animate-bounce drop-shadow-glow" />
+                    )}
+                  </div>
+                  
+                  <h3 className="text-lg font-semibold text-white mb-2">
+                    {metric.label}
+                  </h3>
+                  <p className="text-gray-300 text-sm">
+                    {metric.description}
+                  </p>
+                </CardContent>
                 
-                <div className="mb-3">
-                  <span className={`text-5xl font-bold ${metric.color}`}>
-                    {metric.prefix}{Math.floor(metric.value)}{metric.suffix}
-                  </span>
-                  {metric.value < finalValues[Object.keys(finalValues)[index] as keyof typeof finalValues] && (
-                    <ArrowUp className="inline-block w-6 h-6 text-green-400 ml-2 animate-bounce" />
-                  )}
-                </div>
-                
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  {metric.label}
-                </h3>
-                <p className="text-gray-300 text-sm">
-                  {metric.description}
-                </p>
-              </CardContent>
-            </Card>
+                {/* Subtle glow effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 to-fuchsia-500/5 rounded-xl"></div>
+              </Card>
+            </HolographicCard>
           ))}
         </div>
 
-        {/* Visual Chart Simulation */}
-        <div className="mb-16">
-          <Card className="bg-gradient-to-br from-purple-900/30 to-fuchsia-900/30 border-purple-500/20">
-            <CardContent className="p-8">
-              <h3 className="text-2xl font-bold text-white mb-6 text-center">
-                Evolução da Performance (30 dias)
-              </h3>
-              
-              {/* Simple bar chart representation */}
-              <div className="grid grid-cols-7 gap-2 h-40 items-end">
-                {[20, 35, 50, 65, 80, 90, 100].map((height, index) => (
-                  <div key={index} className="flex flex-col items-center">
-                    <div 
-                      className="w-full bg-gradient-to-t from-purple-500 to-fuchsia-500 rounded-t transition-all duration-1000 delay-100"
-                      style={{ 
-                        height: `${(height * animatedValues.conversion) / 100}%`,
-                        minHeight: '10px'
-                      }}
-                    />
-                    <span className="text-xs text-gray-400 mt-2">
-                      {index === 0 ? 'Sem. 1' : index === 3 ? 'Sem. 2' : index === 6 ? 'Sem. 4' : ''}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              
-                <div className="text-center mt-4">
-                <p className="text-white font-medium">
-                  Progressão típica de conversões após implementação do YumerFlow
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
         {/* Testimonials implícitos */}
         <div className="grid md:grid-cols-3 gap-6 mb-16">
