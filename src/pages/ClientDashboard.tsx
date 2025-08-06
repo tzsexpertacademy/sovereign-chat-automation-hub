@@ -46,7 +46,7 @@ const ClientDashboard = () => {
               <Routes>
                 <Route path="/" element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<ClientDashboardOverview clientId={clientId} />} />
-                <Route path="getting-started" element={<OnboardingGuide clientId={clientId} />} />
+                <Route path="getting-started" element={<Navigate to="settings" replace />} />
                 <Route path="tickets" element={<TicketTabsInterface />} />
                 <Route path="connect" element={<WhatsAppConnectionManagerV2 />} />
                 <Route 

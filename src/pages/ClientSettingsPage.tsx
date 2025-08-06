@@ -11,20 +11,29 @@ import {
   Zap, 
   Globe,
   Palette,
-  Shield
+  Shield,
+  BookOpen
 } from "lucide-react";
 import WhatsAppConnectionManagerV2 from "@/components/client/WhatsAppConnectionManagerV2";
 import SafeComponent from "@/components/SafeComponent";
+import { OnboardingGuide } from "@/components/client/onboarding/OnboardingGuide";
 
 const ClientSettingsPage = () => {
   const { clientId } = useParams();
-  const [activeTab, setActiveTab] = useState("connections");
+  const [activeTab, setActiveTab] = useState("onboarding");
 
   if (!clientId) {
     return <div>Cliente não encontrado</div>;
   }
 
   const settingsTabs = [
+    {
+      id: "onboarding",
+      label: "Tutorial",
+      icon: BookOpen,
+      description: "Comece por aqui",
+      component: <OnboardingGuide clientId={clientId!} />
+    },
     {
       id: "connections",
       label: "Conexões",
