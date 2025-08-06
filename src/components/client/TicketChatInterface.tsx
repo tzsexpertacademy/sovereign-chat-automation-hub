@@ -4,11 +4,6 @@ import { unifiedMessageService } from '@/services/unifiedMessageService';
 import { ticketsService, type TicketMessage } from '@/services/ticketsService';
 import { useToast } from '@/hooks/use-toast';
 import { useTicketMessagesUnified } from '@/hooks/useTicketMessagesUnified';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useHumanizedTyping } from '@/hooks/useHumanizedTyping';
-import { useMessageStatus } from '@/hooks/useMessageStatus';
-import { useAudioAutoProcessor } from '@/hooks/useAudioAutoProcessor';
-import { useAudioProcessingMonitor } from '@/hooks/useAudioProcessingMonitor';
 import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
@@ -31,23 +26,8 @@ const TicketChatInterface = memo(({ clientId, ticketId }: TicketChatInterfacePro
   const lastDebugExecutionRef = useRef<number>(0);
   
   const { toast } = useToast();
-  const { markActivity, isOnline } = useOnlineStatus(clientId, true);
-  const { simulateHumanTyping, isTyping, isRecording, startTyping, stopTyping } = useHumanizedTyping(clientId);
-  const { getMessageStatus } = useMessageStatus({ ticketId });
   const { ticket, queueInfo, connectedInstance, actualInstanceId } = useTicketData(ticketId, clientId);
   const { handleAudioReady: processAudioReady } = useAudioHandling(ticketId);
-  
-  // 🎵 PROCESSAMENTO AUTOMÁTICO DE ÁUDIO: Transcrição em tempo real
-  useAudioAutoProcessor(clientId);
-  
-  // 📊 MONITORAMENTO DE PROCESSAMENTO DE ÁUDIO
-  const { startMonitoring, stopMonitoring, isMonitoring } = useAudioProcessingMonitor(clientId);
-  
-  // Iniciar monitoramento automático
-  useEffect(() => {
-    startMonitoring();
-    return () => stopMonitoring();
-  }, []);
 
   // Sistema OTIMIZADO Real-Time - Hook único unificado 
   const {
@@ -220,8 +200,8 @@ const TicketChatInterface = memo(({ clientId, ticketId }: TicketChatInterfacePro
         clientId,
         ticket.assigned_assistant_id || undefined,
         {
-          onTypingStart: () => startTyping?.(ticket.chat_id),
-          onTypingStop: () => stopTyping?.(ticket.chat_id)
+        onTypingStart: () => console.log('Typing started'),
+          onTypingStop: () => console.log('Typing stopped')
         }
       );
 
@@ -255,7 +235,7 @@ const TicketChatInterface = memo(({ clientId, ticketId }: TicketChatInterfacePro
     } finally {
       setIsSending(false);
     }
-  }, [newMessage, ticketId, clientId, ticket, actualInstanceId, toast, startTyping, stopTyping]);
+  }, [newMessage, ticketId, clientId, ticket, actualInstanceId, toast]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -296,11 +276,6 @@ const TicketChatInterface = memo(({ clientId, ticketId }: TicketChatInterfacePro
         />
       </div>
 
-      {(isTyping || isRecording) && (
-        <div className="border-t border-border px-4 py-2">
-          <TypingIndicator />
-        </div>
-      )}
 
       <div className="border-t border-border p-4">
         <MessageInput
