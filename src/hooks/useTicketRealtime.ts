@@ -587,16 +587,13 @@ export const useTicketRealtime = (clientId: string) => {
         }
       }, 1000);
 
-      // PROCESSAMENTO COM ASSISTENTE
-      console.log(`🔍 VERIFICANDO processamento IA para ticket: ${ticketId}`);
+  // PROCESSAMENTO DIRETO EMERGENCIAL
+      console.log(`🔍 PROCESSAMENTO DIRETO EMERGENCIAL para ticket: ${ticketId}`);
       if (!processingRef.current.has(ticketId)) {
-        console.log(`🤖 AGENDANDO processamento IA`);
+        console.log(`🤖 EXECUTANDO processamento IA DIRETO`);
         
-        setTimeout(() => {
-          if (mountedRef.current && !processingRef.current.has(ticketId)) {
-            processWithAssistant(normalizedMessage, ticketId, clientMessages);
-          }
-        }, 1000);
+        // Executar imediatamente sem timeout
+        processWithAssistant(normalizedMessage, ticketId, clientMessages);
       } else {
         console.log(`⚠️ TICKET já sendo processado`);
       }
