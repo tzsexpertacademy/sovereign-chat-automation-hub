@@ -1,17 +1,11 @@
 /**
- * HOOK DEFINITIVO PARA MENSAGENS DE TICKETS
- * Sistema ULTRA-OTIMIZADO com optimistic UI e zero duplicatas
+ * HOOK SIMPLIFICADO PARA MENSAGENS DE TICKETS
+ * Sistema ESTÁVEL - Single Source of Truth com Supabase Real-time APENAS
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ticketsService, type TicketMessage } from '@/services/ticketsService';
+import { type TicketMessage } from '@/services/ticketsService';
 import { supabase } from '@/integrations/supabase/client';
-
-interface TicketMessagesCache {
-  messages: TicketMessage[];
-  timestamp: number;
-  ticketId: string;
-}
 
 interface TicketMessagesUnifiedConfig {
   ticketId: string;
@@ -21,89 +15,53 @@ interface TicketMessagesUnifiedConfig {
 interface ConnectionStatus {
   isConnected: boolean;
   lastUpdate: number;
-  reconnectAttempts: number;
   status: 'connected' | 'connecting' | 'disconnected' | 'error';
 }
-
-// Cache local otimizado
-const messagesCache = new Map<string, TicketMessagesCache>();
-const CACHE_TTL = 10000; // 10 segundos - otimizado para fluidez
 
 export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesUnifiedConfig) => {
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [lastUpdateSource, setLastUpdateSource] = useState<'cache' | 'supabase' | 'polling'>('polling');
+  const [lastUpdateSource, setLastUpdateSource] = useState<'supabase'>('supabase');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
     isConnected: false,
     lastUpdate: 0,
-    reconnectAttempts: 0,
     status: 'disconnected'
   });
   
-  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<any>(null);
   const currentTicketRef = useRef<string>('');
   const messageIdsRef = useRef<Set<string>>(new Set());
 
-  // Cache inteligente
-  const getCachedMessages = useCallback((ticketId: string): TicketMessage[] | null => {
-    const cached = messagesCache.get(ticketId);
-    if (!cached) return null;
-    
-    const isExpired = (Date.now() - cached.timestamp) > CACHE_TTL;
-    if (isExpired) {
-      messagesCache.delete(ticketId);
-      return null;
-    }
-    
-    return cached.messages;
-  }, []);
-
-  const setCachedMessages = useCallback((ticketId: string, messages: TicketMessage[]) => {
-    messagesCache.set(ticketId, {
-      messages,
-      timestamp: Date.now(),
-      ticketId
-    });
-  }, []);
-
-  // 🎯 DEDUPLICAÇÃO ULTRA-OTIMIZADA - O(1) performance
-  const addMessageSafely = useCallback((newMessage: TicketMessage, source: 'cache' | 'supabase' | 'polling') => {
+  // 🎯 DEDUPLICAÇÃO SIMPLES e EFICAZ
+  const addMessageSafely = useCallback((newMessage: TicketMessage) => {
     setMessages(prevMessages => {
-      // Set de IDs para verificação O(1) - SUPER RÁPIDO
+      // Verificação O(1) com Set
       if (messageIdsRef.current.has(newMessage.message_id)) {
         return prevMessages;
       }
 
-      // Verificação adicional por ID único do banco
+      // Verificação adicional por ID único do banco  
       const hasDbId = prevMessages.some(m => m.id === newMessage.id);
       if (hasDbId) {
         return prevMessages;
       }
 
-      // ✅ ADICIONAR mensagem aprovada + atualizar cache de IDs
+      // ✅ ADICIONAR mensagem + cache do ID
       messageIdsRef.current.add(newMessage.message_id);
+      const updated = [...prevMessages, newMessage];
       
-      return [...prevMessages, newMessage].sort((a, b) => 
+      // Ordenar por timestamp
+      return updated.sort((a, b) => 
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
     });
   }, []);
 
-  // 🚀 CARREGAMENTO OTIMIZADO - cache inteligente sem overhead
-  const loadMessages = useCallback(async (isPolling = false, useCache = true) => {
+  // 🚀 CARREGAMENTO SIMPLES via Supabase
+  const loadMessages = useCallback(async () => {
     try {
-      // Cache hit - retorno instantâneo apenas no carregamento inicial
-      if (useCache && !isPolling) {
-        const cached = getCachedMessages(ticketId);
-        if (cached) {
-          setMessages(cached.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
-          cached.forEach(msg => messageIdsRef.current.add(msg.message_id));
-          setLastUpdateSource('cache');
-          return;
-        }
-      }
-
+      console.log(`🔄 [MESSAGES] Carregando mensagens para ticket: ${ticketId}`);
+      
       const { data, error } = await supabase
         .from('ticket_messages')
         .select('*')
@@ -111,35 +69,40 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
         .order('timestamp', { ascending: true });
 
       if (error) {
-        setConnectionStatus(prev => ({ ...prev, isConnected: false }));
+        console.error('❌ [MESSAGES] Erro ao carregar:', error);
+        setConnectionStatus(prev => ({ ...prev, isConnected: false, status: 'error' }));
         return;
       }
 
       if (data) {
-        if (!isPolling) {
-          // Carregamento inicial completo
-          setCachedMessages(ticketId, data);
-          setMessages(data);
-          messageIdsRef.current.clear();
-          data.forEach(msg => messageIdsRef.current.add(msg.message_id));
-          setLastUpdateSource('supabase');
-        } else {
-          // Polling: adicionar apenas novas
-          data.forEach(msg => addMessageSafely(msg, 'polling'));
-          setLastUpdateSource('polling');
-        }
+        console.log(`✅ [MESSAGES] ${data.length} mensagens carregadas`);
+        setMessages(data);
+        messageIdsRef.current.clear();
+        data.forEach(msg => messageIdsRef.current.add(msg.message_id));
+        setLastUpdateSource('supabase');
       }
 
-      setConnectionStatus(prev => ({ ...prev, isConnected: true, lastUpdate: Date.now() }));
+      setConnectionStatus(prev => ({ 
+        ...prev, 
+        isConnected: true, 
+        lastUpdate: Date.now(),
+        status: 'connected' 
+      }));
 
     } catch (error) {
-      console.error('❌ [TICKET-MSG] Erro:', error);
-      setConnectionStatus(prev => ({ ...prev, isConnected: false }));
+      console.error('❌ [MESSAGES] Erro crítico:', error);
+      setConnectionStatus(prev => ({ 
+        ...prev, 
+        isConnected: false, 
+        status: 'error' 
+      }));
     }
-  }, [ticketId, addMessageSafely, getCachedMessages, setCachedMessages]);
+  }, [ticketId, addMessageSafely]);
 
-  // 🔗 LISTENER SUPABASE ULTRA ESTÁVEL
+  // 🔗 LISTENER SUPABASE SIMPLES E ESTÁVEL
   const setupSupabaseListener = useCallback(() => {
+    console.log(`🔗 [REALTIME] Configurando listener para ticket: ${ticketId}`);
+    
     const channel = supabase
       .channel(`ticket-messages-${ticketId}`)
       .on('postgres_changes', {
@@ -149,9 +112,14 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
         filter: `ticket_id=eq.${ticketId}`
       }, (payload) => {
         if (payload.new) {
-          addMessageSafely(payload.new as TicketMessage, 'supabase');
-          setLastUpdateSource('supabase');
-          setConnectionStatus(prev => ({ ...prev, isConnected: true, lastUpdate: Date.now() }));
+          console.log('⚡ [REALTIME] Nova mensagem recebida:', payload.new);
+          addMessageSafely(payload.new as TicketMessage);
+          setConnectionStatus(prev => ({ 
+            ...prev, 
+            isConnected: true, 
+            lastUpdate: Date.now(),
+            status: 'connected'
+          }));
         }
       })
       .on('postgres_changes', {
@@ -161,77 +129,66 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
         filter: `ticket_id=eq.${ticketId}`
       }, (payload) => {
         if (payload.new) {
+          console.log('🔄 [REALTIME] Mensagem atualizada:', payload.new);
           setMessages(prevMessages => 
             prevMessages.map(msg => msg.id === payload.new.id ? payload.new as TicketMessage : msg)
           );
-          setLastUpdateSource('supabase');
         }
       })
       .subscribe((status) => {
-        setConnectionStatus(prev => ({ ...prev, isConnected: status === 'SUBSCRIBED', lastUpdate: Date.now() }));
+        console.log(`📡 [REALTIME] Status da conexão: ${status}`);
+        setConnectionStatus(prev => ({ 
+          ...prev, 
+          isConnected: status === 'SUBSCRIBED', 
+          lastUpdate: Date.now(),
+          status: status === 'SUBSCRIBED' ? 'connected' : 'connecting'
+        }));
       });
 
-    return () => supabase.removeChannel(channel);
+    return channel;
   }, [ticketId, addMessageSafely]);
 
-  // 🔄 POLLING OTIMIZADO - apenas quando necessário  
-  const startPolling = useCallback(() => {
-    const interval = setInterval(() => {
-      const timeSinceLastUpdate = Date.now() - connectionStatus.lastUpdate;
-      if (timeSinceLastUpdate > 30000) {
-        loadMessages(true, false);
-      }
-    }, 20000); // Verificar a cada 20 segundos
-
-    return interval;
-  }, [loadMessages, connectionStatus.lastUpdate]);
-
-  // Effect principal SIMPLIFICADO
+  // Effect principal SUPER SIMPLIFICADO
   useEffect(() => {
     if (!ticketId) {
       setMessages([]);
       return;
     }
 
-    // Reset completo apenas ao trocar de ticket
+    // Reset apenas ao trocar de ticket
     if (currentTicketRef.current !== ticketId) {
+      console.log(`🔄 [INIT] Inicializando novo ticket: ${ticketId}`);
       currentTicketRef.current = ticketId;
       setMessages([]);
       messageIdsRef.current.clear();
       setIsLoading(true);
       
       // Cleanup anterior
-      if (pollTimeoutRef.current) {
-        clearTimeout(pollTimeoutRef.current);
-      }
       if (channelRef.current) {
+        console.log('🧹 [CLEANUP] Removendo listener anterior');
         supabase.removeChannel(channelRef.current);
       }
 
-      // Inicializar sistema
-      loadMessages(false, true).finally(() => setIsLoading(false));
+      // Inicializar: carregar mensagens + setup real-time
+      loadMessages().finally(() => setIsLoading(false));
       channelRef.current = setupSupabaseListener();
-      const pollingInterval = startPolling();
-      pollTimeoutRef.current = pollingInterval as NodeJS.Timeout;
     }
 
     return () => {
-      if (pollTimeoutRef.current) {
-        clearTimeout(pollTimeoutRef.current);
-      }
       if (channelRef.current) {
+        console.log('🧹 [CLEANUP] Limpeza final do listener');
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [ticketId, loadMessages, setupSupabaseListener, startPolling]);
+  }, [ticketId, loadMessages, setupSupabaseListener]);
 
   return {
     messages,
     isLoading,
     lastUpdateSource,
-    reload: () => loadMessages(false, false),
+    reload: loadMessages,
     isRealtimeActive: connectionStatus.isConnected,
-    isPollingActive: !!pollTimeoutRef.current,
+    isPollingActive: false, // Polling removido
     connectionStatus
   };
 };

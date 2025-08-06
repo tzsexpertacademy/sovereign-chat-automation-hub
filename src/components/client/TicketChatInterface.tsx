@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { unifiedMessageService } from '@/services/unifiedMessageService';
 import { ticketsService, type TicketMessage } from '@/services/ticketsService';
@@ -22,7 +22,7 @@ interface TicketChatInterfaceProps {
   ticketId: string;
 }
 
-const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) => {
+const TicketChatInterface = memo(({ clientId, ticketId }: TicketChatInterfaceProps) => {
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [optimisticMessages, setOptimisticMessages] = useState<TicketMessage[]>([]);
@@ -63,19 +63,20 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     clientId
   });
 
-  // 🚀 OPTIMISTIC UI: Combinar mensagens reais + optimísticas
+  // 🚀 MENSAGENS FINAIS: Real-time + Optimistic simples
   const allMessages = useMemo(() => {
+    // Combinar mensagens reais + optimísticas
     const combined = [...realTimeMessages, ...optimisticMessages];
-    // Ordenar por timestamp e remover duplicatas por message_id
-    const unique = combined.reduce((acc, msg) => {
-      const existing = acc.find(m => m.message_id === msg.message_id);
-      if (!existing) {
-        acc.push(msg);
-      }
-      return acc;
-    }, [] as TicketMessage[]);
     
-    return unique.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    // Remover duplicatas por message_id (optimistic pode ter conflito)
+    const uniqueMessages = combined.filter((msg, index, arr) => 
+      arr.findIndex(m => m.message_id === msg.message_id) === index
+    );
+    
+    // Ordenar por timestamp 
+    return uniqueMessages.sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
   }, [realTimeMessages, optimisticMessages]);
 
   // Limpar estado quando mudar de ticket
@@ -85,12 +86,23 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     setOptimisticMessages([]);
   }, [ticketId]);
 
-  // 🎯 LIMPAR optimistic messages quando mensagem real chega
+  // 🎯 LIMPEZA AUTOMÁTICA: Remover optimistic quando real-time chega  
   useEffect(() => {
     if (realTimeMessages.length > 0) {
-      setOptimisticMessages(prev => 
-        prev.filter(opt => !realTimeMessages.some(real => real.message_id === opt.message_id))
-      );
+      setOptimisticMessages(prev => {
+        const cleaned = prev.filter(opt => 
+          !realTimeMessages.some(real => 
+            real.message_id === opt.message_id || 
+            real.content === opt.content && Math.abs(new Date(real.timestamp).getTime() - new Date(opt.timestamp).getTime()) < 5000
+          )
+        );
+        
+        if (cleaned.length !== prev.length) {
+          console.log(`🧹 [OPTIMISTIC] Limpeza: ${prev.length - cleaned.length} mensagens removidas`);
+        }
+        
+        return cleaned;
+      });
     }
   }, [realTimeMessages]);
 
@@ -150,7 +162,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     const messageId = `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date().toISOString();
     
-    // 🚀 OPTIMISTIC UI SIMPLIFICADO: Adicionar mensagem instantaneamente
+    // 🚀 OPTIMISTIC UI SIMPLES: Mostrar mensagem imediatamente
     const optimisticMessage: TicketMessage = {
       id: messageId,
       ticket_id: ticketId,
@@ -167,6 +179,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       media_duration: audioDuration
     };
 
+    console.log('⚡ [OPTIMISTIC] Adicionando mensagem optimística:', optimisticMessage);
     setOptimisticMessages(prev => [...prev, optimisticMessage]);
     setNewMessage('');
     
@@ -216,7 +229,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         throw new Error(result.errors?.[0] || 'Erro no envio');
       }
 
-      // ✅ ATUALIZAR STATUS OPTIMISTIC
+      // ✅ ATUALIZAR STATUS E AGUARDAR REAL-TIME
       setOptimisticMessages(prev => 
         prev.map(m => m.message_id === messageId 
           ? { ...m, processing_status: 'sent', message_id: result.messageIds?.[0] || messageId } 
@@ -224,12 +237,14 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         )
       );
 
+      console.log('✅ [SEND] Mensagem enviada com sucesso:', result);
       toast({ title: "✅ Sucesso", description: "Mensagem enviada" });
 
     } catch (error) {
       console.error('❌ [CHAT] Erro:', error);
       
-      // 🚨 ROLLBACK OPTIMISTIC
+      // 🚨 ROLLBACK OPTIMISTIC em caso de erro
+      console.error('❌ [SEND] Erro ao enviar:', error);
       setOptimisticMessages(prev => prev.filter(m => m.message_id !== messageId));
       
       toast({
@@ -302,6 +317,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
       </div>
     </div>
   );
-};
+});
+
+TicketChatInterface.displayName = 'TicketChatInterface';
 
 export default TicketChatInterface;

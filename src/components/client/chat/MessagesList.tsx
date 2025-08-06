@@ -30,7 +30,7 @@ interface MessagesListProps {
   connectionStatus?: {
     isConnected: boolean;
     status: 'connected' | 'connecting' | 'disconnected' | 'error';
-    reconnectAttempts: number;
+    lastUpdate: number;
   };
 }
 
