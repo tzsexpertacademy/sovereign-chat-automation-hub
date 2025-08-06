@@ -110,12 +110,6 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
       description: "Solicitações"
     },
     { 
-      title: "Analytics", 
-      icon: BarChart3, 
-      path: `/client/${clientId}/analytics`,
-      description: "Relatórios"
-    },
-    { 
       title: "Configurações", 
       icon: Settings, 
       path: `/client/${clientId}/settings`,

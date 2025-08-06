@@ -8,7 +8,7 @@ import ChatTabsInterface from "@/components/client/ChatTabsInterface";
 import TicketTabsInterface from "@/components/client/TicketTabsInterface";
 import CampaignsManager from "@/components/client/CampaignsManager";
 import ClientPersonalization from "@/components/client/ClientPersonalization";
-import AnalyticsDashboard from "@/components/client/AnalyticsDashboard";
+
 import WhatsAppConnectionManagerV2 from "@/components/client/WhatsAppConnectionManagerV2";
 import AssistantsManager from "@/components/client/AssistantsManager";
 import BookingManager from "@/components/booking/BookingManager";
@@ -74,7 +74,7 @@ const ClientDashboard = () => {
                 <Route path="instances" element={<QueueConnectionManager />} />
                 <Route path="booking" element={<BookingManager clientId={clientId} />} />
                 <Route path="personalization" element={<ClientPersonalization />} />
-                <Route path="analytics" element={<AnalyticsDashboard />} />
+                
                 <Route path="settings/*" element={<ClientSettingsPage />} />
                 <Route path="settings" element={<ClientSettingsPage />} />
               </Routes>
