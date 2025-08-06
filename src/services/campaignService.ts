@@ -24,6 +24,8 @@ export interface CampaignSegment {
       end: string;
     };
     funnel_stage?: string[];
+    queue?: string[];
+    status?: string[];
     custom_fields?: Record<string, any>;
   };
   contact_count: number;
@@ -187,61 +189,128 @@ export class CampaignService {
   }
 
   async getSegments(clientId: string): Promise<CampaignSegment[]> {
-    // Buscar dados para criar segmentos automaticamente
-    const [leadsData, tagsData, stagesData] = await Promise.all([
-      supabase.from("funnel_leads").select("*").eq("client_id", clientId),
-      supabase.from("funnel_tags").select("*").eq("client_id", clientId),
-      supabase.from("funnel_stages").select("*").eq("client_id", clientId)
-    ]);
+    try {
+      // Buscar dados para criar segmentos automaticamente
+      const [leadsData, tagsData, stagesData, queuesData, ticketsData] = await Promise.all([
+        supabase.from("funnel_leads").select("*").eq("client_id", clientId).eq("is_active", true),
+        supabase.from("funnel_tags").select("*").eq("client_id", clientId).eq("is_active", true),
+        supabase.from("funnel_stages").select("*").eq("client_id", clientId).eq("is_active", true),
+        supabase.from("queues").select("*").eq("client_id", clientId).eq("is_active", true),
+        supabase.from("conversation_tickets").select("current_stage_id, assigned_queue_id").eq("client_id", clientId)
+      ]);
 
-    const leads = leadsData.data || [];
-    const tags = tagsData.data || [];
-    const stages = stagesData.data || [];
+      const leads = leadsData.data || [];
+      const tags = tagsData.data || [];
+      const stages = stagesData.data || [];
+      const queues = queuesData.data || [];
+      const tickets = ticketsData.data || [];
 
-    const segments: CampaignSegment[] = [];
+      const segments: CampaignSegment[] = [];
 
-    // Segmento: Todos os leads
-    segments.push({
-      id: "all_leads",
-      name: "Todos os Leads",
-      filters: {},
-      contact_count: leads.length
-    });
-
-    // Segmentos por fonte
-    const sources = [...new Set(leads.map(l => l.lead_source))];
-    sources.forEach(source => {
-      const count = leads.filter(l => l.lead_source === source).length;
+      // Segmento: Todos os contatos
+      const totalContacts = Math.max(leads.length, tickets.length);
       segments.push({
-        id: `source_${source}`,
-        name: `Leads - ${source}`,
-        filters: { lead_source: [source] },
-        contact_count: count
+        id: "all_contacts",
+        name: "Todos os Contatos",
+        filters: {},
+        contact_count: totalContacts
       });
-    });
 
-    // Segmentos por estágio
-    stages.forEach(stage => {
-      const count = leads.filter(l => l.current_stage_id === stage.id).length;
-      segments.push({
-        id: `stage_${stage.id}`,
-        name: `Estágio: ${stage.name}`,
-        filters: { funnel_stage: [stage.id] },
-        contact_count: count
+      // Segmentos por fonte de leads
+      const sources = [...new Set(leads.map(l => l.lead_source))];
+      sources.forEach(source => {
+        const count = leads.filter(l => l.lead_source === source).length;
+        if (count > 0) {
+          segments.push({
+            id: `source_${source}`,
+            name: `Origem: ${source}`,
+            filters: { lead_source: [source] },
+            contact_count: count
+          });
+        }
       });
-    });
 
-    // Segmentos por tags (se implementado relacionamento)
-    tags.forEach(tag => {
-      segments.push({
-        id: `tag_${tag.id}`,
-        name: `Tag: ${tag.name}`,
-        filters: { tags: [tag.id] },
-        contact_count: 0 // Seria calculado com relacionamento lead_tags
+      // Segmentos por estágio do funil
+      stages.forEach(stage => {
+        const leadCount = leads.filter(l => l.current_stage_id === stage.id).length;
+        const ticketCount = tickets.filter(t => t.current_stage_id === stage.id).length;
+        const totalCount = Math.max(leadCount, ticketCount);
+        
+        if (totalCount > 0) {
+          segments.push({
+            id: `stage_${stage.id}`,
+            name: `Estágio: ${stage.name}`,
+            filters: { funnel_stage: [stage.id] },
+            contact_count: totalCount
+          });
+        }
       });
-    });
 
-    return segments;
+      // Segmentos por tags
+      for (const tag of tags) {
+        // Buscar leads com esta tag
+        const { data: leadTagsData } = await supabase
+          .from("funnel_lead_tags")
+          .select("lead_id")
+          .eq("tag_id", tag.id);
+
+        const taggedLeadsCount = leadTagsData?.length || 0;
+        
+        if (taggedLeadsCount > 0) {
+          segments.push({
+            id: `tag_${tag.id}`,
+            name: `Tag: ${tag.name}`,
+            filters: { tags: [tag.id] },
+            contact_count: taggedLeadsCount
+          });
+        }
+      }
+
+      // Segmentos por fila
+      queues.forEach(queue => {
+        const queueLeadsCount = leads.filter(l => l.current_queue_id === queue.id).length;
+        const queueTicketsCount = tickets.filter(t => t.assigned_queue_id === queue.id).length;
+        const totalCount = Math.max(queueLeadsCount, queueTicketsCount);
+        
+        if (totalCount > 0) {
+          segments.push({
+            id: `queue_${queue.id}`,
+            name: `Fila: ${queue.name}`,
+            filters: { queue: [queue.id] },
+            contact_count: totalCount
+          });
+        }
+      });
+
+      // Segmentos por status de lead
+      const leadStatuses = [
+        { status: 'new', name: 'Novos Leads', count: leads.filter(l => !l.current_stage_id).length },
+        { status: 'active', name: 'Leads Ativos', count: leads.filter(l => l.is_active).length },
+        { status: 'high_value', name: 'Alto Valor', count: leads.filter(l => l.lead_value > 1000).length },
+        { status: 'high_priority', name: 'Alta Prioridade', count: leads.filter(l => l.priority >= 3).length }
+      ];
+
+      leadStatuses.forEach(({ status, name, count }) => {
+        if (count > 0) {
+          segments.push({
+            id: `status_${status}`,
+            name: name,
+            filters: { status: [status] },
+            contact_count: count
+          });
+        }
+      });
+
+      return segments;
+    } catch (error) {
+      console.error('Erro ao buscar segmentos:', error);
+      return [{
+        id: "all_contacts",
+        name: "Todos os Contatos",
+        filters: {},
+        contact_count: 0
+      }];
+    }
   }
 
   async validateCampaignStep(step: number, data: any): Promise<{ valid: boolean; errors: string[] }> {

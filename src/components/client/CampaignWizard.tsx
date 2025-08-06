@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { 
   ChevronLeft, 
@@ -25,10 +26,15 @@ import {
   Clock,
   Settings,
   FileText,
-  Bot
+  Bot,
+  Filter,
+  Upload,
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react';
 import { campaignService, type CampaignTemplate, type CampaignSegment, type CampaignStep } from "@/services/campaignService";
 import { queuesService, type QueueWithAssistant } from "@/services/queuesService";
+import { funnelService, type FunnelStage, type FunnelTag } from "@/services/funnelService";
 
 interface CampaignWizardProps {
   clientId: string;
@@ -42,10 +48,14 @@ const CampaignWizard: React.FC<CampaignWizardProps> = ({ clientId, open, onClose
   const [templates, setTemplates] = useState<CampaignTemplate[]>([]);
   const [segments, setSegments] = useState<CampaignSegment[]>([]);
   const [queues, setQueues] = useState<QueueWithAssistant[]>([]);
+  const [stages, setStages] = useState<FunnelStage[]>([]);
+  const [tags, setTags] = useState<FunnelTag[]>([]);
+  const [uploadedContacts, setUploadedContacts] = useState<any[]>([]);
   const [campaignData, setCampaignData] = useState({
     name: '',
     description: '',
     segment_id: '',
+    segment_type: 'existing', // 'existing' ou 'upload'
     template_id: '',
     custom_message: '',
     personalized_variables: {} as Record<string, string>,
@@ -53,48 +63,55 @@ const CampaignWizard: React.FC<CampaignWizardProps> = ({ clientId, open, onClose
     send_date: '',
     send_time: '',
     queue_id: '',
-    target_filters: {},
+    target_filters: {
+      stages: [] as string[],
+      tags: [] as string[],
+      queues: [] as string[],
+      lead_sources: [] as string[],
+      custom_filters: {}
+    },
     trigger_conditions: []
   });
   const [loading, setLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [estimatedContacts, setEstimatedContacts] = useState(0);
   const { toast } = useToast();
 
   const steps: CampaignStep[] = [
     {
       step: 1,
-      title: "Informações Básicas",
-      description: "Nome e descrição da campanha",
+      title: "Informações & Contatos",
+      description: "Configurações básicas e upload",
       completed: false
     },
     {
       step: 2,
-      title: "Segmentação",
-      description: "Selecione o público-alvo",
+      title: "Segmentação Inteligente",
+      description: "Filtros por tags, estágios e filas",
       completed: false
     },
     {
       step: 3,
-      title: "Mensagem",
-      description: "Defina o conteúdo da mensagem",
+      title: "Mensagem & Template",
+      description: "Conteúdo personalizado",
       completed: false
     },
     {
       step: 4,
       title: "Agendamento",
-      description: "Configure quando enviar",
+      description: "Quando e como enviar",
       completed: false
     },
     {
       step: 5,
-      title: "Fila de Respostas",
-      description: "Para onde vão as respostas",
+      title: "Configurações Finais",
+      description: "Fila de destino e validações",
       completed: false
     },
     {
       step: 6,
-      title: "Revisão",
-      description: "Confirme e envie",
+      title: "Revisão & Execução",
+      description: "Confirmar e iniciar campanha",
       completed: false
     }
   ];
@@ -108,15 +125,19 @@ const CampaignWizard: React.FC<CampaignWizardProps> = ({ clientId, open, onClose
   const loadWizardData = async () => {
     try {
       setLoading(true);
-      const [templatesData, segmentsData, queuesData] = await Promise.all([
+      const [templatesData, segmentsData, queuesData, stagesData, tagsData] = await Promise.all([
         campaignService.getTemplates(clientId),
         campaignService.getSegments(clientId),
-        queuesService.getClientQueues(clientId)
+        queuesService.getClientQueues(clientId),
+        funnelService.getStages(clientId),
+        funnelService.getTags(clientId)
       ]);
 
       setTemplates(templatesData);
       setSegments(segmentsData);
       setQueues(queuesData);
+      setStages(stagesData);
+      setTags(tagsData);
     } catch (error) {
       console.error('Erro ao carregar dados do wizard:', error);
       toast({
