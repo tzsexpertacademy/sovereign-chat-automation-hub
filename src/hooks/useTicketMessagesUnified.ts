@@ -1,6 +1,6 @@
 /**
- * HOOK ÚNICO E DEFINITIVO PARA MENSAGENS DE TICKETS
- * Sistema ULTRA-OTIMIZADO sem duplicatas e real-time perfeito
+ * HOOK DEFINITIVO PARA MENSAGENS DE TICKETS
+ * Sistema ULTRA-OTIMIZADO com optimistic UI e zero duplicatas
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -25,9 +25,9 @@ interface ConnectionStatus {
   status: 'connected' | 'connecting' | 'disconnected' | 'error';
 }
 
-// Cache local por ticket (elimina conflitos globais)
+// Cache local otimizado
 const messagesCache = new Map<string, TicketMessagesCache>();
-const CACHE_TTL = 15000; // 15 segundos (otimizado)
+const CACHE_TTL = 10000; // 10 segundos - otimizado para fluidez
 
 export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesUnifiedConfig) => {
   const [messages, setMessages] = useState<TicketMessage[]>([]);
@@ -43,9 +43,7 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<any>(null);
   const currentTicketRef = useRef<string>('');
-  const lastLoadRef = useRef<number>(0);
   const messageIdsRef = useRef<Set<string>>(new Set());
-  const duplicateCheckRef = useRef<Map<string, number>>(new Map()); // Cache para verificação de duplicatas
 
   // Cache inteligente
   const getCachedMessages = useCallback((ticketId: string): TicketMessage[] | null => {
@@ -69,233 +67,161 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
     });
   }, []);
 
-  // Função ULTRA-RIGOROSA anti-duplicação
+  // 🎯 ANTI-DUPLICAÇÃO OTIMIZADA - O(1) performance + verificação rigorosa
   const addMessageSafely = useCallback((newMessage: TicketMessage, source: 'cache' | 'supabase' | 'polling') => {
-    setMessages(prev => {
-      // 1. VERIFICAÇÃO PRIMÁRIA por message_id (O(1))
-      if (messageIdsRef.current.has(newMessage.message_id)) {
-        return prev;
-      }
-
-      // 2. VERIFICAÇÃO SECUNDÁRIA por ID do banco (para casos edge)
-      if (prev.some(msg => msg.id === newMessage.id)) {
-        return prev;
-      }
-
-      // 3. VERIFICAÇÃO TERCIÁRIA por conteúdo + timestamp (anti-duplicação total)
-      const messageTimestamp = new Date(newMessage.timestamp).getTime();
-      const contentMatch = prev.find(msg => 
-        msg.content === newMessage.content && 
-        Math.abs(new Date(msg.timestamp).getTime() - messageTimestamp) < 2000
-      );
+    setMessages(prevMessages => {
+      // Cache de IDs para verificação O(1)
+      const existingIds = new Set(prevMessages.map(m => m.id));
+      const existingMessageIds = new Set(prevMessages.map(m => m.message_id));
       
-      if (contentMatch) {
-        return prev;
+      // 1. Verificação O(1) por ID único
+      if (existingIds.has(newMessage.id)) {
+        return prevMessages;
       }
 
-      // Registrar mensagem nos caches
-      messageIdsRef.current.add(newMessage.message_id);
-      setLastUpdateSource(source);
+      // 2. Verificação O(1) por message_id
+      if (existingMessageIds.has(newMessage.message_id)) {
+        return prevMessages;
+      }
+
+      // 3. Verificação por conteúdo + timestamp (apenas se necessário)
+      const messageTime = new Date(newMessage.timestamp).getTime();
+      const isDuplicate = prevMessages.some(msg => {
+        if (msg.content !== newMessage.content || msg.from_me !== newMessage.from_me) return false;
+        const timeDiff = Math.abs(messageTime - new Date(msg.timestamp).getTime());
+        return timeDiff <= 1000; // 1 segundo de tolerância
+      });
       
-      const updated = [...prev, newMessage].sort((a, b) => 
+      if (isDuplicate) return prevMessages;
+
+      // ✅ ADICIONAR mensagem aprovada
+      return [...prevMessages, newMessage].sort((a, b) => 
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
-      
-      // Atualizar cache local
-      setCachedMessages(ticketId, updated);
-      
-      return updated;
     });
-  }, [ticketId, setCachedMessages]);
+  }, []);
 
-  // Carregamento principal com cache
+  // 🚀 CARREGAMENTO ULTRA OTIMIZADO com cache inteligente
   const loadMessages = useCallback(async (isPolling = false, useCache = true) => {
     try {
-      if (!isPolling) setIsLoading(true);
-      
-      // Verificar cache primeiro
+      // Cache hit - retorno instantâneo
       if (useCache && !isPolling) {
         const cached = getCachedMessages(ticketId);
         if (cached) {
-          setMessages(cached);
-          messageIdsRef.current.clear();
-          duplicateCheckRef.current.clear();
-          cached.forEach(msg => {
-            messageIdsRef.current.add(msg.message_id);
-            const messageKey = `${msg.message_id}_${msg.content.substring(0, 50)}`;
-            duplicateCheckRef.current.set(messageKey, new Date(msg.timestamp).getTime());
-          });
+          cached.forEach(msg => addMessageSafely(msg, 'cache'));
           setLastUpdateSource('cache');
-          setIsLoading(false);
           return;
         }
       }
-      
-      console.log(`🔄 [UNIFIED] ${isPolling ? 'Polling' : 'Carregando'} mensagens do banco:`, ticketId);
-      
-      const messagesData = await ticketsService.getTicketMessages(ticketId, 1000);
-      
-      // Reset apenas se for carregamento inicial
-      if (!isPolling) {
-        messageIdsRef.current.clear();
-        duplicateCheckRef.current.clear();
-        messagesData.forEach(msg => {
-          messageIdsRef.current.add(msg.message_id);
-          const messageKey = `${msg.message_id}_${msg.content.substring(0, 50)}`;
-          duplicateCheckRef.current.set(messageKey, new Date(msg.timestamp).getTime());
-        });
-        setMessages(messagesData);
-        setCachedMessages(ticketId, messagesData);
-      } else {
-        // Para polling, apenas adicionar novas mensagens (verificação rigorosa)
-        messagesData.forEach(msg => {
-          if (!messageIdsRef.current.has(msg.message_id)) {
-            addMessageSafely(msg, 'polling');
-          }
-        });
-      }
-      
-      lastLoadRef.current = Date.now();
-      setLastUpdateSource('polling');
-      
-      console.log(`📨 [UNIFIED] ${messagesData.length} mensagens carregadas`);
-    } catch (error) {
-      console.error('❌ [UNIFIED] Erro ao carregar mensagens:', error);
-      if (!isPolling) setMessages([]);
-    } finally {
-      if (!isPolling) setIsLoading(false);
-    }
-  }, [ticketId, getCachedMessages, setCachedMessages, addMessageSafely]);
 
-  // Listener Supabase ULTRA-ESTÁVEL - conexão única e confiável
+      const { data, error } = await supabase
+        .from('ticket_messages')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('timestamp', { ascending: true });
+
+      if (error) {
+        setConnectionStatus(prev => ({ ...prev, isConnected: false, reconnectAttempts: prev.reconnectAttempts + 1 }));
+        return;
+      }
+
+      if (data) {
+        // Cache apenas em carregamento completo
+        if (!isPolling) {
+          setCachedMessages(ticketId, data);
+          setMessages(data.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
+          setLastUpdateSource('supabase');
+        } else {
+          // Polling: apenas novas mensagens
+          data.forEach(msg => addMessageSafely(msg, 'polling'));
+          setLastUpdateSource('polling');
+        }
+      }
+
+      setConnectionStatus(prev => ({ ...prev, isConnected: true, lastUpdate: Date.now(), reconnectAttempts: 0 }));
+
+    } catch (error) {
+      console.error('❌ [TICKET-MSG] Erro no carregamento:', error);
+      setConnectionStatus(prev => ({ ...prev, isConnected: false, reconnectAttempts: prev.reconnectAttempts + 1 }));
+    }
+  }, [ticketId, addMessageSafely, getCachedMessages, setCachedMessages]);
+
+  // 🔗 LISTENER SUPABASE ULTRA ESTÁVEL
   const setupSupabaseListener = useCallback(() => {
-    if (!ticketId) return null;
-    
     const channel = supabase
-      .channel(`ticket-messages-${ticketId}`, {
-        config: {
-          presence: { key: 'ticket_messages' }
+      .channel(`ticket-messages-${ticketId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public', 
+        table: 'ticket_messages',
+        filter: `ticket_id=eq.${ticketId}`
+      }, (payload) => {
+        if (payload.new) {
+          addMessageSafely(payload.new as TicketMessage, 'supabase');
+          setLastUpdateSource('supabase');
+          setConnectionStatus(prev => ({ ...prev, isConnected: true, lastUpdate: Date.now() }));
         }
       })
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'ticket_messages',
-          filter: `ticket_id=eq.${ticketId}`
-        },
-        (payload) => {
-          if (payload.new) {
-            const newMessage = payload.new as TicketMessage;
-            
-            // VERIFICAÇÃO RIGOROSA DE DUPLICATAS - instantânea
-            if (!messageIdsRef.current.has(newMessage.message_id)) {
-              addMessageSafely(newMessage, 'supabase');
-              setConnectionStatus(prev => ({
-                ...prev,
-                isConnected: true,
-                lastUpdate: Date.now(),
-                status: 'connected',
-                reconnectAttempts: 0
-              }));
-            }
-          }
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'ticket_messages', 
+        filter: `ticket_id=eq.${ticketId}`
+      }, (payload) => {
+        if (payload.new) {
+          setMessages(prevMessages => 
+            prevMessages.map(msg => msg.id === payload.new.id ? payload.new as TicketMessage : msg)
+          );
+          setLastUpdateSource('supabase');
         }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'ticket_messages',
-          filter: `ticket_id=eq.${ticketId}`
-        },
-        (payload) => {
-          if (payload.new) {
-            const updatedMessage = payload.new as TicketMessage;
-            setMessages(prev => 
-              prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
-            );
-            setLastUpdateSource('supabase');
-          }
-        }
-      )
+      })
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setConnectionStatus({
-            isConnected: true,
-            lastUpdate: Date.now(),
-            status: 'connected',
-            reconnectAttempts: 0
-          });
-        } else if (status === 'CHANNEL_ERROR') {
-          setConnectionStatus(prev => ({
-            ...prev,
-            isConnected: false,
-            status: 'error'
-          }));
-        }
+        setConnectionStatus(prev => ({ ...prev, isConnected: status === 'SUBSCRIBED', lastUpdate: Date.now() }));
       });
-      
-    return channel;
+
+    return () => supabase.removeChannel(channel);
   }, [ticketId, addMessageSafely]);
 
-  // Polling backup SIMPLIFICADO - apenas emergencial
+  // 🔄 POLLING OTIMIZADO - apenas quando necessário  
   const startPolling = useCallback(() => {
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current);
-    }
-
-    pollTimeoutRef.current = setTimeout(() => {
-      const timeSinceLastLoad = Date.now() - lastLoadRef.current;
-      
-      // Polling emergencial: apenas se realtime falhou por mais de 120s
-      if (timeSinceLastLoad > 120000 && currentTicketRef.current === ticketId) {
+    const interval = setInterval(() => {
+      const timeSinceLastUpdate = Date.now() - connectionStatus.lastUpdate;
+      if (timeSinceLastUpdate > 30000) {
         loadMessages(true, false);
       }
-      
-      startPolling();
-    }, 300000); // 5 minutos - reduzido drasticamente
-  }, [ticketId, loadMessages]);
+    }, 20000); // Verificar a cada 20 segundos
 
-  // Effect principal
+    return interval;
+  }, [loadMessages, connectionStatus.lastUpdate]);
+
+  // Effect principal SIMPLIFICADO
   useEffect(() => {
     if (!ticketId) {
       setMessages([]);
       return;
     }
 
-    // Evitar reinicialização desnecessária
-    if (currentTicketRef.current === ticketId) {
-      return;
-    }
+    // Reset completo apenas ao trocar de ticket
+    if (currentTicketRef.current !== ticketId) {
+      currentTicketRef.current = ticketId;
+      setMessages([]);
+      messageIdsRef.current.clear();
+      setIsLoading(true);
+      
+      // Cleanup anterior
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+      }
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
 
-    console.log('🚀 [UNIFIED] Inicializando sistema ultra-otimizado para ticket:', ticketId);
-    setMessages([]);
-    setIsLoading(true);
-    currentTicketRef.current = ticketId;
-    messageIdsRef.current.clear();
-    duplicateCheckRef.current.clear();
-    setConnectionStatus({
-      isConnected: false,
-      lastUpdate: 0,
-      reconnectAttempts: 0,
-      status: 'connecting'
-    });
-
-    // Cleanup anterior
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current);
+      // Inicializar sistema
+      loadMessages(false, true).finally(() => setIsLoading(false));
+      channelRef.current = setupSupabaseListener();
+      const pollingInterval = startPolling();
+      pollTimeoutRef.current = pollingInterval as NodeJS.Timeout;
     }
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-    }
-
-    // Inicializar recursos
-    loadMessages(false, true); // Carregar com cache
-    channelRef.current = setupSupabaseListener();
-    startPolling();
 
     return () => {
       if (pollTimeoutRef.current) {
