@@ -5,7 +5,7 @@ import { MessageSquare, Users, BarChart3, Zap, Shield, Globe, Phone, Brain, Mic,
 import { useNavigate } from "react-router-dom";
 import yumerLogo from "@/assets/yumer-logo.png";
 import heroImage from "@/assets/hero-yumerflow.jpg";
-import foundersImage from "@/assets/founders-team.jpg";
+import foundersImage from "/lovable-uploads/a77cb0ed-df85-4dbe-be20-c556ca6b2d3d.png";
 
 const Index = () => {
   const navigate = useNavigate();
