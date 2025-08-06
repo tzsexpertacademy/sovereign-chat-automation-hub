@@ -27,6 +27,11 @@ interface MessagesListProps {
   isFallbackActive?: boolean;
   isCircuitBreakerBlocked?: boolean;
   lastUpdateSource?: 'websocket' | 'supabase' | 'polling';
+  connectionStatus?: {
+    isConnected: boolean;
+    status: 'connected' | 'connecting' | 'disconnected' | 'error';
+    reconnectAttempts: number;
+  };
 }
 
 const MessagesList = memo(({ 
@@ -39,7 +44,8 @@ const MessagesList = memo(({
   wsConnected = false,
   isFallbackActive = false,
   isCircuitBreakerBlocked = false,
-  lastUpdateSource = 'polling'
+  lastUpdateSource = 'polling',
+  connectionStatus
 }: MessagesListProps) => {
   // Log crítico apenas para debug
   const messagesCount = messages.length;
@@ -233,17 +239,22 @@ const MessagesList = memo(({
 
   return (
     <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
-      {/* 📊 STATUS SYNC EM TEMPO REAL */}
-      <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 pb-2 mb-4 z-10">
-        <RealTimeSync
-          wsConnected={wsConnected}
-          isFallbackActive={isFallbackActive}
-          isCircuitBreakerBlocked={isCircuitBreakerBlocked}
-          lastUpdateSource={lastUpdateSource}
-          newMessagesCount={0}
-          lastSyncTime={new Date()}
-        />
-      </div>
+      {/* 📊 STATUS CONEXÃO SIMPLES E DISCRETO */}
+      {connectionStatus && connectionStatus.status !== 'connected' && (
+        <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 pb-2 mb-4 z-10">
+          <div className="flex items-center justify-center gap-2 text-xs text-gray-600">
+            <div className={`w-2 h-2 rounded-full ${
+              connectionStatus.status === 'connecting' ? 'bg-yellow-500 animate-pulse' :
+              connectionStatus.status === 'error' ? 'bg-red-500' : 'bg-gray-400'
+            }`} />
+            <span>
+              {connectionStatus.status === 'connecting' ? 'Conectando...' :
+               connectionStatus.status === 'error' ? `Erro (${connectionStatus.reconnectAttempts}/3)` :
+               'Desconectado'}
+            </span>
+          </div>
+        </div>
+      )}
       
       <div className="space-y-4">
         {/* 🎭 INDICADORES DE PRESENÇA IMEDIATOS */}

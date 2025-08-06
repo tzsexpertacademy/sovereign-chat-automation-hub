@@ -14,7 +14,7 @@ import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
 import PresenceKeepAlive from './chat/PresenceKeepAlive';
-import { RealtimeConnectionMonitor } from './RealtimeConnectionMonitor';
+
 
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
@@ -51,14 +51,15 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     return () => stopMonitoring();
   }, []);
 
-  // Sistema OTIMIZADO Real-Time - Hook único unificado
+  // Sistema OTIMIZADO Real-Time - Hook único unificado 
   const {
     messages,
     isLoading,
     lastUpdateSource,
     reload,
     isRealtimeActive,
-    isPollingActive
+    isPollingActive,
+    connectionStatus
   } = useTicketMessagesUnified({
     ticketId,
     clientId
@@ -466,7 +467,31 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: timestamp
         });
 
-        // ✅ Real-time do Supabase adicionará automaticamente
+        // ✅ Real-time do Supabase adicionará automaticamente - aguardar salvamento
+        try {
+          await savePromise;
+          console.log('✅ [UNIFIED] Mensagem salva no banco com sucesso:', finalMessageId);
+        } catch (saveError) {
+          console.error('❌ [UNIFIED] Erro ao salvar mensagem:', saveError);
+          // Retry uma vez em caso de erro
+          try {
+            await ticketsService.addTicketMessage({
+              ticket_id: ticketId,
+              message_id: `retry_${Date.now()}`,
+              from_me: true,
+              sender_name: 'Atendente',
+              content: messageToSend,
+              message_type: 'text',
+              is_internal_note: false,
+              is_ai_response: false,
+              processing_status: 'completed',
+              timestamp: timestamp
+            });
+            console.log('✅ [UNIFIED] Mensagem salva no retry');
+          } catch (retryError) {
+            console.error('❌ [UNIFIED] Falha total no salvamento:', retryError);
+          }
+        }
         
         // 🚀 AGUARDAR salvamento em paralelo (não bloqueia UI)
         savePromise.then(() => {
@@ -528,25 +553,17 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         enabled={!!(actualInstanceId && ticket?.chat_id)}
       />
       
-      {/* Monitor de conexão realtime */}
-      <div className="px-4 py-2 border-b border-border/40">
-        <RealtimeConnectionMonitor 
-          ticketId={ticketId}
-          className="justify-end"
-        />
-      </div>
-
       <MessagesList
         messages={messages}
         scrollAreaRef={scrollAreaRef}
-        getMessageStatus={(messageId: string) => getMessageStatus(messageId)}
+        getMessageStatus={getMessageStatus}
         ticketId={ticketId}
-        instanceId={ticket?.instance_id}
+        instanceId={actualInstanceId}
         chatId={ticket?.chat_id}
         wsConnected={isRealtimeActive}
-        isFallbackActive={!isRealtimeActive}
-        isCircuitBreakerBlocked={false}
-        lastUpdateSource={lastUpdateSource as any}
+        isFallbackActive={isPollingActive}
+        lastUpdateSource={lastUpdateSource === 'cache' ? 'supabase' : lastUpdateSource}
+        connectionStatus={connectionStatus}
       />
 
       {(isTyping(ticket?.chat_id || '') || isRecording(ticket?.chat_id || '')) && (
