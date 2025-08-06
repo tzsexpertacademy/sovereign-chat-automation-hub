@@ -79,21 +79,49 @@ const AppointmentCalendar: React.FC<AppointmentCalendarProps> = ({
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Agenda de Atendimentos</CardTitle>
-            {onCreateAppointment && (
-              <Button onClick={onCreateAppointment}>
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Agendamento
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-      </Card>
+    <div className="space-y-6">
+      {/* Header Card with Metrics */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
+        <Card className="lg:col-span-3 bg-gradient-to-r from-primary/5 to-secondary/5 border-border/50 backdrop-blur-sm">
+          <CardHeader>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                  Agenda de Atendimentos
+                </CardTitle>
+                <p className="text-muted-foreground mt-1">
+                  Visualize e gerencie seus agendamentos
+                </p>
+              </div>
+              {onCreateAppointment && (
+                <Button 
+                  onClick={onCreateAppointment}
+                  className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Agendamento
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+        </Card>
+        
+        {/* Quick Stats */}
+        <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-border/50">
+          <CardContent className="p-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-accent">
+                {appointments.length}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Agendamentos
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
       
+      {/* Calendar */}
       <SimpleCalendar
         appointments={appointments}
         onDateSelect={handleDateSelect}

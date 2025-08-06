@@ -40,39 +40,53 @@ const SimpleCalendar: React.FC<SimpleCalendarProps> = ({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'confirmed': return 'bg-green-500';
-      case 'cancelled': return 'bg-red-500';
-      case 'completed': return 'bg-gray-500';
-      case 'no_show': return 'bg-yellow-500';
-      default: return 'bg-blue-500';
+      case 'confirmed': return 'bg-green-500 hover:bg-green-600';
+      case 'cancelled': return 'bg-destructive hover:bg-destructive/90';
+      case 'completed': return 'bg-muted-foreground hover:bg-muted-foreground/90';
+      case 'no_show': return 'bg-yellow-500 hover:bg-yellow-600';
+      default: return 'bg-primary hover:bg-primary/90';
     }
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>
+    <Card className="bg-gradient-to-br from-background to-muted/20 border-border/50 backdrop-blur-sm shadow-lg">
+      <CardHeader className="bg-gradient-to-r from-primary/5 to-secondary/5 border-b border-border/50">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <CardTitle className="text-xl font-bold capitalize bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
           </CardTitle>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handlePreviousMonth}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handlePreviousMonth}
+              className="hover:bg-primary/10 hover:text-primary border-border/50 transition-all duration-200"
+            >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" onClick={handleNextMonth}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleNextMonth}
+              className="hover:bg-primary/10 hover:text-primary border-border/50 transition-all duration-200"
+            >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 lg:p-6">
+        {/* Header dos dias */}
         <div className="grid grid-cols-7 gap-1 mb-4">
           {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
-            <div key={day} className="p-2 text-center font-semibold text-sm">
-              {day}
+            <div key={day} className="p-2 text-center font-semibold text-sm text-muted-foreground bg-muted/30 rounded-md">
+              <span className="hidden sm:inline">{day}</span>
+              <span className="sm:hidden">{day.charAt(0)}</span>
             </div>
           ))}
         </div>
+        
+        {/* Grid do calendário */}
         <div className="grid grid-cols-7 gap-1">
           {days.map(day => {
             const dayAppointments = getDayAppointments(day);
@@ -82,13 +96,14 @@ const SimpleCalendar: React.FC<SimpleCalendarProps> = ({
               <div
                 key={day.toString()}
                 className={`
-                  min-h-[80px] p-1 border border-gray-200 cursor-pointer hover:bg-gray-50
-                  ${isToday ? 'bg-blue-50 border-blue-300' : ''}
+                  min-h-[80px] lg:min-h-[100px] p-1 lg:p-2 border border-border/30 cursor-pointer 
+                  hover:bg-primary/5 hover:border-primary/20 rounded-lg transition-all duration-200
+                  ${isToday ? 'bg-primary/10 border-primary/30 shadow-md' : 'bg-background/50'}
                   ${!isSameMonth(day, currentDate) ? 'opacity-30' : ''}
                 `}
                 onClick={() => onDateSelect?.(day)}
               >
-                <div className="text-sm font-medium mb-1">
+                <div className={`text-sm font-medium mb-1 ${isToday ? 'text-primary font-bold' : 'text-foreground'}`}>
                   {format(day, 'd')}
                 </div>
                 <div className="space-y-1">
@@ -96,7 +111,8 @@ const SimpleCalendar: React.FC<SimpleCalendarProps> = ({
                     <div
                       key={appointment.id}
                       className={`
-                        text-xs p-1 rounded text-white cursor-pointer
+                        text-xs p-1 rounded-md text-white cursor-pointer transition-all duration-200
+                        shadow-sm hover:shadow-md transform hover:scale-105
                         ${getStatusColor(appointment.status)}
                       `}
                       onClick={(e) => {
@@ -109,7 +125,7 @@ const SimpleCalendar: React.FC<SimpleCalendarProps> = ({
                     </div>
                   ))}
                   {dayAppointments.length > 3 && (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground bg-muted/50 rounded-md p-1 text-center">
                       +{dayAppointments.length - 3} mais
                     </div>
                   )}
