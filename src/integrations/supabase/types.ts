@@ -755,6 +755,7 @@ export type Database = {
           client_id: string
           closed_at: string | null
           created_at: string
+          current_stage_id: string | null
           custom_fields: Json | null
           customer_id: string | null
           customer_satisfaction_score: number | null
@@ -785,6 +786,7 @@ export type Database = {
           client_id: string
           closed_at?: string | null
           created_at?: string
+          current_stage_id?: string | null
           custom_fields?: Json | null
           customer_id?: string | null
           customer_satisfaction_score?: number | null
@@ -815,6 +817,7 @@ export type Database = {
           client_id?: string
           closed_at?: string | null
           created_at?: string
+          current_stage_id?: string | null
           custom_fields?: Json | null
           customer_id?: string | null
           customer_satisfaction_score?: number | null
@@ -849,6 +852,13 @@ export type Database = {
             columns: ["assigned_queue_id"]
             isOneToOne: false
             referencedRelation: "queues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_tickets_current_stage_id_fkey"
+            columns: ["current_stage_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_stages"
             referencedColumns: ["id"]
           },
           {
