@@ -14,6 +14,7 @@ import MessagesList from './chat/MessagesList';
 import MessageInput from './chat/MessageInput';
 import TypingIndicator from './TypingIndicator';
 import PresenceKeepAlive from './chat/PresenceKeepAlive';
+import { RealtimeConnectionMonitor } from './RealtimeConnectionMonitor';
 
 import { useTicketData } from './chat/useTicketData';
 import { useAudioHandling } from './chat/useAudioHandling';
@@ -50,7 +51,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     return () => stopMonitoring();
   }, []);
 
-  // Sistema 100% Real-Time - Supabase + Optimistic Updates
+  // Sistema OTIMIZADO Real-Time - Hook único unificado
   const {
     messages,
     isLoading,
@@ -527,6 +528,13 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         enabled={!!(actualInstanceId && ticket?.chat_id)}
       />
       
+      {/* Monitor de conexão realtime */}
+      <div className="px-4 py-2 border-b border-border/40">
+        <RealtimeConnectionMonitor 
+          ticketId={ticketId}
+          className="justify-end"
+        />
+      </div>
 
       <MessagesList
         messages={messages}

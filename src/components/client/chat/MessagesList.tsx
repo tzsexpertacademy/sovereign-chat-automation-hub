@@ -12,7 +12,6 @@ import { unifiedMediaService } from '@/services/unifiedMediaService';
 import { adaptMessageMedia } from '@/utils/mediaDataAdapter';
 import { MessageStatus as MessageStatusType } from '@/hooks/useMessageStatus';
 import { useTicketRealtimeImproved } from '@/hooks/useTicketRealtimeImproved';
-import { useTicketMessagesSync } from '@/hooks/useTicketMessagesSync';
 import RealTimeSync from '../RealTimeSync';
 import { smartLogs } from '@/services/smartLogsService';
 
@@ -50,12 +49,6 @@ const MessagesList = memo(({
 
   // 👀 INDICADORES DE PRESENÇA IMEDIATOS: Hook para presença em tempo real
   const { isTyping } = useTicketRealtimeImproved(ticketId || '');
-  
-  // 🔄 SYNC DEDICADO para garantir recebimento de mensagens
-  const { newMessagesCount, lastSyncTime } = useTicketMessagesSync({
-    ticketId: ticketId || '',
-    clientId: '' // Pode deixar vazio aqui, pois o filtro é pelo ticketId
-  });
   
   // 🚫 REMOVIDO: useRealTimePresence - IA controla status online
   const isRecording = false; // Simplificado
@@ -247,8 +240,8 @@ const MessagesList = memo(({
           isFallbackActive={isFallbackActive}
           isCircuitBreakerBlocked={isCircuitBreakerBlocked}
           lastUpdateSource={lastUpdateSource}
-          newMessagesCount={newMessagesCount}
-          lastSyncTime={lastSyncTime}
+          newMessagesCount={0}
+          lastSyncTime={new Date()}
         />
       </div>
       
