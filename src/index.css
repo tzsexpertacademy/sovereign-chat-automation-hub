@@ -6,26 +6,26 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 223 47% 11%;
+    --card-foreground: 213 31% 91%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 223 47% 11%;
+    --popover-foreground: 213 31% 91%;
 
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 263 100% 50%;
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 322 100% 50%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 223 47% 11%;
+    --muted-foreground: 215.4 16.3% 56.9%;
 
-    --accent: 142.1 76.2% 36.3%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 263 100% 50%;
+    --accent-foreground: 210 40% 98%;
 
     --success: 142.1 76.2% 36.3%;
     --success-foreground: 0 0% 100%;
@@ -33,36 +33,46 @@
     --warning: 35.5 91.7% 32.9%;
     --warning-foreground: 0 0% 100%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(217.2 91.2% 59.8%), hsl(224.3 76.3% 48%));
+    /* YumerFlow Brand Colors */
+    --yumer-purple: 263 100% 50%;
+    --yumer-fuchsia: 322 100% 50%;
+    --yumer-dark: 224 71% 4%;
+    --yumer-light: 213 31% 91%;
+
+    /* Enhanced Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--yumer-purple)), hsl(var(--yumer-fuchsia)));
+    --gradient-hero: linear-gradient(135deg, hsl(var(--yumer-dark)), hsl(var(--yumer-purple) / 0.8));
+    --gradient-card: linear-gradient(145deg, hsl(var(--card)), hsl(var(--muted)));
+    --gradient-neon: linear-gradient(90deg, hsl(var(--yumer-purple)), hsl(var(--yumer-fuchsia)));
     --gradient-secondary: linear-gradient(135deg, hsl(142.1 76.2% 36.3%), hsl(122.1 39.4% 49%));
     
-    --shadow-glow: 0 10px 30px -10px hsl(217.2 91.2% 59.8% / 0.3);
-    --shadow-elegant: 0 4px 20px -4px hsl(0 0% 0% / 0.1);
+    /* Enhanced Shadows */
+    --shadow-elegant: 0 10px 30px -10px hsl(var(--yumer-purple) / 0.3);
+    --shadow-glow: 0 0 40px hsl(var(--yumer-fuchsia) / 0.4);
+    --shadow-card: 0 8px 32px -8px hsl(var(--yumer-purple) / 0.2);
+    --shadow-neon: 0 0 20px hsl(var(--yumer-purple) / 0.5);
+
+    /* Enhanced Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 223 47% 11%;
+    --input: 223 47% 11%;
+    --ring: 263 100% 50%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 224 71% 4%;
+    --sidebar-foreground: 213 31% 91%;
+    --sidebar-primary: 263 100% 50%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 223 47% 11%;
+    --sidebar-accent-foreground: 213 31% 91%;
+    --sidebar-border: 223 47% 11%;
+    --sidebar-ring: 263 100% 50%;
   }
 
   .dark {
