@@ -121,7 +121,7 @@ const TicketChatInterface = memo(({ clientId, ticketId }: TicketChatInterfacePro
         duration, 
         ticket, 
         actualInstanceId, 
-        markActivity
+        () => console.log('Activity marked')
       );
   };
 
@@ -264,7 +264,7 @@ const TicketChatInterface = memo(({ clientId, ticketId }: TicketChatInterfacePro
         <MessagesList
           messages={allMessages}
           scrollAreaRef={scrollAreaRef}
-          getMessageStatus={getMessageStatus}
+          getMessageStatus={() => 'sent'}
           ticketId={ticketId}
           instanceId={actualInstanceId}
           chatId={ticket?.chat_id}
