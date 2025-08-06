@@ -69,38 +69,32 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
     });
   }, []);
 
-  // Função ULTRA-OTIMIZADA para adicionar mensagem sem duplicatas
+  // Função ULTRA-RIGOROSA anti-duplicação
   const addMessageSafely = useCallback((newMessage: TicketMessage, source: 'cache' | 'supabase' | 'polling') => {
     setMessages(prev => {
-      // VERIFICAÇÃO RIGOROSA DE DUPLICATAS
-      const messageKey = `${newMessage.message_id}_${newMessage.content.substring(0, 50)}`;
-      const messageTimestamp = new Date(newMessage.timestamp).getTime();
-      
-      // 1. Verificação O(1) com Set
+      // 1. VERIFICAÇÃO PRIMÁRIA por message_id (O(1))
       if (messageIdsRef.current.has(newMessage.message_id)) {
-        return prev; // Duplicata ignorada
+        return prev;
       }
 
-      // 2. Verificação por conteúdo e timestamp (mais rigorosa)
-      const existingTimestamp = duplicateCheckRef.current.get(messageKey);
-      if (existingTimestamp && Math.abs(messageTimestamp - existingTimestamp) < 5000) {
-        return prev; // Duplicata por conteúdo
+      // 2. VERIFICAÇÃO SECUNDÁRIA por ID do banco (para casos edge)
+      if (prev.some(msg => msg.id === newMessage.id)) {
+        return prev;
       }
 
-      // 3. Verificação final por database ID (para casos raros)
-      const exists = prev.some(msg => 
-        (msg.id === newMessage.id) || 
-        (msg.content === newMessage.content && 
-         Math.abs(new Date(msg.timestamp).getTime() - messageTimestamp) < 3000)
+      // 3. VERIFICAÇÃO TERCIÁRIA por conteúdo + timestamp (anti-duplicação total)
+      const messageTimestamp = new Date(newMessage.timestamp).getTime();
+      const contentMatch = prev.find(msg => 
+        msg.content === newMessage.content && 
+        Math.abs(new Date(msg.timestamp).getTime() - messageTimestamp) < 2000
       );
       
-      if (exists) {
+      if (contentMatch) {
         return prev;
       }
 
       // Registrar mensagem nos caches
       messageIdsRef.current.add(newMessage.message_id);
-      duplicateCheckRef.current.set(messageKey, messageTimestamp);
       setLastUpdateSource(source);
       
       const updated = [...prev, newMessage].sort((a, b) => 
@@ -109,11 +103,6 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
       
       // Atualizar cache local
       setCachedMessages(ticketId, updated);
-      
-      // Log apenas para novos casos críticos
-      if (source === 'supabase') {
-        console.log('📨 [UNIFIED] Nova mensagem real-time:', newMessage.message_id);
-      }
       
       return updated;
     });
@@ -178,100 +167,81 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
     }
   }, [ticketId, getCachedMessages, setCachedMessages, addMessageSafely]);
 
-  // Listener Supabase ULTRA-OTIMIZADO - sem debounce para mensagens instantâneas
+  // Listener Supabase ULTRA-ESTÁVEL - conexão única e confiável
   const setupSupabaseListener = useCallback(() => {
     if (!ticketId) return null;
     
-    let reconnectAttempts = 0;
-    const maxReconnects = 3;
-    
-    const createChannel = () => {
-      const channel = supabase
-        .channel(`unified-${ticketId}-${Date.now()}`, {
-          config: {
-            presence: { key: 'ticket_messages' },
-            broadcast: { self: true }
-          }
-        })
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'ticket_messages',
-            filter: `ticket_id=eq.${ticketId}`
-          },
-          (payload) => {
-            // SEM DEBOUNCE - mensagens aparecem instantaneamente
-            if (payload.eventType === 'INSERT' && payload.new) {
-              const newMessage = payload.new as TicketMessage;
-              
-              if (!messageIdsRef.current.has(newMessage.message_id)) {
-                addMessageSafely(newMessage, 'supabase');
-                setConnectionStatus(prev => ({
-                  ...prev,
-                  isConnected: true,
-                  lastUpdate: Date.now(),
-                  status: 'connected',
-                  reconnectAttempts: 0
-                }));
-              }
-            } else if (payload.eventType === 'UPDATE' && payload.new) {
-              const updatedMessage = payload.new as TicketMessage;
-              setMessages(prev => 
-                prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
-              );
-              setLastUpdateSource('supabase');
-            }
+    const channel = supabase
+      .channel(`ticket-messages-${ticketId}`, {
+        config: {
+          presence: { key: 'ticket_messages' }
+        }
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'ticket_messages',
+          filter: `ticket_id=eq.${ticketId}`
+        },
+        (payload) => {
+          if (payload.new) {
+            const newMessage = payload.new as TicketMessage;
             
-            lastLoadRef.current = Date.now();
-            reconnectAttempts = 0;
-          }
-        )
-        .subscribe((status) => {
-          console.log(`🔗 [UNIFIED] Canal status: ${status} para ticket: ${ticketId}`);
-          
-          if (status === 'SUBSCRIBED') {
-            setConnectionStatus(prev => ({
-              ...prev,
-              isConnected: true,
-              status: 'connected',
-              reconnectAttempts: 0
-            }));
-          } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
-            setConnectionStatus(prev => ({
-              ...prev,
-              isConnected: false,
-              status: 'error',
-              reconnectAttempts: prev.reconnectAttempts + 1
-            }));
-            
-            if (reconnectAttempts < maxReconnects) {
-              reconnectAttempts++;
-              const delay = Math.min(2000 * reconnectAttempts, 8000);
-              setTimeout(() => {
-                if (currentTicketRef.current === ticketId) {
-                  console.log(`🔄 [UNIFIED] Reconectando canal... tentativa ${reconnectAttempts}`);
-                  supabase.removeChannel(channel);
-                  channelRef.current = createChannel();
-                }
-              }, delay);
+            // VERIFICAÇÃO RIGOROSA DE DUPLICATAS - instantânea
+            if (!messageIdsRef.current.has(newMessage.message_id)) {
+              addMessageSafely(newMessage, 'supabase');
+              setConnectionStatus(prev => ({
+                ...prev,
+                isConnected: true,
+                lastUpdate: Date.now(),
+                status: 'connected',
+                reconnectAttempts: 0
+              }));
             }
-          } else {
-            setConnectionStatus(prev => ({
-              ...prev,
-              status: 'connecting'
-            }));
           }
-        });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'ticket_messages',
+          filter: `ticket_id=eq.${ticketId}`
+        },
+        (payload) => {
+          if (payload.new) {
+            const updatedMessage = payload.new as TicketMessage;
+            setMessages(prev => 
+              prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
+            );
+            setLastUpdateSource('supabase');
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus({
+            isConnected: true,
+            lastUpdate: Date.now(),
+            status: 'connected',
+            reconnectAttempts: 0
+          });
+        } else if (status === 'CHANNEL_ERROR') {
+          setConnectionStatus(prev => ({
+            ...prev,
+            isConnected: false,
+            status: 'error'
+          }));
+        }
+      });
       
-      return channel;
-    };
-
-    return createChannel();
+    return channel;
   }, [ticketId, addMessageSafely]);
 
-  // Polling backup INTELIGENTE - apenas quando necessário
+  // Polling backup SIMPLIFICADO - apenas emergencial
   const startPolling = useCallback(() => {
     if (pollTimeoutRef.current) {
       clearTimeout(pollTimeoutRef.current);
@@ -280,14 +250,13 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
     pollTimeoutRef.current = setTimeout(() => {
       const timeSinceLastLoad = Date.now() - lastLoadRef.current;
       
-      // Smart polling: apenas se realtime falhou por mais de 45s
-      if (timeSinceLastLoad > 45000 && currentTicketRef.current === ticketId) {
-        console.log('🔄 [UNIFIED] Polling de backup ativado (realtime inativo)');
+      // Polling emergencial: apenas se realtime falhou por mais de 120s
+      if (timeSinceLastLoad > 120000 && currentTicketRef.current === ticketId) {
         loadMessages(true, false);
       }
       
       startPolling();
-    }, 180000); // Reduzido sobrecarga: 3 minutos
+    }, 300000); // 5 minutos - reduzido drasticamente
   }, [ticketId, loadMessages]);
 
   // Effect principal

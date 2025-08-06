@@ -467,17 +467,25 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
           timestamp: timestamp
         });
 
-        // ✅ Real-time do Supabase adicionará automaticamente - aguardar salvamento
+        // ✅ SALVAMENTO CONFIÁVEL com retry automático
         try {
           await savePromise;
           console.log('✅ [UNIFIED] Mensagem salva no banco com sucesso:', finalMessageId);
+          
+          toast({
+            title: "✅ Mensagem Enviada",
+            description: "Mensagem enviada e salva com sucesso!",
+            variant: "default"
+          });
         } catch (saveError) {
-          console.error('❌ [UNIFIED] Erro ao salvar mensagem:', saveError);
-          // Retry uma vez em caso de erro
+          console.error('❌ [UNIFIED] Erro ao salvar - tentando retry...');
+          
+          // RETRY AUTOMÁTICO uma vez
           try {
+            await new Promise(resolve => setTimeout(resolve, 1000));
             await ticketsService.addTicketMessage({
               ticket_id: ticketId,
-              message_id: `retry_${Date.now()}`,
+              message_id: finalMessageId + '_retry',
               from_me: true,
               sender_name: 'Atendente',
               content: messageToSend,
@@ -487,9 +495,20 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
               processing_status: 'completed',
               timestamp: timestamp
             });
-            console.log('✅ [UNIFIED] Mensagem salva no retry');
+            
+            console.log('✅ [RETRY] Mensagem salva com sucesso no retry');
+            toast({
+              title: "✅ Mensagem Enviada",
+              description: "Mensagem enviada e salva com sucesso (retry)!",
+              variant: "default"
+            });
           } catch (retryError) {
-            console.error('❌ [UNIFIED] Falha total no salvamento:', retryError);
+            console.error('❌ [RETRY] Falha final:', retryError);
+            toast({
+              title: "⚠️ Atenção",
+              description: "Mensagem enviada mas pode não ter sido salva no histórico.",
+              variant: "destructive"
+            });
           }
         }
         

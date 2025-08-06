@@ -239,22 +239,6 @@ const MessagesList = memo(({
 
   return (
     <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
-      {/* 📊 STATUS CONEXÃO SIMPLES E DISCRETO */}
-      {connectionStatus && connectionStatus.status !== 'connected' && (
-        <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 pb-2 mb-4 z-10">
-          <div className="flex items-center justify-center gap-2 text-xs text-gray-600">
-            <div className={`w-2 h-2 rounded-full ${
-              connectionStatus.status === 'connecting' ? 'bg-yellow-500 animate-pulse' :
-              connectionStatus.status === 'error' ? 'bg-red-500' : 'bg-gray-400'
-            }`} />
-            <span>
-              {connectionStatus.status === 'connecting' ? 'Conectando...' :
-               connectionStatus.status === 'error' ? `Erro (${connectionStatus.reconnectAttempts}/3)` :
-               'Desconectado'}
-            </span>
-          </div>
-        </div>
-      )}
       
       <div className="space-y-4">
         {/* 🎭 INDICADORES DE PRESENÇA IMEDIATOS */}
