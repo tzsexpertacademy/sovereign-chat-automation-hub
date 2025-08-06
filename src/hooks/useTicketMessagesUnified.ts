@@ -67,48 +67,38 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
     });
   }, []);
 
-  // 🎯 ANTI-DUPLICAÇÃO OTIMIZADA - O(1) performance + verificação rigorosa
+  // 🎯 DEDUPLICAÇÃO ULTRA-OTIMIZADA - O(1) performance
   const addMessageSafely = useCallback((newMessage: TicketMessage, source: 'cache' | 'supabase' | 'polling') => {
     setMessages(prevMessages => {
-      // Cache de IDs para verificação O(1)
-      const existingIds = new Set(prevMessages.map(m => m.id));
-      const existingMessageIds = new Set(prevMessages.map(m => m.message_id));
-      
-      // 1. Verificação O(1) por ID único
-      if (existingIds.has(newMessage.id)) {
+      // Set de IDs para verificação O(1) - SUPER RÁPIDO
+      if (messageIdsRef.current.has(newMessage.message_id)) {
         return prevMessages;
       }
 
-      // 2. Verificação O(1) por message_id
-      if (existingMessageIds.has(newMessage.message_id)) {
+      // Verificação adicional por ID único do banco
+      const hasDbId = prevMessages.some(m => m.id === newMessage.id);
+      if (hasDbId) {
         return prevMessages;
       }
 
-      // 3. Verificação por conteúdo + timestamp (apenas se necessário)
-      const messageTime = new Date(newMessage.timestamp).getTime();
-      const isDuplicate = prevMessages.some(msg => {
-        if (msg.content !== newMessage.content || msg.from_me !== newMessage.from_me) return false;
-        const timeDiff = Math.abs(messageTime - new Date(msg.timestamp).getTime());
-        return timeDiff <= 1000; // 1 segundo de tolerância
-      });
+      // ✅ ADICIONAR mensagem aprovada + atualizar cache de IDs
+      messageIdsRef.current.add(newMessage.message_id);
       
-      if (isDuplicate) return prevMessages;
-
-      // ✅ ADICIONAR mensagem aprovada
       return [...prevMessages, newMessage].sort((a, b) => 
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
     });
   }, []);
 
-  // 🚀 CARREGAMENTO ULTRA OTIMIZADO com cache inteligente
+  // 🚀 CARREGAMENTO OTIMIZADO - cache inteligente sem overhead
   const loadMessages = useCallback(async (isPolling = false, useCache = true) => {
     try {
-      // Cache hit - retorno instantâneo
+      // Cache hit - retorno instantâneo apenas no carregamento inicial
       if (useCache && !isPolling) {
         const cached = getCachedMessages(ticketId);
         if (cached) {
-          cached.forEach(msg => addMessageSafely(msg, 'cache'));
+          setMessages(cached.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
+          cached.forEach(msg => messageIdsRef.current.add(msg.message_id));
           setLastUpdateSource('cache');
           return;
         }
@@ -121,28 +111,30 @@ export const useTicketMessagesUnified = ({ ticketId, clientId }: TicketMessagesU
         .order('timestamp', { ascending: true });
 
       if (error) {
-        setConnectionStatus(prev => ({ ...prev, isConnected: false, reconnectAttempts: prev.reconnectAttempts + 1 }));
+        setConnectionStatus(prev => ({ ...prev, isConnected: false }));
         return;
       }
 
       if (data) {
-        // Cache apenas em carregamento completo
         if (!isPolling) {
+          // Carregamento inicial completo
           setCachedMessages(ticketId, data);
-          setMessages(data.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
+          setMessages(data);
+          messageIdsRef.current.clear();
+          data.forEach(msg => messageIdsRef.current.add(msg.message_id));
           setLastUpdateSource('supabase');
         } else {
-          // Polling: apenas novas mensagens
+          // Polling: adicionar apenas novas
           data.forEach(msg => addMessageSafely(msg, 'polling'));
           setLastUpdateSource('polling');
         }
       }
 
-      setConnectionStatus(prev => ({ ...prev, isConnected: true, lastUpdate: Date.now(), reconnectAttempts: 0 }));
+      setConnectionStatus(prev => ({ ...prev, isConnected: true, lastUpdate: Date.now() }));
 
     } catch (error) {
-      console.error('❌ [TICKET-MSG] Erro no carregamento:', error);
-      setConnectionStatus(prev => ({ ...prev, isConnected: false, reconnectAttempts: prev.reconnectAttempts + 1 }));
+      console.error('❌ [TICKET-MSG] Erro:', error);
+      setConnectionStatus(prev => ({ ...prev, isConnected: false }));
     }
   }, [ticketId, addMessageSafely, getCachedMessages, setCachedMessages]);
 

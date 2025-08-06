@@ -10,6 +10,7 @@ import yumerApiV2Service from "./yumerApiV2Service";
 import { businessTokenService } from "./businessTokenService";
 import { smartLogs } from "./smartLogsService";
 import { messageChunksService, type ChunkedMessageOptions, type ChunkedMessageResult } from "./messageChunksService";
+import { messageAutoSaver } from "./messageAutoSaver";
 
 export interface UnifiedMessageOptions {
   instanceId: string;
@@ -73,9 +74,21 @@ class UnifiedMessageService {
 
       smartLogs.info('MESSAGE', 'Mensagem enviada com sucesso', { messageId: result.key?.id });
 
+      const messageId = result.key?.id || `unified_msg_${Date.now()}`;
+
+      // 💾 AUTO-SALVAMENTO se for mensagem manual
+      if (options.source === 'manual' && options.clientId) {
+        try {
+          await this.autoSaveMessage(options, messageId);
+        } catch (saveError) {
+          smartLogs.warn('MESSAGE', 'Erro no auto-salvamento', { saveError });
+          // Não falhar o envio por erro de salvamento
+        }
+      }
+
       return {
         success: true,
-        messageId: result.key?.id || `unified_msg_${Date.now()}`,
+        messageId,
         timestamp: Date.now(),
         details: result
       };
@@ -228,6 +241,41 @@ class UnifiedMessageService {
       source: 'manual',
       humanized: false,
       delay: 0
+    });
+  }
+
+  /**
+   * AUTO-SALVAMENTO INTELIGENTE DE MENSAGENS
+   */
+  private async autoSaveMessage(options: UnifiedMessageOptions, messageId: string): Promise<void> {
+    if (!options.clientId) return;
+
+    // Buscar ticket relacionado ao chat
+    const { data: ticket } = await supabase
+      .from('conversation_tickets')
+      .select('id')
+      .eq('client_id', options.clientId)
+      .eq('chat_id', options.chatId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!ticket) {
+      smartLogs.warn('MESSAGE', 'Ticket não encontrado para auto-save', {
+        chatId: options.chatId,
+        clientId: options.clientId
+      });
+      return;
+    }
+
+    await messageAutoSaver.smartSave({
+      ticketId: ticket.id,
+      messageId,
+      content: options.message,
+      fromMe: true,
+      senderName: 'Você',
+      messageType: 'text',
+      isAiResponse: false
     });
   }
 

@@ -139,8 +139,8 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
     if (!ticket || !actualInstanceId) {
       toast({
-        title: "❌ Erro de Conexão",
-        description: "Instância WhatsApp não conectada ou ticket inválido.",
+        title: "❌ Erro",
+        description: "Conexão não estabelecida",
         variant: "destructive"
       });
       return;
@@ -150,9 +150,9 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     const messageId = `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date().toISOString();
     
-    // 🚀 OPTIMISTIC UI: Adicionar mensagem instantaneamente
+    // 🚀 OPTIMISTIC UI SIMPLIFICADO: Adicionar mensagem instantaneamente
     const optimisticMessage: TicketMessage = {
-      id: `opt_${messageId}`,
+      id: messageId,
       ticket_id: ticketId,
       message_id: messageId,
       from_me: true,
@@ -169,44 +169,19 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
 
     setOptimisticMessages(prev => [...prev, optimisticMessage]);
     setNewMessage('');
-    scrollToBottom();
     
     try {
-      // Debug commands - importação dinâmica para não afetar bundle
-      if (content.startsWith('/debugbloco')) {
+      // Debug commands - bypass para edge functions
+      if (content.startsWith('/debug')) {
         const { debugBlocoService } = await import('@/services/debugBlocoService');
         await debugBlocoService.handleDebugCommand(ticketId, clientId, actualInstanceId, ticket.chat_id);
         setOptimisticMessages(prev => prev.filter(m => m.message_id !== messageId));
         return;
       }
-      
-      if (content.startsWith('/debugaudio')) {
-        const { debugAudioService } = await import('@/services/debugAudioService');
-        await debugAudioService.handleDebugCommand(ticketId, clientId, actualInstanceId, ticket.chat_id);
-        setOptimisticMessages(prev => prev.filter(m => m.message_id !== messageId));
-        return;
-      }
 
-      if (content.startsWith('/debugaudiolib')) {
-        const { debugAudioService } = await import('@/services/debugAudioService');
-        await debugAudioService.handleDebugAudioLibraryCommand(ticketId, clientId, actualInstanceId, ticket.chat_id);
-        setOptimisticMessages(prev => prev.filter(m => m.message_id !== messageId));
-        return;
-      }
-
-      // 🎯 ATUALIZAR STATUS: sending → sent
-      setOptimisticMessages(prev => 
-        prev.map(m => m.message_id === messageId 
-          ? { ...m, processing_status: 'sent' } 
-          : m
-        )
-      );
-
-      // Comandos de bypass direto para Edge Function
-      if (content.includes('faça um audio') || content.includes('faca um audio') || content.includes('grave um áudio')) {
-        console.log('🎵 [BYPASS] Comando de áudio detectado - enviando direto para IA');
-        
-        const { error } = await supabase.functions.invoke('ai-assistant-process', {
+      // Comandos de AI diretos para Edge Function
+      if (content.includes('faça um audio') || content.includes('analise a imagem')) {
+        await supabase.functions.invoke('ai-assistant-process', {
           body: {
             chatId: ticket.chat_id,
             instanceId: actualInstanceId,
@@ -215,67 +190,16 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
             messageId,
             timestamp: Date.now(),
             fromMe: true,
-            pushName: 'Manual',
-            command: 'audio_generation'
+            pushName: 'Manual'
           }
         });
-
-        if (error) {
-          console.error('❌ [BYPASS] Erro na edge function:', error);
-          toast({
-            title: "❌ Erro",
-            description: "Erro ao processar comando de áudio",
-            variant: "destructive"
-          });
-          setOptimisticMessages(prev => prev.filter(m => m.message_id !== messageId));
-        } else {
-          console.log('✅ [BYPASS] Comando de áudio enviado para processamento');
-          toast({
-            title: "✅ Sucesso",
-            description: "Comando enviado para processamento",
-            variant: "default"
-          });
-        }
-        return;
-      }
-
-      if (content.includes('analise a imagem') || content.includes('analise essa imagem') || content.includes('descreva a imagem')) {
-        console.log('📷 [BYPASS] Comando de análise de imagem detectado');
         
-        const { error } = await supabase.functions.invoke('ai-assistant-process', {
-          body: {
-            chatId: ticket.chat_id,
-            instanceId: actualInstanceId,
-            clientId,
-            content,
-            messageId,
-            timestamp: Date.now(),
-            fromMe: true,
-            pushName: 'Manual',
-            command: 'image_analysis'
-          }
-        });
-
-        if (error) {
-          console.error('❌ [BYPASS] Erro na edge function:', error);
-          toast({
-            title: "❌ Erro",
-            description: "Erro ao processar comando de imagem",
-            variant: "destructive"
-          });
-          setOptimisticMessages(prev => prev.filter(m => m.message_id !== messageId));
-        } else {
-          console.log('✅ [BYPASS] Comando de imagem enviado para processamento');
-          toast({
-            title: "✅ Sucesso",
-            description: "Comando enviado para processamento",
-            variant: "default"
-          });
-        }
+        setOptimisticMessages(prev => prev.filter(m => m.message_id !== messageId));
+        toast({ title: "✅ Sucesso", description: "Comando enviado para processamento" });
         return;
       }
 
-      // 🚀 ENVIO OTIMIZADO: usar sempre unifiedMessageService
+      // 🚀 ENVIO ÚNICO VIA UNIFIED SERVICE - sem salvamento duplo
       const result = await unifiedMessageService.sendSmartMessage(
         actualInstanceId,
         ticket.chat_id,
@@ -283,90 +207,29 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
         clientId,
         ticket.assigned_assistant_id || undefined,
         {
-          onProgress: (sent, total) => {
-            console.log(`📊 Progresso: ${sent}/${total} blocos enviados`);
-          },
-          onTypingStart: () => {
-            startTyping?.(ticket.chat_id);
-          },
-          onTypingStop: () => {
-            stopTyping?.(ticket.chat_id);
-          }
+          onTypingStart: () => startTyping?.(ticket.chat_id),
+          onTypingStop: () => stopTyping?.(ticket.chat_id)
         }
       );
 
       if (!result.success) {
-        throw new Error(result.errors?.[0] || 'Erro no envio da mensagem');
+        throw new Error(result.errors?.[0] || 'Erro no envio');
       }
 
-      // 🎯 ATUALIZAR STATUS: sent → saved
+      // ✅ ATUALIZAR STATUS OPTIMISTIC
       setOptimisticMessages(prev => 
         prev.map(m => m.message_id === messageId 
-          ? { ...m, processing_status: 'saved' } 
+          ? { ...m, processing_status: 'sent', message_id: result.messageIds?.[0] || messageId } 
           : m
         )
       );
 
-      console.log('✅ [CHAT-INTERFACE] Mensagem enviada via unifiedMessageService:', result);
-
-      // 💾 SALVAMENTO UNIFICADO (sem duplicação, com retry robusto)
-      let saveAttempts = 0;
-      const maxRetries = 3;
-      
-      while (saveAttempts < maxRetries) {
-        try {
-          const savedMessage = await ticketsService.addTicketMessage({
-            ticket_id: ticketId,
-            message_id: result.messageIds?.[0] || messageId, // Usar ID real se disponível
-            from_me: true,
-            sender_name: 'Você',
-            content,
-            message_type: audioBlob ? 'audio' : 'text',
-            timestamp,
-            is_internal_note: false,
-            is_ai_response: false,
-            processing_status: 'processed',
-            media_duration: audioDuration
-          });
-
-          console.log('💾 [CHAT-INTERFACE] Mensagem salva no banco:', savedMessage);
-          break; // Sucesso, sair do loop
-          
-        } catch (saveError) {
-          saveAttempts++;
-          console.error(`❌ [CHAT-INTERFACE] Erro ao salvar (tentativa ${saveAttempts}/${maxRetries}):`, saveError);
-          
-          if (saveAttempts >= maxRetries) {
-            console.error('❌ [CHAT-INTERFACE] Falha definitiva no salvamento após todas as tentativas');
-            // Marcar mensagem como erro mas não falhar o envio
-            setOptimisticMessages(prev => 
-              prev.map(m => m.message_id === messageId 
-                ? { ...m, processing_status: 'error' } 
-                : m
-              )
-            );
-            toast({
-              title: "❌ Erro",
-              description: "Mensagem enviada mas erro no salvamento",
-              variant: "destructive"
-            });
-          } else {
-            // Aguardar antes da próxima tentativa (backoff exponencial)
-            await new Promise(resolve => setTimeout(resolve, saveAttempts * 1000));
-          }
-        }
-      }
-
-      toast({
-        title: "✅ Sucesso",
-        description: "Mensagem enviada",
-        variant: "default"
-      });
+      toast({ title: "✅ Sucesso", description: "Mensagem enviada" });
 
     } catch (error) {
-      console.error('❌ [CHAT-INTERFACE] Erro ao enviar mensagem:', error);
+      console.error('❌ [CHAT] Erro:', error);
       
-      // 🚨 ROLLBACK: Remover mensagem optimística em caso de erro
+      // 🚨 ROLLBACK OPTIMISTIC
       setOptimisticMessages(prev => prev.filter(m => m.message_id !== messageId));
       
       toast({
@@ -377,7 +240,7 @@ const TicketChatInterface = ({ clientId, ticketId }: TicketChatInterfaceProps) =
     } finally {
       setIsSending(false);
     }
-  }, [newMessage, ticketId, clientId, ticket, actualInstanceId, toast, scrollToBottom, startTyping, stopTyping]);
+  }, [newMessage, ticketId, clientId, ticket, actualInstanceId, toast, startTyping, stopTyping]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

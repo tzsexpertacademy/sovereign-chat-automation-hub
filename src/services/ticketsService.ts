@@ -105,21 +105,28 @@ class TicketsService {
 
   async addTicketMessage(message: Partial<TicketMessage>): Promise<TicketMessage> {
     try {
-      // 🎯 ANTI-DUPLICAÇÃO: Verificar se message_id já existe
+      // 🎯 DEDUPLICAÇÃO RIGOROSA: Verificar se message_id já existe
       if (message.message_id) {
         const { data: existing } = await supabase
           .from('ticket_messages')
           .select('id')
           .eq('message_id', message.message_id)
-          .single();
+          .maybeSingle();
         
         if (existing) {
-          console.log(`🔒 [TICKETS-SERVICE] Mensagem já existe: ${message.message_id}`);
-          throw new Error('Mensagem já existe');
+          console.log(`🔒 [TICKETS] Duplicata detectada: ${message.message_id}`);
+          // Buscar mensagem completa para retorno correto
+          const { data: fullMessage } = await supabase
+            .from('ticket_messages')
+            .select('*')
+            .eq('message_id', message.message_id)
+            .single();
+          
+          return fullMessage; // Retornar mensagem completa
         }
       }
 
-      // 🚀 DADOS OTIMIZADOS para salvamento
+      // 🚀 ESTRUTURA LIMPA para salvamento
       const messageData = {
         content: message.content || '',
         ticket_id: message.ticket_id || '',
@@ -131,15 +138,9 @@ class TicketsService {
         is_internal_note: message.is_internal_note || false,
         is_ai_response: message.is_ai_response || false,
         processing_status: message.processing_status || 'processed',
-        // Campos de mídia opcionais
         media_url: message.media_url || null,
-        media_key: message.media_key || null,
-        file_enc_sha256: message.file_enc_sha256 || null,
-        media_mime_type: message.media_mime_type || null,
         media_duration: message.media_duration || null,
-        audio_base64: message.audio_base64 || null,
-        media_transcription: message.media_transcription || null,
-        ai_confidence_score: message.ai_confidence_score || null
+        audio_base64: message.audio_base64 || null
       };
 
       const { data, error } = await supabase
@@ -150,10 +151,10 @@ class TicketsService {
 
       if (error) throw error;
       
-      console.log(`💾 [TICKETS-SERVICE] Mensagem salva: ${data.message_id}`);
+      console.log(`💾 [TICKETS] Salvo: ${data.message_id}`);
       return data;
     } catch (error) {
-      console.error('❌ [TICKETS-SERVICE] Erro ao salvar mensagem:', error);
+      console.error('❌ [TICKETS] Erro:', error);
       throw error;
     }
   }
