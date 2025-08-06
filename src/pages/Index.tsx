@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageSquare, Users, BarChart3, Zap, Shield, Globe, Phone, Brain, Mic, Calendar, Settings, TrendingUp, Heart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import VoiceCloningSection from "@/components/yumerflow/VoiceCloningSection";
+import SmartSchedulingSection from "@/components/yumerflow/SmartSchedulingSection";
+import AdaptableCRMSection from "@/components/yumerflow/AdaptableCRMSection";
+import AutomatedCampaignsSection from "@/components/yumerflow/AutomatedCampaignsSection";
+import RealResultsSection from "@/components/yumerflow/RealResultsSection";
+import HumanSupportSection from "@/components/yumerflow/HumanSupportSection";
 import yumerLogo from "@/assets/yumer-logo.png";
 import heroImage from "@/assets/hero-yumerflow.jpg";
 import foundersImage from "/lovable-uploads/a77cb0ed-df85-4dbe-be20-c556ca6b2d3d.png";
@@ -81,6 +87,14 @@ const Index = () => {
           </a>
         </div>
       </section>
+
+      {/* Import Components */}
+      <VoiceCloningSection />
+      <SmartSchedulingSection />
+      <AdaptableCRMSection />
+      <AutomatedCampaignsSection />
+      <RealResultsSection />
+      <HumanSupportSection />
 
       {/* IA Humanizada Section */}
       <section id="ia-humanizada" className="py-20 px-6 bg-gradient-to-r from-gray-900 to-black">
