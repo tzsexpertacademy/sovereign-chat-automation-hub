@@ -38,20 +38,25 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
   const { triggers, setTriggers, saveTriggers, loading, refetch } = useQueueTriggers(selectedQueue || undefined);
   const { stats: triggersStats } = useQueueTriggersStats(queues);
 
-  // Auto-selecionar primeira fila com gatilhos
+  // Auto-selecionar primeira fila com gatilhos OU primeira fila disponível
   React.useEffect(() => {
-    if (!selectedQueue && queues.length > 0) {
-      // Procurar primeira fila com gatilhos
+    if (!selectedQueue && queues.length > 0 && !loading) {
+      // Primeiro: procurar fila com gatilhos
       const queueWithTriggers = queues.find(queue => {
         const triggers = (queue.handoff_triggers as unknown as HandoffTrigger[]) || [];
         return triggers.length > 0;
       });
       
       if (queueWithTriggers) {
+        console.log('Auto-selecionando fila com gatilhos:', queueWithTriggers.name);
         setSelectedQueue(queueWithTriggers.id);
+      } else if (queues.length > 0) {
+        // Fallback: selecionar primeira fila disponível
+        console.log('Auto-selecionando primeira fila disponível:', queues[0].name);
+        setSelectedQueue(queues[0].id);
       }
     }
-  }, [queues, selectedQueue]);
+  }, [queues, selectedQueue, loading]);
 
   const handleSaveTriggers = async () => {
     await saveTriggers(triggers);
@@ -130,16 +135,33 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {totalActiveTriggersAcrossQueues === 0 && (
+            {!selectedQueue && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <Info className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">
+                    Selecione uma fila para ver/configurar gatilhos
+                  </span>
+                </div>
+                <p className="text-sm text-blue-700 mt-1">
+                  {totalActiveTriggersAcrossQueues > 0 
+                    ? `${totalActiveTriggersAcrossQueues} gatilho(s) ativo(s) encontrado(s) nas suas filas`
+                    : 'Configure palavras-chave para transferências automáticas entre filas'
+                  }
+                </p>
+              </div>
+            )}
+            
+            {selectedQueue && totalActiveTriggersAcrossQueues === 0 && triggers.length === 0 && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                 <div className="flex items-center gap-2">
                   <Info className="h-4 w-4 text-yellow-600" />
                   <span className="text-sm font-medium text-yellow-800">
-                    Nenhum gatilho ativo encontrado
+                    Nenhum gatilho configurado para esta fila
                   </span>
                 </div>
                 <p className="text-sm text-yellow-700 mt-1">
-                  Selecione uma fila abaixo para configurar gatilhos automáticos
+                  Clique em "Novo Gatilho" para começar a configurar transferências automáticas
                 </p>
               </div>
             )}
