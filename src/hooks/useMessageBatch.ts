@@ -20,7 +20,7 @@ interface MessageBatch {
 }
 
 const defaultConfig: BatchConfig = {
-  timeout: 30000, // 30 segundos para batch travado
+  timeout: 3000, // 3 segundos sincronizado com Edge Functions
   maxBatchSize: 10,
   enabled: true
 };

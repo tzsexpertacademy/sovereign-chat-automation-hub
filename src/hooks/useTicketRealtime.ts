@@ -155,16 +155,10 @@ export const useTicketRealtime = (clientId: string) => {
 
   // PROCESSAMENTO COM ASSISTENTE - VERSÃO COM LOGS SUPER DETALHADOS PARA ÁUDIO
   const processWithAssistant = useCallback(async (message: any, ticketId: string, allMessages: any[] = []) => {
-    const processingKey = `${ticketId}_${Date.now()}`;
-    
-    if (!mountedRef.current || !ticketId || processingRef.current.has(ticketId)) {
-      console.log(`❌ BLOQUEANDO processamento duplicado para ticket: ${ticketId}`);
-      return;
-    }
-    
-    processingRef.current.add(ticketId);
-    console.log(`🤖 ===== INICIANDO PROCESSAMENTO IA (${processingKey}) =====`);
-    console.log(`📨 MENSAGENS PARA PROCESSAR: ${allMessages.length}`);
+    // ⚠️ PROCESSAMENTO DE IA DESATIVADO - Agora é feito via Edge Functions
+    console.log(`⚙️ [REALTIME] IA processada via Edge Functions - ticket: ${ticketId}`);
+    console.log(`📨 Mensagens serão processadas pelo sistema de batch automaticamente`);
+    return;
     
     // LOG DETALHADO DAS MENSAGENS
     allMessages.forEach((msg, index) => {
@@ -238,21 +232,9 @@ export const useTicketRealtime = (clientId: string) => {
       // CONTEXTO
       const ticketMessages = await ticketsService.getTicketMessages(ticketId, 50);
       
-      // CONFIGURAÇÕES
+      // CONFIGURAÇÕES (TEMPORARIAMENTE SIMPLIFICADAS)
       let settings = { temperature: 0.7, max_tokens: 1000 };
-      try {
-        if (assistant.advanced_settings) {
-          const parsed = typeof assistant.advanced_settings === 'string' 
-            ? JSON.parse(assistant.advanced_settings)
-            : assistant.advanced_settings;
-          settings = {
-            temperature: parsed.temperature || 0.7,
-            max_tokens: parsed.max_tokens || 1000
-          };
-        }
-      } catch (e) {
-        console.error('ERRO ao parse das configurações:', e);
-      }
+      console.log('⚙️ Usando configurações padrão temporariamente');
 
       // PROCESSAR MENSAGENS COM ÁUDIO - VERSÃO COM LOGS SUPER DETALHADOS
       let processedContent = '';
@@ -440,7 +422,7 @@ export const useTicketRealtime = (clientId: string) => {
         setAssistantTyping(false);
       }
       processingRef.current.delete(ticketId);
-      console.log(`✅ PROCESSAMENTO finalizado (${processingKey})`);
+      console.log(`✅ PROCESSAMENTO finalizado`);
     }
   }, [clientId, markAsRead, markActivity]);
 
@@ -493,7 +475,7 @@ export const useTicketRealtime = (clientId: string) => {
               is_internal_note: false,
               is_ai_response: false,
               processing_status: 'completed',
-              timestamp: await ticketsService.validateAndFixTimestamp(normalizedMessage.timestamp),
+              timestamp: typeof normalizedMessage.timestamp === 'string' ? normalizedMessage.timestamp : await normalizedMessage.timestamp,
               media_url: normalizedMessage.mediaUrl
             });
             console.log('💾 MENSAGEM nossa salva');
@@ -527,7 +509,7 @@ export const useTicketRealtime = (clientId: string) => {
           chatId: normalizedMessage.from,
           contactName: normalizedMessage.customerName,
           content: normalizedMessage.body,
-          timestamp: await ticketsService.validateAndFixTimestamp(normalizedMessage.timestamp)
+          timestamp: normalizedMessage.timestamp
         },
         'customer-id-placeholder'
       );
