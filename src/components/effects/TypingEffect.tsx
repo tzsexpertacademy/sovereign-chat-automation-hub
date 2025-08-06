@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface TypingEffectProps {
   text: string;
@@ -16,17 +16,24 @@ const TypingEffect: React.FC<TypingEffectProps> = ({
   onComplete
 }) => {
   const [displayedText, setDisplayedText] = useState('');
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isComplete, setIsComplete] = useState(false);
   const [showCursor, setShowCursor] = useState(true);
+  const indexRef = useRef(0);
 
   useEffect(() => {
+    // Reset state when text changes
+    setDisplayedText('');
+    setIsComplete(false);
+    indexRef.current = 0;
+
     const startTimeout = setTimeout(() => {
       const typingInterval = setInterval(() => {
-        if (currentIndex < text.length) {
-          setDisplayedText(prev => prev + text[currentIndex]);
-          setCurrentIndex(prev => prev + 1);
+        if (indexRef.current < text.length) {
+          setDisplayedText(text.slice(0, indexRef.current + 1));
+          indexRef.current += 1;
         } else {
           clearInterval(typingInterval);
+          setIsComplete(true);
           onComplete?.();
         }
       }, speed);
@@ -35,7 +42,7 @@ const TypingEffect: React.FC<TypingEffectProps> = ({
     }, delay);
 
     return () => clearTimeout(startTimeout);
-  }, [text, speed, delay, currentIndex, onComplete]);
+  }, [text, speed, delay, onComplete]);
 
   // Cursor blinking effect
   useEffect(() => {
@@ -49,7 +56,7 @@ const TypingEffect: React.FC<TypingEffectProps> = ({
   return (
     <span className={className}>
       {displayedText}
-      {currentIndex < text.length && (
+      {!isComplete && (
         <span className={`inline-block w-0.5 h-[1em] bg-current ml-1 ${showCursor ? 'opacity-100' : 'opacity-0'} transition-opacity`}>
         </span>
       )}
