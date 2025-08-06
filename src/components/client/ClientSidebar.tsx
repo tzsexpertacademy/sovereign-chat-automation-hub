@@ -26,8 +26,10 @@ import {
   UserCheck,
   Target,
   Home,
-  Zap
+  Zap,
+  Circle
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { clientsService, ClientData } from "@/services/clientsService";
 
 interface ClientSidebarProps {
@@ -118,20 +120,27 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
   ];
 
   return (
-    <Sidebar className="border-r bg-white">
-      <SidebarHeader className="border-b p-6">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <UserCheck className="w-4 h-4 text-white" />
+    <Sidebar className="border-r bg-gradient-to-b from-background to-muted/30 backdrop-blur-sm shadow-lg">
+      <SidebarHeader className="border-b border-border/50 p-6 bg-gradient-to-r from-primary/5 to-secondary/5">
+        <div className="flex items-center space-x-3">
+          <div className="relative">
+            <div className="w-10 h-10 bg-gradient-to-br from-primary via-primary/80 to-secondary rounded-xl flex items-center justify-center shadow-lg border border-primary/20">
+              <Building2 className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-background shadow-sm animate-pulse" />
           </div>
-          <div>
-            <h2 className="font-semibold text-gray-900">YumerFlow</h2>
-            <p className="text-xs text-gray-500">{clientData?.name || `Cliente: ${clientId.slice(0, 8)}`}</p>
+          <div className="flex-1">
+            <h2 className="font-bold text-lg bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+              YumerFlow CRM
+            </h2>
+            <p className="text-xs text-muted-foreground font-medium">
+              {clientData?.name || `Cliente: ${clientId.slice(0, 8)}`}
+            </p>
           </div>
         </div>
       </SidebarHeader>
       
-      <SidebarContent className="p-4">
+      <SidebarContent className="p-3 space-y-1">
         <SidebarMenu>
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -141,18 +150,40 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
               <SidebarMenuItem key={item.path}>
                 <SidebarMenuButton
                   asChild
-                  className={`w-full justify-start p-3 mb-1 ${
+                  className={cn(
+                    "group relative w-full justify-start p-3 mb-1 rounded-xl transition-all duration-300 hover:scale-[1.02] hover:shadow-md",
                     isActive 
-                      ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700' 
-                      : 'hover:bg-gray-50'
-                  }`}
+                      ? 'bg-gradient-to-r from-primary/10 to-secondary/10 text-primary border-l-4 border-primary shadow-lg backdrop-blur-sm' 
+                      : 'hover:bg-gradient-to-r hover:from-muted/50 hover:to-muted/30 hover:shadow-sm'
+                  )}
                 >
                   <Link to={item.path}>
-                    <Icon className={`mr-3 h-4 w-4 ${isActive ? 'text-blue-700' : 'text-gray-500'}`} />
-                    <div className="flex flex-col items-start">
-                      <span className="font-medium">{item.title}</span>
-                      <span className="text-xs text-gray-500">{item.description}</span>
+                    <div className="flex items-center space-x-3">
+                      <div className={cn(
+                        "p-2 rounded-lg transition-all duration-300",
+                        isActive 
+                          ? 'bg-gradient-to-br from-primary to-secondary text-primary-foreground shadow-md' 
+                          : 'bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
+                      )}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="flex flex-col items-start">
+                        <span className={cn(
+                          "font-semibold text-sm transition-colors",
+                          isActive ? 'text-primary' : 'text-foreground group-hover:text-primary'
+                        )}>
+                          {item.title}
+                        </span>
+                        <span className="text-xs text-muted-foreground group-hover:text-muted-foreground/80">
+                          {item.description}
+                        </span>
+                      </div>
                     </div>
+                    {isActive && (
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                        <Circle className="w-2 h-2 fill-primary text-primary animate-pulse" />
+                      </div>
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -161,10 +192,13 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
         </SidebarMenu>
       </SidebarContent>
       
-      <SidebarFooter className="border-t p-4">
-        <div className="text-center">
-          <p className="text-xs text-gray-500">CRM v2.0</p>
-          <p className="text-xs text-gray-400">Powered by AI</p>
+      <SidebarFooter className="border-t border-border/50 p-4 bg-gradient-to-r from-muted/20 to-muted/10">
+        <div className="text-center space-y-1">
+          <div className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+            <p className="text-sm font-bold">CRM YumerFlow V2</p>
+          </div>
+          <p className="text-xs text-muted-foreground font-medium">Powered By Yumer</p>
+          <p className="text-xs text-muted-foreground/70">CEO: Thalis Zulianello</p>
         </div>
       </SidebarFooter>
     </Sidebar>
