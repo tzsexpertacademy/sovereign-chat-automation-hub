@@ -37,21 +37,32 @@ const HumanizedChat = ({ clientId, chatId, chatName }: HumanizedChatProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Initialize humanized WhatsApp
-  const humanizedWhatsApp = useHumanizedWhatsApp(clientId, {
-    enabled: true,
-    personality: {
-      name: 'Chat Assistant',
-      tone: 'friendly',
-      responseDelay: { min: 2000, max: 4000 },
-      typingSpeed: 45,
-      reactionProbability: 0.4,
-      emotionalLevel: 0.7,
-      contextAwareness: true,
-      voiceCloning: false,
-      audioProcessing: true
-    }
-  });
+  // ⚠️ HUMANIZED WHATSAPP DESATIVADO - Usando sistema unificado via Edge Functions
+  const humanizedWhatsApp = {
+    config: { enabled: false },
+    isProcessing: false,
+    processIncomingMessage: () => {},
+    updatePersonality: () => {},
+    getHumanizationStats: () => ({ 
+      totalMessages: 0, 
+      humanizedResponses: 0, 
+      avgResponseTime: 0,
+      personality: { name: 'Sistema Edge Functions', tone: 'professional' },
+      isProcessing: false,
+      onlineStatus: true,
+      conversationContexts: 0,
+      totalLogs: 0,
+      activeBatches: 0
+    }),
+    // Desativar todas as funcionalidades
+    onlineStatus: { setOnline: () => {}, setOffline: () => {} },
+    typing: { startTyping: () => {}, stopTyping: () => {} },
+    reactions: { sendReaction: () => {} },
+    messageSplit: { splitMessage: (text: string) => [text] },
+    logs: [],
+    context: new Map(),
+    humanizationLogs: []
+  };
 
   const stats = humanizedWhatsApp.getHumanizationStats();
 
@@ -116,14 +127,8 @@ const HumanizedChat = ({ clientId, chatId, chatName }: HumanizedChatProps) => {
     setIsLoading(true);
 
     try {
-      // Process message through humanized system
-      humanizedWhatsApp.processIncomingMessage({
-        id: userMessage.id,
-        from: chatId,
-        body: inputMessage,
-        fromMe: false,
-        timestamp: Date.now()
-      });
+      // ⚠️ Processamento agora via Edge Functions - apenas demo visual
+      console.log('📨 [DEMO] Mensagem processada via sistema unificado:', inputMessage);
 
       // Simulate AI response after humanized delay
       setTimeout(async () => {

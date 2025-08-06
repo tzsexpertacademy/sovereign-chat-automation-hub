@@ -17,10 +17,36 @@ interface HumanizationDashboardProps {
 }
 
 const HumanizationDashboard = ({ clientId }: HumanizationDashboardProps) => {
-  const humanizedWhatsApp = useHumanizedWhatsApp(clientId);
-  const [selectedPersonality, setSelectedPersonality] = useState<HumanizedPersonality>(
-    humanizedWhatsApp.config.personality
-  );
+  // ⚠️ DASHBOARD DESATIVADO - Sistema unificado via Edge Functions
+  const humanizedWhatsApp = {
+    config: { enabled: false, personality: { name: 'Sistema Edge Functions', tone: 'professional' } },
+    getHumanizationStats: () => ({ 
+      totalMessages: 0, 
+      humanizedResponses: 0, 
+      avgResponseTime: 0,
+      personality: { name: 'Sistema Edge Functions', tone: 'professional' },
+      isProcessing: false,
+      onlineStatus: true,
+      conversationContexts: 0,
+      totalLogs: 0,
+      activeBatches: 0
+    }),
+    updatePersonality: () => {},
+    setConfig: () => {},
+    logs: [],
+    humanizationLogs: []
+  };
+  const [selectedPersonality, setSelectedPersonality] = useState<HumanizedPersonality>({
+    name: 'Sistema Edge Functions',
+    tone: 'professional',
+    responseDelay: { min: 3000, max: 3000 },
+    typingSpeed: 50,
+    reactionProbability: 0,
+    emotionalLevel: 0.5,
+    contextAwareness: true,
+    voiceCloning: false,
+    audioProcessing: true
+  });
 
   const stats = humanizedWhatsApp.getHumanizationStats();
 
@@ -79,12 +105,14 @@ const HumanizationDashboard = ({ clientId }: HumanizationDashboardProps) => {
   };
 
   const applyPersonality = () => {
-    humanizedWhatsApp.updatePersonality(selectedPersonality);
+    // ⚠️ DESATIVADO - Sistema via Edge Functions
+    console.log('📋 [DEMO] Personalidade seria aplicada:', selectedPersonality);
   };
 
   const loadPreset = (preset: HumanizedPersonality) => {
     setSelectedPersonality(preset);
-    humanizedWhatsApp.updatePersonality(preset);
+    // ⚠️ DESATIVADO - Sistema via Edge Functions
+    console.log('📋 [DEMO] Preset seria carregado:', preset);
   };
 
   return (
@@ -414,10 +442,8 @@ const HumanizationDashboard = ({ clientId }: HumanizationDashboardProps) => {
                 <Label htmlFor="humanization-enabled">Humanização Habilitada</Label>
                 <Switch
                   id="humanization-enabled"
-                  checked={humanizedWhatsApp.config.enabled}
-                  onCheckedChange={(checked) => 
-                    humanizedWhatsApp.setConfig(prev => ({ ...prev, enabled: checked }))
-                  }
+                  checked={false}
+                  onCheckedChange={() => console.log('📋 [DEMO] Toggle desativado')}
                 />
               </div>
 
@@ -427,18 +453,8 @@ const HumanizationDashboard = ({ clientId }: HumanizationDashboardProps) => {
                   id="openai-key"
                   type="password"
                   placeholder="sk-..."
-                  value={humanizedWhatsApp.config.openaiConfig?.apiKey || ''}
-                  onChange={(e) =>
-                    humanizedWhatsApp.setConfig(prev => ({
-                      ...prev,
-                      openaiConfig: {
-                        ...prev.openaiConfig,
-                        apiKey: e.target.value,
-                        model: prev.openaiConfig?.model || 'gpt-4o-mini',
-                        temperature: prev.openaiConfig?.temperature || 0.7
-                      }
-                    }))
-                  }
+                  value=""
+                  onChange={() => console.log('📋 [DEMO] OpenAI config desativado')}
                 />
               </div>
 
@@ -448,17 +464,8 @@ const HumanizationDashboard = ({ clientId }: HumanizationDashboardProps) => {
                   id="elevenlabs-key"
                   type="password"
                   placeholder="..."
-                  value={humanizedWhatsApp.config.elevenLabsConfig?.apiKey || ''}
-                  onChange={(e) =>
-                    humanizedWhatsApp.setConfig(prev => ({
-                      ...prev,
-                      elevenLabsConfig: {
-                        ...prev.elevenLabsConfig,
-                        apiKey: e.target.value,
-                        voiceId: prev.elevenLabsConfig?.voiceId || 'pNInz6obpgDQGcFmaJgB'
-                      }
-                    }))
-                  }
+                  value=""
+                  onChange={() => console.log('📋 [DEMO] ElevenLabs config desativado')}
                 />
               </div>
             </CardContent>

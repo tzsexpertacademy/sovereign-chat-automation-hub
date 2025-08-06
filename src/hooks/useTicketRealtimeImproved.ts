@@ -238,7 +238,8 @@ export const useTicketRealtimeImproved = (clientId: string) => {
     lastSyncTime,
     reloadTickets,
     forceSyncMessages,
-    // Compatibilidade com hook antigo
+    // ✅ SIMPLIFICADO - Apenas carregamento e sincronização
+    // Processamento de IA agora é via Edge Functions + Message Batch
     isTyping: false,
     isOnline: true,
     getBatchInfo: () => ({ pending: 0, processing: false }),
