@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Upload, User } from 'lucide-react';
-import { useClientPersonalization } from '@/hooks/useClientPersonalization';
+import { usePersonalizationRequests } from '@/hooks/usePersonalizationRequests';
 import type { ClientData } from '@/services/clientsService';
 
 interface EditProfileModalProps {
@@ -25,7 +25,7 @@ export function EditProfileModal({ open, onOpenChange, client, onUpdate }: EditP
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState(client.avatar_url || '');
 
-  const { loading, updateProfile, uploadAsset } = useClientPersonalization();
+  const { loading, uploadAttachment } = usePersonalizationRequests();
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

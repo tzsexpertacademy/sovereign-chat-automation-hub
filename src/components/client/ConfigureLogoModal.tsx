@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Upload, Image, X } from 'lucide-react';
-import { useClientPersonalization } from '@/hooks/useClientPersonalization';
+import { usePersonalizationRequests } from '@/hooks/usePersonalizationRequests';
 import type { ClientData } from '@/services/clientsService';
 
 interface ConfigureLogoModalProps {
@@ -16,7 +16,7 @@ interface ConfigureLogoModalProps {
 export function ConfigureLogoModal({ open, onOpenChange, client, onUpdate }: ConfigureLogoModalProps) {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState(client.company_logo_url || '');
-  const { loading, uploadAsset, updateProfile } = useClientPersonalization();
+  const { loading, uploadAttachment } = usePersonalizationRequests();
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

@@ -12,6 +12,7 @@ import DevelopmentPlan from "./DevelopmentPlan";
 import { FixTicketsAssignment } from "./FixTicketsAssignment";
 import AudioDiagnostics from "./AudioDiagnostics";
 import { AudioProcessingMonitor } from "./AudioProcessingMonitor";
+import PersonalizationRequestsManager from "./PersonalizationRequestsManager";
 
 const AdminRouter = () => {
   return (
@@ -30,6 +31,7 @@ const AdminRouter = () => {
       <Route path="/fix-tickets" element={<FixTicketsAssignment />} />
       <Route path="/audio-diagnostics" element={<AudioDiagnostics />} />
       <Route path="/audio-monitor" element={<AudioProcessingMonitor />} />
+      <Route path="/personalization" element={<PersonalizationRequestsManager />} />
     </Routes>
   );
 };

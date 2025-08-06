@@ -20,12 +20,13 @@ import {
   Workflow,
   Settings,
   TrendingUp,
-  Zap,
+  Palette,
   Building2,
   Layers3,
   UserCheck,
   Target,
-  Home
+  Home,
+  Zap
 } from "lucide-react";
 import { clientsService, ClientData } from "@/services/clientsService";
 
@@ -103,10 +104,10 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
       description: "Calendário"
     },
     { 
-      title: "Automação", 
-      icon: Zap, 
-      path: `/client/${clientId}/automation`,
-      description: "Fluxos"
+      title: "Personalização", 
+      icon: Palette, 
+      path: `/client/${clientId}/personalization`,
+      description: "Solicitações"
     },
     { 
       title: "Analytics", 

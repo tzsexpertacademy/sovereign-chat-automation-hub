@@ -1406,6 +1406,109 @@ export type Database = {
         }
         Relationships: []
       }
+      personalization_comments: {
+        Row: {
+          attachments: Json | null
+          comment: string
+          created_at: string
+          id: string
+          request_id: string
+          user_id: string
+          user_type: string
+        }
+        Insert: {
+          attachments?: Json | null
+          comment: string
+          created_at?: string
+          id?: string
+          request_id: string
+          user_id: string
+          user_type: string
+        }
+        Update: {
+          attachments?: Json | null
+          comment?: string
+          created_at?: string
+          id?: string
+          request_id?: string
+          user_id?: string
+          user_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personalization_comments_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "personalization_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      personalization_requests: {
+        Row: {
+          admin_notes: string | null
+          attachments: Json | null
+          budget_estimate: string | null
+          business_impact: string | null
+          category: string
+          client_id: string
+          completed_at: string | null
+          created_at: string
+          deadline: string | null
+          description: string
+          id: string
+          priority: string
+          status: string
+          technical_requirements: Json | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          attachments?: Json | null
+          budget_estimate?: string | null
+          business_impact?: string | null
+          category?: string
+          client_id: string
+          completed_at?: string | null
+          created_at?: string
+          deadline?: string | null
+          description: string
+          id?: string
+          priority?: string
+          status?: string
+          technical_requirements?: Json | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          attachments?: Json | null
+          budget_estimate?: string | null
+          business_impact?: string | null
+          category?: string
+          client_id?: string
+          completed_at?: string | null
+          created_at?: string
+          deadline?: string | null
+          description?: string
+          id?: string
+          priority?: string
+          status?: string
+          technical_requirements?: Json | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personalization_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       professional_schedules: {
         Row: {
           break_end_time: string | null
