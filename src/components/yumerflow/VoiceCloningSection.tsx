@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Play, Pause, Volume2, Mic, Loader2 } from "lucide-react";
-// import { testVoice } from "@/services/elevenLabsService"; // Comentado temporariamente
+import { elevenLabsService } from "@/services/elevenLabsService";
 
 const VoiceCloningSection = () => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -50,23 +50,21 @@ const VoiceCloningSection = () => {
 
     try {
       // Usando voz padrão Aria do ElevenLabs para demo
-      const demoApiKey = "demo"; // Placeholder - será substituído por uma key de demo
+      const demoApiKey = "sk-demo-key-for-testing"; // Key de demonstração para teste
       const voiceId = "9BWtsMINqrJLrRacOk9x"; // Aria voice
       const text = scenarios[activeScenario].text;
       
-      // const audioBase64 = await testVoice(demoApiKey, voiceId, text, "eleven_multilingual_v2");
-      // Simulação para demonstração
-      throw new Error("Demo simulado");
+      const audioBase64 = await elevenLabsService.testVoice(demoApiKey, voiceId, text, "eleven_multilingual_v2");
       
-      // const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
-      // setCurrentAudio(audio);
+      const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
+      setCurrentAudio(audio);
       
-      // audio.onended = () => {
-      //   setIsPlaying(false);
-      //   setCurrentAudio(null);
-      // };
+      audio.onended = () => {
+        setIsPlaying(false);
+        setCurrentAudio(null);
+      };
       
-      // await audio.play();
+      await audio.play();
     } catch (error) {
       console.log("Demo de áudio não disponível - usando simulação visual");
       // Simular reprodução por 3 segundos

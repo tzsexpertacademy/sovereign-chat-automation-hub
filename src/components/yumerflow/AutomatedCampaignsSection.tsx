@@ -20,18 +20,18 @@ const AutomatedCampaignsSection = () => {
     {
       day: "Dia 3", 
       time: "14h30",
-      channel: "Email",
-      icon: Mail,
-      color: "bg-blue-500",
+      channel: "WhatsApp",
+      icon: MessageSquare,
+      color: "bg-green-500",
       message: "Preparamos um material exclusivo sobre como isso pode transformar seu negócio.",
       type: "Educativo"
     },
     {
       day: "Dia 7",
       time: "10h15",
-      channel: "SMS",
-      icon: Smartphone,
-      color: "bg-purple-500",
+      channel: "WhatsApp",
+      icon: MessageSquare,
+      color: "bg-green-500",
       message: "Última chance: 20% OFF válido apenas hoje. Quer aproveitar?",
       type: "Urgência"
     },
@@ -47,9 +47,9 @@ const AutomatedCampaignsSection = () => {
   ];
 
   const channels = [
-    { name: "WhatsApp", icon: MessageSquare, color: "text-green-400", active: true },
-    { name: "Email", icon: Mail, color: "text-blue-400", active: true },
-    { name: "SMS", icon: Smartphone, color: "text-purple-400", active: true },
+    { name: "WhatsApp Business", icon: MessageSquare, color: "text-green-400", active: true },
+    { name: "WhatsApp Broadcast", icon: MessageSquare, color: "text-emerald-400", active: true },
+    { name: "WhatsApp Flow", icon: MessageSquare, color: "text-green-300", active: true },
   ];
 
   useEffect(() => {
@@ -70,8 +70,8 @@ const AutomatedCampaignsSection = () => {
               🔁 Campanhas que Nunca Dormem
             </span>
           </h2>
-          <p className="text-2xl text-gray-300 mb-4">Sequências automáticas multicanal</p>
-          <p className="text-xl text-purple-200">"Marketing que parece cuidado, não programação"</p>
+           <p className="text-2xl text-gray-200 mb-4">Sequências automáticas 100% via WhatsApp</p>
+           <p className="text-xl text-purple-300">"Marketing que parece cuidado, não programação"</p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-12">
@@ -136,12 +136,12 @@ const AutomatedCampaignsSection = () => {
 
           {/* Multicanal & Controls */}
           <div className="space-y-6">
-            <h3 className="text-2xl font-bold text-white mb-6">Multicanal Inteligente</h3>
+            <h3 className="text-2xl font-bold text-white mb-6">WhatsApp Inteligente</h3>
             
             {/* Channel Status */}
             <Card className="bg-gray-800/50 border-gray-700">
               <CardHeader>
-                <CardTitle className="text-white">Canais Ativos</CardTitle>
+                <CardTitle className="text-white">Modalidades WhatsApp Ativas</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">

@@ -79,17 +79,17 @@ const HumanSupportSection = () => {
             
             <div className="space-y-4">
               {supportFeatures.map((feature, index) => (
-                <Card key={index} className="bg-gray-800/50 border-gray-700 hover:border-purple-500/40 transition-all duration-300">
+                <Card key={index} className="bg-gray-800/70 border-gray-600 hover:border-purple-500/50 transition-all duration-300">
                   <CardContent className="p-6">
                     <div className="flex items-start space-x-4">
                       <div className="bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full p-3 flex-shrink-0">
                         <feature.icon className="w-6 h-6 text-white" />
                       </div>
                       <div className="flex-1">
-                        <h4 className="text-lg font-semibold text-white mb-2">
-                          {feature.title}
-                        </h4>
-                        <p className="text-gray-300">{feature.description}</p>
+                         <h4 className="text-lg font-semibold text-white mb-2">
+                           {feature.title}
+                         </h4>
+                         <p className="text-gray-200">{feature.description}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -99,14 +99,14 @@ const HumanSupportSection = () => {
 
             {/* Support Stats */}
             <div className="grid grid-cols-2 gap-4 mt-8">
-              <div className="text-center bg-black/40 backdrop-blur-sm rounded-xl p-4 border border-purple-500/20">
-                <div className="text-3xl font-bold text-green-400 mb-1">&lt; 2h</div>
-                <p className="text-gray-300 text-sm">Tempo de resposta</p>
-              </div>
-              <div className="text-center bg-black/40 backdrop-blur-sm rounded-xl p-4 border border-purple-500/20">
-                <div className="text-3xl font-bold text-blue-400 mb-1">98%</div>
-                <p className="text-gray-300 text-sm">Satisfação no suporte</p>
-              </div>
+               <div className="text-center bg-black/60 backdrop-blur-sm rounded-xl p-4 border border-purple-500/30">
+                 <div className="text-3xl font-bold text-green-400 mb-1">&lt; 2h</div>
+                 <p className="text-gray-100 text-sm font-medium">Tempo de resposta</p>
+               </div>
+               <div className="text-center bg-black/60 backdrop-blur-sm rounded-xl p-4 border border-purple-500/30">
+                 <div className="text-3xl font-bold text-blue-400 mb-1">98%</div>
+                 <p className="text-gray-100 text-sm font-medium">Satisfação no suporte</p>
+               </div>
             </div>
           </div>
 
@@ -125,14 +125,14 @@ const HumanSupportSection = () => {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-lg font-semibold text-white">
-                          {step.title}
-                        </h4>
-                        <span className="text-xs bg-purple-900/40 text-purple-300 px-2 py-1 rounded">
-                          {step.duration}
-                        </span>
-                      </div>
-                      <p className="text-gray-300">{step.description}</p>
+                         <h4 className="text-lg font-semibold text-white">
+                           {step.title}
+                         </h4>
+                         <span className="text-xs bg-purple-900/60 text-purple-200 px-2 py-1 rounded font-medium">
+                           {step.duration}
+                         </span>
+                       </div>
+                       <p className="text-gray-200">{step.description}</p>
                     </div>
                   </div>
                   {index < onboardingSteps.length - 1 && (
