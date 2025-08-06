@@ -167,12 +167,25 @@ export const funnelService = {
 
   async createTag(clientId: string, tagData: CreateFunnelTagData): Promise<FunnelTag> {
     try {
+      // Buscar próxima posição
+      const { data: existingTags } = await supabase
+        .from('funnel_tags')
+        .select('position')
+        .eq('client_id', clientId)
+        .order('position', { ascending: false })
+        .limit(1);
+
+      const nextPosition = existingTags && existingTags.length > 0 
+        ? (existingTags[0].position || 0) + 1 
+        : 0;
+
       const { data, error } = await supabase
         .from('funnel_tags')
         .insert({
           client_id: clientId,
           ...tagData,
-          color: tagData.color || '#3B82F6'
+          color: tagData.color || '#3B82F6',
+          position: nextPosition
         })
         .select()
         .single();
@@ -181,6 +194,37 @@ export const funnelService = {
       return data as FunnelTag;
     } catch (error) {
       console.error('Error creating funnel tag:', error);
+      throw error;
+    }
+  },
+
+  async updateTag(tagId: string, updates: Partial<FunnelTag>): Promise<FunnelTag> {
+    try {
+      const { data, error } = await supabase
+        .from('funnel_tags')
+        .update(updates)
+        .eq('id', tagId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as FunnelTag;
+    } catch (error) {
+      console.error('Error updating funnel tag:', error);
+      throw error;
+    }
+  },
+
+  async deleteTag(tagId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('funnel_tags')
+        .update({ is_active: false })
+        .eq('id', tagId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting funnel tag:', error);
       throw error;
     }
   },

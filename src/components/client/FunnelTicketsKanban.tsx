@@ -19,9 +19,15 @@ import {
   DollarSign,
   Users,
   MessageSquare,
-  Target
+  Target,
+  Tag as TagIcon,
+  Edit,
+  BarChart3
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
+import { funnelService, type FunnelStage as RealFunnelStage, type FunnelTag } from "@/services/funnelService";
+import FunnelStageEditor from './FunnelStageEditor';
+import FunnelTagManagerV2 from './FunnelTagManagerV2';
 
 interface TicketForFunnel {
   id: string;
@@ -36,16 +42,8 @@ interface TicketForFunnel {
   chat_id: string;
   instance_id: string;
   waiting_time_minutes: number;
-  lead_value?: number;
-  conversion_probability?: number;
-}
-
-interface FunnelStage {
-  id: string;
-  name: string;
-  color: string;
-  description?: string;
-  tags: string[];
+  resolution_time_minutes?: number;
+  first_response_time_minutes?: number;
 }
 
 interface FunnelTicketsKanbanProps {
@@ -53,70 +51,85 @@ interface FunnelTicketsKanbanProps {
 }
 
 const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) => {
-  const [stages, setStages] = useState<FunnelStage[]>([]);
+  const [stages, setStages] = useState<RealFunnelStage[]>([]);
   const [tickets, setTickets] = useState<TicketForFunnel[]>([]);
+  const [availableTags, setAvailableTags] = useState<FunnelTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [showStageEditor, setShowStageEditor] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const { toast } = useToast();
 
-  // Estágios padrão do funil baseados em tags
-  const defaultStages: FunnelStage[] = [
-    {
-      id: 'leads',
-      name: 'Leads',
-      color: '#3B82F6',
-      description: 'Contatos iniciais',
-      tags: ['lead', 'novo', 'interesse', 'visitante']
-    },
-    {
-      id: 'qualificados',
-      name: 'Qualificados',
-      color: '#F59E0B',
-      description: 'Leads qualificados',
-      tags: ['qualificado', 'potencial', 'quente', 'interessado']
-    },
-    {
-      id: 'proposta',
-      name: 'Proposta',
-      color: '#10B981',
-      description: 'Propostas enviadas',
-      tags: ['proposta', 'orçamento', 'negociacao', 'cotacao']
-    },
-    {
-      id: 'fechamento',
-      name: 'Fechamento',
-      color: '#8B5CF6',
-      description: 'Em fechamento',
-      tags: ['fechando', 'contrato', 'assinatura', 'pagamento']
-    },
-    {
-      id: 'vendido',
-      name: 'Vendido',
-      color: '#EF4444',
-      description: 'Vendas concluídas',
-      tags: ['vendido', 'fechado', 'cliente', 'pago']
-    },
-    {
-      id: 'perdido',
-      name: 'Perdido',
-      color: '#6B7280',
-      description: 'Oportunidades perdidas',
-      tags: ['perdido', 'cancelado', 'desistiu', 'nao_interessado']
-    }
-  ];
-
   useEffect(() => {
-    setStages(defaultStages);
-    loadTicketsData();
+    loadFunnelData();
   }, [clientId]);
+
+  const loadFunnelData = async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        loadStagesAndTags(),
+        loadTicketsData()
+      ]);
+    } catch (error) {
+      console.error('Erro ao carregar dados do funil:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar dados do funil",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStagesAndTags = async () => {
+    try {
+      const [stagesData, tagsData] = await Promise.all([
+        funnelService.getStages(clientId),
+        funnelService.getTags(clientId)
+      ]);
+
+      setStages(stagesData);
+      setAvailableTags(tagsData);
+
+      // Criar estágios padrão se não existirem
+      if (stagesData.length === 0) {
+        await createDefaultStages();
+      }
+    } catch (error) {
+      console.error('Erro ao carregar estágios e tags:', error);
+    }
+  };
+
+  const createDefaultStages = async () => {
+    const defaultStages = [
+      { name: 'Leads', description: 'Contatos iniciais', color: '#3B82F6' },
+      { name: 'Qualificados', description: 'Leads qualificados', color: '#F59E0B' },
+      { name: 'Proposta', description: 'Propostas enviadas', color: '#10B981' },
+      { name: 'Fechamento', description: 'Em fechamento', color: '#8B5CF6' },
+      { name: 'Vendido', description: 'Vendas concluídas', color: '#EF4444' },
+      { name: 'Perdido', description: 'Oportunidades perdidas', color: '#6B7280' }
+    ];
+
+    try {
+      const createdStages = [];
+      for (let i = 0; i < defaultStages.length; i++) {
+        const stage = await funnelService.createStage(clientId, {
+          ...defaultStages[i],
+          position: i
+        });
+        createdStages.push(stage);
+      }
+      setStages(createdStages);
+    } catch (error) {
+      console.error('Erro ao criar estágios padrão:', error);
+    }
+  };
 
   const loadTicketsData = async () => {
     try {
-      setLoading(true);
-
       // Buscar tickets com informações do cliente
       const { data: ticketsData, error } = await supabase
         .from('conversation_tickets')
@@ -128,6 +141,9 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
           tags,
           created_at,
           last_activity_at,
+          first_response_at,
+          closed_at,
+          resolution_time_minutes,
           chat_id,
           instance_id,
           customers (
@@ -141,10 +157,16 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
 
       if (error) throw error;
 
-      // Mapear tickets e calcular tempo de espera
+      // Mapear tickets com dados reais
       const mappedTickets: TicketForFunnel[] = (ticketsData || []).map(ticket => {
         const createdAt = new Date(ticket.created_at);
-        const waitingTime = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60));
+        const currentTime = Date.now();
+        const waitingTime = Math.floor((currentTime - createdAt.getTime()) / (1000 * 60));
+        
+        // Calcular tempo de primeira resposta (dados reais)
+        const firstResponseTime = ticket.first_response_at 
+          ? Math.floor((new Date(ticket.first_response_at).getTime() - createdAt.getTime()) / (1000 * 60))
+          : null;
         
         return {
           id: ticket.id,
@@ -159,19 +181,12 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
           chat_id: ticket.chat_id,
           instance_id: ticket.instance_id,
           waiting_time_minutes: waitingTime,
-          lead_value: Math.floor(Math.random() * 5000), // Valor simulado
-          conversion_probability: Math.floor(Math.random() * 100) // Probabilidade simulada
+          resolution_time_minutes: ticket.resolution_time_minutes,
+          first_response_time_minutes: firstResponseTime
         };
       });
 
       setTickets(mappedTickets);
-
-      // Extrair todas as tags únicas
-      const allTags = new Set<string>();
-      mappedTickets.forEach(ticket => {
-        ticket.tags.forEach(tag => allTags.add(tag));
-      });
-      setAvailableTags(Array.from(allTags));
 
     } catch (error) {
       console.error('Erro ao carregar tickets:', error);
@@ -180,23 +195,21 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
         description: "Erro ao carregar dados do funil",
         variant: "destructive"
       });
-    } finally {
-      setLoading(false);
     }
   };
 
-  const getTicketsByStage = (stage: FunnelStage): TicketForFunnel[] => {
+  const getTicketsByStage = (stage: RealFunnelStage): TicketForFunnel[] => {
     return tickets.filter(ticket => {
-      // Verificar se o ticket tem alguma tag que corresponde ao estágio
-      const hasStageTag = stage.tags.some(stageTag => 
-        ticket.tags.some(ticketTag => 
-          ticketTag.toLowerCase().includes(stageTag.toLowerCase()) ||
-          stageTag.toLowerCase().includes(ticketTag.toLowerCase())
-        )
+      // Verificar se o ticket tem tag correspondente ao nome do estágio
+      const stageNameLower = stage.name.toLowerCase();
+      const hasStageTag = ticket.tags.some(tag => 
+        tag.toLowerCase().includes(stageNameLower) ||
+        stageNameLower.includes(tag.toLowerCase())
       );
 
-      // Se não tem tag específica, colocar no primeiro estágio
-      const isInStage = hasStageTag || (stage.id === 'leads' && ticket.tags.length === 0);
+      // Se não tem tag específica, colocar no primeiro estágio (menor position)
+      const isFirstStage = stages.length > 0 && stage.position === Math.min(...stages.map(s => s.position));
+      const isInStage = hasStageTag || (isFirstStage && ticket.tags.length === 0);
 
       // Aplicar filtros de busca
       const matchesSearch = !searchTerm || 
@@ -227,10 +240,14 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
       const ticket = tickets.find(t => t.id === draggableId);
       if (!ticket) return;
 
-      // Remover tags do estágio anterior e adicionar tags do novo estágio
-      const newTags = [...ticket.tags.filter(tag => 
-        !stages.some(stage => stage.tags.includes(tag))
-      ), ...targetStage.tags];
+      // Atualizar tags do ticket com o nome do estágio
+      const stageTagName = targetStage.name.toLowerCase();
+      const newTags = [
+        ...ticket.tags.filter(tag => 
+          !stages.some(stage => tag.toLowerCase().includes(stage.name.toLowerCase()))
+        ), 
+        stageTagName
+      ];
 
       const { error } = await supabase
         .from('conversation_tickets')
@@ -287,22 +304,22 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
           : t
       ));
 
-      if (!availableTags.includes(newTag)) {
-        setAvailableTags(prev => [...prev, newTag]);
-      }
+      // Tag será incluída na próxima busca de tags
 
     } catch (error) {
       console.error('Erro ao adicionar tag:', error);
     }
   };
 
-  // Cálculos de estatísticas globais
+  // Cálculos de estatísticas reais
   const totalTickets = tickets.length;
-  const totalValue = tickets.reduce((sum, t) => sum + (t.lead_value || 0), 0);
-  const avgConversion = tickets.length > 0 
-    ? Math.round(tickets.reduce((sum, t) => sum + (t.conversion_probability || 0), 0) / tickets.length)
+  const resolvedTickets = tickets.filter(t => t.status === 'resolved').length;
+  const avgResponseTime = tickets.filter(t => t.first_response_time_minutes).length > 0
+    ? Math.round(tickets.filter(t => t.first_response_time_minutes)
+        .reduce((sum, t) => sum + (t.first_response_time_minutes || 0), 0) / 
+        tickets.filter(t => t.first_response_time_minutes).length)
     : 0;
-  const hotLeads = tickets.filter(t => t.priority >= 2).length;
+  const activeTickets = tickets.filter(t => ['open', 'pending', 'in_progress'].includes(t.status)).length;
 
   if (loading) {
     return (
@@ -327,13 +344,17 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
         </div>
         
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={loadTicketsData}>
+          <Button variant="outline" size="sm" onClick={loadFunnelData}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Atualizar
           </Button>
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            Configurar
+          <Button variant="outline" size="sm" onClick={() => setShowStageEditor(true)}>
+            <Edit className="h-4 w-4 mr-2" />
+            Estágios
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowTagManager(true)}>
+            <TagIcon className="h-4 w-4 mr-2" />
+            Tags
           </Button>
         </div>
       </div>
@@ -346,7 +367,7 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-blue-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Total Leads</p>
+                <p className="text-sm text-muted-foreground">Total Tickets</p>
                 <p className="text-2xl font-bold text-blue-600">{totalTickets}</p>
               </div>
             </div>
@@ -357,10 +378,10 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
           <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-green-600/5" />
           <CardContent className="p-4 relative">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-green-500" />
+              <MessageSquare className="h-5 w-5 text-green-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Valor Total</p>
-                <p className="text-2xl font-bold text-green-600">R$ {totalValue.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">Resolvidos</p>
+                <p className="text-2xl font-bold text-green-600">{resolvedTickets}</p>
               </div>
             </div>
           </CardContent>
@@ -370,23 +391,23 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
           <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-purple-600/5" />
           <CardContent className="p-4 relative">
             <div className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-purple-500" />
+              <Clock className="h-5 w-5 text-purple-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Conv. Média</p>
-                <p className="text-2xl font-bold text-purple-600">{avgConversion}%</p>
+                <p className="text-sm text-muted-foreground">Tempo Resposta</p>
+                <p className="text-2xl font-bold text-purple-600">{avgResponseTime}min</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-red-600/5" />
+          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 to-orange-600/5" />
           <CardContent className="p-4 relative">
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-red-500" />
+              <TrendingUp className="h-5 w-5 text-orange-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Leads Quentes</p>
-                <p className="text-2xl font-bold text-red-600">{hotLeads}</p>
+                <p className="text-sm text-muted-foreground">Ativos</p>
+                <p className="text-2xl font-bold text-orange-600">{activeTickets}</p>
               </div>
             </div>
           </CardContent>
@@ -411,18 +432,22 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
             <div className="flex gap-2 flex-wrap">
               {availableTags.map(tag => (
                 <Badge
-                  key={tag}
-                  variant={selectedTags.includes(tag) ? "default" : "outline"}
+                  key={tag.id}
+                  variant={selectedTags.includes(tag.name) ? "default" : "outline"}
                   className="cursor-pointer transition-colors"
+                  style={{ 
+                    backgroundColor: selectedTags.includes(tag.name) ? tag.color : 'transparent',
+                    borderColor: tag.color 
+                  }}
                   onClick={() => {
                     setSelectedTags(prev => 
-                      prev.includes(tag) 
-                        ? prev.filter(t => t !== tag)
-                        : [...prev, tag]
+                      prev.includes(tag.name) 
+                        ? prev.filter(t => t !== tag.name)
+                        : [...prev, tag.name]
                     );
                   }}
                 >
-                  {tag}
+                  {tag.name}
                 </Badge>
               ))}
             </div>
@@ -435,7 +460,11 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
         <div className="flex gap-6 overflow-x-auto pb-4">
           {stages.map(stage => {
             const stageTickets = getTicketsByStage(stage);
-            const stageValue = stageTickets.reduce((sum, t) => sum + (t.lead_value || 0), 0);
+            const avgResolutionTime = stageTickets.filter(t => t.resolution_time_minutes).length > 0
+              ? Math.round(stageTickets.filter(t => t.resolution_time_minutes)
+                  .reduce((sum, t) => sum + (t.resolution_time_minutes || 0), 0) / 
+                  stageTickets.filter(t => t.resolution_time_minutes).length)
+              : 0;
             
             return (
               <div key={stage.id} className="flex-shrink-0 w-80">
@@ -463,10 +492,10 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
                       <p className="text-xs text-muted-foreground">{stage.description}</p>
                     )}
                     
-                    {stageValue > 0 && (
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <DollarSign className="h-3 w-3" />
-                        R$ {stageValue.toLocaleString()}
+                    {avgResolutionTime > 0 && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {avgResolutionTime}min resolução
                       </div>
                     )}
                   </CardHeader>
@@ -515,21 +544,14 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
                                         {ticket.customer_phone}
                                       </div>
                                       
-                                      {ticket.lead_value && (
-                                        <div className="flex items-center gap-1 text-xs text-green-600">
-                                          <DollarSign className="h-3 w-3" />
-                                          R$ {ticket.lead_value.toLocaleString()}
-                                        </div>
-                                      )}
-                                      
                                       <div className="flex items-center justify-between text-xs">
                                         <div className="flex items-center gap-1 text-muted-foreground">
                                           <Clock className="h-3 w-3" />
                                           {ticket.waiting_time_minutes}min
                                         </div>
-                                        {ticket.conversion_probability && (
-                                          <span className="text-purple-600">
-                                            {ticket.conversion_probability}% conv.
+                                        {ticket.first_response_time_minutes && (
+                                          <span className="text-blue-600">
+                                            Resp: {ticket.first_response_time_minutes}min
                                           </span>
                                         )}
                                       </div>
@@ -571,6 +593,31 @@ const FunnelTicketsKanban: React.FC<FunnelTicketsKanbanProps> = ({ clientId }) =
           })}
         </div>
       </DragDropContext>
+      {/* Modais */}
+      {showStageEditor && (
+        <FunnelStageEditor
+          clientId={clientId}
+          stages={stages}
+          onClose={() => setShowStageEditor(false)}
+          onSave={() => {
+            loadStagesAndTags();
+            setShowStageEditor(false);
+          }}
+        />
+      )}
+
+      {showTagManager && (
+        <FunnelTagManagerV2
+          isOpen={showTagManager}
+          onClose={() => setShowTagManager(false)}
+          clientId={clientId}
+          availableTags={availableTags}
+          onTagsUpdate={() => {
+            loadStagesAndTags();
+            setShowTagManager(false);
+          }}
+        />
+      )}
     </div>
   );
 };
