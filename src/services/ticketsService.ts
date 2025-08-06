@@ -105,11 +105,25 @@ class TicketsService {
 
   async addTicketMessage(message: Partial<TicketMessage>): Promise<TicketMessage> {
     try {
-      // 🔥 CORREÇÃO CRÍTICA: Garantir salvamento de TODOS os campos de mídia
+      // 🎯 ANTI-DUPLICAÇÃO: Verificar se message_id já existe
+      if (message.message_id) {
+        const { data: existing } = await supabase
+          .from('ticket_messages')
+          .select('id')
+          .eq('message_id', message.message_id)
+          .single();
+        
+        if (existing) {
+          console.log(`🔒 [TICKETS-SERVICE] Mensagem já existe: ${message.message_id}`);
+          throw new Error('Mensagem já existe');
+        }
+      }
+
+      // 🚀 DADOS OTIMIZADOS para salvamento
       const messageData = {
         content: message.content || '',
         ticket_id: message.ticket_id || '',
-        message_id: message.message_id || '',
+        message_id: message.message_id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         timestamp: message.timestamp || new Date().toISOString(),
         from_me: message.from_me || false,
         sender_name: message.sender_name || '',
@@ -117,7 +131,7 @@ class TicketsService {
         is_internal_note: message.is_internal_note || false,
         is_ai_response: message.is_ai_response || false,
         processing_status: message.processing_status || 'processed',
-        // 🔥 CAMPOS DE MÍDIA OBRIGATÓRIOS
+        // Campos de mídia opcionais
         media_url: message.media_url || null,
         media_key: message.media_key || null,
         file_enc_sha256: message.file_enc_sha256 || null,
@@ -125,8 +139,7 @@ class TicketsService {
         media_duration: message.media_duration || null,
         audio_base64: message.audio_base64 || null,
         media_transcription: message.media_transcription || null,
-        ai_confidence_score: message.ai_confidence_score || null,
-        ...message
+        ai_confidence_score: message.ai_confidence_score || null
       };
 
       const { data, error } = await supabase
@@ -136,9 +149,11 @@ class TicketsService {
         .single();
 
       if (error) throw error;
+      
+      console.log(`💾 [TICKETS-SERVICE] Mensagem salva: ${data.message_id}`);
       return data;
     } catch (error) {
-      console.error('❌ Erro ao adicionar mensagem ao ticket:', error);
+      console.error('❌ [TICKETS-SERVICE] Erro ao salvar mensagem:', error);
       throw error;
     }
   }
