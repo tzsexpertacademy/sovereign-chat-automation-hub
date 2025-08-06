@@ -14,6 +14,7 @@ import {
 import { clientsService, type ClientData } from '@/services/clientsService';
 import { EditProfileModal } from './EditProfileModal';
 import { ConfigureLogoModal } from './ConfigureLogoModal';
+import { cn } from '@/lib/utils';
 
 interface ClientHeaderProps {
   clientId?: string;
@@ -50,9 +51,9 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
   };
 
   return (
-    <header className="h-16 border-b bg-white flex items-center justify-between px-6">
+    <header className="h-16 border-b bg-gradient-to-r from-background to-muted/20 backdrop-blur-sm flex items-center justify-between px-6 shadow-sm">
       <div className="flex items-center space-x-4">
-        <SidebarTrigger />
+        <SidebarTrigger className="hover:bg-muted/50 rounded-lg p-2 transition-colors" />
         <div className="flex items-center space-x-3">
           {clientData?.company_logo_url ? (
             <img 
@@ -61,7 +62,7 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
               className="h-8 w-auto"
             />
           ) : (
-            <div className="text-lg font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+            <div className="text-lg font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
               YumerFlow
             </div>
           )}
@@ -71,7 +72,15 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
             ) : (
               <WifiOff className="w-5 h-5 text-red-500" />
             )}
-            <Badge variant={isConnected ? "default" : "secondary"}>
+            <Badge 
+              variant={isConnected ? "default" : "secondary"}
+              className={cn(
+                "transition-all duration-200",
+                isConnected 
+                  ? "bg-green-100 text-green-800 border-green-200 hover:bg-green-200" 
+                  : "bg-red-100 text-red-800 border-red-200"
+              )}
+            >
               {isConnected ? "WhatsApp Conectado" : "Desconectado"}
             </Badge>
           </div>
@@ -79,29 +88,29 @@ export function ClientHeader({ clientId }: ClientHeaderProps) {
       </div>
 
       <div className="flex items-center space-x-4">
-        <Button variant="ghost" size="sm" className="relative">
+        <Button variant="ghost" size="sm" className="relative hover:bg-muted/50 rounded-lg transition-colors">
           <Bell className="w-5 h-5" />
-          <Badge className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+          <Badge className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center animate-pulse">
             2
           </Badge>
         </Button>
         
         <div className="flex items-center space-x-3">
           <div className="text-right">
-            <p className="text-sm font-medium text-gray-900">
+            <p className="text-sm font-medium text-foreground">
               {clientData?.name || `Cliente ${clientId}`}
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               YumerFlow {clientData?.plan ? clientData.plan.charAt(0).toUpperCase() + clientData.plan.slice(1) : 'Basic'}
             </p>
           </div>
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="rounded-full p-2">
-                <Avatar className="w-8 h-8">
+              <Button variant="ghost" size="sm" className="rounded-full p-2 hover:bg-muted/50 transition-colors">
+                <Avatar className="w-8 h-8 shadow-md border border-border/50">
                   <AvatarImage src={clientData?.avatar_url} />
-                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-sm">
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-primary-foreground text-sm font-semibold">
                     {clientData?.name ? getClientInitials(clientData.name) : 'U'}
                   </AvatarFallback>
                 </Avatar>

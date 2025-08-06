@@ -151,10 +151,10 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
                 <SidebarMenuButton
                   asChild
                   className={cn(
-                    "group relative w-full justify-start p-3 mb-1 rounded-xl transition-all duration-300 hover:scale-[1.02] hover:shadow-md",
+                    "group relative w-full justify-start p-3 mb-1 rounded-xl transition-all duration-200",
                     isActive 
                       ? 'bg-gradient-to-r from-primary/10 to-secondary/10 text-primary border-l-4 border-primary shadow-lg backdrop-blur-sm' 
-                      : 'hover:bg-gradient-to-r hover:from-muted/50 hover:to-muted/30 hover:shadow-sm'
+                      : 'hover:bg-muted/30'
                   )}
                 >
                   <Link to={item.path}>
@@ -163,14 +163,14 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
                         "p-2 rounded-lg transition-all duration-300",
                         isActive 
                           ? 'bg-gradient-to-br from-primary to-secondary text-primary-foreground shadow-md' 
-                          : 'bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
+                          : 'bg-muted/50 text-muted-foreground group-hover:bg-muted group-hover:text-foreground'
                       )}>
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="flex flex-col items-start">
                         <span className={cn(
                           "font-semibold text-sm transition-colors",
-                          isActive ? 'text-primary' : 'text-foreground group-hover:text-primary'
+                          isActive ? 'text-primary' : 'text-foreground group-hover:text-foreground'
                         )}>
                           {item.title}
                         </span>
@@ -199,6 +199,7 @@ const ClientSidebar = ({ clientId }: ClientSidebarProps) => {
           </div>
           <p className="text-xs text-muted-foreground font-medium">Powered By Yumer</p>
           <p className="text-xs text-muted-foreground/70">CEO: Thalis Zulianello</p>
+          <p className="text-xs text-muted-foreground/60 font-mono">@yumer.ai</p>
         </div>
       </SidebarFooter>
     </Sidebar>
