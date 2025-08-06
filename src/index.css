@@ -8,6 +8,12 @@
   :root {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
+    
+    /* YumerFlow specific colors */
+    --yumer-purple: 270 100% 50%;
+    --yumer-fuchsia: 320 100% 50%;
+    --yumer-dark: 0 0% 5%;
+    --yumer-gradient: linear-gradient(135deg, hsl(270 100% 50%), hsl(320 100% 50%));
 
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;

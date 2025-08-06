@@ -1,159 +1,225 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { MessageSquare, Users, BarChart3, Zap, Shield, Globe } from "lucide-react";
+import { MessageSquare, Users, BarChart3, Zap, Shield, Globe, Phone, Brain, Mic, Calendar, Settings, TrendingUp, Heart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import yumerLogo from "@/assets/yumer-logo.png";
+import heroImage from "@/assets/hero-yumerflow.jpg";
+import foundersImage from "@/assets/founders-team.jpg";
 
 const Index = () => {
   const navigate = useNavigate();
 
-  const features = [
-    {
-      icon: MessageSquare,
-      title: "WhatsApp Multi-Cliente",
-      description: "Conexão direta sem APIs terceiras"
-    },
-    {
-      icon: Users,
-      title: "Isolamento Total",
-      description: "Cada cliente em ambiente blindado"
-    },
-    {
-      icon: BarChart3,
-      title: "Analytics IA",
-      description: "Análise inteligente de conversas"
-    },
-    {
-      icon: Zap,
-      title: "Automação",
-      description: "Campanhas e respostas automáticas"
-    },
-    {
-      icon: Shield,
-      title: "100% Independente",
-      description: "Sem dependências externas"
-    },
-    {
-      icon: Globe,
-      title: "SaaS Escalável",
-      description: "Infraestrutura própria escalável"
-    }
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-purple-50">
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+    <div className="min-h-screen bg-black text-white">
+      {/* Fixed Header */}
+      <header className="fixed top-0 w-full bg-black/90 backdrop-blur-sm border-b border-white/10 z-50">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
-              <MessageSquare className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+            <img src={yumerLogo} alt="Yumer" className="w-8 h-8" />
+            <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
               YumerFlow
             </h1>
           </div>
-          <div className="flex space-x-3">
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/admin')}
-              className="hover:bg-green-50"
-            >
-              Admin
-            </Button>
-            <Button 
-              onClick={() => navigate('/client/demo')}
-              className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
-            >
-              Demo Cliente
-            </Button>
-          </div>
+          <nav className="hidden md:flex space-x-6">
+            <a href="#ia-humanizada" className="hover:text-purple-400 transition-colors">IA Humanizada</a>
+            <a href="#voz-clonada" className="hover:text-purple-400 transition-colors">Voz Clonada</a>
+            <a href="#agendamentos" className="hover:text-purple-400 transition-colors">Agendamentos</a>
+            <a href="#crm" className="hover:text-purple-400 transition-colors">CRM</a>
+          </nav>
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="py-20 px-6">
-        <div className="container mx-auto text-center max-w-4xl">
-          <h2 className="text-5xl font-bold mb-6 bg-gradient-to-r from-gray-900 via-green-600 to-blue-600 bg-clip-text text-transparent">
-            YumerFlow - Sistema Completo de Atendimento
-          </h2>
-          <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-            Plataforma SaaS 100% independente com WhatsApp multi-cliente, agendamento inteligente, 
-            automação com IA e analytics avançados. Tudo integrado em uma solução completa.
+      <section className="relative min-h-screen flex items-center justify-center px-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 to-fuchsia-900/20" />
+        <img src={heroImage} alt="YumerFlow Hero" className="absolute inset-0 w-full h-full object-cover opacity-30" />
+        
+        <div className="relative z-10 text-center max-w-5xl mx-auto">
+          <h1 className="text-6xl md:text-7xl font-bold mb-6 leading-tight">
+            <span className="bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
+              O Atendimento do Futuro,
+            </span>
+            <br />
+            <span className="bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
+              com a Alma do Presente
+            </span>
+          </h1>
+          
+          <p className="text-2xl mb-4 text-gray-300 max-w-4xl mx-auto leading-relaxed">
+            Transforme seu <span className="text-green-400 font-semibold">WhatsApp</span> em um Especialista que Encanta, Vende e Constrói Relacionamento
           </p>
-          <div className="flex justify-center space-x-4">
-            <Button 
-              size="lg" 
-              onClick={() => navigate('/admin')}
-              className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 px-8 py-3"
-            >
-              Acessar Admin
-            </Button>
-            <Button 
-              size="lg" 
-              variant="outline" 
-              onClick={() => navigate('/client/demo')}
-              className="px-8 py-3 border-green-300 text-green-700 hover:bg-green-50"
-            >
-              Ver Demo
-            </Button>
+          <p className="text-lg mb-8 text-purple-200">— Sem Parecer IA</p>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10 max-w-4xl mx-auto">
+            <div className="flex items-center space-x-2 text-purple-300">
+              <div className="w-2 h-2 bg-purple-400 rounded-full" />
+              <span className="text-sm">Automatize 90% das interações</span>
+            </div>
+            <div className="flex items-center space-x-2 text-purple-300">
+              <div className="w-2 h-2 bg-purple-400 rounded-full" />
+              <span className="text-sm">Sua própria voz clonada</span>
+            </div>
+            <div className="flex items-center space-x-2 text-purple-300">
+              <div className="w-2 h-2 bg-purple-400 rounded-full" />
+              <span className="text-sm">CRM adaptável</span>
+            </div>
+            <div className="flex items-center space-x-2 text-purple-300">
+              <div className="w-2 h-2 bg-purple-400 rounded-full" />
+              <span className="text-sm">Agendamentos inteligentes</span>
+            </div>
           </div>
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section className="py-16 px-6 bg-white/50">
-        <div className="container mx-auto max-w-6xl">
-          <h3 className="text-3xl font-bold text-center mb-12 text-gray-900">
-            Recursos Avançados do YumerFlow
-          </h3>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((feature, index) => (
-              <Card key={index} className="hover:shadow-lg transition-shadow border-0 bg-white/80 backdrop-blur-sm">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg flex items-center justify-center mb-4">
-                    <feature.icon className="w-6 h-6 text-white" />
-                  </div>
-                  <CardTitle className="text-lg">{feature.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-gray-600">
-                    {feature.description}
-                  </CardDescription>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 px-6 bg-gradient-to-r from-green-600 to-blue-600 text-white">
-        <div className="container mx-auto text-center max-w-3xl">
-          <h3 className="text-3xl font-bold mb-6">
-            Pronto para Revolucionar seu Atendimento?
-          </h3>
-          <p className="text-xl mb-8 opacity-90">
-            Experimente o YumerFlow e veja como nossa plataforma completa pode transformar sua comunicação e gestão de clientes
-          </p>
-          <Button 
-            size="lg" 
-            onClick={() => navigate('/admin')}
-            className="bg-white text-green-600 hover:bg-gray-100 px-8 py-3 font-semibold"
+          
+          <a 
+            href="https://wa.me/554731802324" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-flex items-center space-x-3 bg-gradient-to-r from-purple-500 to-fuchsia-500 hover:from-purple-600 hover:to-fuchsia-600 text-white px-8 py-4 rounded-full text-lg font-semibold transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
           >
-            Começar Agora
-          </Button>
+            <Phone className="w-5 h-5" />
+            <span>Chamar no WhatsApp Agora</span>
+          </a>
+        </div>
+      </section>
+
+      {/* IA Humanizada Section */}
+      <section id="ia-humanizada" className="py-20 px-6 bg-gradient-to-r from-gray-900 to-black">
+        <div className="container mx-auto max-w-6xl">
+          <div className="text-center mb-16">
+            <h2 className="text-5xl font-bold mb-6">
+              <span className="bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
+                Inteligência Humanizada
+              </span>
+            </h2>
+            <p className="text-2xl text-gray-300 mb-4">A Máquina que Parece Gente</p>
+            <p className="text-xl text-purple-200">Eles vão achar que é uma pessoa. Mas é a sua IA.</p>
+          </div>
+          
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <div>
+              <h3 className="text-3xl font-bold mb-6 text-white">YumerFlow vai além de fluxos prontos. Ele entende.</h3>
+              <div className="space-y-4">
+                {[
+                  "Digita como humano (com pausas, erros e hesitações)",
+                  "Lembra de interações anteriores",
+                  "Muda o tom com base no humor do cliente", 
+                  "Interpreta áudios, PDFs, imagens e vídeos",
+                  "Responde com lógica, empatia e estratégia"
+                ].map((feature, index) => (
+                  <div key={index} className="flex items-start space-x-3">
+                    <Brain className="w-5 h-5 text-purple-400 mt-1 flex-shrink-0" />
+                    <span className="text-gray-300">{feature}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-br from-purple-900/30 to-fuchsia-900/30 p-6 rounded-2xl border border-purple-500/20">
+              <h4 className="text-lg font-semibold mb-4 text-purple-300">Exemplo real:</h4>
+              <div className="space-y-3">
+                <div className="bg-gray-800 p-3 rounded-lg">
+                  <p className="text-sm text-gray-400">Cliente (2h da manhã)</p>
+                  <p className="text-white">🎵 [Áudio confuso de 2 minutos]</p>
+                </div>
+                <div className="bg-purple-800/30 p-3 rounded-lg">
+                  <p className="text-sm text-purple-300">YumerFlow</p>
+                  <p className="text-white">Entendi sua dúvida sobre o plano premium. Vou te explicar de forma simples...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Fundadores Section */}
+      <section className="py-20 px-6 bg-black">
+        <div className="container mx-auto max-w-4xl text-center">
+          <h2 className="text-4xl font-bold mb-6">
+            <span className="bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
+              Quem está por trás da revolução
+            </span>
+          </h2>
+          <p className="text-xl text-gray-300 mb-12">Conheça os fundadores que estão transformando o atendimento</p>
+          
+          <div className="relative">
+            <img 
+              src={foundersImage} 
+              alt="Fundadores: Thalis, Deni e Alan" 
+              className="w-full max-w-2xl mx-auto rounded-2xl shadow-2xl"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent rounded-2xl" />
+            <div className="absolute bottom-6 left-6 right-6 text-left">
+              <h3 className="text-2xl font-bold text-white mb-2">Thalis, Deni e Alan</h3>
+              <p className="text-purple-200">Fundadores da Yumer</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Final Section */}
+      <section className="py-20 px-6 bg-gradient-to-r from-purple-900 to-fuchsia-900">
+        <div className="container mx-auto max-w-4xl text-center">
+          <h2 className="text-5xl font-bold mb-6 text-white">
+            A Decisão que Muda seu Atendimento
+          </h2>
+          <p className="text-xl mb-4 text-purple-100">Você chegou até aqui.</p>
+          <p className="text-lg mb-8 text-purple-200">
+            Seu cliente nunca mais deveria sentir que está sendo atendido por um script robótico.
+          </p>
+          
+          <div className="bg-black/20 p-8 rounded-2xl mb-8 backdrop-blur-sm">
+            <p className="text-xl mb-6 text-white">
+              Deixe que a nossa IA entenda seu negócio e mostre, em 5 minutos, o que pode ser transformado.
+            </p>
+            <a 
+              href="https://wa.me/554731802324" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-3 bg-white text-purple-900 hover:bg-gray-100 px-8 py-4 rounded-full text-lg font-bold transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+            >
+              <Phone className="w-5 h-5" />
+              <span>Falar com um Especialista</span>
+            </a>
+          </div>
+          
+          <div className="text-center">
+            <p className="text-purple-200 mb-2">Sem formulário. Sem espera.</p>
+            <p className="text-white font-semibold">Só uma conversa inteligente — do jeito que seu cliente merece.</p>
+          </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-8 px-6 bg-gray-900 text-white">
+      <footer className="py-8 px-6 bg-black border-t border-white/10">
         <div className="container mx-auto text-center">
-          <p className="text-gray-400">
-            © 2024 YumerFlow - Sistema Completo de Atendimento e Agendamento
-          </p>
+          <div className="flex items-center justify-center space-x-4 mb-4">
+            <img src={yumerLogo} alt="Yumer" className="w-6 h-6" />
+            <span className="text-purple-400 font-semibold">YumerFlow</span>
+          </div>
+          <p className="text-gray-400 mb-4">A tecnologia que fala como você. E vende como ninguém.</p>
+          <p className="text-gray-500 text-sm">© 2024 YumerFlow - O Atendimento do Futuro</p>
+          
+          {/* Admin link discreto */}
+          <div className="mt-6 pt-4 border-t border-gray-800">
+            <button 
+              onClick={() => navigate('/admin')}
+              className="text-gray-600 hover:text-gray-400 text-xs transition-colors"
+            >
+              Admin
+            </button>
+          </div>
         </div>
       </footer>
+
+      {/* WhatsApp Float Button */}
+      <a 
+        href="https://wa.me/554731802324" 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 bg-green-500 hover:bg-green-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all transform hover:scale-110 z-50"
+      >
+        <Phone className="w-6 h-6" />
+      </a>
     </div>
   );
 };
