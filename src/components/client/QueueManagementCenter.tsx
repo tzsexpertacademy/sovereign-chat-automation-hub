@@ -186,59 +186,71 @@ const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId:
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] p-6 overflow-auto">
-      {/* Header Moderno */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-              Sistema de Filas YUMER
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Gestão inteligente de atendimento com IA
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Última atualização</p>
-              <p className="text-sm font-medium">{lastUpdate.toLocaleTimeString()}</p>
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-background/80">
+      <div className="container mx-auto p-4 md:p-6 max-w-7xl">
+        {/* Header Moderno com Gradiente */}
+        <div className="mb-6 md:mb-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-2">
+              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
+                Sistema de Filas YUMER
+              </h1>
+              <p className="text-sm md:text-base text-muted-foreground">
+                Gestão inteligente de atendimento com IA
+              </p>
+              <div className="flex items-center gap-4">
+                <Badge variant="outline" className="bg-background/50">
+                  {globalStats.activeQueues} filas ativas
+                </Badge>
+                <Badge variant="outline" className="bg-background/50">
+                  {globalStats.totalTickets} tickets ativos
+                </Badge>
+              </div>
             </div>
-            <Button
-              variant={autoRefresh ? "default" : "outline"}
-              size="sm"
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className="gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
-              Auto
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => loadData()}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+            
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Última atualização</p>
+                <p className="text-sm font-medium">{lastUpdate.toLocaleTimeString()}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant={autoRefresh ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAutoRefresh(!autoRefresh)}
+                  className="gap-2 min-w-20"
+                >
+                  <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Auto</span>
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => loadData()} className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  <span className="hidden sm:inline">Atualizar</span>
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 h-12">
-          <TabsTrigger value="overview" className="gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Visão Geral
-          </TabsTrigger>
-          <TabsTrigger value="kanban" className="gap-2">
+      <Tabs defaultValue="kanban" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5 h-12 bg-background/80 backdrop-blur-sm">
+          <TabsTrigger value="kanban" className="gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/80">
             <Activity className="h-4 w-4" />
             Kanban Visual
           </TabsTrigger>
-          <TabsTrigger value="queues" className="gap-2">
+          <TabsTrigger value="overview" className="gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/80">
+            <BarChart3 className="h-4 w-4" />
+            Visão Geral
+          </TabsTrigger>
+          <TabsTrigger value="queues" className="gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/80">
             <Users className="h-4 w-4" />
             Filas
           </TabsTrigger>
-          <TabsTrigger value="triggers" className="gap-2">
+          <TabsTrigger value="triggers" className="gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/80">
             <Settings className="h-4 w-4" />
             Gatilhos
           </TabsTrigger>
-          <TabsTrigger value="metrics" className="gap-2">
+          <TabsTrigger value="metrics" className="gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/80">
             <TrendingUp className="h-4 w-4" />
             Métricas
           </TabsTrigger>
@@ -247,7 +259,7 @@ const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId:
         {/* VISÃO GERAL */}
         <TabsContent value="overview" className="space-y-6">
           {/* Cards de Estatísticas Principais */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <Card className="relative overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-blue-600/5" />
               <CardContent className="p-6 relative">
@@ -314,7 +326,7 @@ const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId:
           </div>
 
           {/* Performance das Filas */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -414,19 +426,82 @@ const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId:
           </div>
         </TabsContent>
 
-        {/* KANBAN VISUAL */}
-        <TabsContent value="kanban">
+        {/* KANBAN VISUAL - PRIORIDADE PRINCIPAL */}
+        <TabsContent value="kanban" className="space-y-6">
+          {/* Métricas sempre visíveis no topo */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent shadow-lg">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-blue-600/5" />
+              <CardContent className="p-4 relative">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/20">
+                    <MessageSquare className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Tickets Ativos</p>
+                    <p className="text-xl md:text-2xl font-bold text-blue-600">{globalStats.totalTickets}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-green-500/10 via-green-500/5 to-transparent shadow-lg">
+              <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-green-600/5" />
+              <CardContent className="p-4 relative">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-green-500/20">
+                    <Users className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Filas Ativas</p>
+                    <p className="text-xl md:text-2xl font-bold text-green-600">{globalStats.activeQueues}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent shadow-lg">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-purple-600/5" />
+              <CardContent className="p-4 relative">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-purple-500/20">
+                    <Bot className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Taxa IA</p>
+                    <p className="text-xl md:text-2xl font-bold text-purple-600">{globalStats.aiSuccessRate}%</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-orange-500/10 via-orange-500/5 to-transparent shadow-lg">
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 to-orange-600/5" />
+              <CardContent className="p-4 relative">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-orange-500/20">
+                    <Timer className="h-5 w-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Tempo Resp.</p>
+                    <p className="text-xl md:text-2xl font-bold text-orange-600">{globalStats.avgResponseTime}min</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           <QueuesKanbanView clientId={clientId!} />
         </TabsContent>
 
         {/* GERENCIAMENTO DE FILAS */}
         <TabsContent value="queues" className="space-y-6">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold">Gerenciar Filas</h2>
-              <p className="text-muted-foreground">Configure e monitore suas filas de atendimento</p>
+              <h2 className="text-xl md:text-2xl font-bold">Gerenciar Filas</h2>
+              <p className="text-sm md:text-base text-muted-foreground">Configure e monitore suas filas de atendimento</p>
             </div>
-            <Button onClick={handleCreateQueue} className="gap-2">
+            <Button onClick={handleCreateQueue} className="gap-2 w-full md:w-auto">
               <Plus className="h-4 w-4" />
               Nova Fila
             </Button>
@@ -575,16 +650,17 @@ const QueueManagementCenter: React.FC<QueueManagementCenterProps> = ({ clientId:
         </TabsContent>
       </Tabs>
 
-      {/* Modal de Formulário */}
-      {showQueueForm && (
-        <QueueForm
-          clientId={clientId!}
-          queue={editingQueue}
-          assistants={assistants}
-          onSave={handleQueueSaved}
-          onCancel={() => setShowQueueForm(false)}
-        />
-      )}
+        {/* Modal de Formulário */}
+        {showQueueForm && (
+          <QueueForm
+            clientId={clientId!}
+            queue={editingQueue}
+            assistants={assistants}
+            onSave={handleQueueSaved}
+            onCancel={() => setShowQueueForm(false)}
+          />
+        )}
+      </div>
     </div>
   );
 };

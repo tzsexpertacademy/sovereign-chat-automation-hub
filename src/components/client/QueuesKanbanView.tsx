@@ -252,101 +252,54 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
 
   return (
     <div className="space-y-6">
-      {/* Header com controles */}
-      <div className="flex justify-between items-start">
+      {/* Header com controles responsivo */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold mb-2">Kanban Visual - Filas em Tempo Real</h2>
-          <p className="text-muted-foreground">
-            Visualize e gerencie tickets com dados reais do sistema
+          <h2 className="text-xl md:text-2xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+            Kanban Visual - Tempo Real
+          </h2>
+          <p className="text-sm md:text-base text-muted-foreground">
+            Visualize e gerencie tickets com arraste e solte
           </p>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <Button
             variant={autoRefresh ? "default" : "outline"}
             size="sm"
             onClick={() => setAutoRefresh(!autoRefresh)}
+            className="flex-1 md:flex-initial"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${autoRefresh ? 'animate-spin' : ''}`} />
-            Auto-refresh
+            <span className="hidden sm:inline">Auto-refresh</span>
+            <span className="sm:hidden">Auto</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={loadData}>
+          <Button variant="outline" size="sm" onClick={loadData} className="flex-1 md:flex-initial">
             <RefreshCw className="h-4 w-4 mr-2" />
-            Atualizar
+            <span className="hidden sm:inline">Atualizar</span>
+            <span className="sm:hidden">Update</span>
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" className="flex-1 md:flex-initial">
             <Filter className="h-4 w-4 mr-2" />
-            Filtros
+            <span className="hidden sm:inline">Filtros</span>
+            <span className="sm:hidden">Filter</span>
           </Button>
         </div>
       </div>
 
-      {/* Métricas globais */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-blue-600/5" />
-          <CardContent className="p-4 relative">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-blue-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Tickets Ativos</p>
-                <p className="text-2xl font-bold text-blue-600">{globalStats.totalActive}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Removemos as métricas daqui pois agora estão sempre visíveis no topo */}
 
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 to-yellow-600/5" />
-          <CardContent className="p-4 relative">
-            <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-yellow-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Pendentes</p>
-                <p className="text-2xl font-bold text-yellow-600">{globalStats.totalPending}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-green-600/5" />
-          <CardContent className="p-4 relative">
-            <div className="flex items-center gap-2">
-              <Bot className="h-5 w-5 text-green-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Taxa IA</p>
-                <p className="text-2xl font-bold text-green-600">{globalStats.avgAiRate}%</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-purple-600/5" />
-          <CardContent className="p-4 relative">
-            <div className="flex items-center gap-2">
-              <Timer className="h-5 w-5 text-purple-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Tempo Médio</p>
-                <p className="text-2xl font-bold text-purple-600">{globalStats.avgResponseTime}min</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Kanban Board com dados reais */}
+      {/* Kanban Board com dados reais - Totalmente responsivo */}
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="flex gap-6 overflow-x-auto pb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 lg:flex lg:gap-6 lg:overflow-x-auto lg:pb-4">
           {queues.map(queue => {
             const queueTickets = tickets[queue.id] || [];
             const queueMetrics = getQueueMetrics(queue.id);
             const workloadScore = queueMetrics?.workload_score || 0;
             
             return (
-              <div key={queue.id} className="flex-shrink-0 w-80">
-                <Card className="h-full border-2 hover:border-primary/20 transition-colors">
+              <div key={queue.id} className="lg:flex-shrink-0 lg:w-80 w-full">
+                <Card className="h-full border-2 hover:border-primary/20 transition-all duration-300 shadow-lg hover:shadow-xl bg-gradient-to-br from-background to-background/95">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -409,7 +362,7 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
                           snapshot.isDraggingOver ? 'bg-muted/50' : ''
                         }`}
                       >
-                        <ScrollArea className="h-96">
+                        <ScrollArea className="h-64 md:h-80 lg:h-96">
                           {queueTickets.map((ticket, index) => (
                             <Draggable
                               key={ticket.id}
@@ -417,14 +370,14 @@ const QueuesKanbanView: React.FC<QueuesKanbanViewProps> = ({ clientId }) => {
                               index={index}
                             >
                               {(provided, snapshot) => (
-                                <Card
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...provided.dragHandleProps}
-                                  className={`mb-3 cursor-move border-l-4 ${getPriorityColor(ticket.priority)} ${
-                                    snapshot.isDragging ? 'rotate-1 shadow-lg z-50' : 'hover:shadow-md'
-                                  } transition-all`}
-                                >
+                                  <Card
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    className={`mb-3 cursor-move border-l-4 ${getPriorityColor(ticket.priority)} ${
+                                      snapshot.isDragging ? 'rotate-1 shadow-lg z-50 scale-105' : 'hover:shadow-md hover:scale-[1.02]'
+                                    } transition-all duration-200 bg-gradient-to-r from-background to-background/90`}
+                                  >
                                   <CardContent className="p-3">
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between">
