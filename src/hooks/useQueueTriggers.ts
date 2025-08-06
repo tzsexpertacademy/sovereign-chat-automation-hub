@@ -9,6 +9,27 @@ export interface HandoffTrigger {
   description?: string;
 }
 
+// Hook para obter estatísticas de gatilhos de todas as filas
+export const useQueueTriggersStats = (queues: any[]) => {
+  const [stats, setStats] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const calculateStats = () => {
+      const newStats: Record<string, number> = {};
+      queues.forEach(queue => {
+        const triggers = (queue.handoff_triggers as unknown as HandoffTrigger[]) || [];
+        newStats[queue.id] = triggers.filter(t => t.enabled).length;
+      });
+      setStats(newStats);
+    };
+
+    calculateStats();
+  }, [queues]);
+
+  return { stats, loading };
+};
+
 export const useQueueTriggers = (queueId?: string) => {
   const [triggers, setTriggers] = useState<HandoffTrigger[]>([]);
   const [loading, setLoading] = useState(false);

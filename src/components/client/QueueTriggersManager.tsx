@@ -14,10 +14,12 @@ import {
   MessageSquare,
   Bot,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  RefreshCw,
+  Info
 } from 'lucide-react';
 import { type QueueWithAssistant } from "@/services/queuesService";
-import { useQueueTriggers, type HandoffTrigger } from "@/hooks/useQueueTriggers";
+import { useQueueTriggers, useQueueTriggersStats, type HandoffTrigger } from "@/hooks/useQueueTriggers";
 
 interface QueueTriggersManagerProps {
   clientId: string;
@@ -33,7 +35,23 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
   const [selectedQueue, setSelectedQueue] = useState<string>('');
   const [newKeyword, setNewKeyword] = useState('');
   
-  const { triggers, setTriggers, saveTriggers, loading } = useQueueTriggers(selectedQueue || undefined);
+  const { triggers, setTriggers, saveTriggers, loading, refetch } = useQueueTriggers(selectedQueue || undefined);
+  const { stats: triggersStats } = useQueueTriggersStats(queues);
+
+  // Auto-selecionar primeira fila com gatilhos
+  React.useEffect(() => {
+    if (!selectedQueue && queues.length > 0) {
+      // Procurar primeira fila com gatilhos
+      const queueWithTriggers = queues.find(queue => {
+        const triggers = (queue.handoff_triggers as unknown as HandoffTrigger[]) || [];
+        return triggers.length > 0;
+      });
+      
+      if (queueWithTriggers) {
+        setSelectedQueue(queueWithTriggers.id);
+      }
+    }
+  }, [queues, selectedQueue]);
 
   const handleSaveTriggers = async () => {
     await saveTriggers(triggers);
@@ -81,6 +99,7 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
   };
 
   const selectedQueueData = queues.find(q => q.id === selectedQueue);
+  const totalActiveTriggersAcrossQueues = Object.values(triggersStats).reduce((sum, count) => sum + count, 0);
 
   return (
     <div className="space-y-6">
@@ -89,13 +108,42 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
             Gerenciamento de Gatilhos Automáticos
+            {totalActiveTriggersAcrossQueues > 0 && (
+              <Badge variant="default" className="ml-2">
+                {totalActiveTriggersAcrossQueues} ativo(s)
+              </Badge>
+            )}
           </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Configure palavras-chave para transferências automáticas entre filas
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Configure palavras-chave para transferências automáticas entre filas
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={refetch}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {totalActiveTriggersAcrossQueues === 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <Info className="h-4 w-4 text-yellow-600" />
+                  <span className="text-sm font-medium text-yellow-800">
+                    Nenhum gatilho ativo encontrado
+                  </span>
+                </div>
+                <p className="text-sm text-yellow-700 mt-1">
+                  Selecione uma fila abaixo para configurar gatilhos automáticos
+                </p>
+              </div>
+            )}
+            
             <div>
               <Label htmlFor="queue-select">Selecionar Fila</Label>
               <Select value={selectedQueue} onValueChange={setSelectedQueue}>
@@ -103,14 +151,24 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
                   <SelectValue placeholder="Escolha uma fila para configurar" />
                 </SelectTrigger>
                 <SelectContent>
-                  {queues.map(queue => (
-                    <SelectItem key={queue.id} value={queue.id}>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${queue.is_active ? 'bg-green-500' : 'bg-gray-500'}`} />
-                        {queue.name}
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {queues.map(queue => {
+                    const triggerCount = triggersStats[queue.id] || 0;
+                    return (
+                      <SelectItem key={queue.id} value={queue.id}>
+                        <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${queue.is_active ? 'bg-green-500' : 'bg-gray-500'}`} />
+                            {queue.name}
+                          </div>
+                          {triggerCount > 0 && (
+                            <Badge variant="secondary" className="ml-2 text-xs">
+                              {triggerCount}
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -121,7 +179,7 @@ const QueueTriggersManager: React.FC<QueueTriggersManagerProps> = ({
                   <div>
                     <h3 className="font-medium">Gatilhos da Fila: {selectedQueueData?.name}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {triggers.length} gatilho(s) configurado(s)
+                      {triggers.length} gatilho(s) configurado(s) • {triggers.filter(t => t.enabled).length} ativo(s)
                     </p>
                   </div>
                   <div className="flex gap-2">
