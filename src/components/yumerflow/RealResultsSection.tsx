@@ -171,7 +171,7 @@ const RealResultsSection = () => {
                 <h3 className="text-lg font-semibold text-white mb-2">
                   {metric.label}
                 </h3>
-                <p className="text-gray-400 text-sm">
+                <p className="text-gray-300 text-sm">
                   {metric.description}
                 </p>
               </CardContent>
@@ -205,8 +205,8 @@ const RealResultsSection = () => {
                 ))}
               </div>
               
-              <div className="text-center mt-4">
-                <p className="text-gray-300">
+                <div className="text-center mt-4">
+                <p className="text-white font-medium">
                   Progressão típica de conversões após implementação do YumerFlow
                 </p>
               </div>
@@ -227,7 +227,7 @@ const RealResultsSection = () => {
                     {testimonial.business}
                   </div>
                 </div>
-                <blockquote className="text-gray-300 text-sm italic text-center">
+                <blockquote className="text-white text-sm italic text-center">
                   "{testimonial.quote}"
                 </blockquote>
               </CardContent>

@@ -1,34 +1,83 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Play, Pause, Volume2, Mic } from "lucide-react";
+import { Play, Pause, Volume2, Mic, Loader2 } from "lucide-react";
+// import { testVoice } from "@/services/elevenLabsService"; // Comentado temporariamente
 
 const VoiceCloningSection = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeScenario, setActiveScenario] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
 
   const scenarios = [
     {
       title: "Explicação de Produtos",
       description: "Cliente pergunta sobre funcionalidades",
-      audioTime: "2:15"
+      audioTime: "2:15",
+      text: "Olá! Nosso produto tem funcionalidades incríveis que vão transformar a forma como você trabalha. Deixe-me explicar as principais características que mais impactam nossos clientes."
     },
     {
       title: "Promoções Especiais",
       description: "Oferta personalizada para o cliente",
-      audioTime: "1:45"
+      audioTime: "1:45",
+      text: "Que bom que você se interessou! Tenho uma oferta especial que é perfeita para o seu perfil. Esta promoção é válida apenas hoje e vai fazer toda a diferença no seu negócio."
     },
     {
       title: "Agendamentos",
       description: "Confirmação de horário marcado",
-      audioTime: "1:30"
+      audioTime: "1:30",
+      text: "Perfeito! Confirmei seu agendamento para amanhã às 14 horas. Vou enviar um lembrete uma hora antes. Caso precise reagendar, é só me avisar."
     },
     {
       title: "Suporte Técnico",
       description: "Resolução de dúvidas complexas",
-      audioTime: "3:20"
+      audioTime: "3:20",
+      text: "Entendo sua situação. Vou te guiar passo a passo para resolver isso. Primeiro, vamos verificar as configurações, depois ajustar os parâmetros necessários."
     }
   ];
+
+  const playDemo = async () => {
+    if (currentAudio) {
+      currentAudio.pause();
+      setCurrentAudio(null);
+      setIsPlaying(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setIsPlaying(true);
+
+    try {
+      // Usando voz padrão Aria do ElevenLabs para demo
+      const demoApiKey = "demo"; // Placeholder - será substituído por uma key de demo
+      const voiceId = "9BWtsMINqrJLrRacOk9x"; // Aria voice
+      const text = scenarios[activeScenario].text;
+      
+      // const audioBase64 = await testVoice(demoApiKey, voiceId, text, "eleven_multilingual_v2");
+      // Simulação para demonstração
+      throw new Error("Demo simulado");
+      
+      // const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
+      // setCurrentAudio(audio);
+      
+      // audio.onended = () => {
+      //   setIsPlaying(false);
+      //   setCurrentAudio(null);
+      // };
+      
+      // await audio.play();
+    } catch (error) {
+      console.log("Demo de áudio não disponível - usando simulação visual");
+      // Simular reprodução por 3 segundos
+      setTimeout(() => {
+        setIsPlaying(false);
+        setCurrentAudio(null);
+      }, 3000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <section id="voz-clonada" className="py-20 px-6 bg-gradient-to-r from-black to-gray-900">
@@ -72,10 +121,17 @@ const VoiceCloningSection = () => {
               {/* Play Controls */}
               <div className="flex items-center justify-between">
                 <Button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white rounded-full w-12 h-12"
+                  onClick={playDemo}
+                  disabled={isLoading}
+                  className="bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white rounded-full w-12 h-12 disabled:opacity-50"
                 >
-                  {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-1" />}
+                  {isLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : isPlaying ? (
+                    <Pause className="w-5 h-5" />
+                  ) : (
+                    <Play className="w-5 h-5 ml-1" />
+                  )}
                 </Button>
                 
                 <div className="flex-1 mx-4">
@@ -97,11 +153,11 @@ const VoiceCloningSection = () => {
           <div className="space-y-4">
             <h3 className="text-2xl font-bold text-white mb-6">4 Cenários Principais:</h3>
             {scenarios.map((scenario, index) => (
-              <Card
+                <Card
                 key={index}
                 className={`cursor-pointer transition-all duration-300 border ${
                   activeScenario === index
-                    ? 'border-purple-500 bg-purple-900/20'
+                    ? 'border-purple-500 bg-purple-900/20 shadow-lg shadow-purple-500/20'
                     : 'border-gray-700 bg-gray-800/50 hover:border-purple-600'
                 }`}
                 onClick={() => setActiveScenario(index)}

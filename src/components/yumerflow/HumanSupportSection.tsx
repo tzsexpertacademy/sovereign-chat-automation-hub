@@ -89,7 +89,7 @@ const HumanSupportSection = () => {
                         <h4 className="text-lg font-semibold text-white mb-2">
                           {feature.title}
                         </h4>
-                        <p className="text-gray-400">{feature.description}</p>
+                        <p className="text-gray-300">{feature.description}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -132,7 +132,7 @@ const HumanSupportSection = () => {
                           {step.duration}
                         </span>
                       </div>
-                      <p className="text-gray-400">{step.description}</p>
+                      <p className="text-gray-300">{step.description}</p>
                     </div>
                   </div>
                   {index < onboardingSteps.length - 1 && (

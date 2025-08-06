@@ -135,7 +135,7 @@ const AdaptableCRMSection = () => {
                   {examples[activeExample].features.map((feature, index) => (
                     <div key={index} className="flex items-start space-x-3">
                       <CheckCircle className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
-                      <span className="text-gray-300 text-sm">{feature}</span>
+                      <span className="text-white text-sm">{feature}</span>
                     </div>
                   ))}
                 </div>
@@ -185,7 +185,7 @@ const AdaptableCRMSection = () => {
                       <item.icon className="w-5 h-5 text-purple-400" />
                       <span>{item.title}</span>
                     </h4>
-                    <p className="text-gray-400">{item.description}</p>
+                    <p className="text-gray-300">{item.description}</p>
                   </div>
                 </div>
               ))}

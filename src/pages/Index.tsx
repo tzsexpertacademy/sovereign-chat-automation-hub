@@ -88,62 +88,115 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Import Components */}
-      <VoiceCloningSection />
-      <SmartSchedulingSection />
-      <AdaptableCRMSection />
-      <AutomatedCampaignsSection />
-      <RealResultsSection />
-      <HumanSupportSection />
-
-      {/* IA Humanizada Section */}
+      {/* 2. Inteligência Humanizada - MOVIDO PARA 2ª POSIÇÃO */}
       <section id="ia-humanizada" className="py-20 px-6 bg-gradient-to-r from-gray-900 to-black">
         <div className="container mx-auto max-w-6xl">
           <div className="text-center mb-16">
             <h2 className="text-5xl font-bold mb-6">
               <span className="bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
-                Inteligência Humanizada
+                🧠 Inteligência que Emociona
               </span>
             </h2>
-            <p className="text-2xl text-gray-300 mb-4">A Máquina que Parece Gente</p>
-            <p className="text-xl text-purple-200">Eles vão achar que é uma pessoa. Mas é a sua IA.</p>
+            <p className="text-2xl text-gray-300 mb-4">Cada conversa única, cada resposta personalizada</p>
+            <p className="text-xl text-purple-200">"Seus clientes não vão saber que é IA"</p>
           </div>
-          
-          <div className="grid md:grid-cols-2 gap-12 items-center">
-            <div>
-              <h3 className="text-3xl font-bold mb-6 text-white">YumerFlow vai além de fluxos prontos. Ele entende.</h3>
-              <div className="space-y-4">
-                {[
-                  "Digita como humano (com pausas, erros e hesitações)",
-                  "Lembra de interações anteriores",
-                  "Muda o tom com base no humor do cliente", 
-                  "Interpreta áudios, PDFs, imagens e vídeos",
-                  "Responde com lógica, empatia e estratégia"
-                ].map((feature, index) => (
-                  <div key={index} className="flex items-start space-x-3">
-                    <Brain className="w-5 h-5 text-purple-400 mt-1 flex-shrink-0" />
-                    <span className="text-gray-300">{feature}</span>
+
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            {/* Chat Simulation */}
+            <div className="bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700">
+              <div className="bg-green-600 text-white px-4 py-2 rounded-t-xl text-center font-semibold">
+                WhatsApp Business
+              </div>
+              
+              <div className="bg-white rounded-b-xl p-4 h-80 overflow-y-auto space-y-4">
+                <div className="flex justify-start">
+                  <div className="bg-gray-200 rounded-2xl rounded-bl-sm px-4 py-2 max-w-xs">
+                    <p className="text-gray-800">Oi! Gostaria de saber mais sobre os seus produtos</p>
+                    <span className="text-xs text-gray-500">14:23</span>
                   </div>
-                ))}
+                </div>
+                
+                <div className="flex justify-end">
+                  <div className="bg-green-500 text-white rounded-2xl rounded-br-sm px-4 py-2 max-w-xs">
+                    <p>Olá! Que bom te ver por aqui! 😊 Tenho certeza que posso te ajudar a encontrar exatamente o que você precisa. Me conta, qual tipo de solução você está buscando?</p>
+                    <span className="text-xs text-green-100">14:23</span>
+                  </div>
+                </div>
+                
+                <div className="flex justify-start">
+                  <div className="bg-gray-200 rounded-2xl rounded-bl-sm px-4 py-2 max-w-xs">
+                    <p className="text-gray-800">Preciso de algo para organizar meus clientes</p>
+                    <span className="text-xs text-gray-500">14:24</span>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end">
+                  <div className="bg-green-500 text-white rounded-2xl rounded-br-sm px-4 py-2 max-w-xs">
+                    <p>Perfeito! Organização é fundamental para crescer. Pelo que entendi, você quer ter controle total dos seus clientes e não perder nenhuma oportunidade, certo? Nosso CRM integrado é perfeito para isso! Posso te mostrar como funciona?</p>
+                    <span className="text-xs text-green-100">14:24</span>
+                  </div>
+                </div>
               </div>
             </div>
-            
-            <div className="bg-gradient-to-br from-purple-900/30 to-fuchsia-900/30 p-6 rounded-2xl border border-purple-500/20">
-              <h4 className="text-lg font-semibold mb-4 text-purple-300">Exemplo real:</h4>
-              <div className="space-y-3">
-                <div className="bg-gray-800 p-3 rounded-lg">
-                  <p className="text-sm text-gray-400">Cliente (2h da manhã)</p>
-                  <p className="text-white">🎵 [Áudio confuso de 2 minutos]</p>
+
+            {/* Features List */}
+            <div className="space-y-8">
+              <div className="space-y-6">
+                <div className="flex items-start space-x-4">
+                  <div className="bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full p-3">
+                    <MessageSquare className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white mb-2">Contexto Completo</h3>
+                    <p className="text-gray-300">Lembra de toda conversa, histórico e preferências de cada cliente</p>
+                  </div>
                 </div>
-                <div className="bg-purple-800/30 p-3 rounded-lg">
-                  <p className="text-sm text-purple-300">YumerFlow</p>
-                  <p className="text-white">Entendi sua dúvida sobre o plano premium. Vou te explicar de forma simples...</p>
+                
+                <div className="flex items-start space-x-4">
+                  <div className="bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full p-3">
+                    <Heart className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white mb-2">Empatia Genuína</h3>
+                    <p className="text-gray-300">Reconhece emoções e adapta o tom da conversa automaticamente</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start space-x-4">
+                  <div className="bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full p-3">
+                    <Brain className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white mb-2">Aprendizado Contínuo</h3>
+                    <p className="text-gray-300">Fica mais inteligente a cada interação, sempre melhorando</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-6 border border-purple-500/20">
+                <h4 className="text-lg font-bold text-white mb-4">Resultado Real:</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-green-400">94%</div>
+                    <p className="text-sm text-gray-400">Satisfação do cliente</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-purple-400">+280%</div>
+                    <p className="text-sm text-gray-400">Taxa de conversão</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </section>
+
+      <VoiceCloningSection />
+      <SmartSchedulingSection />
+      <AdaptableCRMSection />
+      <AutomatedCampaignsSection />
+      <RealResultsSection />
+      <HumanSupportSection />
 
       {/* Fundadores Section */}
       <section className="py-20 px-6 bg-black">
