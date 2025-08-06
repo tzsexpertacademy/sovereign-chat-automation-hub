@@ -15,47 +15,43 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('⏰ [SCHEDULER-TRIGGER] Executando trigger do scheduler');
+  console.log('⏰ [SCHEDULER-TRIGGER] Executando como BACKUP (sistema imediato em uso)');
 
   try {
-    console.log('⏰ [SCHEDULER-TRIGGER] 🔄 ESTRATÉGIA HÍBRIDA: Primário → Fallback → Análise');
+    console.log('⏰ [SCHEDULER-TRIGGER] 🔄 MODO BACKUP: Limpeza + Recuperação');
     
-    // 1️⃣ SISTEMA PRIMÁRIO: process-received-media (descriptografia + transcrição 100%)
-    const mediaResponse = await supabase.functions.invoke('process-received-media', {
-      body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
-    });
+    // 1️⃣ LIMPEZA: Batches órfãos e timeouts travados
+    const { data: cleanupResult } = await supabase.rpc('cleanup_orphaned_batches');
+    console.log('⏰ [SCHEDULER-TRIGGER] 1️⃣ Limpeza:', cleanupResult);
     
-    console.log('⏰ [SCHEDULER-TRIGGER] 1️⃣ Sistema Primário (descriptografia):', mediaResponse.data);
-    
-    // ⏳ DELAY para evitar race condition na API Yumer
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    // 2️⃣ SISTEMA FALLBACK: process-message-batches (apenas áudios não processados)
+    // 2️⃣ RECUPERAÇÃO: Apenas mensagens realmente órfãs (mais de 5 minutos)
     const batchResponse = await supabase.functions.invoke('process-message-batches', {
-      body: { trigger: 'scheduler_fallback', timestamp: new Date().toISOString() }
+      body: { 
+        trigger: 'scheduler_backup', 
+        timestamp: new Date().toISOString(),
+        onlyOrphaned: true
+      }
     });
 
-    console.log('⏰ [SCHEDULER-TRIGGER] 2️⃣ Sistema Fallback (batch):', batchResponse.data);
+    console.log('⏰ [SCHEDULER-TRIGGER] 2️⃣ Recuperação órfãs:', batchResponse.data);
     
-    // ⏳ DELAY antes da análise final
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    // 3️⃣ ANÁLISE FINAL: GPT-4 Vision para todas as mídias processadas
+    // 3️⃣ ANÁLISE: Mídias processadas sem análise
     const analysisResponse = await supabase.functions.invoke('process-media-analysis', {
-      body: { trigger: 'scheduler', timestamp: new Date().toISOString() }
+      body: { trigger: 'scheduler_backup', timestamp: new Date().toISOString() }
     });
     
     console.log('⏰ [SCHEDULER-TRIGGER] 3️⃣ Análise Final:', analysisResponse.data);
 
     return new Response(JSON.stringify({
       success: true,
-      message: 'Hybrid strategy executed - Primary + Fallback + Analysis',
+      message: 'Backup cleanup and recovery executed - Immediate processing is primary',
       steps: {
-        primary_decryption: mediaResponse.data,
-        fallback_batch: batchResponse.data,
-        final_analysis: analysisResponse.data
+        cleanup: cleanupResult,
+        recovery: batchResponse.data,
+        analysis: analysisResponse.data
       },
-      strategy: 'hybrid_sequential'
+      strategy: 'backup_mode',
+      note: 'Primary processing is now immediate via webhooks'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

@@ -2506,6 +2506,15 @@ export type Database = {
         }
         Returns: Json
       }
+      manage_message_batch_immediate: {
+        Args: {
+          p_chat_id: string
+          p_client_id: string
+          p_instance_id: string
+          p_message: Json
+        }
+        Returns: Json
+      }
       manage_message_batch_v2: {
         Args: {
           p_chat_id: string
@@ -2552,6 +2561,10 @@ export type Database = {
           p_audio_base64?: string
         }
         Returns: string
+      }
+      schedule_immediate_batch_processing: {
+        Args: { p_batch_id: string; p_timeout_seconds?: number }
+        Returns: Json
       }
       upsert_conversation_ticket: {
         Args: {

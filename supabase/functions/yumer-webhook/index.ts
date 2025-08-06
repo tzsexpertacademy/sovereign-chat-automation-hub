@@ -225,9 +225,9 @@ async function processYumerMessage(yumerData: any) {
           pushName: mappedMessage.sender
         };
 
-        // Usar RPC V2 para gestão de batches com timeouts sincronizados
+        // Usar RPC de processamento imediato
         const { data: batchResult, error: batchError } = await supabase
-          .rpc('manage_message_batch_v2', {
+          .rpc('manage_message_batch_immediate', {
             p_chat_id: mappedMessage.chat_id,
             p_client_id: clientId,
             p_instance_id: instanceId,
@@ -239,27 +239,15 @@ async function processYumerMessage(yumerData: any) {
         } else {
           console.log('✅ [BATCH-SUCCESS] Batch criado:', batchResult);
           
-          // 🚀 TRIGGER PROCESSAMENTO BACKGROUND SE NOVO BATCH
-          if (batchResult?.is_new_batch) {
-            console.log('🚀 [TRIGGER] Disparando processamento background');
-            
-            // Chamar function de processamento em background
-            const { error: triggerError } = await supabase.functions.invoke(
-              'process-message-batches',
-              {
-                body: { 
-                  trigger: 'new_message',
-                  chatId: mappedMessage.chat_id,
-                  timestamp: new Date().toISOString()
-                }
-              }
-            );
-
-            if (triggerError) {
-              console.error('❌ [TRIGGER-ERROR] Erro ao disparar processamento:', triggerError);
-            } else {
-              console.log('✅ [TRIGGER-SUCCESS] Processamento disparado com sucesso');
-            }
+          // ⚡ PROCESSAMENTO IMEDIATO AGENDADO AUTOMATICAMENTE
+          if (batchResult?.processing_scheduled) {
+            console.log('⚡ [IMMEDIATE] Processamento imediato agendado automaticamente:', {
+              batchId: batchResult.batch_id,
+              timeoutSeconds: batchResult.timeout_seconds,
+              scheduled: batchResult.processing_scheduled
+            });
+          } else {
+            console.log('⚠️ [IMMEDIATE] Falha ao agendar processamento imediato');
           }
         }
       }
